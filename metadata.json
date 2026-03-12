@@ -1,0 +1,7 @@
+{
+  "name": "Remix: Remix: AI 沉浸式聊天助手",
+  "description": "支持多重身份面具、全局视觉自定义与深度数据管理的沉浸式 AI 聊天应用。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

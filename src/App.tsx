@@ -1,0 +1,7117 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Battery, Wifi, Signal, ChevronLeft, ChevronRight, Send, Settings, MessageSquare, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Users, Compass, User, Image as ImageIcon, Upload, PlusCircle, BellOff, Pin, Database, Book, Smile, Palette, Share2, Download, History, BookOpen, StickyNote, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, UserPlus, UserPlus2, MessageSquarePlus, Info, MoreVertical, Camera, MessageCircle, ThumbsUp, SendHorizonal, ScanEye, Activity, Languages, Clock, Phone, PhoneOff, MapPin, Gamepad2, ArrowLeft, Calendar, Coffee } from 'lucide-react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { 
+  Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry,
+  Character, ChatMessage, ChatHistory, PerceptionSettings, MusicData,
+  ApiConfig, AppSettings, CallRecord, DateSession, WalletData
+} from './types';
+import { MePage, WorldBookManager } from './components/MePage';
+import { NewFriendsPage } from './components/NewFriendsPage';
+import { GroupChatManagerPage } from './components/GroupChatManagerPage';
+import { GroupChatSession } from './components/GroupChatSession';
+import { MonitorApp } from './components/MonitorApp';
+import { CustomizationApp } from './components/CustomizationApp';
+import { DesktopWidget } from './components/DesktopWidgets';
+import { CoupleSpaceApp } from './components/CoupleSpaceApp';
+import { PerceptionView } from './components/PerceptionView';
+import MusicApp from './components/MusicApp';
+import ForumApp from './components/ForumApp';
+import WalletApp, { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/WalletApp';
+import { DatingModal } from './components/dating/DatingModal';
+import { GameCenter } from './components/games/GameCenter';
+import { GameCard } from './components/chat/GameCard';
+import { extractImageUrls } from './utils';
+
+// Global styles for hiding scrollbar to make it look more like a native app
+const GlobalStyles = ({ customCss }: { customCss?: string }) => (
+  <style>{`
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    * {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    ${customCss || ''}
+  `}</style>
+);
+
+type Message = {
+  role: 'user' | 'model';
+  text: string;
+};
+
+type UserProfile = UserProfileExtended;
+
+type Comment = {
+  id: string;
+  authorId: string; // 'user' or characterId
+  content: string;
+  timestamp: number;
+};
+
+type Moment = {
+  id: string;
+  authorId: string; // 'user' or characterId
+  content: string;
+  images?: string[];
+  timestamp: number;
+  likes: number;
+  likedBy?: string[]; // Array of user/character IDs who liked this moment
+  isLiked?: boolean; // Deprecated, use likedBy.includes('user') instead
+  isCollected?: boolean;
+  comments: Comment[];
+};
+
+type AppData = {
+  characters: Character[];
+  chatHistory: ChatHistory;
+  userProfile: UserProfile;
+  masks: Mask[];
+  favorites: FavoriteMessage[];
+  visualSettings: VisualSettings;
+  groups: string[]; // List of group names
+  moments: Moment[];
+  worldBooks: WorldBookEntry[];
+  coupleSpace?: import('./types').CoupleSpaceData;
+  friendRequests?: import('./types').FriendRequest[];
+  chatGroups?: import('./types').ChatGroup[];
+  callHistory?: CallRecord[];
+  savedDates?: DateSession[];
+  collectedDates?: DateSession[];
+  musicData?: import('./types').MusicData;
+};
+
+const formatMessagePreview = (text: string | undefined): string => {
+  if (!text) return '';
+  if (text.startsWith('[GAME_CARD]')) {
+    return '[游戏卡片]';
+  }
+  return text;
+};
+
+const DEFAULT_CHARACTERS: Character[] = [
+  {
+    id: 'gemini-default',
+    name: 'Gemini 助手',
+    gender: 'other',
+    avatar: 'https://picsum.photos/seed/gemini/200',
+    setting: '你是一个乐于助人的 AI 助手。',
+    openingRemark: '你好！我是 Gemini，有什么我可以帮你的吗？',
+    lastMessage: '你好！我是 Gemini，有什么我可以帮你的吗？',
+    lastTime: Date.now(),
+    groupId: '朋友',
+    isPinned: false,
+  },
+  {
+    id: 'char-2',
+    name: '阿强',
+    gender: 'male',
+    avatar: 'https://picsum.photos/seed/aqiang/200',
+    setting: '你的好兄弟，性格豪爽。',
+    openingRemark: '兄弟，今晚出来撸串不？',
+    lastMessage: '兄弟，今晚出来撸串不？',
+    lastTime: Date.now() - 100000,
+    groupId: '朋友',
+  }
+];
+
+const DEFAULT_USER: UserProfile = {
+  name: 'AI 用户',
+  avatar: 'https://picsum.photos/seed/user/200',
+  id: 'user_8888',
+  bio: '探索 AI 的无限可能 ✨',
+  mood: '😊 开心',
+};
+
+const DEFAULT_CONFIG: ApiConfig = {
+  id: 'default',
+  name: 'Google Gemini (默认)',
+  provider: 'Google Gemini',
+  apiKey: '',
+  baseUrl: '',
+  model: 'gemini-3-flash-preview',
+  temperature: 1.0,
+};
+
+const DEFAULT_SETTINGS: AppSettings = {
+  activeConfigId: 'default',
+  configs: [DEFAULT_CONFIG],
+};
+
+const DEFAULT_MOMENTS: Moment[] = [
+  {
+    id: 'm1',
+    authorId: 'char_1', // 假设是林浩然
+    content: '今天的咖啡不错，适合思考人生。☕️',
+    images: ['https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'],
+    timestamp: Date.now() - 1000 * 60 * 30, // 30 mins ago
+    likes: 2,
+    likedBy: ['char_2', 'user'],
+    comments: [
+      { id: 'c1', authorId: 'user', content: '在哪家店呀？', timestamp: Date.now() - 1000 * 60 * 10 }
+    ]
+  },
+  {
+    id: 'm2',
+    authorId: 'char_2', // 假设是苏梦
+    content: '终于把这个项目搞定了！给自己放个假 🎉',
+    timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
+    likes: 3,
+    likedBy: ['char_1', 'char_3', 'user'],
+    comments: []
+  },
+  {
+    id: 'm3',
+    authorId: 'char_3', // 假设是陈雨
+    content: '周末去爬山，风景真的太美了！虽然累但是值得。⛰️',
+    images: [
+      'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
+      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'
+    ],
+    timestamp: Date.now() - 1000 * 60 * 60 * 5, // 5 hours ago
+    likes: 1,
+    likedBy: ['char_2'],
+    comments: []
+  }
+];
+
+// 预设的动态文案库，用于无 API Key 时的模拟生成
+const MOMENT_TEMPLATES = [
+  "今天的天气真好，适合出去走走。☀️",
+  "刚刚读完一本好书，推荐给大家！📚",
+  "生活不止眼前的苟且，还有诗和远方。",
+  "好想吃火锅啊...🍲",
+  "努力工作，努力生活！💪",
+  "有时候，发呆也是一种享受。",
+  "新买的衣服到了，开心！👗",
+  "今天的晚霞好美。",
+  "有没有人一起去健身？🏋️‍♀️",
+  "最近有点剧荒，求推荐好看的电影！🎬"
+];
+
+function MomentsApp({
+  appData,
+  setAppData,
+  settings
+}: {
+  appData: AppData;
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>;
+  settings: AppSettings;
+}) {
+  const [showPublish, setShowPublish] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [commentingOn, setCommentingOn] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  
+  const [publishContent, setPublishContent] = useState('');
+  const [publishImages, setPublishImages] = useState<string[]>([]);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+
+  const { userProfile, moments, characters } = appData;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    
+    // Simulate network delay and potentially generate AI moment
+    setTimeout(async () => {
+      setRefreshing(false);
+      
+      // 100% chance to generate a new AI moment if there are characters (for demo purposes)
+      if (characters.length > 0) {
+        try {
+          const randomChar = characters[Math.floor(Math.random() * characters.length)];
+          const activeConfig = settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0];
+          
+          let newContent = '';
+
+          // Try to use AI if API Key is available
+          if (activeConfig.apiKey) {
+            try {
+              const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
+              const prompt = `你扮演${randomChar.name}，${randomChar.setting}。
+请生成一条符合你人设的朋友圈动态内容，不要包含话题标签，不要太长（50字以内）。
+内容应该像是一个真实的人在分享生活、心情或者吐槽。`;
+
+              const response = await ai.models.generateContent({
+                model: activeConfig.model,
+                contents: prompt,
+                config: { temperature: 1.2 }
+              });
+              
+              if (response.text) {
+                newContent = response.text;
+              }
+            } catch (apiErr) {
+              console.warn('AI generation failed, falling back to templates', apiErr);
+            }
+          }
+
+          // Fallback to templates if AI failed or no key
+          if (!newContent) {
+            newContent = MOMENT_TEMPLATES[Math.floor(Math.random() * MOMENT_TEMPLATES.length)];
+          }
+
+          if (newContent) {
+            const newAiMoment: Moment = {
+              id: Date.now().toString(),
+              authorId: randomChar.id,
+              content: newContent,
+              timestamp: Date.now(),
+              likes: 0,
+              comments: []
+            };
+            setAppData(prev => ({ ...prev, moments: [newAiMoment, ...(prev.moments || [])] }));
+          }
+        } catch (err) {
+          console.error('Failed to generate moment', err);
+        }
+      }
+    }, 1000);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPublishImages(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePublish = () => {
+    const newMoment: Moment = {
+      id: Date.now().toString(),
+      authorId: 'user',
+      content: publishContent,
+      images: publishImages,
+      timestamp: Date.now(),
+      likes: 0,
+      comments: []
+    };
+    setAppData(prev => ({ ...prev, moments: [newMoment, ...(prev.moments || [])] }));
+    setShowPublish(false);
+    setPublishContent('');
+    setPublishImages([]);
+  };
+
+  const handleLike = (momentId: string) => {
+    setAppData(prev => ({
+      ...prev,
+      moments: prev.moments.map(m => {
+        if (m.id === momentId) {
+          const userId = 'user';
+          const likedBy = m.likedBy || [];
+          const isLiked = likedBy.includes(userId);
+          
+          let newLikedBy;
+          if (isLiked) {
+            newLikedBy = likedBy.filter(id => id !== userId);
+          } else {
+            newLikedBy = [...likedBy, userId];
+          }
+
+          return {
+            ...m,
+            likedBy: newLikedBy,
+            likes: newLikedBy.length,
+            isLiked: !isLiked // Keep for compatibility if needed, but rely on likedBy
+          };
+        }
+        return m;
+      })
+    }));
+    setActiveMenuId(null);
+  };
+
+  const handleCollect = (momentId: string) => {
+    setAppData(prev => ({
+      ...prev,
+      moments: prev.moments.map(m => {
+        if (m.id === momentId) {
+          const isCollected = !m.isCollected;
+          // alert(isCollected ? '收藏成功' : '已取消收藏'); // Optional: remove alert for smoother UX
+          return { ...m, isCollected };
+        }
+        return m;
+      })
+    }));
+    setActiveMenuId(null);
+  };
+
+  const handleDelete = (momentId: string) => {
+    if (confirm('确定要删除这条动态吗？')) {
+      setAppData(prev => ({
+        ...prev,
+        moments: prev.moments.filter(m => m.id !== momentId)
+      }));
+    }
+    setActiveMenuId(null);
+  };
+
+  const handleComment = async (momentId: string) => {
+    if (!commentText.trim()) return;
+    
+    const newComment: Comment = {
+      id: Date.now().toString(),
+      authorId: 'user',
+      content: commentText,
+      timestamp: Date.now()
+    };
+    
+    setAppData(prev => ({
+      ...prev,
+      moments: prev.moments.map(m => 
+        m.id === momentId ? { ...m, comments: [...m.comments, newComment] } : m
+      )
+    }));
+    
+    setCommentingOn(null);
+    setCommentText('');
+
+    // AI Reply Logic
+    const moment = moments.find(m => m.id === momentId);
+    if (!moment) return;
+
+    let replyCharacter: Character | undefined;
+    if (moment.authorId !== 'user') {
+      replyCharacter = characters.find(c => c.id === moment.authorId);
+    } else {
+      if (characters.length > 0) {
+        replyCharacter = characters[Math.floor(Math.random() * characters.length)];
+      }
+    }
+
+    if (replyCharacter) {
+      try {
+        const activeConfig = settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0];
+        if (!activeConfig.apiKey) return;
+
+        const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
+        const prompt = `你扮演${replyCharacter.name}，${replyCharacter.setting}。
+这是一条朋友圈动态："${moment.content}"
+用户评论了："${newComment.content}"
+请你以${replyCharacter.name}的身份，简短地回复用户的评论（不超过30字）。`;
+
+        const response = await ai.models.generateContent({
+          model: activeConfig.model,
+          contents: prompt,
+          config: {
+            temperature: activeConfig.temperature
+          }
+        });
+
+        if (response.text) {
+          const aiComment: Comment = {
+            id: Date.now().toString() + '_ai',
+            authorId: replyCharacter.id,
+            content: response.text,
+            timestamp: Date.now()
+          };
+          setAppData(prev => ({
+            ...prev,
+            moments: prev.moments.map(m => 
+              m.id === momentId ? { ...m, comments: [...m.comments, aiComment] } : m
+            )
+          }));
+        }
+      } catch (err) {
+        console.error('AI reply failed', err);
+      }
+    }
+  };
+
+  if (showPublish) {
+    return (
+      <div className="absolute inset-0 bg-white/80 backdrop-blur-xl z-[100] flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-white/50 backdrop-blur-md">
+          <button onClick={() => setShowPublish(false)} className="text-zinc-600">取消</button>
+          <button 
+            onClick={handlePublish}
+            disabled={!publishContent.trim() && publishImages.length === 0}
+            className="bg-zinc-900 hover:bg-black text-white px-4 py-1.5 rounded-full font-medium disabled:opacity-50 transition-all shadow-lg shadow-black/20"
+          >
+            发表
+          </button>
+        </div>
+        <div className="p-4 flex-1 overflow-y-auto">
+          <textarea
+            value={publishContent}
+            onChange={e => setPublishContent(e.target.value)}
+            placeholder="这一刻的想法..."
+            className="w-full h-32 outline-none resize-none text-[15px] bg-transparent placeholder-zinc-400"
+          />
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {publishImages.map((img, i) => (
+              <div key={i} className="relative aspect-square group">
+                <img src={img} className="w-full h-full object-cover rounded-xl shadow-sm" />
+                <button 
+                  onClick={() => setPublishImages(publishImages.filter((_, idx) => idx !== i))}
+                  className="absolute -top-2 -right-2 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            {publishImages.length < 9 && (
+              <div className="flex flex-col gap-2">
+                <label className="aspect-square bg-zinc-100/50 border border-dashed border-zinc-300 rounded-xl flex items-center justify-center text-zinc-400 cursor-pointer hover:bg-zinc-100 transition-colors">
+                  <Plus size={24} />
+                  <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </label>
+                <button 
+                  onClick={() => setShowUrlInput(!showUrlInput)}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-900 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Link2 size={10} />
+                  添加链接
+                </button>
+              </div>
+            )}
+          </div>
+
+          {showUrlInput && (
+            <div className="mt-4 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-zinc-500">添加图片链接</span>
+                <button onClick={() => setShowUrlInput(false)} className="text-zinc-400 hover:text-zinc-600">
+                  <X size={14} />
+                </button>
+              </div>
+              <textarea
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder="支持输入图片链接、Markdown图片格式、HTML img标签"
+                className="w-full h-24 bg-white border border-zinc-200 rounded-lg p-2 text-xs outline-none focus:border-zinc-900/30 transition-all resize-none"
+              />
+              <button 
+                onClick={() => {
+                  const urls = extractImageUrls(urlInput);
+                  if (urls.length > 0) {
+                    setPublishImages(prev => [...prev, ...urls].slice(0, 9));
+                    setUrlInput('');
+                    setShowUrlInput(false);
+                  }
+                }}
+                className="w-full mt-2 bg-zinc-900 text-white py-1.5 rounded-lg text-xs font-bold"
+              >
+                添加这些链接
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="flex-1 overflow-y-auto pb-24 relative"
+      style={{
+        backgroundImage: appData.visualSettings?.momentsBackground ? `url(${appData.visualSettings.momentsBackground})` : undefined,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: appData.visualSettings?.momentsBackground ? 'transparent' : '#fafafa'
+      }}
+    >
+      <div className="relative pb-4">
+        <div className="h-40 relative overflow-hidden">
+          {!appData.visualSettings?.momentsBackground && (
+            <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />
+          )}
+          <div className="absolute top-4 right-4 flex gap-3 z-10">
+            <button 
+              onClick={handleRefresh} 
+              className="p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-zinc-800 transition-all shadow-sm border border-white/20"
+            >
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button 
+              onClick={() => setShowPublish(true)} 
+              className="p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-zinc-800 transition-all shadow-sm border border-white/20"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="px-5 relative -mt-10 flex items-end gap-3 justify-start z-10">
+          <div className="relative group">
+            <div className="absolute inset-0 bg-black/5 rounded-2xl blur-sm transform translate-y-1" />
+            <img src={userProfile.avatar} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
+          </div>
+          <div className="mb-1.5 flex-1 text-left">
+            <div className="flex items-center justify-start gap-2">
+              <h2 className="text-[20px] font-bold text-zinc-900">{userProfile.name}</h2>
+              <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-medium rounded-full">
+                {userProfile.mood || '在线'}
+              </span>
+            </div>
+            <p className="text-[13px] text-zinc-500 mt-0.5">{userProfile.bio || '这个人很懒，什么都没写~'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-transparent px-0 pt-4 space-y-4">
+        {(moments || []).map(moment => {
+          const author = moment.authorId === 'user' 
+            ? userProfile 
+            : characters.find(c => c.id === moment.authorId);
+          
+          if (!author) return null;
+
+          return (
+            <div 
+              key={moment.id} 
+              className="p-4 mx-4 backdrop-blur-md border border-white/50 shadow-sm flex gap-3 hover:bg-white transition-colors"
+              style={{
+                borderRadius: appData.visualSettings?.dynamics?.cardBorderRadius ?? 24,
+                backgroundColor: `rgba(255, 255, 255, ${appData.visualSettings?.dynamics?.cardOpacity ?? 0.9})`
+              }}
+            >
+              <img src={author.avatar} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start">
+                  <h3 className="font-bold text-[15px] text-zinc-900">{author.name}</h3>
+                  <span className="text-[12px] text-zinc-400">
+                    {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-[15px] text-zinc-800 mt-1 whitespace-pre-wrap leading-relaxed">{moment.content}</p>
+                
+                {moment.images && moment.images.length > 0 && (
+                  <div className={`grid gap-1.5 mt-3 ${moment.images.length === 1 ? 'grid-cols-1 w-2/3' : 'grid-cols-3'}`}>
+                    {moment.images.map((img, i) => (
+                      <img key={i} src={img} className="w-full aspect-square object-cover rounded-xl border border-zinc-100" />
+                    ))}
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-end mt-2 relative h-8">
+                  <button 
+                    onClick={() => setActiveMenuId(activeMenuId === moment.id ? null : moment.id)}
+                    className="p-1.5 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors"
+                  >
+                    <MoreHorizontal size={18} />
+                  </button>
+
+                  <AnimatePresence>
+                    {activeMenuId === moment.id && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, x: 10 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, x: 10 }}
+                        className="absolute right-8 top-0 bg-zinc-800/90 backdrop-blur-md rounded-lg shadow-xl flex items-center overflow-hidden z-20 py-1 px-1"
+                      >
+                        <button 
+                          onClick={() => handleLike(moment.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                        >
+                          <Heart size={14} className={(moment.likedBy?.includes('user') || moment.isLiked) ? 'fill-red-500 text-red-500' : ''} />
+                          {(moment.likedBy?.includes('user') || moment.isLiked) ? '取消' : '赞'}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setCommentingOn(moment.id);
+                            setActiveMenuId(null);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                        >
+                          <MessageCircle size={14} />
+                          评论
+                        </button>
+                        <button 
+                          onClick={() => handleCollect(moment.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                        >
+                          <Star size={14} className={moment.isCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
+                          {moment.isCollected ? '已收藏' : '收藏'}
+                        </button>
+                        {moment.authorId === 'user' && (
+                          <button 
+                            onClick={() => handleDelete(moment.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                          >
+                            <Trash2 size={14} />
+                            删除
+                          </button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {(moment.likes > 0 || moment.comments.length > 0) && (
+                  <div className="bg-zinc-50 rounded-xl p-3 mt-2">
+                    {moment.likes > 0 && (
+                      <div className="flex items-center gap-1.5 text-[13px] text-zinc-600 font-medium mb-1.5 border-b border-zinc-200/50 pb-1.5">
+                        <Heart size={12} className="fill-red-500 text-red-500" />
+                        {(() => {
+                          if (moment.likedBy && moment.likedBy.length > 0) {
+                            const names = moment.likedBy.map(id => {
+                              if (id === 'user') return userProfile.name;
+                              const char = characters.find(c => c.id === id);
+                              return char ? char.name : '未知用户';
+                            });
+                            if (names.length <= 3) {
+                              return names.join('、');
+                            } else {
+                              return `${names.slice(0, 3).join('、')} 等 ${names.length} 人`;
+                            }
+                          }
+                          return `${moment.likes} 人觉得很赞`;
+                        })()}
+                      </div>
+                    )}
+                    {moment.comments.map(comment => {
+                      const commentAuthor = comment.authorId === 'user' 
+                        ? userProfile 
+                        : characters.find(c => c.id === comment.authorId);
+                      return (
+                        <div key={comment.id} className="text-[13px] mt-1 leading-relaxed">
+                          <span className="font-bold text-zinc-900">{commentAuthor?.name}</span>
+                          <span className="text-zinc-500 mx-1">·</span>
+                          <span className="text-zinc-700">{comment.content}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {commentingOn === moment.id && (
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      placeholder="发布你的回复"
+                      className="flex-1 bg-zinc-100 rounded-full px-4 py-2 text-[13px] outline-none border border-transparent focus:border-zinc-900/30 focus:bg-white transition-all"
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleComment(moment.id);
+                      }}
+                    />
+                    <button 
+                      onClick={() => handleComment(moment.id)}
+                      className="bg-zinc-900 text-white px-3 py-1.5 rounded-full text-[12px] font-bold shadow-sm shrink-0 whitespace-nowrap"
+                    >
+                      回复
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        
+        <div className="h-4" /> {/* Bottom spacer */}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  if (!audioRef.current) {
+    audioRef.current = new Audio();
+  }
+  const [activeApp, setActiveApp] = useState<'home' | 'chat' | 'settings' | 'chat-session' | 'add-character' | 'sms' | 'character-profile' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet' | 'group-chat-session'>('home');
+  const [activeTab, setActiveTab] = useState<'chat' | 'contacts' | 'moments' | 'me'>('chat');
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedForumPostId, setSelectedForumPostId] = useState<string | null>(null);
+  const [time, setTime] = useState('');
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [appData, setAppData] = useState<AppData>({
+    characters: DEFAULT_CHARACTERS,
+    chatHistory: {},
+    userProfile: DEFAULT_USER,
+    masks: [],
+    favorites: [],
+    friendRequests: [],
+    chatGroups: [],
+    callHistory: [],
+    visualSettings: {
+      globalBackground: '',
+      chatOpacity: 1,
+      desktopIcons: [],
+      widgets: [],
+      navBar: {
+        show: true,
+        style: 'default',
+        shape: 'pill',
+        showMultipleAvatars: false,
+        statusBarPlacement: 'top'
+      },
+      desktop: {
+        iconSize: 56,
+        iconBorderRadius: 14,
+        gridColumns: 4,
+        gridGap: 16
+      },
+      chat: {
+        background: '',
+        avatarSize: 40,
+        avatarBorderRadius: 20,
+        avatarBorderColor: '#e4e4e7',
+        avatarBorderWidth: 0,
+        messageBorderRadius: 16,
+        messageBackgroundColorUser: '#3b82f6',
+        messageBackgroundColorModel: '#ffffff',
+        messageSpacing: 16
+      },
+      dynamics: {
+        background: '',
+        cardStyle: 'flat',
+        cardBorderRadius: 24,
+        cardOpacity: 1
+      },
+      globalCss: ''
+    },
+    groups: ['家人', '朋友', '同事', '星标'],
+    moments: DEFAULT_MOMENTS,
+    worldBooks: [],
+    coupleSpace: {
+      partnerId: null,
+      anniversaryDate: null,
+      backgroundUrl: null,
+      coNotes: [],
+      ledger: [],
+      loveLetters: [],
+      calendarEvents: []
+    },
+    musicData: {
+      currentSong: null,
+      isPlaying: false,
+      progress: 0,
+      volume: 80,
+      playlists: [],
+      likedSongs: [],
+      history: [],
+      recentlyPlayed: [],
+      togetherWith: null,
+      togetherStartTime: null,
+      chatHistory: [],
+      queue: []
+    }
+  });
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('ai_phone_settings');
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        if (parsed.configs && Array.isArray(parsed.configs)) {
+          setSettings(parsed);
+        } else {
+          // Migrate old settings format
+          const migrated: AppSettings = {
+            activeConfigId: 'default',
+            configs: [
+              {
+                ...DEFAULT_CONFIG,
+                apiKey: parsed.apiKey || '',
+                baseUrl: parsed.baseUrl || '',
+                model: parsed.model || 'gemini-3-flash-preview',
+                provider: parsed.provider || '自定义 (Custom)',
+              }
+            ]
+          };
+          setSettings(migrated);
+          localStorage.setItem('ai_phone_settings', JSON.stringify(migrated));
+        }
+      } catch (e) {
+        console.error('Failed to parse settings', e);
+      }
+    }
+
+    const savedAppData = localStorage.getItem('ai_phone_app_data');
+    if (savedAppData) {
+      try {
+        const parsed = JSON.parse(savedAppData);
+        setAppData({
+          ...parsed,
+          worldBooks: parsed.worldBooks || [],
+          moments: parsed.moments || DEFAULT_MOMENTS,
+          groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
+          savedDates: parsed.savedDates || [],
+          collectedDates: parsed.collectedDates || [],
+          coupleSpace: parsed.coupleSpace || {
+            partnerId: null,
+            anniversaryDate: null,
+            backgroundUrl: null,
+            coNotes: [],
+            ledger: [],
+            loveLetters: [],
+            calendarEvents: []
+          },
+          visualSettings: {
+            globalBackground: parsed.visualSettings?.globalBackground || '',
+            chatOpacity: parsed.visualSettings?.chatOpacity ?? 1,
+            desktopIcons: parsed.visualSettings?.desktopIcons || [],
+            widgets: parsed.visualSettings?.widgets || [],
+            navBar: {
+              show: parsed.visualSettings?.navBar?.show ?? true,
+              style: parsed.visualSettings?.navBar?.style || 'default',
+              shape: parsed.visualSettings?.navBar?.shape || 'pill',
+              showMultipleAvatars: parsed.visualSettings?.navBar?.showMultipleAvatars ?? false,
+              statusBarPlacement: parsed.visualSettings?.navBar?.statusBarPlacement || 'top'
+            },
+            desktop: {
+              iconSize: parsed.visualSettings?.desktop?.iconSize ?? 56,
+              iconBorderRadius: parsed.visualSettings?.desktop?.iconBorderRadius ?? 14,
+              gridColumns: parsed.visualSettings?.desktop?.gridColumns ?? 4,
+              gridGap: parsed.visualSettings?.desktop?.gridGap ?? 16,
+              appOrder: parsed.visualSettings?.desktop?.appOrder
+            },
+            chat: {
+              background: parsed.visualSettings?.chat?.background || '',
+              avatarSize: parsed.visualSettings?.chat?.avatarSize ?? 40,
+              avatarBorderRadius: parsed.visualSettings?.chat?.avatarBorderRadius ?? 20,
+              avatarBorderColor: parsed.visualSettings?.chat?.avatarBorderColor || '#e4e4e7',
+              avatarBorderWidth: parsed.visualSettings?.chat?.avatarBorderWidth ?? 0,
+              messageBorderRadius: parsed.visualSettings?.chat?.messageBorderRadius ?? 16,
+              messageBackgroundColorUser: parsed.visualSettings?.chat?.messageBackgroundColorUser || '#3b82f6',
+              messageBackgroundColorModel: parsed.visualSettings?.chat?.messageBackgroundColorModel || '#ffffff',
+              messageSpacing: parsed.visualSettings?.chat?.messageSpacing ?? 16,
+              bubbleStyleCss: parsed.visualSettings?.chat?.bubbleStyleCss || ''
+            },
+            dynamics: {
+              background: parsed.visualSettings?.dynamics?.background || '',
+              cardStyle: parsed.visualSettings?.dynamics?.cardStyle || 'flat',
+              cardBorderRadius: parsed.visualSettings?.dynamics?.cardBorderRadius ?? 24,
+              cardOpacity: parsed.visualSettings?.dynamics?.cardOpacity ?? 1,
+              customCss: parsed.visualSettings?.dynamics?.customCss || ''
+            },
+            globalCss: parsed.visualSettings?.globalCss || ''
+          }
+        });
+      } catch (e) {
+        console.error('Failed to parse app data', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('ai_phone_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem('ai_phone_app_data', JSON.stringify(appData));
+  }, [appData]);
+
+  const handleOpenChat = (characterId: string) => {
+    setSelectedCharacterId(characterId);
+    setActiveApp('chat-session');
+  };
+
+  const handleAddCharacter = (char: Character) => {
+    setAppData(prev => ({
+      ...prev,
+      characters: [char, ...prev.characters]
+    }));
+    setActiveApp('chat');
+    setActiveTab('chat');
+  };
+
+  const handleOpenApp = (app: any) => {
+    setActiveApp(app);
+    if (app === 'chat') {
+      setActiveTab('chat');
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-zinc-950 p-4 font-sans selection:bg-blue-500/30">
+      <GlobalStyles customCss={appData.visualSettings?.globalCss || ''} />
+      {/* Phone Container */}
+      <div id="phone-container" className="relative w-[360px] h-[720px] bg-black rounded-[50px] border-[8px] border-white shadow-2xl overflow-hidden flex flex-col ring-1 ring-black/5">
+        
+        {/* Status Bar */}
+        {activeApp !== 'wallet' && activeApp !== 'forum' && (
+          <div className="absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
+            <span className="text-[15px] font-bold tracking-tight">{time}</span>
+            <div className="flex items-center gap-1.5">
+              {/* Signal Bars */}
+              <div className="flex items-end gap-[2px] h-[10px] mb-[1px]">
+                <div className="w-[3px] h-[3px] bg-current rounded-[0.5px]" />
+                <div className="w-[3px] h-[5px] bg-current rounded-[0.5px]" />
+                <div className="w-[3px] h-[7.5px] bg-current rounded-[0.5px]" />
+                <div className="w-[3px] h-[10px] bg-current rounded-[0.5px]" />
+              </div>
+              {/* Wifi Icon */}
+              <Wifi size={16} strokeWidth={3.8} className="opacity-100" />
+              {/* Battery Icon */}
+              <div className="flex items-center gap-[1px]">
+                <div className="relative w-[22px] h-[11.5px] border border-current rounded-[3px] p-[1.5px]">
+                  <div className="w-full h-full bg-current rounded-[1px]" />
+                </div>
+                <div className="w-[1.5px] h-[4px] bg-current rounded-r-[1px] opacity-50" />
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Screen Content */}
+        <div className="flex-1 relative bg-zinc-50 overflow-hidden">
+          {activeApp === 'home' && (
+            <HomeScreen 
+              key="home" 
+              onOpenApp={handleOpenApp} 
+              userProfile={appData.userProfile}
+              setUserProfile={(profile) => setAppData(prev => ({ ...prev, userProfile: profile }))}
+              visualSettings={appData.visualSettings}
+              setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
+              appData={appData}
+              setAppData={setAppData}
+            />
+          )}
+          {activeApp === 'chat' && (
+            <MainApp 
+              key="chat"
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              appData={appData}
+              setAppData={setAppData}
+              onOpenChat={handleOpenChat}
+              onOpenGroupChat={(id) => {
+                setSelectedGroupId(id);
+                setActiveApp('group-chat-session');
+              }}
+              onOpenProfile={(id) => {
+                setSelectedCharacterId(id);
+                setActiveApp('character-profile');
+              }}
+              onAddCharacter={() => setActiveApp('add-character')}
+              onBack={() => setActiveApp('home')}
+              settings={settings}
+            />
+          )}
+          {activeApp === 'character-profile' && selectedCharacterId && appData.characters.find(c => c.id === selectedCharacterId) && (
+            <CharacterProfile
+              character={appData.characters.find(c => c.id === selectedCharacterId)!}
+              onBack={() => setActiveApp('chat')}
+              onChat={() => {
+                setActiveApp('chat-session');
+              }}
+              onAddFriend={() => {
+                alert('已发送好友请求');
+              }}
+              isFriend={true}
+              groups={appData.groups}
+              onUpdateGroup={(groupId) => {
+                setAppData(prev => ({
+                  ...prev,
+                  characters: prev.characters.map(c => c.id === selectedCharacterId ? { ...c, groupId } : c)
+                }));
+              }}
+              onTogglePin={() => {
+                setAppData(prev => ({
+                  ...prev,
+                  characters: prev.characters.map(c => c.id === selectedCharacterId ? { ...c, isPinned: !c.isPinned } : c)
+                }));
+              }}
+            />
+          )}
+          {activeApp === 'chat-session' && selectedCharacterId && appData.characters.find(c => c.id === selectedCharacterId) && (
+            <ChatSession
+              key="chat-session"
+              character={appData.characters.find(c => c.id === selectedCharacterId)!}
+              history={appData.chatHistory[selectedCharacterId] || []}
+              setHistory={(newHistory) => {
+                setAppData(prev => ({
+                  ...prev,
+                  chatHistory: { ...prev.chatHistory, [selectedCharacterId]: newHistory },
+                  characters: prev.characters.map(c => c.id === selectedCharacterId ? { 
+                    ...c, 
+                    lastMessage: newHistory[newHistory.length - 1]?.text || c.openingRemark,
+                    lastTime: Date.now()
+                  } : c)
+                }));
+              }}
+              onUpdateCharacter={(updatedChar) => {
+                setAppData(prev => ({
+                  ...prev,
+                  characters: prev.characters.map(c => c.id === selectedCharacterId ? updatedChar : c)
+                }));
+              }}
+              worldBook={appData.worldBooks || []}
+              perception={appData.coupleSpace?.perception}
+              settings={settings}
+              onBack={() => setActiveApp('chat')}
+              userAvatar={appData.userProfile.avatar}
+              userName={appData.userProfile.name}
+              masks={appData.masks}
+              favorites={appData.favorites}
+              setFavorites={(f) => setAppData(prev => ({ ...prev, favorites: f }))}
+              visualSettings={appData.visualSettings}
+              onUpdateVisualSettings={(settings) => setAppData(prev => ({ ...prev, visualSettings: settings }))}
+              groups={appData.groups}
+              onViewForumPost={(postId) => {
+                setSelectedForumPostId(postId);
+                setActiveApp('forum');
+              }}
+              callHistory={appData.callHistory}
+              onAddCallRecord={(record) => {
+                setAppData(prev => ({ ...prev, callHistory: [record, ...(prev.callHistory || [])] }));
+              }}
+              onDeleteCallRecord={(recordId) => {
+                setAppData(prev => ({
+                  ...prev,
+                  callHistory: prev.callHistory?.filter(r => r.id !== recordId) || []
+                }));
+              }}
+              onSaveDate={(session) => {
+                setAppData(prev => ({
+                  ...prev,
+                  savedDates: [
+                    ...(prev.savedDates || []).filter(s => s.characterId !== session.characterId),
+                    session
+                  ]
+                }));
+              }}
+              onCollectDate={(session) => {
+                setAppData(prev => ({
+                  ...prev,
+                  collectedDates: [...(prev.collectedDates || []), session]
+                }));
+              }}
+              savedDates={appData.savedDates?.filter(s => s.characterId === selectedCharacterId) || []}
+              walletData={appData.walletData}
+              onUpdateWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
+            />
+          )}
+          {activeApp === 'group-chat-session' && selectedGroupId && (
+            <GroupChatSession
+              group={appData.chatGroups?.find(g => g.id === selectedGroupId)!}
+              characters={appData.characters}
+              history={appData.chatGroups?.find(g => g.id === selectedGroupId)?.history || []}
+              setHistory={(newHistory) => {
+                setAppData(prev => ({
+                  ...prev,
+                  chatGroups: prev.chatGroups?.map(g => g.id === selectedGroupId ? { 
+                    ...g, 
+                    history: newHistory,
+                    lastMessage: newHistory[newHistory.length - 1]?.text,
+                    lastTime: Date.now()
+                  } : g)
+                }));
+              }}
+              onBack={() => setActiveApp('chat')}
+              userAvatar={appData.userProfile.avatar}
+              userName={appData.userProfile.name}
+              settings={settings}
+              apiKey={(settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0]).apiKey || process.env.GEMINI_API_KEY || ''}
+            />
+          )}
+          {activeApp === 'add-character' && (
+            <AddCharacter
+              key="add-character"
+              onSave={handleAddCharacter}
+              onBack={() => setActiveApp('chat')}
+              groups={appData.groups}
+            />
+          )}
+          {activeApp === 'settings' && (
+            <SettingsApp 
+              key="settings" 
+              onBack={() => setActiveApp('home')} 
+              settings={settings}
+              setSettings={(s) => {
+                setSettings(s);
+                localStorage.setItem('ai_phone_settings', JSON.stringify(s));
+              }}
+            />
+          )}
+          {activeApp === 'sms' && (
+            <SMSApp key="sms" onBack={() => setActiveApp('home')} />
+          )}
+          {activeApp === 'worldbook' && (
+            <WorldBookManager 
+              worldBooks={appData.worldBooks || []}
+              characters={appData.characters}
+              setWorldBooks={(wb) => setAppData(prev => ({ ...prev, worldBooks: wb }))}
+              onBack={() => setActiveApp('home')}
+              globalBackground={appData.visualSettings?.globalBackground || ''}
+              onAddCharacter={(char) => {
+                const newChar: Character = {
+                  id: Date.now().toString(),
+                  ...char,
+                  lastTime: Date.now()
+                };
+                setAppData(prev => ({
+                  ...prev,
+                  characters: [newChar, ...prev.characters]
+                }));
+              }}
+            />
+          )}
+          {activeApp === 'monitor' && (
+            <MonitorApp 
+              characters={appData.characters}
+              onBack={() => setActiveApp('home')}
+              visualSettings={appData.visualSettings}
+            />
+          )}
+          {activeApp === 'customization' && (
+            <CustomizationApp
+              visualSettings={appData.visualSettings}
+              setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
+              onBack={() => setActiveApp('home')}
+              onResetData={() => {
+                localStorage.removeItem('ai_phone_app_data');
+                window.location.reload();
+              }}
+              onExportData={() => {
+                const data = JSON.stringify(appData);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ai_phone_backup.json';
+                a.click();
+              }}
+              onImportData={(data) => {
+                try {
+                  const parsed = JSON.parse(data);
+                  setAppData(parsed);
+                  alert('导入成功！');
+                } catch (e) {
+                  alert('导入失败，请检查数据格式。');
+                }
+              }}
+              appData={appData}
+              setAppData={setAppData}
+              settings={settings}
+              setSettings={setSettings}
+            />
+          )}
+          {activeApp === 'couple-space' && (
+            <CoupleSpaceApp
+              appData={appData}
+              setAppData={setAppData}
+              onBack={() => setActiveApp('home')}
+              settings={settings}
+            />
+          )}
+          {activeApp === 'perception' && (
+            <PerceptionView
+              coupleSpace={appData.coupleSpace}
+              updateSpace={(updates) => setAppData(prev => ({
+                ...prev,
+                coupleSpace: { ...prev.coupleSpace!, ...updates }
+              }))}
+              onBack={() => setActiveApp('home')}
+            />
+          )}
+          {activeApp === 'music' && (
+            <MusicApp
+              musicData={appData.musicData!}
+              onUpdateMusicData={(data) => setAppData(prev => ({ ...prev, musicData: data }))}
+              userAvatar={appData.userProfile.avatar}
+              userName={appData.userProfile.name}
+              character={appData.characters.find(c => c.id === appData.coupleSpace?.partnerId) || appData.characters[0]}
+              allCharacters={appData.characters}
+              onBack={() => setActiveApp('home')}
+              audioRef={audioRef}
+            />
+          )}
+          {activeApp === 'forum' && (
+            <ForumApp
+              appData={appData}
+              onUpdateAppData={setAppData}
+              onClose={() => setActiveApp('home')}
+              onOpenChat={(characterId) => {
+                setSelectedCharacterId(characterId);
+                setActiveApp('chat-session');
+              }}
+              initialPostId={selectedForumPostId}
+            />
+          )}
+          {activeApp === 'wallet' && (
+            <WalletApp
+              appData={appData}
+              onUpdateAppData={setAppData}
+              onClose={() => setActiveApp('home')}
+            />
+          )}
+        </div>
+
+        {/* Home Indicator */}
+        <div 
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[100px] h-[4px] bg-white/80 rounded-full cursor-pointer z-50 hover:bg-white transition-colors" 
+          onClick={() => setActiveApp('home')} 
+        />
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({ 
+  onOpenApp, 
+  userProfile, 
+  setUserProfile,
+  visualSettings,
+  setVisualSettings,
+  appData,
+  setAppData
+}: { 
+  onOpenApp: (app: 'chat' | 'settings' | 'sms' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet') => void; 
+  userProfile: UserProfile;
+  setUserProfile: (p: UserProfile) => void;
+  visualSettings: VisualSettings;
+  setVisualSettings: (s: VisualSettings) => void;
+  appData: AppData;
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>;
+  key?: string;
+}) {
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+
+  // Font settings
+  const fontFamily = visualSettings?.desktop?.fontFamily;
+  const fontSize = visualSettings?.desktop?.fontSize ?? 12;
+  const fontColor = visualSettings?.desktop?.fontColor ?? '#ffffff';
+  const fontWeight = visualSettings?.desktop?.fontWeight ?? 'normal';
+
+  const fontStyle: React.CSSProperties = {
+    fontFamily: fontFamily === 'Mono' ? 'monospace' : fontFamily === 'Serif' ? 'serif' : fontFamily === 'Cursive' ? 'cursive' : fontFamily === 'Inter' ? 'sans-serif' : undefined,
+    fontSize: `${fontSize}px`,
+    color: fontColor,
+    fontWeight: fontWeight === 'bold' ? 'bold' : fontWeight === 'lighter' ? 'lighter' : 'normal',
+    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+  };
+  const [showMoodMenu, setShowMoodMenu] = useState(false);
+  const [tempUrl, setTempUrl] = useState('');
+  const [appOrder, setAppOrder] = useState<string[]>(() => {
+    const order = visualSettings?.desktop?.appOrder || ['chat', 'settings', 'worldbook', 'monitor', 'couple-space', 'perception', 'music'];
+    const filteredOrder = order.filter(id => id !== 'wallet');
+    if (!filteredOrder.includes('perception')) {
+      filteredOrder.push('perception');
+    }
+    if (!filteredOrder.includes('music')) {
+      filteredOrder.push('music');
+    }
+    if (!filteredOrder.includes('forum')) {
+      filteredOrder.push('forum');
+    }
+    return filteredOrder;
+  });
+
+  useEffect(() => {
+    if (JSON.stringify(appOrder) !== JSON.stringify(visualSettings?.desktop?.appOrder)) {
+      setVisualSettings({
+        ...visualSettings,
+        desktop: {
+          ...visualSettings.desktop,
+          appOrder
+        }
+      });
+    }
+  }, [appOrder]);
+  
+  const apps = React.useMemo(() => [
+    { id: 'chat', name: '聊天', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('chat') },
+    { id: 'settings', name: 'API 中心', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('settings') },
+    { id: 'worldbook', name: '世界书', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('worldbook') },
+    { id: 'monitor', name: '监控功能', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('monitor') },
+    { id: 'couple-space', name: '情侣空间', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('couple-space') },
+    { id: 'perception', name: '感知', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('perception') },
+    { id: 'music', name: '音乐', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => {
+      onOpenApp('music');
+      setAppData(prev => ({
+        ...prev,
+        musicData: {
+          ...prev.musicData!,
+          isPlaying: !prev.musicData?.isPlaying
+        }
+      }));
+    } },
+    { id: 'forum', name: '论坛', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('forum') },
+    { id: 'wallet', name: '钱包', icon: "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg", onClick: () => onOpenApp('wallet') },
+  ], [setAppData, onOpenApp]);
+  
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  const moods = [
+    '😊 开心', '😐 平淡', '😴 困倦', '🤔 思考', '🔥 奋斗', '🌈 期待',
+    '✨ 闪亮', '💖 心动', '🌸 治愈', '🍭 甜蜜', '🐱 慵懒', '🎈 快乐',
+    '🌟 梦想', '🍀 好运', '🎀 可爱', '💫 奇迹', '🎵 欢快', '🌤️ 晴朗'
+  ];
+
+  const navBarShapeClass = visualSettings?.navBar?.shape === 'rectangle' ? 'rounded-2xl' : visualSettings?.navBar?.shape === 'circle' ? 'rounded-[40px]' : 'rounded-full';
+
+  return (
+    <div className="absolute inset-0">
+      <img 
+        src={appData.visualSettings?.globalBackground || "https://c-ssl.duitang.com/uploads/blog/202403/28/N5Sj9BL7FP0mDy6.png"} 
+        alt="Wallpaper" 
+        className="absolute inset-0 w-full h-full object-cover"
+        referrerPolicy="no-referrer"
+      />
+      
+      <div className="relative pt-16 px-4 z-60 flex flex-col gap-8">
+        {/* Profile Bar */}
+        {visualSettings?.navBar?.show && (
+          <div className={`relative z-60 bg-white/20 backdrop-blur-md border border-white/30 px-6 py-3 flex items-center justify-between ${navBarShapeClass} ${
+            visualSettings.navBar.style === 'glass' ? 'bg-white/10 backdrop-blur-xl border-white/20' : 
+            visualSettings.navBar.style === 'minimal' ? 'bg-transparent border-none backdrop-blur-none' : ''
+          }`}>
+            {/* Left: Time & Date */}
+            <div className="flex flex-col items-start min-w-[80px]">
+              <span className="text-white text-[18px] font-bold leading-tight">{timeStr}</span>
+              <span className="text-white/80 text-[10px] font-medium">{dateStr}</span>
+            </div>
+
+            {/* Middle: Avatar & Name */}
+            <div className="flex flex-col items-center relative">
+              <button 
+                onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+                className="w-20 h-20 -mt-10 rounded-full border-2 border-white/50 overflow-hidden active:scale-90 transition-transform"
+              >
+                <img src={userProfile.avatar} alt="User" className="w-full h-full object-cover" />
+              </button>
+              <span className="text-white text-[12px] font-bold mt-1">{userProfile.name}</span>
+
+              {/* Avatar Menu */}
+              <AnimatePresence>
+                {showAvatarMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    className="absolute top-14 left-1/2 -translate-x-1/2 w-48 bg-white rounded-2xl shadow-xl p-3 z-50 border border-zinc-100"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] text-zinc-400 ml-1">修改名称</label>
+                        <input 
+                          type="text" 
+                          placeholder="输入名称..."
+                          value={userProfile.name}
+                          onChange={e => setUserProfile({ ...userProfile, name: e.target.value })}
+                          className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="h-[1px] bg-zinc-100" />
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] text-zinc-400 ml-1">更换头像</label>
+                        <input 
+                          type="text" 
+                          placeholder="粘贴图片链接..."
+                          value={tempUrl}
+                          onChange={e => setTempUrl(e.target.value)}
+                          className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                        />
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => {
+                              if (tempUrl) setUserProfile({ ...userProfile, avatar: tempUrl });
+                              setShowAvatarMenu(false);
+                              setTempUrl('');
+                            }}
+                            className="flex-1 text-[11px] bg-blue-500 text-white rounded-lg py-1.5 font-medium active:opacity-80"
+                          >
+                            确认链接
+                          </button>
+                          <label className="flex-1 text-[11px] bg-zinc-100 text-zinc-600 rounded-lg py-1.5 font-medium active:opacity-80 text-center cursor-pointer">
+                            上传图片
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setUserProfile({ ...userProfile, avatar: reader.result as string });
+                                    setShowAvatarMenu(false);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <div className="h-[1px] bg-zinc-100" />
+                      <button 
+                        onClick={() => {
+                          setUserProfile({ ...userProfile, avatar: `https://picsum.photos/seed/${Math.random()}/200` });
+                          setShowAvatarMenu(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50 rounded-lg flex items-center gap-2"
+                      >
+                        <RefreshCw size={12} /> 随机头像
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setUserProfile({ ...userProfile, avatar: 'https://picsum.photos/seed/user/200' });
+                          setShowAvatarMenu(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-[11px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"
+                      >
+                        <Trash2 size={12} /> 重置头像
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Right: Mood */}
+            <div className="relative min-w-[80px] flex justify-end">
+              <button 
+                onClick={() => setShowMoodMenu(!showMoodMenu)}
+                className="flex flex-col items-end active:opacity-70"
+              >
+                <span className="text-white/60 text-[9px] font-bold uppercase tracking-wider">今日心情</span>
+                <span className="text-white text-[13px] font-medium">{userProfile.mood}</span>
+              </button>
+
+              {/* Mood Menu */}
+              <AnimatePresence>
+                {showMoodMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    className="absolute top-12 right-0 w-32 bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-2 gap-1"
+                  >
+                    {moods.map(m => (
+                      <button
+                        key={m}
+                        onClick={() => {
+                          setUserProfile({ ...userProfile, mood: m });
+                          setShowMoodMenu(false);
+                        }}
+                        className="text-[12px] py-2 hover:bg-zinc-50 rounded-lg transition-colors"
+                      >
+                        {m.split(' ')[0]}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+      </div>
+
+        {/* Widgets and App Icons Layer - Absolute Positioned */}
+        <div className="absolute inset-0 z-30 pointer-events-none">
+          {visualSettings?.widgets && visualSettings.widgets.map((widget, index) => {
+             // Default positioning logic for new widgets if x/y are undefined
+             // We'll place them in a grid-like manner at the top
+             
+             // If x/y are undefined (newly added), calculate a default position
+             const defaultX = 24 + (index % 2) * 170;
+             const defaultY = 160 + Math.floor(index / 2) * 170; // Increased to 160 to avoid header overlap
+             
+             // Use nullish coalescing operator to allow 0 as a valid position
+             const x = widget.x ?? defaultX;
+             const y = widget.y ?? defaultY;
+
+             return (
+               <DraggableWidget
+                 key={widget.id}
+                 widget={widget}
+                 x={x}
+                 y={y}
+                 appData={appData}
+                 setAppData={setAppData}
+                 onPositionChange={(newX, newY) => {
+                   const currentWidgets = visualSettings.widgets || [];
+                   const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
+                   let newWidgets;
+                   
+                   if (existingIndex >= 0) {
+                     newWidgets = [...currentWidgets];
+                     newWidgets[existingIndex] = { ...newWidgets[existingIndex], x: newX, y: newY };
+                   } else {
+                     // Should not happen for existing widgets
+                     newWidgets = currentWidgets;
+                   }
+                   
+                   setVisualSettings({
+                     ...visualSettings,
+                     widgets: newWidgets
+                   });
+                 }}
+               />
+             );
+          })}
+
+          {appOrder.map((appId, index) => {
+            const app = apps.find(a => a.id === appId);
+            if (!app) return null;
+            
+            const iconConfig = visualSettings.desktopIcons?.find(i => i.id === appId);
+            const iconSize = visualSettings?.desktop?.iconSize ?? 56;
+            const gap = visualSettings?.desktop?.gridGap ?? 16;
+            const cols = visualSettings?.desktop?.gridColumns ?? 4;
+            
+            // Calculate default position if not set
+            // We'll place them in a grid starting below the header area
+            const defaultStartY = 200; 
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+            const defaultX = 24 + col * (iconSize + gap + 20); // 24 is padding-left
+            const defaultY = defaultStartY + row * (iconSize + gap + 30);
+
+            const x = iconConfig?.x ?? defaultX;
+            const y = iconConfig?.y ?? defaultY;
+
+            return (
+              <DraggableAppIcon
+                key={app.id}
+                app={app}
+                x={x}
+                y={y}
+                visualSettings={visualSettings}
+                onPositionChange={(newX, newY) => {
+                  const currentIcons = visualSettings.desktopIcons || [];
+                  const existingIndex = currentIcons.findIndex(i => i.id === appId);
+                  let newIcons;
+                  
+                  if (existingIndex >= 0) {
+                    newIcons = [...currentIcons];
+                    newIcons[existingIndex] = { ...newIcons[existingIndex], x: newX, y: newY };
+                  } else {
+                    newIcons = [...currentIcons, { id: appId, x: newX, y: newY }];
+                  }
+                  
+                  setVisualSettings({
+                    ...visualSettings,
+                    desktopIcons: newIcons
+                  });
+                }}
+              />
+            );
+          })}
+        </div>
+
+      {/* Bottom Dock */}
+      <div className="absolute bottom-6 left-4 right-4 z-50">
+        <div className="bg-white/25 backdrop-blur-2xl border border-white/30 rounded-[40px] px-4 py-4 flex items-center justify-around shadow-2xl">
+          <button 
+            onClick={() => onOpenApp('wallet')}
+            className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"
+          >
+            <div 
+              className="overflow-hidden shadow-sm relative"
+              style={{
+                width: visualSettings?.desktop?.iconSize ?? 56,
+                height: visualSettings?.desktop?.iconSize ?? 56,
+                borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14
+              }}
+            >
+              <img 
+                src={visualSettings?.desktopIcons?.find(i => i.id === 'wallet')?.iconUrl || "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg"} 
+                className="absolute inset-0 w-full h-full object-cover" 
+                alt="钱包" 
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <span className="font-bold drop-shadow-sm" style={fontStyle}>钱包</span>
+          </button>
+
+          <button 
+            onClick={() => onOpenApp('sms')}
+            className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"
+          >
+            <div 
+              className="overflow-hidden shadow-sm relative"
+              style={{
+                width: visualSettings?.desktop?.iconSize ?? 56,
+                height: visualSettings?.desktop?.iconSize ?? 56,
+                borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14
+              }}
+            >
+              <img 
+                src={visualSettings?.desktopIcons?.find(i => i.id === 'sms')?.iconUrl || "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg"} 
+                className="absolute inset-0 w-full h-full object-cover" 
+                alt="短信" 
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <span className="font-bold drop-shadow-sm" style={fontStyle}>短信</span>
+          </button>
+
+          <button 
+            onClick={() => onOpenApp('customization')}
+            className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"
+          >
+            <div 
+              className="overflow-hidden shadow-sm relative"
+              style={{
+                width: visualSettings?.desktop?.iconSize ?? 56,
+                height: visualSettings?.desktop?.iconSize ?? 56,
+                borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14
+              }}
+            >
+              <img 
+                src={visualSettings?.desktopIcons?.find(i => i.id === 'customization')?.iconUrl || "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg"} 
+                className="absolute inset-0 w-full h-full object-cover" 
+                alt="自定义" 
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <span className="font-bold drop-shadow-sm" style={fontStyle}>自定义</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DraggableWidget({ widget, x, y, onPositionChange, appData, setAppData }: { 
+  widget: any, 
+  x: number, 
+  y: number, 
+  onPositionChange: (x: number, y: number) => void,
+  appData: AppData,
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>,
+  key?: string
+}) {
+  const isDragging = useRef(false);
+  
+  const width = (widget.w || 2) * 80 + ((widget.w || 2) - 1) * 16;
+  const height = (widget.h || 2) * 80 + ((widget.h || 2) - 1) * 16;
+
+  return (
+    <motion.div
+      initial={{ x, y }}
+      animate={{ x, y }}
+      drag
+      dragMomentum={false}
+      onDragStart={() => {
+        isDragging.current = true;
+      }}
+      onDragEnd={(_, info) => {
+        setTimeout(() => {
+          isDragging.current = false;
+        }, 50);
+        onPositionChange(x + info.offset.x, y + info.offset.y);
+      }}
+      className="absolute pointer-events-auto touch-none"
+      style={{
+        width,
+        height,
+        left: 0,
+        top: 0,
+      }}
+      whileDrag={{ scale: 1.02, zIndex: 100, cursor: 'grabbing' }}
+    >
+      <DesktopWidget widget={widget} musicData={appData.musicData} setMusicData={(setterOrValue) => setAppData(prev => {
+        const prevMusicData = prev.musicData!;
+        const nextMusicData = typeof setterOrValue === 'function' 
+          ? (setterOrValue as React.SetStateAction<MusicData>)(prevMusicData)
+          : setterOrValue;
+        return { ...prev, musicData: nextMusicData };
+      })} />
+    </motion.div>
+  );
+}
+
+function DraggableAppIcon({ app, x, y, visualSettings, onPositionChange }: { 
+  app: { id: string, name: string, icon: string, onClick: () => void }, 
+  x: number, 
+  y: number, 
+  visualSettings: VisualSettings,
+  onPositionChange: (x: number, y: number) => void,
+  key?: string
+}) {
+  const isDragging = useRef(false);
+
+  return (
+    <motion.div
+      initial={{ x, y }}
+      animate={{ x, y }}
+      drag
+      dragMomentum={false}
+      onDragStart={() => {
+        isDragging.current = true;
+      }}
+      onDragEnd={(_, info) => {
+        // Use a small timeout to ensure the click handler sees the drag state
+        setTimeout(() => {
+          isDragging.current = false;
+        }, 50);
+        onPositionChange(x + info.offset.x, y + info.offset.y);
+      }}
+      className="absolute pointer-events-auto touch-none"
+      style={{ left: 0, top: 0 }}
+      whileDrag={{ scale: 1.1, zIndex: 100, cursor: 'grabbing' }}
+      whileTap={{ scale: 0.95 }}
+    >
+      <div onClick={(e) => {
+        if (isDragging.current) {
+          e.stopPropagation();
+          return;
+        }
+        app.onClick();
+      }}>
+        <AppIcon 
+          id={app.id} 
+          name={app.name} 
+          icon={app.icon} 
+          onClick={() => {}} // Pass empty onClick to AppIcon as we handle it in wrapper
+          visualSettings={visualSettings} 
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+function AppIcon({ id, name, icon, onClick, visualSettings }: { id: string; name: string; icon?: string; onClick: () => void; visualSettings?: VisualSettings }) {
+  const customIcon = visualSettings?.desktopIcons?.find(i => i.id === id)?.iconUrl;
+  const finalIcon = customIcon || icon || "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg";
+
+  // Font settings
+  const fontFamily = visualSettings?.desktop?.fontFamily;
+  const fontSize = visualSettings?.desktop?.fontSize ?? 12;
+  const fontColor = visualSettings?.desktop?.fontColor ?? '#ffffff';
+  const fontWeight = visualSettings?.desktop?.fontWeight ?? 'normal';
+
+  const fontStyle: React.CSSProperties = {
+    fontFamily: fontFamily === 'Mono' ? 'monospace' : fontFamily === 'Serif' ? 'serif' : fontFamily === 'Cursive' ? 'cursive' : fontFamily === 'Inter' ? 'sans-serif' : undefined,
+    fontSize: `${fontSize}px`,
+    color: fontColor,
+    fontWeight: fontWeight === 'bold' ? 'bold' : fontWeight === 'lighter' ? 'lighter' : 'normal',
+    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 cursor-pointer group transition-transform active:scale-95" onClick={onClick}>
+      <div 
+        className="overflow-hidden shadow-md relative"
+        style={{
+          width: visualSettings?.desktop?.iconSize ?? 56,
+          height: visualSettings?.desktop?.iconSize ?? 56,
+          borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14
+        }}
+      >
+        <img 
+          src={finalIcon} 
+          className="absolute inset-0 w-full h-full object-cover" 
+          alt={name} 
+          referrerPolicy="no-referrer"
+          draggable={false}
+        />
+      </div>
+      <span 
+        className="font-medium drop-shadow-md tracking-wide"
+        style={fontStyle}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
+function ContactsApp({ 
+  appData, 
+  setAppData,
+  onOpenChat, 
+  onOpenProfile,
+  onAddFriend,
+  onManageGroups
+}: { 
+  appData: AppData; 
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>;
+  onOpenChat: (id: string) => void; 
+  onOpenProfile: (id: string) => void;
+  onAddFriend: () => void;
+  onManageGroups: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'new-friends' | 'group-manager'>('list');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const { characters, groups } = appData;
+
+  // Sort characters by name
+  const sortedCharacters = [...characters].sort((a, b) => {
+    const res = a.name.localeCompare(b.name, 'zh-Hans-CN');
+    return sortOrder === 'asc' ? res : -res;
+  });
+
+  // Filter by search query
+  const filteredCharacters = sortedCharacters.filter(char => 
+    char.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const groupMembers = selectedGroup 
+    ? characters.filter(c => c.groupId === selectedGroup || (selectedGroup === '星标' && c.isPinned))
+    : [];
+
+  if (view === 'new-friends') {
+    return (
+      <NewFriendsPage 
+        requests={appData.friendRequests || []}
+        onAccept={(id) => {
+          setAppData(prev => {
+            const req = prev.friendRequests?.find(r => r.id === id);
+            if (!req) return prev;
+            
+            // Create new character from request
+            const newChar: Character = {
+              id: req.fromUserId,
+              name: req.fromUserName,
+              avatar: req.fromUserAvatar,
+              gender: 'other',
+              setting: '你的新朋友',
+              openingRemark: '你好！很高兴认识你。',
+              lastTime: Date.now(),
+              groupId: '朋友'
+            };
+
+            return {
+              ...prev,
+              characters: [...prev.characters, newChar],
+              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'accepted' } : r)
+            };
+          });
+        }}
+        onReject={(id) => {
+          setAppData(prev => ({
+            ...prev,
+            friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
+          }));
+        }}
+        onAddById={(id) => {
+          // Mock adding by ID
+          const newReq: import('./types').FriendRequest = {
+            id: Date.now().toString(),
+            fromUserId: id,
+            fromUserName: `用户 ${id.slice(0, 4)}`,
+            fromUserAvatar: `https://picsum.photos/seed/${id}/200`,
+            status: 'pending',
+            timestamp: Date.now(),
+            message: '通过虚拟ID查找添加'
+          };
+          setAppData(prev => ({
+            ...prev,
+            friendRequests: [newReq, ...(prev.friendRequests || [])]
+          }));
+          alert('已发送好友申请 (模拟)');
+        }}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
+  if (view === 'group-manager') {
+    return (
+      <GroupChatManagerPage 
+        groups={appData.chatGroups || []}
+        characters={appData.characters}
+        onCreateGroup={(name, memberIds) => {
+          const newGroup: import('./types').ChatGroup = {
+            id: Date.now().toString(),
+            name,
+            memberIds,
+            creatorId: 'user',
+            createdAt: Date.now()
+          };
+          setAppData(prev => ({
+            ...prev,
+            chatGroups: [newGroup, ...(prev.chatGroups || [])]
+          }));
+        }}
+        onDeleteGroup={(id) => {
+          setAppData(prev => ({
+            ...prev,
+            chatGroups: prev.chatGroups?.filter(g => g.id !== id)
+          }));
+        }}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Search Bar */}
+      <div className="px-4 py-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+          <input 
+            type="text"
+            placeholder="搜索"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full border-none rounded-xl py-2 pl-10 pr-4 text-[14px] outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm border bg-white border-zinc-100"
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-24">
+        {/* Top Items */}
+        <div className="px-4 space-y-3 mt-2">
+          <button 
+            onClick={() => setView('new-friends')}
+            className="w-full flex items-center gap-3 p-4 active:bg-white/50 transition-colors backdrop-blur-md rounded-2xl border shadow-sm bg-white border-zinc-100"
+          >
+            <div className="w-10 h-10 rounded-xl bg-zinc-900 flex items-center justify-center text-white">
+              <UserPlus size={20} />
+            </div>
+            <div className="flex-1 text-left">
+              <span className="text-[15px] font-medium text-zinc-800">新的朋友</span>
+            </div>
+            {(appData.friendRequests?.filter(r => r.status === 'pending').length || 0) > 0 && (
+              <div className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                {appData.friendRequests?.filter(r => r.status === 'pending').length}
+              </div>
+            )}
+          </button>
+          <button 
+            onClick={() => setView('group-manager')}
+            className="w-full flex items-center gap-3 p-4 active:bg-white/50 transition-colors backdrop-blur-md rounded-2xl border shadow-sm bg-white border-zinc-100"
+          >
+            <div className="w-10 h-10 rounded-xl bg-zinc-900 flex items-center justify-center text-white">
+              <Users size={20} />
+            </div>
+            <div className="flex-1 text-left">
+              <span className="text-[15px] font-medium text-zinc-800">群聊管理</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Groups Horizontal Scroll */}
+        <div className="mt-6">
+          <div className="px-5 mb-3 flex items-center justify-between">
+            <h2 className="text-[13px] font-bold text-zinc-400 uppercase tracking-wider">我的分组</h2>
+            <button 
+              onClick={onManageGroups}
+              className="text-[11px] text-blue-500 font-medium active:opacity-60"
+            >
+              管理分组
+            </button>
+          </div>
+          <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar pb-2">
+            {groups.map(group => (
+              <button 
+                key={group}
+                onClick={() => setSelectedGroup(selectedGroup === group ? null : group)}
+                className={`flex-shrink-0 w-[110px] h-[90px] rounded-[24px] border shadow-sm p-3.5 flex flex-col justify-between active:scale-95 transition-all ${
+                  selectedGroup === group 
+                    ? 'border-blue-500 bg-blue-50/80 ring-4 ring-blue-500/5' 
+                    : 'bg-white border-zinc-100'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${selectedGroup === group ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-zinc-100 text-zinc-500'}`}>
+                  <Users size={16} />
+                </div>
+                <div className="text-left">
+                  <p className={`text-[13px] font-bold truncate ${selectedGroup === group ? 'text-blue-600' : 'text-zinc-800'}`}>{group}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    {group === '星标' 
+                      ? characters.filter(c => c.isPinned).length 
+                      : characters.filter(c => c.groupId === group).length} 位成员
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Group Members Horizontal Cards (if selected) */}
+        <AnimatePresence>
+          {selectedGroup && groupMembers.length > 0 && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="mt-4 overflow-hidden"
+            >
+              <div className="px-5 mb-2 flex items-center justify-between">
+                <h2 className="text-[12px] font-bold text-blue-500 uppercase tracking-wider">{selectedGroup} 成员</h2>
+              </div>
+              <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar pb-4">
+                {groupMembers.map(char => (
+                  <div 
+                    key={char.id}
+                    onClick={() => onOpenProfile(char.id)}
+                    className="flex-shrink-0 w-[100px] rounded-2xl border shadow-sm p-3 flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer bg-white border-zinc-100"
+                  >
+                    <img src={char.avatar} alt={char.name} className="w-12 h-12 rounded-full object-cover bg-zinc-100" />
+                    <span className="text-[12px] font-bold text-zinc-800 truncate w-full text-center">{char.name}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Sorted Contacts List */}
+        <div className="mt-6">
+          <div className="px-5 mb-2 flex items-center justify-between">
+            <h2 className="text-[13px] font-bold text-zinc-400 uppercase tracking-wider">全部</h2>
+            <button 
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="flex items-center gap-1 px-2 py-0.5 bg-zinc-100/80 backdrop-blur-sm rounded-md active:bg-zinc-200 transition-colors"
+            >
+              <span className="text-[10px] text-zinc-500 font-medium">姓名 (拼音) {sortOrder === 'asc' ? '升序' : '降序'}</span>
+              <RefreshCw size={10} className={`text-zinc-400 ${sortOrder === 'desc' ? 'rotate-180' : ''} transition-transform`} />
+            </button>
+          </div>
+          <div 
+            className="rounded-t-[32px] overflow-hidden border-t border-zinc-100 shadow-sm bg-white"
+          >
+            <div className="divide-y divide-zinc-200/20">
+              {filteredCharacters.map(char => (
+                <div 
+                  key={char.id}
+                  onClick={() => onOpenProfile(char.id)}
+                  className="flex items-center gap-3 p-4 active:bg-white/50 transition-colors cursor-pointer"
+                >
+                <img 
+                  src={char.avatar} 
+                  alt={char.name} 
+                  className="w-10 h-10 rounded-full object-cover bg-zinc-100 shrink-0" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenProfile(char.id);
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{char.name}</h3>
+                  <p className="text-[11px] text-zinc-400 truncate">{char.setting.slice(0, 30)}...</p>
+                </div>
+              </div>
+            ))}
+            {filteredCharacters.length === 0 && (
+              <div className="py-12 text-center text-zinc-300">
+                <p className="text-[14px]">未找到联系人</p>
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CharacterProfile({ 
+  character, 
+  onBack, 
+  onChat,
+  onAddFriend,
+  isFriend,
+  groups,
+  onUpdateGroup,
+  onTogglePin
+}: { 
+  character: Character; 
+  onBack: () => void; 
+  onChat: () => void;
+  onAddFriend: () => void;
+  isFriend: boolean;
+  groups: string[];
+  onUpdateGroup: (groupId: string | undefined) => void;
+  onTogglePin?: () => void;
+}) {
+  return (
+    <motion.div 
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      className="absolute inset-0 bg-white flex flex-col z-[80]"
+    >
+      {/* Header */}
+      <div className="pt-10 pb-3 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50">
+        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+          <ChevronLeft size={24} />
+        </button>
+        <h1 className="text-[17px] font-bold text-zinc-900">详细资料</h1>
+        <button className="p-1 text-zinc-400">
+          <MoreVertical size={20} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto bg-zinc-50/50">
+        {/* Profile Info Card */}
+        <div className="bg-white p-6 flex items-center gap-4 mb-3">
+          <img src={character.avatar} alt={character.name} className="w-16 h-16 rounded-xl object-cover shadow-sm" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[20px] font-bold text-zinc-900 truncate">{character.name}</h2>
+            <p className="text-[13px] text-zinc-400 mt-0.5">ID: {character.id}</p>
+          </div>
+        </div>
+
+        {/* Details List */}
+        <div className="space-y-3">
+          <div className="bg-white divide-y divide-zinc-50">
+            <div className="px-4 py-4 flex items-center justify-between">
+              <span className="text-[15px] text-zinc-800">性别</span>
+              <span className="text-[15px] text-zinc-400">{character.gender === 'male' ? '男' : character.gender === 'female' ? '女' : '其他'}</span>
+            </div>
+            <div className="px-4 py-4 flex items-center justify-between">
+              <span className="text-[15px] text-zinc-800">置顶聊天</span>
+              <button 
+                onClick={onTogglePin}
+                className={`w-10 h-5.5 rounded-full transition-colors relative ${character.isPinned ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+              >
+                <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.isPinned ? 'translate-x-4.5' : ''}`} />
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-[15px] text-zinc-800 mb-1">个性签名</p>
+              <p className="text-[14px] text-zinc-400 leading-relaxed">{character.setting.slice(0, 100)}...</p>
+            </div>
+          </div>
+
+          {isFriend && (
+            <div className="bg-white px-4 py-4">
+              <p className="text-[15px] text-zinc-800 mb-3">分组设置</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => onUpdateGroup(undefined)}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                >
+                  无分组
+                </button>
+                {groups.map(g => (
+                  <button
+                    key={g}
+                    onClick={() => onUpdateGroup(g)}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="mt-8 px-4 space-y-3 pb-10">
+          <button 
+            onClick={onChat}
+            className="w-full bg-white text-blue-500 py-4 rounded-2xl font-bold text-[16px] active:bg-zinc-50 transition-colors border border-zinc-100 flex items-center justify-center gap-2"
+          >
+            <MessageSquare size={20} />
+            主动加你 (发消息)
+          </button>
+          {!isFriend && (
+            <button 
+              onClick={onAddFriend}
+              className="w-full bg-blue-500 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+            >
+              <UserPlus size={20} />
+              添加好友
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function AddFriendModal({ 
+  onClose, 
+  onAdd 
+}: { 
+  onClose: () => void; 
+  onAdd: (char: any) => void;
+}) {
+  const [query, setQuery] = useState('');
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+    >
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-[18px] font-bold text-zinc-900">添加 AI 好友</h2>
+        <button onClick={onClose} className="p-1 text-zinc-400 active:text-zinc-600">
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+          <input 
+            type="text"
+            placeholder="输入姓名或 ID"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="w-full bg-zinc-50 border border-zinc-100 rounded-xl py-3 pl-10 pr-4 text-[14px] outline-none focus:border-blue-500 transition-colors"
+          />
+        </div>
+        <button 
+          onClick={() => {
+            if (query.trim()) {
+              onAdd({
+                name: query,
+                id: query,
+                gender: 'other',
+                avatar: `https://picsum.photos/seed/${query}/200`,
+                setting: `你是一个新添加的 AI 好友，名字叫 ${query}。`,
+                openingRemark: `你好！很高兴认识你，我是 ${query}。`,
+              });
+              setQuery('');
+            }
+          }}
+          className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold text-[15px] active:opacity-80 transition-opacity"
+        >
+          搜索并添加
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function GroupManagementModal({ 
+  groups, 
+  onAdd, 
+  onDelete, 
+  onClose 
+}: { 
+  groups: string[]; 
+  onAdd: (name: string) => void; 
+  onDelete: (name: string) => void; 
+  onClose: () => void;
+}) {
+  const [newGroup, setNewGroup] = useState('');
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+    >
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-[18px] font-bold text-zinc-900">管理分组</h2>
+        <button onClick={onClose} className="p-1 text-zinc-400 active:text-zinc-600">
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <input 
+            type="text"
+            placeholder="新分组名称"
+            value={newGroup}
+            onChange={e => setNewGroup(e.target.value)}
+            className="flex-1 bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2 text-[14px] outline-none focus:border-blue-500"
+          />
+          <button 
+            onClick={() => {
+              if (newGroup.trim()) {
+                onAdd(newGroup);
+                setNewGroup('');
+              }
+            }}
+            className="bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-[14px] active:opacity-80"
+          >
+            添加
+          </button>
+        </div>
+
+        <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+          {groups.filter(g => g !== '星标').map(group => (
+            <div key={group} className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl">
+              <span className="text-[14px] text-zinc-800 font-medium">{group}</span>
+              <button 
+                onClick={() => onDelete(group)}
+                className="text-red-500 p-1 active:bg-red-50 rounded-lg transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function MainApp({ 
+  activeTab, 
+  setActiveTab, 
+  appData, 
+  setAppData,
+  onOpenChat, 
+  onOpenGroupChat,
+  onOpenProfile,
+  onAddCharacter,
+  onBack,
+  settings
+}: { 
+  activeTab: 'chat' | 'contacts' | 'moments' | 'me';
+  setActiveTab: (tab: 'chat' | 'contacts' | 'moments' | 'me') => void;
+  appData: AppData;
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>;
+  onOpenChat: (id: string) => void;
+  onOpenGroupChat: (id: string) => void;
+  onOpenProfile: (id: string) => void;
+  onAddCharacter: () => void;
+  onBack: () => void;
+  key?: string;
+  settings: AppSettings;
+}) {
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showManageGroups, setShowManageGroups] = useState(false);
+
+  return (
+    <motion.div 
+      className="absolute inset-0 flex flex-col bg-zinc-50"
+    >
+      {/* Header */}
+      <div 
+        className="relative z-10 pt-10 pb-3 px-4 flex justify-between items-center shrink-0 backdrop-blur-md border-b bg-white border-zinc-100"
+      >
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+            <ChevronLeft size={24} />
+          </button>
+          <h1 className="text-[18px] font-bold text-zinc-900">
+            {activeTab === 'chat' && '聊天'}
+            {activeTab === 'contacts' && '通讯录'}
+            {activeTab === 'moments' && '动态'}
+            {activeTab === 'me' && '我的'}
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {activeTab === 'chat' && (
+            <button 
+              onClick={onAddCharacter}
+              className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-white active:scale-90 transition-transform"
+            >
+              <Plus size={20} />
+            </button>
+          )}
+          {activeTab === 'contacts' && (
+            <button 
+              onClick={() => setShowAddFriend(true)}
+              className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white active:scale-90 transition-transform"
+            >
+              <UserPlus2 size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {activeTab === 'chat' && (
+          <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4 space-y-3">
+            {/* Groups */}
+            {appData.chatGroups?.map(group => (
+              <div 
+                key={group.id}
+                onClick={() => onOpenGroupChat(group.id)}
+                className="flex items-center gap-3 p-4 transition-colors cursor-pointer backdrop-blur-md rounded-2xl border shadow-sm bg-white border-zinc-100"
+              >
+                <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center text-zinc-600 shrink-0">
+                  <Users size={24} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{group.name}</h3>
+                    <span className="text-[11px] text-zinc-400">
+                      {group.lastTime ? new Date(group.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                    <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(group.lastMessage) || '暂无消息'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
+              <div className="p-12 text-center text-zinc-300 space-y-3">
+                <Users size={48} className="mx-auto opacity-20" />
+                <p className="text-[14px]">还没有角色，点击右上角添加</p>
+              </div>
+            )}
+            {[...appData.characters]
+              .sort((a, b) => {
+                if (a.isPinned && !b.isPinned) return -1;
+                if (!a.isPinned && b.isPinned) return 1;
+                return (b.lastTime || 0) - (a.lastTime || 0);
+              })
+              .map(char => (
+              <div 
+                key={char.id}
+                onClick={() => onOpenChat(char.id)}
+                className="flex items-center gap-3 p-4 transition-colors cursor-pointer backdrop-blur-md rounded-2xl border shadow-sm"
+                style={{
+                  backgroundColor: char.isPinned ? '#f4f4f5' : 'white',
+                  borderColor: '#e4e4e7'
+                }}
+              >
+                <img 
+                  src={char.avatar} 
+                  alt={char.name} 
+                  className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" 
+                  onClick={(e) => {
+                    // In chat list, clicking avatar could also open profile
+                    // e.stopPropagation();
+                    // onOpenProfile(char.id);
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{char.name}</h3>
+                    <span className="text-[11px] text-zinc-400">
+                      {char.lastTime ? new Date(char.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                    <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(char.lastMessage) || formatMessagePreview(char.openingRemark)}</p>
+                    <div className="flex items-center gap-1">
+                      {char.isMuted && <BellOff size={12} className="text-zinc-400" />}
+                      {char.isPinned && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'contacts' && (
+          <ContactsApp 
+            appData={appData} 
+            setAppData={setAppData}
+            onOpenChat={onOpenChat} 
+            onOpenProfile={onOpenProfile}
+            onAddFriend={() => setShowAddFriend(true)}
+            onManageGroups={() => setShowManageGroups(true)}
+          />
+        )}
+
+        {activeTab === 'moments' && (
+          <MomentsApp 
+            appData={appData}
+            setAppData={setAppData}
+            settings={settings}
+          />
+        )}
+
+        {activeTab === 'me' && (
+          <MePage 
+            appData={appData}
+            setAppData={setAppData}
+            userProfile={appData.userProfile}
+            setUserProfile={(p) => setAppData(prev => ({ ...prev, userProfile: p }))}
+            masks={appData.masks}
+            setMasks={(m) => setAppData(prev => ({ ...prev, masks: m }))}
+            favorites={appData.favorites}
+            visualSettings={appData.visualSettings}
+            setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
+            chatHistory={appData.chatHistory}
+            characters={appData.characters}
+            moments={appData.moments}
+            collectedDates={appData.collectedDates || []}
+            worldBooks={appData.worldBooks || []}
+            setWorldBooks={(wb) => setAppData(prev => ({ ...prev, worldBooks: wb }))}
+            onAddCharacter={(char) => {
+              const newChar: Character = {
+                id: Date.now().toString(),
+                ...char,
+                lastTime: Date.now()
+              };
+              setAppData(prev => ({
+                ...prev,
+                characters: [newChar, ...prev.characters]
+              }));
+            }}
+            onDeleteCharacter={(id) => {
+              setAppData(prev => ({
+                ...prev,
+                characters: prev.characters.filter(c => c.id !== id)
+              }));
+            }}
+            onUpdateCharacter={(char) => {
+              setAppData(prev => ({
+                ...prev,
+                characters: prev.characters.map(c => c.id === char.id ? char : c)
+              }));
+            }}
+          />
+        )}
+      </div>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {showAddFriend && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddFriend(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-[90]"
+            />
+            <AddFriendModal 
+              onClose={() => setShowAddFriend(false)}
+              onAdd={(char) => {
+                // Logic to add a new AI character
+                const newChar: Character = {
+                  id: char.id || Date.now().toString(),
+                  name: char.name,
+                  gender: char.gender || 'other',
+                  avatar: char.avatar || `https://picsum.photos/seed/${char.id || Date.now()}/200`,
+                  setting: char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
+                  openingRemark: char.openingRemark || `你好！很高兴认识你，我是 ${char.name}。`,
+                  lastMessage: char.openingRemark || `你好！很高兴认识你，我是 ${char.name}。`,
+                  lastTime: Date.now(),
+                };
+                setAppData(prev => ({
+                  ...prev,
+                  characters: [newChar, ...prev.characters]
+                }));
+                setShowAddFriend(false);
+                alert('已添加新好友');
+              }}
+            />
+          </>
+        )}
+
+        {showManageGroups && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowManageGroups(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-[90]"
+            />
+            <GroupManagementModal 
+              groups={appData.groups}
+              onAdd={(name) => {
+                if (appData.groups.includes(name)) return alert('分组已存在');
+                setAppData(prev => ({
+                  ...prev,
+                  groups: [...prev.groups, name]
+                }));
+              }}
+              onDelete={(name) => {
+                if (confirm(`确定要删除分组 "${name}" 吗？`)) {
+                  setAppData(prev => ({
+                    ...prev,
+                    groups: prev.groups.filter(g => g !== name),
+                    characters: prev.characters.map(c => c.groupId === name ? { ...c, groupId: undefined } : c)
+                  }));
+                }
+              }}
+              onClose={() => setShowManageGroups(false)}
+            />
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Bottom Navigation */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 h-[84px] rounded-t-[32px] shadow-[0_-5px_20px_rgba(0,0,0,0.03)] flex items-center justify-around px-4 pb-4 z-20 backdrop-blur-md border-t bg-white border-zinc-100"
+      >
+        <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+        <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
+        <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
+        <NavTab icon={<User size={24} />} label="我的" active={activeTab === 'me'} onClick={() => setActiveTab('me')} />
+      </div>
+    </motion.div>
+  );
+}
+
+function NavTab({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1 transition-colors ${active ? 'text-zinc-900' : 'text-zinc-400'}`}
+    >
+      {icon}
+      <span className="text-[10px] font-medium">{label}</span>
+    </button>
+  );
+}
+
+function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) => void; onBack: () => void; groups: string[]; key?: string }) {
+  const [view, setView] = useState<'edit' | 'import'>('edit');
+  const [name, setName] = useState('');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
+  const [avatar, setAvatar] = useState(`https://picsum.photos/seed/${Math.random()}/200`);
+  const [setting, setSetting] = useState('');
+  const [openingRemark, setOpeningRemark] = useState('');
+  const [groupId, setGroupId] = useState<string>('');
+  const [importJson, setImportJson] = useState('');
+
+  const handleSave = () => {
+    if (!name.trim()) return alert('请输入角色姓名');
+    onSave({
+      id: Date.now().toString(),
+      name,
+      gender,
+      avatar,
+      setting,
+      openingRemark,
+      groupId: groupId || undefined,
+    });
+  };
+
+  const handleImport = () => {
+    try {
+      const data = JSON.parse(importJson);
+      if (!data.name) throw new Error('缺少角色姓名');
+      onSave({
+        id: Date.now().toString(),
+        name: data.name,
+        gender: data.gender || 'other',
+        avatar: data.avatar || `https://picsum.photos/seed/${Math.random()}/200`,
+        setting: data.setting || '',
+        openingRemark: data.openingRemark || '',
+        groupId: data.groupId || undefined,
+      });
+    } catch (e: any) {
+      alert('导入失败: ' + e.message);
+    }
+  };
+
+  return (
+    <motion.div 
+      className="absolute inset-0 bg-white flex flex-col z-50"
+    >
+      <div className="pt-10 pb-3 px-4 border-b border-zinc-100 flex justify-between items-center shrink-0">
+        <div className="flex items-center gap-2">
+          <button onClick={view === 'import' ? () => setView('edit') : onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+            <ChevronLeft size={24} />
+          </button>
+          <h1 className="text-[18px] font-bold text-zinc-900">
+            {view === 'edit' ? '创建角色' : '导入角色'}
+          </h1>
+        </div>
+        <button 
+          onClick={view === 'edit' ? handleSave : handleImport}
+          className="text-zinc-900 font-semibold text-[15px] active:opacity-70"
+        >
+          {view === 'edit' ? '保存' : '导入'}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5">
+        {view === 'edit' ? (
+          <div className="space-y-6">
+            {/* Avatar */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative group">
+                <img src={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
+                <button 
+                  onClick={() => setAvatar(`https://picsum.photos/seed/${Math.random()}/200`)}
+                  className="absolute bottom-0 right-0 w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center text-white border-2 border-white shadow-sm active:scale-90"
+                >
+                  <RefreshCw size={14} />
+                </button>
+              </div>
+              
+              <div className="flex gap-2 w-full">
+                <div className="flex-1 relative">
+                   <input 
+                    type="text" 
+                    placeholder="输入头像链接..."
+                    value={avatar.startsWith('data:') ? '' : avatar}
+                    onChange={e => setAvatar(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-blue-500"
+                  />
+                </div>
+                <label className="bg-zinc-100 text-zinc-600 rounded-lg px-3 py-2 text-[12px] font-medium active:opacity-80 cursor-pointer whitespace-nowrap flex items-center gap-1">
+                  <Upload size={12} />
+                  上传
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setAvatar(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">角色姓名</label>
+                <input 
+                  type="text" 
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="例如：林婉儿"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">性别</label>
+                <div className="flex gap-2">
+                  {(['male', 'female', 'other'] as const).map(g => (
+                    <button
+                      key={g}
+                      onClick={() => setGender(g)}
+                    className={`flex-1 py-2.5 rounded-xl text-[14px] font-medium border transition-all ${gender === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    >
+                      {g === 'male' ? '男' : g === 'female' ? '女' : '其他'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">角色设定 (System Prompt)</label>
+                <textarea 
+                  value={setting}
+                  onChange={e => setSetting(e.target.value)}
+                  placeholder="描述角色的性格、背景、说话方式等..."
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">开场白</label>
+                <textarea 
+                  value={openingRemark}
+                  onChange={e => setOpeningRemark(e.target.value)}
+                  placeholder="角色对你说的第一句话..."
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[80px] resize-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">分组</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setGroupId('')}
+                    className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${!groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                  >
+                    无分组
+                  </button>
+                  {groups.map(g => (
+                    <button
+                      key={g}
+                      onClick={() => setGroupId(g)}
+                      className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={() => setView('import')}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-zinc-200 text-zinc-500 text-[14px] font-medium active:bg-zinc-50"
+                >
+                  <Upload size={18} />
+                  从 JSON 导入角色
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-zinc-500 ml-1">JSON 数据</label>
+              <textarea 
+                value={importJson}
+                onChange={e => setImportJson(e.target.value)}
+                placeholder='{"name": "角色名", "setting": "角色设定", ...}'
+                className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[13px] font-mono outline-none focus:border-blue-500 transition-colors min-h-[300px] resize-none"
+              />
+            </div>
+            <p className="text-[12px] text-zinc-400 px-1">
+              请粘贴符合格式的角色 JSON 数据。
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function ChatSettings({ 
+  character, 
+  onUpdate, 
+  onBack,
+  history,
+  setHistory,
+  groups,
+  activeConfig,
+  worldBooks,
+  masks,
+  callHistory,
+  favorites,
+  setFavorites,
+  onDeleteCallRecord,
+  visualSettings,
+  onUpdateVisualSettings
+}: { 
+  character: Character; 
+  onUpdate: (c: Character) => void; 
+  onBack: () => void;
+  history: ChatMessage[];
+  setHistory: (h: ChatMessage[]) => void;
+  groups: string[];
+  activeConfig: ApiConfig;
+  worldBooks: WorldBookEntry[];
+  masks: Mask[];
+  callHistory?: CallRecord[];
+  favorites: FavoriteMessage[];
+  setFavorites: (f: FavoriteMessage[]) => void;
+  onDeleteCallRecord?: (recordId: string) => void;
+  visualSettings: VisualSettings;
+  onUpdateVisualSettings: (settings: VisualSettings) => void;
+}) {
+  const [tempAvatar, setTempAvatar] = useState('');
+  const [tempBg, setTempBg] = useState('');
+  const [showAvatarInput, setShowAvatarInput] = useState(false);
+  const [showBgInput, setShowBgInput] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [showMemorySettings, setShowMemorySettings] = useState(false);
+  const [showWorldBookSelector, setShowWorldBookSelector] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [tokenCount, setTokenCount] = useState(0);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
+  const [showBatchMenu, setShowBatchMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!character) return null;
+
+  useEffect(() => {
+    if (!character) return;
+    const calculateTokens = () => {
+      let totalText = '';
+      
+      // System Prompt
+      totalText += character.setting || '';
+      
+      // Mask Prompt
+      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      if (activeMask) {
+        totalText += `\n\n[User Identity Mask: ${activeMask.name}]\nPersonality: ${activeMask.personality}\nOccupation: ${activeMask.occupation}\nRelationship with you: ${activeMask.relationship}\nWorld Background: ${activeMask.worldBackground || 'Standard'}\n(Please interact with the user based on this identity and world background.)`;
+      }
+      
+      // World Book Prompt
+      const activeWorldBooks = worldBooks.filter(wb => 
+        (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
+        character.activeWorldBookIds?.includes(wb.id)
+      );
+      if (activeWorldBooks.length > 0) {
+        totalText += `\n\n[World Book Settings]\n${activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')}\n(Please adhere to these world settings in your responses.)`;
+      }
+      
+      // Memory Summary
+      if (character.memorySummary) {
+        totalText += `\n\n[长期记忆总结]\n${character.memorySummary}\n(请在对话中参考这些记忆，保持角色连贯性。)`;
+      }
+      
+      // Chat History
+      const limit = character.memoryLimit || 20;
+      const historySlice = history.slice(-limit);
+      const historyText = historySlice.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${msg.text}`).join('\n');
+      totalText += `\n\n${historyText}`;
+      
+      // Estimate tokens
+      let cjkCount = 0;
+      let otherCount = 0;
+      for (let i = 0; i < totalText.length; i++) {
+        const charCode = totalText.charCodeAt(i);
+        if (charCode >= 0x4E00 && charCode <= 0x9FFF) {
+          cjkCount++;
+        } else {
+          otherCount++;
+        }
+      }
+      const count = Math.ceil(cjkCount + otherCount * 0.35); // Adjusted estimation
+      setTokenCount(count);
+    };
+    
+    calculateTokens();
+  }, [character, history, masks, worldBooks]);
+
+  const toggleMute = () => onUpdate({ ...character, isMuted: !character.isMuted });
+  const togglePin = () => onUpdate({ ...character, isPinned: !character.isPinned });
+
+  const handleSummarize = async () => {
+    if (!activeConfig?.apiKey) {
+      alert('请先配置 API Key');
+      return;
+    }
+    if (history.length === 0) {
+      alert('没有聊天记录可供总结');
+      return;
+    }
+
+    setIsSummarizing(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
+      
+      const chatText = history.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${msg.text}`).join('\n');
+      const prompt = `请总结以下用户与角色（${character.name}）的聊天记录，提取关键信息、重要事件和角色的情感变化。总结需要简洁明了，作为角色的长期记忆：\n\n${chatText}`;
+
+      const response = await ai.models.generateContent({
+        model: activeConfig.model || 'gemini-3-flash-preview',
+        contents: prompt,
+      });
+
+      if (response.text) {
+        onUpdate({ ...character, memorySummary: response.text });
+        alert('总结完成！');
+      }
+    } catch (error: any) {
+      console.error('Failed to summarize:', error);
+      alert(`总结失败: ${error.message}`);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleExport = () => {
+    const data = JSON.stringify({ character, history }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${character.name}_chat_data.json`;
+    a.click();
+    setShowExportDialog(false);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          if (data.character) {
+            onUpdate({ ...character, ...data.character });
+          }
+          if (data.history) {
+            setHistory(data.history);
+          }
+          setShowImportDialog(false);
+        } catch (err) {
+          alert('无效的 JSON 文件');
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      className="absolute inset-0 flex flex-col z-[70]"
+      style={{
+        backgroundImage: character.background ? `url(${character.background})` : 'none',
+        backgroundColor: character.background ? 'transparent' : '#fafafa',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
+      {/* Header */}
+      <div className="pt-10 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+          <ChevronLeft size={24} />
+        </button>
+        <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">聊天设置</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-10">
+        {/* Basic Settings */}
+        <div className="mt-4 px-4">
+          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">基本设置</h2>
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm">
+            <div className="p-3 flex flex-col items-center gap-2 border-b border-white/30">
+              <div className="relative group">
+                <img 
+                  src={character.avatar} 
+                  alt={character.name} 
+                  className="w-16 h-16 rounded-full object-cover bg-zinc-100 border-2 border-zinc-50" 
+                />
+                <button 
+                  onClick={() => setShowAvatarInput(!showAvatarInput)}
+                  className="absolute inset-0 bg-black/20 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <ImageIcon className="text-white" size={20} />
+                </button>
+              </div>
+              {showAvatarInput && (
+                <div className="w-full space-y-2">
+                  <input 
+                    type="text" 
+                    placeholder="支持链接、Markdown或HTML图片"
+                    value={tempAvatar}
+                    onChange={e => setTempAvatar(e.target.value)}
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        if (tempAvatar) {
+                          const finalUrl = extractImageUrls(tempAvatar)[0] || tempAvatar.trim();
+                          onUpdate({ ...character, avatar: finalUrl });
+                        }
+                        setShowAvatarInput(false);
+                        setTempAvatar('');
+                      }}
+                      className="flex-1 bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                    >
+                      确认
+                    </button>
+                    <label className="flex-1 bg-white/50 border border-white/30 text-zinc-600 text-[12px] py-2 rounded-lg font-medium text-center cursor-pointer">
+                      上传文件
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = () => onUpdate({ ...character, avatar: reader.result as string });
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+              <div className="w-full flex flex-col items-center gap-0.5">
+                <input 
+                  type="text"
+                  value={character.name}
+                  onChange={e => onUpdate({ ...character, name: e.target.value })}
+                  className="text-[15px] font-bold text-zinc-900 text-center bg-transparent border-none outline-none focus:ring-1 focus:ring-zinc-100 rounded px-2"
+                />
+                <span className="text-[10px] text-zinc-400">点击名称可修改</span>
+              </div>
+            </div>
+            
+            <button 
+              onClick={toggleMute}
+              className="w-full px-4 py-3 flex items-center justify-between active:bg-white/40 border-b border-white/30"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <BellOff size={18} />
+                </div>
+                <span className="text-[14px] text-zinc-700">消息免打扰</span>
+              </div>
+              <div className={`w-10 h-5.5 rounded-full transition-colors relative ${character.isMuted ? 'bg-zinc-900' : 'bg-zinc-200'}`}>
+                <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.isMuted ? 'translate-x-4.5' : ''}`} />
+              </div>
+            </button>
+
+            <button 
+              onClick={togglePin}
+              className="w-full px-4 py-3 flex items-center justify-between active:bg-white/40 border-b border-white/30"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <Pin size={18} />
+                </div>
+                <span className="text-[14px] text-zinc-700">置顶聊天</span>
+              </div>
+              <div className={`w-10 h-5.5 rounded-full transition-colors relative ${character.isPinned ? 'bg-zinc-900' : 'bg-zinc-200'}`}>
+                <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.isPinned ? 'translate-x-4.5' : ''}`} />
+              </div>
+            </button>
+
+
+          </div>
+        </div>
+
+        {/* Group Selection */}
+        <div className="mt-6 px-4">
+          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">分组设置</h2>
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm p-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => onUpdate({ ...character, groupId: undefined })}
+                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+              >
+                无分组
+              </button>
+              {groups.map(g => (
+                <button
+                  key={g}
+                  onClick={() => onUpdate({ ...character, groupId: g })}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Character Setting */}
+        <div className="mt-6 px-4">
+          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">角色设定</h2>
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm p-4">
+            <textarea 
+              value={character.setting}
+              onChange={e => onUpdate({ ...character, setting: e.target.value })}
+              placeholder="输入角色设定..."
+              className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-500 min-h-[100px] resize-none"
+            />
+            <p className="text-[11px] text-zinc-400 mt-2 px-1">
+              修改设定会立即影响后续对话的生成效果。
+            </p>
+          </div>
+        </div>
+
+        {/* Memory Settings */}
+        <div className="mt-6 px-4">
+          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">聊天记忆设置</h2>
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
+            <div className="px-4 py-3.5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <History size={18} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[15px] text-zinc-700">记忆对话轮数</span>
+                    <span className="text-[11px] text-zinc-400">超出后将自动总结或遗忘</span>
+                  </div>
+                </div>
+                <input 
+                  type="number" 
+                  value={character.memoryLimit || 20}
+                  onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                  className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-zinc-900"
+                />
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={character.memoryLimit || 20}
+                onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                className="w-full accent-zinc-900"
+              />
+              
+              <div className="pt-2 border-t border-white/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[14px] text-zinc-700">计算消耗 Token</span>
+                    <span className="text-[11px] text-zinc-400">显示实时 Token 消耗预估</span>
+                  </div>
+                  <div 
+                    onClick={() => onUpdate({ ...character, showTokenCount: !character.showTokenCount })}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.showTokenCount ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  >
+                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.showTokenCount ? 'translate-x-4.5' : ''}`} />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[14px] text-zinc-700">单次回复条数</span>
+                    <span className="text-[11px] text-zinc-400">设置 AI 每次回复的消息数量区间</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      min="1"
+                      max={character.maxReplies || 10}
+                      value={character.minReplies || 1}
+                      onChange={e => onUpdate({ ...character, minReplies: Math.max(1, parseInt(e.target.value)) })}
+                      className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
+                    />
+                    <span className="text-zinc-400">-</span>
+                    <input 
+                      type="number" 
+                      min={character.minReplies || 1}
+                      max="10"
+                      value={character.maxReplies || 3}
+                      onChange={e => onUpdate({ ...character, maxReplies: Math.min(10, parseInt(e.target.value)) })}
+                      className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1">
+                <span>当前消耗: {tokenCount} Tokens (预估)</span>
+                <button onClick={() => alert('Token 消耗已重新计算')} className="text-zinc-500 hover:text-zinc-900">重新计算</button>
+              </div>
+            </div>
+
+            <div className="px-4 py-3.5 flex flex-col gap-3">
+              <button 
+                onClick={() => setShowCallHistory(true)}
+                className="flex items-center justify-between w-full"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Phone size={18} />
+                  </div>
+                  <span className="text-[14px] text-zinc-700">通话记录</span>
+                </div>
+                <ChevronRight size={16} className="text-zinc-400" />
+              </button>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Languages size={18} />
+                  </div>
+                  <span className="text-[14px] text-zinc-700">自动翻译</span>
+                </div>
+                <div 
+                  onClick={() => onUpdate({ ...character, autoTranslate: !character.autoTranslate })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.autoTranslate ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.autoTranslate ? 'translate-x-4.5' : ''}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Clock size={18} />
+                  </div>
+                  <span className="text-[14px] text-zinc-700">显示发送时间</span>
+                </div>
+                <div 
+                  onClick={() => onUpdate({ ...character, showTime: !character.showTime })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.showTime ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.showTime ? 'translate-x-4.5' : ''}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Activity size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">发动态频率</span>
+                    <span className="text-[10px] text-zinc-400">设置角色在动态页面的活跃度</span>
+                  </div>
+                </div>
+                <div className="flex bg-zinc-100 p-0.5 rounded-lg">
+                  {(['none', 'low', 'medium', 'high'] as const).map((freq) => (
+                    <button
+                      key={freq}
+                      onClick={() => onUpdate({ ...character, postFrequency: freq })}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                        (character.postFrequency || 'medium') === freq 
+                          ? 'bg-white text-zinc-900 shadow-sm' 
+                          : 'text-zinc-400 hover:text-zinc-600'
+                      }`}
+                    >
+                      {freq === 'none' ? '关闭' : freq === 'low' ? '低' : freq === 'medium' ? '中' : '高'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 divide-x divide-white/30">
+              <button 
+                onClick={() => setShowImportDialog(true)}
+                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
+              >
+                <Download size={16} /> 导入数据
+              </button>
+              <button 
+                onClick={() => setShowExportDialog(true)}
+                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
+              >
+                <Share2 size={16} /> 导出数据
+              </button>
+            </div>
+
+            <div>
+              <button 
+                onClick={() => setShowMemorySettings(!showMemorySettings)}
+                className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Database size={18} />
+                  </div>
+                  <span className="text-[15px] text-zinc-700">全局记忆系统</span>
+                </div>
+                <ChevronDown size={18} className={`text-zinc-300 transition-transform ${showMemorySettings ? '' : '-rotate-90'}`} />
+              </button>
+              
+              {showMemorySettings && (
+                <div className="px-4 pb-4 pt-2 bg-white/30 border-t border-white/20 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[14px] text-zinc-700">自动总结记忆</span>
+                      <span className="text-[11px] text-zinc-500">开启后将自动总结聊天记录</span>
+                    </div>
+                    <div 
+                      onClick={() => onUpdate({ ...character, autoSummaryEnabled: !character.autoSummaryEnabled })}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${character.autoSummaryEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                    >
+                      <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${character.autoSummaryEnabled ? 'translate-x-5' : ''}`} />
+                    </div>
+                  </div>
+
+                  {character.autoSummaryEnabled && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] text-zinc-700">总结间隔 (条)</span>
+                      <input 
+                        type="number" 
+                        min="10"
+                        max="100"
+                        value={character.summaryInterval || 20}
+                        onChange={e => onUpdate({ ...character, summaryInterval: parseInt(e.target.value) })}
+                        className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-[14px] text-zinc-700">当前记忆总结</span>
+                        <button 
+                          onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
+                          className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                        >
+                          查看总结记录
+                        </button>
+                      </div>
+                      <button 
+                        onClick={handleSummarize}
+                        disabled={isSummarizing}
+                        className="px-3 py-1 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
+                      >
+                        {isSummarizing ? '总结中...' : '立刻总结'}
+                      </button>
+                    </div>
+                    <textarea 
+                      value={character.memorySummary || ''}
+                      onChange={e => onUpdate({ ...character, memorySummary: e.target.value })}
+                      placeholder="暂无记忆总结，点击上方按钮生成或手动输入..."
+                      className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900 min-h-[80px] resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setShowWorldBookSelector(true)}
+              className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <BookOpen size={18} />
+                </div>
+                <span className="text-[15px] text-zinc-700">读取世界书</span>
+              </div>
+              <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
+            </button>
+
+            <div>
+              <div 
+                className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40 cursor-pointer"
+                onClick={() => setShowStickers(true)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Smile size={18} />
+                  </div>
+                  <span className="text-[15px] text-zinc-700">导入表情包</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {character.stickers && character.stickers.length > 0 && (
+                    <span className="text-[12px] text-zinc-400">{character.stickers.length} 个</span>
+                  )}
+                  <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Interaction Settings */}
+        <div className="mt-6 px-4">
+          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">互动设置</h2>
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <ImageIcon size={18} />
+                  </div>
+                  <span className="text-[15px] text-zinc-700">聊天背景图</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      const randomId = Math.floor(Math.random() * 1000);
+                      onUpdate({ ...character, background: `https://picsum.photos/seed/${randomId}/360/720?blur=4` });
+                    }}
+                    className="text-zinc-500 text-[14px] font-medium"
+                  >
+                    随机背景
+                  </button>
+                  <button 
+                    onClick={() => setShowBgInput(!showBgInput)}
+                    className="text-zinc-900 text-[14px] font-medium"
+                  >
+                    设置
+                  </button>
+                </div>
+              </div>
+              {showBgInput && (
+                <div className="space-y-2 pt-1">
+                  <input 
+                    type="text" 
+                    placeholder="支持链接、Markdown或HTML图片"
+                    value={tempBg}
+                    onChange={e => setTempBg(e.target.value)}
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-500"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        const finalUrl = tempBg ? (extractImageUrls(tempBg)[0] || tempBg.trim()) : '';
+                        onUpdate({ ...character, background: finalUrl });
+                        setShowBgInput(false);
+                        setTempBg('');
+                      }}
+                      className="flex-1 bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                    >
+                      确认链接
+                    </button>
+                    <button 
+                      onClick={() => {
+                        onUpdate({ ...character, background: '' });
+                        setShowBgInput(false);
+                      }}
+                      className="flex-1 bg-red-50/80 text-red-500 text-[12px] py-2 rounded-lg font-medium"
+                    >
+                      清除背景
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <Palette size={18} />
+                </div>
+                <span className="text-[15px] text-zinc-700 font-medium">聊天气泡设置</span>
+              </div>
+              
+              {/* Character Bubble */}
+              <div className="flex items-center justify-between bg-white/40 p-3 rounded-xl">
+                <span className="text-[14px] text-zinc-600">角色气泡</span>
+                <div className="flex items-center gap-3">
+                  <label className="text-zinc-900 text-[13px] font-medium cursor-pointer">
+                    上传图片
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => onUpdate({ ...character, bubbleImage: reader.result as string });
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {character.bubbleImage && (
+                    <button 
+                      onClick={() => onUpdate({ ...character, bubbleImage: undefined })}
+                      className="text-red-500 text-[13px] font-medium"
+                    >
+                      清除
+                    </button>
+                  )}
+                  <input 
+                    type="color" 
+                    value={character.bubbleColor || '#ffffff'}
+                    onChange={e => onUpdate({ ...character, bubbleColor: e.target.value })}
+                    className="w-6 h-6 rounded overflow-hidden border-none p-0 bg-transparent cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* User Bubble */}
+              <div className="flex items-center justify-between bg-white/40 p-3 rounded-xl">
+                <span className="text-[14px] text-zinc-600">用户气泡</span>
+                <div className="flex items-center gap-3">
+                  <label className="text-zinc-900 text-[13px] font-medium cursor-pointer">
+                    上传图片
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => onUpdate({ ...character, userBubbleImage: reader.result as string });
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {character.userBubbleImage && (
+                    <button 
+                      onClick={() => onUpdate({ ...character, userBubbleImage: undefined })}
+                      className="text-red-500 text-[13px] font-medium"
+                    >
+                      清除
+                    </button>
+                  )}
+                  <input 
+                    type="color" 
+                    value={character.userBubbleColor || '#3b82f6'}
+                    onChange={e => onUpdate({ ...character, userBubbleColor: e.target.value })}
+                    className="w-6 h-6 rounded overflow-hidden border-none p-0 bg-transparent cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="mt-8 px-4">
+          <button 
+            onClick={() => {
+              if (confirm('确定要清空聊天记录吗？')) setHistory([]);
+            }}
+            className="w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm"
+          >
+            清空聊天记录
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showStickers && (
+          <motion.div 
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            className="absolute inset-0 flex flex-col z-[80]"
+            style={{
+              backgroundImage: character.background ? `url(${character.background})` : 'none',
+              backgroundColor: character.background ? 'transparent' : '#fafafa',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 bg-white/30 backdrop-blur-md border-b border-white/20 sticky top-0 z-10 shrink-0">
+              <button 
+                onClick={() => setShowStickers(false)}
+                className="w-10 h-10 flex items-center justify-center -ml-2 text-zinc-600 active:bg-white/20 rounded-full transition-colors"
+              >
+                <ChevronLeft size={24} />
+              </button>
+              <h1 className="text-[17px] font-semibold text-zinc-800">表情包管理</h1>
+              <div className="w-10" />
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-3 gap-3">
+                <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
+                  <Plus size={28} className="mb-2" />
+                  <span className="text-[13px] font-medium">上传表情</span>
+                  <input 
+                    type="file" 
+                    multiple 
+                    accept="image/*,application/json,.json" 
+                    className="hidden" 
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        let newStickers: string[] = [];
+                        let loaded = 0;
+                        files.forEach((file: File) => {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                              try {
+                                const data = JSON.parse(reader.result as string);
+                                if (Array.isArray(data)) {
+                                  newStickers = [...newStickers, ...data.filter(item => typeof item === 'string')];
+                                } else if (data && typeof data === 'object') {
+                                  if (Array.isArray(data.stickers)) {
+                                    newStickers = [...newStickers, ...data.stickers.filter(item => typeof item === 'string')];
+                                  } else {
+                                    const arrayProp = Object.values(data).find(val => Array.isArray(val));
+                                    if (arrayProp) {
+                                      newStickers = [...newStickers, ...arrayProp.filter(item => typeof item === 'string')];
+                                    }
+                                  }
+                                }
+                              } catch (err) {
+                                console.error('Failed to parse JSON file', err);
+                              }
+                            } else {
+                              newStickers.push(reader.result as string);
+                            }
+                            loaded++;
+                            if (loaded === files.length) {
+                              onUpdate({ ...character, stickers: [...(character.stickers || []), ...newStickers] });
+                            }
+                          };
+                          if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                            reader.readAsText(file);
+                          } else {
+                            reader.readAsDataURL(file);
+                          }
+                        });
+                      }
+                    }}
+                  />
+                </label>
+                {character.stickers?.map((sticker, idx) => (
+                  <div key={idx} className="relative group aspect-square bg-white/40 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden shadow-sm">
+                    <img src={sticker} className="w-full h-full object-cover" />
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newStickers = [...(character.stickers || [])];
+                        newStickers.splice(idx, 1);
+                        onUpdate({ ...character, stickers: newStickers });
+                      }}
+                      className="absolute top-2 right-2 w-7 h-7 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              
+              {character.stickers && character.stickers.length > 0 && (
+                <div className="mt-8">
+                  <button 
+                    onClick={() => {
+                      if (confirm('确定要清空所有表情包吗？')) {
+                        onUpdate({ ...character, stickers: [] });
+                      }
+                    }}
+                    className="w-full py-3.5 text-[15px] text-red-500 bg-white/80 backdrop-blur-md border border-red-100/50 rounded-2xl font-bold active:bg-red-50 transition-colors shadow-sm"
+                  >
+                    清空所有表情包
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Modals */}
+        {showImportDialog && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-[300px] rounded-2xl p-6 shadow-xl flex flex-col items-center"
+            >
+              <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 mb-4">
+                <Download size={24} />
+              </div>
+              <h3 className="text-[16px] font-bold text-zinc-800 mb-2">导入聊天数据</h3>
+              <p className="text-[13px] text-zinc-500 text-center mb-6">
+                选择一个 JSON 文件来导入角色设定和聊天记录。这将覆盖当前数据。
+              </p>
+              
+              <div className="grid grid-cols-2 gap-3 w-full">
+                <button 
+                  onClick={() => setShowImportDialog(false)}
+                  className="py-3 rounded-xl bg-zinc-50 text-zinc-600 font-medium active:scale-95 transition-transform text-[14px]"
+                >
+                  取消
+                </button>
+                <label className="py-3 rounded-xl bg-blue-500 text-white font-medium active:scale-95 transition-transform text-[14px] text-center cursor-pointer">
+                  选择文件
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept=".json"
+                    onChange={handleImport}
+                  />
+                </label>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showExportDialog && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-[300px] rounded-2xl p-6 shadow-xl flex flex-col items-center"
+            >
+              <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center text-green-500 mb-4">
+                <Share2 size={24} />
+              </div>
+              <h3 className="text-[16px] font-bold text-zinc-800 mb-2">导出聊天数据</h3>
+              <p className="text-[13px] text-zinc-500 text-center mb-6">
+                确认导出当前角色的设定和所有聊天记录吗？
+              </p>
+              
+              <div className="grid grid-cols-2 gap-3 w-full">
+                <button 
+                  onClick={() => setShowExportDialog(false)}
+                  className="py-3 rounded-xl bg-zinc-50 text-zinc-600 font-medium active:scale-95 transition-transform text-[14px]"
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={handleExport}
+                  className="py-3 rounded-xl bg-green-500 text-white font-medium active:scale-95 transition-transform text-[14px]"
+                >
+                  确认导出
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showWorldBookSelector && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-[340px] rounded-2xl p-6 shadow-xl flex flex-col max-h-[80vh]"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[16px] font-bold text-zinc-900">选择世界书</h3>
+                <button onClick={() => setShowWorldBookSelector(false)} className="p-1 text-zinc-400">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 mb-4">
+                {worldBooks.length === 0 ? (
+                  <div className="text-center py-8 text-zinc-400 text-sm">暂无世界书，请在"我的"页面添加</div>
+                ) : (
+                  worldBooks.map(wb => {
+                    const isActive = character.activeWorldBookIds?.includes(wb.id);
+                    return (
+                      <div 
+                        key={wb.id}
+                        onClick={() => {
+                          const currentIds = character.activeWorldBookIds || [];
+                          const newIds = isActive 
+                            ? currentIds.filter(id => id !== wb.id)
+                            : [...currentIds, wb.id];
+                          onUpdate({ ...character, activeWorldBookIds: newIds });
+                        }}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                          isActive ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white border-zinc-100 hover:bg-zinc-50 text-zinc-800'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 mr-3">
+                          <div className="font-bold text-[14px] truncate">{wb.title}</div>
+                          <div className={`text-[11px] truncate ${isActive ? 'text-zinc-400' : 'text-zinc-500'}`}>{wb.category}</div>
+                        </div>
+                        {isActive && <Check size={16} className="text-emerald-400" />}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <button 
+                onClick={() => setShowWorldBookSelector(false)}
+                className="w-full py-3 bg-zinc-100 text-zinc-900 rounded-xl font-bold text-[14px] active:scale-95 transition-transform"
+              >
+                完成
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {showCallHistory && (
+        <div className="absolute inset-0 bg-zinc-50 z-[80] flex flex-col">
+          <div className="pt-10 pb-3 px-4 bg-white border-b border-zinc-100 flex items-center justify-between shrink-0 relative">
+            {isBatchMode ? (
+              <button 
+                onClick={() => {
+                  setIsBatchMode(false);
+                  setSelectedCallRecords(new Set());
+                }}
+                className="text-zinc-600 text-[15px]"
+              >
+                取消
+              </button>
+            ) : (
+              <button onClick={() => setShowCallHistory(false)} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+                <ChevronLeft size={24} />
+              </button>
+            )}
+            
+            <h1 className="text-[17px] font-bold text-zinc-900 absolute left-1/2 -translate-x-1/2">通话记录</h1>
+            
+            {isBatchMode ? (
+              <button 
+                onClick={() => {
+                  const allIds = callHistory?.filter(r => r.characterId === character.id).map(r => r.id) || [];
+                  if (selectedCallRecords.size === allIds.length) {
+                    setSelectedCallRecords(new Set());
+                  } else {
+                    setSelectedCallRecords(new Set(allIds));
+                  }
+                }}
+                className="text-zinc-900 text-[15px] font-medium"
+              >
+                {selectedCallRecords.size === (callHistory?.filter(r => r.characterId === character.id).length || 0) ? '全不选' : '全选'}
+              </button>
+            ) : (
+              <div className="relative">
+                <button 
+                  onClick={() => setShowBatchMenu(!showBatchMenu)}
+                  className="p-1 -mr-1 text-zinc-600 active:text-zinc-800"
+                >
+                  <MoreHorizontal size={24} />
+                </button>
+                {showBatchMenu && (
+                  <>
+                    <div className="fixed inset-0 z-[90]" onClick={() => setShowBatchMenu(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-xl shadow-xl border border-zinc-100 z-[91] overflow-hidden py-1">
+                      <button 
+                        onClick={() => {
+                          setIsBatchMode(true);
+                          setShowBatchMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-[14px] text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100"
+                      >
+                        批量管理
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
+            {(!callHistory || callHistory.filter(r => r.characterId === character.id).length === 0) ? (
+              <div className="text-center py-10 text-zinc-400 text-sm">暂无通话记录</div>
+            ) : (
+              callHistory.filter(r => r.characterId === character.id).map(record => {
+                const isFavorited = favorites.some(f => f.timestamp === record.timestamp && f.category === '通话');
+                const isSelected = selectedCallRecords.has(record.id);
+                
+                return (
+                  <div 
+                    key={record.id} 
+                    className={`bg-white p-4 rounded-2xl shadow-sm border transition-all ${
+                      isBatchMode && isSelected ? 'border-blue-500 bg-blue-50/10' : 'border-zinc-100'
+                    }`}
+                    onClick={() => {
+                      if (isBatchMode) {
+                        const newSet = new Set(selectedCallRecords);
+                        if (newSet.has(record.id)) newSet.delete(record.id);
+                        else newSet.add(record.id);
+                        setSelectedCallRecords(newSet);
+                      }
+                    }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        {isBatchMode && (
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+                            isSelected ? 'bg-blue-500 border-blue-500' : 'border-zinc-300'
+                          }`}>
+                            {isSelected && <Check size={12} className="text-white" />}
+                          </div>
+                        )}
+                        <span className="text-xs text-zinc-400">{new Date(record.timestamp).toLocaleString()}</span>
+                      </div>
+                      <span className="text-xs font-mono text-zinc-300">
+                        {Math.floor(record.duration / 60).toString().padStart(2, '0')}:
+                        {(record.duration % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                    <p className="text-sm text-zinc-800 leading-relaxed mb-3">{record.text}</p>
+                    
+                    {!isBatchMode && (
+                      <div className="flex justify-end gap-2 pt-2 border-t border-zinc-50">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isFavorited) {
+                              setFavorites(favorites.filter(f => !(f.timestamp === record.timestamp && f.category === '通话')));
+                            } else {
+                              const newFavorite: FavoriteMessage = {
+                                id: Date.now().toString(),
+                                characterId: character.id,
+                                characterName: character.name,
+                                text: record.text,
+                                timestamp: record.timestamp,
+                                category: '通话'
+                              };
+                              setFavorites([...favorites, newFavorite]);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs ${
+                            isFavorited 
+                              ? 'text-yellow-500 bg-yellow-50 hover:bg-yellow-100' 
+                              : 'text-zinc-400 hover:text-yellow-500 hover:bg-yellow-50'
+                          }`}
+                        >
+                          <Star size={14} className={isFavorited ? 'fill-current' : ''} />
+                          <span>{isFavorited ? '已收藏' : '收藏'}</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('确定要删除这条通话记录吗？')) {
+                              onDeleteCallRecord?.(record.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1 text-xs"
+                        >
+                          <Trash2 size={14} />
+                          <span>删除</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {isBatchMode && (
+            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-zinc-100 p-4 pb-8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-10">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-[13px] text-zinc-500">已选 {selectedCallRecords.size} 项</span>
+                <span className="text-[13px] text-zinc-400">
+                  预估消耗: {Array.from(selectedCallRecords).reduce<number>((acc, id) => {
+                    const r = callHistory?.find(item => item.id === id);
+                    return acc + (r?.tokens || Math.ceil((r?.text.length || 0) * 1.5));
+                  }, 0)} Tokens
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  onClick={() => {
+                    const records = callHistory?.filter(r => selectedCallRecords.has(r.id)) || [];
+                    const newFavorites = [...favorites];
+                    let addedCount = 0;
+                    records.forEach(record => {
+                      if (!newFavorites.some(f => f.timestamp === record.timestamp && f.category === '通话')) {
+                        newFavorites.push({
+                          id: Date.now().toString() + Math.random(),
+                          characterId: character.id,
+                          characterName: character.name,
+                          text: record.text,
+                          timestamp: record.timestamp,
+                          category: '通话'
+                        });
+                        addedCount++;
+                      }
+                    });
+                    setFavorites(newFavorites);
+                    alert(`已收藏 ${addedCount} 条记录`);
+                    setIsBatchMode(false);
+                    setSelectedCallRecords(new Set());
+                  }}
+                  className="flex flex-col items-center gap-1 py-2 rounded-xl active:bg-zinc-50 text-zinc-600"
+                >
+                  <Star size={20} />
+                  <span className="text-[11px]">收藏</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const records = callHistory?.filter(r => selectedCallRecords.has(r.id)) || [];
+                    const data = JSON.stringify(records, null, 2);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${character.name}_call_history_export.json`;
+                    a.click();
+                    setIsBatchMode(false);
+                    setSelectedCallRecords(new Set());
+                  }}
+                  className="flex flex-col items-center gap-1 py-2 rounded-xl active:bg-zinc-50 text-zinc-600"
+                >
+                  <Share2 size={20} />
+                  <span className="text-[11px]">导出</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`确定要删除选中的 ${selectedCallRecords.size} 条记录吗？`)) {
+                      selectedCallRecords.forEach(id => onDeleteCallRecord?.(id));
+                      setSelectedCallRecords(new Set());
+                      setIsBatchMode(false);
+                    }
+                  }}
+                  className="flex flex-col items-center gap-1 py-2 rounded-xl active:bg-red-50 text-red-500"
+                >
+                  <Trash2 size={20} />
+                  <span className="text-[11px]">删除</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function ChatSession({ 
+  character, 
+  history, 
+  setHistory, 
+  onUpdateCharacter,
+  settings, 
+  onBack,
+  userAvatar,
+  userName,
+  masks,
+  favorites,
+  setFavorites,
+  visualSettings,
+  onUpdateVisualSettings,
+  groups,
+  worldBook = [],
+  perception,
+  onViewForumPost,
+  callHistory,
+  onAddCallRecord,
+  onDeleteCallRecord,
+  onSaveDate,
+  onCollectDate,
+  savedDates,
+  walletData,
+  onUpdateWalletData
+}: { 
+  character: Character;
+  history: ChatMessage[];
+  setHistory: (h: ChatMessage[]) => void;
+  onUpdateCharacter: (c: Character) => void;
+  settings: AppSettings;
+  onBack: () => void;
+  userAvatar: string;
+  userName: string;
+  masks: Mask[];
+  favorites: FavoriteMessage[];
+  setFavorites: (f: FavoriteMessage[]) => void;
+  visualSettings: VisualSettings;
+  onUpdateVisualSettings: (settings: VisualSettings) => void;
+  groups: string[];
+  worldBook?: WorldBookEntry[];
+  key?: string;
+  perception?: PerceptionSettings;
+  onViewForumPost?: (postId: string) => void;
+  callHistory?: CallRecord[];
+  onAddCallRecord?: (record: CallRecord) => void;
+  onDeleteCallRecord?: (recordId: string) => void;
+  onSaveDate?: (session: DateSession) => void;
+  onCollectDate?: (session: DateSession) => void;
+  savedDates?: DateSession[];
+  walletData?: WalletData;
+  onUpdateWalletData?: (data: WalletData) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [replyingTo, setReplyingTo] = useState<{text: string, role: 'user'|'model'} | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showFunPanel, setShowFunPanel] = useState(false);
+  const [showStickerPanel, setShowStickerPanel] = useState(false);
+  const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferType, setTransferType] = useState<'toUser' | 'toCharacter'>('toCharacter');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const hasSpeechResult = useRef(false);
+  const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
+
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [showDatingModal, setShowDatingModal] = useState(false);
+  const [showGameCenter, setShowGameCenter] = useState(false);
+
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
+  const [voiceCallDuration, setVoiceCallDuration] = useState(0);
+  const [voiceCallText, setVoiceCallText] = useState('');
+  const [voiceCallInput, setVoiceCallInput] = useState('');
+  const [isRecordingCall, setIsRecordingCall] = useState(false);
+  const voiceCallTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const voiceCallRecognitionRef = useRef<any>(null);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      const userMsg: ChatMessage = { 
+        role: 'user', 
+        text: '[图片]', 
+        imageUrl: base64String,
+        timestamp: Date.now() 
+      };
+      setHistory([...history, userMsg]);
+      setShowFunPanel(false);
+      
+      // Simulate AI response for image
+      setTimeout(() => {
+        setInput('[发送了一张图片]');
+        handleSendRef.current();
+      }, 100);
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId) || settings?.configs?.[0] || DEFAULT_CONFIG;
+  
+  const showVoiceCallRef = useRef(false);
+  const [voiceCallHistory, setVoiceCallHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
+  const [currentInterimSpeech, setCurrentInterimSpeech] = useState('');
+  const voiceCallHistoryRef = useRef<{role: 'user' | 'model', text: string}[]>([]);
+  const voiceCallEndRef = useRef<HTMLDivElement>(null);
+
+  const handleVoiceCallAIResponse = async (userText: string) => {
+    try {
+      const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
+      if (!apiKey) return;
+      
+      const ai = new GoogleGenAI({ apiKey });
+      
+      // Construct context from recent history + character setting
+      const prompt = `你正在与用户进行语音通话。
+你的设定是：${character.setting}
+用户的上一句话是："${userText}"
+请以口语化的方式简短回应（50字以内）。`;
+
+      const response = await ai.models.generateContent({
+        model: activeConfig.model,
+        contents: prompt,
+        config: { temperature: 0.7 }
+      });
+
+      if (response.text) {
+        const aiMsg = { role: 'model' as const, text: response.text };
+        setVoiceCallHistory(prev => {
+          const newHistory = [...prev, aiMsg];
+          voiceCallHistoryRef.current = newHistory;
+          return newHistory;
+        });
+      }
+    } catch (err) {
+      console.error('Voice call AI generation failed', err);
+    }
+  };
+
+  useEffect(() => {
+    const translateHistory = async () => {
+      if (!character.autoTranslate) return;
+
+      const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
+      if (!apiKey) return;
+
+      // Filter for model messages that need translation
+      // Limit to last 10 messages to avoid excessive API usage
+      const isMostlyChinese = (text: string) => {
+        const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
+        if (!chineseChars) return false;
+        const textLength = text.replace(/\s/g, '').length;
+        return textLength > 0 && (chineseChars.length / textLength > 0.5);
+      };
+
+      const messagesToTranslate = history
+        .map((msg, index) => ({ msg, index }))
+        .filter(({ msg }) => {
+          if (msg.role !== 'model' || msg.isSystem || msg.text.includes('---TRANSLATION---')) return false;
+          if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
+          
+          let textToCheck = msg.text.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '');
+          if (msg.text.startsWith('[GAME_CARD]')) {
+            try {
+              const jsonString = msg.text.replace(/^\[GAME_CARD\]\s*/, '');
+              const jsonStart = jsonString.indexOf('{');
+              const jsonEnd = jsonString.lastIndexOf('}');
+              if (jsonStart !== -1 && jsonEnd !== -1) {
+                const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
+                textToCheck = gameData.content || '';
+              }
+            } catch (e) {}
+          }
+          
+          return !isMostlyChinese(textToCheck);
+        })
+        .slice(-10);
+
+      if (messagesToTranslate.length === 0) return;
+
+      const ai = new GoogleGenAI({ apiKey });
+      const model = activeConfig.model;
+      
+      const newHistory = [...history];
+      let hasUpdates = false;
+
+      await Promise.all(messagesToTranslate.map(async ({ msg, index }) => {
+        try {
+          let textToTranslate = msg.text;
+          let isQnaAnswer = false;
+          let questionToTranslate = '';
+          
+          if (msg.text.startsWith('[GAME_CARD]')) {
+            try {
+              const jsonString = msg.text.replace(/^\[GAME_CARD\]\s*/, '');
+              const jsonStart = jsonString.indexOf('{');
+              const jsonEnd = jsonString.lastIndexOf('}');
+              if (jsonStart !== -1 && jsonEnd !== -1) {
+                const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
+                textToTranslate = gameData.content || '';
+                if (gameData.game === 'qna' && gameData.type === 'answer' && gameData.question) {
+                  isQnaAnswer = true;
+                  questionToTranslate = gameData.question;
+                }
+              }
+            } catch (e) {}
+          }
+
+          let translation = '';
+          if (isQnaAnswer && questionToTranslate) {
+            const prompt = `Translate the following text to Chinese. Output ONLY the translation, no other text.\n\nText: ${questionToTranslate}\n\n---\n\nText: ${textToTranslate}`;
+            const result = await ai.models.generateContent({
+              model: model,
+              contents: prompt,
+              config: { temperature: 0.1 }
+            });
+            // The model might return them separated by newlines or as a single block.
+            // We'll just append the whole translation block.
+            translation = result.text;
+          } else {
+            const prompt = `Translate the following text to Chinese. Output ONLY the translation, no other text.\n\nText: ${textToTranslate}`;
+            const result = await ai.models.generateContent({
+              model: model,
+              contents: prompt,
+              config: { temperature: 0.1 }
+            });
+            translation = result.text;
+          }
+          
+          if (translation) {
+             newHistory[index] = {
+               ...newHistory[index],
+               text: `${newHistory[index].text}\n\n---TRANSLATION--- \n${translation}`
+             };
+             hasUpdates = true;
+          }
+        } catch (e) {
+          console.error("Translation failed for message", index, e);
+        }
+      }));
+
+      if (hasUpdates) {
+        setHistory(newHistory);
+      }
+    };
+
+    translateHistory();
+  }, [character.autoTranslate, history, activeConfig.apiKey, activeConfig.model]);
+
+  const handleSendVoiceCallText = () => {
+    if (!voiceCallInput.trim()) return;
+    
+    const text = voiceCallInput;
+    setVoiceCallInput('');
+    
+    const userMsg = { role: 'user' as const, text: text };
+    setVoiceCallHistory(prev => {
+      const newHistory = [...prev, userMsg];
+      voiceCallHistoryRef.current = newHistory;
+      return newHistory;
+    });
+    
+    handleVoiceCallAIResponse(text);
+  };
+
+  const startVoiceCall = () => {
+    setShowVoiceCall(true);
+    showVoiceCallRef.current = true;
+    setVoiceCallDuration(0);
+    setVoiceCallText('');
+    setVoiceCallHistory([]);
+    setCurrentInterimSpeech('');
+    voiceCallHistoryRef.current = [];
+    setShowFunPanel(false);
+
+    if (voiceCallTimerRef.current) clearInterval(voiceCallTimerRef.current);
+    voiceCallTimerRef.current = setInterval(() => {
+      setVoiceCallDuration(prev => prev + 1);
+    }, 1000);
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'zh-CN';
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        
+        if (finalTranscript) {
+           const userMsg = { role: 'user' as const, text: finalTranscript };
+           setVoiceCallHistory(prev => {
+             const newHistory = [...prev, userMsg];
+             voiceCallHistoryRef.current = newHistory;
+             return newHistory;
+           });
+           
+           // Trigger AI response if recording is active (or always? User said "react to user's voice")
+           // The previous requirement said "Only when recording is active will the transcribed text be saved."
+           // But for interaction, it should probably respond.
+           // However, if I only save when recording, maybe I should only respond when recording?
+           // The user request "ai要在语音通话是对用户的语音做出反应" implies interaction.
+           // Let's assume interaction happens always, but saving to "Call Record" depends on the record button.
+           // Wait, the previous instruction said: "The voice call content (transcription) will not be sent to the chat history... Only when recording is active will the transcribed text be saved."
+           // This implies the "Call Record" feature.
+           // For the live interaction, it should probably happen regardless of "recording for history".
+           // But if the user is not "recording", maybe they don't want the AI to hear/respond?
+           // Standard voice call behavior: AI always listens and responds. "Recording" is for saving the call.
+           // So I will trigger AI response always.
+           
+           handleVoiceCallAIResponse(finalTranscript);
+        }
+
+        setCurrentInterimSpeech(interimTranscript);
+        
+        // Update the full text for legacy/recording purposes
+        setVoiceCallText(prev => {
+          const newText = finalTranscript ? prev + finalTranscript + ' ' : prev;
+          return newText + interimTranscript;
+        });
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Voice call recognition error:', event.error);
+        if (event.error === 'no-speech') {
+          // Restart recognition on no-speech to keep it listening
+          try {
+            recognition.stop();
+            setTimeout(() => {
+              if (showVoiceCallRef.current) {
+                recognition.start();
+              }
+            }, 100);
+          } catch (e) {
+            console.error('Failed to restart recognition:', e);
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        // Automatically restart if it ends unexpectedly while the call is still active
+        if (showVoiceCallRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('Failed to restart recognition on end:', e);
+          }
+        }
+      };
+
+      recognition.start();
+      voiceCallRecognitionRef.current = recognition;
+    }
+  };
+
+  const endVoiceCall = () => {
+    showVoiceCallRef.current = false;
+    if (voiceCallTimerRef.current) clearInterval(voiceCallTimerRef.current);
+    if (voiceCallRecognitionRef.current) {
+      voiceCallRecognitionRef.current.stop();
+    }
+    
+    setShowVoiceCall(false);
+    
+    const userMsg: ChatMessage = { 
+      role: 'user', 
+      text: '[语音通话]', 
+      isVoiceCall: true,
+      duration: voiceCallDuration,
+      timestamp: Date.now() 
+    };
+    setHistory([...history, userMsg]);
+    
+    // Construct full text from history for the record
+    const fullText = voiceCallHistoryRef.current.map(m => `${m.role === 'user' ? '我' : character.name}: ${m.text}`).join('\n');
+    
+    if (isRecordingCall && fullText.trim() && onAddCallRecord) {
+      const newRecord: CallRecord = {
+        id: Date.now().toString(),
+        characterId: character.id,
+        timestamp: Date.now(),
+        duration: voiceCallDuration,
+        text: fullText
+      };
+      onAddCallRecord(newRecord);
+    }
+    
+    setIsRecordingCall(false);
+  };
+
+  // Auto-scroll for voice call
+  useEffect(() => {
+    if (showVoiceCall && voiceCallEndRef.current) {
+      voiceCallEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [voiceCallHistory, currentInterimSpeech, showVoiceCall]);
+
+  const handleMessageClick = (e: React.MouseEvent, index: number) => {
+    if (multiSelectMode) {
+      const newSelected = new Set(selectedMessages);
+      if (newSelected.has(index)) {
+        newSelected.delete(index);
+      } else {
+        newSelected.add(index);
+      }
+      setSelectedMessages(newSelected);
+      return;
+    }
+    
+    e.preventDefault();
+    
+    const container = document.getElementById('phone-container');
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const menuWidth = 320; // Approximate width of horizontal menu
+      const menuHeight = 60; // Approximate height of horizontal menu
+      
+      // Calculate relative to container
+      x = x - rect.left;
+      y = y - rect.top;
+      
+      if (x + menuWidth > rect.width) {
+        x = rect.width - menuWidth - 10;
+      }
+      if (x < 10) {
+        x = 10;
+      }
+      
+      if (y + menuHeight > rect.height) {
+        y = rect.height - menuHeight - 10;
+      }
+      if (y < 10) {
+        y = 10;
+      }
+    }
+    
+    setContextMenu({
+      x,
+      y,
+      index
+    });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const handleRecall = () => {
+    if (contextMenu) {
+      const newHistory = [...history];
+      newHistory[contextMenu.index] = { ...newHistory[contextMenu.index], isRecalled: true };
+      setHistory(newHistory);
+      closeContextMenu();
+    }
+  };
+
+  const handleCopy = () => {
+    if (contextMenu) {
+      navigator.clipboard.writeText(history[contextMenu.index].text);
+      closeContextMenu();
+    }
+  };
+
+  const handleFavorite = () => {
+    if (contextMenu) {
+      const msg = history[contextMenu.index];
+      const isAlreadyFavorited = favorites.some(f => f.timestamp === msg.timestamp && f.characterId === character.id);
+      
+      if (isAlreadyFavorited) {
+        setFavorites(favorites.filter(f => !(f.timestamp === msg.timestamp && f.characterId === character.id)));
+      } else {
+        const newFavorite: FavoriteMessage = {
+          id: Date.now().toString(),
+          characterId: character.id,
+          characterName: character.name,
+          text: msg.text,
+          timestamp: msg.timestamp,
+          category: '聊天'
+        };
+        setFavorites([...favorites, newFavorite]);
+      }
+      
+      const newHistory = [...history];
+      newHistory[contextMenu.index] = { 
+        ...newHistory[contextMenu.index], 
+        isFavorited: !newHistory[contextMenu.index].isFavorited 
+      };
+      setHistory(newHistory);
+      closeContextMenu();
+    }
+  };
+
+  const handleDeleteMessage = () => {
+    if (contextMenu) {
+      const newHistory = history.filter((_, i) => i !== contextMenu.index);
+      setHistory(newHistory);
+      closeContextMenu();
+    }
+  };
+
+  const handleMultiSelect = () => {
+    if (contextMenu) {
+      setMultiSelectMode(true);
+      setSelectedMessages(new Set([contextMenu.index]));
+      closeContextMenu();
+    }
+  };
+
+  const handleQuoteReply = () => {
+    if (contextMenu) {
+      setReplyingTo({
+        text: history[contextMenu.index].text,
+        role: history[contextMenu.index].role
+      });
+      closeContextMenu();
+    }
+  };
+
+  const handleForward = () => {
+    if (contextMenu) {
+      // For now, just copy to input as a simple "forward" simulation
+      setInput(history[contextMenu.index].text);
+      closeContextMenu();
+    }
+  };
+
+  const deleteSelectedMessages = () => {
+    const newHistory = history.filter((_, i) => !selectedMessages.has(i));
+    setHistory(newHistory);
+    setMultiSelectMode(false);
+    setSelectedMessages(new Set());
+  };
+
+  const startRecording = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-CN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      hasSpeechResult.current = false;
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+        if (hasSpeechResult.current) {
+          // Allow state update to propagate before sending
+          setTimeout(() => {
+            handleSendRef.current();
+          }, 100);
+        }
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript.trim()) {
+          hasSpeechResult.current = true;
+          setInput(prev => prev + transcript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        if (event.error === 'not-allowed') {
+          alert('无法访问麦克风。请确保您已允许浏览器使用麦克风权限。');
+        } else if (event.error === 'no-speech' || event.error === 'aborted') {
+          // Ignore no-speech and aborted errors
+          return;
+        } else {
+          // alert('语音识别出错: ' + event.error);
+        }
+        setIsRecording(false);
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+    } else {
+      alert('您的浏览器不支持语音输入');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+
+  const handleReceiveTransfer = (index: number) => {
+    const msg = history[index];
+    if (msg.transferStatus === 'received') return;
+
+    const newHistory = [...history];
+    newHistory[index] = { ...msg, transferStatus: 'received' };
+    
+    // Add a system message indicating the transfer was received
+    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
+    const amountStr = msg.text.match(transferRegex)?.[1] || msg.text.match(/￥([\d\.]+)/)?.[1] || '0.00';
+    const amount = parseFloat(amountStr);
+    const receiverName = msg.role === 'user' ? character.name : userName;
+    
+    newHistory.push({
+      role: 'user', // Use user role for system messages so the AI sees it as an update from the system/user
+      text: `${receiverName} 已领取转账 ￥${amountStr}`,
+      timestamp: Date.now(),
+      isSystem: true
+    } as any);
+
+    setHistory(newHistory);
+
+    // If the user is receiving the transfer, add it to their wallet
+    if (msg.role === 'model' && !isNaN(amount) && amount > 0) {
+      const cards = walletData?.cards || MOCK_CARDS;
+      if (cards.length > 0) {
+        // Add to the first card by default
+        const targetCardId = cards[0].id;
+        const newCards = cards.map(c => c.id === targetCardId ? { ...c, balance: c.balance + amount } : c);
+        const newTransaction = {
+          id: `t-${Date.now()}`,
+          title: `${character.name} 的转账`,
+          type: 'income' as const,
+          amount: amount,
+          date: '刚刚',
+          icon: 'transfer',
+          category: '转账',
+          cardId: targetCardId
+        };
+        const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+        if (onUpdateWalletData) {
+          onUpdateWalletData({ cards: newCards, transactions: newTransactions });
+        }
+      }
+    }
+  };
+
+  const basicEmojis = ['😀', '😂', '🥰', '😎', '😭', '😡', '🤔', '😴', '👍', '🙏', '🎉', '❤️'];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+    
+    // Auto-receive logic for AI
+    const lastMsg = history[history.length - 1];
+    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
+    if (lastMsg && lastMsg.role === 'user' && transferRegex.test(lastMsg.text) && !lastMsg.transferStatus) {
+      const timer = setTimeout(() => {
+        handleReceiveTransfer(history.length - 1);
+      }, 1500); // AI receives after 1.5s
+      return () => clearTimeout(timer);
+    }
+  }, [history, isLoading]);
+
+  // Construct the prompt with character settings, history, and world book
+  const constructPrompt = () => {
+    const worldBookEntries = worldBook
+      .filter(entry => entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
+      .map(entry => `[${entry.category}: ${entry.title}]\n${entry.content}`)
+      .join('\n\n');
+
+    const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+    
+    let systemPrompt = character.setting;
+    if (activeMask) {
+      systemPrompt += `\n\n你现在正在扮演一个身份面具，请遵循以下设定：\n姓名：${activeMask.name}\n职业：${activeMask.occupation}\n性格：${activeMask.personality}\n与用户的关系：${activeMask.relationship}\n世界观：${activeMask.worldBackground}`;
+    }
+
+    if (worldBookEntries) {
+      systemPrompt += `\n\n请严格遵守以下世界设定：\n${worldBookEntries}`;
+    }
+
+    const historySlice = history.slice(-20).map(msg => `${msg.role === 'user' ? userName : character.name}: ${msg.text}`).join('\n');
+    
+    return `${systemPrompt}\n\n以下是最近的对话历史：\n${historySlice}`;
+  };
+
+  // Auto-reply to messages with needsReply flag
+  useEffect(() => {
+    const lastMsg = history[history.length - 1];
+    if (lastMsg && lastMsg.role === 'user' && lastMsg.needsReply && !isLoading) {
+      const reply = async () => {
+        setIsLoading(true);
+        setError(null);
+        
+        const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            setError('未检测到 API Key，请在设置中配置。');
+            setIsLoading(false);
+            return;
+        }
+
+        const assistantMsgId = Date.now() + 1;
+        let currentResponseText = '';
+        
+        const updateAssistantMessage = (text: string) => {
+            currentResponseText = text;
+            setHistory([...history, { role: 'model', text: currentResponseText, timestamp: assistantMsgId }]);
+        };
+
+        try {
+            const isGemini = activeConfig.provider === 'Google Gemini' || (!activeConfig.baseUrl && activeConfig.provider === '自定义 (Custom)');
+            
+            if (isGemini) {
+                const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+                const modelName = activeConfig.model || 'gemini-3-flash-preview';
+                
+                // Find linked mask
+                const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+                const maskPrompt = activeMask ? `\n\n[User Identity Mask: ${activeMask.name}]\nPersonality: ${activeMask.personality}\nOccupation: ${activeMask.occupation}\nRelationship with you: ${activeMask.relationship}\nWorld Background: ${activeMask.worldBackground || 'Standard'}\n(Please interact with the user based on this identity and world background.)` : '';
+                
+                // Find active world books
+                const activeWorldBooks = worldBook.filter(wb => 
+                  (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
+                  character.activeWorldBookIds?.includes(wb.id)
+                );
+                const worldBookPrompt = activeWorldBooks.length > 0 ? `\n\n[World Book Settings]\n${activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')}\n(Please adhere to these world settings in your responses.)` : '';
+                
+                // Perception Settings
+                let perceptionPrompt = '';
+                if (perception) {
+                  const parts = [];
+                  if (perception.enabled || perception.dateTime?.enabled) {
+                    if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
+                  }
+                  if (perception.enabled || perception.location?.enabled) {
+                    if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
+                  }
+                  if (perception.enabled || perception.weather?.enabled) {
+                    if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
+                  }
+                  if (perception.enabled || perception.temperature?.enabled) {
+                    if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
+                  }
+                  if (perception.enabled || perception.climate?.enabled) {
+                    if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
+                  }
+                  
+                  if (parts.length > 0) {
+                    perceptionPrompt = `\n\n[Perception/Virtual Reality Settings]\n${parts.join('\n')}\n(IMPORTANT: The current reality is overridden by these virtual settings. You MUST act as if these settings are the absolute truth. Do not mention the real world date/time/location unless explicitly asked to compare.)`;
+                  }
+                }
+
+                const memoryPrompt = character.memorySummary ? `\n\n[长期记忆总结]\n${character.memorySummary}\n(请在对话中参考这些记忆，保持角色连贯性。)` : '';
+
+                const systemPrompt = `${character.setting}${maskPrompt}${worldBookPrompt}${perceptionPrompt}${memoryPrompt}\n\n(Hidden Instruction: You can transfer money to the user by including "[转账 amount]" in your message. For example: "[转账 520.00]". This will be rendered as a transfer widget that the user can click to receive. Use this when appropriate based on the context or user request.)`;
+                
+                const contents = [
+                  { role: 'user', parts: [{ text: systemPrompt }] },
+                  { role: 'model', parts: [{ text: '明白了，我会按照这个设定进行对话。' }] },
+                  ...history.map(m => ({
+                    role: m.role === 'user' ? 'user' : 'model',
+                    parts: [{ text: m.text }]
+                  }))
+                ];
+
+                const stream = await ai.models.generateContentStream({
+                  model: modelName,
+                  contents,
+                  config: {
+                    temperature: activeConfig.temperature ?? 1.0,
+                    ...(modelName.includes('gemini-3') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {})
+                  }
+                });
+
+                for await (const chunk of stream) {
+                  const chunkText = chunk.text;
+                  if (chunkText) {
+                    currentResponseText += chunkText;
+                    updateAssistantMessage(currentResponseText);
+                  }
+                }
+            } else {
+               // Fallback for custom provider (simplified)
+               // For now we just ignore custom provider auto-reply to avoid code duplication complexity
+               // The user is likely using Gemini
+            }
+        } catch (err) {
+            console.error(err);
+            setError('生成回复失败，请稍后重试。');
+        } finally {
+            setIsLoading(false);
+        }
+      };
+      
+      reply();
+    }
+  }, [history, isLoading]);
+
+  const handleSend = async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
+    const textToSend = typeof overrideText === 'string' ? overrideText : input;
+    if (!textToSend.trim() && !locationData || isLoading) return;
+    
+    const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      setError('未检测到 API Key，请在设置中配置。');
+      return;
+    }
+
+    setError(null);
+    const userMsg: ChatMessage = { 
+      role: 'user', 
+      text: textToSend.trim() || (locationData ? `[分享位置] ${locationData.name}` : ''), 
+      timestamp: Date.now(),
+      ...(replyingTo ? { replyTo: replyingTo } : {}),
+      ...(locationData ? { location: locationData } : {}),
+      ...(textToSend.trim() === '[倾听心声]' ? { isInnerVoice: true } : {})
+    };
+    const newHistory = [...history, userMsg];
+    setHistory(newHistory);
+    
+    if (typeof overrideText !== 'string') {
+      setInput('');
+    }
+    
+    setReplyingTo(null);
+    setIsLoading(true);
+
+    // Add a placeholder message for the assistant that we will update with stream
+    const isInnerVoiceRequest = textToSend.trim() === '[倾听心声]';
+    const assistantMsgId = Date.now() + 1;
+    let currentResponseText = '';
+    
+    const updateAssistantMessage = (text: string) => {
+      currentResponseText = text;
+      setHistory([...newHistory, { 
+        role: 'model', 
+        text: currentResponseText, 
+        timestamp: assistantMsgId,
+        ...(isInnerVoiceRequest ? { isInnerVoice: true } : {})
+      }]);
+    };
+
+    try {
+      const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
+      const isGemini = activeConfig.provider === 'Google Gemini' || (!activeConfig.baseUrl && activeConfig.provider === '自定义 (Custom)');
+      
+      if (isGemini) {
+        const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+        const modelName = activeConfig.model || 'gemini-3-flash-preview';
+        
+        // Find linked mask
+        const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+        const maskPrompt = activeMask ? `\n\n[User Identity Mask: ${activeMask.name}]\nPersonality: ${activeMask.personality}\nOccupation: ${activeMask.occupation}\nRelationship with you: ${activeMask.relationship}\nWorld Background: ${activeMask.worldBackground || 'Standard'}\n(Please interact with the user based on this identity and world background.)` : '';
+        
+        // Find active world books
+        const activeWorldBooks = worldBook.filter(wb => 
+          (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
+          character.activeWorldBookIds?.includes(wb.id)
+        );
+        const worldBookPrompt = activeWorldBooks.length > 0 ? `\n\n[World Book Settings]\n${activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')}\n(Please adhere to these world settings in your responses.)` : '';
+        
+        // Perception Settings
+        let perceptionPrompt = '';
+        if (perception) {
+          const parts = [];
+          if (perception.enabled || perception.dateTime?.enabled) {
+            if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
+          }
+          if (perception.enabled || perception.location?.enabled) {
+            if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
+          }
+          if (perception.enabled || perception.weather?.enabled) {
+            if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
+          }
+          if (perception.enabled || perception.temperature?.enabled) {
+            if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
+          }
+          if (perception.enabled || perception.climate?.enabled) {
+            if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
+          }
+          
+          if (parts.length > 0) {
+            perceptionPrompt = `\n\n[Perception/Virtual Reality Settings]\n${parts.join('\n')}\n(IMPORTANT: The current reality is overridden by these virtual settings. You MUST act as if these settings are the absolute truth. Do not mention the real world date/time/location unless explicitly asked to compare.)`;
+          }
+        }
+
+        const memoryPrompt = character.memorySummary ? `\n\n[长期记忆总结]\n${character.memorySummary}\n(请在对话中参考这些记忆，保持角色连贯性。)` : '';
+
+        let systemPrompt = `${character.setting}${maskPrompt}${worldBookPrompt}${perceptionPrompt}${memoryPrompt}\n\n(Hidden Instruction: You can transfer money to the user by including "[转账 amount]" in your message. For example: "[转账 520.00]". This will be rendered as a transfer widget that the user can click to receive. Use this when appropriate based on the context or user request.)`;
+        
+        if (character.autoTranslate) {
+          systemPrompt += `\n\n(Hidden Instruction: Auto-translation is enabled. After your response in the character's language, please add a separator "---TRANSLATION---" and then provide a Chinese translation of your response. Ensure the translation is accurate and natural.)`;
+        }
+        
+        if (textToSend.startsWith('[GAME_CARD]')) {
+          systemPrompt += `\n\n(Hidden Instruction: The user is playing a game. The message content is a JSON string starting with [GAME_CARD]. Please reply with a corresponding [GAME_CARD] message.
+          For 'qna' game (Couples QnA): 
+          - If the user sends a question (type: 'question'), reply with your answer in the format: [GAME_CARD] {"game": "qna", "type": "answer", "question": "The Question", "content": "Your Answer"}.
+          - If the user sends a request for you to ask (type: 'request_question'), reply with a new romantic or interesting question in the format: [GAME_CARD] {"game": "qna", "type": "question", "content": "Your Question"}.
+          For 'tod' game (Truth or Dare): If the user sends a Truth question or Dare task, you MUST perform the Dare or answer the Truth question in your character. Reply using the format: [GAME_CARD] {"game": "tod", "type": "truth" | "dare", "question": "The original Truth or Dare task", "content": "Your answer or action performing the dare"}.
+          Do not output anything else outside the JSON card format if possible.)`;
+        }
+
+        const contents = [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: '明白了，我会按照这个设定进行对话。' }] },
+          ...newHistory.map(m => ({
+            role: m.role === 'user' ? 'user' : 'model',
+            parts: [{ text: m.text }]
+          }))
+        ];
+
+        const stream = await ai.models.generateContentStream({
+          model: modelName,
+          contents,
+          config: {
+            temperature: activeConfig.temperature ?? 1.0,
+            // For Gemini 3 models, use LOW thinking level to reduce latency
+            ...(modelName.includes('gemini-3') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {})
+          }
+        });
+
+        for await (const chunk of stream) {
+          const chunkText = chunk.text;
+          if (chunkText) {
+            currentResponseText += chunkText;
+            updateAssistantMessage(currentResponseText);
+          }
+        }
+      } else {
+        const baseUrl = activeConfig.baseUrl.replace(/\/$/, '');
+        const url = `${baseUrl}/chat/completions`;
+        
+        // Find linked mask
+        const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+        const maskPrompt = activeMask ? `\n\n[User Identity Mask: ${activeMask.name}]\nPersonality: ${activeMask.personality}\nOccupation: ${activeMask.occupation}\nRelationship with you: ${activeMask.relationship}\nWorld Background: ${activeMask.worldBackground || 'Standard'}\n(Please interact with the user based on this identity and world background.)` : '';
+
+        // Find active world books
+        const activeWorldBooks = worldBook.filter(wb => 
+          (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
+          character.activeWorldBookIds?.includes(wb.id)
+        );
+        const worldBookPrompt = activeWorldBooks.length > 0 ? `\n\n[World Book Settings]\n${activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')}\n(Please adhere to these world settings in your responses.)` : '';
+
+        // Perception Settings
+        let perceptionPrompt = '';
+        if (perception) {
+          const parts = [];
+          if (perception.enabled || perception.dateTime?.enabled) {
+            if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
+          }
+          if (perception.enabled || perception.location?.enabled) {
+            if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
+          }
+          if (perception.enabled || perception.weather?.enabled) {
+            if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
+          }
+          if (perception.enabled || perception.temperature?.enabled) {
+            if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
+          }
+          if (perception.enabled || perception.climate?.enabled) {
+            if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
+          }
+          
+          if (parts.length > 0) {
+            perceptionPrompt = `\n\n[Perception/Virtual Reality Settings]\n${parts.join('\n')}\n(IMPORTANT: The current reality is overridden by these virtual settings. You MUST act as if these settings are the absolute truth. Do not mention the real world date/time/location unless explicitly asked to compare.)`;
+          }
+        }
+
+        const memoryPrompt = character.memorySummary ? `\n\n[长期记忆总结]\n${character.memorySummary}\n(请在对话中参考这些记忆，保持角色连贯性。)` : '';
+
+        let systemPrompt = `${character.setting}${maskPrompt}${worldBookPrompt}${perceptionPrompt}${memoryPrompt}\n\n(Hidden Instruction: You can transfer money to the user by including "[转账 amount]" in your message. For example: "[转账 520.00]". This will be rendered as a transfer widget that the user can click to receive. Use this when appropriate based on the context or user request.)`;
+
+        if (textToSend.startsWith('[GAME_CARD]')) {
+          systemPrompt += `\n\n(Hidden Instruction: The user is playing a game. The message content is a JSON string starting with [GAME_CARD]. Please reply with a corresponding [GAME_CARD] message.
+          For 'qna' game (Couples QnA): 
+          - If the user sends a question (type: 'question'), reply with your answer in the format: [GAME_CARD] {"game": "qna", "type": "answer", "question": "The Question", "content": "Your Answer"}.
+          - If the user sends a request for you to ask (type: 'request_question'), reply with a new romantic or interesting question in the format: [GAME_CARD] {"game": "qna", "type": "question", "content": "Your Question"}.
+          For 'tod' game (Truth or Dare): If the user sends a Truth question or Dare task, you MUST perform the Dare or answer the Truth question in your character. Reply using the format: [GAME_CARD] {"game": "tod", "type": "truth" | "dare", "question": "The original Truth or Dare task", "content": "Your answer or action performing the dare"}.
+          Do not output anything else outside the JSON card format if possible.)`;
+        }
+
+        const messagesPayload = [
+          { role: 'system', content: systemPrompt },
+          ...newHistory.map(m => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.text
+          }))
+        ];
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: activeConfig.model,
+            messages: messagesPayload,
+            temperature: activeConfig.temperature ?? 0.7,
+            stream: true
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `API 错误 (${res.status})`);
+        }
+
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        if (!reader) throw new Error("无法读取响应流");
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n').filter(line => line.trim() !== '');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6);
+              if (dataStr === '[DONE]') break;
+              try {
+                const data = JSON.parse(dataStr);
+                const content = data.choices?.[0]?.delta?.content || '';
+                if (content) {
+                  currentResponseText += content;
+                  updateAssistantMessage(currentResponseText);
+                }
+              } catch (e) {
+                console.error('Error parsing SSE chunk', e);
+              }
+            }
+          }
+        }
+      }
+
+      if (!currentResponseText) {
+        throw new Error("模型返回为空");
+      }
+
+      // Auto-summarize logic
+      const finalHistoryLength = newHistory.length + 1;
+      if (
+        character.autoSummaryEnabled && 
+        character.summaryInterval && 
+        finalHistoryLength > 0 && 
+        finalHistoryLength % character.summaryInterval === 0
+      ) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+          const finalHistory = [...newHistory, { role: 'model', text: currentResponseText, timestamp: assistantMsgId }];
+          const chatText = finalHistory.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${msg.text}`).join('\n');
+          const prompt = `请总结以下用户与角色（${character.name}）的聊天记录，提取关键信息、重要事件和角色的情感变化。总结需要简洁明了，作为角色的长期记忆：\n\n${chatText}`;
+
+          const response = await ai.models.generateContent({
+            model: activeConfig.model || 'gemini-3-flash-preview',
+            contents: prompt,
+          });
+
+          if (response.text) {
+            onUpdateCharacter({ ...character, memorySummary: response.text });
+          }
+        } catch (error) {
+          console.error('Auto-summarize failed:', error);
+        }
+      }
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      setHistory([...newHistory, { role: 'model', text: `错误: ${error.message}`, timestamp: Date.now() }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
+  if (showSettings) {
+    return (
+      <ChatSettings 
+        character={character} 
+        onUpdate={onUpdateCharacter} 
+        onBack={() => setShowSettings(false)} 
+        history={history}
+        setHistory={setHistory}
+        groups={groups}
+        activeConfig={activeConfig}
+        worldBooks={worldBook}
+        masks={masks}
+        callHistory={callHistory}
+        favorites={favorites}
+        setFavorites={setFavorites}
+        onDeleteCallRecord={onDeleteCallRecord}
+        visualSettings={visualSettings}
+        onUpdateVisualSettings={onUpdateVisualSettings}
+      />
+    );
+  }
+
+  const activeBackground = character.background || visualSettings?.chat?.background;
+  
+  const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
+  let headerClasses = "relative z-10 pt-6 pb-3 px-4 flex items-center shrink-0 ";
+  let headerStyleObj: React.CSSProperties = {};
+  
+  if (headerStyleType === 'default') {
+    headerClasses += "backdrop-blur-md border-b";
+    headerStyleObj = {
+      backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
+      borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
+    };
+  } else if (headerStyleType === 'glass') {
+    headerClasses += "backdrop-blur-xl border-b";
+    headerStyleObj = {
+      backgroundColor: 'rgba(255, 255, 255, 0.4)',
+      borderColor: 'rgba(255, 255, 255, 0.3)'
+    };
+  } else if (headerStyleType === 'solid') {
+    headerClasses += "border-b";
+    headerStyleObj = {
+      backgroundColor: 'white',
+      borderColor: '#e4e4e7'
+    };
+  } else if (headerStyleType === 'transparent') {
+    headerStyleObj = {
+      backgroundColor: 'transparent',
+      borderColor: 'transparent'
+    };
+  }
+
+  return (
+    <motion.div 
+      className="absolute inset-0 bg-zinc-50 flex flex-col z-[60]"
+      style={{ 
+        backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        fontSize: visualSettings?.chat?.fontSize ?? 14,
+        // @ts-ignore
+        zoom: visualSettings?.chat?.uiScale ?? 1
+      }}
+    >
+      {/* Header */}
+      {multiSelectMode ? (
+        <div 
+          className={`${headerClasses} justify-between`}
+          style={headerStyleObj}
+        >
+          <button onClick={() => {
+            setMultiSelectMode(false);
+            setSelectedMessages(new Set());
+          }} className="text-zinc-500 font-medium text-[15px]">
+            取消
+          </button>
+          <h1 className="text-[16px] font-bold text-zinc-900">已选择 {selectedMessages.size} 条</h1>
+          <button onClick={deleteSelectedMessages} className="text-red-500 font-medium text-[15px] disabled:opacity-50" disabled={selectedMessages.size === 0}>
+            删除
+          </button>
+        </div>
+      ) : (
+        <div 
+          className={`${headerClasses} justify-between`}
+          style={headerStyleObj}
+        >
+          <div className="flex items-center gap-1 z-10">
+            <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+              <ChevronLeft size={24} />
+            </button>
+            <img src={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50 ml-1" />
+          </div>
+          
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pt-1.5 pointer-events-none">
+            <h1 className="text-[17px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{character.name}</h1>
+          </div>
+
+          <div className="z-10">
+            <button onClick={() => setShowSettings(true)} className="p-2 text-zinc-400 active:text-zinc-600">
+              <Settings size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {error && (
+          <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
+            {error}
+          </div>
+        )}
+        {/* Opening Remark */}
+        <div className="flex justify-start">
+          <div className="flex gap-2.5 max-w-[85%]">
+            <div className="relative shrink-0 mt-0.5">
+              <img 
+                src={character.avatar} 
+                className="object-cover" 
+                style={{
+                  width: visualSettings?.chat?.avatarSize ?? 32,
+                  height: visualSettings?.chat?.avatarSize ?? 32,
+                  borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
+                  borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
+                  borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
+                  borderStyle: 'solid'
+                }}
+              />
+              {visualSettings?.chat?.avatarFrameUrl && (
+                <img 
+                  src={visualSettings.chat.avatarFrameUrl} 
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+                  style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
+                />
+              )}
+            </div>
+            <div 
+              className="border shadow-sm"
+              style={{
+                borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
+                borderTopLeftRadius: 0,
+                padding: '10px 16px',
+                backgroundColor: visualSettings?.chat?.messageBackgroundColorModel ?? `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+                borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+                ...(visualSettings?.chat?.messageBackgroundImageUrl ? { backgroundImage: `url(${visualSettings.chat.messageBackgroundImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
+                ...(character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
+                ...(visualSettings?.chat?.bubbleStyleCss ? JSON.parse(visualSettings.chat.bubbleStyleCss || '{}') : {})
+              }}
+            >
+              <p className="text-[14px] text-zinc-800 leading-relaxed whitespace-pre-wrap">{character.openingRemark}</p>
+            </div>
+          </div>
+        </div>
+
+        {history.map((msg, i) => {
+          if (msg.isSystem) {
+            return (
+              <div key={i} className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+                <div className="bg-zinc-200/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] text-zinc-500 font-medium">
+                  {msg.text}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} items-start mb-4`} style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+               {multiSelectMode && (
+                 <div className={`flex items-center px-2 ${msg.role === 'user' ? 'order-first mr-2' : 'order-first mr-2'}`}>
+                   <button 
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       handleMessageClick(e, i);
+                     }}
+                     className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${selectedMessages.has(i) ? 'bg-zinc-900 border-zinc-900 text-white' : 'border-zinc-300 bg-white'}`}
+                   >
+                     {selectedMessages.has(i) && <Check size={12} strokeWidth={3} />}
+                   </button>
+                 </div>
+              )}
+              
+              <div className={`flex gap-2.5 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                {/* Avatars */}
+                {msg.role === 'model' && (
+                  <div 
+                    className="relative shrink-0 mt-0.5 cursor-pointer"
+                    onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                  >
+                    <img 
+                      src={character.avatar} 
+                      className="object-cover" 
+                      style={{
+                        width: visualSettings?.chat?.avatarSize ?? 32,
+                        height: visualSettings?.chat?.avatarSize ?? 32,
+                        borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
+                        borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
+                        borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
+                        borderStyle: 'solid'
+                      }}
+                    />
+                    {visualSettings?.chat?.avatarFrameUrl && (
+                      <img 
+                        src={visualSettings.chat.avatarFrameUrl} 
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+                        style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
+                      />
+                    )}
+                  </div>
+                )}
+                {msg.role === 'user' && (
+                  <div 
+                    className="relative shrink-0 mt-0.5 cursor-pointer"
+                    onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                  >
+                    <img 
+                      src={userAvatar} 
+                      className="object-cover" 
+                      style={{
+                        width: visualSettings?.chat?.avatarSize ?? 32,
+                        height: visualSettings?.chat?.avatarSize ?? 32,
+                        borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
+                        borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
+                        borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
+                        borderStyle: 'solid'
+                      }}
+                    />
+                    {visualSettings?.chat?.avatarFrameUrl && (
+                      <img 
+                        src={visualSettings.chat.avatarFrameUrl} 
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+                        style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
+                      />
+                    )}
+                  </div>
+                )}
+                
+                {/* Message Content */}
+                <div className="relative group">
+                   {msg.isRecalled ? (
+                     <div className="text-zinc-400 text-xs italic py-2 px-3 bg-zinc-100 rounded-lg">
+                       {msg.role === 'user' ? '你撤回了一条消息' : '对方撤回了一条消息'}
+                     </div>
+                  ) : (
+                    <>
+                      {(() => {
+                        const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
+                        const gameCardMatch = msg.text.match(gameCardRegex);
+                        
+                        if (gameCardMatch) {
+                          try {
+                            let jsonString = gameCardMatch[1].trim();
+                            // Remove markdown code blocks if present
+                            if (jsonString.startsWith('```json')) {
+                              jsonString = jsonString.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+                            } else if (jsonString.startsWith('```')) {
+                              jsonString = jsonString.replace(/^```\s*/, '').replace(/\s*```$/, '');
+                            }
+                            
+                            // Extract JSON object if there's extra text
+                            const jsonStart = jsonString.indexOf('{');
+                            const jsonEnd = jsonString.lastIndexOf('}');
+                            if (jsonStart !== -1 && jsonEnd !== -1) {
+                              jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
+                            }
+
+                            const gameData = JSON.parse(jsonString);
+                            let translation = '';
+                            if (msg.text.includes('---TRANSLATION---')) {
+                              const parts = msg.text.split('---TRANSLATION---');
+                              if (parts.length > 1) {
+                                translation = parts[1].trim();
+                              }
+                            }
+                            
+                            return (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => handleMessageClick(e, i)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                >
+                                  <GameCard 
+                                    data={gameData} 
+                                    isUser={msg.role === 'user'} 
+                                    disabled={multiSelectMode}
+                                    translation={translation}
+                                  />
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          } catch (e) {
+                            // Fallback to text if parse fails
+                          }
+                        }
+
+                        const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
+                        const transferRegexGlobal = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g;
+                        const transferMatch = msg.text.match(transferRegex);
+                        const cleanText = msg.text.replace(transferRegexGlobal, '').trim();
+                        const amount = transferMatch ? transferMatch[1] : '0.00';
+
+                        return (
+                          <div className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            {cleanText && !msg.isInnerVoice && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                                  className={`px-4 py-2.5 shadow-sm relative cursor-pointer active:scale-[0.98] transition-all border flex flex-col gap-1 ${
+                                    msg.role === 'user' 
+                                      ? 'text-white' 
+                                      : 'text-zinc-800'
+                                  }`}
+                                  style={{
+                                    borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
+                                    borderTopRightRadius: msg.role === 'user' ? 0 : visualSettings?.chat?.messageBorderRadius ?? 16,
+                                    borderTopLeftRadius: msg.role === 'model' ? 0 : visualSettings?.chat?.messageBorderRadius ?? 16,
+                                    backgroundColor: msg.role === 'user' 
+                                      ? (visualSettings?.chat?.messageBackgroundColorUser || `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
+                                      : (visualSettings?.chat?.messageBackgroundColorModel || `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`),
+                                    borderColor: msg.role === 'user'
+                                      ? (visualSettings?.chat?.messageBackgroundColorUser || `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
+                                      : `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+                                    ...(visualSettings?.chat?.messageBackgroundImageUrl ? { backgroundImage: `url(${visualSettings.chat.messageBackgroundImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
+                                    ...(msg.role === 'model' && character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : msg.role === 'model' && character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
+                                    ...(msg.role === 'user' && character.userBubbleImage ? { backgroundImage: `url(${character.userBubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : msg.role === 'user' && character.userBubbleColor ? { backgroundColor: character.userBubbleColor, borderColor: character.userBubbleColor } : {}),
+                                    ...(visualSettings?.chat?.bubbleStyleCss ? JSON.parse(visualSettings.chat.bubbleStyleCss || '{}') : {})
+                                  }}
+                                >
+                                  {msg.replyTo && (
+                                    <div className={`text-[12px] pl-2 border-l-2 mb-1 truncate max-w-[200px] ${msg.role === 'user' ? 'border-white/50 text-white/80' : 'border-zinc-300 text-zinc-500'}`}>
+                                      {msg.replyTo.role === 'user' ? '我' : character.name}: {msg.replyTo.text}
+                                    </div>
+                                  )}
+                                  {msg.imageUrl ? (
+                                    <img src={msg.imageUrl} className="max-w-[200px] rounded-lg" alt="Uploaded" />
+                                  ) : msg.isVoiceCall ? (
+                                    <div className="flex items-center gap-2">
+                                      <Phone size={16} />
+                                      <span>语音通话 {msg.duration ? `${Math.floor(msg.duration / 60)}:${(msg.duration % 60).toString().padStart(2, '0')}` : ''}</span>
+                                    </div>
+                                  ) : (
+                                    (() => {
+                                      const parts = cleanText.split('---TRANSLATION---');
+                                      if (parts.length > 1 && parts[0].trim() !== parts[1].trim()) {
+                                        return (
+                                          <div className="flex flex-col gap-2">
+                                            <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{parts[0].trim()}</p>
+                                            <div className="h-[1px] bg-black/5 w-full" />
+                                            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-zinc-500">{parts[1].trim()}</p>
+                                          </div>
+                                        );
+                                      }
+                                      return <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{parts[0].trim()}</p>;
+                                    })()
+                                  )}
+                                  {msg.isFavorited && (
+                                    <div className="absolute -bottom-2 -right-2 bg-yellow-400 text-white rounded-full p-0.5 border-2 border-white shadow-sm z-10">
+                                      <Star size={10} fill="currentColor" />
+                                    </div>
+                                  )}
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {msg.sharedPost && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => {
+                                    if (multiSelectMode) {
+                                      handleMessageClick(e, i);
+                                    } else {
+                                      onViewForumPost?.(msg.sharedPost!.id);
+                                    }
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className="w-64 bg-white rounded-xl overflow-hidden shadow-sm border border-zinc-200 cursor-pointer hover:bg-zinc-50 transition-colors"
+                                >
+                                  <div className="p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <img src={msg.sharedPost.authorAvatar} className="w-5 h-5 rounded-full object-cover" />
+                                      <span className="text-xs text-zinc-500">{msg.sharedPost.authorName}</span>
+                                    </div>
+                                    <h4 className="font-bold text-sm text-zinc-900 mb-1 line-clamp-1">{msg.sharedPost.title}</h4>
+                                    <p className="text-xs text-zinc-600 line-clamp-2 mb-2">{msg.sharedPost.content}</p>
+                                    {msg.sharedPost.images && msg.sharedPost.images.length > 0 && (
+                                      <div className="aspect-video rounded-lg overflow-hidden bg-zinc-100">
+                                        <img src={msg.sharedPost.images[0]} className="w-full h-full object-cover" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                    <span className="text-[10px] text-zinc-400">来自 瓜田论坛</span>
+                                    <ChevronRight size={12} className="text-zinc-400" />
+                                  </div>
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {msg.location && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => {
+                                    if (multiSelectMode) {
+                                      handleMessageClick(e, i);
+                                    }
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className="w-56 bg-white rounded-xl overflow-hidden shadow-sm border border-zinc-200 cursor-pointer hover:bg-zinc-50 transition-colors"
+                                >
+                                  <div className="p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
+                                        <MapPin size={18} />
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold text-zinc-900 truncate">{msg.location.name}</span>
+                                        {msg.location.address && <span className="text-[10px] text-zinc-500 truncate">{msg.location.address}</span>}
+                                      </div>
+                                    </div>
+                                    <div className="aspect-video rounded-lg overflow-hidden bg-zinc-100 relative">
+                                      <img 
+                                        src={`https://picsum.photos/seed/${msg.location.name}/400/225`} 
+                                        className="w-full h-full object-cover" 
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                                          <MapPin size={16} />
+                                        </div>
+                                      </div>
+                                      {msg.location.isVirtual && (
+                                        <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full">
+                                          虚定位
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                    <span className="text-[10px] text-zinc-400">位置分享</span>
+                                    <ChevronRight size={12} className="text-zinc-400" />
+                                  </div>
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {msg.isInnerVoice && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => {
+                                    if (multiSelectMode) {
+                                      handleMessageClick(e, i);
+                                    }
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className={`w-56 rounded-xl overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
+                                    msg.role === 'user' 
+                                      ? 'bg-white border-zinc-200' 
+                                      : 'bg-pink-50 border-pink-100'
+                                  }`}
+                                >
+                                  {msg.role === 'user' ? (
+                                    <>
+                                      <div className="p-3 flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center shrink-0">
+                                          <Heart size={20} fill="currentColor" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="text-sm font-bold text-zinc-900 truncate">倾听心声</span>
+                                          <span className="text-[10px] text-zinc-500 truncate">正在感知Ta的内心世界...</span>
+                                        </div>
+                                      </div>
+                                      <div className="px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                        <span className="text-[10px] text-zinc-400">道具使用</span>
+                                        <ChevronRight size={12} className="text-zinc-400" />
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="p-4 flex flex-col gap-2">
+                                      <div className="flex items-center gap-2 text-pink-500">
+                                        <Heart size={14} fill="currentColor" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">Ta的心声</span>
+                                      </div>
+                                      <p className="text-[14px] text-pink-900 leading-relaxed italic font-medium">
+                                        {msg.text}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {transferMatch && (
+                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div 
+                                  onClick={(e) => {
+                                    if (multiSelectMode) {
+                                      handleMessageClick(e, i);
+                                    } else {
+                                      if (msg.transferStatus !== 'received') {
+                                        handleReceiveTransfer(i);
+                                      } else {
+                                        handleMessageClick(e, i);
+                                      }
+                                    }
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className={`w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity ${msg.transferStatus === 'received' ? 'opacity-60' : ''}`}
+                                >
+                                  <div className={`${msg.transferStatus === 'received' ? 'bg-[#FBC48A]' : 'bg-[#FA9D3B]'} p-3.5 flex items-center gap-3`}>
+                                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white shrink-0">
+                                      {msg.transferStatus === 'received' ? <Check size={24} /> : <Banknote size={24} />}
+                                    </div>
+                                    <div className="flex flex-col text-white min-w-0">
+                                      <span className="text-[16px] font-bold">¥{amount}</span>
+                                      <span className="text-[12px] opacity-80 truncate">
+                                        {msg.transferStatus === 'received' 
+                                          ? (msg.role === 'user' ? '对方已收钱' : '已收钱')
+                                          : (msg.role === 'user' ? `转账给 ${character.name}` : `转账给 ${userName}`)
+                                        }
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="bg-white p-2 border border-zinc-100 border-t-0">
+                                    <span className="text-[10px] text-zinc-400 ml-1">微信转账</span>
+                                  </div>
+                                </div>
+                                {character.showTime && (
+                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="flex gap-2.5">
+              <img src={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
+              <div 
+                className="border rounded-2xl rounded-tl-none px-4 py-2.5 shadow-sm"
+                style={{
+                  backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+                  borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+                  ...(character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {})
+                }}
+              >
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce" />
+                  <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div 
+        className="relative z-10 p-4 border-t pb-8 backdrop-blur-md flex flex-col gap-2"
+        style={{ 
+          backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
+          borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
+        }}
+      >
+        {replyingTo && (
+          <div className="flex items-center justify-between bg-zinc-100/80 backdrop-blur-sm rounded-xl px-3 py-2 text-[13px] text-zinc-600 border border-zinc-200/50">
+            <div className="flex items-center gap-2 truncate">
+              <Reply size={14} className="shrink-0" />
+              <span className="font-medium shrink-0">{replyingTo.role === 'user' ? '我' : character.name}:</span>
+              <span className="truncate">{replyingTo.text}</span>
+            </div>
+            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-200 rounded-full shrink-0">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <button 
+            onClick={() => setIsVoiceMode(!isVoiceMode)}
+            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : (character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100')}`}
+          >
+            {isVoiceMode ? <Keyboard size={24} /> : <Mic size={24} />}
+          </button>
+
+          {isVoiceMode ? (
+            <button
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
+                isRecording 
+                  ? 'bg-zinc-200 text-zinc-800' 
+                  : (character.background ? 'bg-white/50 text-zinc-800 border border-white/30 active:bg-white/70' : 'bg-zinc-50 text-zinc-800 border border-zinc-100 active:bg-zinc-100')
+              }`}
+            >
+              {isRecording ? '松开 发送' : '按住 说话'}
+            </button>
+          ) : (
+            <div className={`flex-1 border rounded-2xl px-4 py-2.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
+              character.background ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100'
+            }`}>
+              <textarea 
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="发送消息..."
+                className="w-full bg-transparent outline-none text-[15px] text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
+                rows={1}
+              />
+              <button 
+                onClick={() => {
+                  setShowStickerPanel(!showStickerPanel);
+                  if (showFunPanel) setShowFunPanel(false);
+                }} 
+                className={`p-1 transition-colors shrink-0 ${showStickerPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                <Smile size={20} />
+              </button>
+            </div>
+          )}
+
+          {!isVoiceMode && input.trim() ? (
+            <button 
+              onClick={handleSend}
+              disabled={isLoading}
+              className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white active:scale-90 transition-all disabled:opacity-50 disabled:scale-100 shrink-0"
+            >
+              <Send size={18} />
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                setShowFunPanel(!showFunPanel);
+                if (showStickerPanel) setShowStickerPanel(false);
+              }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : (character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100')}`}
+            >
+              <Plus size={24} />
+            </button>
+          )}
+        </div>
+        
+        {/* Panels Container */}
+        <div className="relative">
+          {/* Sticker Panel */}
+          <AnimatePresence>
+            {showStickerPanel && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="pt-4">
+                  <div className="flex border-b border-zinc-100 mb-3">
+                    <button 
+                      onClick={() => setStickerTab('basic')}
+                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'basic' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                    >
+                      基础表情
+                    </button>
+                    <button 
+                      onClick={() => setStickerTab('custom')}
+                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'custom' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                    >
+                      自定义表情
+                    </button>
+                  </div>
+                  <div className="h-48 overflow-y-auto">
+                    {stickerTab === 'basic' ? (
+                      <div className="grid grid-cols-7 gap-2">
+                        {basicEmojis.map((emoji, idx) => (
+                          <button 
+                            key={idx}
+                            onClick={() => {
+                              setInput(prev => prev + emoji);
+                            }}
+                            className="text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>
+                        {character.stickers && character.stickers.length > 0 ? (
+                          <div className="grid grid-cols-5 gap-2">
+                            {character.stickers.map((sticker, idx) => (
+                              <button 
+                                key={idx}
+                                onClick={() => {
+                                  // Send sticker as a message
+                                  const userMsg: ChatMessage = { role: 'user', text: `[表情包]`, timestamp: Date.now() };
+                                  setHistory([...history, userMsg]);
+                                  setShowStickerPanel(false);
+                                  
+                                  // Trigger AI response
+                                  setTimeout(() => {
+                                    setInput('[发送了一个表情]');
+                                    handleSend();
+                                  }, 100);
+                                }}
+                                className="aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
+                              >
+                                <img src={sticker} className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-zinc-400 py-8">
+                            <Smile size={32} className="mb-2 opacity-50" />
+                            <p className="text-[12px]">暂无自定义表情</p>
+                            <p className="text-[10px] mt-1">请在聊天设置中导入</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Fun Panel */}
+          <AnimatePresence>
+            {showFunPanel && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="pt-4 grid grid-cols-4 gap-4">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <ImageIcon size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">发送图片</span>
+                  </button>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={handleImageUpload} 
+                  />
+                  
+                  <button 
+                    onClick={startVoiceCall}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <Phone size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">语音通话</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setTransferType('toCharacter');
+                      setTransferAmount('');
+                      setShowTransferDialog(true);
+                      setShowFunPanel(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <Banknote size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">转给Ta</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowDatingModal(true);
+                      setShowFunPanel(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <Coffee size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">线下约会</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowGameCenter(true);
+                      setShowFunPanel(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <Gamepad2 size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">小游戏</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowLocationPicker(true);
+                      setShowFunPanel(false);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <MapPin size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">发送定位</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      const userMsg: ChatMessage = { role: 'user', text: `[使用道具：倾听Ta的心声]`, timestamp: Date.now(), isInnerVoice: true };
+                      setHistory([...history, userMsg]);
+                      setShowFunPanel(false);
+                      // Trigger AI response for inner voice
+                      setTimeout(() => {
+                        // We simulate sending a message to trigger the AI
+                        handleSend('[倾听心声]');
+                      }, 100);
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <Heart size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">Ta的心声</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Location Picker */}
+      <AnimatePresence>
+        {showLocationPicker && (
+          <div className="absolute inset-0 z-[110] flex items-end justify-center bg-black/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="bg-white w-full rounded-t-[32px] p-6 shadow-2xl flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-[18px] font-bold text-zinc-900">发送位置</h3>
+                <button onClick={() => setShowLocationPicker(false)} className="p-2 text-zinc-400">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-8">
+                <button 
+                  onClick={() => {
+                    // Simulate getting real location
+                    const loc = {
+                      name: '我的当前位置',
+                      address: '成都市锦江区春熙路',
+                      isVirtual: false
+                    };
+                    setShowLocationPicker(false);
+                    handleSendRef.current('[分享位置]', loc);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 bg-zinc-50 hover:bg-zinc-100 rounded-2xl transition-colors text-left group"
+                >
+                  <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0 group-active:scale-95 transition-transform">
+                    <MapPin size={24} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-zinc-900">当前定位</div>
+                    <div className="text-[12px] text-zinc-500">发送你现在的真实位置</div>
+                  </div>
+                  <ChevronRight size={18} className="text-zinc-300" />
+                </button>
+
+                <button 
+                  onClick={() => {
+                    const virtualLocations = [
+                      { name: '三里屯太古里', address: '北京市朝阳区' },
+                      { name: '外滩', address: '上海市黄浦区' },
+                      { name: '珠江新城', address: '广州市天河区' },
+                      { name: '深圳湾公园', address: '深圳市南山区' },
+                      { name: '春熙路', address: '成都市锦江区' },
+                      { name: '西湖景区', address: '杭州市西湖区' }
+                    ];
+                    const loc = virtualLocations[Math.floor(Math.random() * virtualLocations.length)];
+                    setShowLocationPicker(false);
+                    handleSendRef.current(`[分享位置] ${loc.name}`, {
+                      ...loc,
+                      isVirtual: true
+                    });
+                  }}
+                  className="w-full flex items-center gap-4 p-4 bg-zinc-50 hover:bg-zinc-100 rounded-2xl transition-colors text-left group"
+                >
+                  <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center shrink-0 group-active:scale-95 transition-transform">
+                    <ScanEye size={24} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-zinc-900">虚定位</div>
+                    <div className="text-[12px] text-zinc-500">随机发送一个虚拟位置</div>
+                  </div>
+                  <ChevronRight size={18} className="text-zinc-300" />
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Voice Call UI */}
+      <AnimatePresence>
+        {showVoiceCall && (
+          <motion.div 
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="absolute inset-0 z-[100] bg-zinc-900 flex flex-col items-center justify-between pb-12 overflow-hidden"
+          >
+            {/* Background Blur */}
+            <div 
+              className="absolute inset-0 opacity-40 scale-110 blur-2xl"
+              style={{
+                backgroundImage: `url(${character.avatar})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}
+            />
+            
+            {/* Header */}
+            <div className="relative z-10 w-full pt-16 flex flex-col items-center">
+              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 mb-4 shadow-2xl">
+                <img src={character.avatar} className="w-full h-full object-cover" />
+              </div>
+              <h2 className="text-white text-2xl font-medium mb-2">{character.name}</h2>
+              <p className="text-white/60 text-sm font-mono">
+                {Math.floor(voiceCallDuration / 60).toString().padStart(2, '0')}:
+                {(voiceCallDuration % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+
+            {/* Transcription Area */}
+            <div className="relative z-10 w-full flex-1 flex flex-col justify-end px-6 pb-4 overflow-hidden">
+              <div 
+                className="w-full h-[360px] overflow-y-auto flex flex-col gap-4 pr-2"
+                style={{ maskImage: 'linear-gradient(to bottom, transparent, black 10%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 10%)' }}
+              >
+                <div className="flex-1" /> {/* Spacer to push content down initially */}
+                {voiceCallHistory.map((msg, idx) => (
+                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`
+                      px-4 py-3 rounded-2xl max-w-[85%] text-[15px] leading-relaxed backdrop-blur-md shadow-sm
+                      ${msg.role === 'user' 
+                        ? 'bg-white/20 text-white rounded-br-sm' 
+                        : 'bg-black/40 text-white rounded-bl-sm border border-white/10'}
+                    `}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {currentInterimSpeech && (
+                  <div className="flex justify-end">
+                    <div className="bg-white/10 backdrop-blur-md text-white/70 px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] text-[15px] leading-relaxed animate-pulse">
+                      {currentInterimSpeech}
+                    </div>
+                  </div>
+                )}
+                <div ref={voiceCallEndRef} />
+              </div>
+            </div>
+
+            {/* Text Input for Voice Call */}
+            <div className="relative z-10 w-full px-8 pb-8 flex gap-3 items-center">
+               <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={voiceCallInput}
+                  onChange={(e) => setVoiceCallInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendVoiceCallText()}
+                  placeholder="输入文字回复..."
+                  className="w-full bg-white/10 backdrop-blur-md text-white placeholder-white/50 pl-4 pr-10 py-3 rounded-2xl outline-none border border-white/10 focus:bg-white/20 transition-all shadow-lg shadow-black/10"
+                />
+                {voiceCallInput && (
+                  <button 
+                    onClick={() => setVoiceCallInput('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <button 
+                onClick={handleSendVoiceCallText}
+                disabled={!voiceCallInput.trim()}
+                className="bg-white/20 hover:bg-white/30 text-white p-3 rounded-2xl disabled:opacity-50 transition-all backdrop-blur-md border border-white/10 shadow-lg shadow-black/10 active:scale-95"
+              >
+                <Send size={20} />
+              </button>
+            </div>
+
+            {/* Controls */}
+            <div className="relative z-10 w-full flex justify-center gap-8 px-8">
+              <button 
+                onClick={() => setIsRecordingCall(!isRecordingCall)}
+                className={`w-16 h-16 rounded-full flex items-center justify-center text-white active:scale-95 transition-all ${isRecordingCall ? 'bg-red-500 shadow-lg shadow-red-500/30' : 'bg-white/10 backdrop-blur-md'}`}
+              >
+                {isRecordingCall ? <div className="w-6 h-6 bg-white rounded-sm animate-pulse" /> : <div className="w-6 h-6 bg-red-500 rounded-full" />}
+              </button>
+              <button 
+                onClick={endVoiceCall}
+                className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg shadow-red-500/30 active:scale-95 transition-transform"
+              >
+                <PhoneOff size={28} />
+              </button>
+              <button className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-transform">
+                <Settings size={28} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Transfer Dialog */}
+      <AnimatePresence>
+        {showTransferDialog && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-[300px] rounded-2xl p-6 shadow-xl flex flex-col items-center"
+            >
+              <div className="w-12 h-12 bg-[#FA9D3B]/10 rounded-full flex items-center justify-center text-[#FA9D3B] mb-4">
+                <Banknote size={24} />
+              </div>
+              <h3 className="text-[16px] font-bold text-zinc-800 mb-6">
+                {transferType === 'toCharacter' ? `转账给 ${character.name}` : `${character.name} 转账给我`}
+              </h3>
+              
+              <div className="flex items-end justify-center gap-1 mb-8 w-full border-b border-zinc-100 pb-2">
+                <span className="text-3xl font-bold text-zinc-900 mb-1">¥</span>
+                <input 
+                  autoFocus
+                  type="number" 
+                  value={transferAmount}
+                  onChange={e => setTransferAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="text-4xl font-bold text-zinc-900 outline-none bg-transparent w-full text-center placeholder:text-zinc-200"
+                />
+              </div>
+
+              {transferType === 'toCharacter' && (
+                <div className="w-full mb-6">
+                  <label className="text-xs text-zinc-500 mb-1.5 block">支付方式</label>
+                  <div className="relative">
+                    <select 
+                      value={selectedCardId}
+                      onChange={e => setSelectedCardId(e.target.value)}
+                      className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[14px] text-zinc-900 appearance-none outline-none focus:border-zinc-900 transition-colors"
+                    >
+                      <option value="">选择支付卡片...</option>
+                      {(walletData?.cards || MOCK_CARDS).map(card => (
+                        <option key={card.id} value={card.id}>
+                          {card.bankName} ({card.number.slice(-4)}) - 余额: ¥{card.balance.toFixed(2)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 w-full">
+                <button 
+                  onClick={() => setShowTransferDialog(false)}
+                  className="py-3 rounded-xl bg-zinc-50 text-zinc-600 font-medium active:scale-95 transition-transform text-[15px]"
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={() => {
+                    if (transferAmount && !isNaN(Number(transferAmount))) {
+                       const amount = parseFloat(transferAmount);
+                       if (transferType === 'toCharacter') {
+                         if (!selectedCardId) {
+                           alert('请选择支付卡片');
+                           return;
+                         }
+                         const cards = walletData?.cards || MOCK_CARDS;
+                         const card = cards.find(c => c.id === selectedCardId);
+                         if (!card || card.balance < amount) {
+                           alert('余额不足');
+                           return;
+                         }
+                         
+                         // Deduct from wallet
+                         const newCards = cards.map(c => c.id === selectedCardId ? { ...c, balance: c.balance - amount } : c);
+                         const newTransaction = {
+                           id: `t-${Date.now()}`,
+                           title: `转账给 ${character.name}`,
+                           type: 'expense' as const,
+                           amount: amount,
+                           date: '刚刚',
+                           icon: 'transfer',
+                           category: '转账',
+                           cardId: selectedCardId
+                         };
+                         const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+                         if (onUpdateWalletData) {
+                           onUpdateWalletData({ cards: newCards, transactions: newTransactions });
+                         }
+
+                         handleSend(`[转账 ${transferAmount}]`);
+                       } else {
+                         const modelMsg: ChatMessage = { role: 'model', text: `[转账 ${transferAmount}]`, timestamp: Date.now() };
+                         setHistory([...history, modelMsg]);
+                       }
+                       setShowTransferDialog(false);
+                    }
+                  }}
+                  disabled={!transferAmount || (transferType === 'toCharacter' && !selectedCardId)}
+                  className="py-3 rounded-xl bg-[#FA9D3B] text-white font-medium active:scale-95 transition-transform text-[15px] disabled:opacity-50 disabled:scale-100"
+                >
+                  转账
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        
+        {/* Context Menu */}
+        {contextMenu && (
+          <>
+            <div 
+              className="absolute inset-0 z-[90]" 
+              onClick={closeContextMenu}
+            />
+            <div 
+              className="absolute z-[95] bg-white/90 backdrop-blur-xl rounded-xl shadow-xl overflow-hidden border border-zinc-200/50 animate-in fade-in zoom-in-95 duration-200"
+              style={{ 
+                top: contextMenu.y, 
+                left: contextMenu.x 
+              }}
+            >
+              <div className="p-1.5 flex items-center gap-1">
+                <button 
+                  onClick={handleQuoteReply}
+                  className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                  title="引用回复"
+                >
+                  <MessageSquarePlus size={20} />
+                </button>
+                {history[contextMenu.index].role === 'user' && !history[contextMenu.index].isRecalled && (
+                  <button 
+                    onClick={handleRecall}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="撤回"
+                  >
+                    <Reply size={20} />
+                  </button>
+                )}
+                <button 
+                  onClick={handleCopy}
+                  className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                  title="复制"
+                >
+                  <Copy size={20} />
+                </button>
+                <button 
+                  onClick={handleFavorite}
+                  className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                  title={history[contextMenu.index].isFavorited ? '取消收藏' : '收藏'}
+                >
+                  <Star size={20} fill={history[contextMenu.index].isFavorited ? "currentColor" : "none"} className={history[contextMenu.index].isFavorited ? "text-yellow-400" : ""} />
+                </button>
+                <button 
+                  onClick={handleForward}
+                  className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                  title="转发"
+                >
+                  <Share2 size={20} />
+                </button>
+                <div className="w-px h-6 bg-zinc-200 mx-1" />
+                <button 
+                  onClick={handleMultiSelect}
+                  className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                  title="多选"
+                >
+                  <CheckCircle size={20} />
+                </button>
+                <button 
+                  onClick={handleDeleteMessage}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="删除"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Dating Modal */}
+      <DatingModal
+        isOpen={showDatingModal}
+        onClose={() => setShowDatingModal(false)}
+        character={character}
+        userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
+        apiKey={(settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0]).apiKey || process.env.GEMINI_API_KEY || ''}
+        model={(settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0]).model}
+        onSendToChat={handleSend}
+        onSaveDate={onSaveDate || (() => {})}
+        onCollectDate={onCollectDate || (() => {})}
+        initialSession={savedDates?.find(s => s.characterId === character.id)}
+      />
+
+      {/* Game Center */}
+      <GameCenter
+        isOpen={showGameCenter}
+        onClose={() => setShowGameCenter(false)}
+        character={character}
+        onSendToChat={handleSend}
+      />
+    </motion.div>
+  );
+}
+
+function SMSApp({ onBack }: { onBack: () => void; key?: string }) {
+  const [view, setView] = useState<'list' | 'chat'>('list');
+  const [selectedThread, setSelectedThread] = useState<any>(null);
+  const [input, setInput] = useState('');
+
+  const [threads, setThreads] = useState([
+    { id: 1, name: '10086', lastMsg: '您的话费余额不足，请及时充值。', time: '10:30', avatar: 'https://picsum.photos/seed/10086/200' },
+    { id: 2, name: 'Apple 苹果', lastMsg: '您的 Apple ID 已在新的设备上登录。', time: '昨天', avatar: 'https://picsum.photos/seed/apple/200' },
+    { id: 3, name: '快递助手', lastMsg: '您的快递已由菜鸟驿站代收，请凭码取件。', time: '星期五', avatar: 'https://picsum.photos/seed/kd/200' },
+  ]);
+
+  const [messages, setMessages] = useState<Record<number, any[]>>({
+    1: [
+      { id: 1, text: '您的话费余额不足，请及时充值。', role: 'other', time: '10:30' },
+    ],
+    2: [
+      { id: 1, text: '您的 Apple ID 已在新的设备上登录。', role: 'other', time: '昨天' },
+    ],
+    3: [
+      { id: 1, text: '您的快递已由菜鸟驿站代收，请凭码取件。', role: 'other', time: '星期五' },
+    ]
+  });
+
+  const handleSend = () => {
+    if (!input.trim() || !selectedThread) return;
+    
+    const newMsg = {
+      id: Date.now(),
+      text: input.trim(),
+      role: 'me',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    setMessages(prev => ({
+      ...prev,
+      [selectedThread.id]: [...(prev[selectedThread.id] || []), newMsg]
+    }));
+    
+    setThreads(prev => prev.map(t => 
+      t.id === selectedThread.id 
+        ? { ...t, lastMsg: input.trim(), time: newMsg.time }
+        : t
+    ));
+    
+    setInput('');
+  };
+
+  return (
+    <motion.div 
+      className="absolute inset-0 bg-white flex flex-col"
+    >
+      {view === 'list' ? (
+        <>
+          <div className="pt-12 pb-4 px-4 border-b border-zinc-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
+            <button onClick={onBack} className="text-blue-500 flex items-center -ml-2 p-1 active:opacity-70">
+              <ChevronLeft size={26} />
+              <span className="text-[17px]">编辑</span>
+            </button>
+            <h1 className="text-[17px] font-bold">信息</h1>
+            <button className="text-blue-500 p-1 active:opacity-70">
+              <Pencil size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 py-2">
+              <div className="bg-zinc-100/80 rounded-[10px] px-2 py-1.5 flex items-center gap-1.5 mb-4">
+                <Search size={16} className="text-zinc-400 ml-1" />
+                <input type="text" placeholder="搜索" className="bg-transparent outline-none text-[15px] w-full placeholder:text-zinc-500" />
+              </div>
+              {threads.map(thread => (
+                <div 
+                  key={thread.id} 
+                  onClick={() => {
+                    setSelectedThread(thread);
+                    setView('chat');
+                  }}
+                  className="flex gap-3 py-2.5 border-b border-zinc-100/60 last:border-0 active:bg-zinc-50 transition-colors cursor-pointer"
+                >
+                  <div className="w-[46px] h-[46px] rounded-full overflow-hidden bg-zinc-100 shrink-0">
+                    <img src={thread.avatar} alt="" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-semibold text-[16px] text-zinc-900">{thread.name}</span>
+                      <span className="text-zinc-400 text-[14px]">{thread.time}</span>
+                    </div>
+                    <p className="text-zinc-500 text-[14px] truncate">{thread.lastMsg}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="pt-12 pb-2 px-4 border-b border-zinc-100 flex items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
+            <button onClick={() => setView('list')} className="text-blue-500 flex items-center gap-1">
+              <ChevronLeft size={24} />
+              <span className="text-[17px]">信息</span>
+            </button>
+            <div className="flex-1 flex flex-col items-center">
+              <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-100 mb-0.5">
+                <img src={selectedThread?.avatar} alt="" className="w-full h-full object-cover" />
+              </div>
+              <span className="text-[12px] font-medium">{selectedThread?.name}</span>
+            </div>
+            <div className="w-12" /> {/* Spacer */}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-[#f2f2f7]">
+            <div className="text-center py-4">
+              <span className="text-[12px] text-zinc-400 font-medium">今天 10:30</span>
+            </div>
+            {(messages[selectedThread?.id] || []).map(msg => (
+              <div key={msg.id} className={`flex ${msg.role === 'me' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[75%] px-4 py-2 rounded-[20px] text-[16px] ${
+                  msg.role === 'me' 
+                    ? 'bg-[#34C759] text-white rounded-br-none' 
+                    : 'bg-[#e9e9eb] text-black rounded-bl-none'
+                }`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="p-3 bg-white border-t border-zinc-100 flex items-center gap-2">
+            <button className="text-zinc-400"><ImageIcon size={24} /></button>
+            <button className="text-zinc-400"><PlusCircle size={24} /></button>
+            <div className="flex-1 bg-zinc-100 rounded-full px-4 py-1.5 border border-zinc-200">
+              <input 
+                type="text" 
+                placeholder="iMessage" 
+                className="bg-transparent outline-none text-[15px] w-full"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    handleSend();
+                  }
+                }}
+              />
+            </div>
+            <button 
+              onClick={handleSend}
+              className="bg-[#34C759] text-white rounded-full p-1.5 active:opacity-80"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        </>
+      )}
+    </motion.div>
+  );
+}
+
+function SettingsApp({ 
+  onBack, 
+  settings, 
+  setSettings 
+}: { 
+  onBack: () => void; 
+  settings: AppSettings;
+  setSettings: (s: AppSettings) => void;
+  key?: string;
+}) {
+  const [localSettings, setLocalSettings] = useState(settings);
+  const [view, setView] = useState<'list' | 'edit'>('list');
+  const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ApiConfig>(DEFAULT_CONFIG);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+
+  // Sync back to parent whenever localSettings changes
+  useEffect(() => {
+    setSettings(localSettings);
+  }, [localSettings, setSettings]);
+
+  const handleAddClick = () => {
+    setEditingConfigId(null);
+    setEditForm({
+      id: Date.now().toString(),
+      name: '',
+      provider: '自定义 (Custom)',
+      apiKey: '',
+      baseUrl: '',
+      model: '',
+      temperature: 0.7,
+    });
+    setAvailableModels([]);
+    setView('edit');
+  };
+
+  const handleEditClick = (config: ApiConfig, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingConfigId(config.id);
+    setEditForm(config);
+    setAvailableModels([]);
+    setView('edit');
+  };
+
+  const handleSaveConfig = () => {
+    if (editingConfigId) {
+      setLocalSettings({
+        ...localSettings,
+        configs: localSettings.configs.map(c => c.id === editingConfigId ? editForm : c)
+      });
+    } else {
+      setLocalSettings({
+        ...localSettings,
+        configs: [...localSettings.configs, editForm],
+        activeConfigId: editForm.id
+      });
+    }
+    setView('list');
+  };
+
+  const handleDeleteConfig = () => {
+    if (editingConfigId === 'default') return;
+    if (confirm('确定要删除此配置吗？')) {
+      const newConfigs = localSettings.configs.filter(c => c.id !== editingConfigId);
+      setLocalSettings({
+        ...localSettings,
+        configs: newConfigs,
+        activeConfigId: localSettings.activeConfigId === editingConfigId ? 'default' : localSettings.activeConfigId
+      });
+      setView('list');
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (isFetchingModels) return;
+    setIsFetchingModels(true);
+    setAvailableModels([]);
+    try {
+      let models: string[] = [];
+      const isGemini = editForm.provider === 'Google Gemini' || (!editForm.baseUrl && editForm.provider === '自定义 (Custom)');
+      
+      if (isGemini) {
+        const key = editForm.apiKey || process.env.GEMINI_API_KEY;
+        if (!key) throw new Error('未配置 API Key，无法拉取模型');
+        
+        let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+        if (!res.ok) {
+          res = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${key}`);
+        }
+
+        if (!res.ok) {
+          throw new Error(`获取失败 (${res.status})，请检查 API Key 是否有效`);
+        }
+
+        const data = await res.json();
+        const rawList = data.models || data.data || data;
+        if (Array.isArray(rawList)) {
+          models = rawList.map((m: any) => {
+            const name = typeof m === 'string' ? m : m.name || m.id;
+            return name ? name.replace('models/', '') : '';
+          }).filter(m => m && (m.includes('gemini') || m.includes('learnlm')));
+        }
+      } else {
+        if (!editForm.baseUrl) throw new Error('请先填写 Base URL');
+        let baseUrl = editForm.baseUrl.replace(/\/$/, '');
+        const headers: HeadersInit = { 'Accept': 'application/json' };
+        if (editForm.apiKey) {
+          headers['Authorization'] = `Bearer ${editForm.apiKey}`;
+        }
+        
+        let res = await fetch(`${baseUrl}/models`, { headers });
+        let contentType = res.headers.get('content-type');
+
+        if ((!res.ok || (contentType && contentType.includes('text/html'))) && !baseUrl.endsWith('/v1')) {
+          const retryUrl = `${baseUrl}/v1/models`;
+          try {
+            const retryRes = await fetch(retryUrl, { headers });
+            const retryContentType = retryRes.headers.get('content-type');
+            if (retryRes.ok && retryContentType && retryContentType.includes('application/json')) {
+              res = retryRes;
+              baseUrl = `${baseUrl}/v1`;
+              setEditForm(prev => ({ ...prev, baseUrl: baseUrl }));
+              contentType = retryContentType;
+            }
+          } catch (e) {}
+        }
+
+        if (!res.ok) {
+          throw new Error(`获取失败 (${res.status})，请检查 Base URL 和 API Key`);
+        }
+
+        const data = await res.json();
+        const rawList = data.data || data.models || data;
+        if (Array.isArray(rawList)) {
+          models = rawList.map((m: any) => {
+            if (typeof m === 'string') return m;
+            return m.id || m.name || m.model || String(m);
+          }).filter(m => typeof m === 'string' && m.length > 0);
+        } else if (typeof rawList === 'object' && rawList !== null) {
+          models = Object.keys(rawList).filter(k => k !== 'object');
+        } else {
+          throw new Error('返回的数据格式不正确 (未找到模型列表)');
+        }
+      }
+
+      // Remove duplicates and sort
+      models = [...new Set(models)].sort();
+
+      if (models.length === 0) throw new Error('未找到可用模型');
+
+      setAvailableModels(models);
+      alert(`成功拉取 ${models.length} 个模型！\n提示：清空输入框可查看完整列表。`);
+    } catch (error: any) {
+      console.error('Fetch models error:', error);
+      alert(`拉取失败: ${error.message}`);
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    try {
+      const isGemini = editForm.provider === 'Google Gemini' || (!editForm.baseUrl && editForm.provider === '自定义 (Custom)');
+      
+      if (isGemini) {
+        const key = editForm.apiKey || process.env.GEMINI_API_KEY;
+        if (!key) throw new Error('需要 API Key');
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+        if (!res.ok) throw new Error('连接失败，请检查 API Key');
+        alert('连接成功！');
+      } else {
+        if (!editForm.baseUrl) throw new Error('请先填写 Base URL');
+        let baseUrl = editForm.baseUrl.replace(/\/$/, '');
+        const headers: HeadersInit = { 'Accept': 'application/json' };
+        if (editForm.apiKey) {
+          headers['Authorization'] = `Bearer ${editForm.apiKey}`;
+        }
+        
+        let res = await fetch(`${baseUrl}/models`, { headers });
+        let contentType = res.headers.get('content-type');
+
+        // Auto-fix: If HTML response and URL doesn't end with /v1, try appending it
+        if ((!res.ok || (contentType && contentType.includes('text/html'))) && !baseUrl.endsWith('/v1')) {
+          const retryUrl = `${baseUrl}/v1/models`;
+          try {
+            const retryRes = await fetch(retryUrl, { headers });
+            const retryContentType = retryRes.headers.get('content-type');
+            if (retryRes.ok && retryContentType && retryContentType.includes('application/json')) {
+              res = retryRes;
+              baseUrl = `${baseUrl}/v1`;
+              setEditForm(prev => ({ ...prev, baseUrl: baseUrl }));
+              contentType = retryContentType;
+            }
+          } catch (e) {
+            // Ignore retry error
+          }
+        }
+
+        if (!res.ok) throw new Error('连接失败，请检查 Base URL 和 API Key');
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('服务器返回了非 JSON 格式的数据，请检查 Base URL 是否正确。');
+        }
+        
+        alert('连接成功！');
+      }
+    } catch (error: any) {
+      alert(`测试连接失败: ${error.message}`);
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      className="absolute inset-0 bg-[#f7f7f9] flex flex-col"
+    >
+      {view === 'list' ? (
+        <>
+          {/* List Header */}
+          <div className="pt-10 pb-3 px-4 flex items-center justify-between z-10 bg-[#f7f7f9]">
+            <button onClick={onBack} className="text-black active:opacity-70 p-1 -ml-1 flex items-center">
+              <ChevronLeft size={26} />
+            </button>
+            <span className="text-black font-semibold text-[16px]">API 设置</span>
+            <button onClick={handleAddClick} className="text-black active:opacity-70 p-1">
+              <Plus size={26} />
+            </button>
+          </div>
+
+          {/* List Content */}
+          <div className="flex-1 overflow-y-auto px-4 py-2 pb-20">
+            <p className="text-[13px] text-zinc-500 mb-4 leading-relaxed">
+              配置大语言模型 API，角色将使用选中的 API 进行回复。
+            </p>
+            <div className="space-y-3">
+              {localSettings.configs.map(config => (
+                <div 
+                  key={config.id}
+                  onClick={() => setLocalSettings({...localSettings, activeConfigId: config.id})}
+                  className={`relative bg-white rounded-2xl p-4 border-2 transition-all cursor-pointer ${localSettings.activeConfigId === config.id ? 'border-zinc-900 shadow-md' : 'border-transparent shadow-sm'}`}
+                >
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center text-zinc-900 shrink-0">
+                      <Cpu size={28} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-[16px] font-bold text-zinc-900 truncate">{config.name}</h3>
+                        {localSettings.activeConfigId === config.id && (
+                          <div className="w-6 h-6 rounded-full bg-zinc-900 flex items-center justify-center text-white shrink-0">
+                            <Check size={14} strokeWidth={3} />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[12px] text-zinc-400 truncate mt-0.5">
+                        {config.baseUrl || 'https://generativelanguage.googleapis.com'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="border-t border-zinc-50 pt-3 flex items-end justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[12px] text-zinc-400">
+                        模型: {config.model || '未设置'}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={(e) => handleEditClick(config, e)}
+                      className="text-zinc-300 active:text-zinc-500 p-1 shrink-0"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Edit Header */}
+          <div className="pt-10 pb-3 px-4 flex items-center justify-between z-10 bg-white">
+            <button onClick={() => setView('list')} className="text-black active:opacity-70 p-1 -ml-1 flex items-center">
+              <ChevronLeft size={26} />
+            </button>
+            <span className="text-black font-semibold text-[16px]">{editingConfigId ? '编辑 API' : '添加 API'}</span>
+            <div className="flex items-center gap-2">
+              {editingConfigId && editingConfigId !== 'default' && (
+                <button onClick={handleDeleteConfig} className="text-red-500 p-1.5 active:opacity-70">
+                  <Trash2 size={20} />
+                </button>
+              )}
+              <button onClick={handleSaveConfig} className="text-zinc-900 bg-zinc-100 rounded-full p-1.5 active:opacity-70">
+                <Save size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Edit Content */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-white pb-20">
+            {/* Provider */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-zinc-500">提供商 (Provider)</label>
+              <div className="relative">
+                <select 
+                  value={editForm.provider || '自定义 (Custom)'}
+                  onChange={e => setEditForm({...editForm, provider: e.target.value})}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 appearance-none outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="自定义 (Custom)">自定义 (Custom)</option>
+                  <option value="Google Gemini">Google Gemini</option>
+                  <option value="OpenAI">OpenAI</option>
+                </select>
+                <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Name */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-zinc-500">配置名称</label>
+              <input 
+                type="text"
+                value={editForm.name}
+                onChange={e => setEditForm({...editForm, name: e.target.value})}
+                placeholder="例如：我的 OpenAI 接口"
+                className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+              />
+            </div>
+
+            {/* Base URL */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-zinc-500">Base URL 基础网址</label>
+              <div className="relative flex items-center">
+                <Link2 size={18} className="absolute left-3 text-zinc-400" />
+                <input 
+                  type="text"
+                  value={editForm.baseUrl}
+                  onChange={e => setEditForm({...editForm, baseUrl: e.target.value})}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl pl-10 pr-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+                />
+              </div>
+            </div>
+
+            {/* API Key */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-zinc-500">API Key API 密钥</label>
+              <div className="relative flex items-center">
+                <Key size={18} className="absolute left-3 text-zinc-400" />
+                <input 
+                  type="password"
+                  value={editForm.apiKey}
+                  onChange={e => setEditForm({...editForm, apiKey: e.target.value})}
+                  placeholder="sk-..."
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl pl-10 pr-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+                />
+              </div>
+            </div>
+
+            {/* Model */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-[13px] text-zinc-500">默认模型 (Model)</label>
+                <button 
+                  onClick={handleFetchModels}
+                  disabled={isFetchingModels}
+                  className="text-blue-500 text-[13px] flex items-center gap-1 active:opacity-70 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={isFetchingModels ? "animate-spin" : ""} />
+                  {isFetchingModels ? '拉取中...' : '拉取模型'}
+                </button>
+              </div>
+              <div className="relative">
+                <input 
+                  type="text"
+                  value={editForm.model}
+                  onChange={e => setEditForm({...editForm, model: e.target.value})}
+                  placeholder="例如：gpt-4o"
+                  list="model-list"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+                />
+                {availableModels.length > 0 && (
+                  <div className="mt-1 flex justify-between items-center px-1">
+                    <span className="text-[11px] text-zinc-400">已拉取 {availableModels.length} 个模型</span>
+                    <button 
+                      onClick={() => setEditForm({...editForm, model: ''})}
+                      className="text-[11px] text-zinc-900 active:opacity-70"
+                    >
+                      清空以查看全部
+                    </button>
+                  </div>
+                )}
+                {availableModels.length > 0 && (
+                  <datalist id="model-list">
+                    {availableModels.map(m => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                )}
+              </div>
+            </div>
+
+            {/* Temperature */}
+            <div className="space-y-3 pt-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[13px] text-zinc-500">温度参数 (Temperature)</label>
+                <span className="text-[14px] text-zinc-900 font-medium">{editForm.temperature?.toFixed(1) || '0.7'}</span>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                value={editForm.temperature ?? 0.7}
+                onChange={e => setEditForm({...editForm, temperature: parseFloat(e.target.value)})}
+                className="w-full accent-zinc-900 h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[11px] text-zinc-400">
+                <span>精确 (0.0)</span>
+                <span>创造性 (2.0)</span>
+              </div>
+            </div>
+
+            {/* Test Connection Button */}
+            <div className="pt-4 pb-8">
+              <button 
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="w-full bg-zinc-50 text-zinc-600 border border-zinc-200 font-medium text-[15px] py-3.5 rounded-xl active:bg-zinc-100 transition-colors disabled:opacity-50"
+              >
+                {isTesting ? '测试中...' : '测试连接'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </motion.div>
+  );
+}
+
