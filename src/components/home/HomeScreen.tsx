@@ -49,7 +49,7 @@ export function HomeScreen({
   };
   const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [tempUrl, setTempUrl] = useState('');
-  const [appOrder, setAppOrder] = useState<string[]>(() => {
+  const [appOrder] = useState<string[]>(() => {
     const order = visualSettings?.desktop?.appOrder || ['chat', 'settings', 'worldbook', 'monitor', 'couple-space', 'perception', 'music'];
     const filteredOrder = order.filter(id => id !== 'wallet');
     if (!filteredOrder.includes('perception')) {

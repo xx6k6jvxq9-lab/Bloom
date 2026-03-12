@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, MessageSquare, MoreVertical, Pin, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ChevronLeft, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatGroup, FriendRequest } from '../../types';
 import { NewFriendsPage } from '../NewFriendsPage';

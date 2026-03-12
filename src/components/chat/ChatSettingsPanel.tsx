@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Activity, BellOff, Book, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Database, Download, History, Image as ImageIcon, Key, Languages, Link2, MoreHorizontal, Palette, Pencil, Phone, Pin, Plus, PlusCircle, RefreshCw, Save, Share2, Smile, Star, StickyNote, Trash2, Upload, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
@@ -53,7 +53,6 @@ export function ChatSettingsPanel({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
   const [showBatchMenu, setShowBatchMenu] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!character) return null;
 

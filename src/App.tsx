@@ -1,23 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Battery, Wifi, Signal, ChevronLeft, ChevronRight, Send, Settings, MessageSquare, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Users, Compass, User, Image as ImageIcon, Upload, PlusCircle, BellOff, Pin, Database, Book, Smile, Palette, Share2, Download, History, BookOpen, StickyNote, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, UserPlus, UserPlus2, MessageSquarePlus, Info, MoreVertical, Camera, MessageCircle, ThumbsUp, SendHorizonal, ScanEye, Activity, Languages, Clock, Phone, PhoneOff, MapPin, Gamepad2, ArrowLeft, Calendar, Coffee } from 'lucide-react';
-import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { 
   Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry,
-  Character, ChatMessage, ChatHistory, PerceptionSettings, MusicData,
+  Character, ChatMessage, ChatHistory, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData
 } from './types';
-import { MePage, WorldBookManager } from './components/MePage';
-import { NewFriendsPage } from './components/NewFriendsPage';
-import { GroupChatManagerPage } from './components/GroupChatManagerPage';
+import { WorldBookManager } from './components/MePage';
 import { GroupChatSession } from './components/GroupChatSession';
 import { MonitorApp } from './components/MonitorApp';
 import { CustomizationApp } from './components/CustomizationApp';
 import { HomeScreen } from './components/home/HomeScreen';
-import { ContactsApp, CharacterProfile, AddFriendModal, GroupManagementModal, NavTab } from './components/main/ContactsShell';
+import { CharacterProfile } from './components/main/ContactsShell';
 import { MainApp } from './components/main/MainAppShell';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
-import { DesktopWidget } from './components/DesktopWidgets';
 import { CoupleSpaceApp } from './components/CoupleSpaceApp';
 import { PerceptionView } from './components/PerceptionView';
 import MusicApp from './components/MusicApp';
@@ -41,11 +38,6 @@ const GlobalStyles = ({ customCss }: { customCss?: string }) => (
     ${customCss || ''}
   `}</style>
 );
-
-type Message = {
-  role: 'user' | 'model';
-  text: string;
-};
 
 type UserProfile = UserProfileExtended;
 
@@ -2169,28 +2161,6 @@ function ChatSession({
     }
   }, [history, isLoading]);
 
-  // Construct the prompt with character settings, history, and world book
-  const constructPrompt = () => {
-    const worldBookEntries = worldBook
-      .filter(entry => entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
-      .map(entry => `[${entry.category}: ${entry.title}]\n${entry.content}`)
-      .join('\n\n');
-
-    const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-    
-    let systemPrompt = character.setting;
-    if (activeMask) {
-      systemPrompt += `\n\n你现在正在扮演一个身份面具，请遵循以下设定：\n姓名：${activeMask.name}\n职业：${activeMask.occupation}\n性格：${activeMask.personality}\n与用户的关系：${activeMask.relationship}\n世界观：${activeMask.worldBackground}`;
-    }
-
-    if (worldBookEntries) {
-      systemPrompt += `\n\n请严格遵守以下世界设定：\n${worldBookEntries}`;
-    }
-
-    const historySlice = history.slice(-20).map(msg => `${msg.role === 'user' ? userName : character.name}: ${msg.text}`).join('\n');
-    
-    return `${systemPrompt}\n\n以下是最近的对话历史：\n${historySlice}`;
-  };
 
   // Auto-reply to messages with needsReply flag
   useEffect(() => {
