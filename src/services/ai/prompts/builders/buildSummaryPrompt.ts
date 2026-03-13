@@ -1,12 +1,14 @@
 ﻿import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import { CHARACTER_CORE_PROMPT } from '../character/characterCore';
-import { MEMORY_CONTEXT_PROMPT } from '../character/memoryContext';
+import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
 import { SUMMARY_SMALL_SCENARIO_PROMPT } from '../scenarios/summarySmall';
 import { SUMMARY_LARGE_SCENARIO_PROMPT } from '../scenarios/summaryLarge';
 
 export type BuildSummaryPromptOptions = {
   mode?: 'small' | 'large';
+  characterCore?: CharacterCoreSectionsInput;
+  memoryContext?: MemoryContextInput;
   sections?: string[];
 };
 
@@ -21,8 +23,8 @@ export function buildSummaryPrompt(options: BuildSummaryPromptOptions = {}): str
 
   const sections = [
     EXISTENCE_PROMPT,
-    CHARACTER_CORE_PROMPT,
-    MEMORY_CONTEXT_PROMPT,
+    buildCharacterCoreSection(options.characterCore ?? {}),
+    buildMemoryContextSection(options.memoryContext ?? {}),
     scenario,
     OUTPUT_RULES_PROMPT,
     ...(options.sections ?? []),

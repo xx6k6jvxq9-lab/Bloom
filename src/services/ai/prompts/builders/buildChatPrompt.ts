@@ -1,13 +1,15 @@
 ﻿import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
-import { CHARACTER_CORE_PROMPT } from '../character/characterCore';
-import { MEMORY_CONTEXT_PROMPT } from '../character/memoryContext';
+import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
 import { CHAT_SCENARIO_PROMPT } from '../scenarios/chat';
 import { AUTO_REPLY_SCENARIO_PROMPT } from '../scenarios/autoReply';
 
 export type BuildChatPromptOptions = {
   mode?: 'chat' | 'autoReply';
+  characterCore?: CharacterCoreSectionsInput;
+  memoryContext?: MemoryContextInput;
   sections?: string[];
 };
 
@@ -22,8 +24,8 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
 
   const sections = [
     EXISTENCE_PROMPT,
-    CHARACTER_CORE_PROMPT,
-    MEMORY_CONTEXT_PROMPT,
+    buildCharacterCoreSection(options.characterCore ?? {}),
+    buildMemoryContextSection(options.memoryContext ?? {}),
     scenario,
     OUTPUT_RULES_PROMPT,
     PROTOCOL_RULES_PROMPT,
