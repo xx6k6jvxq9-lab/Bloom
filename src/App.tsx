@@ -1550,7 +1550,6 @@ function ChatSession({
 
   const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [voiceCallDuration, setVoiceCallDuration] = useState(0);
-  const [voiceCallText, setVoiceCallText] = useState('');
   const [voiceCallInput, setVoiceCallInput] = useState('');
   const [isRecordingCall, setIsRecordingCall] = useState(false);
   const voiceCallTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1761,7 +1760,6 @@ function ChatSession({
     setShowVoiceCall(true);
     showVoiceCallRef.current = true;
     setVoiceCallDuration(0);
-    setVoiceCallText('');
     setVoiceCallHistory([]);
     setCurrentInterimSpeech('');
     voiceCallHistoryRef.current = [];
@@ -1816,12 +1814,6 @@ function ChatSession({
         }
 
         setCurrentInterimSpeech(interimTranscript);
-        
-        // Update the full text for legacy/recording purposes
-        setVoiceCallText(prev => {
-          const newText = finalTranscript ? prev + finalTranscript + ' ' : prev;
-          return newText + interimTranscript;
-        });
       };
 
       recognition.onerror = (event: any) => {
