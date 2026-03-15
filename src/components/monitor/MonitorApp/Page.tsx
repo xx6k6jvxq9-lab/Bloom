@@ -23,7 +23,7 @@ import {
   Filter,
   Menu
 } from 'lucide-react';
-import { PhoneInterface } from './PhoneInterface';
+import { PhoneInterface } from '../PhoneInterface';
 
 type Character = {
   id: string;
@@ -33,7 +33,7 @@ type Character = {
   category?: string;
 };
 
-import { VisualSettings } from '../types';
+import { VisualSettings } from '../../../types';
 
 type MonitorAppProps = {
   characters: Character[];

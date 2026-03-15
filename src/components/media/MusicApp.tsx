@@ -27,7 +27,7 @@ import {
   Upload,
   RefreshCw,
 } from "lucide-react";
-import { Song, Playlist, MusicData, Character, ChatMessage } from "../types";
+import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
 
 type MusicAppProps = {
   character: Character;

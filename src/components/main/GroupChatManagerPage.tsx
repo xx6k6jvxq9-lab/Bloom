@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, Plus, Trash2, Users, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChatGroup, Character } from '../types';
+import { ChatGroup, Character } from '../../types';
 
 export function GroupChatManagerPage({
   groups,

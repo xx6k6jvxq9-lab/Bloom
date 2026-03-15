@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, ScanEye, MessageCircle } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import Cropper from 'react-easy-crop';
-import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent } from '../types';
-import { PerceptionView } from './PerceptionView';
-import { extractImageUrls, extractSingleImageUrl } from '../utils';
+import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent } from '../../../types';
+import { PerceptionView } from '../PerceptionView';
+import { extractImageUrls, extractSingleImageUrl } from '../../../utils';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();

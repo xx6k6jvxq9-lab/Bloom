@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Globe, Calendar, MapPin, CloudSun, Thermometer, Wind, ChevronLeft, Power } from 'lucide-react';
-import { PerceptionSettings } from '../types';
+import { PerceptionSettings } from '../../types';
 
 type Props = {
   coupleSpace: any;

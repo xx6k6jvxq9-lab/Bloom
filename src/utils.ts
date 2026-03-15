@@ -1,3 +1,14 @@
+import { ChatMessage } from './types';
+
+export function getMessageMainText(message: ChatMessage): string {
+  const text = message.text || '';
+  const parts = text.split('---TRANSLATION---');
+  if (parts.length > 1 && parts[0].trim() !== parts[1].trim()) {
+    return parts[0].trim();
+  }
+  return text.trim();
+}
+
 export function extractImageUrls(text: string): string[] {
   if (!text) return [];
   
@@ -52,4 +63,10 @@ export function extractImageUrls(text: string): string[] {
 export function extractSingleImageUrl(text: string): string {
   const urls = extractImageUrls(text);
   return urls.length > 0 ? urls[0] : text.trim();
+}
+
+export function getSummaryHistoryWindow(messages: ChatMessage[], memoryLimit?: number): ChatMessage[] {
+  const baseWindow = memoryLimit || 20;
+  const summaryWindow = Math.max(baseWindow * 2, 40);
+  return messages.slice(-summaryWindow);
 }

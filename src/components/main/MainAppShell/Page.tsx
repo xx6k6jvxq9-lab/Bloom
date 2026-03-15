@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { BellOff, ChevronLeft, Compass, MessageSquare, Pin, Plus, User, UserPlus2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, AppSettings } from '../../types';
+import { Character, AppSettings } from '../../../types';
 import { MePage } from '../MePage';
-import { ContactsApp, AddFriendModal, GroupManagementModal, NavTab } from './ContactsShell';
+import { ContactsApp, AddFriendModal, GroupManagementModal, NavTab } from '../ContactsShell/Page';
 
 type AppData = {
   chatGroups?: any[];
@@ -82,7 +82,7 @@ export function MainApp({
           {activeTab === 'contacts' && (
             <button 
               onClick={() => setShowAddFriend(true)}
-              className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white active:scale-90 transition-transform"
+              className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-white active:scale-90 transition-transform"
             >
               <UserPlus2 size={18} />
             </button>

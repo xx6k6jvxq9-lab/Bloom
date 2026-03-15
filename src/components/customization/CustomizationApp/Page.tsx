@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { VisualSettings, WidgetConfig, DesktopIconConfig } from '../types';
-import { DesktopWidget } from './DesktopWidgets';
-import { extractSingleImageUrl } from '../utils';
+import { VisualSettings, WidgetConfig, DesktopIconConfig } from '../../../types';
+import { DesktopWidget } from '../../shared/DesktopWidgets';
+import { extractSingleImageUrl } from '../../../utils';
 
 type CustomizationAppProps = {
   visualSettings: VisualSettings;

@@ -1,9 +1,42 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
-import { extractImageUrls } from '../../utils';
+import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
+import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
+import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow } from '../../utils';
+
+function SettingsSection({
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="mt-6 px-4">
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-3 flex items-center justify-between text-left active:bg-white/70 transition-colors"
+      >
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold text-zinc-800">{title}</h2>
+          {summary && <p className="text-[11px] text-zinc-500 mt-1 truncate">{summary}</p>}
+        </div>
+        <ChevronDown size={18} className={`text-zinc-400 transition-transform shrink-0 ${open ? '' : '-rotate-90'}`} />
+      </button>
+
+      {open && <div className="mt-3">{children}</div>}
+    </div>
+  );
+}
 
 export function ChatSettingsPanel({ 
   character, 
@@ -49,62 +82,120 @@ export function ChatSettingsPanel({
   const [showMemorySettings, setShowMemorySettings] = useState(false);
   const [showWorldBookSelector, setShowWorldBookSelector] = useState(false);
   const [showCallHistory, setShowCallHistory] = useState(false);
-  const [tokenCount, setTokenCount] = useState(0);
+  const [tokenEstimate, setTokenEstimate] = useState({
+    mainChat: 0,
+    autoReply: 0,
+    autoTranslate: 0,
+    autoSummary: 0,
+  });
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
   const [showBatchMenu, setShowBatchMenu] = useState(false);
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [showSettingEditor, setShowSettingEditor] = useState(false);
 
   if (!character) return null;
 
-  useEffect(() => {
-    if (!character) return;
-    const calculateTokens = () => {
-      let totalText = '';
-      
-      // System Prompt
-      totalText += character.setting || '';
-      
-      // Mask Prompt
-      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-      if (activeMask) {
-        totalText += `\n\n[User Identity Mask: ${activeMask.name}]\nPersonality: ${activeMask.personality}\nOccupation: ${activeMask.occupation}\nRelationship with you: ${activeMask.relationship}\nWorld Background: ${activeMask.worldBackground || 'Standard'}\n(Please interact with the user based on this identity and world background.)`;
-      }
-      
-      // World Book Prompt
-      const activeWorldBooks = worldBooks.filter(wb => 
-        (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
-        character.activeWorldBookIds?.includes(wb.id)
-      );
-      if (activeWorldBooks.length > 0) {
-        totalText += `\n\n[World Book Settings]\n${activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')}\n(Please adhere to these world settings in your responses.)`;
-      }
-      
-      // Memory Summary
-      if (character.memorySummary) {
-        totalText += `\n\n[长期记忆总结]\n${character.memorySummary}\n(请在对话中参考这些记忆，保持角色连贯性。)`;
-      }
-      
-      // Chat History
-      const limit = character.memoryLimit || 20;
-      const historySlice = history.slice(-limit);
-      const historyText = historySlice.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${msg.text}`).join('\n');
-      totalText += `\n\n${historyText}`;
-      
-      // Estimate tokens
+  const currentGroupLabel = character.groupId || '无分组';
+  const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
+  const settingSummary = character.setting.trim()
+    ? `${character.setting.trim().slice(0, 48)}${character.setting.trim().length > 48 ? '...' : ''}`
+    : '还没有填写角色设定。';
+
+  const calculateTokens = () => {
+      const estimateTextTokens = (text: string) => {
       let cjkCount = 0;
       let otherCount = 0;
-      for (let i = 0; i < totalText.length; i++) {
-        const charCode = totalText.charCodeAt(i);
+      for (let i = 0; i < text.length; i++) {
+        const charCode = text.charCodeAt(i);
         if (charCode >= 0x4E00 && charCode <= 0x9FFF) {
           cjkCount++;
         } else {
           otherCount++;
         }
       }
-      const count = Math.ceil(cjkCount + otherCount * 0.35); // Adjusted estimation
-      setTokenCount(count);
+      return Math.ceil(cjkCount + otherCount * 0.35);
     };
-    
+
+      const historyLimit = character.memoryLimit || 20;
+      const historyWindow = history.slice(-historyLimit);
+      const historyWindowText = historyWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
+      const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
+      const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
+
+      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      const maskPrompt = activeMask
+        ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
+        : '';
+
+      const activeWorldBooks = worldBooks.filter(wb =>
+        (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
+        character.activeWorldBookIds?.includes(wb.id)
+      );
+      const worldBookPrompt = activeWorldBooks.length > 0
+        ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
+        : '';
+
+      const memorySummary = character.memorySummary?.trim() || '';
+
+      const mainChatPrompt = buildChatPrompt({
+        mode: 'chat',
+        characterCore: {
+          characterSetting: character.setting,
+          maskPrompt,
+          worldBookPrompt,
+        },
+        memoryContext: {
+          memorySummary,
+          perceptionPrompt: '',
+        },
+      });
+
+      const autoReplyPrompt = buildChatPrompt({
+        mode: 'autoReply',
+        characterCore: {
+          characterSetting: character.setting,
+          maskPrompt,
+          worldBookPrompt,
+        },
+        memoryContext: {
+          memorySummary,
+          perceptionPrompt: '',
+        },
+        includeProtocolRules: false,
+      });
+
+      const latestModelMessage = [...history]
+        .reverse()
+        .find(msg => msg.role === 'model' && !msg.isSystem && !msg.translation && !msg.text.includes('---TRANSLATION---'));
+
+      const autoTranslatePrompt = character.autoTranslate && latestModelMessage
+        ? `Translate the following text to Chinese. Output ONLY the translation, no other text.\n\nText: ${getMessageMainText(latestModelMessage)}`
+        : '';
+
+      const autoSummaryPrompt = character.autoSummaryEnabled
+        ? buildSummaryPrompt({
+            mode: 'small',
+            characterCore: {
+              characterSetting: character.setting,
+            },
+            memoryContext: {
+              memorySummary,
+            },
+            sections: [summaryHistoryWindowText],
+          })
+        : '';
+
+      setTokenEstimate({
+        mainChat: estimateTextTokens(`${mainChatPrompt}\n\n${historyWindowText}`),
+        autoReply: estimateTextTokens(`${autoReplyPrompt}\n\n${historyWindowText}`),
+        autoTranslate: autoTranslatePrompt ? estimateTextTokens(autoTranslatePrompt) : 0,
+        autoSummary: autoSummaryPrompt ? estimateTextTokens(autoSummaryPrompt) : 0,
+      });
+  };
+
+  useEffect(() => {
+    if (!character) return;
     calculateTokens();
   }, [character, history, masks, worldBooks]);
 
@@ -124,10 +215,20 @@ export function ChatSettingsPanel({
     setIsSummarizing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
+      const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
       
-      const chatText = history.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${msg.text}`).join('\n');
-      const prompt = `请总结以下用户与角色（${character.name}）的聊天记录，提取关键信息、重要事件和角色的情感变化。总结需要简洁明了，作为角色的长期记忆：\n\n${chatText}`;
-
+      const prompt = buildSummaryPrompt({
+        mode: 'large',
+        characterCore: {
+          characterSetting: character.setting,
+        },
+        memoryContext: {
+          memorySummary: character.memorySummary?.trim() || '',
+        },
+        sections: [
+          summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
+        ],
+      });
       const response = await ai.models.generateContent({
         model: activeConfig.model || 'gemini-3-flash-preview',
         contents: prompt,
@@ -200,18 +301,20 @@ export function ChatSettingsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto pb-10">
-        {/* Basic Settings */}
-        <div className="mt-4 px-4">
-          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">基本设置</h2>
+        <SettingsSection
+          title="基础设置"
+          summary={`常用资料与聊天入口，当前分组：${currentGroupLabel}`}
+          defaultOpen
+        >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm">
             <div className="p-3 flex flex-col items-center gap-2 border-b border-white/30">
               <div className="relative group">
-                <img 
-                  src={character.avatar} 
-                  alt={character.name} 
-                  className="w-16 h-16 rounded-full object-cover bg-zinc-100 border-2 border-zinc-50" 
+                <img
+                  src={character.avatar}
+                  alt={character.name}
+                  className="w-16 h-16 rounded-full object-cover bg-zinc-100 border-2 border-zinc-50"
                 />
-                <button 
+                <button
                   onClick={() => setShowAvatarInput(!showAvatarInput)}
                   className="absolute inset-0 bg-black/20 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
@@ -220,15 +323,15 @@ export function ChatSettingsPanel({
               </div>
               {showAvatarInput && (
                 <div className="w-full space-y-2">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="支持链接、Markdown或HTML图片"
                     value={tempAvatar}
                     onChange={e => setTempAvatar(e.target.value)}
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900"
                   />
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => {
                         if (tempAvatar) {
                           const finalUrl = extractImageUrls(tempAvatar)[0] || tempAvatar.trim();
@@ -243,9 +346,9 @@ export function ChatSettingsPanel({
                     </button>
                     <label className="flex-1 bg-white/50 border border-white/30 text-zinc-600 text-[12px] py-2 rounded-lg font-medium text-center cursor-pointer">
                       上传文件
-                      <input 
-                        type="file" 
-                        className="hidden" 
+                      <input
+                        type="file"
+                        className="hidden"
                         onChange={e => {
                           const file = e.target.files?.[0];
                           if (file) {
@@ -260,7 +363,7 @@ export function ChatSettingsPanel({
                 </div>
               )}
               <div className="w-full flex flex-col items-center gap-0.5">
-                <input 
+                <input
                   type="text"
                   value={character.name}
                   onChange={e => onUpdate({ ...character, name: e.target.value })}
@@ -269,8 +372,8 @@ export function ChatSettingsPanel({
                 <span className="text-[10px] text-zinc-400">点击名称可修改</span>
               </div>
             </div>
-            
-            <button 
+
+            <button
               onClick={toggleMute}
               className="w-full px-4 py-3 flex items-center justify-between active:bg-white/40 border-b border-white/30"
             >
@@ -285,7 +388,7 @@ export function ChatSettingsPanel({
               </div>
             </button>
 
-            <button 
+            <button
               onClick={togglePin}
               className="w-full px-4 py-3 flex items-center justify-between active:bg-white/40 border-b border-white/30"
             >
@@ -300,141 +403,97 @@ export function ChatSettingsPanel({
               </div>
             </button>
 
-
-          </div>
-        </div>
-
-        {/* Group Selection */}
-        <div className="mt-6 px-4">
-          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">分组设置</h2>
-          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm p-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="border-b border-white/30">
               <button
-                onClick={() => onUpdate({ ...character, groupId: undefined })}
-                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                onClick={() => setShowGroupSettings(prev => !prev)}
+                className="w-full px-4 py-3 flex items-center justify-between active:bg-white/40"
               >
-                无分组
+                <div className="flex flex-col items-start">
+                  <span className="text-[14px] text-zinc-700">分组设置</span>
+                  <span className="text-[11px] text-zinc-400">当前已选：{currentGroupLabel}</span>
+                </div>
+                <ChevronDown size={18} className={`text-zinc-400 transition-transform ${showGroupSettings ? '' : '-rotate-90'}`} />
               </button>
-              {groups.map(g => (
-                <button
-                  key={g}
-                  onClick={() => onUpdate({ ...character, groupId: g })}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
-                >
-                  {g}
-                </button>
-              ))}
+
+              {showGroupSettings && (
+                <div className="px-4 pb-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => onUpdate({ ...character, groupId: undefined })}
+                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                    >
+                      无分组
+                    </button>
+                    {groups.map(g => (
+                      <button
+                        key={g}
+                        onClick={() => onUpdate({ ...character, groupId: g })}
+                        className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 space-y-3">
+              <div className="rounded-xl bg-white/40 border border-white/30 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-[14px] text-zinc-700 font-medium">个性签名 / 角色资料摘要</h3>
+                    <p className="text-[12px] text-zinc-500 mt-1 break-words">{profileSummary}</p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowSettingEditor(true)}
+                className="w-full rounded-xl bg-white/40 border border-white/30 px-3 py-3 flex items-center justify-between active:bg-white/60 transition-colors"
+              >
+                <div className="min-w-0 text-left">
+                  <h3 className="text-[14px] text-zinc-700 font-medium">角色设定</h3>
+                  <p className="text-[12px] text-zinc-500 mt-1 break-words">{settingSummary}</p>
+                </div>
+                <ChevronRight size={18} className="text-zinc-400 shrink-0" />
+              </button>
             </div>
           </div>
-        </div>
+        </SettingsSection>
 
-        {/* Character Setting */}
-        <div className="mt-6 px-4">
-          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">角色设定</h2>
-          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm p-4">
-            <textarea 
-              value={character.setting}
-              onChange={e => onUpdate({ ...character, setting: e.target.value })}
-              placeholder="输入角色设定..."
-              className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-500 min-h-[100px] resize-none"
-            />
-            <p className="text-[11px] text-zinc-400 mt-2 px-1">
-              修改设定会立即影响后续对话的生成效果。
-            </p>
-          </div>
-        </div>
-
-        {/* Memory Settings */}
-        <div className="mt-6 px-4">
-          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">聊天记忆设置</h2>
+        <SettingsSection
+          title="聊天设置"
+          summary="高频聊天行为、显示偏好和互动相关设置"
+          defaultOpen
+        >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
             <div className="px-4 py-3.5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                    <History size={18} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[15px] text-zinc-700">记忆对话轮数</span>
-                    <span className="text-[11px] text-zinc-400">超出后将自动总结或遗忘</span>
-                  </div>
+                <div className="flex flex-col">
+                  <span className="text-[14px] text-zinc-700">单次回复条数</span>
+                  <span className="text-[11px] text-zinc-400">设置 AI 每次回复的消息数量区间</span>
                 </div>
-                <input 
-                  type="number" 
-                  value={character.memoryLimit || 20}
-                  onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
-                  className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-zinc-900"
-                />
-              </div>
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                value={character.memoryLimit || 20}
-                onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
-                className="w-full accent-zinc-900"
-              />
-              
-              <div className="pt-2 border-t border-white/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[14px] text-zinc-700">计算消耗 Token</span>
-                    <span className="text-[11px] text-zinc-400">显示实时 Token 消耗预估</span>
-                  </div>
-                  <div 
-                    onClick={() => onUpdate({ ...character, showTokenCount: !character.showTokenCount })}
-                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.showTokenCount ? 'bg-zinc-900' : 'bg-zinc-200'}`}
-                  >
-                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.showTokenCount ? 'translate-x-4.5' : ''}`} />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[14px] text-zinc-700">单次回复条数</span>
-                    <span className="text-[11px] text-zinc-400">设置 AI 每次回复的消息数量区间</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      min="1"
-                      max={character.maxReplies || 10}
-                      value={character.minReplies || 1}
-                      onChange={e => onUpdate({ ...character, minReplies: Math.max(1, parseInt(e.target.value)) })}
-                      className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
-                    />
-                    <span className="text-zinc-400">-</span>
-                    <input 
-                      type="number" 
-                      min={character.minReplies || 1}
-                      max="10"
-                      value={character.maxReplies || 3}
-                      onChange={e => onUpdate({ ...character, maxReplies: Math.min(10, parseInt(e.target.value)) })}
-                      className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
-                    />
-                  </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={character.maxReplies || 10}
+                    value={character.minReplies || 1}
+                    onChange={e => onUpdate({ ...character, minReplies: Math.max(1, parseInt(e.target.value)) })}
+                    className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
+                  />
+                  <span className="text-zinc-400">-</span>
+                  <input
+                    type="number"
+                    min={character.minReplies || 1}
+                    max="10"
+                    value={character.maxReplies || 3}
+                    onChange={e => onUpdate({ ...character, maxReplies: Math.min(10, parseInt(e.target.value)) })}
+                    className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
+                  />
                 </div>
               </div>
-
-              <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1">
-                <span>当前消耗: {tokenCount} Tokens (预估)</span>
-                <button onClick={() => alert('Token 消耗已重新计算')} className="text-zinc-500 hover:text-zinc-900">重新计算</button>
-              </div>
-            </div>
-
-            <div className="px-4 py-3.5 flex flex-col gap-3">
-              <button 
-                onClick={() => setShowCallHistory(true)}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                    <Phone size={18} />
-                  </div>
-                  <span className="text-[14px] text-zinc-700">通话记录</span>
-                </div>
-                <ChevronRight size={16} className="text-zinc-400" />
-              </button>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -492,135 +551,21 @@ export function ChatSettingsPanel({
                   ))}
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 divide-x divide-white/30">
-              <button 
-                onClick={() => setShowImportDialog(true)}
-                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
-              >
-                <Download size={16} /> 导入数据
-              </button>
-              <button 
-                onClick={() => setShowExportDialog(true)}
-                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
-              >
-                <Share2 size={16} /> 导出数据
-              </button>
-            </div>
-
-            <div>
-              <button 
-                onClick={() => setShowMemorySettings(!showMemorySettings)}
-                className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
+              <button
+                onClick={() => setShowCallHistory(true)}
+                className="flex items-center justify-between w-full"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                    <Database size={18} />
+                    <Phone size={18} />
                   </div>
-                  <span className="text-[15px] text-zinc-700">全局记忆系统</span>
+                  <span className="text-[14px] text-zinc-700">通话记录</span>
                 </div>
-                <ChevronDown size={18} className={`text-zinc-300 transition-transform ${showMemorySettings ? '' : '-rotate-90'}`} />
+                <ChevronRight size={16} className="text-zinc-400" />
               </button>
-              
-              {showMemorySettings && (
-                <div className="px-4 pb-4 pt-2 bg-white/30 border-t border-white/20 flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-[14px] text-zinc-700">自动总结记忆</span>
-                      <span className="text-[11px] text-zinc-500">开启后将自动总结聊天记录</span>
-                    </div>
-                    <div 
-                      onClick={() => onUpdate({ ...character, autoSummaryEnabled: !character.autoSummaryEnabled })}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${character.autoSummaryEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
-                    >
-                      <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${character.autoSummaryEnabled ? 'translate-x-5' : ''}`} />
-                    </div>
-                  </div>
-
-                  {character.autoSummaryEnabled && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[14px] text-zinc-700">总结间隔 (条)</span>
-                      <input 
-                        type="number" 
-                        min="10"
-                        max="100"
-                        value={character.summaryInterval || 20}
-                        onChange={e => onUpdate({ ...character, summaryInterval: parseInt(e.target.value) })}
-                        className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-[14px] text-zinc-700">当前记忆总结</span>
-                        <button 
-                          onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
-                          className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
-                        >
-                          查看总结记录
-                        </button>
-                      </div>
-                      <button 
-                        onClick={handleSummarize}
-                        disabled={isSummarizing}
-                        className="px-3 py-1 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
-                      >
-                        {isSummarizing ? '总结中...' : '立刻总结'}
-                      </button>
-                    </div>
-                    <textarea 
-                      value={character.memorySummary || ''}
-                      onChange={e => onUpdate({ ...character, memorySummary: e.target.value })}
-                      placeholder="暂无记忆总结，点击上方按钮生成或手动输入..."
-                      className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900 min-h-[80px] resize-none"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
-            <button 
-              onClick={() => setShowWorldBookSelector(true)}
-              className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                  <BookOpen size={18} />
-                </div>
-                <span className="text-[15px] text-zinc-700">读取世界书</span>
-              </div>
-              <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
-            </button>
-
-            <div>
-              <div 
-                className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40 cursor-pointer"
-                onClick={() => setShowStickers(true)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                    <Smile size={18} />
-                  </div>
-                  <span className="text-[15px] text-zinc-700">导入表情包</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {character.stickers && character.stickers.length > 0 && (
-                    <span className="text-[12px] text-zinc-400">{character.stickers.length} 个</span>
-                  )}
-                  <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Interaction Settings */}
-        <div className="mt-6 px-4">
-          <h2 className="text-[13px] text-zinc-500 mb-2 ml-1 drop-shadow-sm font-medium">互动设置</h2>
-          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -765,7 +710,198 @@ export function ChatSettingsPanel({
               </div>
             </div>
           </div>
-        </div>
+
+        </SettingsSection>
+
+        <SettingsSection
+          title="模型与记忆"
+          summary="上下文窗口、Token 估算和长期记忆相关设置"
+        >
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
+            <div className="px-4 py-3.5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <History size={18} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[15px] text-zinc-700">记忆对话轮数</span>
+                    <span className="text-[11px] text-zinc-400">决定模型每次直接读取的最近聊天范围，更早记录仍会保留，但不会自动进入当前对话。</span>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  value={character.memoryLimit || 20}
+                  onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                  className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-zinc-900"
+                />
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={character.memoryLimit || 20}
+                onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                className="w-full accent-zinc-900"
+              />
+
+              <div className="pt-2 border-t border-white/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[14px] text-zinc-700">计算消耗 Token</span>
+                    <span className="text-[11px] text-zinc-400">显示实时 Token 消耗预估</span>
+                  </div>
+                  <div
+                    onClick={() => onUpdate({ ...character, showTokenCount: !character.showTokenCount })}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.showTokenCount ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  >
+                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.showTokenCount ? 'translate-x-4.5' : ''}`} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 text-[11px] text-zinc-400 pt-1">
+                <div className="flex flex-col gap-1">
+                  <span>主聊天单次预估: {tokenEstimate.mainChat} Tokens</span>
+                  <span>
+                    附加链（触发时）:
+                    {` 自动回复 ${tokenEstimate.autoReply}`}
+                    {character.autoTranslate ? ` / 自动翻译 ${tokenEstimate.autoTranslate}` : ' / 自动翻译 未开启'}
+                    {character.autoSummaryEnabled ? ` / 自动总结 ${tokenEstimate.autoSummary}` : ' / 自动总结 未开启'}
+                  </span>
+                  <span>以上为主聊天基础消耗与附加链触发时预估，不代表全局真实总消耗。</span>
+                </div>
+                <button onClick={calculateTokens} className="text-zinc-500 hover:text-zinc-900 shrink-0">重新计算</button>
+              </div>
+            </div>
+
+            <div>
+              <button
+                onClick={() => setShowMemorySettings(!showMemorySettings)}
+                className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Database size={18} />
+                  </div>
+                  <span className="text-[15px] text-zinc-700">全局记忆系统</span>
+                </div>
+                <ChevronDown size={18} className={`text-zinc-300 transition-transform ${showMemorySettings ? '' : '-rotate-90'}`} />
+              </button>
+
+              {showMemorySettings && (
+                <div className="px-4 pb-4 pt-2 bg-white/30 border-t border-white/20 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[14px] text-zinc-700">自动总结记忆</span>
+                      <span className="text-[11px] text-zinc-500">开启后，更早聊天内容会逐步沉淀成记忆；关闭时，AI主要依赖最近窗口和已有长期记忆。</span>
+                    </div>
+                    <div
+                      onClick={() => onUpdate({ ...character, autoSummaryEnabled: !character.autoSummaryEnabled })}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${character.autoSummaryEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                    >
+                      <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${character.autoSummaryEnabled ? 'translate-x-5' : ''}`} />
+                    </div>
+                  </div>
+
+                  {character.autoSummaryEnabled && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] text-zinc-700">总结间隔 (条)</span>
+                      <input
+                        type="number"
+                        min="10"
+                        max="100"
+                        value={character.summaryInterval || 20}
+                        onChange={e => onUpdate({ ...character, summaryInterval: parseInt(e.target.value) })}
+                        className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-[14px] text-zinc-700">当前记忆总结</span>
+                        <button
+                          onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
+                          className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                        >
+                          查看总结记录
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleSummarize}
+                        disabled={isSummarizing}
+                        className="px-3 py-1 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
+                      >
+                        {isSummarizing ? '总结中...' : '立刻总结'}
+                      </button>
+                    </div>
+                    <textarea
+                      value={character.memorySummary || ''}
+                      onChange={e => onUpdate({ ...character, memorySummary: e.target.value })}
+                      placeholder="暂无记忆总结，点击上方按钮生成或手动输入..."
+                      className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900 min-h-[80px] resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowWorldBookSelector(true)}
+              className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <BookOpen size={18} />
+                </div>
+                <span className="text-[15px] text-zinc-700">读取世界书</span>
+              </div>
+              <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
+            </button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="资源与内容"
+          summary="表情包、导入导出等低频内容操作"
+        >
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
+            <div className="grid grid-cols-2 divide-x divide-white/30">
+              <button
+                onClick={() => setShowImportDialog(true)}
+                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
+              >
+                <Download size={16} /> 导入数据
+              </button>
+              <button
+                onClick={() => setShowExportDialog(true)}
+                className="px-4 py-3.5 flex items-center justify-center gap-2 active:bg-white/40 text-[14px] text-zinc-900"
+              >
+                <Share2 size={16} /> 导出数据
+              </button>
+            </div>
+
+            <div
+              className="w-full px-4 py-3.5 flex items-center justify-between active:bg-white/40 cursor-pointer"
+              onClick={() => setShowStickers(true)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                  <Smile size={18} />
+                </div>
+                <span className="text-[15px] text-zinc-700">导入表情包</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {character.stickers && character.stickers.length > 0 && (
+                  <span className="text-[12px] text-zinc-400">{character.stickers.length} 个</span>
+                )}
+                <ChevronDown size={18} className="text-zinc-300 -rotate-90" />
+              </div>
+            </div>
+          </div>
+        </SettingsSection>
 
         {/* Danger Zone */}
         <div className="mt-8 px-4">
@@ -781,6 +917,43 @@ export function ChatSettingsPanel({
       </div>
 
       <AnimatePresence>
+        {showSettingEditor && (
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            className="absolute inset-0 flex flex-col z-[80]"
+            style={{
+              backgroundImage: character.background ? `url(${character.background})` : 'none',
+              backgroundColor: character.background ? 'transparent' : '#fafafa',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          >
+            <div className="pt-10 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+              <button onClick={() => setShowSettingEditor(false)} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+                <ChevronLeft size={24} />
+              </button>
+              <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">编辑角色设定</h1>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
+                <div className="mb-3">
+                  <h2 className="text-[15px] font-semibold text-zinc-800">角色设定</h2>
+                  <p className="text-[11px] text-zinc-500 mt-1">修改设定会立即影响后续对话的生成效果。</p>
+                </div>
+                <textarea
+                  value={character.setting}
+                  onChange={e => onUpdate({ ...character, setting: e.target.value })}
+                  placeholder="输入角色设定..."
+                  className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[320px] resize-none"
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {showStickers && (
           <motion.div 
             initial={{ x: '100%' }}

@@ -8,8 +8,8 @@ import {
   MessageSquare, Star, Share2, FileJson, Layers, UserRound, Book, Compass,
   UserPlus, Phone, Banknote, Calendar, Mic
 } from 'lucide-react';
-import { Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../types';
-import { extractImageUrls } from '../utils';
+import { Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
+import { extractImageUrls } from '../../utils';
 
 type MePageProps = {
   userProfile: UserProfileExtended;

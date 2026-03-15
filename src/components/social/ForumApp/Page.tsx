@@ -7,8 +7,8 @@ import {
   Camera, Check, LogOut, Key, Settings, Repeat, BarChart2, Feather,
   CheckCircle2, ArrowLeft, Home, Mail, Plus, Bookmark, Link2, AlertTriangle
 } from 'lucide-react';
-import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character } from '../types';
-import { extractImageUrls } from '../utils';
+import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character } from '../../../types';
+import { extractImageUrls } from '../../../utils';
 
 // Mock Users
 const MOCK_USERS: Record<string, { name: string; avatar: string }> = {

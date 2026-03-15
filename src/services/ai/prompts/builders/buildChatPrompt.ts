@@ -10,6 +10,7 @@ export type BuildChatPromptOptions = {
   mode?: 'chat' | 'autoReply';
   characterCore?: CharacterCoreSectionsInput;
   memoryContext?: MemoryContextInput;
+  includeProtocolRules?: boolean;
   sections?: string[];
 };
 
@@ -21,6 +22,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
   const scenario = options.mode === 'autoReply'
     ? AUTO_REPLY_SCENARIO_PROMPT
     : CHAT_SCENARIO_PROMPT;
+  const includeProtocolRules = options.includeProtocolRules ?? true;
 
   const sections = [
     EXISTENCE_PROMPT,
@@ -28,7 +30,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     buildMemoryContextSection(options.memoryContext ?? {}),
     scenario,
     OUTPUT_RULES_PROMPT,
-    PROTOCOL_RULES_PROMPT,
+    ...(includeProtocolRules ? [PROTOCOL_RULES_PROMPT] : []),
     ...(options.sections ?? []),
   ].filter(Boolean);
 

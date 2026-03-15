@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { VisualSettings, UserProfileExtended, MusicData } from '../../types';
-import { DesktopWidget } from '../DesktopWidgets';
+import { VisualSettings, UserProfileExtended, MusicData } from '../../../types';
+import { DesktopWidget } from '../../shared/DesktopWidgets';
 
 type UserProfile = UserProfileExtended;
 
@@ -265,6 +265,7 @@ export function HomeScreen({
             </div>
           </div>
         )}
+
       </div>
 
         {/* Widgets and App Icons Layer - Absolute Positioned */}
@@ -533,9 +534,10 @@ function DraggableAppIcon({ app, x, y, visualSettings, onPositionChange }: {
   );
 }
 
-function AppIcon({ id, name, icon, onClick, visualSettings }: { id: string; name: string; icon?: string; onClick: () => void; visualSettings?: VisualSettings }) {
+function AppIcon({ id, name, icon, onClick, visualSettings, iconSize }: { id: string; name: string; icon?: string; onClick: () => void; visualSettings?: VisualSettings; iconSize?: number }) {
   const customIcon = visualSettings?.desktopIcons?.find(i => i.id === id)?.iconUrl;
   const finalIcon = customIcon || icon || "https://c-ssl.duitang.com/uploads/blog/202205/25/20220525011506_45659.jpeg";
+  const finalIconSize = iconSize ?? visualSettings?.desktop?.iconSize ?? 56;
 
   // Font settings
   const fontFamily = visualSettings?.desktop?.fontFamily;
@@ -556,8 +558,8 @@ function AppIcon({ id, name, icon, onClick, visualSettings }: { id: string; name
       <div 
         className="overflow-hidden shadow-md relative"
         style={{
-          width: visualSettings?.desktop?.iconSize ?? 56,
-          height: visualSettings?.desktop?.iconSize ?? 56,
+          width: finalIconSize,
+          height: finalIconSize,
           borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14
         }}
       >

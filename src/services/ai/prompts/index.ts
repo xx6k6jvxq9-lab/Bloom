@@ -8,4 +8,6 @@ export * from './scenarios/autoReply';
 export * from './scenarios/summarySmall';
 export * from './scenarios/summaryLarge';
 export * from './builders/buildChatPrompt';
+export * from './builders/buildMomentCommentReplyPrompt';
 export * from './builders/buildSummaryPrompt';
+export * from './builders/buildMomentsPrompt';

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Send, Users, MoreVertical } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { ChatGroup, Character, ChatMessage, AppSettings } from '../types';
+import { ChatGroup, Character, ChatMessage, AppSettings } from '../../types';
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';

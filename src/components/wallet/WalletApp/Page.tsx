@@ -5,7 +5,7 @@ import {
   Wallet, History, ArrowUpRight, ArrowDownLeft, Send, ScanLine,
   ChevronLeft, Bell, X, Heart, Coins, Users, Lock
 } from 'lucide-react';
-import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction } from '../types';
+import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction } from '../../../types';
 
 // Extend the type to include chatHistory which is present in the actual appData passed
 interface AppDataWithChat extends AppDataExtended {
@@ -1052,4 +1052,3 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     </div>
   );
 }
-

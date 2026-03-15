@@ -260,6 +260,7 @@ export type Character = {
   gender: 'male' | 'female' | 'other';
   avatar: string;
   setting: string;
+  signature?: string;
   openingRemark: string;
   lastMessage?: string;
   lastTime?: number;
@@ -303,6 +304,7 @@ export type SharedPostSnapshot = {
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
+  translation?: string;
   timestamp: number;
   isRecalled?: boolean;
   isFavorited?: boolean;
@@ -310,7 +312,13 @@ export type ChatMessage = {
   isSystem?: boolean;
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;
-  replyTo?: { text: string; role: 'user' | 'model' };
+  replyTo?: {
+    text: string;
+    role: 'user' | 'model';
+    timestamp: number;
+    authorLabel: string;
+    preview: string;
+  };
   imageUrl?: string;
   isVoiceCall?: boolean;
   duration?: number; // For voice call duration

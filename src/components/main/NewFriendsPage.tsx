@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, Search, UserPlus, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { FriendRequest } from '../types';
+import { FriendRequest } from '../../types';
 
 export function NewFriendsPage({
   requests,

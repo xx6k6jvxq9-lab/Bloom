@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Calendar, Heart, Music, Play, SkipForward, SkipBack, Pause, RefreshCw, Cloud, Sun, CloudRain, Wind, Navigation } from 'lucide-react';
-import { WidgetConfig, MusicData } from '../types';
+import { WidgetConfig, MusicData } from '../../types';
 
 export function DesktopWidget({ widget, isPreview = false, musicData, setMusicData }: { widget: WidgetConfig, isPreview?: boolean, musicData?: MusicData, setMusicData?: React.Dispatch<React.SetStateAction<MusicData>> }) {
   const [time, setTime] = useState(new Date());

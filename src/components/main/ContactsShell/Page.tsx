@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { ChevronLeft, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, ChatGroup, FriendRequest } from '../../types';
+import { Character, ChatGroup, FriendRequest } from '../../../types';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 
@@ -98,7 +98,7 @@ export function ContactsApp({
             ...prev,
             friendRequests: [newReq, ...(prev.friendRequests || [])]
           }));
-          alert('已发送好友申请 (模拟)');
+          alert('已发送好友申请（模拟）');
         }}
         onBack={() => setView('list')}
       />
@@ -256,7 +256,7 @@ export function ContactsApp({
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
               className="flex items-center gap-1 px-2 py-0.5 bg-zinc-100/80 backdrop-blur-sm rounded-md active:bg-zinc-200 transition-colors"
             >
-              <span className="text-[10px] text-zinc-500 font-medium">姓名 (拼音) {sortOrder === 'asc' ? '升序' : '降序'}</span>
+              <span className="text-[10px] text-zinc-500 font-medium">姓名（拼音）{sortOrder === 'asc' ? '升序' : '降序'}</span>
               <RefreshCw size={10} className={`text-zinc-400 ${sortOrder === 'desc' ? 'rotate-180' : ''} transition-transform`} />
             </button>
           </div>
@@ -317,6 +317,10 @@ export function CharacterProfile({
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
 }) {
+  const fallbackSignature = character.openingRemark?.trim()
+    || `${character.setting.trim().slice(0, 36)}${character.setting.trim().length > 36 ? '...' : ''}`;
+  const profileSignature = character.signature?.trim() || fallbackSignature;
+
   return (
     <motion.div 
       initial={{ x: '100%' }}
@@ -363,7 +367,7 @@ export function CharacterProfile({
             </div>
             <div className="px-4 py-4">
               <p className="text-[15px] text-zinc-800 mb-1">个性签名</p>
-              <p className="text-[14px] text-zinc-400 leading-relaxed">{character.setting.slice(0, 100)}...</p>
+              <p className="text-[14px] text-zinc-400 leading-relaxed">{profileSignature}</p>
             </div>
           </div>
 
@@ -393,17 +397,29 @@ export function CharacterProfile({
 
         {/* Actions */}
         <div className="mt-8 px-4 space-y-3 pb-10">
+          <button
+            onClick={onAddFriend}
+            disabled={isFriend}
+            className={`w-full py-4 rounded-2xl font-bold text-[16px] transition-all border flex items-center justify-center gap-2 ${
+              isFriend
+                ? 'bg-zinc-100 text-zinc-400 border-zinc-100 cursor-not-allowed'
+                : 'bg-white text-zinc-700 border-zinc-200 active:bg-zinc-50'
+            }`}
+          >
+            <UserPlus size={20} />
+            {isFriend ? '已添加' : '添加'}
+          </button>
           <button 
             onClick={onChat}
-            className="w-full bg-white text-blue-500 py-4 rounded-2xl font-bold text-[16px] active:bg-zinc-50 transition-colors border border-zinc-100 flex items-center justify-center gap-2"
+            className="w-full bg-zinc-900 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
           >
             <MessageSquare size={20} />
-            主动加你 (发消息)
+            主动加你（发消息）
           </button>
-          {!isFriend && (
+          {false && (
             <button 
               onClick={onAddFriend}
-              className="w-full bg-blue-500 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+              className="w-full bg-zinc-900 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
             >
               <UserPlus size={20} />
               添加好友
@@ -463,9 +479,9 @@ export function AddFriendModal({
               setQuery('');
             }
           }}
-          className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold text-[15px] active:opacity-80 transition-opacity"
+          className="w-full bg-zinc-900 text-white py-3.5 rounded-xl font-bold text-[15px] active:opacity-80 transition-opacity shadow-lg shadow-black/10"
         >
-          搜索并添加
+          添加
         </button>
       </div>
     </motion.div>
@@ -515,7 +531,7 @@ export function GroupManagementModal({
                 setNewGroup('');
               }
             }}
-            className="bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-[14px] active:opacity-80"
+            className="bg-zinc-900 text-white px-4 py-2 rounded-xl font-bold text-[14px] active:opacity-80 shadow-lg shadow-black/10"
           >
             添加
           </button>
@@ -551,4 +567,5 @@ export function NavTab({ icon, label, active, onClick }: { icon: React.ReactNode
     </button>
   );
 }
+
 

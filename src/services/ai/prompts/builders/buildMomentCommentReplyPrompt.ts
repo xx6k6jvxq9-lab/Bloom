@@ -1,0 +1,57 @@
+import { EXISTENCE_PROMPT } from '../base/existence';
+import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
+import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
+import { MOMENT_COMMENT_REPLY_SCENARIO_PROMPT } from '../scenarios/momentCommentReply';
+
+export type BuildMomentCommentReplyPromptOptions = {
+  characterCore?: CharacterCoreSectionsInput;
+  memoryContext?: MemoryContextInput;
+  momentContext?: {
+    momentContent: string;
+    momentTone?: string;
+    momentIntent?: string;
+    signature?: string;
+    relationship?: string;
+    commentType?: string;
+    userComment: string;
+    recentCommentReplies?: string[];
+    maxLength?: number;
+    replyStyleHints?: string[];
+  };
+  sections?: string[];
+};
+
+function buildMomentContextSection(momentContext?: BuildMomentCommentReplyPromptOptions['momentContext']): string {
+  if (!momentContext) return '';
+
+  return [
+    '## 当前评论区上下文',
+    `动态正文: ${momentContext.momentContent}`,
+    momentContext.momentTone ? `这条动态当时的语气/状态: ${momentContext.momentTone}` : '',
+    momentContext.momentIntent ? `这条动态更像是在: ${momentContext.momentIntent}` : '',
+    momentContext.signature ? `角色签名: ${momentContext.signature}` : '',
+    momentContext.relationship ? `角色与用户关系: ${momentContext.relationship}` : '',
+    momentContext.commentType ? `当前评论类型判断: ${momentContext.commentType}` : '',
+    `用户评论: ${momentContext.userComment}`,
+    `建议长度: ${momentContext.maxLength ?? 30} 字以内`,
+    momentContext.recentCommentReplies?.length
+      ? ['最近几条评论/回复（避免重复句型）:', ...momentContext.recentCommentReplies.map((item, index) => `${index + 1}. ${item}`)].join('\n')
+      : '',
+    momentContext.replyStyleHints?.length ? `评论区风格约束: ${momentContext.replyStyleHints.join('；')}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+export function buildMomentCommentReplyPrompt(options: BuildMomentCommentReplyPromptOptions = {}): string {
+  const sections = [
+    EXISTENCE_PROMPT,
+    buildCharacterCoreSection(options.characterCore ?? {}),
+    buildMemoryContextSection(options.memoryContext ?? {}),
+    MOMENT_COMMENT_REPLY_SCENARIO_PROMPT,
+    buildMomentContextSection(options.momentContext),
+    OUTPUT_RULES_PROMPT,
+    ...(options.sections ?? []),
+  ].filter(Boolean);
+
+  return sections.join('\n\n');
+}
