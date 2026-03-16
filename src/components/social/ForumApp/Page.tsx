@@ -113,6 +113,14 @@ type ForumAppProps = {
   initialPostId?: string | null;
 };
 
+type ForumAuthor = {
+  id: string;
+  name: string;
+  avatar: string;
+  bio?: string;
+  description?: string;
+};
+
 type ForumCommentItemProps = {
   comment: ForumComment;
   post: ForumPost;
@@ -383,10 +391,17 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     }
   }, []);
 
-  const getAuthor = (id: string) => {
+  const getAuthor = (id: string): ForumAuthor => {
     if (id === currentUser.id) return currentUser;
     const character = appData.characters.find(c => c.id === id);
-    if (character) return character;
+    if (character) {
+      return {
+        id: character.id,
+        name: character.name,
+        avatar: character.avatar,
+        description: character.signature || character.setting,
+      };
+    }
     
     const mockUser = MOCK_USERS[id];
     if (mockUser) return { id, ...mockUser };
@@ -788,7 +803,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
   const renderPostList = () => {
     let displayPosts = [...posts];
     
-    if (activeTab === 'search') {
+    if (searchQuery.trim()) {
       displayPosts = displayPosts.filter(p => 
         p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
         p.content.toLowerCase().includes(searchQuery.toLowerCase()) ||

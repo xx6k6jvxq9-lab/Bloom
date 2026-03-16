@@ -49,6 +49,9 @@ export type NavBarConfig = {
   style: 'default' | 'glass' | 'minimal';
   shape: 'pill' | 'rectangle' | 'circle' | 'square';
   showMultipleAvatars: boolean;
+  offsetX?: number;
+  offsetY?: number;
+  backgroundImage?: string;
   selectedCharacterId?: string;
   statusBarPlacement: 'top' | 'bottom' | 'hidden';
   customCss?: string;
@@ -85,6 +88,7 @@ export type DesktopCustomization = {
   iconBorderRadius: number;
   gridColumns: number;
   gridGap: number;
+  topWidgetRow?: number;
   appOrder?: string[];
   fontFamily?: string;
   fontSize?: number;
@@ -465,6 +469,44 @@ export type CallRecord = {
   tokens?: number;
 };
 
+export type DatingGeneratedContent = {
+  background: {
+    source: 'character-avatar' | 'url' | 'local-upload';
+    image: string;
+    atmosphere: string;
+    focus: string;
+  };
+  narrative: {
+    title: string;
+    subtitle?: string;
+    segments: {
+      type: 'narration' | 'dialogue';
+      text: string;
+    }[];
+  };
+  status: {
+    location: string;
+    time: string;
+    mood: string;
+    innerThought: string;
+  };
+  playlist: {
+    title: string;
+    artist: string;
+    note?: string;
+  }[];
+};
+
+export type DateMessage = {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+  kind?: 'user' | 'scene';
+  generatedContent?: DatingGeneratedContent;
+  pending?: boolean;
+};
+
 export type DateSession = {
   id: string;
   characterId: string;
@@ -472,7 +514,10 @@ export type DateSession = {
   scenario: string;
   mood: string;
   backgroundScene: string;
-  messages: { role: 'user' | 'model'; text: string }[];
+  backgroundImage?: string;
+  backgroundSource?: 'character-avatar' | 'url' | 'local-upload';
+  generatedContent?: DatingGeneratedContent;
+  messages: DateMessage[];
   timestamp: number;
 };
 

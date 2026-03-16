@@ -82,7 +82,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 bg-white/80 rounded-full flex items-center justify-center shadow-sm backdrop-blur-sm">
-                  {React.cloneElement(getIcon() as React.ReactElement, { size: 18 })}
+                  {React.cloneElement(getIcon() as React.ReactElement<{ size?: number }>, { size: 18 })}
                 </div>
                 <span className="text-xs font-bold text-zinc-700 opacity-80">{getTitle()}</span>
               </div>
@@ -175,7 +175,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
                 <div className="flex items-center justify-between mb-4 sticky top-0 bg-white pb-2 border-b border-zinc-50 z-10">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-500 shadow-sm">
-                      {React.cloneElement(getIcon() as React.ReactElement, { size: 18 })}
+                      {React.cloneElement(getIcon() as React.ReactElement<{ size?: number }>, { size: 18 })}
                     </div>
                     <h3 className="font-bold text-base text-zinc-800">{getLabel()}</h3>
                   </div>

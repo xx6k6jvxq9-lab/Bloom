@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, WidgetConfig, DesktopIconConfig } from '../../../types';
@@ -189,6 +189,10 @@ function ImageUploadControl({ label, value, onChange }: { label: string, value: 
 function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const visibleWidgets = useMemo(
+    () => (settings.widgets || []).filter((widget: WidgetConfig) => widget.type !== 'music'),
+    [settings.widgets]
+  );
 
   const apps = [
     { id: 'chat', name: '聊天', icon: 'MessageSquare' },
@@ -219,11 +223,22 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   };
 
   const handleWidgetUpdate = (widgetId: string, updates: Partial<WidgetConfig>) => {
-    const newWidgets = settings.widgets.map((w: WidgetConfig) => 
+    const newWidgets = visibleWidgets.map((w: WidgetConfig) => 
       w.id === widgetId ? { ...w, ...updates } : w
     );
     setSettings({ ...settings, widgets: newWidgets });
   };
+
+  useEffect(() => {
+    if ((settings.widgets || []).length === visibleWidgets.length) {
+      return;
+    }
+
+    setSettings({
+      ...settings,
+      widgets: visibleWidgets,
+    });
+  }, [settings, setSettings, visibleWidgets]);
 
   return (
     <div className="space-y-6">
@@ -388,7 +403,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </button>
           </div>
           
-          {(!settings.widgets || settings.widgets.length === 0) ? (
+          {visibleWidgets.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-3 border-2 border-dashed border-zinc-100 rounded-2xl">
               <Layout size={32} className="text-zinc-300" />
               <p className="text-xs font-medium">暂无小卡片组件</p>
@@ -396,7 +411,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </div>
           ) : (
             <div className="space-y-3">
-              {settings.widgets.map((widget: WidgetConfig) => {
+              {visibleWidgets.map((widget: WidgetConfig) => {
                 if (!widget) return null;
                 return (
                 <div key={widget.id} className="space-y-2">
@@ -410,7 +425,6 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                             {widget.type === 'calendar' && <Layout size={20} />}
                             {widget.type === 'time' && <Monitor size={20} />}
                             {widget.type === 'anniversary' && <Palette size={20} />}
-                            {widget.type === 'music' && <ImageIcon size={20} />}
                             {widget.type === 'weather' && <Cloud size={20} />}
                             {widget.type === 'blank' && <Layout size={20} />}
                           </>
@@ -418,7 +432,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-zinc-800">
-                          {widget.type === 'calendar' ? '日历组件' : widget.type === 'time' ? '时间组件' : widget.type === 'anniversary' ? '纪念日组件' : widget.type === 'music' ? '音乐组件' : widget.type === 'weather' ? '天气组件' : '空白卡片'}
+                          {widget.type === 'calendar' ? '日历组件' : widget.type === 'time' ? '时间组件' : widget.type === 'anniversary' ? '纪念日组件' : widget.type === 'weather' ? '天气组件' : '空白卡片'}
                         </p>
                         <p className="text-[10px] text-zinc-500">尺寸: {widget.w}x{widget.h}</p>
                       </div>
@@ -473,14 +487,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                             onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
                             className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
                           >
-                            <option value="default">默认样式</option>
-                            {widget.type === 'music' && (
-                              <>
-                                <option value="bar">长条播放器</option>
-                                <option value="glass">iOS 毛玻璃 CD</option>
-                              </>
-                            )}
-                            {widget.type === 'time' && (
+                            <option value="default">默认样式</option>                            {widget.type === 'time' && (
                               <option value="minimal">极简数字</option>
                             )}
                             {widget.type === 'calendar' && (
@@ -648,6 +655,24 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
               className="w-5 h-5 accent-zinc-900"
             />
           </div>
+
+          <ImageUploadControl
+            label="导航栏背景图"
+            value={settings.navBar.backgroundImage || ''}
+            onChange={(val) =>
+              setSettings({
+                ...settings,
+                navBar: {
+                  ...settings.navBar,
+                  backgroundImage: val,
+                },
+              })
+            }
+          />
+
+          <p className="text-[11px] text-zinc-400 leading-relaxed">
+            支持直接粘贴图片链接、Markdown 图片、HTML 图片地址，也支持直接上传本地图片。
+          </p>
         </div>
       )}
 
@@ -1385,3 +1410,5 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     </div>
   );
 }
+
+

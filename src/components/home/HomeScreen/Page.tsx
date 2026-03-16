@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, UserProfileExtended, MusicData } from '../../../types';
@@ -101,12 +101,89 @@ export function HomeScreen({
   const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-  const moods = [
-    '😊 开心', '😐 平淡', '😴 困倦', '🤔 思考', '🔥 奋斗', '🌈 期待',
-    '✨ 闪亮', '💖 心动', '🌸 治愈', '🍭 甜蜜', '🐱 慵懒', '🎈 快乐',
-    '🌟 梦想', '🍀 好运', '🎀 可爱', '💫 奇迹', '🎵 欢快', '🌤️ 晴朗'
+  const moodOptions = [
+    '(≧▽≦)',
+    '(๑˃̵ᴗ˂̵)و',
+    "(●'◡'●)",
+    '(´▽｀)',
+    'ヽ(✿ﾟ▽ﾟ)ノ',
+    '(≧∇≦)ﾉ',
+    '(๑•̀ㅂ•́)و✧',
+    '٩(ˊᗜˋ*)و',
+    '(^▽^)',
+    '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
+    '(｡♥‿♥｡)',
+    '(ฅ´ωฅ)',
+    '(｡･ω･｡)',
+    '(=^･ω･^=)',
+    '(๑• . •๑)',
+    '(づ｡◕‿‿◕｡)づ',
+    'ʕ•ᴥ•ʔ',
+    '(❁´◡❁)',
+    '(〃ω〃)',
+    '(⁄ ⁄•⁄ω⁄•⁄ ⁄)',
+    '(/ω＼)',
+    '(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)',
+    '(,,•́ . •̀,,)',
+    '(〃▽〃)',
+    '(⁄ ⁄•⁄▽⁄•⁄ ⁄)',
+    '(｡ﾉω＼｡)',
+    '(｡ì _ í｡)',
+    '(；′⌒)',
+    '(╥﹏╥)',
+    '(｡•́︿•̀｡)',
+    '(っ˘̩╭╮˘̩)っ',
+    '(ಥ﹏ಥ)',
+    '(இ﹏இ｡)',
+    '(｡•́︵•̀｡)',
+    '(ノ_<。)',
+    '(๑¯ω¯๑)',
+    '(╯°□°）╯︵ ┻━┻',
+    '(｡•ˇ‸ˇ•｡)',
+    '(╬ Ò﹏Ó)',
+    '(｀Д´*)',
+    '(•̀へ •́ ╮)',
+    '(◣◢)',
+    '٩(╬ʘ益ʘ╬)۶',
+    '(¬¬)',
+    '(－‸ლ)',
+    '(￣￣)',
+    'Σ(ﾟдﾟ;)',
+    '(⊙_⊙)',
+    '(ﾟДﾟ≡ﾟДﾟ)',
+    '∑(O_O；)',
+    'Σ(っ °Д °;)っ',
+    '(；ﾟДﾟ)',
+    '(ʘ言ʘ╬)',
+    '(☉｡☉)!',
+    '(；一_一)',
+    '(￣o￣) . z Z',
+    '(～﹃～)~zZ',
+    '(－ω－) zzZ',
+    '(∪｡∪)｡｡｡zzz',
+    '(´-ωก`)',
+    '(。-ω-)zzz',
+    '(｡･ω･)ﾉﾞ',
+    '(๑´ㅂ๑)',
+    '(ฅ>ω<*ฅ)',
+    '(づ￣ 3￣)づ',
+    '(๑´•.̫ • ๑)',
+    '(●´ω｀●)',
+    '(♡˙︶˙♡)',
+    '(´,,•ω•,,)',
+    '(눈_눈)',
+    '(￢_￢)',
+    '(ーー;)',
+    '(￣▽￣;)'
   ];
+  const defaultMood = '(≧▽≦)';
+  const currentMood = moodOptions.includes(userProfile.mood || '') ? userProfile.mood : defaultMood;
 
+  useEffect(() => {
+    if (!userProfile.mood || !moodOptions.includes(userProfile.mood)) {
+      setUserProfile({ ...userProfile, mood: defaultMood });
+    }
+  }, [setUserProfile, userProfile]);
   const navBarShapeClass = visualSettings?.navBar?.shape === 'rectangle' ? 'rounded-2xl' : visualSettings?.navBar?.shape === 'circle' ? 'rounded-[40px]' : 'rounded-full';
 
   return (
@@ -232,10 +309,10 @@ export function HomeScreen({
             <div className="relative min-w-[80px] flex justify-end">
               <button 
                 onClick={() => setShowMoodMenu(!showMoodMenu)}
-                className="flex flex-col items-end active:opacity-70"
+                className="flex items-center justify-end active:opacity-70 text-[0] [&>span:first-child]:hidden"
               >
                 <span className="text-white/60 text-[9px] font-bold uppercase tracking-wider">今日心情</span>
-                <span className="text-white text-[13px] font-medium">{userProfile.mood}</span>
+                <span className="text-white text-[16px] font-medium">{currentMood}</span>
               </button>
 
               {/* Mood Menu */}
@@ -245,18 +322,18 @@ export function HomeScreen({
                     initial={{ opacity: 0, y: 10, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute top-12 right-0 w-32 bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-2 gap-1"
+                    className="absolute top-12 right-0 w-56 max-h-72 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                   >
-                    {moods.map(m => (
+                    {moodOptions.map(m => (
                       <button
                         key={m}
                         onClick={() => {
                           setUserProfile({ ...userProfile, mood: m });
                           setShowMoodMenu(false);
                         }}
-                        className="text-[12px] py-2 hover:bg-zinc-50 rounded-lg transition-colors"
+                        className="text-[13px] py-2 px-2 text-left whitespace-nowrap hover:bg-zinc-50 rounded-lg transition-colors"
                       >
-                        {m.split(' ')[0]}
+                        {m}
                       </button>
                     ))}
                   </motion.div>
@@ -473,13 +550,20 @@ function DraggableWidget({ widget, x, y, onPositionChange, appData, setAppData }
       }}
       whileDrag={{ scale: 1.02, zIndex: 100, cursor: 'grabbing' }}
     >
-      <DesktopWidget widget={widget} musicData={appData.musicData} setMusicData={(setterOrValue) => setAppData(prev => {
-        const prevMusicData = prev.musicData!;
-        const nextMusicData = typeof setterOrValue === 'function' 
-          ? (setterOrValue as React.SetStateAction<MusicData>)(prevMusicData)
-          : setterOrValue;
-        return { ...prev, musicData: nextMusicData };
-      })} />
+      <DesktopWidget
+        widget={widget}
+        musicData={appData.musicData}
+        setMusicData={(setterOrValue) =>
+          setAppData(prev => {
+            const prevMusicData = prev.musicData!;
+            const nextMusicData =
+              typeof setterOrValue === 'function'
+                ? (setterOrValue as (value: MusicData) => MusicData)(prevMusicData)
+                : setterOrValue;
+            return { ...prev, musicData: nextMusicData };
+          })
+        }
+      />
     </motion.div>
   );
 }

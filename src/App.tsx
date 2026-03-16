@@ -12,7 +12,7 @@ import { GroupChatSession } from './components/chat/GroupChatSession';
 import { MonitorApp } from './components/monitor/MonitorApp/Page';
 import { CustomizationApp } from './components/customization/CustomizationApp/Page';
 import { HomeScreen } from './components/home/HomeScreen/Page';
-import { CharacterProfile } from './components/main/ContactsShell/Page';
+import { CharacterMomentsProfile, CharacterProfile } from './components/main/ContactsShell/Page';
 import { MainApp } from './components/main/MainAppShell/Page';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
 import { CoupleSpaceApp } from './components/couple-space/CoupleSpaceApp/Page';
@@ -111,6 +111,7 @@ type AppData = {
   savedDates?: DateSession[];
   collectedDates?: DateSession[];
   musicData?: import('./types').MusicData;
+  walletData?: WalletData;
 };
 
 const formatMessagePreview = (text: string | undefined): string => {
@@ -859,12 +860,14 @@ export default function App() {
   if (!audioRef.current) {
     audioRef.current = new Audio();
   }
-  const [activeApp, setActiveApp] = useState<'home' | 'chat' | 'settings' | 'chat-session' | 'add-character' | 'sms' | 'character-profile' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet' | 'group-chat-session'>('home');
+  const [activeApp, setActiveApp] = useState<'home' | 'chat' | 'settings' | 'chat-session' | 'add-character' | 'sms' | 'character-profile' | 'character-moments' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet' | 'group-chat-session'>('home');
   const [activeTab, setActiveTab] = useState<'chat' | 'contacts' | 'moments' | 'me'>('chat');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedForumPostId, setSelectedForumPostId] = useState<string | null>(null);
+  const [characterMomentsBackApp, setCharacterMomentsBackApp] = useState<'chat' | 'chat-session' | 'character-profile'>('character-profile');
   const [time, setTime] = useState('');
+  const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [appData, setAppData] = useState<AppData>({
     characters: DEFAULT_CHARACTERS,
@@ -931,6 +934,7 @@ export default function App() {
       volume: 80,
       playlists: [],
       likedSongs: [],
+      collectedSongs: [],
       history: [],
       recentlyPlayed: [],
       togetherWith: null,
@@ -1082,7 +1086,7 @@ export default function App() {
       <div id="phone-container" className="relative w-[360px] h-[720px] bg-black rounded-[50px] border-[8px] border-white shadow-2xl overflow-hidden flex flex-col ring-1 ring-black/5">
         
         {/* Status Bar */}
-        {activeApp !== 'wallet' && activeApp !== 'forum' && (
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && (
           <div className="absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
@@ -1150,6 +1154,10 @@ export default function App() {
               onChat={() => {
                 setActiveApp('chat-session');
               }}
+              onOpenMoments={() => {
+                setCharacterMomentsBackApp('character-profile');
+                setActiveApp('character-moments');
+              }}
               onAddFriend={() => {
                 alert('已发送好友请求');
               }}
@@ -1167,6 +1175,13 @@ export default function App() {
                   characters: prev.characters.map(c => c.id === selectedCharacterId ? { ...c, isPinned: !c.isPinned } : c)
                 }));
               }}
+            />
+          )}
+          {activeApp === 'character-moments' && selectedCharacterId && appData.characters.find(c => c.id === selectedCharacterId) && (
+            <CharacterMomentsProfile
+              character={appData.characters.find(c => c.id === selectedCharacterId)!}
+              moments={appData.moments || []}
+              onBack={() => setActiveApp(characterMomentsBackApp)}
             />
           )}
           {activeApp === 'chat-session' && selectedCharacterId && appData.characters.find(c => c.id === selectedCharacterId) && (
@@ -1257,6 +1272,11 @@ export default function App() {
                   }, ...(prev.moments || [])]
                 }));
               }}
+              onOpenCharacterMoments={() => {
+                setCharacterMomentsBackApp('chat-session');
+                setActiveApp('character-moments');
+              }}
+              onStatusBarVisibilityChange={setStatusBarVisible}
             />
           )}
           {activeApp === 'group-chat-session' && selectedGroupId && (
@@ -1397,7 +1417,7 @@ export default function App() {
           {activeApp === 'forum' && (
             <ForumApp
               appData={appData}
-              onUpdateAppData={setAppData}
+              onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
               onClose={() => setActiveApp('home')}
               onOpenChat={(characterId) => {
                 setSelectedCharacterId(characterId);
@@ -1409,7 +1429,7 @@ export default function App() {
           {activeApp === 'wallet' && (
             <WalletApp
               appData={appData}
-              onUpdateAppData={setAppData}
+              onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
               onClose={() => setActiveApp('home')}
             />
           )}
@@ -1661,7 +1681,9 @@ function ChatSession({
   savedDates,
   walletData,
   onUpdateWalletData,
-  onPublishMoment
+  onPublishMoment,
+  onOpenCharacterMoments,
+  onStatusBarVisibilityChange
 }: { 
   character: Character;
   history: ChatMessage[];
@@ -1690,6 +1712,8 @@ function ChatSession({
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
+  onOpenCharacterMoments?: () => void;
+  onStatusBarVisibilityChange?: (visible: boolean) => void;
 }) {
   const lastMomentPublishAtRef = useRef<number | null>(null);
   const [input, setInput] = useState('');
@@ -1761,6 +1785,15 @@ function ChatSession({
   };
 
   const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId) || settings?.configs?.[0] || DEFAULT_CONFIG;
+  const activeSavedDate = savedDates?.find(session => session.characterId === character.id) || null;
+
+  useEffect(() => {
+    onStatusBarVisibilityChange?.(!showDatingModal);
+
+    return () => {
+      onStatusBarVisibilityChange?.(true);
+    };
+  }, [showDatingModal, onStatusBarVisibilityChange]);
   
   const showVoiceCallRef = useRef(false);
   const [voiceCallHistory, setVoiceCallHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
@@ -3039,7 +3072,13 @@ function ChatSession({
             <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
               <ChevronLeft size={24} />
             </button>
-            <img src={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50 ml-1" />
+            <button
+              onClick={() => onOpenCharacterMoments?.()}
+              className="ml-1 rounded-full active:scale-95 transition-transform cursor-pointer p-0.5"
+              aria-label="打开角色主页"
+            >
+              <img src={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
+            </button>
           </div>
           
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pt-1.5 pointer-events-none">
@@ -4012,6 +4051,18 @@ function ChatSession({
         )}
       </AnimatePresence>
 
+      <DatingModal
+        isOpen={showDatingModal}
+        onClose={() => setShowDatingModal(false)}
+        character={character}
+        userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
+        activeConfig={activeConfig}
+        chatHistory={history}
+        onSaveDate={onSaveDate || (() => {})}
+        onCollectDate={onCollectDate || (() => {})}
+        initialSession={savedDates?.find(s => s.characterId === character.id) || null}
+      />
+
       {/* Voice Call UI */}
       <AnimatePresence>
         {showVoiceCall && (
@@ -4343,20 +4394,6 @@ function ChatSession({
           </>
         )}
       </AnimatePresence>
-
-      {/* Dating Modal */}
-      <DatingModal
-        isOpen={showDatingModal}
-        onClose={() => setShowDatingModal(false)}
-        character={character}
-        userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
-        apiKey={(settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0]).apiKey || process.env.GEMINI_API_KEY || ''}
-        model={(settings.configs.find(c => c.id === settings.activeConfigId) || settings.configs[0]).model}
-        onSendToChat={handleSend}
-        onSaveDate={onSaveDate || (() => {})}
-        onCollectDate={onCollectDate || (() => {})}
-        initialSession={savedDates?.find(s => s.characterId === character.id)}
-      />
 
       {/* Game Center */}
       <GameCenter

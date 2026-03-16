@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { ChevronLeft, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatGroup, FriendRequest } from '../../../types';
 import { NewFriendsPage } from '../NewFriendsPage';
@@ -302,6 +302,7 @@ export function CharacterProfile({
   character, 
   onBack, 
   onChat,
+  onOpenMoments,
   onAddFriend,
   isFriend,
   groups,
@@ -311,6 +312,7 @@ export function CharacterProfile({
   character: Character; 
   onBack: () => void; 
   onChat: () => void;
+  onOpenMoments: () => void;
   onAddFriend: () => void;
   isFriend: boolean;
   groups: string[];
@@ -329,35 +331,35 @@ export function CharacterProfile({
       className="absolute inset-0 bg-white flex flex-col z-[80]"
     >
       {/* Header */}
-      <div className="pt-10 pb-3 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50">
+      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
-          <ChevronLeft size={24} />
+          <ChevronLeft size={22} />
         </button>
-        <h1 className="text-[17px] font-bold text-zinc-900">详细资料</h1>
+        <h1 className="text-[16px] font-bold text-zinc-900">详细资料</h1>
         <button className="p-1 text-zinc-400">
-          <MoreVertical size={20} />
+          <MoreVertical size={18} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-zinc-50/50">
         {/* Profile Info Card */}
-        <div className="bg-white p-6 flex items-center gap-4 mb-3">
-          <img src={character.avatar} alt={character.name} className="w-16 h-16 rounded-xl object-cover shadow-sm" />
+        <div className="bg-white px-4 py-4 flex items-center gap-3 mb-2.5">
+          <img src={character.avatar} alt={character.name} className="w-14 h-14 rounded-xl object-cover shadow-sm" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-[20px] font-bold text-zinc-900 truncate">{character.name}</h2>
-            <p className="text-[13px] text-zinc-400 mt-0.5">ID: {character.id}</p>
+            <h2 className="text-[18px] font-bold text-zinc-900 truncate">{character.name}</h2>
+            <p className="text-[12px] text-zinc-400 mt-0.5">ID: {character.id}</p>
           </div>
         </div>
 
         {/* Details List */}
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="bg-white divide-y divide-zinc-50">
-            <div className="px-4 py-4 flex items-center justify-between">
-              <span className="text-[15px] text-zinc-800">性别</span>
-              <span className="text-[15px] text-zinc-400">{character.gender === 'male' ? '男' : character.gender === 'female' ? '女' : '其他'}</span>
+            <div className="px-4 py-3.5 flex items-center justify-between">
+              <span className="text-[14px] text-zinc-800">性别</span>
+              <span className="text-[14px] text-zinc-400">{character.gender === 'male' ? '男' : character.gender === 'female' ? '女' : '其他'}</span>
             </div>
-            <div className="px-4 py-4 flex items-center justify-between">
-              <span className="text-[15px] text-zinc-800">置顶聊天</span>
+            <div className="px-4 py-3.5 flex items-center justify-between">
+              <span className="text-[14px] text-zinc-800">置顶聊天</span>
               <button 
                 onClick={onTogglePin}
                 className={`w-10 h-5.5 rounded-full transition-colors relative ${character.isPinned ? 'bg-zinc-900' : 'bg-zinc-200'}`}
@@ -365,19 +367,26 @@ export function CharacterProfile({
                 <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.isPinned ? 'translate-x-4.5' : ''}`} />
               </button>
             </div>
-            <div className="px-4 py-4">
-              <p className="text-[15px] text-zinc-800 mb-1">个性签名</p>
-              <p className="text-[14px] text-zinc-400 leading-relaxed">{profileSignature}</p>
+            <button
+              onClick={onOpenMoments}
+              className="w-full px-4 py-3.5 flex items-center justify-between active:bg-zinc-50 transition-colors"
+            >
+              <span className="text-[14px] text-zinc-800">角色动态主页</span>
+              <ChevronRight size={16} className="text-zinc-400" />
+            </button>
+            <div className="px-4 py-3.5">
+              <p className="text-[14px] text-zinc-800 mb-1">个性签名</p>
+              <p className="text-[13px] text-zinc-400 leading-relaxed">{profileSignature}</p>
             </div>
           </div>
 
           {isFriend && (
-            <div className="bg-white px-4 py-4">
-              <p className="text-[15px] text-zinc-800 mb-3">分组设置</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="bg-white px-4 py-3.5">
+              <p className="text-[14px] text-zinc-800 mb-2.5">分组设置</p>
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   onClick={() => onUpdateGroup(undefined)}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${!character.groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                 >
                   无分组
                 </button>
@@ -385,7 +394,7 @@ export function CharacterProfile({
                   <button
                     key={g}
                     onClick={() => onUpdateGroup(g)}
-                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${character.groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                   >
                     {g}
                   </button>
@@ -396,25 +405,25 @@ export function CharacterProfile({
         </div>
 
         {/* Actions */}
-        <div className="mt-8 px-4 space-y-3 pb-10">
+        <div className="mt-5 px-4 space-y-2.5 pb-7">
           <button
             onClick={onAddFriend}
             disabled={isFriend}
-            className={`w-full py-4 rounded-2xl font-bold text-[16px] transition-all border flex items-center justify-center gap-2 ${
+            className={`w-full py-3.5 rounded-2xl font-bold text-[15px] transition-all border flex items-center justify-center gap-2 ${
               isFriend
                 ? 'bg-zinc-100 text-zinc-400 border-zinc-100 cursor-not-allowed'
                 : 'bg-white text-zinc-700 border-zinc-200 active:bg-zinc-50'
             }`}
           >
-            <UserPlus size={20} />
+            <UserPlus size={18} />
             {isFriend ? '已添加' : '添加'}
           </button>
           <button 
             onClick={onChat}
-            className="w-full bg-zinc-900 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+            className="w-full bg-zinc-900 text-white py-3.5 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
           >
-            <MessageSquare size={20} />
-            主动加你（发消息）
+            <MessageSquare size={18} />
+            主动加你
           </button>
           {false && (
             <button 
@@ -424,6 +433,119 @@ export function CharacterProfile({
               <UserPlus size={20} />
               添加好友
             </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+type CharacterMoment = {
+  id: string;
+  authorId: string;
+  content: string;
+  images?: string[];
+  timestamp: number;
+  likes: number;
+  comments: Array<{ id: string }>;
+};
+
+export function CharacterMomentsProfile({
+  character,
+  moments,
+  onBack,
+}: {
+  character: Character;
+  moments: CharacterMoment[];
+  onBack: () => void;
+}) {
+  const ownMoments = moments
+    .filter(moment => moment.authorId === character.id)
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const profileSummary = character.signature?.trim()
+    || character.motto?.trim()
+    || character.openingRemark?.trim()
+    || '这个角色还没有写下动态签名。';
+  const heroGradient = character.gender === 'female'
+    ? 'from-zinc-200 via-rose-200 to-zinc-500'
+    : character.gender === 'male'
+      ? 'from-zinc-200 via-sky-200 to-zinc-500'
+      : 'from-zinc-200 via-zinc-400 to-zinc-600';
+
+  return (
+    <motion.div
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      className="absolute inset-0 bg-zinc-50 flex flex-col z-[80]"
+    >
+      <div className="pt-10 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+          <ChevronLeft size={24} />
+        </button>
+        <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">动态</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-24 relative bg-zinc-50">
+        <div className="relative pb-4">
+          <div className="h-40 relative overflow-hidden">
+            <div className={`absolute inset-0 bg-gradient-to-br ${heroGradient}`} />
+          </div>
+
+          <div className="px-5 relative -mt-10 flex items-end gap-3 justify-start z-10">
+            <div className="relative flex-1 min-w-0 flex flex-col gap-1">
+              <div className="absolute inset-0 bg-black/5 rounded-2xl blur-sm transform translate-y-1" />
+              <img src={character.avatar} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
+            </div>
+            <div className="mb-1.5 flex-1 text-left">
+              <div className="flex items-center justify-start gap-2">
+                <h2 className="text-[20px] font-bold text-zinc-900">{character.name}</h2>
+                <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-medium rounded-full">
+                  {character.gender === 'female' ? '她的动态' : character.gender === 'male' ? '他的动态' : '角色动态'}
+                </span>
+              </div>
+              <p className="text-[13px] text-zinc-500 mt-0.5">{profileSummary}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-transparent px-0 pt-4 space-y-4">
+          {ownMoments.length === 0 ? (
+            <div className="mx-4 py-10 text-center text-zinc-400">
+              <p className="text-[14px]">这个角色还没有发布动态</p>
+            </div>
+          ) : (
+            ownMoments.map(moment => (
+              <div
+                key={moment.id}
+                className="p-4 mx-4 backdrop-blur-md border border-white/50 shadow-sm flex gap-3 transition-colors bg-white/90"
+                style={{ borderRadius: 24 }}
+              >
+                <img src={character.avatar} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-bold text-[15px] text-zinc-900">{character.name}</h3>
+                    <span className="text-[12px] text-zinc-400">
+                      {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[15px] text-zinc-800 mt-1 whitespace-pre-wrap leading-relaxed">{moment.content}</p>
+                  {moment.images && moment.images.length > 0 && (
+                    <div className={`grid gap-1.5 mt-3 ${moment.images.length === 1 ? 'grid-cols-1 w-2/3' : 'grid-cols-3'}`}>
+                      {moment.images.slice(0, 6).map((image, index) => (
+                        <img key={`${moment.id}-${index}`} src={image} className="w-full aspect-square object-cover rounded-xl border border-zinc-100" />
+                      ))}
+                    </div>
+                  )}
+                  <div className="bg-zinc-50 rounded-xl p-3 mt-2">
+                    <div className="flex items-center gap-1.5 text-[13px] text-zinc-600 font-medium">
+                      <Heart size={12} className="fill-red-500 text-red-500" />
+                      <span>点赞 {moment.likes} · 评论 {moment.comments.length}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>

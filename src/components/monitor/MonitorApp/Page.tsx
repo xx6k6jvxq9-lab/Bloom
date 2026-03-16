@@ -409,12 +409,6 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
             <img src={selectedChar?.avatar} className="w-7 h-7 rounded-lg object-cover" />
             <div>
               <h2 className="text-xs font-bold text-zinc-800">{selectedChar?.name}</h2>
-              <div className="flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${isScanning ? 'bg-zinc-400 animate-pulse' : 'bg-zinc-900'}`} />
-                <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider">
-                  {isScanning ? '正在同步数据...' : '实时连接中'}
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -1070,7 +1064,7 @@ function SideNavButton({ active, onClick, icon, label }: { active: boolean; onCl
       className={`flex flex-col items-center gap-1 transition-all relative group w-full py-1`}
     >
       <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/30 scale-110' : 'bg-transparent text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'}`}>
-        {React.cloneElement(icon as React.ReactElement, { size: 16, strokeWidth: active ? 2.5 : 2 })}
+        {React.cloneElement(icon as React.ReactElement<{ size?: number; strokeWidth?: number }>, { size: 16, strokeWidth: active ? 2.5 : 2 })}
       </div>
       <span className={`text-[8px] font-black transition-colors duration-300 ${active ? 'text-zinc-900' : 'text-zinc-300'} uppercase tracking-tighter whitespace-nowrap`}>
         {label}
