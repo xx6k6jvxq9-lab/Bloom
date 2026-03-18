@@ -612,23 +612,38 @@ export function DatingScene({
         <div className="dating-scene__composer-wrap">
           <AnimatePresence>
             {showStickerPanel ? (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                className="dating-scene__sticker-panel"
-              >
-                {DATING_STICKERS.map(sticker => (
-                  <button
-                    key={sticker}
-                    type="button"
-                    className="dating-scene__sticker-btn"
-                    onClick={() => void handleSendSticker(sticker)}
-                  >
-                    {sticker}
-                  </button>
-                ))}
-              </motion.div>
+              <>
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="dating-scene__sticker-backdrop"
+                  onClick={() => setShowStickerPanel(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 28 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 28 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                  className="dating-scene__sticker-sheet"
+                >
+                  <div className="dating-scene__sticker-sheet-handle" />
+                  <div className="dating-scene__sticker-sheet-title">表情</div>
+                  <div className="dating-scene__sticker-panel">
+                    {DATING_STICKERS.map(sticker => (
+                      <button
+                        key={sticker}
+                        type="button"
+                        className="dating-scene__sticker-btn"
+                        onClick={() => void handleSendSticker(sticker)}
+                      >
+                        {sticker}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </>
             ) : null}
           </AnimatePresence>
           <div className="dating-scene__composer">
