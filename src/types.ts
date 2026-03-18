@@ -19,12 +19,14 @@ export type FavoriteMessage = {
   category: string;
 };
 
-export type WidgetType = 'calendar' | 'anniversary' | 'time' | 'music' | 'weather' | 'blank';
+export type WidgetType = 'calendar' | 'anniversary' | 'time' | 'music' | 'weather' | 'blank' | 'profile-card';
 
 export type WidgetConfig = {
   id: string;
   type: WidgetType;
   style?: string;
+  page?: number;
+  slotId?: string;
   x?: number;
   y?: number;
   w: number;
@@ -34,12 +36,21 @@ export type WidgetConfig = {
   date?: string; // For anniversary
   borderRadius?: number;
   opacity?: number;
+  bannerUrl?: string;
+  avatarUrl?: string;
+  profileName?: string;
+  handle?: string;
+  bio?: string;
+  location?: string;
+  material?: 'default' | 'frosted' | 'dark';
 };
 
 export type DesktopIconConfig = {
   id: string; // app id like 'chat', 'settings', etc.
+  page?: number;
   iconUrl?: string;
   borderRadius?: number;
+  slotId?: string;
   x?: number;
   y?: number;
 };
@@ -49,6 +60,8 @@ export type NavBarConfig = {
   style: 'default' | 'glass' | 'minimal';
   shape: 'pill' | 'rectangle' | 'circle' | 'square';
   showMultipleAvatars: boolean;
+  page?: number;
+  slotId?: string;
   offsetX?: number;
   offsetY?: number;
   backgroundImage?: string;
@@ -88,6 +101,7 @@ export type DesktopCustomization = {
   iconBorderRadius: number;
   gridColumns: number;
   gridGap: number;
+  dockSlotId?: string;
   topWidgetRow?: number;
   appOrder?: string[];
   fontFamily?: string;
@@ -384,6 +398,11 @@ export type CoupleSpaceData = {
   backgroundUrl: string | null;
   userAvatarFrame?: string | null;
   partnerAvatarFrame?: string | null;
+  loveLetterEnvelopeBg?: string | null;
+  loveLetterEnvelopeColor?: string | null;
+  loveLetterPaperTexture?: 'default' | 'vintage' | 'grid' | 'floral';
+  loveLetterPaperBg?: string | null;
+  calendarBg?: string | null;
   coNotes: CoNote[];
   ledger: LedgerEntry[];
   loveLetters: LoveLetter[];

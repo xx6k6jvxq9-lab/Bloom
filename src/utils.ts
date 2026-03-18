@@ -65,8 +65,72 @@ export function extractSingleImageUrl(text: string): string {
   return urls.length > 0 ? urls[0] : text.trim();
 }
 
+export const DEFAULT_WHITE_AVATAR =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+      <rect width="200" height="200" rx="100" fill="#ffffff"/>
+    </svg>
+  `);
+
 export function getSummaryHistoryWindow(messages: ChatMessage[], memoryLimit?: number): ChatMessage[] {
   const baseWindow = memoryLimit || 20;
   const summaryWindow = Math.max(baseWindow * 2, 40);
   return messages.slice(-summaryWindow);
+}
+
+export const APP_DIALOG_EVENT = 'app-dialog-request';
+
+export type AppDialogRequest =
+  | {
+      kind: 'alert';
+      message: string;
+      resolve?: () => void;
+    }
+  | {
+      kind: 'confirm';
+      message: string;
+      resolve: (value: boolean) => void;
+    }
+  | {
+      kind: 'prompt';
+      message: string;
+      defaultValue?: string;
+      resolve: (value: string | null) => void;
+    };
+
+const dispatchAppDialog = (detail: AppDialogRequest) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(APP_DIALOG_EVENT, { detail }));
+};
+
+export function showInAppAlert(message: string): Promise<void> {
+  return new Promise((resolve) => {
+    dispatchAppDialog({
+      kind: 'alert',
+      message,
+      resolve,
+    });
+  });
+}
+
+export function showInAppConfirm(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    dispatchAppDialog({
+      kind: 'confirm',
+      message,
+      resolve,
+    });
+  });
+}
+
+export function showInAppPrompt(message: string, defaultValue = ''): Promise<string | null> {
+  return new Promise((resolve) => {
+    dispatchAppDialog({
+      kind: 'prompt',
+      message,
+      defaultValue,
+      resolve,
+    });
+  });
 }

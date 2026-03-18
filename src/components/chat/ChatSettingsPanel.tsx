@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
-import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow } from '../../utils';
+import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 
 function SettingsSection({
   title,
@@ -301,7 +301,7 @@ export function ChatSettingsPanel({
       }}
     >
       {/* Header */}
-      <div className="pt-10 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+      <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
         <button
           onClick={() => {
             if (activeSection === 'menu') {
@@ -361,8 +361,8 @@ export function ChatSettingsPanel({
               <ChevronRight size={18} className="text-zinc-400" />
             </button>
             <button
-              onClick={() => {
-                if (confirm('确定要清空聊天记录吗？')) setHistory([]);
+              onClick={async () => {
+                if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
               }}
               className="w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
             >
@@ -985,8 +985,8 @@ export function ChatSettingsPanel({
 
         <div className="mt-8 px-4">
           <button 
-            onClick={() => {
-              if (confirm('确定要清空聊天记录吗？')) setHistory([]);
+            onClick={async () => {
+              if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
             }}
             className="w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm"
           >
@@ -1013,7 +1013,7 @@ export function ChatSettingsPanel({
               backgroundPosition: 'center',
             }}
           >
-            <div className="pt-10 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+            <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
               <button onClick={() => setShowSettingEditor(false)} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
                 <ChevronLeft size={24} />
               </button>
@@ -1136,8 +1136,8 @@ export function ChatSettingsPanel({
               {character.stickers && character.stickers.length > 0 && (
                 <div className="mt-8">
                   <button 
-                    onClick={() => {
-                      if (confirm('确定要清空所有表情包吗？')) {
+                    onClick={async () => {
+                      if (await showInAppConfirm('确定要清空所有表情包吗？')) {
                         onUpdate({ ...character, stickers: [] });
                       }
                     }}
@@ -1282,7 +1282,7 @@ export function ChatSettingsPanel({
 
       {showCallHistory && (
         <div className="absolute inset-0 bg-zinc-50 z-[80] flex flex-col">
-          <div className="pt-10 pb-3 px-4 bg-white border-b border-zinc-100 flex items-center justify-between shrink-0 relative">
+          <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white border-b border-zinc-100 flex items-center justify-between shrink-0 relative">
             {isBatchMode ? (
               <button 
                 onClick={() => {
@@ -1387,7 +1387,7 @@ export function ChatSettingsPanel({
                     {!isBatchMode && (
                       <div className="flex justify-end gap-2 pt-2 border-t border-zinc-50">
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
                             if (isFavorited) {
                               setFavorites(favorites.filter(f => !(f.timestamp === record.timestamp && f.category === '通话')));
@@ -1413,9 +1413,9 @@ export function ChatSettingsPanel({
                           <span>{isFavorited ? '已收藏' : '收藏'}</span>
                         </button>
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            if (confirm('确定要删除这条通话记录吗？')) {
+                            if (await showInAppConfirm('确定要删除这条通话记录吗？')) {
                               onDeleteCallRecord?.(record.id);
                             }
                           }}
@@ -1445,7 +1445,7 @@ export function ChatSettingsPanel({
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const records = callHistory?.filter(r => selectedCallRecords.has(r.id)) || [];
                     const newFavorites = [...favorites];
                     let addedCount = 0;
@@ -1473,7 +1473,7 @@ export function ChatSettingsPanel({
                   <span className="text-[11px]">收藏</span>
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const records = callHistory?.filter(r => selectedCallRecords.has(r.id)) || [];
                     const data = JSON.stringify(records, null, 2);
                     const blob = new Blob([data], { type: 'application/json' });
@@ -1491,8 +1491,8 @@ export function ChatSettingsPanel({
                   <span className="text-[11px]">导出</span>
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm(`确定要删除选中的 ${selectedCallRecords.size} 条记录吗？`)) {
+                  onClick={async () => {
+                    if (await showInAppConfirm(`确定要删除选中的 ${selectedCallRecords.size} 条记录吗？`)) {
                       selectedCallRecords.forEach(id => onDeleteCallRecord?.(id));
                       setSelectedCallRecords(new Set());
                       setIsBatchMode(false);

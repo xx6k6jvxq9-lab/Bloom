@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BellOff, ChevronLeft, Compass, MessageSquare, Pin, Plus, User, UserPlus2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, AppSettings } from '../../../types';
 import { MePage } from '../MePage';
 import { ContactsApp, AddFriendModal, GroupManagementModal, NavTab } from '../ContactsShell/Page';
+import { DEFAULT_WHITE_AVATAR, showInAppConfirm } from '../../../utils';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+
+function ResolvedMainShellAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
 
 type AppData = {
   chatGroups?: any[];
@@ -50,14 +70,22 @@ export function MainApp({
 }) {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showManageGroups, setShowManageGroups] = useState(false);
+  const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');
+
+  useEffect(() => {
+    if (activeTab !== 'me') {
+      setMeSection('main');
+    }
+  }, [activeTab]);
 
   return (
     <motion.div 
       className="absolute inset-0 flex flex-col bg-zinc-50"
     >
       {/* Header */}
+      {!(activeTab === 'me' && meSection !== 'main') && (
       <div 
-        className="relative z-10 pt-10 pb-3 px-4 flex justify-between items-center shrink-0 backdrop-blur-md border-b bg-white border-zinc-100"
+        className="relative z-10 min-h-[64px] pt-12 pb-3 px-4 flex justify-between items-center shrink-0 backdrop-blur-md border-b bg-white border-zinc-100"
       >
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
@@ -89,9 +117,10 @@ export function MainApp({
           )}
         </div>
       </div>
+      )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {activeTab === 'chat' && (
           <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4 space-y-3">
             {/* Groups */}
@@ -140,15 +169,10 @@ export function MainApp({
                   borderColor: '#e4e4e7'
                 }}
               >
-                <img 
-                  src={char.avatar} 
+                <ResolvedMainShellAvatar 
+                  value={char.avatar} 
                   alt={char.name} 
                   className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" 
-                  onClick={(e) => {
-                    // In chat list, clicking avatar could also open profile
-                    // e.stopPropagation();
-                    // onOpenProfile(char.id);
-                  }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center mb-0.5">
@@ -229,6 +253,7 @@ export function MainApp({
                 characters: prev.characters.map(c => c.id === char.id ? char : c)
               }));
             }}
+            onSectionChange={setMeSection}
           />
         )}
       </div>
@@ -252,7 +277,7 @@ export function MainApp({
                   id: char.id || Date.now().toString(),
                   name: char.name,
                   gender: char.gender || 'other',
-                  avatar: char.avatar || `https://picsum.photos/seed/${char.id || Date.now()}/200`,
+                  avatar: char.avatar || DEFAULT_WHITE_AVATAR,
                   setting: char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
                   openingRemark: char.openingRemark || `你好！很高兴认识你，我是 ${char.name}。`,
                   lastMessage: char.openingRemark || `你好！很高兴认识你，我是 ${char.name}。`,
@@ -287,8 +312,8 @@ export function MainApp({
                   groups: [...prev.groups, name]
                 }));
               }}
-              onDelete={(name) => {
-                if (confirm(`确定要删除分组 "${name}" 吗？`)) {
+              onDelete={async (name) => {
+                if (await showInAppConfirm(`确定要删除分组 "${name}" 吗？`)) {
                   setAppData(prev => ({
                     ...prev,
                     groups: prev.groups.filter(g => g !== name),
@@ -303,6 +328,7 @@ export function MainApp({
       </AnimatePresence>
 
       {/* Bottom Navigation */}
+      {!(activeTab === 'me' && meSection !== 'main') && (
       <div 
         className="absolute bottom-0 left-0 right-0 h-[84px] rounded-t-[32px] shadow-[0_-5px_20px_rgba(0,0,0,0.03)] flex items-center justify-around px-4 pb-4 z-20 backdrop-blur-md border-t bg-white border-zinc-100"
       >
@@ -311,6 +337,7 @@ export function MainApp({
         <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
         <NavTab icon={<User size={24} />} label="我的" active={activeTab === 'me'} onClick={() => setActiveTab('me')} />
       </div>
+      )}
     </motion.div>
   );
 }

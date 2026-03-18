@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Pencil, Link2, Upload, RefreshCw, ChevronRight, 
@@ -9,7 +9,9 @@ import {
   UserPlus, Phone, Banknote, Calendar, Mic
 } from 'lucide-react';
 import { Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
-import { extractImageUrls } from '../../utils';
+import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { extractImageUrls, showInAppConfirm } from '../../utils';
 
 type MePageProps = {
   userProfile: UserProfileExtended;
@@ -32,6 +34,7 @@ type MePageProps = {
   setAppData?: any;
   settings?: any;
   setSettings?: (s: any) => void;
+  onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters') => void;
 };
 
 export function MePage({ 
@@ -54,18 +57,25 @@ export function MePage({
   appData,
   setAppData,
   settings,
-  setSettings
+  setSettings,
+  onSectionChange,
 }: MePageProps) {
   const [activeSection, setActiveSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');
   const [editingProfile, setEditingProfile] = useState(false);
 
   const { globalBackground } = visualSettings;
-  const bgStyle = globalBackground ? { backgroundColor: `rgba(255, 255, 255, 0.85)` } : { backgroundColor: 'white' };
-  const containerBgStyle = globalBackground ? { backgroundColor: 'transparent' } : { backgroundColor: '#fafafa' };
+  const { resolvedUrl: resolvedGlobalBackgroundUrl } = useResolvedPersistentValue(globalBackground);
+  const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userProfile.avatar);
+  const bgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, 0.85)` } : { backgroundColor: 'white' };
+  const containerBgStyle = resolvedGlobalBackgroundUrl ? { backgroundColor: 'transparent' } : { backgroundColor: '#fafafa' };
+
+  useEffect(() => {
+    onSectionChange?.(activeSection);
+  }, [activeSection, onSectionChange]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative" style={containerBgStyle}>
-      {globalBackground && <img src={globalBackground} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Background" />}
+      {resolvedGlobalBackgroundUrl && <img src={resolvedGlobalBackgroundUrl} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Background" />}
       {activeSection === 'main' && (
           <div 
             className="flex-1 overflow-y-auto pb-24"
@@ -75,7 +85,11 @@ export function MePage({
               <div className="flex flex-col items-center">
                 <div className="relative group">
                   <div className="w-20 h-20 rounded-full border-4 border-zinc-50 overflow-hidden shadow-md">
-                    <img src={userProfile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                    {resolvedUserAvatarUrl ? (
+                      <img src={resolvedUserAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-100" />
+                    )}
                   </div>
                   <button 
                     onClick={() => setEditingProfile(true)}
@@ -195,6 +209,42 @@ export function MePage({
   );
 }
 
+function ResolvedMeAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
+
+function ResolvedMeImage({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
+
 
 
 function CharacterManager({ characters, onDelete, onBack, globalBackground }: { characters: any[], onDelete?: (id: string) => void, onBack: () => void, globalBackground?: string }) {
@@ -207,8 +257,8 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
     );
   };
 
-  const handleBatchDelete = () => {
-    if (confirm(`确定要删除选中的 ${selectedIds.length} 个角色吗？`)) {
+  const handleBatchDelete = async () => {
+    if (await showInAppConfirm(`确定要删除选中的 ${selectedIds.length} 个角色吗？`)) {
       selectedIds.forEach(id => onDelete?.(id));
       setIsBatchMode(false);
       setSelectedIds([]);
@@ -254,7 +304,7 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
                 : (globalBackground ? 'bg-white/50 border border-white/30' : 'bg-white border border-zinc-100')
             }`}
           >
-            <img src={char.avatar} className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" />
+            <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" />
             <div className="flex-1 min-w-0">
               <h4 className="text-[15px] font-bold text-zinc-900 truncate">{char.name}</h4>
               <p className="text-[12px] text-zinc-500 truncate">{char.openingRemark}</p>
@@ -266,9 +316,9 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
               </div>
             ) : (
               <button 
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if(confirm(`确定要删除角色 "${char.name}" 吗？`)) {
+                  if (await showInAppConfirm(`确定要删除角色 "${char.name}" 吗？`)) {
                     onDelete?.(char.id);
                   }
                 }}
@@ -325,6 +375,8 @@ function MenuButton({ icon, label, subLabel, onClick }: { icon: React.ReactNode,
 function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfile: UserProfileExtended, setUserProfile: (p: UserProfileExtended) => void, onClose: () => void }) {
   const [tempProfile, setTempProfile] = useState(userProfile);
   const [tempUrl, setTempUrl] = useState('');
+  const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
+  const { resolvedUrl: resolvedTempAvatarUrl } = useResolvedPersistentValue(tempProfile.avatar);
 
   return (
     <motion.div 
@@ -346,7 +398,11 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
         
         <div className="space-y-5">
           <div className="flex flex-col items-center gap-3">
-            <img src={tempProfile.avatar} className="w-20 h-20 rounded-full border-2 border-zinc-100 object-cover" />
+            {resolvedTempAvatarUrl ? (
+              <img src={resolvedTempAvatarUrl} className="w-20 h-20 rounded-full border-2 border-zinc-100 object-cover" alt="Avatar" />
+            ) : (
+              <div className="w-20 h-20 rounded-full border-2 border-zinc-100 bg-zinc-50" />
+            )}
             <div className="flex gap-2 w-full">
               <input 
                 type="text" 
@@ -356,9 +412,9 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
                 className="flex-1 bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2 text-[12px] outline-none"
               />
               <button 
-                onClick={() => { 
+                onClick={async () => { 
                   if(tempUrl) {
-                    const finalUrl = extractImageUrls(tempUrl)[0] || tempUrl.trim();
+                    const finalUrl = await setRemoteUrl(extractImageUrls(tempUrl)[0] || tempUrl.trim());
                     setTempProfile({...tempProfile, avatar: finalUrl}); 
                   }
                   setTempUrl(''); 
@@ -369,12 +425,12 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               </button>
               <label className="bg-zinc-100 text-zinc-600 px-3 py-2 rounded-xl text-[12px] cursor-pointer">
                 上传
-                <input type="file" className="hidden" onChange={e => {
+                <input type="file" accept="image/*" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0];
                   if(file) {
-                    const r = new FileReader();
-                    r.onload = () => setTempProfile({...tempProfile, avatar: r.result as string});
-                    r.readAsDataURL(file);
+                    const persistedValue = await setUploadedFile(file);
+                    setTempProfile({...tempProfile, avatar: persistedValue});
+                    e.currentTarget.value = '';
                   }
                 }} />
               </label>
@@ -471,8 +527,8 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
     setSelectedMaskIds([]);
   };
 
-  const handleBatchDelete = () => {
-    if (confirm(`确定要删除选中的 ${selectedMaskIds.length} 个面具吗？`)) {
+  const handleBatchDelete = async () => {
+    if (await showInAppConfirm(`确定要删除选中的 ${selectedMaskIds.length} 个面具吗？`)) {
       setMasks(masks.filter(m => !selectedMaskIds.includes(m.id)));
       setIsBatchMode(false);
       setSelectedMaskIds([]);
@@ -685,7 +741,7 @@ function BatchSyncModal({ characters, onSync, onClose }: { characters: any[], on
               className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors ${selectedIds.includes(char.id) ? 'bg-blue-50 border-blue-200' : 'bg-zinc-50 border-zinc-100'}`}
             >
               <div className="flex items-center gap-2">
-                <img src={char.avatar} className="w-7 h-7 rounded-full object-cover" />
+                <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-7 h-7 rounded-full object-cover" />
                 <span className="text-[13px] font-medium">{char.name}</span>
               </div>
               {selectedIds.includes(char.id) && <Check size={16} className="text-blue-500" />}
@@ -786,7 +842,7 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
                   className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-blue-50 border-blue-200' : 'bg-zinc-50 border-zinc-100'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <img src={char.avatar} className="w-6 h-6 rounded-full" />
+                    <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-6 h-6 rounded-full" />
                     <span className="text-[12px]">{char.name}</span>
                   </div>
                   {temp.linkedCharacters.includes(char.id) && <Check size={14} className="text-blue-500" />}
@@ -1070,7 +1126,12 @@ function FavoritesManager({ favorites, moments, collectedDates, characters, onBa
               {moment.images && moment.images.length > 0 && (
                 <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar">
                   {moment.images.map((img: string, i: number) => (
-                    <img key={i} src={img} className="h-16 w-16 object-cover rounded-lg border border-zinc-100 shrink-0" />
+                    <ResolvedMeImage
+                      key={i}
+                      value={img}
+                      alt={`moment-${moment.id}-${i}`}
+                      className="h-16 w-16 object-cover rounded-lg border border-zinc-100 shrink-0"
+                    />
                   ))}
                 </div>
               )}
@@ -1152,8 +1213,8 @@ export function WorldBookManager({
     setEditForm({ title: '', content: '', category: '世界设定', isActive: true, isGlobal: true, characterIds: [] });
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('确定要删除这条设定吗？')) {
+  const handleDelete = async (id: string) => {
+    if (await showInAppConfirm('确定要删除这条设定吗？')) {
       setWorldBooks(worldBooks.filter(wb => wb.id !== id));
     }
   };
@@ -1250,7 +1311,7 @@ export function WorldBookManager({
                   {characters.map(char => (
                     <div key={char.id} className="flex items-center justify-between p-2 hover:bg-zinc-100 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <img src={char.avatar} className="w-8 h-8 rounded-full object-cover" />
+                        <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-8 h-8 rounded-full object-cover" />
                         <span className="text-[14px] font-medium text-zinc-800">{char.name}</span>
                       </div>
                       <input 
@@ -1372,8 +1433,8 @@ export function WorldBookManager({
                 
                 {wb.category === '角色设定' && onAddCharacter && (
                   <button 
-                    onClick={() => {
-                      if (confirm(`要将 "${wb.title}" 添加到聊天列表吗？`)) {
+                    onClick={async () => {
+                      if (await showInAppConfirm(`要将 "${wb.title}" 添加到聊天列表吗？`)) {
                         onAddCharacter({
                           name: wb.title,
                           setting: wb.content,

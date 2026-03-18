@@ -2,6 +2,18 @@ import React, { useState } from 'react';
 import { ChevronLeft, Plus, Trash2, Users, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChatGroup, Character } from '../../types';
+import { showInAppConfirm } from '../../utils';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+
+function ResolvedGroupAvatar({ value, alt, className }: { value?: string | null; alt: string; className: string }) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
 
 export function GroupChatManagerPage({
   groups,
@@ -23,7 +35,7 @@ export function GroupChatManagerPage({
   return (
     <div className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
       {/* Header */}
-      <div className="pt-10 pb-3 px-4 flex justify-between items-center bg-white border-b border-zinc-100">
+      <div className="min-h-[64px] pt-12 pb-3 px-4 flex justify-between items-center bg-white border-b border-zinc-100">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
@@ -55,8 +67,8 @@ export function GroupChatManagerPage({
                 </div>
               </div>
               <button 
-                onClick={() => {
-                  if (confirm('确定要解散该群聊吗？')) {
+                onClick={async () => {
+                  if (await showInAppConfirm('确定要解散该群聊吗？')) {
                     onDeleteGroup(group.id);
                   }
                 }}
@@ -115,7 +127,7 @@ export function GroupChatManagerPage({
                             : 'bg-white border-zinc-100'
                         }`}
                       >
-                        <img src={char.avatar} className="w-10 h-10 rounded-full object-cover" />
+                        <ResolvedGroupAvatar value={char.avatar} alt={char.name} className="w-10 h-10 rounded-full object-cover" />
                         <span className="font-medium text-zinc-800 flex-1">{char.name}</span>
                         {isSelected && <Check size={16} className="text-blue-500" />}
                       </div>

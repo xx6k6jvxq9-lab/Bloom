@@ -3,7 +3,9 @@ import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, I
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, WidgetConfig, DesktopIconConfig } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
-import { extractSingleImageUrl } from '../../../utils';
+import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
+import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 type CustomizationAppProps = {
   visualSettings: VisualSettings;
@@ -33,7 +35,6 @@ export function CustomizationApp({
   const [activeTab, setActiveTab] = useState<'home' | 'desktop' | 'chat' | 'theme' | 'data'>('home');
   const [desktopSubTab, setDesktopSubTab] = useState<'wallpaper' | 'icons' | 'layout' | 'widgets' | 'navbar' | 'font'>('wallpaper');
   const [chatSubTab, setChatSubTab] = useState<'avatar' | 'bubble' | 'background' | 'interface' | 'dynamics'>('avatar');
-
   return (
     <div className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans z-50">
       {/* Header */}
@@ -136,15 +137,24 @@ function CategoryCard({ icon, title, description, onClick }: { icon: React.React
   );
 }
 
-function ImageUploadControl({ label, value, onChange }: { label: string, value: string, onChange: (val: string) => void }) {
+function ImageUploadControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string,
+  value: string,
+  onChange: (val: string) => void,
+}) {
   const [localValue, setLocalValue] = useState(value);
-
-  React.useEffect(() => {
+  const { resolvedUrl, loading } = useResolvedPersistentValue(localValue);
+  const { setRemoteUrl, setUploadedFile, clearValue } = usePersistentFieldActions();
+  useEffect(() => {
     setLocalValue(value);
   }, [value]);
 
-  const handleConfirm = () => {
-    const finalUrl = extractSingleImageUrl(localValue);
+  const handleConfirm = async () => {
+    const finalUrl = localValue.trim() ? await setRemoteUrl(localValue) : await clearValue();
     setLocalValue(finalUrl);
     onChange(finalUrl);
   };
@@ -152,6 +162,15 @@ function ImageUploadControl({ label, value, onChange }: { label: string, value: 
   return (
     <div className="space-y-2">
       <label className="text-xs font-bold text-zinc-500">{label}</label>
+      {(resolvedUrl || loading) && (
+        <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-50">
+          {resolvedUrl ? (
+            <img src={resolvedUrl} alt={label} className="w-full h-28 object-cover" />
+          ) : (
+            <div className="w-full h-28 flex items-center justify-center text-xs text-zinc-400">正在加载预览...</div>
+          )}
+        </div>
+      )}
       <div className="flex gap-2">
         <input 
           type="text" 
@@ -162,16 +181,14 @@ function ImageUploadControl({ label, value, onChange }: { label: string, value: 
         />
         <label className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center whitespace-nowrap">
           <Upload size={14} className="mr-1" /> 上传
-          <input type="file" accept="image/*,video/*" className="hidden" onChange={e => {
+          <input type="file" accept="image/*,video/*" className="hidden" onChange={async e => {
             const file = e.target.files?.[0];
             if (file) {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                setLocalValue(reader.result as string);
-                onChange(reader.result as string);
-              };
-              reader.readAsDataURL(file);
+              const persistedValue = await setUploadedFile(file);
+              setLocalValue(persistedValue);
+              onChange(persistedValue);
             }
+            e.target.value = '';
           }} />
         </label>
         <button 
@@ -185,14 +202,222 @@ function ImageUploadControl({ label, value, onChange }: { label: string, value: 
   );
 }
 
+function PersistentImageUploadControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string,
+  value: string,
+  onChange: (val: string) => void,
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const { resolvedUrl, loading, error } = useResolvedPersistentValue(localValue);
+  const { setRemoteUrl, setUploadedFile, clearValue } = usePersistentFieldActions();
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleConfirm = async () => {
+    const nextValue = localValue.trim() ? await setRemoteUrl(localValue) : await clearValue();
+    setLocalValue(nextValue);
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-zinc-500">{label}</label>
+      {(resolvedUrl || loading) && (
+        <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-50">
+          {resolvedUrl ? (
+            <img src={resolvedUrl} alt={label} className="w-full h-28 object-cover" />
+          ) : (
+            <div className="w-full h-28 flex items-center justify-center text-xs text-zinc-400">正在加载预览...</div>
+          )}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
+          资源解析失败，刷新后如果资源仍存在会自动恢复。
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+          placeholder="支持链接、Markdown或HTML图片"
+          className="flex-1 min-w-0 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-zinc-900"
+        />
+        <label className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center whitespace-nowrap">
+          <Upload size={14} className="mr-1" /> 上传
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (file) {
+                try {
+                  const nextValue = await setUploadedFile(file);
+                  setLocalValue(nextValue);
+                  onChange(nextValue);
+                } catch (uploadError) {
+                  alert(uploadError instanceof Error ? `上传失败: ${uploadError.message}` : '上传失败，请稍后重试。');
+                }
+              }
+              e.target.value = '';
+            }}
+          />
+        </label>
+        <button
+          onClick={() => {
+            void handleConfirm();
+          }}
+          className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-medium transition-colors whitespace-nowrap"
+        >
+          确认
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WidgetListThumbnail({ widget }: { widget: WidgetConfig }) {
+  const { resolvedUrl } = useResolvedPersistentValue(widget.background);
+
+  return (
+    <div className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center text-zinc-900 overflow-hidden">
+      {resolvedUrl ? (
+        <img src={resolvedUrl} className="w-full h-full object-cover" alt="Widget background" />
+      ) : (
+        <>
+          {widget.type === 'calendar' && <Layout size={20} />}
+          {widget.type === 'time' && <Monitor size={20} />}
+          {widget.type === 'anniversary' && <Palette size={20} />}
+          {widget.type === 'weather' && <Cloud size={20} />}
+          {widget.type === 'profile-card' && <User size={20} />}
+          {widget.type === 'blank' && <Layout size={20} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersistentSquareThumbnail({ value, alt }: { value?: string; alt: string }) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return null;
+  }
+
+  return <img src={resolvedUrl} className="w-full h-full object-cover" alt={alt} />;
+}
+
 // --- Desktop Settings ---
 function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground);
+  const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(settings.navBar?.backgroundImage || '');
   const visibleWidgets = useMemo(
     () => (settings.widgets || []).filter((widget: WidgetConfig) => widget.type !== 'music'),
     [settings.widgets]
   );
+  const widgetTemplates: Array<{ type: WidgetConfig['type']; label: string; icon: React.ReactNode; create: () => WidgetConfig }> = [
+    {
+      type: 'profile-card',
+      label: '资料卡片',
+      icon: <User size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'profile-card',
+        w: 4,
+        h: 2,
+        background: '#ffffff',
+        profileName: '自定义',
+        handle: '自定义',
+        bio: '自定义',
+        location: '自定义',
+        material: 'default'
+      }),
+    },
+    {
+      type: 'calendar',
+      label: '日历组件',
+      icon: <Calendar size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'calendar',
+        w: 2,
+        h: 2,
+        background: '#ffffff',
+        style: 'default',
+      }),
+    },
+    {
+      type: 'time',
+      label: '时间组件',
+      icon: <Monitor size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'time',
+        w: 2,
+        h: 2,
+        background: '#ffffff',
+        style: 'default',
+      }),
+    },
+    {
+      type: 'anniversary',
+      label: '纪念日组件',
+      icon: <Heart size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'anniversary',
+        w: 2,
+        h: 2,
+        background: '#ffffff',
+        title: '纪念日',
+        date: new Date().toISOString().slice(0, 10),
+      }),
+    },
+    {
+      type: 'weather',
+      label: '天气组件',
+      icon: <Cloud size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'weather',
+        w: 2,
+        h: 2,
+        background: '#ffffff',
+      }),
+    },
+    {
+      type: 'blank',
+      label: '空白卡片',
+      icon: <Layout size={18} />,
+      create: () => ({
+        id: Date.now().toString(),
+        type: 'blank',
+        w: 2,
+        h: 2,
+        background: '#ffffff',
+      }),
+    },
+  ];
+
+  const addWidgetByType = (type: WidgetConfig['type']) => {
+    const template = widgetTemplates.find(item => item.type === type);
+    if (!template) return;
+    const newWidget = template.create();
+    setSettings({ ...settings, widgets: [...(settings.widgets || []), newWidget] });
+    setEditingWidgetId(newWidget.id);
+    setShowWidgetPicker(false);
+  };
 
   const apps = [
     { id: 'chat', name: '聊天', icon: 'MessageSquare' },
@@ -223,10 +448,12 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   };
 
   const handleWidgetUpdate = (widgetId: string, updates: Partial<WidgetConfig>) => {
-    const newWidgets = visibleWidgets.map((w: WidgetConfig) => 
-      w.id === widgetId ? { ...w, ...updates } : w
-    );
-    setSettings({ ...settings, widgets: newWidgets });
+    setSettings({
+      ...settings,
+      widgets: (settings.widgets || []).map((w: WidgetConfig) =>
+        w.id === widgetId ? { ...w, ...updates } : w
+      )
+    });
   };
 
   useEffect(() => {
@@ -265,13 +492,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">全局壁纸设置</h3>
           <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
-            {settings.globalBackground ? (
-              <img src={settings.globalBackground} className="w-full h-full object-cover" alt="Wallpaper" />
+            {resolvedWallpaperUrl ? (
+              <img src={resolvedWallpaperUrl} className="w-full h-full object-cover" alt="Wallpaper" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-zinc-400">无壁纸</div>
             )}
           </div>
-          <ImageUploadControl 
+          <PersistentImageUploadControl 
             label="壁纸图片" 
             value={settings.globalBackground} 
             onChange={(val) => setSettings({ ...settings, globalBackground: val })} 
@@ -329,7 +556,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 >
                   <div className="w-8 h-8 rounded-lg bg-zinc-200 overflow-hidden">
                     {settings.desktopIcons?.find((i: any) => i.id === app.id)?.iconUrl ? (
-                      <img src={settings.desktopIcons.find((i: any) => i.id === app.id).iconUrl} className="w-full h-full object-cover" />
+                      <PersistentSquareThumbnail value={settings.desktopIcons.find((i: any) => i.id === app.id).iconUrl} alt={`${app.name} icon`} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-zinc-400 text-[10px]">{app.name[0]}</div>
                     )}
@@ -349,7 +576,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   <span className="text-xs font-bold text-zinc-700">编辑 {apps.find(a => a.id === selectedAppId)?.name} 图标</span>
                   <button onClick={() => setSelectedAppId(null)} className="p-1 hover:bg-zinc-200 rounded-full"><X size={14} /></button>
                 </div>
-                <ImageUploadControl 
+                <PersistentImageUploadControl 
                   label="图标图片" 
                   value={settings.desktopIcons?.find((i: any) => i.id === selectedAppId)?.iconUrl || ''} 
                   onChange={(val) => handleIconUpdate(selectedAppId, val)} 
@@ -386,22 +613,33 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-zinc-800">小卡片组件</h3>
             <button 
-              onClick={() => {
-                const newWidget: WidgetConfig = {
-                  id: Date.now().toString(),
-                  type: 'calendar',
-                  w: 2,
-                  h: 2,
-                  background: '#ffffff'
-                };
-                setSettings({ ...settings, widgets: [...(settings.widgets || []), newWidget] });
-                setEditingWidgetId(newWidget.id);
-              }}
+              onClick={() => setShowWidgetPicker(prev => !prev)}
               className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition-colors"
             >
               <Plus size={16} />
             </button>
           </div>
+
+          {showWidgetPicker && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
+            >
+              {widgetTemplates.map(item => (
+                <button
+                  key={item.type}
+                  onClick={() => addWidgetByType(item.type)}
+                  className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-3 text-left text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-100"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-zinc-700">
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
           
           {visibleWidgets.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-3 border-2 border-dashed border-zinc-100 rounded-2xl">
@@ -417,22 +655,10 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 <div key={widget.id} className="space-y-2">
                   <div className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl border border-zinc-100">
                     <div className="flex items-center gap-3 cursor-pointer" onClick={() => setEditingWidgetId(editingWidgetId === widget.id ? null : widget.id)}>
-                      <div className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center text-zinc-900 overflow-hidden">
-                        {widget.background && widget.background.startsWith('http') ? (
-                          <img src={widget.background} className="w-full h-full object-cover" />
-                        ) : (
-                          <>
-                            {widget.type === 'calendar' && <Layout size={20} />}
-                            {widget.type === 'time' && <Monitor size={20} />}
-                            {widget.type === 'anniversary' && <Palette size={20} />}
-                            {widget.type === 'weather' && <Cloud size={20} />}
-                            {widget.type === 'blank' && <Layout size={20} />}
-                          </>
-                        )}
-                      </div>
+                      <WidgetListThumbnail widget={widget} />
                       <div>
                         <p className="text-sm font-bold text-zinc-800">
-                          {widget.type === 'calendar' ? '日历组件' : widget.type === 'time' ? '时间组件' : widget.type === 'anniversary' ? '纪念日组件' : widget.type === 'weather' ? '天气组件' : '空白卡片'}
+                          {widget.type === 'calendar' ? '日历组件' : widget.type === 'time' ? '时间组件' : widget.type === 'anniversary' ? '纪念日组件' : widget.type === 'weather' ? '天气组件' : widget.type === 'profile-card' ? '资料卡片' : '空白卡片'}
                         </p>
                         <p className="text-[10px] text-zinc-500">尺寸: {widget.w}x{widget.h}</p>
                       </div>
@@ -459,43 +685,58 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                       {/* Preview */}
                       <div className="flex justify-center py-2 bg-zinc-200/50 rounded-lg">
                         <div style={{ width: 160, height: (160 / widget.w) * widget.h }}>
-                          <DesktopWidget widget={widget} isPreview={true} />
+                          <DesktopWidget widget={widget} isPreview={true} onWidgetChange={(updates) => handleWidgetUpdate(widget.id, updates)} />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500">组件类型</label>
-                          <select 
-                            value={widget.type}
-                            onChange={(e) => handleWidgetUpdate(widget.id, { type: e.target.value as any })}
-                            className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
-                          >
-                            <option value="calendar">日历</option>
-                            <option value="time">时间</option>
-                            <option value="anniversary">纪念日</option>
-                            <option value="music">音乐</option>
-                            <option value="weather">天气</option>
-                            <option value="blank">空白卡片</option>
-                          </select>
-                        </div>
+                        {widget.type !== 'profile-card' && (
+                          <>
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-zinc-500">组件类型</label>
+                              <select 
+                                value={widget.type}
+                                onChange={(e) => handleWidgetUpdate(widget.id, { type: e.target.value as any })}
+                                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
+                              >
+                                <option value="calendar">日历</option>
+                                <option value="time">时间</option>
+                                <option value="anniversary">纪念日</option>
+                                <option value="music">音乐</option>
+                                <option value="weather">天气</option>
+                                <option value="profile-card">资料卡片</option>
+                                <option value="blank">空白卡片</option>
+                              </select>
+                            </div>
 
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500">组件样式</label>
-                          <select 
-                            value={widget.style || 'default'}
-                            onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
-                            className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
-                          >
-                            <option value="default">默认样式</option>                            {widget.type === 'time' && (
-                              <option value="minimal">极简数字</option>
-                            )}
-                            {widget.type === 'calendar' && (
-                              <option value="list">日程列表</option>
-                            )}
-                          </select>
-                        </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-zinc-500">组件样式</label>
+                              <select 
+                                value={widget.style || 'default'}
+                                onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
+                                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
+                              >
+                                <option value="default">默认样式</option>
+                                {widget.type === 'time' && (
+                                  <option value="minimal">极简数字</option>
+                                )}
+                                {widget.type === 'calendar' && (
+                                  <option value="list">日程列表</option>
+                                )}
+                              </select>
+                            </div>
+                          </>
+                        )}
                       </div>
+
+                      {widget.type === 'profile-card' && (
+                        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-center">
+                          <p className="text-sm font-semibold text-zinc-800">资料卡片默认 4x2</p>
+                          <p className="mt-2 text-xs leading-5 text-zinc-500">
+                            封面、头像、名字、昵称、签名、定位请直接回到手机主页点击该资料卡片修改，尺寸仍可在这里继续调整。
+                          </p>
+                        </div>
+                      )}
 
                       {widget.type === 'anniversary' && (
                         <div className="grid grid-cols-2 gap-3">
@@ -552,10 +793,10 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                         </div>
                       </div>
 
-                      <ImageUploadControl 
-                        label="背景图片 (URL或上传)" 
-                        value={widget.background} 
-                        onChange={(val) => handleWidgetUpdate(widget.id, { background: val })} 
+                      <PersistentImageUploadControl
+                        label="背景图片 (URL或上传)"
+                        value={widget.background}
+                        onChange={(val) => handleWidgetUpdate(widget.id, { background: val })}
                       />
 
                       <div className="grid grid-cols-2 gap-3">
@@ -610,6 +851,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
       {subTab === 'navbar' && (
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">导航栏自定义</h3>
+          <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-50 h-28">
+            {resolvedNavBarBackgroundUrl ? (
+              <img src={resolvedNavBarBackgroundUrl} className="w-full h-full object-cover" alt="导航栏背景图" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-zinc-400">无背景图</div>
+            )}
+          </div>
           
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-zinc-500">显示导航栏</label>
@@ -656,7 +904,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             />
           </div>
 
-          <ImageUploadControl
+          <PersistentImageUploadControl
             label="导航栏背景图"
             value={settings.navBar.backgroundImage || ''}
             onChange={(val) =>
@@ -717,12 +965,31 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500">字体颜色</label>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {['#ffffff', '#000000', '#3b82f6', '#ef4444', '#10b981', '#f59e0b'].map(color => (
+            <div className="grid grid-cols-6 gap-2">
+              {[
+                '#ffffff',
+                '#000000',
+                '#3b82f6',
+                '#2563eb',
+                '#60a5fa',
+                '#ef4444',
+                '#f43f5e',
+                '#fb7185',
+                '#10b981',
+                '#14b8a6',
+                '#22c55e',
+                '#f59e0b',
+                '#f97316',
+                '#eab308',
+                '#a855f7',
+                '#8b5cf6',
+                '#ec4899',
+                '#6b7280',
+              ].map((color, index) => (
                 <button
-                  key={color}
+                  key={`${color}-${index}`}
                   onClick={() => setSettings({...settings, desktop: {...settings.desktop, fontColor: color}})}
-                  className={`w-8 h-8 rounded-full border-2 ${
+                  className={`w-8 h-8 rounded-full border-2 transition-transform ${
                     settings.desktop?.fontColor === color ? 'border-zinc-900 scale-110' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: color }}
@@ -758,6 +1025,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
 
 // --- Chat Settings ---
 function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
+  const { resolvedUrl: resolvedGlobalWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground || '');
+  const { resolvedUrl: resolvedDynamicsBackgroundUrl } = useResolvedPersistentValue(settings.dynamics?.background || '');
+  const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(settings.chat?.avatarFrameUrl || '');
+  const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
+  const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
   const headerStyles = [
     { value: 'default', label: '默认' },
     { value: 'glass', label: '毛玻璃' },
@@ -803,9 +1075,9 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
               >
                 <img src="https://picsum.photos/seed/preview/100" className="w-full h-full object-cover" />
               </div>
-              {settings.chat.avatarFrameUrl && (
+              {resolvedChatAvatarFrameUrl && (
                 <img 
-                  src={settings.chat.avatarFrameUrl} 
+                  src={resolvedChatAvatarFrameUrl} 
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20"
                   style={{ width: settings.chat.avatarSize * 1.4, height: settings.chat.avatarSize * 1.4 }}
                 />
@@ -813,7 +1085,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </div>
           </div>
           
-          <ImageUploadControl 
+          <PersistentImageUploadControl 
             label="头像框图片" 
             value={settings.chat.avatarFrameUrl || ''} 
             onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, avatarFrameUrl: val } })} 
@@ -850,7 +1122,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 style={{ 
                   borderRadius: settings.chat.messageBorderRadius, 
                   backgroundColor: settings.chat.messageBackgroundColorModel,
-                  backgroundImage: settings.chat.messageBackgroundImageUrl ? `url(${settings.chat.messageBackgroundImageUrl})` : undefined,
+                  backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center'
                 }} 
@@ -861,7 +1133,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </div>
           </div>
 
-          <ImageUploadControl 
+          <PersistentImageUploadControl 
             label="气泡背景图片" 
             value={settings.chat.messageBackgroundImageUrl || ''} 
             onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, messageBackgroundImageUrl: val } })} 
@@ -888,13 +1160,13 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">全局聊天壁纸</h3>
           <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
-            {settings.chat.background ? (
-              <img src={settings.chat.background} className="w-full h-full object-cover" alt="Wallpaper" />
+            {resolvedChatBackgroundUrl ? (
+              <img src={resolvedChatBackgroundUrl} className="w-full h-full object-cover" alt="Wallpaper" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-zinc-400">无壁纸</div>
             )}
           </div>
-          <ImageUploadControl 
+          <PersistentImageUploadControl 
             label="壁纸图片" 
             value={settings.chat.background || ''} 
             onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, background: val } })} 
@@ -1037,7 +1309,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <div className="w-48 aspect-[3/4] bg-white rounded-2xl overflow-hidden shadow-sm relative">
               {/* Background */}
                <div className="absolute inset-0 bg-zinc-200">
-                 {settings.globalBackground && <img src={settings.globalBackground} className="w-full h-full object-cover opacity-50" alt="Wallpaper" />}
+                 {resolvedGlobalWallpaperUrl && <img src={resolvedGlobalWallpaperUrl} className="w-full h-full object-cover opacity-50" alt="Wallpaper" />}
                </div>
                
                {/* Card Preview */}
@@ -1050,7 +1322,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                      opacity: settings.dynamics?.cardOpacity ?? 0.9
                    }}
                  >
-                   {settings.dynamics?.background && <img src={settings.dynamics?.background} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Dynamics Background" />}
+                   {resolvedDynamicsBackgroundUrl && <img src={resolvedDynamicsBackgroundUrl} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Dynamics Background" />}
                    {!settings.dynamics?.background && (
                      <div className="flex items-center gap-2 mb-2">
                        <div className="w-6 h-6 rounded-full bg-zinc-200"></div>
@@ -1064,7 +1336,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </div>
           </div>
 
-          <ImageUploadControl 
+          <PersistentImageUploadControl 
             label="背景图片" 
             value={settings.dynamics?.background || ''} 
             onChange={(val) => setSettings({ 
@@ -1210,12 +1482,12 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
 
     setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
         
-        if (confirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
+        if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
           let newAppData = { ...appData };
           let newSettings = { ...settings };
           let updatedCount = 0;
@@ -1397,8 +1669,8 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         <h3 className="text-sm font-bold text-rose-800">危险区域</h3>
         <p className="text-xs text-rose-600/80">此操作将删除所有本地数据并恢复默认设置，不可逆转。</p>
         <button 
-          onClick={() => {
-            if (confirm('确定要清除所有数据吗？此操作不可恢复！')) {
+          onClick={async () => {
+            if (await showInAppConfirm('确定要清除所有数据吗？此操作不可恢复！')) {
               onReset();
             }
           }}

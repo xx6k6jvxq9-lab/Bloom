@@ -6,6 +6,25 @@ import {
   ChevronLeft, Bell, X, Heart, Coins, Users, Lock
 } from 'lucide-react';
 import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction } from '../../../types';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+
+function ResolvedWalletAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-200`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} referrerPolicy="no-referrer" />;
+}
 
 // Extend the type to include chatHistory which is present in the actual appData passed
 interface AppDataWithChat extends AppDataExtended {
@@ -523,7 +542,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                           <div key={fc.id} className="bg-zinc-50 p-3 rounded-lg border border-zinc-100 flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-200 shrink-0">
                               {character?.avatar ? (
-                                <img src={character.avatar} alt={character.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <ResolvedWalletAvatar value={character.avatar} alt={character.name} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-zinc-500">
                                   <Users size={16} />
@@ -556,11 +575,10 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                       >
                         {familyCardCharacter ? (
                           <div className="flex items-center gap-2">
-                            <img 
-                              src={appData.characters?.find(c => c.name === familyCardCharacter)?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${familyCardCharacter}`} 
-                              alt={familyCardCharacter} 
+                            <ResolvedWalletAvatar
+                              value={appData.characters?.find(c => c.name === familyCardCharacter)?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${familyCardCharacter}`}
+                              alt={familyCardCharacter}
                               className="w-5 h-5 rounded-full object-cover"
-                              referrerPolicy="no-referrer"
                             />
                             <span>{familyCardCharacter}</span>
                           </div>
@@ -588,11 +606,10 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                                   }}
                                   className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 cursor-pointer transition-colors"
                                 >
-                                  <img 
-                                    src={c.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.name}`} 
-                                    alt={c.name} 
+                                  <ResolvedWalletAvatar
+                                    value={c.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.name}`}
+                                    alt={c.name}
                                     className="w-6 h-6 rounded-full object-cover"
-                                    referrerPolicy="no-referrer"
                                   />
                                   <span className="text-sm text-zinc-900">{c.name}</span>
                                 </div>

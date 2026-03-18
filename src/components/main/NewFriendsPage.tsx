@@ -2,6 +2,25 @@ import React, { useState } from 'react';
 import { ChevronLeft, Search, UserPlus, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { FriendRequest } from '../../types';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+
+function ResolvedNewFriendAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} referrerPolicy="no-referrer" />;
+}
 
 export function NewFriendsPage({
   requests,
@@ -21,7 +40,7 @@ export function NewFriendsPage({
   return (
     <div className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
       {/* Header */}
-      <div className="pt-10 pb-3 px-4 flex items-center gap-2 bg-white border-b border-zinc-100">
+      <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center gap-2 bg-white border-b border-zinc-100">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
           <ChevronLeft size={24} />
         </button>
@@ -56,7 +75,11 @@ export function NewFriendsPage({
         ) : (
           requests.map(req => (
             <div key={req.id} className="flex items-center gap-3 p-4 bg-white border-b border-zinc-50">
-              <img src={req.fromUserAvatar} alt="" className="w-10 h-10 rounded-full bg-zinc-100" />
+              <ResolvedNewFriendAvatar
+                value={req.fromUserAvatar}
+                alt={req.fromUserName}
+                className="w-10 h-10 rounded-full bg-zinc-100 object-cover"
+              />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-zinc-900">{req.fromUserName}</div>
                 <div className="text-[12px] text-zinc-500 truncate">{req.message || '请求添加你为好友'}</div>

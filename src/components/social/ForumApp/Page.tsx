@@ -8,7 +8,25 @@ import {
   CheckCircle2, ArrowLeft, Home, Mail, Plus, Bookmark, Link2, AlertTriangle
 } from 'lucide-react';
 import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character } from '../../../types';
-import { extractImageUrls } from '../../../utils';
+import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { extractImageUrls, showInAppConfirm } from '../../../utils';
+
+function ResolvedImage({
+  value,
+  alt = '',
+  className,
+}: {
+  value: string;
+  alt?: string;
+  className?: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) return null;
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
 
 // Mock Users
 const MOCK_USERS: Record<string, { name: string; avatar: string }> = {
@@ -141,6 +159,7 @@ const ForumCommentItem: React.FC<ForumCommentItemProps> = ({
   getAuthor, onReply, onLike, onDelete, onReport, onUserClick, onFollow 
 }) => {
     const author = getAuthor(comment.authorId);
+    const { resolvedUrl: resolvedCurrentUserAvatarUrl } = useResolvedPersistentValue(currentUser.avatar);
     const handle = `@${author.id.replace('user_', 'u').replace('char_', 'c')}`;
     const isOwner = comment.authorId === currentUser.id;
     const [showReply, setShowReply] = useState(false);
@@ -163,14 +182,16 @@ const ForumCommentItem: React.FC<ForumCommentItemProps> = ({
 
     return (
       <div className={`flex gap-2.5 px-4 py-2 border-b border-zinc-100 ${depth > 0 ? 'mt-1 border-l-2 border-l-zinc-100 pl-3 border-b-0' : ''}`}>
-        <img 
-          src={author.avatar} 
-          className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer" 
+        <button
+          type="button"
+          className="shrink-0"
           onClick={(e) => {
             e.stopPropagation();
             onUserClick(author.id);
           }}
-        />
+        >
+          <ResolvedImage value={author.avatar} className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer" />
+        </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-[13px] truncate">
@@ -279,7 +300,7 @@ const ForumCommentItem: React.FC<ForumCommentItemProps> = ({
 
           {showReply && (
             <div className="mt-3 flex gap-3 items-center">
-              <img src={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" />
+              <ResolvedImage value={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" />
               <input 
                 type="text" 
                 value={replyText}
@@ -376,6 +397,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
   const posts = appData.forumData?.posts || MOCK_POSTS;
   const notifications = appData.forumData?.notifications || [];
   const followedUsers = appData.forumData?.followedUsers || [];
+  const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
+  const { resolvedUrl: resolvedCurrentUserAvatarUrl } = useResolvedPersistentValue(currentUser.avatar);
+  const { resolvedUrl: resolvedEditAvatarUrl } = useResolvedPersistentValue(editAvatar || currentUser.avatar);
 
   // Initialize forum data if empty
   useEffect(() => {
@@ -533,8 +557,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     updatePosts(newPosts);
   };
 
-  const handleDeletePost = (postId: string) => {
-    if (confirm('确定要删除这篇帖子吗？')) {
+  const handleDeletePost = async (postId: string) => {
+    if (await showInAppConfirm('确定要删除这篇帖子吗？')) {
       const newPosts = posts.filter(p => p.id !== postId);
       updatePosts(newPosts);
       if (selectedPostId === postId) {
@@ -658,8 +682,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     updatePosts(newPosts);
   };
 
-  const handleDeleteComment = (postId: string, commentId: string) => {
-    if (confirm('确定要删除这条评论吗？')) {
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    if (await showInAppConfirm('确定要删除这条评论吗？')) {
       const newPosts = posts.map(p => {
         if (p.id === postId) {
           return { ...p, comments: p.comments.filter(c => c.id !== commentId) };
@@ -753,7 +777,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
         ...currentUser,
         name: editName,
         bio: editBio,
-        avatar: editAvatar
+        avatar: editAvatar || currentUser.avatar
       }
     });
     setCurrentView('list');
@@ -790,7 +814,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 onClick={() => handleShareToChat(showShareModal, char.id)}
                 className="flex flex-col items-center gap-2"
               >
-                <img src={char.avatar} className="w-12 h-12 rounded-full object-cover border border-zinc-100" />
+                <ResolvedImage value={char.avatar} className="w-12 h-12 rounded-full object-cover border border-zinc-100" />
                 <span className="text-xs text-zinc-600 truncate w-full text-center">{char.name}</span>
               </button>
             ))}
@@ -818,7 +842,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     }
 
     return (
-      <div className="pb-20 bg-white">
+      <div className="forum-app-scroll h-full min-h-0 overflow-y-auto bg-white pb-20">
         {displayPosts.map(post => {
           const author = getAuthor(post.authorId);
           const handle = `@${author.id.replace('user_', 'u').replace('char_', 'c')}`;
@@ -849,9 +873,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
               }}
               className="bg-white p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3"
             >
-              <img 
-                src={author.avatar} 
-                className="w-10 h-10 rounded-full object-cover shrink-0 cursor-pointer" 
+              <button
+                type="button"
+                className="shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (author.id !== currentUser.id) {
@@ -861,7 +885,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                     setActiveTab('profile');
                   }
                 }}
-              />
+              >
+                <ResolvedImage value={author.avatar} className="w-10 h-10 rounded-full object-cover shrink-0 cursor-pointer" />
+              </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1 text-[14px] truncate">
@@ -945,7 +971,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 {post.images && post.images.length > 0 && (
                   <div className={`mt-3 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : post.images.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>
                     {post.images.map((img, i) => (
-                      <img key={i} src={img} className={`w-full object-cover ${post.images!.length === 1 ? 'max-h-80' : 'h-32'} ${post.images!.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`} />
+                      <ResolvedImage key={i} value={img} className={`w-full object-cover ${post.images!.length === 1 ? 'max-h-80' : 'h-32'} ${post.images!.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`} />
                     ))}
                   </div>
                 )}
@@ -1015,7 +1041,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     const dateStr = postDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
-      <div className="bg-white h-full flex flex-col relative">
+      <div className="bg-white h-full min-h-0 flex flex-col relative">
         {/* Header */}
         <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 py-2 flex items-center gap-6">
           <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
@@ -1025,12 +1051,11 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
         </div>
 
         {/* Content */}
-        <div className="px-4 pt-2 flex-1 overflow-y-auto pb-24">
+        <div className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-24">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <img 
-                src={author.avatar} 
-                className="w-9 h-9 rounded-full object-cover cursor-pointer" 
+              <button
+                className="shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (author.id !== currentUser.id) {
@@ -1040,7 +1065,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                     setActiveTab('profile');
                   }
                 }}
-              />
+              >
+                <ResolvedImage value={author.avatar} className="w-9 h-9 rounded-full object-cover cursor-pointer" />
+              </button>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1">
                   <span className="font-bold text-[14px] text-zinc-900 hover:underline">{author.name}</span>
@@ -1116,7 +1143,11 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
           {post.images && post.images.length > 0 && (
             <div className={`mb-2 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : post.images.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>
               {post.images.map((img, i) => (
-                <img key={i} src={img} className={`w-full object-cover ${post.images!.length === 1 ? 'max-h-80' : 'h-32'} ${post.images!.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`} />
+                <ResolvedImage
+                  key={i}
+                  value={img}
+                  className={`w-full object-cover ${post.images!.length === 1 ? 'max-h-80' : 'h-32'} ${post.images!.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`}
+                />
               ))}
             </div>
           )}
@@ -1189,8 +1220,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
         </div>
 
         {/* Reply Input */}
-        <div className="sticky bottom-0 bg-white border-t border-zinc-100 px-3 py-2 flex items-center gap-3">
-          <img src={currentUser.avatar} className="w-7 h-7 rounded-full object-cover" />
+        <div className="sticky bottom-0 z-20 shrink-0 bg-white border-t border-zinc-100 px-3 py-2 flex items-center gap-3">
+          <ResolvedImage value={currentUser.avatar} className="w-7 h-7 rounded-full object-cover" />
           <input 
             type="text" 
             value={mainReplyText}
@@ -1224,7 +1255,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
   };
 
   const renderEditor = () => (
-    <div className="bg-white min-h-full flex flex-col">
+    <div className="bg-white h-full min-h-0 flex flex-col">
       <div className="px-4 py-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
         <button onClick={() => {
           setCurrentView('list');
@@ -1240,8 +1271,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
           </button>
         </div>
       </div>
-      <div className="p-4 flex-1 flex gap-3">
-        <img src={currentUser.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
+      <div className="p-4 flex-1 min-h-0 overflow-y-auto flex gap-3">
+        <ResolvedImage value={currentUser.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
         <div className="flex-1">
           <input
             type="text"
@@ -1261,7 +1292,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
             <div className={`grid gap-0.5 mt-4 overflow-hidden rounded-2xl border border-zinc-100 ${editorImages.length === 1 ? 'grid-cols-1' : editorImages.length === 2 ? 'grid-cols-2' : editorImages.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>
               {editorImages.map((img, i) => (
                 <div key={i} className={`relative ${editorImages.length === 1 ? 'max-h-80' : 'h-32'} ${editorImages.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`}>
-                  <img src={img} className="w-full h-full object-cover" />
+                  <ResolvedImage value={img} className="w-full h-full object-cover" />
                   <button 
                     onClick={() => setEditorImages(editorImages.filter((_, idx) => idx !== i))}
                     className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-colors backdrop-blur-sm"
@@ -1281,15 +1312,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 multiple 
                 accept="image/*" 
                 className="hidden" 
-                onChange={(e) => {
+                onChange={async (e) => {
                   const files = Array.from(e.target.files || []) as File[];
-                  files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      setEditorImages(prev => [...prev, reader.result as string].slice(0, 9));
-                    };
-                    reader.readAsDataURL(file);
-                  });
+                  if (files.length === 0) {
+                    e.target.value = '';
+                    return;
+                  }
+                  const uploadedValues = await Promise.all(files.map(file => setUploadedFile(file)));
+                  setEditorImages(prev => [...prev, ...uploadedValues].slice(0, 9));
+                  e.target.value = '';
                 }} 
               />
             </label>
@@ -1319,10 +1350,11 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 className="w-full h-24 bg-white border border-zinc-200 rounded-lg p-2 text-xs outline-none focus:border-zinc-900/30 transition-all resize-none"
               />
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const urls = extractImageUrls(urlInput);
                   if (urls.length > 0) {
-                    setEditorImages(prev => [...prev, ...urls].slice(0, 9));
+                    const normalizedUrls = await Promise.all(urls.map(url => setRemoteUrl(url)));
+                    setEditorImages(prev => [...prev, ...normalizedUrls].slice(0, 9));
                     setUrlInput('');
                     setShowUrlInput(false);
                   }
@@ -1347,7 +1379,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     });
 
     return (
-      <div className="bg-white min-h-full pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
         <div className="px-4 py-3 border-b border-zinc-100">
           <h2 className="text-lg font-bold text-zinc-900">为你推荐的趋势</h2>
         </div>
@@ -1441,7 +1473,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                   </div>
                 </div>
                 {post.images && post.images.length > 0 && (
-                  <img src={post.images[0]} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                <ResolvedImage value={post.images[0]} className="w-16 h-16 rounded-xl object-cover shrink-0" />
                 )}
               </div>
             );
@@ -1461,7 +1493,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     const isFollowed = followedUsers.includes(user.id);
 
     return (
-      <div className="bg-white min-h-full pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
         {/* Header */}
         <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 py-3 flex items-center gap-6">
           <button onClick={() => {
@@ -1481,7 +1513,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
           <div className="flex gap-6">
             {/* Left: Avatar, Name, ID */}
             <div className="flex flex-col items-center shrink-0 w-24">
-              <img src={user.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
+              <ResolvedImage value={user.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
               <h2 className="text-[15px] font-bold text-zinc-900 text-center leading-tight">{user.name}</h2>
               <p className="text-[12px] text-zinc-500 text-center mt-1">{handle}</p>
             </div>
@@ -1578,7 +1610,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 }}
                 className="bg-white p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3"
               >
-                <img src={user.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                <ResolvedImage value={user.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1 text-[14px] truncate">
@@ -1706,7 +1738,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
     if (currentView === 'edit-profile') {
       return (
-        <div className="bg-white min-h-full flex flex-col">
+        <div className="bg-white h-full min-h-0 flex flex-col">
           <div className="px-4 py-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
             <div className="flex items-center gap-6">
               <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
@@ -1721,10 +1753,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
               保存
             </button>
           </div>
-          <div className="p-4 space-y-6">
+          <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-6">
             <div className="relative mb-6">
               <div className="relative">
-                <img src={editAvatar || currentUser.avatar} className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-sm" />
+                <ResolvedImage value={editAvatar || currentUser.avatar} className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-sm" />
                 <button className="absolute bottom-0 left-14 bg-zinc-900/80 p-1.5 rounded-full text-white">
                   <Camera size={16} />
                 </button>
@@ -1755,13 +1787,13 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     }
 
     return (
-      <div className="bg-white min-h-full pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
         {/* Profile Header */}
         <div className="px-4 pt-12 pb-6">
           <div className="flex gap-6">
             {/* Left: Avatar, Name, ID */}
             <div className="flex flex-col items-center shrink-0 w-24">
-              <img src={currentUser.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
+              <ResolvedImage value={currentUser.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
               <h2 className="text-[15px] font-bold text-zinc-900 text-center leading-tight">{currentUser.name}</h2>
               <p className="text-[12px] text-zinc-500 text-center mt-1">{handle}</p>
             </div>
@@ -1840,7 +1872,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                 }}
                 className="bg-white p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3"
               >
-                <img src={currentUser.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                <ResolvedImage value={currentUser.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1 text-[14px] truncate">
@@ -1901,7 +1933,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     const myNotifications = notifications.filter(n => n.userId === currentUser.id).sort((a, b) => b.timestamp - a.timestamp);
     
     return (
-      <div className="bg-white min-h-full pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
         <div className="px-4 pt-4 pb-3 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-100 flex items-center justify-between">
            <div className="text-lg font-bold text-zinc-900">通知</div>
            <button className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
@@ -1956,7 +1988,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                   <Icon size={24} className={iconColor} />
                 </div>
                 <div className="flex-1">
-                  <img src={sourceUser.avatar} className="w-8 h-8 rounded-full object-cover mb-2" />
+                  <ResolvedImage value={sourceUser.avatar} className="w-8 h-8 rounded-full object-cover mb-2" />
                   <p className="text-[14px] text-zinc-900 mb-2">
                     <span className="font-bold hover:underline">{sourceUser.name}</span>
                     <span className="text-zinc-500 ml-1">{actionText}</span>
@@ -1983,14 +2015,23 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
   // --- Main Render ---
 
-  if (currentView === 'detail') return renderPostDetail();
-  if (currentView === 'editor') return renderEditor();
-  if (currentView === 'user-profile') return renderUserProfile();
+  const shouldShowForumBottomNav = currentView !== 'editor' && currentView !== 'edit-profile';
+
+  const renderCurrentView = () => {
+    if (currentView === 'detail') return renderPostDetail();
+    if (currentView === 'editor') return renderEditor();
+    if (currentView === 'user-profile') return renderUserProfile();
+
+    if (activeTab === 'home') return renderPostList();
+    if (activeTab === 'hot') return renderHotList();
+    if (activeTab === 'notification') return renderNotifications();
+    return renderProfile();
+  };
 
   return (
-    <div className="h-full flex flex-col bg-white relative overflow-hidden">
+    <div className="forum-app-shell absolute inset-0 min-h-0 flex flex-col bg-white overflow-hidden">
       {/* Header */}
-      {activeTab === 'home' && (
+      {currentView === 'list' && activeTab === 'home' && (
         <div className="px-4 pt-4 pb-2 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100">
           <button onClick={() => onClose()} className="p-2 -ml-2 hover:bg-zinc-100 rounded-full transition-colors">
             <ChevronLeft size={24} className="text-zinc-900" />
@@ -2016,15 +2057,12 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
       )}
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'home' && renderPostList()}
-        {activeTab === 'hot' && renderHotList()}
-        {activeTab === 'notification' && renderNotifications()}
-        {activeTab === 'profile' && renderProfile()}
+      <div className="forum-app-content flex-1 min-h-0 overflow-hidden">
+        {renderCurrentView()}
       </div>
 
       {/* Floating Action Button */}
-      {activeTab === 'home' && (
+      {currentView === 'list' && activeTab === 'home' && (
         <button 
           onClick={() => {
             setEditingPostId(null);
@@ -2033,42 +2071,44 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
             setEditorImages([]);
             setCurrentView('editor');
           }}
-          className="absolute bottom-20 right-4 w-14 h-14 bg-zinc-900 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-zinc-800 transition-colors z-20"
+          className="forum-app-fab absolute bottom-20 right-4 w-14 h-14 bg-zinc-900 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-zinc-800 transition-colors z-20"
         >
           <Plus size={28} strokeWidth={2.5} />
         </button>
       )}
 
       {/* Bottom Navigation */}
-      <div className="bg-white px-6 py-2 flex justify-between items-center pb-0">
-        <button 
-          onClick={() => { setActiveTab('home'); setCurrentView('list'); }}
-          className={`p-2 rounded-full transition-colors ${activeTab === 'home' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-        >
-          <Home size={26} fill={activeTab === 'home' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'home' ? 0 : 2} />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('hot'); setCurrentView('list'); }}
-          className={`p-2 rounded-full transition-colors ${activeTab === 'hot' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-        >
-          <Search size={26} strokeWidth={activeTab === 'hot' ? 3 : 2} />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('notification'); setCurrentView('list'); }}
-          className={`p-2 rounded-full transition-colors relative ${activeTab === 'notification' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-        >
-          <Bell size={26} fill={activeTab === 'notification' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'notification' ? 0 : 2} />
-          {notifications.some(n => !n.read && n.userId === currentUser.id) && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-zinc-900 rounded-full border border-white" />
-          )}
-        </button>
-        <button 
-          onClick={() => { setActiveTab('profile'); setCurrentView('list'); }}
-          className={`p-2 rounded-full transition-colors ${activeTab === 'profile' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-        >
-          <Mail size={26} fill={activeTab === 'profile' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'profile' ? 0 : 2} />
-        </button>
-      </div>
+      {shouldShowForumBottomNav && (
+        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100 px-6 py-2 flex justify-between items-center pb-0">
+          <button 
+            onClick={() => { setActiveTab('home'); setCurrentView('list'); }}
+            className={`p-2 rounded-full transition-colors ${activeTab === 'home' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+          >
+            <Home size={26} fill={activeTab === 'home' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'home' ? 0 : 2} />
+          </button>
+          <button 
+            onClick={() => { setActiveTab('hot'); setCurrentView('list'); }}
+            className={`p-2 rounded-full transition-colors ${activeTab === 'hot' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+          >
+            <Search size={26} strokeWidth={activeTab === 'hot' ? 3 : 2} />
+          </button>
+          <button 
+            onClick={() => { setActiveTab('notification'); setCurrentView('list'); }}
+            className={`p-2 rounded-full transition-colors relative ${activeTab === 'notification' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+          >
+            <Bell size={26} fill={activeTab === 'notification' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'notification' ? 0 : 2} />
+            {notifications.some(n => !n.read && n.userId === currentUser.id) && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-zinc-900 rounded-full border border-white" />
+            )}
+          </button>
+          <button 
+            onClick={() => { setActiveTab('profile'); setCurrentView('list'); }}
+            className={`p-2 rounded-full transition-colors ${activeTab === 'profile' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+          >
+            <Mail size={26} fill={activeTab === 'profile' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'profile' ? 0 : 2} />
+          </button>
+        </div>
+      )}
 
       {/* Share Modal */}
       {renderShareModal()}

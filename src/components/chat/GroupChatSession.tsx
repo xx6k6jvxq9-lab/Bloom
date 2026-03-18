@@ -182,7 +182,7 @@ export function GroupChatSession({
   return (
     <div className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
       {/* Header */}
-      <div className="pt-10 pb-3 px-4 flex justify-between items-center bg-white border-b border-zinc-100 shadow-sm">
+      <div className="min-h-[64px] pt-12 pb-3 px-4 flex justify-between items-center bg-white border-b border-zinc-100 shadow-sm">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />

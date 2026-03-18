@@ -27,7 +27,45 @@ import {
   Upload,
   RefreshCw,
 } from "lucide-react";
+import { showInAppConfirm } from "../../utils";
 import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
+import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
+
+function ResolvedMusicAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt?: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt || "avatar"} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt || "avatar"} className={className} />;
+}
+
+function ResolvedMusicCover({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
 
 type MusicAppProps = {
   character: Character;
@@ -681,9 +719,10 @@ export default function MusicApp({
                 className="flex flex-col items-center gap-1"
               >
                 <div className="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden">
-                  <img
-                    src={userAvatar}
+                  <ResolvedMusicAvatar
+                    value={userAvatar}
                     className="w-full h-full object-cover"
+                    alt={userName}
                   />
                 </div>
               </motion.div>
@@ -696,9 +735,10 @@ export default function MusicApp({
               >
                 <div className="flex items-center gap-0">
                   <motion.div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden z-10">
-                    <img
-                      src={userAvatar}
+                    <ResolvedMusicAvatar
+                      value={userAvatar}
                       className="w-full h-full object-cover"
+                      alt={userName}
                     />
                   </motion.div>
 
@@ -752,9 +792,10 @@ export default function MusicApp({
                     transition={{ type: "spring", stiffness: 200, damping: 20 }}
                     className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden z-10"
                   >
-                    <img
-                      src={character.avatar}
+                    <ResolvedMusicAvatar
+                      value={character.avatar}
                       className="w-full h-full object-cover"
+                      alt={character.name}
                     />
                   </motion.div>
                 </div>
@@ -1117,8 +1158,9 @@ export default function MusicApp({
                       className="flex items-center gap-4 group cursor-pointer active:opacity-70 transition-opacity"
                     >
                       <div className="w-16 h-16 rounded-xl overflow-hidden shadow-md border border-zinc-100 shrink-0">
-                        <img
-                          src={p.cover}
+                        <ResolvedMusicCover
+                          value={p.cover}
+                          alt={p.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -1193,8 +1235,9 @@ export default function MusicApp({
                       onClick={() => setSelectedPlaylist(p)}
                     >
                       <div className="relative aspect-square rounded-[24px] overflow-hidden shadow-xl shadow-zinc-200/50 border border-white mb-3 transition-transform group-hover:scale-[1.02] active:scale-95">
-                        <img
-                          src={p.cover}
+                        <ResolvedMusicCover
+                          value={p.cover}
+                          alt={p.name}
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1230,8 +1273,9 @@ export default function MusicApp({
                       className="flex items-center gap-4 group cursor-pointer active:opacity-70 transition-opacity"
                     >
                       <div className="w-16 h-16 rounded-xl overflow-hidden shadow-md border border-zinc-100 shrink-0">
-                        <img
-                          src={p.cover}
+                        <ResolvedMusicCover
+                          value={p.cover}
+                          alt={p.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -1371,7 +1415,7 @@ export default function MusicApp({
         <div className="px-6 pt-16 pb-6">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-zinc-100 shadow-xl">
-              <img src={userAvatar} className="w-full h-full object-cover" />
+              <ResolvedMusicAvatar value={userAvatar} className="w-full h-full object-cover" alt={userName} />
             </div>
             <div className="flex-1">
               <h1 className="text-2xl font-black text-zinc-900 tracking-tighter leading-tight">
@@ -1592,8 +1636,9 @@ export default function MusicApp({
                   className={`flex items-center justify-between p-4 ${i !== 0 ? "border-t border-zinc-50" : ""}`}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <img
-                      src={p.cover}
+                    <ResolvedMusicCover
+                      value={p.cover}
+                      alt={p.name}
                       className="w-10 h-10 rounded-lg object-cover bg-zinc-100"
                     />
                     <div className="min-w-0">
@@ -1606,8 +1651,8 @@ export default function MusicApp({
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      if (confirm("确定要删除这个歌单吗？")) {
+                    onClick={async () => {
+                      if (await showInAppConfirm("确定要删除这个歌单吗？")) {
                         const newPlaylists = currentMusicData.playlists.filter(
                           (playlist) => playlist.id !== p.id,
                         );
@@ -1642,8 +1687,8 @@ export default function MusicApp({
                 清空播放历史
               </span>
               <button
-                onClick={() => {
-                  if (confirm("确定要清空播放历史吗？")) {
+                onClick={async () => {
+                  if (await showInAppConfirm("确定要清空播放历史吗？")) {
                     onUpdateMusicData({
                       ...currentMusicData,
                       recentlyPlayed: [],
@@ -1660,8 +1705,8 @@ export default function MusicApp({
                 清空收藏歌曲
               </span>
               <button
-                onClick={() => {
-                  if (confirm("确定要清空所有收藏歌曲吗？")) {
+                onClick={async () => {
+                  if (await showInAppConfirm("确定要清空所有收藏歌曲吗？")) {
                     onUpdateMusicData({
                       ...currentMusicData,
                       collectedSongs: [],
@@ -1703,8 +1748,9 @@ export default function MusicApp({
         <div className="flex-1 overflow-y-auto pb-32">
           <div className="p-6 flex flex-col items-center">
             <div className="w-48 h-48 rounded-2xl overflow-hidden shadow-xl shadow-zinc-200/50 border border-white mb-6">
-              <img
-                src={selectedPlaylist.cover}
+              <ResolvedMusicCover
+                value={selectedPlaylist.cover}
+                alt={selectedPlaylist.name}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -1911,9 +1957,10 @@ export default function MusicApp({
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-2`}
           >
             {msg.role === "model" && (
-              <img
-                src={character.avatar}
+              <ResolvedMusicAvatar
+                value={character.avatar}
                 className="w-8 h-8 rounded-full object-cover shadow-sm mb-1"
+                alt={character.name}
               />
             )}
             <div
@@ -1926,9 +1973,10 @@ export default function MusicApp({
               {msg.text}
             </div>
             {msg.role === "user" && (
-              <img
-                src={userAvatar}
+              <ResolvedMusicAvatar
+                value={userAvatar}
                 className="w-8 h-8 rounded-full object-cover shadow-sm mb-1"
+                alt={userName}
               />
             )}
           </div>
@@ -2060,9 +2108,10 @@ export default function MusicApp({
                       onClick={() => setSelectedCollaborator(c.id)}
                       className={`shrink-0 flex flex-col items-center gap-2 cursor-pointer transition-transform active:scale-95 ${selectedCollaborator === c.id ? "opacity-100" : "opacity-40"}`}
                     >
-                      <img
-                        src={c.avatar}
+                      <ResolvedMusicAvatar
+                        value={c.avatar}
                         className={`w-12 h-12 rounded-full object-cover border-2 ${selectedCollaborator === c.id ? "border-pink-500" : "border-transparent"}`}
+                        alt={c.name}
                       />
                       <span className={`text-[11px] font-bold truncate w-14 text-center ${selectedCollaborator === c.id ? "text-pink-500" : "text-zinc-500"}`}>
                         {c.name}
@@ -2224,9 +2273,10 @@ export default function MusicApp({
                     onClick={() => inviteTogether(char.id)}
                     className="w-full flex items-center gap-4 p-3 rounded-2xl hover:bg-zinc-50 transition-colors"
                   >
-                    <img
-                      src={char.avatar}
+                    <ResolvedMusicAvatar
+                      value={char.avatar}
                       className="w-12 h-12 rounded-full object-cover"
+                      alt={char.name}
                     />
                     <div className="flex-1 text-left">
                       <p className="font-bold text-zinc-800">{char.name}</p>

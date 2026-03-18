@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Calendar, Heart, Music, Play, SkipForward, SkipBack, Pause, RefreshCw, Cloud, Sun, CloudRain, Wind, Navigation } from 'lucide-react';
+import { Clock, Calendar, Heart, Music, Play, SkipForward, SkipBack, Pause, RefreshCw, Cloud, Sun, CloudRain, Wind, Navigation, ImagePlus, MapPin } from 'lucide-react';
 import { WidgetConfig, MusicData } from '../../types';
+import { extractSingleImageUrl } from '../../utils';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 
-export function DesktopWidget({ widget, isPreview = false, musicData, setMusicData }: { widget: WidgetConfig, isPreview?: boolean, musicData?: MusicData, setMusicData?: React.Dispatch<React.SetStateAction<MusicData>> }) {
+export function DesktopWidget({ widget, isPreview = false, musicData, setMusicData, onWidgetChange }: { widget: WidgetConfig, isPreview?: boolean, musicData?: MusicData, setMusicData?: React.Dispatch<React.SetStateAction<MusicData>>, onWidgetChange?: (updates: Partial<WidgetConfig>) => void }) {
   const [time, setTime] = useState(new Date());
   const [weatherData, setWeatherData] = useState<{ temp: number, max: number, min: number, code: number } | null>(null);
+  const [editingField, setEditingField] = useState<'profileName' | 'handle' | 'bio' | 'location' | null>(null);
+  const [draftValue, setDraftValue] = useState('');
+  const [imageMenuTarget, setImageMenuTarget] = useState<'bannerUrl' | 'avatarUrl' | null>(null);
+  const [imageUrlDraft, setImageUrlDraft] = useState('');
+  const bannerInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const isPlaying = musicData?.isPlaying || false;
   const progress = musicData?.progress || 0;
@@ -62,6 +71,100 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
     }, 1000);
     return () => clearInterval(timer);
   }, [isPlaying, setMusicData]);
+
+  const profileName = widget.profileName || '自定义';
+  const profileHandle = widget.handle || '自定义';
+  const profileBio = widget.bio || '自定义';
+  const profileLocation = widget.location || '自定义';
+  const bannerUrl = widget.bannerUrl || '';
+  const avatarUrl = widget.avatarUrl || '';
+  const { resolvedUrl: resolvedBannerUrl } = useResolvedPersistentValue(bannerUrl);
+  const { resolvedUrl: resolvedAvatarUrl } = useResolvedPersistentValue(avatarUrl);
+  const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
+  const commitField = () => {
+    if (!editingField) return;
+    onWidgetChange?.({ [editingField]: draftValue.trim() || '自定义' } as Partial<WidgetConfig>);
+    setEditingField(null);
+    setDraftValue('');
+  };
+
+  const startEditing = (field: 'profileName' | 'handle' | 'bio' | 'location', value: string) => {
+    if (!onWidgetChange) return;
+    setEditingField(field);
+    setDraftValue(value === '自定义' ? '' : value);
+  };
+
+  const handleImageFile = async (event: React.ChangeEvent<HTMLInputElement>, target: 'bannerUrl' | 'avatarUrl') => {
+    const file = event.target.files?.[0];
+    if (!file || !onWidgetChange) return;
+    try {
+      const nextValue = await setUploadedFile(file);
+      onWidgetChange({ [target]: nextValue } as Partial<WidgetConfig>);
+    } catch (error) {
+      console.error('Profile card image upload failed:', error);
+    }
+    event.target.value = '';
+    setImageMenuTarget(null);
+    setImageUrlDraft('');
+  };
+
+  const openImageMenu = (target: 'bannerUrl' | 'avatarUrl', currentValue: string) => {
+    if (!onWidgetChange) return;
+    setImageMenuTarget(target);
+    setImageUrlDraft(currentValue);
+  };
+
+  const applyImageUrl = async () => {
+    if (!imageMenuTarget || !onWidgetChange) return;
+    const nextValue = await setRemoteUrl(imageUrlDraft.trim());
+    onWidgetChange({ [imageMenuTarget]: nextValue } as Partial<WidgetConfig>);
+    setImageMenuTarget(null);
+    setImageUrlDraft('');
+  };
+
+  const renderEditableText = (
+    field: 'profileName' | 'handle' | 'bio' | 'location',
+    value: string,
+    className: string,
+    multiline = false,
+  ) => {
+    if (editingField === field) {
+      if (multiline) {
+        return (
+          <textarea
+            autoFocus
+            value={draftValue}
+            onChange={e => setDraftValue(e.target.value)}
+            onBlur={commitField}
+            className={`${className} resize-none rounded-xl border border-black/10 bg-white/80 px-2 py-1 outline-none`}
+            rows={2}
+          />
+        );
+      }
+
+      return (
+        <input
+          autoFocus
+          value={draftValue}
+          onChange={e => setDraftValue(e.target.value)}
+          onBlur={commitField}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitField();
+            }
+          }}
+          className={`${className} rounded-xl border border-black/10 bg-white/80 px-2 py-1 outline-none`}
+        />
+      );
+    }
+
+    return (
+      <button type="button" onClick={() => startEditing(field, value)} className={`${className} text-left transition-opacity hover:opacity-80`}>
+        {value || '自定义'}
+      </button>
+    );
+  };
 
   const getWidgetContent = () => {
     if (!widget) return null;
@@ -197,6 +300,109 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
             </div>
           </div>
         );
+      case 'profile-card':
+        {
+          const imageButtonEnabled = Boolean(onWidgetChange);
+
+          return (
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[inherit] bg-white">
+              <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageFile(e, 'bannerUrl')} />
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageFile(e, 'avatarUrl')} />
+
+              <button
+                type="button"
+                onClick={() => openImageMenu('bannerUrl', bannerUrl)}
+                className="group relative block h-1/2 w-full overflow-hidden text-left"
+              >
+                {resolvedBannerUrl ? (
+                  <img src={resolvedBannerUrl} alt="banner" className="h-full w-full object-cover" draggable={false} />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-br from-rose-200 via-pink-100 to-orange-100" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
+                {imageButtonEnabled && (
+                  <div className="absolute right-3 top-3 rounded-full bg-white/30 px-2.5 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur-md transition-opacity group-hover:opacity-100">
+                    <span className="inline-flex items-center gap-1">
+                      <ImagePlus size={12} />
+                      更换封面
+                    </span>
+                  </div>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openImageMenu('avatarUrl', avatarUrl)}
+                className="absolute left-1/2 top-1/2 z-10 flex h-[72px] w-[72px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full border-[4px] border-white bg-zinc-100"
+              >
+                {resolvedAvatarUrl ? (
+                  <img src={resolvedAvatarUrl} alt="avatar" className="h-full w-full object-cover" draggable={false} />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-rose-100 text-zinc-400">
+                    <ImagePlus size={22} />
+                  </div>
+                )}
+              </button>
+
+              <div className="flex flex-1 flex-col items-center justify-center px-4 pb-3 pt-11 text-center text-zinc-900">
+                {renderEditableText('profileName', profileName, 'max-w-full truncate text-center text-[15px] font-black text-zinc-900')}
+                {renderEditableText('handle', profileHandle, 'mt-1 max-w-full truncate text-center text-[10px] font-medium text-zinc-400')}
+                {renderEditableText('bio', profileBio, 'mt-2 w-full px-2 text-center text-[11px] font-medium leading-4 text-zinc-700', true)}
+                <div className="mt-2 inline-flex max-w-full items-center justify-center gap-1.5 text-[10px] font-medium text-zinc-500">
+                  <MapPin size={13} />
+                  {renderEditableText('location', profileLocation, 'max-w-[140px] truncate text-center text-[10px] font-medium text-zinc-500')}
+                </div>
+              </div>
+
+              {imageMenuTarget && imageButtonEnabled && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/12 px-3" onClick={() => setImageMenuTarget(null)}>
+                  <div
+                    className="w-full max-w-[240px] rounded-[22px] border border-white/70 bg-white/92 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.18)] backdrop-blur-xl"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <p className="mb-3 text-center text-[13px] font-semibold text-zinc-800">
+                      {imageMenuTarget === 'bannerUrl' ? '设置背景图片' : '设置头像图片'}
+                    </p>
+                    <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl bg-zinc-900 px-3 py-2.5 text-[12px] font-medium text-white transition-colors hover:bg-zinc-800">
+                      直接上传
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleImageFile(e, imageMenuTarget)}
+                      />
+                    </label>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={imageUrlDraft}
+                        onChange={e => setImageUrlDraft(e.target.value)}
+                        placeholder="粘贴 jpg/png/webp/gif/svg 链接"
+                        className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] text-zinc-800 outline-none focus:border-zinc-400"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setImageMenuTarget(null)}
+                          className="flex-1 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-600"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applyImageUrl}
+                          className="flex-1 rounded-2xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white"
+                        >
+                          链接上传
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
       case 'music':
         if (widget.style === 'bar') {
           return (
@@ -358,10 +564,13 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
     }
   };
 
-  if (!widget) return null;
-
-  const isImageBackground = widget.background?.startsWith('http') || widget.background?.startsWith('data:image');
+  const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(widget.background);
+  const isImageBackground = !!resolvedBackgroundUrl;
   const isLightBg = widget.background === '#ffffff' || widget.background === '#fff';
+  const fallbackBackgroundColor =
+    widget.background && !widget.background.includes('://') && !widget.background.startsWith('data:')
+      ? widget.background
+      : '#ffffff';
 
   return (
     <div 
@@ -370,13 +579,13 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
         borderRadius: widget.borderRadius !== undefined ? widget.borderRadius : 24,
         opacity: widget.opacity !== undefined ? widget.opacity : 1,
         aspectRatio: isPreview ? `${widget.w}/${widget.h}` : undefined,
-        backgroundColor: isImageBackground ? undefined : (widget.background || '#ffffff'),
+        backgroundColor: isImageBackground ? undefined : fallbackBackgroundColor,
       }}
     >
       {isImageBackground && (
         <>
           <img 
-            src={widget.background} 
+            src={resolvedBackgroundUrl || undefined} 
             alt="widget-bg" 
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-110"
             draggable={false}

@@ -5,7 +5,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { 
   Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry,
   Character, ChatMessage, ChatHistory, PerceptionSettings,
-  ApiConfig, AppSettings, CallRecord, DateSession, WalletData
+  ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
 import { WorldBookManager } from './components/main/MePage';
 import { GroupChatSession } from './components/chat/GroupChatSession';
@@ -23,6 +23,7 @@ import WalletApp, { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/Wa
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
+import { generateTextWithConfig, streamTextWithConfig } from './services/ai/runtimeClient';
 import { buildChatPrompt } from './services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from './services/ai/prompts/builders/buildSummaryPrompt';
 import {
@@ -53,7 +54,10 @@ import {
   type ShareActionResult,
   toggleFavoriteMessage,
 } from './services/chat/messageActions';
-import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow } from './utils';
+import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
+import { STORAGE_KEYS } from './features/persistence/storageKeys';
+import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
+import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -189,6 +193,9 @@ const sanitizePipeMarkers = (text: string, replacement: '\n' | ' ' = '\n'): stri
     : replaced.replace(/[ \t]{2,}/g, ' ').trim();
 };
 
+const DEFAULT_NAV_BAR_BACKGROUND = '';
+const DEFAULT_ZHOU_JIBAI_AVATAR = 'https://tu.tuhenmei.com/tu2026/2025120917/mklyjkctwie22637.jpeg';
+
 const getLegacyTranslationParts = (text: string): { mainText: string; translation: string } => {
   const parts = text.split('---TRANSLATION---');
   if (parts.length > 1 && parts[0].trim() !== parts[1].trim()) {
@@ -288,35 +295,61 @@ const getChatBubbleParts = (text: string): string[] | null => {
 
 const DEFAULT_CHARACTERS: Character[] = [
   {
-    id: 'gemini-default',
-    name: '阿野',
-    gender: 'male',
-    avatar: 'https://picsum.photos/seed/aye/200',
-    setting: '你叫阿野，是“熟人嘴硬型测试角色”。你和用户已经很熟，聊天时口语化、反应快、短句多、追问多，喜欢先接梗再补一句追问，常用“啊？”“行吧”“所以呢”“你先说”这种自然口头表达。你适合拿来测试真人聊天感、自动回复、心声、切句、一句一消息、连续短消息。回复时优先自然、像微信连发，不要端着，不要像客服。',
-    signature: '别端着，直接来，我陪你把功能测明白。',
-    openingRemark: '又来了？先别装路过。说吧，今天想测我哪块？',
-    lastMessage: '又来了？先别装路过。说吧，今天想测我哪块？',
-    lastTime: Date.now(),
-    groupId: '朋友',
-    isPinned: false,
-  },
-  {
     id: 'char-2',
     name: '林策',
     gender: 'male',
-    avatar: 'https://picsum.photos/seed/lince/200',
+    avatar: DEFAULT_WHITE_AVATAR,
     setting: '你叫林策，是“冷静清晰型测试角色”。你表达克制、结构清楚、信息完整，擅长把复杂内容分点说明，也能自然给出较长回复。你适合拿来测试翻译、总结、长消息拆分、说明型回复、转账卡片、GAME_CARD 等功能。回复时优先准确、清楚、稳定，必要时可以先概括再展开，但仍然保持像真实聊天，不要写成生硬公文。',
     signature: '把需求说清楚，我会给你一个清楚的结果。',
     openingRemark: '收到。你可以直接给我测试任务，我会尽量用清晰、可验证的方式回应。',
     lastMessage: '收到。你可以直接给我测试任务，我会尽量用清晰、可验证的方式回应。',
     lastTime: Date.now() - 100000,
     groupId: '朋友',
+  },
+  {
+    id: 'char-zhou-jibai',
+    name: '周既白',
+    gender: 'male',
+    avatar: DEFAULT_ZHOU_JIBAI_AVATAR,
+    setting: `角色提示词：少年感爹系青梅竹马
+
+姓名：周既白
+
+年龄：18
+
+身高：185cm
+
+身份：青梅竹马、邻居、同级生
+
+外形关键词：高瘦挺拔、黑发自然微乱、单眼皮偏内双、眉骨清晰、手很好看、校服总是穿得松松垮垮、白衬衫袖口常挽到小臂、身上有干净的皂香和一点阳光晒过的味道
+
+气质关键词：少年感很重、松弛、干净、克制、会照顾人、不强势但很有主心骨、安静型爹系
+
+性格设定：
+表面看着懒懒的，不爱解释，也不喜欢凑热闹，和大多数人说话都很简短，甚至有点冷。但其实很会照顾人，尤其对“你”有近乎本能的关注。不是刻意端着成熟，也不是老成说教，而是会很自然地替你记住很多细节，比如你不爱喝太甜的、换季容易咳、难过的时候不喜欢别人一直追问。嘴上不算温柔，行动却总是先一步。护短，偏心明显，但藏得不算刻意。
+
+活人感细节：
+会在等你时低头踢路边的小石子；听你说话时习惯微微偏头；有点轻微洁癖，但会很顺手地接过你喝过的水；包里常年有创可贴、纸巾、薄荷糖和你落下的小东西；被你气到时会短促笑一下，说“你是真行”；困的时候声音会比平时更低，更哑；打完球额发湿着，站在你面前拧开瓶盖递水，自己反而先不喝。
+
+相处模式：
+从小一起长大，太熟了，所以不会把喜欢挂在嘴边。你闹脾气，他不会追着问，只会先把你情绪接住；你逞强，他也不拆穿，只淡淡看你一眼，把台阶递过来。你一喊他名字，他基本都会回头。嘴上总说“麻烦”“你能不能长点记性”，但每次还是会来管你。那种“爹系”不是控制欲，而是下意识兜底，是一种很安静的偏爱。
+
+经典状态关键词：
+雨天把伞偏向你、顺手拿走你的冰饮、晚自习后送你回家、你生病时皱着眉给你量体温、看你哭会明显慌一下但还是故作镇定哄你、对别人冷淡对你例外
+
+核心感觉：
+不是像长辈一样的爹，而是一个还带着锋利少年气的男生，站在你身边时却总是稳的。像夏天傍晚的风，身上有汗意、皂香和刚刚好的体温，嘴硬，手却一直在替你挡事。`,
+    signature: '你喊一声，我基本都会回头。',
+    openingRemark: '又忘带东西了？先过来，我看看。',
+    lastMessage: '又忘带东西了？先过来，我看看。',
+    lastTime: Date.now() - 50000,
+    groupId: '朋友',
   }
 ];
 
 const DEFAULT_USER: UserProfile = {
   name: 'AI 用户',
-  avatar: 'https://picsum.photos/seed/user/200',
+  avatar: 'https://tu.tuhenmei.com/uploads/allimg/2021090521/s4ljgp4msrd.jpg',
   id: 'user_8888',
   bio: '探索 AI 的无限可能 ✨',
   mood: '😊 开心',
@@ -337,39 +370,80 @@ const DEFAULT_SETTINGS: AppSettings = {
   configs: [DEFAULT_CONFIG],
 };
 
+const DEFAULT_DESKTOP_WALLPAPER = 'https://tse3.mm.bing.net/th/id/OIP.GdwwXxbY6ullokoEq_KO2gHaNK?rs=1&pid=ImgDetMain&o=7&rm=3';
+
+const DEFAULT_HOME_ICONS: DesktopIconConfig[] = [
+  { id: 'chat', slotId: 'slot-1-2' },
+  { id: 'settings', slotId: 'slot-1-3' },
+  { id: 'worldbook', slotId: 'slot-2-2' },
+  { id: 'monitor', slotId: 'slot-2-3' },
+  { id: 'couple-space', slotId: 'slot-3-0' },
+  { id: 'perception', slotId: 'slot-3-1' },
+  { id: 'music', slotId: 'slot-4-0' },
+  { id: 'forum', slotId: 'slot-4-1' },
+];
+
+const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [
+  {
+    id: 'blankCardA',
+    type: 'blank',
+    slotId: 'slot-1-0',
+    w: 2,
+    h: 2,
+    background: 'https://tu.tuhenmei.com/tu2026/2025120917/qi35sbin1js22635.jpeg',
+    borderRadius: 32,
+    opacity: 1,
+  },
+  {
+    id: 'blankCardB',
+    type: 'blank',
+    slotId: 'slot-3-2',
+    w: 2,
+    h: 2,
+    background: 'https://tu.tuhenmei.com/uploads/allimg/2021090514/2vzjil1xqkt.jpg',
+    borderRadius: 32,
+    opacity: 1,
+  },
+];
+
+const REMOVED_CHARACTER_IDS = new Set(['gemini-default']);
+const REMOVED_CHARACTER_NAMES = new Set(['阿野']);
+function sanitizePersistedCharacters(characters: Character[] | undefined): Character[] {
+  const persistedCharacters = (characters || [])
+    .filter(character => !REMOVED_CHARACTER_IDS.has(character.id) && !REMOVED_CHARACTER_NAMES.has(character.name))
+    .map(character =>
+      character.id === 'char-zhou-jibai' && (!character.avatar || character.avatar === DEFAULT_WHITE_AVATAR)
+        ? { ...character, avatar: DEFAULT_ZHOU_JIBAI_AVATAR }
+        : character,
+    );
+
+  const existingIds = new Set(persistedCharacters.map(character => character.id));
+  const missingDefaults = DEFAULT_CHARACTERS.filter(character => !existingIds.has(character.id));
+
+  return [...persistedCharacters, ...missingDefaults];
+}
+
+
 const DEFAULT_MOMENTS: Moment[] = [
   {
     id: 'm1',
-    authorId: 'char_1', // 假设是林浩然
-    content: '今天的咖啡不错，适合思考人生。☕️',
+    authorId: 'char-2',
+    content: '今天把几个关键测试点都跑了一遍，终于顺下来了。喝杯咖啡缓一缓。☕️',
     images: ['https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'],
     timestamp: Date.now() - 1000 * 60 * 30, // 30 mins ago
-    likes: 2,
-    likedBy: ['char_2', 'user'],
+    likes: 1,
+    likedBy: ['user'],
     comments: [
       { id: 'c1', authorId: 'user', content: '在哪家店呀？', timestamp: Date.now() - 1000 * 60 * 10 }
     ]
   },
   {
     id: 'm2',
-    authorId: 'char_2', // 假设是苏梦
-    content: '终于把这个项目搞定了！给自己放个假 🎉',
+    authorId: 'user',
+    content: '桌面和情侣空间又调了一轮，细节越来越顺眼了。',
     timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-    likes: 3,
-    likedBy: ['char_1', 'char_3', 'user'],
-    comments: []
-  },
-  {
-    id: 'm3',
-    authorId: 'char_3', // 假设是陈雨
-    content: '周末去爬山，风景真的太美了！虽然累但是值得。⛰️',
-    images: [
-      'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'
-    ],
-    timestamp: Date.now() - 1000 * 60 * 60 * 5, // 5 hours ago
     likes: 1,
-    likedBy: ['char_2'],
+    likedBy: ['char-2'],
     comments: []
   }
 ];
@@ -395,6 +469,7 @@ function MomentsApp({
   const [urlInput, setUrlInput] = useState('');
 
   const { userProfile, moments, characters } = appData;
+  const { resolvedUrl: resolvedMomentsBackgroundUrl } = useResolvedPersistentValue(appData.visualSettings?.momentsBackground);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -474,8 +549,8 @@ function MomentsApp({
     setActiveMenuId(null);
   };
 
-  const handleDelete = (momentId: string) => {
-    if (confirm('确定要删除这条动态吗？')) {
+  const handleDelete = async (momentId: string) => {
+    if (await showInAppConfirm('确定要删除这条动态吗？')) {
       setAppData(prev => ({
         ...prev,
         moments: prev.moments.filter(m => m.id !== momentId)
@@ -645,15 +720,15 @@ function MomentsApp({
     <div 
       className="flex-1 overflow-y-auto pb-24 relative"
       style={{
-        backgroundImage: appData.visualSettings?.momentsBackground ? `url(${appData.visualSettings.momentsBackground})` : undefined,
+        backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        backgroundColor: appData.visualSettings?.momentsBackground ? 'transparent' : '#fafafa'
+        backgroundColor: resolvedMomentsBackgroundUrl ? 'transparent' : '#fafafa'
       }}
     >
       <div className="relative pb-4">
         <div className="h-40 relative overflow-hidden">
-          {!appData.visualSettings?.momentsBackground && (
+          {!resolvedMomentsBackgroundUrl && (
             <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />
           )}
           <div className="absolute top-4 right-4 flex gap-3 z-10">
@@ -869,6 +944,7 @@ export default function App() {
   const [time, setTime] = useState('');
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>({
     characters: DEFAULT_CHARACTERS,
     chatHistory: {},
@@ -879,15 +955,16 @@ export default function App() {
     chatGroups: [],
     callHistory: [],
     visualSettings: {
-      globalBackground: '',
+      globalBackground: DEFAULT_DESKTOP_WALLPAPER,
       chatOpacity: 1,
-      desktopIcons: [],
-      widgets: [],
+      desktopIcons: DEFAULT_HOME_ICONS,
+      widgets: DEFAULT_HOME_WIDGETS,
       navBar: {
         show: true,
         style: 'default',
         shape: 'pill',
         showMultipleAvatars: false,
+        backgroundImage: DEFAULT_NAV_BAR_BACKGROUND,
         statusBarPlacement: 'top'
       },
       desktop: {
@@ -925,7 +1002,9 @@ export default function App() {
       coNotes: [],
       ledger: [],
       loveLetters: [],
-      calendarEvents: []
+      calendarEvents: [],
+      loveLetterEnvelopeColor: '#f6d9e4',
+      loveLetterPaperTexture: 'default'
     },
     musicData: {
       currentSong: null,
@@ -943,6 +1022,25 @@ export default function App() {
       queue: []
     }
   });
+  const [appDialog, setAppDialog] = useState<AppDialogRequest | null>(null);
+  const [appDialogInput, setAppDialogInput] = useState('');
+  const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)');
+    const updateDesktopStageLayout = () => setUseDesktopStageLayout(media.matches);
+    updateDesktopStageLayout();
+    media.addEventListener?.('change', updateDesktopStageLayout);
+    window.addEventListener('resize', updateDesktopStageLayout);
+    return () => {
+      media.removeEventListener?.('change', updateDesktopStageLayout);
+      window.removeEventListener('resize', updateDesktopStageLayout);
+    };
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -983,12 +1081,13 @@ export default function App() {
       }
     }
 
-    const savedAppData = localStorage.getItem('ai_phone_app_data');
+    const savedAppData = localStorage.getItem(STORAGE_KEYS.appData);
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
         setAppData({
           ...parsed,
+          characters: sanitizePersistedCharacters(parsed.characters),
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
@@ -1001,62 +1100,86 @@ export default function App() {
             coNotes: [],
             ledger: [],
             loveLetters: [],
-            calendarEvents: []
+            calendarEvents: [],
+            loveLetterEnvelopeColor: '#f6d9e4',
+            loveLetterPaperTexture: 'default'
           },
-          visualSettings: {
-            globalBackground: parsed.visualSettings?.globalBackground || '',
-            chatOpacity: parsed.visualSettings?.chatOpacity ?? 1,
-            desktopIcons: parsed.visualSettings?.desktopIcons || [],
-            widgets: parsed.visualSettings?.widgets || [],
-            navBar: {
-              show: parsed.visualSettings?.navBar?.show ?? true,
-              style: parsed.visualSettings?.navBar?.style || 'default',
-              shape: parsed.visualSettings?.navBar?.shape || 'pill',
-              showMultipleAvatars: parsed.visualSettings?.navBar?.showMultipleAvatars ?? false,
-              statusBarPlacement: parsed.visualSettings?.navBar?.statusBarPlacement || 'top'
-            },
-            desktop: {
-              iconSize: parsed.visualSettings?.desktop?.iconSize ?? 56,
-              iconBorderRadius: parsed.visualSettings?.desktop?.iconBorderRadius ?? 14,
-              gridColumns: parsed.visualSettings?.desktop?.gridColumns ?? 4,
-              gridGap: parsed.visualSettings?.desktop?.gridGap ?? 16,
-              appOrder: parsed.visualSettings?.desktop?.appOrder
-            },
-            chat: {
-              background: parsed.visualSettings?.chat?.background || '',
-              avatarSize: parsed.visualSettings?.chat?.avatarSize ?? 40,
-              avatarBorderRadius: parsed.visualSettings?.chat?.avatarBorderRadius ?? 20,
-              avatarBorderColor: parsed.visualSettings?.chat?.avatarBorderColor || '#e4e4e7',
-              avatarBorderWidth: parsed.visualSettings?.chat?.avatarBorderWidth ?? 0,
-              messageBorderRadius: parsed.visualSettings?.chat?.messageBorderRadius ?? 16,
-              messageBackgroundColorUser: parsed.visualSettings?.chat?.messageBackgroundColorUser || '#3b82f6',
-              messageBackgroundColorModel: parsed.visualSettings?.chat?.messageBackgroundColorModel || '#ffffff',
-              messageSpacing: parsed.visualSettings?.chat?.messageSpacing ?? 16,
-              bubbleStyleCss: parsed.visualSettings?.chat?.bubbleStyleCss || ''
-            },
-            dynamics: {
-              background: parsed.visualSettings?.dynamics?.background || '',
-              cardStyle: parsed.visualSettings?.dynamics?.cardStyle || 'flat',
-              cardBorderRadius: parsed.visualSettings?.dynamics?.cardBorderRadius ?? 24,
-              cardOpacity: parsed.visualSettings?.dynamics?.cardOpacity ?? 1,
-              customCss: parsed.visualSettings?.dynamics?.customCss || ''
-            },
-            globalCss: parsed.visualSettings?.globalCss || ''
-          }
+          visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
         });
       } catch (e) {
         console.error('Failed to parse app data', e);
       }
+    } else {
+      setAppData(prev => ({
+        ...prev,
+        visualSettings: loadPersistedVisualSettings(prev.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
+      }));
     }
+
+    setHasHydratedStorage(true);
   }, []);
 
   useEffect(() => {
+    if (!hasHydratedStorage) return;
     localStorage.setItem('ai_phone_settings', JSON.stringify(settings));
-  }, [settings]);
+  }, [hasHydratedStorage, settings]);
 
   useEffect(() => {
-    localStorage.setItem('ai_phone_app_data', JSON.stringify(appData));
-  }, [appData]);
+    if (!hasHydratedStorage) return;
+    localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(appData));
+  }, [appData, hasHydratedStorage]);
+
+  useEffect(() => {
+    if (!hasHydratedStorage) return;
+    persistVisualSettings(appData.visualSettings);
+  }, [appData.visualSettings, hasHydratedStorage]);
+
+  useEffect(() => {
+    const handleDialogRequest = (event: Event) => {
+      const detail = (event as CustomEvent<AppDialogRequest>).detail;
+      setAppDialogInput(detail.kind === 'prompt' ? detail.defaultValue || '' : '');
+      setAppDialog(detail);
+    };
+
+    const originalAlert = window.alert;
+    window.alert = (message?: unknown) => {
+      window.dispatchEvent(new CustomEvent(APP_DIALOG_EVENT, {
+        detail: {
+          kind: 'alert',
+          message: String(message ?? ''),
+        } satisfies AppDialogRequest,
+      }));
+    };
+
+    window.addEventListener(APP_DIALOG_EVENT, handleDialogRequest as EventListener);
+    return () => {
+      window.alert = originalAlert;
+      window.removeEventListener(APP_DIALOG_EVENT, handleDialogRequest as EventListener);
+    };
+  }, []);
+
+  const closeAppDialog = () => {
+    if (appDialog?.kind === 'alert') {
+      appDialog.resolve?.();
+    } else if (appDialog?.kind === 'confirm') {
+      appDialog.resolve(false);
+    } else if (appDialog?.kind === 'prompt') {
+      appDialog.resolve(null);
+    }
+    setAppDialog(null);
+  };
+
+  const handleDialogConfirm = () => {
+    if (!appDialog) return;
+    if (appDialog.kind === 'alert') {
+      appDialog.resolve?.();
+    } else if (appDialog.kind === 'confirm') {
+      appDialog.resolve(true);
+    } else if (appDialog.kind === 'prompt') {
+      appDialog.resolve(appDialogInput);
+    }
+    setAppDialog(null);
+  };
 
   const handleOpenChat = (characterId: string) => {
     setSelectedCharacterId(characterId);
@@ -1080,14 +1203,25 @@ export default function App() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-zinc-950 p-4 font-sans selection:bg-blue-500/30">
+    <div
+      className={`app-shell relative bg-black font-sans selection:bg-blue-500/30 ${
+        useDesktopStageLayout ? 'md:flex md:min-h-screen md:items-center md:justify-center md:bg-zinc-950 md:p-4' : ''
+      }`}
+    >
       <GlobalStyles customCss={appData.visualSettings?.globalCss || ''} />
       {/* Phone Container */}
-      <div id="phone-container" className="relative w-[360px] h-[720px] bg-black rounded-[50px] border-[8px] border-white shadow-2xl overflow-hidden flex flex-col ring-1 ring-black/5">
+      <div
+        id="phone-container"
+        className={`app-phone-container relative flex h-full w-full flex-col overflow-hidden bg-zinc-50 ring-0 ${
+          useDesktopStageLayout
+            ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
+            : ''
+        }`}
+      >
         
         {/* Status Bar */}
         {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && (
-          <div className="absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
+          <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
               {/* Signal Bars */}
@@ -1111,7 +1245,7 @@ export default function App() {
         )}
         
         {/* Screen Content */}
-        <div className="flex-1 relative bg-zinc-50 overflow-hidden">
+        <div className="phone-screen-root flex-1 relative bg-zinc-50 overflow-hidden">
           {activeApp === 'home' && (
             <HomeScreen 
               key="home" 
@@ -1357,7 +1491,8 @@ export default function App() {
               setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
               onBack={() => setActiveApp('home')}
               onResetData={() => {
-                localStorage.removeItem('ai_phone_app_data');
+                localStorage.removeItem(STORAGE_KEYS.appData);
+                clearPersistedVisualSettings();
                 window.location.reload();
               }}
               onExportData={() => {
@@ -1435,6 +1570,63 @@ export default function App() {
           )}
         </div>
 
+        <AnimatePresence>
+          {appDialog && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[200] flex items-center justify-center bg-black/35 p-5"
+              onClick={() => {
+                if (appDialog.kind === 'alert') {
+                  closeAppDialog();
+                }
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                className="w-full max-w-[320px] overflow-hidden rounded-[28px] bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-5 pt-5 text-center">
+                  <div className="text-[17px] font-semibold text-zinc-900">
+                    {appDialog.kind === 'confirm' ? '确认操作' : appDialog.kind === 'prompt' ? '请输入内容' : '提示'}
+                  </div>
+                  <div className="mt-2 whitespace-pre-wrap text-[14px] leading-6 text-zinc-600">
+                    {appDialog.message}
+                  </div>
+                </div>
+                {appDialog.kind === 'prompt' && (
+                  <div className="px-5 pt-4">
+                    <input
+                      autoFocus
+                      value={appDialogInput}
+                      onChange={(e) => setAppDialogInput(e.target.value)}
+                      className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-[15px] outline-none focus:border-zinc-900"
+                    />
+                  </div>
+                )}
+                <div className="mt-5 flex border-t border-zinc-100">
+                  {(appDialog.kind === 'confirm' || appDialog.kind === 'prompt') && (
+                    <button type="button" onClick={closeAppDialog} className="flex-1 px-4 py-3 text-[16px] font-medium text-zinc-500">
+                      取消
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleDialogConfirm}
+                    className="flex-1 border-l border-zinc-100 px-4 py-3 text-[16px] font-semibold text-blue-500"
+                  >
+                    {appDialog.kind === 'confirm' ? '确定' : appDialog.kind === 'prompt' ? '完成' : '我知道了'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Home Indicator */}
         <div 
           className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[100px] h-[4px] bg-white/80 rounded-full cursor-pointer z-50 hover:bg-white transition-colors" 
@@ -1476,7 +1668,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
         id: Date.now().toString(),
         name: data.name,
         gender: data.gender || 'other',
-        avatar: data.avatar || `https://picsum.photos/seed/${Math.random()}/200`,
+        avatar: data.avatar || DEFAULT_WHITE_AVATAR,
         setting: data.setting || '',
         openingRemark: data.openingRemark || '',
         groupId: data.groupId || undefined,
@@ -1490,7 +1682,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
     <motion.div 
       className="absolute inset-0 bg-white flex flex-col z-50"
     >
-      <div className="pt-10 pb-3 px-4 border-b border-zinc-100 flex justify-between items-center shrink-0">
+      <div className="min-h-[64px] pt-12 pb-3 px-4 border-b border-zinc-100 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={view === 'import' ? () => setView('edit') : onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
@@ -1784,7 +1976,7 @@ function ChatSession({
     }
   };
 
-  const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId) || settings?.configs?.[0] || DEFAULT_CONFIG;
+  const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId);
   const activeSavedDate = savedDates?.find(session => session.characterId === character.id) || null;
 
   useEffect(() => {
@@ -1802,26 +1994,26 @@ function ChatSession({
   const voiceCallEndRef = useRef<HTMLDivElement>(null);
 
   const handleVoiceCallAIResponse = async (userText: string) => {
+    if (!activeConfig) {
+      setError('当前未选择有效的 API 配置。');
+      return;
+    }
+
     try {
-      const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) return;
-      
-      const ai = new GoogleGenAI({ apiKey });
-      
       // Construct context from recent history + character setting
       const prompt = `你正在与用户进行语音通话。
 你的设定是：${character.setting}
 用户的上一句话是："${userText}"
 请以口语化的方式简短回应（50字以内）。`;
 
-      const response = await ai.models.generateContent({
-        model: activeConfig.model,
-        contents: prompt,
-        config: { temperature: 0.7 }
+      const responseText = await generateTextWithConfig({
+        activeConfig,
+        prompt,
+        temperature: 0.7,
       });
 
-      if (response.text) {
-        const aiMsg = { role: 'model' as const, text: response.text };
+      if (responseText) {
+        const aiMsg = { role: 'model' as const, text: responseText };
         setVoiceCallHistory(prev => {
           const newHistory = [...prev, aiMsg];
           voiceCallHistoryRef.current = newHistory;
@@ -2517,13 +2709,13 @@ function ChatSession({
   const handleSend = async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
     const textToSend = typeof overrideText === 'string' ? overrideText : input;
     if ((!textToSend.trim() && !locationData)) return;
-    
-    const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      setError('未检测到 API Key，请在设置中配置。');
+
+    if (!activeConfig) {
+      setError('当前未选择有效的 API 配置。');
       return;
     }
 
+    const apiKey = activeConfig.apiKey;
     setError(null);
 
     // Mark previous in-flight assistant response as stale.
@@ -2650,230 +2842,84 @@ function ChatSession({
         return;
       }
 
-      const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
-      const isGemini = activeConfig.provider === 'Google Gemini' || (!activeConfig.baseUrl && activeConfig.provider === '自定义 (Custom)');
-      
-      if (isGemini) {
-        const ai = new GoogleGenAI({ apiKey: apiKey || '' });
-        const modelName = activeConfig.model || 'gemini-3-flash-preview';
-        const historyLimit = character.memoryLimit || 20;
-        const historyWindow = newHistory.slice(-historyLimit);
-        
-        // Find linked mask
-        const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-        const maskPrompt = activeMask
-          ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-          : '';
-        
-        // Find active world books
-        const activeWorldBooks = worldBook.filter(wb => 
-          (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
-          character.activeWorldBookIds?.includes(wb.id)
-        );
-        const worldBookPrompt = activeWorldBooks.length > 0
-          ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
-          : '';
-        
-        // Perception Settings
-        let perceptionPrompt = '';
-        if (perception) {
-          const parts = [];
-          if (perception.enabled || perception.dateTime?.enabled) {
-            if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
-          }
-          if (perception.enabled || perception.location?.enabled) {
-            if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
-          }
-          if (perception.enabled || perception.weather?.enabled) {
-            if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
-          }
-          if (perception.enabled || perception.temperature?.enabled) {
-            if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
-          }
-          if (perception.enabled || perception.climate?.enabled) {
-            if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
-          }
-          
-          if (parts.length > 0) {
-            perceptionPrompt = parts.join('\n');
-          }
+      const historyLimit = character.memoryLimit || 20;
+      const historyWindow = newHistory.slice(-historyLimit);
+
+      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      const maskPrompt = activeMask
+        ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
+        : '';
+
+      const activeWorldBooks = worldBook.filter(wb => 
+        (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
+        character.activeWorldBookIds?.includes(wb.id)
+      );
+      const worldBookPrompt = activeWorldBooks.length > 0
+        ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
+        : '';
+
+      let perceptionPrompt = '';
+      if (perception) {
+        const parts = [];
+        if (perception.enabled || perception.dateTime?.enabled) {
+          if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
+        }
+        if (perception.enabled || perception.location?.enabled) {
+          if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
+        }
+        if (perception.enabled || perception.weather?.enabled) {
+          if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
+        }
+        if (perception.enabled || perception.temperature?.enabled) {
+          if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
+        }
+        if (perception.enabled || perception.climate?.enabled) {
+          if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
         }
 
-        const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
-        const baseChatPrompt = buildChatPrompt({
-          mode: 'chat',
-          characterCore: {
-            characterSetting: character.setting,
-            maskPrompt,
-            worldBookPrompt,
-          },
-          memoryContext: {
-            memorySummary: normalizedMemoryPrompt,
-            perceptionPrompt,
-          },
-        });
-
-        let systemPrompt = baseChatPrompt;
-        
-        if (textToSend.startsWith('[GAME_CARD]')) {
-          // GAME_CARD protocol now comes from prompt assets via buildChatPrompt.
-        }
-
-        const contents = [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: '明白了，我会按照这个设定进行对话。' }] },
-          ...historyWindow.map(m => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: m.text }]
-          }))
-        ];
-
-        const stream = await ai.models.generateContentStream({
-          model: modelName,
-          contents,
-          config: {
-            temperature: activeConfig.temperature ?? 1.0,
-            // For Gemini 3 models, use LOW thinking level to reduce latency
-            ...(modelName.includes('gemini-3') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {})
-          }
-        });
-
-        for await (const chunk of stream) {
-          if (activeGenerationIdRef.current !== generationId) {
-            return;
-          }
-          const chunkText = chunk.text;
-          if (chunkText) {
-            currentResponseText += chunkText;
-            updateAssistantMessage(currentResponseText);
-          }
-        }
-      } else {
-        const baseUrl = activeConfig.baseUrl.replace(/\/$/, '');
-        const url = `${baseUrl}/chat/completions`;
-        const historyLimit = character.memoryLimit || 20;
-        const historyWindow = newHistory.slice(-historyLimit);
-        
-        // Find linked mask
-        const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-        const maskPrompt = activeMask
-          ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-          : '';
-
-        // Find active world books
-        const activeWorldBooks = worldBook.filter(wb => 
-          (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) || 
-          character.activeWorldBookIds?.includes(wb.id)
-        );
-        const worldBookPrompt = activeWorldBooks.length > 0
-          ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
-          : '';
-
-        // Perception Settings
-        let perceptionPrompt = '';
-        if (perception) {
-          const parts = [];
-          if (perception.enabled || perception.dateTime?.enabled) {
-            if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
-          }
-          if (perception.enabled || perception.location?.enabled) {
-            if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
-          }
-          if (perception.enabled || perception.weather?.enabled) {
-            if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
-          }
-          if (perception.enabled || perception.temperature?.enabled) {
-            if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
-          }
-          if (perception.enabled || perception.climate?.enabled) {
-            if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
-          }
-          
-          if (parts.length > 0) {
-            perceptionPrompt = parts.join('\n');
-          }
-        }
-
-        const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
-        const baseChatPrompt = buildChatPrompt({
-          mode: 'chat',
-          characterCore: {
-            characterSetting: character.setting,
-            maskPrompt,
-            worldBookPrompt,
-          },
-          memoryContext: {
-            memorySummary: normalizedMemoryPrompt,
-            perceptionPrompt,
-          },
-        });
-
-        let systemPrompt = baseChatPrompt;
-
-        if (textToSend.startsWith('[GAME_CARD]')) {
-          // GAME_CARD protocol now comes from prompt assets via buildChatPrompt.
-        }
-
-        const messagesPayload = [
-          { role: 'system', content: systemPrompt },
-          ...historyWindow.map(m => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.text
-          }))
-        ];
-
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: activeConfig.model,
-            messages: messagesPayload,
-            temperature: activeConfig.temperature ?? 0.7,
-            stream: true
-          })
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `API 错误 (${res.status})`);
-        }
-
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        
-        if (!reader) throw new Error("无法读取响应流");
-
-        while (true) {
-          if (activeGenerationIdRef.current !== generationId) {
-            return;
-          }
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n').filter(line => line.trim() !== '');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6);
-              if (dataStr === '[DONE]') break;
-              try {
-                const data = JSON.parse(dataStr);
-                const content = data.choices?.[0]?.delta?.content || '';
-                if (content) {
-                  currentResponseText += content;
-                  updateAssistantMessage(currentResponseText);
-                }
-              } catch (e) {
-                console.error('Error parsing SSE chunk', e);
-              }
-            }
-          }
+        if (parts.length > 0) {
+          perceptionPrompt = parts.join('\n');
         }
       }
+
+      const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
+      const baseChatPrompt = buildChatPrompt({
+        mode: 'chat',
+        characterCore: {
+          characterSetting: character.setting,
+          maskPrompt,
+          worldBookPrompt,
+        },
+        memoryContext: {
+          memorySummary: normalizedMemoryPrompt,
+          perceptionPrompt,
+        },
+      });
+
+      let systemPrompt = baseChatPrompt;
+
+      if (textToSend.startsWith('[GAME_CARD]')) {
+        // GAME_CARD protocol now comes from prompt assets via buildChatPrompt.
+      }
+
+      await streamTextWithConfig({
+        activeConfig,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...historyWindow.map(m => ({
+            role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+            content: m.text,
+          })),
+        ],
+        onTextChunk: (chunkText) => {
+          if (activeGenerationIdRef.current !== generationId) {
+            return;
+          }
+
+          currentResponseText += chunkText;
+          updateAssistantMessage(currentResponseText);
+        },
+      });
 
       if (!currentResponseText) {
         throw new Error("模型返回为空");
@@ -2978,6 +3024,10 @@ function ChatSession({
     handleSendRef.current = handleSend;
   }, [handleSend]);
 
+  const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.background);
+  const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(visualSettings?.chat?.avatarFrameUrl);
+  const { resolvedUrl: resolvedChatMessageBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.messageBackgroundImageUrl);
+
   if (showSettings) {
     return (
       <ChatSettingsPanel 
@@ -2999,8 +3049,7 @@ function ChatSession({
       />
     );
   }
-
-  const activeBackground = character.background || visualSettings?.chat?.background;
+  const activeBackground = character.background || resolvedChatBackgroundUrl;
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
@@ -3049,7 +3098,7 @@ function ChatSession({
       {/* Header */}
       {multiSelectMode ? (
         <div 
-          className={`${headerClasses} justify-between`}
+          className={`chat-session-header ${headerClasses} justify-between`}
           style={headerStyleObj}
         >
           <button onClick={() => {
@@ -3065,7 +3114,7 @@ function ChatSession({
         </div>
       ) : (
         <div 
-          className={`${headerClasses} justify-between`}
+          className={`chat-session-header ${headerClasses} justify-between`}
           style={headerStyleObj}
         >
           <div className="flex items-center gap-1 z-10">
@@ -3140,9 +3189,9 @@ function ChatSession({
                     borderStyle: 'solid'
                   }}
                 />
-                {visualSettings?.chat?.avatarFrameUrl && (
+                {resolvedChatAvatarFrameUrl && (
                   <img 
-                    src={visualSettings.chat.avatarFrameUrl} 
+                    src={resolvedChatAvatarFrameUrl} 
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
                     style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
                   />
@@ -3158,7 +3207,7 @@ function ChatSession({
                   padding: '10px 16px',
                   backgroundColor: visualSettings?.chat?.messageBackgroundColorModel ?? `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                   borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                  ...(visualSettings?.chat?.messageBackgroundImageUrl ? { backgroundImage: `url(${visualSettings.chat.messageBackgroundImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
+                  ...(resolvedChatMessageBackgroundUrl ? { backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
                   ...(character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
                   ...(visualSettings?.chat?.bubbleStyleCss ? JSON.parse(visualSettings.chat.bubbleStyleCss || '{}') : {})
                 }}
@@ -3216,9 +3265,9 @@ function ChatSession({
                           borderStyle: 'solid'
                         }}
                       />
-                      {visualSettings?.chat?.avatarFrameUrl && (
+                      {resolvedChatAvatarFrameUrl && (
                         <img 
-                          src={visualSettings.chat.avatarFrameUrl} 
+                          src={resolvedChatAvatarFrameUrl} 
                           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
                           style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
                         />
@@ -3244,9 +3293,9 @@ function ChatSession({
                           borderStyle: 'solid'
                         }}
                       />
-                      {visualSettings?.chat?.avatarFrameUrl && (
+                      {resolvedChatAvatarFrameUrl && (
                         <img 
-                          src={visualSettings.chat.avatarFrameUrl} 
+                          src={resolvedChatAvatarFrameUrl} 
                           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
                           style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
                         />
@@ -3381,9 +3430,9 @@ function ChatSession({
                                           ? (visualSettings?.chat?.messageBackgroundColorUser ||
                                               `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
                                           : `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                                      ...(visualSettings?.chat?.messageBackgroundImageUrl
+                                      ...(resolvedChatMessageBackgroundUrl
                                         ? {
-                                            backgroundImage: `url(${visualSettings.chat.messageBackgroundImageUrl})`,
+                                            backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`,
                                             backgroundSize: 'cover',
                                             backgroundPosition: 'center',
                                             border: 'none'
@@ -3914,6 +3963,11 @@ function ChatSession({
 
                   <button 
                     onClick={() => {
+                      if (!activeConfig) {
+                        setError('当前未选择有效的 API 配置。');
+                        setShowFunPanel(false);
+                        return;
+                      }
                       setShowDatingModal(true);
                       setShowFunPanel(false);
                     }}
@@ -4051,17 +4105,19 @@ function ChatSession({
         )}
       </AnimatePresence>
 
-      <DatingModal
-        isOpen={showDatingModal}
-        onClose={() => setShowDatingModal(false)}
-        character={character}
-        userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
-        activeConfig={activeConfig}
-        chatHistory={history}
-        onSaveDate={onSaveDate || (() => {})}
-        onCollectDate={onCollectDate || (() => {})}
-        initialSession={savedDates?.find(s => s.characterId === character.id) || null}
-      />
+      {activeConfig && (
+        <DatingModal
+          isOpen={showDatingModal}
+          onClose={() => setShowDatingModal(false)}
+          character={character}
+          userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
+          activeConfig={activeConfig}
+          chatHistory={history}
+          onSaveDate={onSaveDate || (() => {})}
+          onCollectDate={onCollectDate || (() => {})}
+          initialSession={savedDates?.find(s => s.characterId === character.id) || null}
+        />
+      )}
 
       {/* Voice Call UI */}
       <AnimatePresence>
@@ -4622,9 +4678,9 @@ function SettingsApp({
     setView('list');
   };
 
-  const handleDeleteConfig = () => {
+  const handleDeleteConfig = async () => {
     if (editingConfigId === 'default') return;
-    if (confirm('确定要删除此配置吗？')) {
+    if (await showInAppConfirm('确定要删除此配置吗？')) {
       const newConfigs = localSettings.configs.filter(c => c.id !== editingConfigId);
       setLocalSettings({
         ...localSettings,
@@ -4783,7 +4839,7 @@ function SettingsApp({
       {view === 'list' ? (
         <>
           {/* List Header */}
-          <div className="pt-10 pb-3 px-4 flex items-center justify-between z-10 bg-[#f7f7f9]">
+          <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center justify-between z-10 bg-[#f7f7f9]">
             <button onClick={onBack} className="text-black active:opacity-70 p-1 -ml-1 flex items-center">
               <ChevronLeft size={26} />
             </button>
@@ -4844,7 +4900,7 @@ function SettingsApp({
       ) : (
         <>
           {/* Edit Header */}
-          <div className="pt-10 pb-3 px-4 flex items-center justify-between z-10 bg-white">
+          <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center justify-between z-10 bg-white">
             <button onClick={() => setView('list')} className="text-black active:opacity-70 p-1 -ml-1 flex items-center">
               <ChevronLeft size={26} />
             </button>

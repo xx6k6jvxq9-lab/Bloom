@@ -220,7 +220,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
             </motion.div>
           )}
         </AnimatePresence>,
-        document.body
+        document.getElementById('phone-container') || document.body
       )}
     </>
   );

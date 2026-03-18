@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, MoreVertical, Save, Send, Star, Undo2, X } from 'lucide-react';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, MoreVertical, Save, Send, Smile, Star, Undo2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type {
   ApiConfig,
@@ -12,6 +12,7 @@ import type {
 } from '../../types';
 import { generateTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
   createDateMessageId,
   createSceneMessage,
@@ -35,6 +36,8 @@ type DatingSceneProps = {
 };
 
 type SceneSessionState = DateSession & { isCollected?: boolean; isSaved?: boolean };
+
+const DATING_STICKERS = ['🥺', '😤', '😭', '😳', '😎', '❤️', '(贴贴)', '(抱抱)', '(委屈)', '(不理你了)'];
 
 const createEmptyGeneratedContent = (session: DateSession, character: Character): DatingGeneratedContent => ({
   background: {
@@ -132,6 +135,7 @@ export function DatingScene({
   const [rollbackMode, setRollbackMode] = useState(false);
   const [selectedRollbackMessageId, setSelectedRollbackMessageId] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [showStickerPanel, setShowStickerPanel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [backgroundBroken, setBackgroundBroken] = useState(false);
@@ -152,6 +156,7 @@ export function DatingScene({
     setRollbackMode(false);
     setSelectedRollbackMessageId(null);
     setError('');
+    setShowStickerPanel(false);
     setBackgroundBroken(false);
     setStatusExpandedMap({});
     setPlaylistExpandedMap({});
@@ -172,7 +177,11 @@ export function DatingScene({
   }, [startToken, session]);
 
   const backgroundInfo = resolveDateSessionBackground(currentSession, character.avatar);
-  const backgroundImage = backgroundBroken ? character.avatar : backgroundInfo.image;
+  const { resolvedUrl: resolvedBackgroundImageUrl } = useResolvedPersistentValue(backgroundInfo.image);
+  const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
+  const backgroundImage = backgroundBroken
+    ? character.avatar
+    : resolvedBackgroundImageUrl || (backgroundInfo.source === 'character-avatar' ? character.avatar : '');
 
   const saveSession = (nextSession: SceneSessionState) => {
     const normalizedMessages = normalizeDateSessionMessages(nextSession);
@@ -347,6 +356,20 @@ export function DatingScene({
     setPlaylistExpandedMap(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleSendSticker = async (sticker: string) => {
+    setShowStickerPanel(false);
+    if (isLoading) return;
+    if (input.trim()) {
+      setInput(prev => `${prev}${sticker}`);
+      return;
+    }
+    await generateRound({
+      mode: 'continue',
+      latestUserInput: sticker,
+      appendUserMessage: true,
+    });
+  };
+
   return (
     <div className="dating-scene">
       <div className="dating-scene__background" style={{ backgroundImage: `url(${backgroundImage})` }} />
@@ -369,7 +392,7 @@ export function DatingScene({
             <button type="button" className="dating-scene__icon-btn" onClick={onBackToPlanner}>
               <ChevronLeft size={16} />
             </button>
-            <img src={character.avatar} alt={character.name} className="dating-scene__avatar" />
+            <img src={resolvedCharacterAvatarUrl || character.avatar} alt={character.name} className="dating-scene__avatar" />
             <div className="dating-scene__identity">
               <div className="dating-scene__name">{character.name}</div>
               <div className="dating-scene__subtitle">{currentSession.scenario || '正式约会'}</div>
@@ -587,7 +610,35 @@ export function DatingScene({
         </AnimatePresence>
 
         <div className="dating-scene__composer-wrap">
+          <AnimatePresence>
+            {showStickerPanel ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                className="dating-scene__sticker-panel"
+              >
+                {DATING_STICKERS.map(sticker => (
+                  <button
+                    key={sticker}
+                    type="button"
+                    className="dating-scene__sticker-btn"
+                    onClick={() => void handleSendSticker(sticker)}
+                  >
+                    {sticker}
+                  </button>
+                ))}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           <div className="dating-scene__composer">
+            <button
+              type="button"
+              className={`dating-scene__emoji-btn ${showStickerPanel ? 'is-active' : ''}`}
+              onClick={() => setShowStickerPanel(prev => !prev)}
+            >
+              <Smile size={18} />
+            </button>
             <input
               value={input}
               onChange={event => setInput(event.target.value)}
@@ -597,7 +648,7 @@ export function DatingScene({
                   void handleSend();
                 }
               }}
-              placeholder={isLoading ? '约会剧情生成中…' : '发送消息'}
+              placeholder={isLoading ? '生成中...' : '说点什么呢...'}
               className="dating-scene__input"
             />
             <button

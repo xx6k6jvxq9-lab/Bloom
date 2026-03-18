@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, ScanEye, MessageCircle } from 'lucide-react';
+import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import Cropper from 'react-easy-crop';
 import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent } from '../../../types';
-import { PerceptionView } from '../PerceptionView';
-import { extractImageUrls, extractSingleImageUrl } from '../../../utils';
+import { extractImageUrls, showInAppConfirm } from '../../../utils';
+import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
+import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -35,6 +37,57 @@ const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> 
   return canvas.toDataURL('image/jpeg');
 };
 
+type ImageModalType =
+  | 'background'
+  | 'avatarFrameUser'
+  | 'avatarFramePartner'
+  | 'loveLetterEnvelopeBg'
+  | 'calendarBg'
+  | 'loveLetterPaperBg';
+
+function isImageModalType(value: string | null): value is ImageModalType {
+  return ['background', 'avatarFrameUser', 'avatarFramePartner', 'loveLetterEnvelopeBg', 'calendarBg', 'loveLetterPaperBg'].includes(value || '');
+}
+
+function buildCoupleSpaceImageUpdates(activeModal: ImageModalType, value: string | null) {
+  const nextValue = value ?? '';
+  if (activeModal === 'background') return { backgroundUrl: nextValue };
+  if (activeModal === 'avatarFrameUser') return { userAvatarFrame: nextValue };
+  if (activeModal === 'avatarFramePartner') return { partnerAvatarFrame: nextValue };
+  if (activeModal === 'loveLetterEnvelopeBg') return { loveLetterEnvelopeBg: nextValue };
+  if (activeModal === 'calendarBg') return { calendarBg: nextValue };
+  return { loveLetterPaperBg: nextValue };
+}
+
+function getImageModalFileName(activeModal: ImageModalType): string {
+  if (activeModal === 'background') return 'couple-space-background.jpg';
+  if (activeModal === 'avatarFrameUser') return 'couple-space-user-frame.jpg';
+  if (activeModal === 'avatarFramePartner') return 'couple-space-partner-frame.jpg';
+  if (activeModal === 'loveLetterEnvelopeBg') return 'couple-space-envelope.jpg';
+  if (activeModal === 'calendarBg') return 'couple-space-calendar.jpg';
+  return 'couple-space-paper.jpg';
+}
+
+function ResolvedImage({
+  value,
+  fallbackValue,
+  alt = '',
+  className,
+}: {
+  value?: string | null;
+  fallbackValue?: string | null;
+  alt?: string;
+  className?: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
+  const src = resolvedUrl || resolvedFallbackUrl;
+
+  if (!src) return null;
+
+  return <img src={src} className={className} alt={alt} />;
+}
+
 type Props = {
   appData: any;
   setAppData: any;
@@ -43,7 +96,7 @@ type Props = {
 };
 
 export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props) {
-  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'perception'>('main');
+  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed'>('main');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'addPartner' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
@@ -73,7 +126,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     messageBoard: [],
     addedPartnerIds: [],
     loveLetterEnvelopeBg: null,
-    loveLetterEnvelopeColor: '#f5e6d3',
+    loveLetterEnvelopeColor: '#e9c7d2',
     loveLetterPaperTexture: 'default',
     loveLetterPaperBg: null,
     calendarBg: null
@@ -93,6 +146,12 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
   const partner = appData.characters.find((c: any) => c.id === coupleSpace.partnerId);
   const user = appData.userProfile;
+  const { setRemoteUrl, clearValue } = usePersistentFieldActions();
+  const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(coupleSpace.backgroundUrl);
+  const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(user?.avatar);
+  const { resolvedUrl: resolvedPartnerAvatarUrl } = useResolvedPersistentValue(partner?.avatar);
+  const { resolvedUrl: resolvedUserAvatarFrameUrl } = useResolvedPersistentValue(coupleSpace.userAvatarFrame);
+  const { resolvedUrl: resolvedPartnerAvatarFrameUrl } = useResolvedPersistentValue(coupleSpace.partnerAvatarFrame);
 
   // Calculate days together
   const daysTogether = coupleSpace.anniversaryDate 
@@ -111,7 +170,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         calendarEvents: [],
         posts: [],
         anniversaries: [],
-        messageBoard: []
+        messageBoard: [],
+        loveLetterEnvelopeColor: '#e9c7d2',
+        loveLetterPaperTexture: 'default'
       };
       const newUpdates = typeof updates === 'function' ? updates(prevCoupleSpace) : updates;
       return {
@@ -128,10 +189,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     const selectedPartner = appData.characters.find((c: any) => c.id === selectedPartnerId);
     
     return (
-      <div className="absolute inset-0 bg-pink-50 flex flex-col items-center justify-center z-50">
+      <div className="absolute inset-0 bg-gradient-to-br from-rose-100 via-pink-50 to-stone-50 flex flex-col items-center justify-center z-50">
         <button 
           onClick={onBack}
-          className="absolute top-12 left-6 p-3 rounded-full bg-white/80 text-pink-500 shadow-sm active:scale-95 transition-transform"
+          className="couple-space-floating-back absolute top-12 left-6 p-3 rounded-full bg-white/85 text-rose-400 shadow-sm active:scale-95 transition-transform"
         >
           <ChevronLeft size={24} />
         </button>
@@ -140,14 +201,14 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden">
-                <img src={user.avatar} className="w-full h-full object-cover" alt="User" />
+                <ResolvedImage value={user.avatar} className="w-full h-full object-cover" alt="User" />
               </div>
               <div className="absolute -top-2 -right-2 bg-white rounded-full p-1.5 shadow-md">
-                <Heart size={16} className="text-pink-500 fill-pink-500 animate-pulse" />
+                <Heart size={16} className="text-rose-400 fill-rose-400 animate-pulse" />
               </div>
             </div>
 
-            <Heart size={32} className="text-pink-300 animate-bounce" />
+            <Heart size={32} className="text-rose-200 animate-bounce" />
 
             <div className="relative">
               <button 
@@ -155,9 +216,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform"
               >
                 {selectedPartner ? (
-                  <img src={selectedPartner.avatar} className="w-full h-full object-cover" alt="Partner" />
+                  <ResolvedImage value={selectedPartner.avatar} className="w-full h-full object-cover" alt="Partner" />
                 ) : (
-                  <Plus size={32} className="text-pink-300" />
+                  <Plus size={32} className="text-rose-200" />
                 )}
               </button>
             </div>
@@ -169,7 +230,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 initial={{ opacity: 0, height: 0, y: -20 }}
                 animate={{ opacity: 1, height: 'auto', y: 0 }}
                 exit={{ opacity: 0, height: 0, y: -20 }}
-                className="w-64 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
+                className="w-64 bg-white/85 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
               >
                 <div className="p-2 grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
                   {appData.characters.map((c: any) => (
@@ -179,9 +240,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                         setSelectedPartnerId(c.id);
                         setIsSelectorOpen(false);
                       }}
-                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-pink-500 scale-95' : 'border-transparent hover:border-pink-200'}`}
+                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-rose-300 scale-95' : 'border-transparent hover:border-rose-200'}`}
                     >
-                      <img src={c.avatar} className="w-full h-full object-cover" alt={c.name} />
+                      <ResolvedImage value={c.avatar} className="w-full h-full object-cover" alt={c.name} />
                     </button>
                   ))}
                 </div>
@@ -216,15 +277,18 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     <div className="absolute inset-0 bg-zinc-50 z-50 overflow-hidden flex flex-col">
       {/* Immersive Background */}
       <div className="absolute inset-0 z-0">
-        {coupleSpace.backgroundUrl ? (
-          <img src={coupleSpace.backgroundUrl} className="w-full h-full object-cover opacity-60" alt="bg" />
+        {resolvedBackgroundUrl ? (
+          <img src={resolvedBackgroundUrl} className="w-full h-full object-cover opacity-60" alt="bg" />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-pink-100 via-red-50 to-orange-100" />
+          <div className="w-full h-full bg-gradient-to-br from-rose-100 via-pink-50 to-stone-50" />
         )}
       </div>
 
       {/* Header */}
-      <div className={`absolute top-0 left-0 right-0 z-20 pt-4 px-4 pb-4 flex items-center justify-between transition-colors ${activeView === 'main' ? 'bg-transparent' : 'bg-white/40 backdrop-blur-md border-b border-zinc-200/20'}`}>
+      <div
+        className="couple-space-topbar absolute top-0 left-0 right-0 z-20 px-4 pb-4 flex items-center justify-between transition-colors bg-transparent"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 30px)' }}
+      >
         <button onClick={activeView === 'main' ? onBack : () => setActiveView('main')} className={`p-2 rounded-full backdrop-blur-md ${activeView === 'main' ? 'bg-black/20 text-white' : 'bg-white/50 text-zinc-800'}`}>
           <ChevronLeft size={24} />
         </button>
@@ -238,7 +302,6 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           {activeView === 'anniversaries' && '纪念日'}
           {activeView === 'messageboard' && '留言板'}
           {activeView === 'post-feed' && '发动态'}
-          {activeView === 'perception' && '感知功能'}
         </h1>
         {activeView === 'main' ? (
           <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
@@ -250,7 +313,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       </div>
 
       {/* Content */}
-      <div className={`relative z-10 flex-1 flex flex-col ${activeView === 'main' ? 'overflow-y-auto' : 'pt-[72px] overflow-hidden'}`}>
+      <div className={`relative z-10 flex-1 flex flex-col ${activeView === 'main' ? 'overflow-y-auto' : 'couple-space-subview pt-[112px] overflow-hidden'}`}>
         <AnimatePresence mode="wait">
           {activeView === 'main' && partner && (
             <motion.div 
@@ -262,10 +325,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             >
               {/* Cover Photo */}
               <div className="relative w-full h-64 bg-zinc-200">
-                {coupleSpace.backgroundUrl ? (
-                  <img src={coupleSpace.backgroundUrl} className="w-full h-full object-cover" alt="cover" />
+                {resolvedBackgroundUrl ? (
+                  <img src={resolvedBackgroundUrl} className="w-full h-full object-cover" alt="cover" />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-pink-300 via-red-300 to-orange-300" />
+                  <div className="w-full h-full bg-gradient-to-br from-rose-300 via-pink-200 to-stone-200" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                 
@@ -274,18 +337,26 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <div className="flex items-center gap-2">
                     <div className="relative flex items-center">
                       <div className="relative w-16 h-16 z-10">
-                        <img src={user.avatar} className="w-full h-full rounded-full border-2 border-white object-cover shadow-md" />
-                        {coupleSpace.userAvatarFrame && (
-                          <img src={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                        {resolvedUserAvatarUrl ? (
+                          <img src={resolvedUserAvatarUrl} className="w-full h-full rounded-full border-2 border-white object-cover shadow-md" alt="user" />
+                        ) : (
+                          <div className="w-full h-full rounded-full border-2 border-white bg-zinc-200 shadow-md" />
+                        )}
+                        {resolvedUserAvatarFrameUrl && (
+                          <img src={resolvedUserAvatarFrameUrl} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                         )}
                       </div>
                       <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center absolute left-12 z-20 shadow-sm">
-                        <Heart size={12} className="fill-pink-500 text-pink-500" />
+                        <Heart size={12} className="fill-rose-400 text-rose-400" />
                       </div>
                       <div className="relative w-16 h-16 -ml-4 z-0">
-                        <img src={partner.avatar} className="w-full h-full rounded-full border-2 border-white object-cover shadow-md" />
-                        {coupleSpace.partnerAvatarFrame && (
-                          <img src={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                        {resolvedPartnerAvatarUrl ? (
+                          <img src={resolvedPartnerAvatarUrl} className="w-full h-full rounded-full border-2 border-white object-cover shadow-md" alt="partner" />
+                        ) : (
+                          <div className="w-full h-full rounded-full border-2 border-white bg-zinc-200 shadow-md" />
+                        )}
+                        {resolvedPartnerAvatarFrameUrl && (
+                          <img src={resolvedPartnerAvatarFrameUrl} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                         )}
                       </div>
                     </div>
@@ -300,13 +371,12 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               {/* Apps Scroll Row */}
               <div className="px-4 py-6 bg-white/40 backdrop-blur-xl rounded-t-3xl -mt-4 relative z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
                 <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-                  <MiniAppIcon icon={<Edit3 size={24} className="text-pink-400" />} title="互记" onClick={() => setActiveView('conotes')} />
-                  <MiniAppIcon icon={<Banknote size={24} className="text-pink-400" />} title="账本" onClick={() => setActiveView('ledger')} />
-                  <MiniAppIcon icon={<BookOpen size={24} className="text-pink-400" />} title="情书" onClick={() => setActiveView('loveletters')} />
-                  <MiniAppIcon icon={<Calendar size={24} className="text-pink-400" />} title="日历" onClick={() => setActiveView('calendar')} />
-                  <MiniAppIcon icon={<Heart size={24} className="text-pink-400" />} title="纪念日" onClick={() => setActiveView('anniversaries')} />
-                  <MiniAppIcon icon={<Edit3 size={24} className="text-pink-400" />} title="留言板" onClick={() => setActiveView('messageboard')} />
-                  <MiniAppIcon icon={<ScanEye size={24} className="text-pink-400" />} title="感知" onClick={() => setActiveView('perception')} />
+                  <MiniAppIcon icon={<Edit3 size={24} className="text-rose-300" />} title="互记" onClick={() => setActiveView('conotes')} />
+                  <MiniAppIcon icon={<Banknote size={24} className="text-rose-300" />} title="账本" onClick={() => setActiveView('ledger')} />
+                  <MiniAppIcon icon={<BookOpen size={24} className="text-rose-300" />} title="情书" onClick={() => setActiveView('loveletters')} />
+                  <MiniAppIcon icon={<Calendar size={24} className="text-rose-300" />} title="日历" onClick={() => setActiveView('calendar')} />
+                  <MiniAppIcon icon={<Heart size={24} className="text-rose-300" />} title="纪念日" onClick={() => setActiveView('anniversaries')} />
+                  <MiniAppIcon icon={<Edit3 size={24} className="text-rose-300" />} title="留言板" onClick={() => setActiveView('messageboard')} />
                 </div>
               </div>
 
@@ -340,7 +410,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                         setActiveModal('addPartner');
                       }
                     }}
-                    className="p-1.5 bg-pink-100 text-pink-500 rounded-full active:scale-90 transition-transform"
+                    className="p-1.5 bg-rose-100 text-rose-400 rounded-full active:scale-90 transition-transform"
                   >
                     <Plus size={16} />
                   </button>
@@ -350,9 +420,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                     <div key={c.id} className="relative group">
                       <button 
                         onClick={() => handleUpdateCoupleSpace({ partnerId: c.id })}
-                        className={`flex flex-col items-center gap-2 p-2 rounded-xl min-w-[70px] transition-all ${coupleSpace.partnerId === c.id ? 'bg-pink-100 ring-2 ring-pink-500' : 'hover:bg-zinc-100'}`}
+                        className={`flex flex-col items-center gap-2 p-2 rounded-xl min-w-[70px] transition-all ${coupleSpace.partnerId === c.id ? 'bg-rose-100 ring-2 ring-rose-300' : 'hover:bg-zinc-100'}`}
                       >
-                        <img src={c.avatar} className="w-12 h-12 rounded-full object-cover" />
+                        <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover" alt={c.name} />
                         <span className="text-xs font-medium text-zinc-700 truncate w-full text-center">{c.name}</span>
                       </button>
                       <button 
@@ -577,7 +647,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                 }}
                                 className="flex flex-col items-center gap-2 p-3 rounded-xl bg-zinc-50 hover:bg-pink-50 active:scale-95 transition-all border border-transparent hover:border-pink-200"
                               >
-                                <img src={c.avatar} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                                <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover shadow-sm" alt={c.name} />
                                 <span className="text-xs font-medium text-zinc-700 truncate w-full text-center">{c.name}</span>
                               </button>
                             ))}
@@ -667,7 +737,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
                           <div className="pt-2">
                             <button 
-                              onClick={() => {
+                              onClick={async () => {
                                 const filterData = (items: any[]) => {
                                   if (!items) return [];
                                   return items.filter((item: any) => {
@@ -698,7 +768,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   URL.revokeObjectURL(url);
                                   setActiveModal(null);
                                 } else {
-                                  if (confirm('确定要清空选中的数据吗？此操作无法撤销。')) {
+                                  if (await showInAppConfirm('确定要清空选中的数据吗？此操作无法撤销。')) {
                                     handleUpdateCoupleSpace((prev: any) => {
                                       const updates: any = {};
                                       if (manageDataTypes.includes('posts')) {
@@ -858,7 +928,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                         </div>
                       )}
 
-                      {['background', 'loveLetterEnvelopeBg', 'calendarBg', 'loveLetterPaperBg', 'avatarFrameUser', 'avatarFramePartner'].includes(activeModal as string) && (
+                      {isImageModalType(activeModal) && (
                         <div className="space-y-4">
                           {isCropping && imageToCrop ? (
                             <div className="space-y-4">
@@ -867,7 +937,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   image={imageToCrop}
                                   crop={crop}
                                   zoom={zoom}
-                                  aspect={['background', 'calendarBg', 'loveLetterEnvelopeBg', 'loveLetterPaperBg'].includes(activeModal as string) ? 9 / 16 : 1}
+                                  aspect={['background', 'calendarBg', 'loveLetterEnvelopeBg', 'loveLetterPaperBg'].includes(activeModal) ? 9 / 16 : 1}
                                   onCropChange={setCrop}
                                   onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
                                   onZoomChange={setZoom}
@@ -898,16 +968,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                 </button>
                                 <button 
                                   onClick={async () => {
-                                    if (imageToCrop && croppedAreaPixels) {
+                                    if (imageToCrop && croppedAreaPixels && isImageModalType(activeModal)) {
                                       const croppedImage = await getCroppedImg(imageToCrop, croppedAreaPixels);
-                                      const updates: any = {};
-                                      if (activeModal === 'background') updates.backgroundUrl = croppedImage;
-                                      if (activeModal === 'calendarBg') updates.calendarBg = croppedImage;
-                                      if (activeModal === 'loveLetterEnvelopeBg') updates.loveLetterEnvelopeBg = croppedImage;
-                                      if (activeModal === 'loveLetterPaperBg') updates.loveLetterPaperBg = croppedImage;
-                                      if (activeModal === 'avatarFrameUser') updates.userAvatarFrame = croppedImage;
-                                      if (activeModal === 'avatarFramePartner') updates.partnerAvatarFrame = croppedImage;
-                                      handleUpdateCoupleSpace(updates);
+                                      const persistedValue = await saveUploadedDataUrl(croppedImage, getImageModalFileName(activeModal));
+                                      handleUpdateCoupleSpace(buildCoupleSpaceImageUpdates(activeModal, persistedValue));
                                       setIsCropping(false);
                                       setImageToCrop(null);
                                       setActiveModal(null);
@@ -931,16 +995,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                               />
                               <div className="flex gap-2">
                                 <button 
-                                  onClick={() => {
-                                    const finalUrl = extractSingleImageUrl(tempInput);
-                                    const updates: any = {};
-                                    if (activeModal === 'background') updates.backgroundUrl = finalUrl;
-                                    if (activeModal === 'calendarBg') updates.calendarBg = finalUrl;
-                                    if (activeModal === 'loveLetterEnvelopeBg') updates.loveLetterEnvelopeBg = finalUrl;
-                                    if (activeModal === 'loveLetterPaperBg') updates.loveLetterPaperBg = finalUrl;
-                                    if (activeModal === 'avatarFrameUser') updates.userAvatarFrame = finalUrl;
-                                    if (activeModal === 'avatarFramePartner') updates.partnerAvatarFrame = finalUrl;
-                                    handleUpdateCoupleSpace(updates);
+                                  onClick={async () => {
+                                    if (!isImageModalType(activeModal)) return;
+                                    const finalUrl = await setRemoteUrl(tempInput);
+                                    handleUpdateCoupleSpace(buildCoupleSpaceImageUpdates(activeModal, finalUrl));
                                     setActiveModal(null);
                                   }}
                                   className="flex-1 bg-zinc-800 text-white py-3 rounded-xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform"
@@ -948,15 +1006,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   保存
                                 </button>
                                 <button 
-                                  onClick={() => {
-                                    const updates: any = {};
-                                    if (activeModal === 'background') updates.backgroundUrl = null;
-                                    if (activeModal === 'calendarBg') updates.calendarBg = null;
-                                    if (activeModal === 'loveLetterEnvelopeBg') updates.loveLetterEnvelopeBg = null;
-                                    if (activeModal === 'loveLetterPaperBg') updates.loveLetterPaperBg = null;
-                                    if (activeModal === 'avatarFrameUser') updates.userAvatarFrame = null;
-                                    if (activeModal === 'avatarFramePartner') updates.partnerAvatarFrame = null;
-                                    handleUpdateCoupleSpace(updates);
+                                  onClick={async () => {
+                                    if (!isImageModalType(activeModal)) return;
+                                    const nextValue = await clearValue();
+                                    handleUpdateCoupleSpace(buildCoupleSpaceImageUpdates(activeModal, nextValue));
                                     setActiveModal(null);
                                   }}
                                   className="flex-1 bg-zinc-100 text-zinc-500 py-3 rounded-xl font-bold active:scale-95 transition-transform"
@@ -1030,16 +1083,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             <MessageBoardView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} settings={settings} />
           )}
 
-          {activeView === 'perception' && partner && (
-            <PerceptionView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} onBack={() => setActiveView('main')} />
-          )}
         </AnimatePresence>
       </div>
 
       {activeView === 'main' && partner && (
         <button 
           onClick={() => setActiveView('post-feed')}
-          className="absolute bottom-6 right-6 w-14 h-14 bg-zinc-800 text-white rounded-full shadow-lg shadow-zinc-800/20 flex items-center justify-center active:scale-90 transition-transform z-50"
+          className="absolute bottom-6 right-6 w-14 h-14 bg-rose-300 text-white rounded-full shadow-lg shadow-rose-200/50 flex items-center justify-center active:scale-90 transition-transform z-50"
         >
           <Plus size={28} />
         </button>
@@ -1139,8 +1189,8 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
     }
   };
 
-  const deletePost = () => {
-    if (confirm('确定要删除这条动态吗？')) {
+  const deletePost = async () => {
+    if (await showInAppConfirm('确定要删除这条动态吗？')) {
       updateSpace((prev: any) => ({
         posts: (prev.posts || []).filter((p: any) => p.id !== post.id)
       }));
@@ -1152,12 +1202,12 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative w-10 h-10">
-            <img src={author.avatar} className="w-full h-full rounded-full object-cover" />
-            {post.authorId === 'user' && coupleSpace.userAvatarFrame && (
-              <img src={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+            <ResolvedImage value={author.avatar} className="w-full h-full rounded-full object-cover" alt={author.name} />
+            {post.authorId === 'user' && (
+              <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
             )}
-            {post.authorId !== 'user' && coupleSpace.partnerAvatarFrame && (
-              <img src={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+            {post.authorId !== 'user' && (
+              <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
             )}
           </div>
           <div>
@@ -1177,15 +1227,15 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       {post.images && post.images.length > 0 && (
         <div className={`grid gap-2 mb-3 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {post.images.map((img: string, idx: number) => (
-            <img key={idx} src={img} className="w-full h-32 object-cover rounded-xl" />
+            <ResolvedImage key={`${post.id}-${idx}`} value={img} className="w-full h-32 object-cover rounded-xl" alt="" />
           ))}
         </div>
       )}
 
       <div className="flex items-center justify-between pt-3 border-t border-zinc-50">
         <div className="flex gap-4">
-          <button onClick={handleLike} className={`flex items-center gap-1.5 text-sm transition-colors ${isLiked ? 'text-pink-500' : 'text-zinc-500'}`}>
-            <Heart size={18} className={isLiked ? 'fill-pink-500' : ''} />
+          <button onClick={handleLike} className={`flex items-center gap-1.5 text-sm transition-colors ${isLiked ? 'text-red-500' : 'text-zinc-500'}`}>
+            <Heart size={18} className={isLiked ? 'fill-red-500' : ''} />
             <span>{post.likes.length || '赞'}</span>
           </button>
           <button onClick={() => setShowCommentInput(!showCommentInput)} className="flex items-center gap-1.5 text-sm text-zinc-500">
@@ -1215,7 +1265,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
                 placeholder="评论..."
-                className="flex-1 bg-white border border-zinc-200 rounded-full px-3 py-1.5 text-sm outline-none focus:border-pink-300"
+                className="flex-1 bg-white border border-zinc-200 rounded-full px-3 py-1.5 text-sm outline-none focus:border-blue-400"
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && handleComment()}
               />
@@ -1301,7 +1351,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
           className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-full px-4 py-3 text-sm outline-none shadow-sm"
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
-        <button onClick={handleAdd} className="w-12 h-12 bg-zinc-800 text-white rounded-full flex items-center justify-center shadow-md active:scale-95">
+        <button onClick={handleAdd} className="w-12 h-12 bg-rose-300 text-white rounded-full flex items-center justify-center shadow-md shadow-rose-200/50 active:scale-95 transition-transform">
           <Plus size={20} />
         </button>
       </div>
@@ -1317,12 +1367,12 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
                 <p className={`text-[15px] text-zinc-800 ${note.isCompleted ? 'line-through text-zinc-500' : ''}`}>{note.content}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <div className="relative w-4 h-4">
-                    <img src={author.avatar} className="w-full h-full rounded-full object-cover" />
-                    {note.authorId === 'user' && coupleSpace.userAvatarFrame && (
-                      <img src={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                    <ResolvedImage value={author.avatar} className="w-full h-full rounded-full object-cover" alt={author.name} />
+                    {note.authorId === 'user' && (
+                      <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                     )}
-                    {note.authorId !== 'user' && coupleSpace.partnerAvatarFrame && (
-                      <img src={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                    {note.authorId !== 'user' && (
+                      <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                     )}
                   </div>
                   <span className="text-[11px] text-zinc-400">{new Date(note.timestamp).toLocaleDateString()}</span>
@@ -1375,10 +1425,8 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white mb-4 flex justify-between items-center shrink-0">
         <div className="text-center flex-1">
           <div className="relative w-10 h-10 mx-auto mb-2">
-            <img src={user.avatar} className="w-full h-full rounded-full object-cover" />
-            {coupleSpace.userAvatarFrame && (
-              <img src={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
-            )}
+            <ResolvedImage value={user.avatar} className="w-full h-full rounded-full object-cover" alt={user.name} />
+            <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
           <div className="text-xs text-zinc-500">我支出</div>
           <div className="font-bold text-zinc-800">¥{totalUser.toFixed(2)}</div>
@@ -1386,10 +1434,8 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
         <div className="w-px h-12 bg-zinc-200 mx-4" />
         <div className="text-center flex-1">
           <div className="relative w-10 h-10 mx-auto mb-2">
-            <img src={partner.avatar} className="w-full h-full rounded-full object-cover" />
-            {coupleSpace.partnerAvatarFrame && (
-              <img src={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
-            )}
+            <ResolvedImage value={partner.avatar} className="w-full h-full rounded-full object-cover" alt={partner.name} />
+            <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
           <div className="text-xs text-zinc-500">{partner.name}支出</div>
           <div className="font-bold text-zinc-800">¥{totalPartner.toFixed(2)}</div>
@@ -1440,6 +1486,8 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [expandedLetterId, setExpandedLetterId] = useState<string | null>(null);
+  const { resolvedUrl: resolvedLoveLetterPaperBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterPaperBg);
+  const { resolvedUrl: resolvedLoveLetterEnvelopeBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterEnvelopeBg);
 
   const startWriting = () => {
     setContent('Dear: \n\n');
@@ -1521,29 +1569,29 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
   };
 
   const paperStyle = coupleSpace.loveLetterPaperTexture === 'vintage' ? {
-    bg: coupleSpace.loveLetterPaperBg ? `url('${coupleSpace.loveLetterPaperBg}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
     bgColor: 'bg-[#f4ecd8]',
     overlay: 'https://www.transparenttextures.com/patterns/old-paper.png',
     overlayOpacity: 'opacity-[0.08]',
     lineColor: '#d4c4a8'
   } : coupleSpace.loveLetterPaperTexture === 'grid' ? {
-    bg: coupleSpace.loveLetterPaperBg ? `url('${coupleSpace.loveLetterPaperBg}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
     bgColor: 'bg-white',
     overlay: 'https://www.transparenttextures.com/patterns/graphy.png',
     overlayOpacity: 'opacity-[0.05]',
     lineColor: '#e5e7eb'
   } : coupleSpace.loveLetterPaperTexture === 'floral' ? {
-    bg: coupleSpace.loveLetterPaperBg ? `url('${coupleSpace.loveLetterPaperBg}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
     bgColor: 'bg-[#fff9fb]',
     overlay: 'https://www.transparenttextures.com/patterns/flowers.png',
     overlayOpacity: 'opacity-[0.1]',
     lineColor: '#fbcfe8'
   } : {
-    bg: coupleSpace.loveLetterPaperBg ? `url('${coupleSpace.loveLetterPaperBg}')` : 'none',
-    bgColor: 'bg-[#fffdf8]',
+    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
+    bgColor: 'bg-[#fdf7f9]',
     overlay: 'https://www.transparenttextures.com/patterns/paper-fibers.png',
     overlayOpacity: 'opacity-[0.03]',
-    lineColor: '#f5e6d3'
+    lineColor: '#ebcad4'
   };
 
   if (writing) {
@@ -1560,7 +1608,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
         </div>
         <div className="flex justify-between items-center mt-4 mb-2">
           <button onClick={() => setWriting(false)} className="text-zinc-500 font-bold px-4 py-2">取消</button>
-          <button onClick={handleSend} className="bg-zinc-800 text-white px-8 py-2 rounded-full font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform">发送</button>
+          <button onClick={handleSend} className="bg-rose-300 text-white px-8 py-2 rounded-full font-bold shadow-lg shadow-rose-200/50 active:scale-95 transition-transform">发送</button>
         </div>
       </div>
     );
@@ -1585,15 +1633,15 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
                   className="rounded-xl shadow-lg p-1 relative overflow-hidden aspect-[3/2] flex flex-col items-center justify-center border-2 border-black/5"
                   style={{ backgroundColor: coupleSpace.loveLetterEnvelopeColor || '#f5e6d3' }}
                 >
-                  {coupleSpace.loveLetterEnvelopeBg && (
-                    <img src={coupleSpace.loveLetterEnvelopeBg} className="absolute inset-0 w-full h-full object-cover opacity-40 z-0" />
+                  {resolvedLoveLetterEnvelopeBgUrl && (
+                    <img src={resolvedLoveLetterEnvelopeBgUrl} className="absolute inset-0 w-full h-full object-cover opacity-40 z-0" alt="" />
                   )}
                   {/* Envelope Flap */}
                   <div className="absolute top-0 left-0 right-0 h-1/2 bg-black/5 rounded-b-[50%] shadow-inner z-10" />
                   
                   <div className="relative z-20 flex flex-col items-center gap-2">
                     <div className="w-12 h-12 rounded-full border-2 border-white shadow-md overflow-hidden">
-                      <img src={author.avatar} className="w-full h-full object-cover" />
+                      <ResolvedImage value={author.avatar} className="w-full h-full object-cover" alt={author.name} />
                     </div>
                     <div className="bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
                       <span className="text-xs font-bold text-zinc-700">{author.name} 的情书</span>
@@ -1603,7 +1651,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
 
                   {/* Heart Seal */}
                   <div className="absolute bottom-4 right-4 z-30 opacity-40 group-hover:opacity-100 transition-opacity">
-                    <Heart size={24} className="text-pink-400 fill-pink-400" />
+                    <Heart size={24} className="text-rose-300 fill-rose-300" />
                   </div>
                 </div>
               </motion.div>
@@ -1612,8 +1660,8 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
         })}
         {(!coupleSpace.loveLetters || coupleSpace.loveLetters.length === 0) && (
           <div className="text-center py-20">
-            <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <BookOpen size={32} className="text-pink-200" />
+            <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen size={32} className="text-rose-200" />
             </div>
             <p className="text-zinc-400 font-medium">还没有情书哦，给TA写一封吧！</p>
           </div>
@@ -1671,7 +1719,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
                           const cAuthor = c.authorId === 'user' ? user : partner;
                           return (
                             <div key={c.id} className="flex gap-3">
-                              <img src={cAuthor.avatar} className="w-7 h-7 rounded-full shrink-0 shadow-sm border border-white" />
+                              <ResolvedImage value={cAuthor.avatar} className="w-7 h-7 rounded-full shrink-0 shadow-sm border border-white" alt={cAuthor.name} />
                               <div className="bg-white rounded-2xl rounded-tl-none px-4 py-2 shadow-sm border border-[#f5e6d3] text-sm text-zinc-700 max-w-[80%]">
                                 {c.content}
                               </div>
@@ -1698,7 +1746,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
                       ) : (
                         <div className="flex justify-between items-center">
                           <div className="flex gap-6">
-                            <button onClick={() => setCommentingOn(letter.id)} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-pink-500 font-bold transition-colors">
+                            <button onClick={() => setCommentingOn(letter.id)} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-blue-500 font-bold transition-colors">
                               <MessageCircle size={20} />
                               <span>评论</span>
                             </button>
@@ -1725,7 +1773,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
 
       <button 
         onClick={startWriting}
-        className="absolute bottom-6 right-0 w-14 h-14 bg-zinc-800 text-white rounded-full shadow-lg shadow-zinc-800/20 flex items-center justify-center active:scale-90 transition-transform z-30"
+        className="absolute bottom-6 right-0 w-14 h-14 bg-rose-300 text-white rounded-full shadow-lg shadow-rose-200/50 flex items-center justify-center active:scale-90 transition-transform z-30"
       >
         <Plus size={28} />
       </button>
@@ -1739,6 +1787,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
+  const { resolvedUrl: resolvedCalendarBgUrl } = useResolvedPersistentValue(coupleSpace.calendarBg);
 
   const handleAdd = () => {
     if (!title.trim() || !date) return;
@@ -1786,9 +1835,9 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar">
       {/* Calendar Background */}
-      {coupleSpace.calendarBg && (
+      {resolvedCalendarBgUrl && (
         <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-          <img src={coupleSpace.calendarBg} className="w-full h-full object-cover" alt="calendar-bg" />
+          <img src={resolvedCalendarBgUrl} className="w-full h-full object-cover" alt="calendar-bg" />
         </div>
       )}
 
@@ -1904,7 +1953,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
                   <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">描述</label>
                   <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="详细描述 (可选)..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500 resize-none h-24" />
                 </div>
-                <button onClick={handleAdd} className="w-full bg-zinc-800 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform mt-2">记录</button>
+                <button onClick={handleAdd} className="w-full bg-rose-300 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-rose-200/50 active:scale-95 transition-transform mt-2">记录</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1919,6 +1968,7 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
   const [imgUrls, setImgUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
 
   const handlePost = async () => {
     if (!content.trim() && imgUrls.length === 0) return;
@@ -1977,7 +2027,7 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
       <div className="flex justify-between items-center mb-4 shrink-0">
         <span className="font-bold text-zinc-800">发布动态</span>
-        <button onClick={handlePost} className="bg-zinc-800 text-white px-5 py-1.5 rounded-full font-bold shadow-sm active:scale-95">发布</button>
+        <button onClick={handlePost} className="bg-rose-300 text-white px-5 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">发布</button>
       </div>
       <textarea 
         value={content}
@@ -1988,7 +2038,7 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
       <div className="flex flex-wrap gap-2 mb-4">
         {imgUrls.map((url, idx) => (
           <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden shadow-sm border border-zinc-100">
-            <img src={url} className="w-full h-full object-cover" />
+            <ResolvedImage value={url} className="w-full h-full object-cover" alt="" />
             <button 
               onClick={() => setImgUrls(imgUrls.filter((_, i) => i !== idx))}
               className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"
@@ -1998,13 +2048,31 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
           </div>
         ))}
         {imgUrls.length < 9 && (
-          <button 
-            onClick={() => setShowUrlInput(!showUrlInput)}
-            className="w-20 h-20 bg-white rounded-xl border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center text-zinc-400 hover:bg-zinc-50 transition-colors"
-          >
-            <Plus size={20} />
-            <span className="text-[10px] mt-1">添加链接</span>
-          </button>
+          <>
+            <button 
+              onClick={() => setShowUrlInput(!showUrlInput)}
+              className="w-20 h-20 bg-white rounded-xl border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center text-zinc-400 hover:bg-zinc-50 transition-colors"
+            >
+              <Plus size={20} />
+              <span className="text-[10px] mt-1">Add URL</span>
+            </button>
+            <label className="w-20 h-20 bg-white rounded-xl border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center text-zinc-400 hover:bg-zinc-50 transition-colors cursor-pointer">
+              <ImageIcon size={20} />
+              <span className="text-[10px] mt-1">Upload</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length === 0) return;
+                  const persistedValues = await Promise.all(files.slice(0, 9 - imgUrls.length).map((file) => setUploadedFile(file)));
+                  setImgUrls((prev) => [...prev, ...persistedValues].slice(0, 9));
+                  e.currentTarget.value = '';
+                }}
+              />
+            </label>
+          </>
         )}
       </div>
 
@@ -2023,10 +2091,11 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
             className="w-full h-24 bg-zinc-50 rounded-xl p-3 text-sm outline-none border border-zinc-100 mb-3 resize-none"
           />
           <button 
-            onClick={() => {
+            onClick={async () => {
               const urls = extractImageUrls(urlInput);
               if (urls.length > 0) {
-                setImgUrls(prev => [...prev, ...urls].slice(0, 9));
+                const normalizedUrls = await Promise.all(urls.map((url) => setRemoteUrl(url)));
+                setImgUrls(prev => [...prev, ...normalizedUrls].slice(0, 9));
                 setUrlInput('');
                 setShowUrlInput(false);
               }
@@ -2172,7 +2241,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
           className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-sm outline-none focus:border-purple-500 resize-none h-20 mb-3"
         />
         <div className="flex justify-end">
-          <button onClick={handleLeaveMessage} className="bg-zinc-800 text-white px-6 py-1.5 rounded-full font-bold shadow-sm active:scale-95">留言</button>
+          <button onClick={handleLeaveMessage} className="bg-rose-300 text-white px-6 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">留言</button>
         </div>
       </div>
 
@@ -2182,12 +2251,12 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
           return (
             <div key={msg.id} className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex gap-3">
               <div className="relative w-10 h-10 shrink-0">
-                <img src={author.avatar} className="w-full h-full rounded-full object-cover" />
-                {msg.authorId === 'user' && coupleSpace.userAvatarFrame && (
-                  <img src={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                <ResolvedImage value={author.avatar} className="w-full h-full rounded-full object-cover" alt={author.name} />
+                {msg.authorId === 'user' && (
+                  <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                 )}
-                {msg.authorId !== 'user' && coupleSpace.partnerAvatarFrame && (
-                  <img src={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" />
+                {msg.authorId !== 'user' && (
+                  <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
                 )}
               </div>
               <div className="flex-1">

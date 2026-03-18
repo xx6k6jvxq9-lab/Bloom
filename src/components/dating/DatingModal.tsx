@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ApiConfig, Character, ChatMessage, DateSession, UserProfileExtended } from '../../types';
+import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { DatingScene } from './DatingScene';
 import { resolveDateBackgroundInput } from './sessionUtils';
 
@@ -56,6 +58,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const [activeSceneSession, setActiveSceneSession] = useState<RecoverableDateSession | null>(null);
   const [sceneStartToken, setSceneStartToken] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { setUploadedFile } = usePersistentFieldActions();
   const wasOpenRef = useRef(false);
   const recoverableInitialSession = (initialSession as RecoverableDateSession | null) || null;
   const shouldResumeSavedScene = Boolean(
@@ -106,6 +109,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
       }),
     [backgroundUrl, character.avatar, localBackground],
   );
+  const { resolvedUrl: resolvedPreviewBackgroundUrl } = useResolvedPersistentValue(resolvedBackground.image);
+  const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
 
   const buildSession = (): RecoverableDateSession => ({
     id: initialSession?.id || Date.now().toString(),
@@ -170,18 +175,16 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     setSceneStartToken(Date.now());
   };
 
-  const handleLocalBackgroundChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLocalBackgroundChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      event.target.value = '';
+      return;
+    }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      if (result) {
-        setLocalBackground(result);
-      }
-    };
-    reader.readAsDataURL(file);
+    const nextValue = await setUploadedFile(file);
+    setLocalBackground(nextValue);
+    event.target.value = '';
   };
 
   return (
@@ -286,11 +289,15 @@ export const DatingModal: React.FC<DatingModalProps> = ({
               <div className="mx-auto flex w-full max-w-lg flex-col gap-4 py-4">
                 <section className="border-b border-zinc-200/80 pb-4">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={character.avatar}
-                      alt={character.name}
-                      className="h-12 w-12 rounded-2xl object-cover ring-1 ring-zinc-200"
-                    />
+                    {resolvedCharacterAvatarUrl ? (
+                      <img
+                        src={resolvedCharacterAvatarUrl}
+                        alt={character.name}
+                        className="h-12 w-12 rounded-2xl object-cover ring-1 ring-zinc-200"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-2xl bg-zinc-100 ring-1 ring-zinc-200" />
+                    )}
                     <div className="min-w-0 flex-1">
                       <h3 className="text-[16px] font-semibold text-zinc-900">{character.name}</h3>
                       <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-zinc-500">
@@ -396,7 +403,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                   </div>
 
                   <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-zinc-100">
-                    <img src={resolvedBackground.image} alt="约会背景预览" className="h-28 w-full object-cover" />
+                    <img src={resolvedPreviewBackgroundUrl || resolvedCharacterAvatarUrl || character.avatar} alt="约会背景预览" className="h-28 w-full object-cover" />
                   </div>
 
                   <p className="mt-2 text-[12px] leading-5 text-zinc-500">

@@ -23,7 +23,9 @@ import {
   Filter,
   Menu
 } from 'lucide-react';
+import { showInAppConfirm } from '../../../utils';
 import { PhoneInterface } from '../PhoneInterface';
+import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 type Character = {
   id: string;
@@ -34,6 +36,24 @@ type Character = {
 };
 
 import { VisualSettings } from '../../../types';
+
+function ResolvedMonitorAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+
+  if (!resolvedUrl) {
+    return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
+  }
+
+  return <img src={resolvedUrl} alt={alt} className={className} />;
+}
 
 type MonitorAppProps = {
   characters: Character[];
@@ -57,6 +77,7 @@ type MonitorData = {
 };
 
 export function MonitorApp({ characters: initialCharacters, onBack, visualSettings }: MonitorAppProps) {
+  const { resolvedUrl: resolvedDynamicsBackgroundUrl } = useResolvedPersistentValue(visualSettings?.dynamics?.background);
   const [localCharacters, setLocalCharacters] = useState<Character[]>(() => {
     const saved = localStorage.getItem('monitor_characters');
     if (saved) {
@@ -112,9 +133,9 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
 
   const selectedChar = localCharacters.find(c => c.id === selectedCharId);
 
-  const handleDeleteChar = (e: React.MouseEvent, id: string) => {
+  const handleDeleteChar = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm('确定要删除这个监控对象吗？')) {
+    if (await showInAppConfirm('确定要删除这个监控对象吗？')) {
       setLocalCharacters(prev => prev.filter(c => c.id !== id));
     }
   };
@@ -269,7 +290,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                     </div>
                     
                     <div className="relative">
-                      <img src={char.avatar} alt={char.name} className="w-24 h-24 rounded-[28px] object-cover shadow-inner ring-4 ring-zinc-50" />
+                      <ResolvedMonitorAvatar value={char.avatar} alt={char.name} className="w-24 h-24 rounded-[28px] object-cover shadow-inner ring-4 ring-zinc-50" />
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-zinc-900 border-4 border-white rounded-full" />
                     </div>
                     
@@ -334,7 +355,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                                 : 'bg-zinc-50 border-transparent hover:border-zinc-300'
                             }`}
                           >
-                            <img src={char.avatar} alt={char.name} className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+                            <ResolvedMonitorAvatar value={char.avatar} alt={char.name} className="w-10 h-10 rounded-xl object-cover shadow-sm" />
                             <div className="flex-1">
                               <p className="font-bold text-zinc-900 text-sm">{char.name}</p>
                               <p className="text-[10px] text-zinc-400 line-clamp-1">{char.setting}</p>
@@ -406,7 +427,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
             <Menu size={18} />
           </button>
           <div className="flex items-center gap-3 ml-2">
-            <img src={selectedChar?.avatar} className="w-7 h-7 rounded-lg object-cover" />
+            <ResolvedMonitorAvatar value={selectedChar?.avatar} alt={selectedChar?.name || 'character'} className="w-7 h-7 rounded-lg object-cover" />
             <div>
               <h2 className="text-xs font-bold text-zinc-800">{selectedChar?.name}</h2>
             </div>
@@ -695,7 +716,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                   <div 
                     className="space-y-4 p-4 rounded-3xl transition-all duration-300"
                     style={{
-                      backgroundImage: visualSettings?.dynamics?.background ? `url(${visualSettings.dynamics.background})` : undefined,
+                      backgroundImage: resolvedDynamicsBackgroundUrl ? `url(${resolvedDynamicsBackgroundUrl})` : undefined,
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                     }}
@@ -709,13 +730,13 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                           key={i} 
                           onClick={() => setSelectedDynamicsItem(d)}
                           className={`w-full text-left p-4 shadow-sm border flex items-center gap-4 group transition-all ${
-                            visualSettings?.dynamics?.background 
+                            resolvedDynamicsBackgroundUrl 
                               ? 'backdrop-blur-sm border-white/20 hover:bg-white' 
                               : 'bg-white border-zinc-100 hover:border-zinc-300'
                           }`}
                           style={{
                             borderRadius: visualSettings?.dynamics?.cardBorderRadius ?? 24,
-                            backgroundColor: visualSettings?.dynamics?.background 
+                            backgroundColor: resolvedDynamicsBackgroundUrl 
                               ? `rgba(255, 255, 255, ${visualSettings.dynamics.cardOpacity ?? 0.9})`
                               : undefined
                           }}
@@ -810,7 +831,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                 </p>
                 <div className="mt-8 pt-6 border-t border-zinc-50 flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <img src={selectedChar?.avatar} className="w-5 h-5 rounded-full object-cover" />
+                    <ResolvedMonitorAvatar value={selectedChar?.avatar} alt={selectedChar?.name || 'character'} className="w-5 h-5 rounded-full object-cover" />
                     <span className="text-[9px] font-bold text-zinc-500">{selectedChar?.name} 的私密记录</span>
                   </div>
                   <span className="text-[9px] font-black text-zinc-300">2026.02.26</span>
