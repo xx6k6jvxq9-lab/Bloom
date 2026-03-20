@@ -17,11 +17,12 @@
 
 从产品表达上，它更接近“可以游玩的 AI 关系空间”，而不只是“可配置的大模型聊天壳”。
 
-当前架构仍然是“`src/App.tsx` 作为主控制器 + 业务页面逐步拆出”的形态：
+当前架构已经从“`src/App.tsx` 承担一切”进入到“`App.tsx` 仍是顶层壳，但 persistence / chat-session / chat-runtime / character-domain 逐步独立”的形态：
 
-- 页面层已经拆出较多独立组件。
-- Prompt、AI 调用、动态生成、消息操作等逻辑已经开始服务化。
-- 顶层状态、页面切换、主聊天链路仍然大量集中在 `src/App.tsx`。
+- 页面层已经拆出大量独立组件和业务页。
+- Prompt、AI 调用、动态生成、消息操作、浏览器持久化已经开始 feature / service 化。
+- 顶层状态和页面切换仍然主要由 `src/App.tsx` 持有。
+- 聊天主链已经不再直接内嵌在 `App.tsx` 中，而是拆成 mount / container / screen / runtime / runtime core。
 
 这份文档以“当前真实代码结构”为准，不描述理想态。
 
@@ -89,6 +90,8 @@
   - UI 页面与业务组件
 - [src/services](/e:/小手机/Bloom/src/services)
   - AI、聊天消息操作、动态生成等服务层
+- [src/features](/e:/小手机/Bloom/src/features)
+  - 持久化、聊天域、角色域等 feature 分层
 - [docs](/e:/小手机/Bloom/docs)
   - 项目文档与历史资料
 - [app](/e:/小手机/Bloom/app)
@@ -133,8 +136,6 @@
 
 - [src/components/chat/ChatSettingsPanel.tsx](/e:/小手机/Bloom/src/components/chat/ChatSettingsPanel.tsx)
   - 聊天设置、角色资料、摘要生成、通话记录管理
-- [src/components/chat/GroupChatSession.tsx](/e:/小手机/Bloom/src/components/chat/GroupChatSession.tsx)
-  - 群聊会话页面
 - [src/components/chat/GameCard.tsx](/e:/小手机/Bloom/src/components/chat/GameCard.tsx)
   - 聊天流内游戏卡片，弹层挂载到手机容器内
 
@@ -206,6 +207,48 @@
   - 动态、评论回复、fallback 内容生成
 - [src/services/moments/triggers.ts](/e:/小手机/Bloom/src/services/moments/triggers.ts)
   - 动态触发条件与上下文提取
+
+### 4.3 `src/features`
+
+#### 浏览器持久化
+
+- [src/features/persistence](/e:/小手机/Bloom/src/features/persistence)
+  - 当前浏览器持久化基础设施与业务数据 store / bridge
+  - 包括：
+    - `storageKeys`
+    - `localConfigStore`
+    - `browserDb`
+    - `persistentAssetService`
+    - `useResolvedPersistentValue`
+    - `usePersistentFieldActions`
+    - `visualSettingsStore`
+    - `userProfile / moments / forumData / coupleSpace / chatHistory / callHistory / datingRecords` 等 store 与 bridge
+
+#### 聊天域
+
+- [src/features/chat-session](/e:/小手机/Bloom/src/features/chat-session)
+  - 聊天挂载层与页面容器层
+  - 目前包括：
+    - `ChatSessionMount`
+    - `ChatSessionPersistenceBridge`
+    - `DirectChatSessionContainer`
+    - `GroupChatSessionContainer`
+    - `ChatSessionScreen`
+    - `GroupChatSessionScreen`
+
+- [src/features/chat-runtime](/e:/小手机/Bloom/src/features/chat-runtime)
+  - 聊天运行时层
+  - 目前包括：
+    - `useDirectChatRuntime`
+    - `useGroupChatRuntime`
+    - `useSessionRuntimeCore`
+    - `types`
+
+#### 角色域
+
+- [src/features/character-domain](/e:/小手机/Bloom/src/features/character-domain)
+  - 角色读取边界第一刀
+  - 当前以 `createCharacterDirectory(...)` 为主，负责角色按 id / name / group member 的只读查询
 
 ## 5. 顶层状态与核心数据
 
@@ -335,20 +378,21 @@
 - apiKey
 - temperature
 
-### 7.2 已服务化的部分
+### 7.2 已服务化并接入统一调用层的部分
 
-- 约会模块已经走 [src/services/ai/runtimeClient.ts](/e:/小手机/Bloom/src/services/ai/runtimeClient.ts)
-- 聊天流式输出也已经接入 `streamTextWithConfig`
+- 普通聊天与群聊都已经接到 [src/services/ai/runtimeClient.ts](/e:/小手机/Bloom/src/services/ai/runtimeClient.ts)
 - 摘要生成使用 `buildSummaryPrompt`
 - 动态与评论回复使用 `services/moments/*`
+- 情侣空间中的多条 AI 文本生成入口也已统一走 `runtimeClient`
+- 聊天设置中的记忆总结也已统一走 `runtimeClient`
 
-### 7.3 仍未完全统一的部分
+### 7.3 当前仍保留差异化组织的部分
 
-虽然 runtime 层已经存在，但主聊天链路仍然有明显的 `App.tsx` 中枢特征：
+虽然调用层已经基本统一，但聊天域仍不是最终形态：
 
-- prompt 组装与会话上下文拼接仍与页面状态紧耦合
-- 回复写回、消息拆分、界面状态更新仍集中在 `App.tsx`
-- 群聊、约会、普通聊天尚未完全抽象为统一会话运行时
+- direct / group runtime 已拆出，但尚未完全抽成更高一层 shared session runtime
+- prompt builder 的内容仍按直聊、群聊、动态、约会分开维护
+- `characters` 域目前只完成了读取边界第一刀，尚未进入持久化与写入边界阶段
 
 这也是当前最真实的架构状态。
 
@@ -358,13 +402,22 @@
 
 ### 8.1 普通聊天链路
 
-主入口仍然在 [src/App.tsx](/e:/小手机/Bloom/src/App.tsx) 内部聊天会话实现中，核心包括：
+普通聊天链路已经从 `App.tsx` 里抽出到聊天域：
+
+- [src/features/chat-session/ChatSessionMount.tsx](/e:/小手机/Bloom/src/features/chat-session/ChatSessionMount.tsx)
+- [src/features/chat-session/DirectChatSessionContainer.tsx](/e:/小手机/Bloom/src/features/chat-session/DirectChatSessionContainer.tsx)
+- [src/features/chat-session/ChatSessionScreen.tsx](/e:/小手机/Bloom/src/features/chat-session/ChatSessionScreen.tsx)
+- [src/features/chat-runtime/useDirectChatRuntime.ts](/e:/小手机/Bloom/src/features/chat-runtime/useDirectChatRuntime.ts)
+- [src/features/chat-runtime/useSessionRuntimeCore.ts](/e:/小手机/Bloom/src/features/chat-runtime/useSessionRuntimeCore.ts)
+
+当前核心包括：
 
 - 构建聊天 prompt
-- 按当前配置决定调用 Gemini 还是 OpenAI 兼容接口
+- 走统一 `runtimeClient`
 - 流式接收文本
-- 把模型输出拆分成多气泡消息
+- 按句拆分为多气泡消息
 - 写回 `chatHistory`
+- 承接图片、位置、语音、转账、收藏、删除、转发、引用等主要会话动作
 
 ### 8.2 摘要链路
 
@@ -397,7 +450,7 @@
 - 文本提取与预览
 - 会话头部状态与已读标签辅助
 
-`App.tsx` 在这部分主要负责调用 service 并写回 state。
+当前消息动作调用点已经主要转移到 direct runtime，由 screen 负责触发 UI，runtime 负责改动 history / favorites / share payload。
 
 ---
 
@@ -521,11 +574,14 @@ Prompt 与规则层：
 
 ### 13.1 聊天主链
 
-- `App.tsx`
-- 聊天会话发送逻辑
-- `buildChatPrompt`
-- `runtimeClient.streamTextWithConfig` / provider 调用
-- 写回 `chatHistory`
+- `ChatSessionMount`
+- `DirectChatSessionContainer` / `GroupChatSessionContainer`
+- `ChatSessionPersistenceBridge`
+- `useDirectChatRuntime` / `useGroupChatRuntime`
+- `useSessionRuntimeCore`
+- `buildChatPrompt` / `buildGroupChatPrompt`
+- `runtimeClient`
+- 写回 `chatHistory` / `chatGroups[].history`
 
 ### 13.2 约会主链
 
@@ -556,10 +612,11 @@ Prompt 与规则层：
 ### 14.1 现状风险
 
 1. [src/App.tsx](/e:/小手机/Bloom/src/App.tsx) 仍然过大。
-   - 同时承担顶层状态、页面切换、聊天主链、应用内弹窗、默认数据拼装。
+   - 仍然承担顶层状态、页面切换、应用内弹窗、默认数据拼装。
+   - 虽然聊天 screen 已迁出，但顶层状态中心仍集中在这里。
 
 2. 会话运行时尚未彻底统一。
-   - 普通聊天、群聊、约会、摘要虽然共享部分配置来源，但没有形成统一 session runtime 抽象。
+   - 目前已经有 `direct/group runtime + runtime core`，但尚未形成更高一层 shared session runtime 抽象。
 
 3. 类型与文档存在历史包袱。
    - [src/types.ts](/e:/小手机/Bloom/src/types.ts) 和 [README.md](/e:/小手机/Bloom/README.md) 中仍能看到中文乱码痕迹。
@@ -569,15 +626,190 @@ Prompt 与规则层：
 
 ### 14.2 建议的整理顺序
 
-1. 先把普通聊天、群聊、约会进一步抽象到共享 runtime 层。
-2. 再继续拆分 `App.tsx` 中页面级业务状态与回调。
-3. 最后处理更大范围的模块化和数据持久化边界。
+1. 先决定 `character-domain` 第二刀：是进入角色持久化，还是继续扩大角色读取边界。
+2. 再评估是否需要把 direct / group runtime 再抽一层 shared session runtime。
+3. 最后继续拆分 `App.tsx` 中剩余的顶层业务状态与回调。
 
 不建议先做大规模 UI 拆分而不处理聊天主链，因为那样对复杂度下降帮助有限。
 
 ---
 
-## 15. 建议阅读顺序
+## 15. 当前阶段判断
+
+当前项目已经不再是“铺基础设施”的阶段，而是“主线阶段性收官”状态。
+
+### 15.1 当前完成度
+
+- 整体主线完成度：约 `97%`
+- 聊天拆分主线完成度：约 `93% ~ 95%`
+
+### 15.2 已阶段性完成的主线
+
+- 浏览器持久化基础设施
+- 视觉资源持久化主线
+- 业务 JSON 持久化主线
+- `callHistory / savedDates / collectedDates / chatHistory` bridge
+- `chat-session` 分层
+- `chat-runtime` 分层
+- `character-domain` 读取边界第一刀
+- 普通聊天 / 群聊 / 动态 / 情侣空间 / 聊天设置的主要 AI 调用链统一到 `runtimeClient`
+
+### 15.3 当前剩余项
+
+严格来说，当前剩余已经主要是“后续优化项”，而不是主线 blocker：
+
+1. `character-domain` 第二刀
+2. 是否继续抽更高一层 shared session runtime
+3. `App.tsx` 顶层状态进一步拆分
+
+### 15.4 `character-domain` 第二刀
+
+这是当前主线之后最值得进入的下一阶段之一。
+
+#### 为什么要做
+
+虽然当前已经通过 `createCharacterDirectory(...)` 建立了角色读取边界第一刀，但 `characters` 仍然是一个被多个模块共同读取和写回的顶层共享数组：
+
+- 聊天
+- 通讯录
+- 群聊成员
+- 动态作者
+- 论坛分享目标
+- 情侣空间 partner
+- 面具 / 世界书 / 角色资源
+
+这意味着如果不继续推进第二刀，后面会越来越容易出现：
+
+- 角色对象在不同页面以不同方式写回
+- 持久化边界不清楚
+- 头像 / 背景 / 气泡 / 表情包等资源处理继续散落
+- 顶层 `appData.characters` 成为新的维护瓶颈
+
+#### 必要性判断
+
+- 短期必要性：中高
+- 中长期必要性：高
+
+如果后续还会继续推进：
+
+- 角色设置
+- 群聊成员能力
+- 角色资料编辑
+- 角色资源持久化
+- 聊天域进一步拆分
+
+那么 `character-domain` 第二刀基本是必做项。
+
+#### 第二刀建议分成 3 部分
+
+##### 第一部分：持久化边界
+
+目标：
+
+- 给 `characters` 建立独立 store / bridge
+- 让角色数据不再只是整包 `appData` 的顺带保存对象
+
+建议新增：
+
+- `charactersStore.ts`
+- `usePersistedCharactersBridge.ts`
+
+预期职责：
+
+- `loadCharacters`
+- `saveCharacters`
+- `patchCharacters`
+- `resetCharacters`
+- 首屏 hydrate
+- 后续自动保存
+- 防止首帧空值覆盖
+
+这是第二刀里最稳、最值得先做的一步。
+
+##### 第二部分：写入边界
+
+目标：
+
+- 让角色更新开始通过角色域入口走
+- 逐步减少业务页直接修改 `appData.characters`
+
+后续会涉及：
+
+- `updateCharacterById`
+- `patchCharacter`
+- `removeCharacter`
+- `replaceCharacters`
+
+这一部分的意义在于：
+
+- 降低旧角色快照覆盖新字段的风险
+- 避免不同页面各自维护一套更新语义
+
+##### 第三部分：资源与复杂联动边界
+
+目标：
+
+- 把角色资源和复杂关系联动从散落页面中继续往角色域收
+
+重点对象包括：
+
+- `character.avatar`
+- `character.background`
+- `character.bubbleImage`
+- `character.userBubbleImage`
+- `character.stickers`
+
+以及与这些对象相关的联动：
+
+- `masks`
+- `worldBooks`
+- `chatGroups`
+- `moments`
+- `forum`
+
+这一部分最重，因此应放在第二刀最后处理。
+
+#### 第二刀建议顺序
+
+1. 先做角色持久化边界
+2. 再做角色写入边界
+3. 最后处理角色资源与复杂联动
+
+---
+
+## 16. 后续阶段路线
+
+当前主线已经阶段性收官。后续更合理的推进方式不是继续零散补功能，而是按域分阶段推进。
+
+### 16.1 近期优先级
+
+1. `character-domain` 第二刀第一部分
+   - `charactersStore + usePersistedCharactersBridge`
+2. 评估是否需要更高一层 `shared session runtime`
+3. 继续减少 `App.tsx` 顶层装配负担
+
+### 16.2 中期方向
+
+1. 角色资源统一持久化与写入边界
+2. 群聊 prompt 和行为策略继续优化
+3. 角色域与聊天域、动态域、论坛域、情侣空间域的联动收口
+
+### 16.3 长期方向
+
+1. 进一步拆分 `App.tsx`
+2. 形成更明确的领域层次：
+   - persistence
+   - character-domain
+   - chat-session
+   - chat-runtime
+   - moments
+   - forum
+   - couple-space
+3. 逐步减少“整包 `appData` 中央汇总”的依赖
+
+---
+
+## 17. 建议阅读顺序
 
 如果要快速理解当前项目，建议按这个顺序阅读：
 

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import Cropper from 'react-easy-crop';
 import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent } from '../../../types';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
+import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -143,8 +144,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   }, [activeModal]);
 
   const addedPartnerIds = coupleSpace.addedPartnerIds || (coupleSpace.partnerId ? [coupleSpace.partnerId] : []);
-
-  const partner = appData.characters.find((c: any) => c.id === coupleSpace.partnerId);
+  const { getCharacterById, getCharactersByIds } = createCharacterDirectory({ characters: appData.characters });
+  const partner = getCharacterById(coupleSpace.partnerId);
+  const addedPartners = getCharactersByIds(addedPartnerIds);
+  const availablePartnerIds = appData.characters
+    .map((character: any) => character.id)
+    .filter((id: string) => !addedPartnerIds.includes(id));
+  const availablePartners = getCharactersByIds(availablePartnerIds);
   const user = appData.userProfile;
   const { setRemoteUrl, clearValue } = usePersistentFieldActions();
   const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(coupleSpace.backgroundUrl);
@@ -186,7 +192,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   };
 
   if (!partner && activeView === 'main') {
-    const selectedPartner = appData.characters.find((c: any) => c.id === selectedPartnerId);
+    const selectedPartner = getCharacterById(selectedPartnerId);
     
     return (
       <div className="absolute inset-0 bg-gradient-to-br from-rose-100 via-pink-50 to-stone-50 flex flex-col items-center justify-center z-50">
@@ -403,8 +409,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <h3 className="font-bold text-zinc-800">选择伴侣</h3>
                   <button 
                     onClick={() => {
-                      const availableChars = appData.characters.filter((c: any) => !addedPartnerIds.includes(c.id));
-                      if (availableChars.length === 0) {
+                      if (availablePartners.length === 0) {
                         alert('已创建的角色都已添加');
                       } else {
                         setActiveModal('addPartner');
@@ -416,7 +421,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   </button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 px-1">
-                  {appData.characters.filter((c: any) => addedPartnerIds.includes(c.id)).map((c: any) => (
+                  {addedPartners.map((c: any) => (
                     <div key={c.id} className="relative group">
                       <button 
                         onClick={() => handleUpdateCoupleSpace({ partnerId: c.id })}
@@ -637,7 +642,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                       {activeModal === 'addPartner' && (
                         <div className="space-y-4">
                           <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
-                            {appData.characters.filter((c: any) => !addedPartnerIds.includes(c.id)).map((c: any) => (
+                            {availablePartners.map((c: any) => (
                               <button
                                 key={c.id}
                                 onClick={() => {
@@ -1157,22 +1162,21 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       try {
         const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
         if (activeConfig.apiKey) {
-          const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
           const prompt = `你扮演${partner.name}，${partner.setting}。
 我们在情侣空间里。你发了一条动态："${post.content}"
 我刚刚评论了你的动态："${newComment.content}"
 请你回复我的评论，简短自然。`;
-          const response = await ai.models.generateContent({
-            model: activeConfig.model,
-            contents: prompt,
-            config: { temperature: 0.9 }
+          const responseText = await generateTextWithConfig({
+            activeConfig,
+            prompt,
+            temperature: 0.9,
           });
-          if (response.text) {
+          if (responseText) {
             setTimeout(() => {
               const aiComment = {
                 id: Date.now().toString() + '_ai',
                 authorId: partner.id,
-                content: response.text!,
+                content: responseText,
                 timestamp: Date.now()
               };
               updateSpace((prev: any) => ({
@@ -1298,22 +1302,21 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
         const prompt = `你扮演${partner.name}，${partner.setting}。
 我和你正在使用情侣空间的"情侣互记"功能，写下我们想一起做的事情。
 我刚刚写了："${newNote.content}"
 请你也写下一件你想和我一起做的事情，简短一点（20字以内）。`;
-        const response = await ai.models.generateContent({
-          model: activeConfig.model,
-          contents: prompt,
-          config: { temperature: 0.9 }
+        const responseText = await generateTextWithConfig({
+          activeConfig,
+          prompt,
+          temperature: 0.9,
         });
-        if (response.text) {
+        if (responseText) {
           setTimeout(() => {
             const aiNote: CoNote = {
               id: Date.now().toString() + '_ai',
               authorId: partner.id,
-              content: response.text!,
+              content: responseText,
               timestamp: Date.now(),
               isCompleted: false
             };
@@ -1512,22 +1515,21 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
         const prompt = `你扮演${partner.name}，${partner.setting}。
 我和你正在使用情侣空间的"情书"功能。
 我刚刚给你写了一封情书："${newLetter.content}"
 请你回复我的情书，可以是对这封情书的评论，也可以是写给我的回信。充满爱意。`;
-        const response = await ai.models.generateContent({
-          model: activeConfig.model,
-          contents: prompt,
-          config: { temperature: 0.9 }
+        const responseText = await generateTextWithConfig({
+          activeConfig,
+          prompt,
+          temperature: 0.9,
         });
-        if (response.text) {
+        if (responseText) {
           setTimeout(() => {
             const aiComment = {
               id: Date.now().toString() + '_ai',
               authorId: partner.id,
-              content: response.text!,
+              content: responseText,
               timestamp: Date.now()
             };
             // Use functional state update to ensure we have the latest state
@@ -1993,21 +1995,20 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
         const prompt = `你扮演${partner.name}，${partner.setting}。
 我们在情侣空间里。我刚刚发了一条动态："${newPost.content}"
 请你给我的动态写一条评论，简短自然。`;
-        const response = await ai.models.generateContent({
-          model: activeConfig.model,
-          contents: prompt,
-          config: { temperature: 0.9 }
+        const responseText = await generateTextWithConfig({
+          activeConfig,
+          prompt,
+          temperature: 0.9,
         });
-        if (response.text) {
+        if (responseText) {
           setTimeout(() => {
             const aiComment = {
               id: Date.now().toString() + '_ai',
               authorId: partner.id,
-              content: response.text!,
+              content: responseText,
               timestamp: Date.now()
             };
             updateSpace((prev: any) => ({
@@ -2197,21 +2198,20 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
         const prompt = `你扮演${partner.name}，${partner.setting}。
 我们在情侣空间的留言板里。我刚刚给你留言："${newMsg.content}"
 请你也给我留一条言作为回复，简短温馨。`;
-        const response = await ai.models.generateContent({
-          model: activeConfig.model,
-          contents: prompt,
-          config: { temperature: 0.9 }
+        const responseText = await generateTextWithConfig({
+          activeConfig,
+          prompt,
+          temperature: 0.9,
         });
-        if (response.text) {
+        if (responseText) {
           setTimeout(() => {
             const aiMsg = {
               id: Date.now().toString() + '_ai',
               authorId: partner.id,
-              content: response.text!,
+              content: responseText,
               timestamp: Date.now()
             };
             updateSpace((prev: any) => ({

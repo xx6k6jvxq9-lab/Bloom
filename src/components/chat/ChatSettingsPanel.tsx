@@ -1,10 +1,10 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from '@google/genai';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
+import { generateTextWithConfig } from '../../services/ai/runtimeClient';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 
 function SettingsSection({
@@ -222,7 +222,6 @@ export function ChatSettingsPanel({
 
     setIsSummarizing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: activeConfig.apiKey });
       const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
       
       const prompt = buildSummaryPrompt({
@@ -237,13 +236,13 @@ export function ChatSettingsPanel({
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
         ],
       });
-      const response = await ai.models.generateContent({
-        model: activeConfig.model || 'gemini-3-flash-preview',
-        contents: prompt,
+      const responseText = await generateTextWithConfig({
+        activeConfig,
+        prompt,
       });
 
-      if (response.text) {
-        onUpdate({ ...character, memorySummary: response.text });
+      if (responseText) {
+        onUpdate({ ...character, memorySummary: responseText });
         alert('总结完成！');
       }
     } catch (error: any) {

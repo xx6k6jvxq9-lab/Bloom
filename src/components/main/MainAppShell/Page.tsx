@@ -5,6 +5,11 @@ import { Character, AppSettings } from '../../../types';
 import { MePage } from '../MePage';
 import { ContactsApp, AddFriendModal, GroupManagementModal, NavTab } from '../ContactsShell/Page';
 import { DEFAULT_WHITE_AVATAR, showInAppConfirm } from '../../../utils';
+import { usePersistedChatOrganizationBridge } from '../../../features/persistence/usePersistedChatOrganizationBridge';
+import { usePersistedFriendRequestsBridge } from '../../../features/persistence/usePersistedFriendRequestsBridge';
+import { usePersistedMeDataBridge } from '../../../features/persistence/usePersistedMeDataBridge';
+import { usePersistedMomentsBridge } from '../../../features/persistence/usePersistedMomentsBridge';
+import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 function ResolvedMainShellAvatar({
@@ -68,6 +73,45 @@ export function MainApp({
   MomentsAppComponent: React.ComponentType<{ appData: AppData; setAppData: React.Dispatch<React.SetStateAction<AppData>>; settings: AppSettings }>;
   formatMessagePreview: (text: string | undefined) => string;
 }) {
+  usePersistedUserProfileBridge(
+    appData.userProfile,
+    (profile) => setAppData(prev => ({ ...prev, userProfile: profile })),
+  );
+  usePersistedMomentsBridge(
+    appData.moments,
+    (moments) => setAppData(prev => ({ ...prev, moments })),
+  );
+  usePersistedChatOrganizationBridge(
+    appData.groups,
+    appData.chatGroups || [],
+    ({ groups, chatGroups }) =>
+      setAppData(prev => ({
+        ...prev,
+        groups,
+        chatGroups,
+      })),
+  );
+  usePersistedMeDataBridge(
+    appData.masks,
+    appData.favorites,
+    appData.worldBooks || [],
+    ({ masks, favorites, worldBooks }) =>
+      setAppData(prev => ({
+        ...prev,
+        masks,
+        favorites,
+        worldBooks,
+      })),
+  );
+  usePersistedFriendRequestsBridge(
+    appData.friendRequests || [],
+    (friendRequests) =>
+      setAppData(prev => ({
+        ...prev,
+        friendRequests,
+      })),
+  );
+
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showManageGroups, setShowManageGroups] = useState(false);
   const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');

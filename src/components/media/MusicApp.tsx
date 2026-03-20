@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { showInAppConfirm } from "../../utils";
 import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
+import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 
 function ResolvedMusicAvatar({
@@ -192,6 +193,7 @@ export default function MusicApp({
     collectedSongs: [],
     ...musicData,
   };
+  usePersistedMusicDataBridge(currentMusicData, onUpdateMusicData);
 
   useEffect(() => {
     if (chatEndRef.current) {

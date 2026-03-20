@@ -7,9 +7,11 @@ import {
   Camera, Check, LogOut, Key, Settings, Repeat, BarChart2, Feather,
   CheckCircle2, ArrowLeft, Home, Mail, Plus, Bookmark, Link2, AlertTriangle
 } from 'lucide-react';
-import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character } from '../../../types';
+import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character, ForumData } from '../../../types';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { usePersistedForumDataBridge } from '../../../features/persistence/usePersistedForumDataBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
 
 function ResolvedImage({
@@ -394,30 +396,30 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
 
   const currentUser = appData.userProfile;
-  const posts = appData.forumData?.posts || MOCK_POSTS;
-  const notifications = appData.forumData?.notifications || [];
-  const followedUsers = appData.forumData?.followedUsers || [];
+  const forumData: ForumData = appData.forumData || {
+    posts: MOCK_POSTS,
+    notifications: [],
+    followedUsers: [],
+  };
+  usePersistedForumDataBridge(
+    forumData,
+    (nextForumData) =>
+      onUpdateAppData({
+        ...appData,
+        forumData: nextForumData,
+      }),
+  );
+  const posts = forumData.posts || MOCK_POSTS;
+  const notifications = forumData.notifications || [];
+  const followedUsers = forumData.followedUsers || [];
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedCurrentUserAvatarUrl } = useResolvedPersistentValue(currentUser.avatar);
   const { resolvedUrl: resolvedEditAvatarUrl } = useResolvedPersistentValue(editAvatar || currentUser.avatar);
-
-  // Initialize forum data if empty
-  useEffect(() => {
-    if (!appData.forumData) {
-      onUpdateAppData({
-        ...appData,
-        forumData: {
-          posts: MOCK_POSTS,
-          notifications: [],
-          followedUsers: []
-        }
-      });
-    }
-  }, []);
+  const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
 
   const getAuthor = (id: string): ForumAuthor => {
     if (id === currentUser.id) return currentUser;
-    const character = appData.characters.find(c => c.id === id);
+    const character = getCharacterById(id);
     if (character) {
       return {
         id: character.id,
@@ -636,7 +638,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     onUpdateAppData({
       ...appData,
       forumData: {
-        ...appData.forumData!,
+        ...forumData,
         followedUsers: newFollowed
       }
     });
@@ -724,7 +726,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
       ...appData,
       forumData: {
         posts: newPosts,
-        notifications: appData.forumData?.notifications || []
+        notifications: forumData.notifications || [],
+        followedUsers: forumData.followedUsers || [],
       }
     });
   };
@@ -745,7 +748,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
       ...appData,
       forumData: {
         posts: posts,
-        notifications: [newNotification, ...currentNotifications]
+        notifications: [newNotification, ...currentNotifications],
+        followedUsers: forumData.followedUsers || [],
       }
     });
   };
@@ -758,7 +762,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
       ...appData,
       forumData: {
         posts,
-        notifications: newNotifications
+        notifications: newNotifications,
+        followedUsers: forumData.followedUsers || [],
       }
     });
   };
@@ -1537,7 +1542,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                     onUpdateAppData({
                       ...appData,
                       forumData: {
-                        ...appData.forumData!,
+                        ...forumData,
                         followedUsers: newFollowed
                       }
                     });

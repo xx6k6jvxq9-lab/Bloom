@@ -1,8 +1,8 @@
-import { GoogleGenAI } from '@google/genai';
 import { Character, Mask, ApiConfig, WorldBookEntry } from '../../types';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
+import { generateTextWithConfig } from '../ai/runtimeClient';
 import {
   classifyMomentCommentType,
   getRecentMomentReplyContext,
@@ -47,6 +47,28 @@ const MOMENT_BAD_SAMPLE_PATTERNS = [
   /我来发/,
 ];
 
+const MOMENT_PROMPT_LEAK_PATTERNS = [
+  /##\s*/,
+  /triggerReason/i,
+  /styleHints/i,
+  /maxLength/i,
+  /allowImages/i,
+  /relationship/i,
+  /output\s*rules?/i,
+  /character(Core|Setting)/i,
+  /memorySummary/i,
+  /触发语义/,
+  /风格提示/,
+  /输出要求/,
+  /建议长度/,
+  /当前公开语境/,
+  /直接给出要发布的动态正文/,
+  /不要写成私聊回复/,
+  /不要写成任务说明/,
+  /用户刚刚要求你去发一条动态/,
+  /这不是聊天回复/,
+];
+
 const CHAT_REACTION_PREVIEW_PATTERNS = [
   /我发一句/,
   /我发个/,
@@ -76,10 +98,6 @@ function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[])
     : '';
 }
 
-function isGeminiConfig(activeConfig: ApiConfig) {
-  return activeConfig.provider === 'Google Gemini' || (!activeConfig.baseUrl && activeConfig.provider === '自定义 (Custom)');
-}
-
 function getCleanMomentFallback() {
   return MOMENT_TEMPLATES[Math.floor(Math.random() * MOMENT_TEMPLATES.length)];
 }
@@ -105,7 +123,10 @@ function normalizeGeneratedMomentContent(text: string) {
 function isContaminatedMomentContent(text: string) {
   const normalized = normalizeGeneratedMomentContent(text);
   if (!normalized) return true;
-  return MOMENT_BAD_SAMPLE_PATTERNS.some(pattern => pattern.test(normalized));
+  if (normalized.length > 120) return true;
+  if (MOMENT_BAD_SAMPLE_PATTERNS.some(pattern => pattern.test(normalized))) return true;
+  if (MOMENT_PROMPT_LEAK_PATTERNS.some(pattern => pattern.test(normalized))) return true;
+  return false;
 }
 
 function normalizeChatReaction(text: string) {
@@ -128,45 +149,17 @@ async function generateSingleText(options: {
   fallback: string;
 }) {
   const { activeConfig, prompt, fallback } = options;
-  const apiKey = activeConfig.apiKey || process.env.GEMINI_API_KEY;
-  const isGemini = isGeminiConfig(activeConfig);
+  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
 
   if (apiKey) {
-    if (isGemini) {
-      const ai = new GoogleGenAI({ apiKey: apiKey || '' });
-      const response = await ai.models.generateContent({
-        model: activeConfig.model || 'gemini-3-flash-preview',
-        contents: prompt,
-        config: {
-          temperature: activeConfig.temperature ?? 1.0,
-        }
-      });
-      return (response.text || '').trim();
-    }
-
-    const baseUrl = activeConfig.baseUrl.replace(/\/$/, '');
-    const url = `${baseUrl}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+    return await generateTextWithConfig({
+      activeConfig: {
+        ...activeConfig,
+        apiKey,
       },
-      body: JSON.stringify({
-        model: activeConfig.model,
-        messages: [{ role: 'system', content: prompt }],
-        temperature: activeConfig.temperature ?? 0.7,
-        stream: false
-      })
+      prompt,
+      temperature: activeConfig.temperature ?? 0.7,
     });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `API 错误 (${res.status})`);
-    }
-
-    const data = await res.json();
-    return (data.choices?.[0]?.message?.content || '').trim();
   }
 
   return fallback.trim();
@@ -421,5 +414,84 @@ export async function generateMomentCommentReply(options: {
     return response || buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
   } catch {
     return buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
+  }
+}
+
+export function buildFallbackMomentAutoComment(
+  replyCharacter: Character,
+  moment: MomentLike,
+  recentReplies: string[],
+) {
+  const content = moment.content.trim();
+  const toneBoost = /哈哈|开心|庆祝|爽|太好了|收工/.test(content)
+    ? ['这条看着还挺有劲。', '这句状态我认。', '行，这条我给你点个头。']
+    : /烦|累|崩|难受|无语|不想/.test(content)
+      ? ['看出来你今天状态不轻松。', '这条一看就有情绪。', '行，我先在这条底下陪你一句。']
+      : ['这条我看见了。', '这句还挺像你。', '这条底下我先占个位置。'];
+
+  const genericPool = [
+    `${replyCharacter.name} 已阅。`,
+    '这条我先评论一句。',
+    '我路过，留个言。',
+    '行，这条我看到了。',
+  ];
+
+  const candidates = [...toneBoost, ...genericPool];
+  const lowerRecent = recentReplies.map(item => item.toLowerCase());
+  const picked = candidates.find(item => !lowerRecent.some(recent => recent.includes(item.toLowerCase())));
+
+  return picked || candidates[0] || `${replyCharacter.name} 看到了。`;
+}
+
+export async function generateMomentAutoComment(options: {
+  activeConfig: ApiConfig;
+  replyCharacter: Character;
+  moment: MomentLike;
+  characters: Character[];
+  userName: string;
+}) {
+  const { activeConfig, replyCharacter, moment, characters, userName } = options;
+  const recentCommentReplies = getRecentMomentReplyContext(moment, characters, userName);
+
+  if (!activeConfig.apiKey) {
+    return buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
+  }
+
+  try {
+    const prompt = buildMomentCommentReplyPrompt({
+      characterCore: {
+        characterSetting: replyCharacter.setting,
+      },
+      memoryContext: {
+        memorySummary: replyCharacter.memorySummary?.trim() || '',
+      },
+      momentContext: {
+        momentContent: moment.content,
+        momentTone: inferMomentTone(moment.content),
+        momentIntent: inferMomentIntent(moment.content),
+        signature: replyCharacter.signature,
+        relationship: '角色在用户动态的评论区里自然留言',
+        userComment: '用户刚发了一条动态，请自然留一句评论。',
+        recentCommentReplies,
+        maxLength: 24,
+        replyStyleHints: [
+          '这是顶层评论，不是回复用户的评论',
+          '像刷到动态后顺手留一句',
+          '不要写成聊天回复',
+          '不要长篇解释',
+          '最近几条评论不要重复句型',
+        ],
+      },
+    });
+
+    const response = await generateSingleText({
+      activeConfig,
+      prompt,
+      fallback: buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies),
+    });
+
+    return response || buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
+  } catch {
+    return buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
   }
 }

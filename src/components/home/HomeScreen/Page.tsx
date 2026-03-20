@@ -5,6 +5,7 @@ import { DesktopIconConfig, VisualSettings, UserProfileExtended, MusicData, Widg
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import {
   buildDesktopIconPlacements,
   getDesktopLayoutMetrics,
@@ -88,6 +89,8 @@ export function HomeScreen({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   key?: string;
 }) {
+  usePersistedUserProfileBridge(userProfile, setUserProfile);
+
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [tempUrl, setTempUrl] = useState('');
@@ -1249,10 +1252,10 @@ export function HomeScreen({
                             }}
                             className="flex-1 text-[11px] bg-blue-500 text-white rounded-lg py-1.5 font-medium active:opacity-80"
                           >
-                            纭閾炬帴
+                            确认链接
                           </button>
                           <label className="flex-1 text-[11px] bg-zinc-100 text-zinc-600 rounded-lg py-1.5 font-medium active:opacity-80 text-center cursor-pointer">
-                            涓婁紶鍥剧墖
+                            上传图片
                             <input
                               type="file"
                               accept="image/*"
@@ -1278,7 +1281,7 @@ export function HomeScreen({
                         }}
                         className="w-full text-left px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50 rounded-lg flex items-center gap-2"
                       >
-                        <RefreshCw size={12} /> 闅忔満澶村儚
+                        <RefreshCw size={12} /> 随机头像
                       </button>
                       <button
                         onClick={() => {
@@ -1287,7 +1290,7 @@ export function HomeScreen({
                         }}
                         className="w-full text-left px-2 py-1.5 text-[11px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"
                       >
-                        <Trash2 size={12} /> 閲嶇疆澶村儚
+                        <Trash2 size={12} /> 重置头像
                       </button>
                     </div>
                   </motion.div>
@@ -1300,7 +1303,7 @@ export function HomeScreen({
                 onClick={() => setShowMoodMenu(!showMoodMenu)}
                 className="flex items-center justify-end active:opacity-70 text-[0] [&>span:first-child]:hidden"
               >
-                <span className="homeDesktop__topBarTextSoft font-bold uppercase tracking-wider" style={{ fontSize: navBarUi.moodLabelFontSize }}>浠婃棩蹇冩儏</span>
+                <span className="homeDesktop__topBarTextSoft font-bold uppercase tracking-wider" style={{ fontSize: navBarUi.moodLabelFontSize }}>今日心情</span>
                 <span className="homeDesktop__topBarTextStrong font-semibold" style={{ fontSize: navBarUi.moodFontSize }}>{currentMood}</span>
               </button>
 

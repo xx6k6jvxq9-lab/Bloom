@@ -5,7 +5,8 @@ import {
   Wallet, History, ArrowUpRight, ArrowDownLeft, Send, ScanLine,
   ChevronLeft, Bell, X, Heart, Coins, Users, Lock
 } from 'lucide-react';
-import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction } from '../../../types';
+import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction, WalletData } from '../../../types';
+import { usePersistedWalletDataBridge } from '../../../features/persistence/usePersistedWalletDataBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 function ResolvedWalletAvatar({
@@ -102,13 +103,33 @@ type WalletAppProps = {
 };
 
 export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletAppProps) {
-  const cards = appData.walletData?.cards || MOCK_CARDS;
-  const transactions = appData.walletData?.transactions || MOCK_TRANSACTIONS;
-  const balance = appData.walletData?.balance ?? 12580.00;
-  const yuebaoBalance = appData.walletData?.yuebaoBalance ?? 0;
-  const yuebaoInterest = appData.walletData?.yuebaoInterest ?? 0;
-  const familyCards = appData.walletData?.familyCards ?? [];
-  const paymentPassword = appData.walletData?.paymentPassword ?? '';
+  const walletData: WalletData = appData.walletData || {
+    balance: 12580.00,
+    yuebaoBalance: 0,
+    yuebaoInterest: 0,
+    familyCards: [],
+    paymentPassword: '',
+    cards: MOCK_CARDS,
+    transactions: MOCK_TRANSACTIONS,
+  };
+  usePersistedWalletDataBridge(
+    walletData,
+    (nextWalletData) => {
+      if (onUpdateAppData) {
+        onUpdateAppData({
+          ...appData,
+          walletData: nextWalletData,
+        });
+      }
+    },
+  );
+  const cards = walletData.cards || MOCK_CARDS;
+  const transactions = walletData.transactions || MOCK_TRANSACTIONS;
+  const balance = walletData.balance ?? 12580.00;
+  const yuebaoBalance = walletData.yuebaoBalance ?? 0;
+  const yuebaoInterest = walletData.yuebaoInterest ?? 0;
+  const familyCards = walletData.familyCards ?? [];
+  const paymentPassword = walletData.paymentPassword ?? '';
 
   const updateWalletData = (
     newBalance: number, 
