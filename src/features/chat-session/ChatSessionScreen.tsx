@@ -48,6 +48,28 @@ const getLegacyTranslationParts = (text: string): { mainText: string; translatio
   };
 };
 
+function PersistentImage({
+  value,
+  fallbackValue,
+  alt,
+  className,
+  style,
+  referrerPolicy,
+}: {
+  value?: string | null;
+  fallbackValue?: string | null;
+  alt?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  referrerPolicy?: React.ImgHTMLAttributes<HTMLImageElement>['referrerPolicy'];
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
+  const src = resolvedUrl || value || resolvedFallbackUrl || fallbackValue || '';
+
+  return <img src={src} alt={alt} className={className} style={style} referrerPolicy={referrerPolicy} />;
+}
+
 export function ChatSessionScreen({ 
   character, 
   history, 
@@ -550,6 +572,10 @@ export function ChatSessionScreen({
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.background);
   const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(visualSettings?.chat?.avatarFrameUrl);
   const { resolvedUrl: resolvedChatMessageBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.messageBackgroundImageUrl);
+  const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
+  const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userAvatar);
+  const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(character.bubbleImage);
+  const { resolvedUrl: resolvedUserBubbleImageUrl } = useResolvedPersistentValue(character.userBubbleImage);
 
   if (showSettings) {
     return (
@@ -649,7 +675,7 @@ export function ChatSessionScreen({
               className="ml-1 rounded-full active:scale-95 transition-transform cursor-pointer p-0.5"
               aria-label="打开角色主页"
             >
-              <img src={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
+              <PersistentImage value={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
             </button>
           </div>
           
@@ -701,7 +727,7 @@ export function ChatSessionScreen({
             <div className="w-10 shrink-0 flex justify-center pt-0.5">
               <div className="relative">
                 <img 
-                  src={character.avatar} 
+                  src={resolvedCharacterAvatarUrl || character.avatar} 
                   className="object-cover" 
                   style={{
                     width: visualSettings?.chat?.avatarSize ?? 32,
@@ -731,7 +757,7 @@ export function ChatSessionScreen({
                   backgroundColor: visualSettings?.chat?.messageBackgroundColorModel ?? `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                   borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                   ...(resolvedChatMessageBackgroundUrl ? { backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
-                  ...(character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
+                  ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
                   ...(visualSettings?.chat?.bubbleStyleCss ? JSON.parse(visualSettings.chat.bubbleStyleCss || '{}') : {})
                 }}
               >
@@ -777,7 +803,7 @@ export function ChatSessionScreen({
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                     >
                       <img 
-                        src={character.avatar} 
+                        src={resolvedCharacterAvatarUrl || character.avatar} 
                         className="object-cover" 
                         style={{
                           width: visualSettings?.chat?.avatarSize ?? 32,
@@ -805,7 +831,7 @@ export function ChatSessionScreen({
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                     >
                       <img 
-                        src={userAvatar} 
+                        src={resolvedUserAvatarUrl || userAvatar} 
                         className="object-cover" 
                         style={{
                           width: visualSettings?.chat?.avatarSize ?? 32,
@@ -961,9 +987,9 @@ export function ChatSessionScreen({
                                             border: 'none'
                                           }
                                         : {}),
-                                      ...(msg.role === 'model' && character.bubbleImage
+                                      ...(msg.role === 'model' && resolvedCharacterBubbleImageUrl
                                         ? {
-                                            backgroundImage: `url(${character.bubbleImage})`,
+                                            backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`,
                                             backgroundSize: 'cover',
                                             backgroundPosition: 'center',
                                             border: 'none'
@@ -971,9 +997,9 @@ export function ChatSessionScreen({
                                         : msg.role === 'model' && character.bubbleColor
                                         ? { backgroundColor: character.bubbleColor }
                                         : {}),
-                                      ...(msg.role === 'user' && character.userBubbleImage
+                                      ...(msg.role === 'user' && resolvedUserBubbleImageUrl
                                         ? {
-                                            backgroundImage: `url(${character.userBubbleImage})`,
+                                            backgroundImage: `url(${resolvedUserBubbleImageUrl})`,
                                             backgroundSize: 'cover',
                                             backgroundPosition: 'center',
                                             border: 'none'
@@ -1047,14 +1073,14 @@ export function ChatSessionScreen({
                                 >
                                   <div className="p-3">
                                     <div className="flex items-center gap-2 mb-2">
-                                      <img src={msg.sharedPost.authorAvatar} className="w-5 h-5 rounded-full object-cover" />
+                                      <PersistentImage value={msg.sharedPost.authorAvatar} className="w-5 h-5 rounded-full object-cover" />
                                       <span className="text-xs text-zinc-500">{msg.sharedPost.authorName}</span>
                                     </div>
                                     <h4 className="font-bold text-sm text-zinc-900 mb-1 line-clamp-1">{msg.sharedPost.title}</h4>
                                     <p className="text-xs text-zinc-600 line-clamp-2 mb-2">{msg.sharedPost.content}</p>
                                     {msg.sharedPost.images && msg.sharedPost.images.length > 0 && (
                                       <div className="aspect-video rounded-lg overflow-hidden bg-zinc-100">
-                                        <img src={msg.sharedPost.images[0]} className="w-full h-full object-cover" />
+                                        <PersistentImage value={msg.sharedPost.images[0]} className="w-full h-full object-cover" />
                                       </div>
                                     )}
                                   </div>
@@ -1238,13 +1264,13 @@ export function ChatSessionScreen({
         {isLoading && (
           <div className="flex justify-start">
             <div className="flex gap-2.5">
-              <img src={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
+              <PersistentImage value={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
               <div 
                 className="border rounded-2xl rounded-tl-none px-4 py-2.5 shadow-sm"
                 style={{
                   backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                   borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                  ...(character.bubbleImage ? { backgroundImage: `url(${character.bubbleImage})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {})
+                  ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {})
                 }}
               >
                 <div className="flex gap-1">
@@ -1405,7 +1431,7 @@ export function ChatSessionScreen({
                                 }}
                                 className="aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
                               >
-                                <img src={sticker} className="w-full h-full object-cover" />
+                                <PersistentImage value={sticker} className="w-full h-full object-cover" />
                               </button>
                             ))}
                           </div>
@@ -1641,7 +1667,7 @@ export function ChatSessionScreen({
             <div 
               className="absolute inset-0 opacity-40 scale-110 blur-2xl"
               style={{
-                backgroundImage: `url(${character.avatar})`,
+                backgroundImage: `url(${resolvedCharacterAvatarUrl || character.avatar})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
               }}
@@ -1650,7 +1676,7 @@ export function ChatSessionScreen({
             {/* Header */}
             <div className="relative z-10 w-full pt-16 flex flex-col items-center">
               <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 mb-4 shadow-2xl">
-                <img src={character.avatar} className="w-full h-full object-cover" />
+                <PersistentImage value={character.avatar} className="w-full h-full object-cover" />
               </div>
               <h2 className="text-white text-2xl font-medium mb-2">{character.name}</h2>
               <p className="text-white/60 text-sm font-mono">
