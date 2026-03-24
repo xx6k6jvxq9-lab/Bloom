@@ -13,3 +13,12 @@ export function parseUploadedAssetRef(value: string | null | undefined): { id: s
   const id = value.slice(UPLOADED_ASSET_PREFIX.length).trim();
   return id ? { id } : null;
 }
+
+export function getDisplayableAssetValue(
+  value: string | null | undefined,
+  resolvedUrl?: string | null,
+): string | null {
+  if (resolvedUrl) return resolvedUrl;
+  if (!value) return null;
+  return isUploadedAssetRef(value) ? null : value;
+}

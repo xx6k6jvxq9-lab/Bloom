@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { ApiConfig, Character, ChatMessage, DateSession, UserProfileExtended } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { DatingScene } from './DatingScene';
 import { resolveDateBackgroundInput } from './sessionUtils';
 
@@ -403,7 +404,12 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                   </div>
 
                   <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-zinc-100">
-                    <img src={resolvedPreviewBackgroundUrl || resolvedCharacterAvatarUrl || character.avatar} alt="约会背景预览" className="h-28 w-full object-cover" />
+                    {(() => {
+                      const previewSrc =
+                        getDisplayableAssetValue(resolvedBackground.image, resolvedPreviewBackgroundUrl)
+                        || getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl);
+                      return previewSrc ? <img src={previewSrc} alt="约会背景预览" className="h-28 w-full object-cover" /> : null;
+                    })()}
                   </div>
 
                   <p className="mt-2 text-[12px] leading-5 text-zinc-500">

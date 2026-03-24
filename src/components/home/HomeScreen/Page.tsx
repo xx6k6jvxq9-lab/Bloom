@@ -6,6 +6,7 @@ import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
+import { getDisplayableAssetValue } from '../../../features/persistence/persistentAssetRef';
 import {
   buildDesktopIconPlacements,
   getDesktopLayoutMetrics,
@@ -829,7 +830,10 @@ export function HomeScreen({
                   className="rounded-full border-2 border-white/50 overflow-hidden active:scale-90 transition-transform"
                   style={{ width: navBarUi.avatarSize, height: navBarUi.avatarSize, marginTop: navBarUi.avatarLift }}
                 >
-                  <img src={resolvedUserAvatarUrl || userProfile.avatar} alt="User" className="w-full h-full object-cover" />
+                  {(() => {
+                    const avatarSrc = getDisplayableAssetValue(userProfile.avatar, resolvedUserAvatarUrl);
+                    return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
+                  })()}
                 </button>
                 <span className="text-white font-bold mt-1" style={{ fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
@@ -1209,7 +1213,10 @@ export function HomeScreen({
                 className="rounded-full border-2 border-white/50 overflow-hidden active:scale-90 transition-transform"
                 style={{ width: navBarUi.avatarSize, height: navBarUi.avatarSize, marginTop: navBarUi.avatarLift }}
               >
-                <img src={resolvedUserAvatarUrl || userProfile.avatar} alt="User" className="w-full h-full object-cover" />
+                {(() => {
+                  const avatarSrc = getDisplayableAssetValue(userProfile.avatar, resolvedUserAvatarUrl);
+                  return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
+                })()}
               </button>
               <span className="homeDesktop__topBarTextStrong font-bold mt-1" style={{ fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
@@ -1629,7 +1636,7 @@ function DockAppIcon({
 }) {
   const customIcon = visualSettings?.desktopIcons?.find(i => i.id === app.id)?.iconUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
-  const finalIcon = resolvedCustomIconUrl || customIcon || app.icon;
+  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || app.icon;
 
   return (
     <img
@@ -1692,7 +1699,7 @@ function AppIcon({
 }) {
   const customIcon = visualSettings?.desktopIcons?.find(i => i.id === id)?.iconUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
-  const finalIcon = resolvedCustomIconUrl || customIcon || icon || APP_ICON_URL;
+  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || icon || APP_ICON_URL;
   const finalIconSize = iconSize ?? visualSettings?.desktop?.iconSize ?? 56;
 
   const fontFamily = visualSettings?.desktop?.fontFamily;

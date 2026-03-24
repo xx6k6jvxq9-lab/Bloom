@@ -24,6 +24,7 @@ import {
 } from '../../services/chat/messageActions';
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 
 const sanitizePipeMarkers = (text: string, replacement: '\n' | ' ' = '\n'): string => {
@@ -65,9 +66,29 @@ function PersistentImage({
 }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
-  const src = resolvedUrl || value || resolvedFallbackUrl || fallbackValue || '';
+  const src =
+    getDisplayableAssetValue(value, resolvedUrl)
+    || getDisplayableAssetValue(fallbackValue, resolvedFallbackUrl)
+    || null;
+
+  if (!src) return null;
 
   return <img src={src} alt={alt} className={className} style={style} referrerPolicy={referrerPolicy} />;
+}
+
+function InlineResolvedImage({
+  src,
+  className,
+  style,
+  alt,
+}: {
+  src?: string | null;
+  className?: string;
+  style?: React.CSSProperties;
+  alt?: string;
+}) {
+  if (!src) return null;
+  return <img src={src} className={className} style={style} alt={alt} />;
 }
 
 export function ChatSessionScreen({ 
@@ -726,9 +747,9 @@ export function ChatSessionScreen({
           <div className="flex flex-1 min-w-0 items-start gap-3">
             <div className="w-10 shrink-0 flex justify-center pt-0.5">
               <div className="relative">
-                <img 
-                  src={resolvedCharacterAvatarUrl || character.avatar} 
-                  className="object-cover" 
+                <InlineResolvedImage
+                  src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl)}
+                  className="object-cover"
                   style={{
                     width: visualSettings?.chat?.avatarSize ?? 32,
                     height: visualSettings?.chat?.avatarSize ?? 32,
@@ -802,9 +823,9 @@ export function ChatSessionScreen({
                       className="relative cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                     >
-                      <img 
-                        src={resolvedCharacterAvatarUrl || character.avatar} 
-                        className="object-cover" 
+                      <InlineResolvedImage
+                        src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl)}
+                        className="object-cover"
                         style={{
                           width: visualSettings?.chat?.avatarSize ?? 32,
                           height: visualSettings?.chat?.avatarSize ?? 32,
@@ -830,9 +851,9 @@ export function ChatSessionScreen({
                       className="relative cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                     >
-                      <img 
-                        src={resolvedUserAvatarUrl || userAvatar} 
-                        className="object-cover" 
+                      <InlineResolvedImage
+                        src={getDisplayableAssetValue(userAvatar, resolvedUserAvatarUrl)}
+                        className="object-cover"
                         style={{
                           width: visualSettings?.chat?.avatarSize ?? 32,
                           height: visualSettings?.chat?.avatarSize ?? 32,
@@ -1667,7 +1688,10 @@ export function ChatSessionScreen({
             <div 
               className="absolute inset-0 opacity-40 scale-110 blur-2xl"
               style={{
-                backgroundImage: `url(${resolvedCharacterAvatarUrl || character.avatar})`,
+                backgroundImage: (() => {
+                  const avatarSrc = getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl);
+                  return avatarSrc ? `url(${avatarSrc})` : 'none';
+                })(),
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
               }}

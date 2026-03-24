@@ -13,6 +13,7 @@ import type {
 import { generateTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import {
   createDateMessageId,
   createSceneMessage,
@@ -181,7 +182,10 @@ export function DatingScene({
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
   const backgroundImage = backgroundBroken
     ? character.avatar
-    : resolvedBackgroundImageUrl || (backgroundInfo.source === 'character-avatar' ? character.avatar : '');
+    : getDisplayableAssetValue(
+        backgroundInfo.source === 'character-avatar' ? character.avatar : backgroundInfo.image,
+        resolvedBackgroundImageUrl,
+      ) || '';
 
   const saveSession = (nextSession: SceneSessionState) => {
     const normalizedMessages = normalizeDateSessionMessages(nextSession);
@@ -373,16 +377,18 @@ export function DatingScene({
   return (
     <div className="dating-scene">
       <div className="dating-scene__background" style={{ backgroundImage: `url(${backgroundImage})` }} />
-      <img
-        src={backgroundImage}
-        alt=""
-        className="hidden"
-        onError={() => {
-          if (!backgroundBroken) {
-            setBackgroundBroken(true);
-          }
-        }}
-      />
+      {backgroundImage ? (
+        <img
+          src={backgroundImage}
+          alt=""
+          className="hidden"
+          onError={() => {
+            if (!backgroundBroken) {
+              setBackgroundBroken(true);
+            }
+          }}
+        />
+      ) : null}
       <div className="dating-scene__blur" />
       <div className="dating-scene__overlay" />
 
@@ -392,7 +398,10 @@ export function DatingScene({
             <button type="button" className="dating-scene__icon-btn" onClick={onBackToPlanner}>
               <ChevronLeft size={16} />
             </button>
-            <img src={resolvedCharacterAvatarUrl || character.avatar} alt={character.name} className="dating-scene__avatar" />
+            {(() => {
+              const avatarSrc = getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl);
+              return avatarSrc ? <img src={avatarSrc} alt={character.name} className="dating-scene__avatar" /> : null;
+            })()}
             <div className="dating-scene__identity">
               <div className="dating-scene__name">{character.name}</div>
               <div className="dating-scene__subtitle">{currentSession.scenario || '正式约会'}</div>

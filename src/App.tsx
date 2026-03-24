@@ -59,6 +59,7 @@ import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMai
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -85,6 +86,23 @@ type Comment = {
   replyToAuthorId?: string;
   replyToAuthorName?: string;
 };
+
+function ResolvedAssetImage({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt?: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+
+  if (!src) return null;
+
+  return <img src={src} alt={alt} className={className} />;
+}
 
 type Moment = {
   id: string;
@@ -818,7 +836,7 @@ function MomentsApp({
           <div className="grid grid-cols-3 gap-2 mt-4">
             {publishImages.map((img, i) => (
               <div key={i} className="relative aspect-square group">
-                <img src={img} className="w-full h-full object-cover rounded-xl shadow-sm" />
+                <ResolvedAssetImage value={img} className="w-full h-full object-cover rounded-xl shadow-sm" />
                 <button 
                   onClick={() => setPublishImages(publishImages.filter((_, idx) => idx !== i))}
                   className="absolute -top-2 -right-2 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -912,7 +930,7 @@ function MomentsApp({
         <div className="px-5 relative -mt-10 flex items-end gap-3 justify-start z-10">
           <div className="relative flex-1 min-w-0 flex flex-col gap-1">
             <div className="absolute inset-0 bg-black/5 rounded-2xl blur-sm transform translate-y-1" />
-            <img src={userProfile.avatar} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
+            <ResolvedAssetImage value={userProfile.avatar} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
           </div>
           <div className="mb-1.5 flex-1 text-left">
             <div className="flex items-center justify-start gap-2">
@@ -940,7 +958,7 @@ function MomentsApp({
                 backgroundColor: `rgba(255, 255, 255, ${appData.visualSettings?.dynamics?.cardOpacity ?? 0.9})`
               }}
             >
-              <img src={author.avatar} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
+              <ResolvedAssetImage value={author.avatar} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
                   <h3 className="font-bold text-[15px] text-zinc-900">{author.name}</h3>
@@ -953,7 +971,7 @@ function MomentsApp({
                 {moment.images && moment.images.length > 0 && (
                   <div className={`grid gap-1.5 mt-3 ${moment.images.length === 1 ? 'grid-cols-1 w-2/3' : 'grid-cols-3'}`}>
                     {moment.images.map((img, i) => (
-                      <img key={i} src={img} className="w-full aspect-square object-cover rounded-xl border border-zinc-100" />
+                      <ResolvedAssetImage key={i} value={img} className="w-full aspect-square object-cover rounded-xl border border-zinc-100" />
                     ))}
                   </div>
                 )}
@@ -1842,7 +1860,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
             {/* Avatar */}
             <div className="flex flex-col items-center gap-3">
               <div className="relative group flex-1 min-w-0 flex flex-col gap-1 items-center">
-                <img src={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
+                <ResolvedAssetImage value={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
                 <button 
                   onClick={() => setAvatar(`https://picsum.photos/seed/${Math.random()}/200`)}
                   className="absolute bottom-0 right-0 w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center text-white border-2 border-white shadow-sm active:scale-90"
@@ -2063,7 +2081,7 @@ function SMSApp({ onBack }: { onBack: () => void; key?: string }) {
                   className="flex gap-3 py-2.5 border-b border-zinc-100/60 last:border-0 active:bg-zinc-50 transition-colors cursor-pointer"
                 >
                   <div className="w-[46px] h-[46px] rounded-full overflow-hidden bg-zinc-100 shrink-0">
-                    <img src={thread.avatar} alt="" className="w-full h-full object-cover" />
+                    <ResolvedAssetImage value={thread.avatar} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-center">
                     <div className="flex justify-between items-center mb-1">
@@ -2086,7 +2104,7 @@ function SMSApp({ onBack }: { onBack: () => void; key?: string }) {
             </button>
             <div className="flex-1 flex flex-col items-center">
               <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-100 mb-0.5">
-                <img src={selectedThread?.avatar} alt="" className="w-full h-full object-cover" />
+                <ResolvedAssetImage value={selectedThread?.avatar} className="w-full h-full object-cover" />
               </div>
               <span className="text-[12px] font-medium">{selectedThread?.name}</span>
             </div>

@@ -6,6 +6,8 @@ import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPro
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig } from '../../services/ai/runtimeClient';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
+import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 
 function SettingsSection({
   title,
@@ -36,6 +38,21 @@ function SettingsSection({
       {open && <div className="mt-3">{children}</div>}
     </div>
   );
+}
+
+function ResolvedSettingsImage({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt?: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+  if (!src) return null;
+  return <img src={src} alt={alt} className={className} />;
 }
 
 export function ChatSettingsPanel({ 
@@ -96,6 +113,9 @@ export function ChatSettingsPanel({
   const [showSettingEditor, setShowSettingEditor] = useState(false);
 
   if (!character) return null;
+
+  const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
+  const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
 
   const currentGroupLabel = character.groupId || '无分组';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
@@ -293,8 +313,8 @@ export function ChatSettingsPanel({
       exit={{ x: '100%' }}
       className="absolute inset-0 flex flex-col z-[70]"
       style={{
-        backgroundImage: character.background ? `url(${character.background})` : 'none',
-        backgroundColor: character.background ? 'transparent' : '#fafafa',
+        backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
+        backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
@@ -380,7 +400,7 @@ export function ChatSettingsPanel({
             <div className="p-3 flex flex-col items-center gap-2 border-b border-white/30">
               <div className="relative group">
                 <img
-                  src={character.avatar}
+                  src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl) || undefined}
                   alt={character.name}
                   className="w-16 h-16 rounded-full object-cover bg-zinc-100 border-2 border-zinc-50"
                 />
@@ -1006,8 +1026,8 @@ export function ChatSettingsPanel({
             exit={{ x: '100%' }}
             className="absolute inset-0 flex flex-col z-[80]"
             style={{
-              backgroundImage: character.background ? `url(${character.background})` : 'none',
-              backgroundColor: character.background ? 'transparent' : '#fafafa',
+              backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
+              backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
@@ -1043,8 +1063,8 @@ export function ChatSettingsPanel({
             exit={{ x: '100%' }}
             className="absolute inset-0 flex flex-col z-[80]"
             style={{
-              backgroundImage: character.background ? `url(${character.background})` : 'none',
-              backgroundColor: character.background ? 'transparent' : '#fafafa',
+              backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
+              backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
@@ -1116,7 +1136,7 @@ export function ChatSettingsPanel({
                 </label>
                 {character.stickers?.map((sticker, idx) => (
                   <div key={idx} className="relative group aspect-square bg-white/40 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden shadow-sm">
-                    <img src={sticker} className="w-full h-full object-cover" />
+                    <ResolvedSettingsImage value={sticker} className="w-full h-full object-cover" />
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
