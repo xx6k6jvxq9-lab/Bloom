@@ -1608,12 +1608,7 @@ function StaticDock({
                 borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14,
               }}
             >
-              <img
-                src={visualSettings?.desktopIcons?.find(i => i.id === app.id)?.iconUrl || app.icon}
-                className="absolute inset-0 w-full h-full object-cover"
-                alt={app.name}
-                referrerPolicy="no-referrer"
-              />
+              <DockAppIcon app={app} visualSettings={visualSettings} />
             </div>
             <span className="homeDesktop__dockLabel font-bold drop-shadow-sm" style={fontStyle}>
               {app.name}
@@ -1622,6 +1617,27 @@ function StaticDock({
         ))}
       </div>
     </motion.div>
+  );
+}
+
+function DockAppIcon({
+  app,
+  visualSettings,
+}: {
+  app: AppDefinition;
+  visualSettings: VisualSettings;
+}) {
+  const customIcon = visualSettings?.desktopIcons?.find(i => i.id === app.id)?.iconUrl;
+  const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
+  const finalIcon = resolvedCustomIconUrl || customIcon || app.icon;
+
+  return (
+    <img
+      src={finalIcon}
+      className="absolute inset-0 w-full h-full object-cover"
+      alt={app.name}
+      referrerPolicy="no-referrer"
+    />
   );
 }
 
