@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -57,9 +57,12 @@ import {
 } from './services/chat/messageActions';
 import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
+import { resetCharacters } from './features/persistence/charactersStore';
+import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
+import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -440,6 +443,18 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
   const missingDefaults = DEFAULT_CHARACTERS.filter(character => !existingIds.has(character.id));
 
   return [...persistedCharacters, ...missingDefaults];
+}
+
+function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
+  const { characters: _characters, ...persistableAppData } = appData;
+  return persistableAppData;
+}
+
+function hydratePersistedCharacters(
+  source: Character[] | null | undefined,
+  fallback: Character[],
+): Character[] {
+  return sanitizePersistedCharacters(source || fallback);
 }
 
 
@@ -1229,6 +1244,33 @@ export default function App() {
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
   const couplePartnerCharacter = getCharacterById(appData.coupleSpace?.partnerId) || appData.characters[0] || null;
+  const setCharacters = useCallback((characters: Character[]) => {
+    setAppData(prev => ({
+      ...prev,
+      characters: replaceCharacters(prev.characters, characters),
+    }));
+  }, []);
+  const handlePatchCharacterById = useCallback((characterId: string, patch: Partial<Character>) => {
+    setAppData(prev => ({
+      ...prev,
+      characters: patchCharacterById(prev.characters, characterId, patch),
+    }));
+  }, []);
+  const handleMergeCharacter = useCallback((updatedCharacter: Character) => {
+    setAppData(prev => ({
+      ...prev,
+      characters: updateCharacterById(prev.characters, updatedCharacter.id, (character) => ({
+        ...character,
+        ...updatedCharacter,
+      })),
+    }));
+  }, []);
+  const handleUpsertCharacter = useCallback((character: Character) => {
+    setAppData(prev => ({
+      ...prev,
+      characters: upsertCharacter(prev.characters, character),
+    }));
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1327,13 +1369,17 @@ export default function App() {
 
   useEffect(() => {
     if (!hasHydratedStorage) return;
-    localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(appData));
+    localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(getPersistableAppData(appData)));
   }, [appData, hasHydratedStorage]);
 
   useEffect(() => {
     if (!hasHydratedStorage) return;
     persistVisualSettings(appData.visualSettings);
   }, [appData.visualSettings, hasHydratedStorage]);
+
+  usePersistedCharactersBridge(appData.characters, setCharacters, {
+    hydrate: hydratePersistedCharacters,
+  });
 
   useEffect(() => {
     const handleDialogRequest = (event: Event) => {
@@ -1388,10 +1434,7 @@ export default function App() {
   };
 
   const handleAddCharacter = (char: Character) => {
-    setAppData(prev => ({
-      ...prev,
-      characters: [char, ...prev.characters]
-    }));
+    handleUpsertCharacter(char);
     setActiveApp('chat');
     setActiveTab('chat');
   };
@@ -1499,16 +1542,12 @@ export default function App() {
               isFriend={true}
               groups={appData.groups}
               onUpdateGroup={(groupId) => {
-                setAppData(prev => ({
-                  ...prev,
-                  characters: prev.characters.map(c => c.id === selectedCharacterId ? { ...c, groupId } : c)
-                }));
+                if (!selectedCharacterId) return;
+                handlePatchCharacterById(selectedCharacterId, { groupId });
               }}
               onTogglePin={() => {
-                setAppData(prev => ({
-                  ...prev,
-                  characters: prev.characters.map(c => c.id === selectedCharacterId ? { ...c, isPinned: !c.isPinned } : c)
-                }));
+                if (!selectedCharacterId || !selectedCharacter) return;
+                handlePatchCharacterById(selectedCharacterId, { isPinned: !selectedCharacter.isPinned });
               }}
             />
           )}
@@ -1552,12 +1591,8 @@ export default function App() {
             }
             walletData={appData.walletData}
             setWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
-            updateCharacter={(updatedChar) => {
-              setAppData(prev => ({
-                ...prev,
-                characters: prev.characters.map(c => c.id === updatedChar.id ? { ...c, ...updatedChar } : c)
-              }));
-            }}
+            updateCharacter={handleMergeCharacter}
+            patchCharacter={handlePatchCharacterById}
             onBackToChat={() => setActiveApp('chat')}
             onViewForumPost={(postId) => {
               setSelectedForumPostId(postId);
@@ -1626,10 +1661,7 @@ export default function App() {
                   ...char,
                   lastTime: Date.now()
                 };
-                setAppData(prev => ({
-                  ...prev,
-                  characters: [newChar, ...prev.characters]
-                }));
+                handleUpsertCharacter(newChar);
               }}
             />
           )}
@@ -1647,6 +1679,7 @@ export default function App() {
               onBack={() => setActiveApp('home')}
               onResetData={() => {
                 localStorage.removeItem(STORAGE_KEYS.appData);
+                resetCharacters();
                 clearPersistedVisualSettings();
                 window.location.reload();
               }}
@@ -1662,7 +1695,10 @@ export default function App() {
               onImportData={(data) => {
                 try {
                   const parsed = JSON.parse(data);
-                  setAppData(parsed);
+                  setAppData({
+                    ...parsed,
+                    characters: sanitizePersistedCharacters(parsed.characters),
+                  });
                   alert('导入成功！');
                 } catch (e) {
                   alert('导入失败，请检查数据格式。');

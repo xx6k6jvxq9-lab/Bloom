@@ -107,6 +107,7 @@ type UseDirectChatRuntimeArgs = {
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
   onUpdateCharacter: (character: Character) => void;
+  onPatchCharacter?: (patch: Partial<Character>) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
 };
@@ -161,6 +162,7 @@ export function useDirectChatRuntime({
   walletData,
   onUpdateWalletData,
   onUpdateCharacter,
+  onPatchCharacter,
   onPublishMoment,
   onAddCallRecord,
 }: UseDirectChatRuntimeArgs): UseDirectChatRuntimeResult {
@@ -650,7 +652,11 @@ export function useDirectChatRuntime({
           });
 
           if (summaryText) {
-            onUpdateCharacter({ ...character, memorySummary: summaryText });
+            if (onPatchCharacter) {
+              onPatchCharacter({ memorySummary: summaryText });
+            } else {
+              onUpdateCharacter({ ...character, memorySummary: summaryText });
+            }
           }
         } catch (summaryError) {
           console.error('Auto-summarize failed:', summaryError);
@@ -668,7 +674,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, character, history, input, masks, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, worldBook]);
+  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

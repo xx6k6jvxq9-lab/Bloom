@@ -11,6 +11,7 @@ import { usePersistedMeDataBridge } from '../../../features/persistence/usePersi
 import { usePersistedMomentsBridge } from '../../../features/persistence/usePersistedMomentsBridge';
 import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 
 function ResolvedMainShellAvatar({
   value,
@@ -282,19 +283,19 @@ export function MainApp({
               };
               setAppData(prev => ({
                 ...prev,
-                characters: [newChar, ...prev.characters]
+                characters: upsertCharacter(prev.characters, newChar)
               }));
             }}
             onDeleteCharacter={(id) => {
               setAppData(prev => ({
                 ...prev,
-                characters: prev.characters.filter(c => c.id !== id)
+                characters: removeCharacterById(prev.characters, id)
               }));
             }}
             onUpdateCharacter={(char) => {
               setAppData(prev => ({
                 ...prev,
-                characters: prev.characters.map(c => c.id === char.id ? char : c)
+                characters: updateCharacterById(prev.characters, char.id, () => char)
               }));
             }}
             onSectionChange={setMeSection}
@@ -329,7 +330,7 @@ export function MainApp({
                 };
                 setAppData(prev => ({
                   ...prev,
-                  characters: [newChar, ...prev.characters]
+                  characters: upsertCharacter(prev.characters, newChar)
                 }));
                 setShowAddFriend(false);
                 alert('已添加新好友');
@@ -361,7 +362,11 @@ export function MainApp({
                   setAppData(prev => ({
                     ...prev,
                     groups: prev.groups.filter(g => g !== name),
-                    characters: prev.characters.map(c => c.groupId === name ? { ...c, groupId: undefined } : c)
+                    characters: prev.characters.map(c => (
+                      c.groupId === name
+                        ? { ...c, groupId: undefined }
+                        : c
+                    ))
                   }));
                 }
               }}

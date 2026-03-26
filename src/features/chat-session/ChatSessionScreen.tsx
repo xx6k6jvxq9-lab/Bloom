@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -96,6 +96,7 @@ export function ChatSessionScreen({
   history, 
   setHistory, 
   onUpdateCharacter,
+  onPatchCharacter,
   settings, 
   onBack,
   userAvatar,
@@ -125,6 +126,7 @@ export function ChatSessionScreen({
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
   onUpdateCharacter: (c: Character) => void;
+  onPatchCharacter?: (patch: Partial<Character>) => void;
   settings: AppSettings;
   onBack: () => void;
   userAvatar: string;

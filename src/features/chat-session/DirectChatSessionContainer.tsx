@@ -21,6 +21,7 @@ type DirectChatSessionContainerProps = {
   chatHistory: ChatHistory;
   setChatHistory: (chatHistory: ChatHistory) => void;
   updateCharacter: (character: Character) => void;
+  patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   settings: AppSettings;
   onBack: () => void;
   userAvatar: string;
@@ -51,6 +52,7 @@ export function DirectChatSessionContainer({
   chatHistory,
   setChatHistory,
   updateCharacter,
+  patchCharacter,
   settings,
   onBack,
   userAvatar,
@@ -91,13 +93,13 @@ export function DirectChatSessionContainer({
           ...chatHistory,
           [character.id]: newHistory,
         });
-        updateCharacter({
-          ...character,
+        patchCharacter(character.id, {
           lastMessage: newHistory[newHistory.length - 1]?.text || character.openingRemark,
           lastTime: Date.now(),
         });
       }}
       onUpdateCharacter={updateCharacter}
+      onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
       worldBook={worldBook}
       perception={perception}
       settings={settings}

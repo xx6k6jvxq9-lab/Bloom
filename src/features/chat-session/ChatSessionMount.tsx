@@ -46,6 +46,7 @@ type ChatSessionMountProps = {
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
   updateCharacter: (updatedCharacter: Character) => void;
+  patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
@@ -81,6 +82,7 @@ export function ChatSessionMount({
   walletData,
   setWalletData,
   updateCharacter,
+  patchCharacter,
   onBackToChat,
   onViewForumPost,
   onPublishMoment,
@@ -110,6 +112,7 @@ export function ChatSessionMount({
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
           updateCharacter={updateCharacter}
+          patchCharacter={patchCharacter}
           worldBook={worldBook}
           perception={perception}
           settings={settings}

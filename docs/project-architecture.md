@@ -247,8 +247,11 @@
 #### 角色域
 
 - [src/features/character-domain](/e:/小手机/Bloom/src/features/character-domain)
-  - 角色读取边界第一刀
-  - 当前以 `createCharacterDirectory(...)` 为主，负责角色按 id / name / group member 的只读查询
+  - 角色域已完成读取边界第一刀，并已进入第二刀前两部分的第一版落地阶段
+  - 当前包括：
+    - `createCharacterDirectory(...)` 负责角色按 id / name / group member 的只读查询
+    - `characterMutations.ts` 负责 `replace / updateById / patchById / remove / upsert` 等统一写入语义
+  - 第二刀第三部分（角色资源与复杂联动边界）仍未开始，后续再进入
 
 ## 5. 顶层状态与核心数据
 
@@ -626,7 +629,7 @@ Prompt 与规则层：
 
 ### 14.2 建议的整理顺序
 
-1. 先决定 `character-domain` 第二刀：是进入角色持久化，还是继续扩大角色读取边界。
+1. 先把 `character-domain` 第二刀前两部分收尾验收。
 2. 再评估是否需要把 direct / group runtime 再抽一层 shared session runtime。
 3. 最后继续拆分 `App.tsx` 中剩余的顶层业务状态与回调。
 
@@ -652,19 +655,23 @@ Prompt 与规则层：
 - `chat-session` 分层
 - `chat-runtime` 分层
 - `character-domain` 读取边界第一刀
+- `character-domain` 第二刀前两部分第一版
+  - `charactersStore + usePersistedCharactersBridge`
+  - `characterMutations`
+  - 主壳与聊天主链的高频角色写入点初步收口
 - 普通聊天 / 群聊 / 动态 / 情侣空间 / 聊天设置的主要 AI 调用链统一到 `runtimeClient`
 
 ### 15.3 当前剩余项
 
 严格来说，当前剩余已经主要是“后续优化项”，而不是主线 blocker：
 
-1. `character-domain` 第二刀
+1. `character-domain` 第二刀收尾与第三部分
 2. 是否继续抽更高一层 shared session runtime
 3. `App.tsx` 顶层状态进一步拆分
 
 ### 15.4 `character-domain` 第二刀
 
-这是当前主线之后最值得进入的下一阶段之一。
+这是当前主线之后最值得进入的下一阶段之一。目前已经完成前两部分的第一版，接下来更准确的任务是“收尾验收 + 决定何时进入第三部分”。
 
 #### 为什么要做
 
@@ -724,7 +731,17 @@ Prompt 与规则层：
 - 后续自动保存
 - 防止首帧空值覆盖
 
-这是第二刀里最稳、最值得先做的一步。
+当前状态：
+
+- 已完成第一版落地
+- 已新增 `charactersStore.ts`
+- 已新增 `usePersistedCharactersBridge.ts`
+- `characters` 已不再只作为整包 `appData` 的顺带保存对象
+
+当前剩余：
+
+- 做最终手动验收
+- 继续避免新增散写角色持久化逻辑
 
 ##### 第二部分：写入边界
 
@@ -744,6 +761,17 @@ Prompt 与规则层：
 
 - 降低旧角色快照覆盖新字段的风险
 - 避免不同页面各自维护一套更新语义
+
+当前状态：
+
+- 已完成第一版落地
+- 已新增 `characterMutations.ts`
+- `App.tsx`、`MainAppShell`、聊天主链中的高频角色更新已开始收口到统一入口
+
+当前剩余：
+
+- 对现有高频写入点做收尾验收
+- 后续新增角色更新逻辑默认走统一 mutation
 
 ##### 第三部分：资源与复杂联动边界
 
@@ -775,6 +803,12 @@ Prompt 与规则层：
 2. 再做角色写入边界
 3. 最后处理角色资源与复杂联动
 
+#### 第二刀当前判断
+
+- 前两部分已经完成第一版，不再属于“未开始”
+- 当前更合适的动作是：收尾验收，而不是继续无限扩大改造范围
+- 第三部分仍未进入，应放到情侣空间 / 监控等当前模块优化之后再评估
+
 ---
 
 ## 16. 后续阶段路线
@@ -783,10 +817,11 @@ Prompt 与规则层：
 
 ### 16.1 近期优先级
 
-1. `character-domain` 第二刀第一部分
-   - `charactersStore + usePersistedCharactersBridge`
-2. 评估是否需要更高一层 `shared session runtime`
-3. 继续减少 `App.tsx` 顶层装配负担
+1. `character-domain` 第二刀前两部分收尾验收
+   - 角色独立持久化链路验收
+   - 高频角色写入点最终确认
+2. 进入情侣空间与监控的模块优化
+3. 再评估是否需要更高一层 `shared session runtime`
 
 ### 16.2 中期方向
 

@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   appData: 'ai_phone_app_data',
   settings: 'ai_phone_settings',
+  characters: 'persistence:characters',
   visualSettings: 'persistence:visual-settings',
   userProfile: 'persistence:user-profile',
   moments: 'persistence:moments',
