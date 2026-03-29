@@ -648,7 +648,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 )}
               </div>
 
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
+              <div className="hidden">
                 <div className="p-4 border-b border-zinc-100">
                   <h3 className="font-bold text-zinc-800">数据管理</h3>
                 </div>
