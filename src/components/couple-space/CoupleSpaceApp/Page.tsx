@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -318,7 +318,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 : 'bg-zinc-200 text-white cursor-not-allowed'
             }`}
           >
-            开启
+            寮€鍚?
           </button>
         </div>
       </div>
@@ -353,7 +353,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           {activeView === 'calendar' && '情侣日历'}
           {activeView === 'anniversaries' && '纪念日'}
           {activeView === 'messageboard' && '留言板'}
-          {activeView === 'post-feed' && '发动态'}
+          {activeView === 'post-feed' && '情侣动态'}
         </h1>
         {activeView === 'main' ? (
           <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
@@ -441,7 +441,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   ))
                 ) : (
                   <div className="text-center text-zinc-400 py-10">
-                    <p>还没有动态哦，快来发布第一条动态吧！</p>
+                    <p>还没有动态哦，快来发布第一条动态吧。</p>
                   </div>
                 )}
               </div>
@@ -453,10 +453,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-bold text-zinc-800">选择伴侣</h3>
-                  <button 
+                  <button
                     onClick={() => {
                       if (availablePartners.length === 0) {
-                        alert('已创建的角色都已添加');
+                        alert('已创建的角色都已经添加过了');
                       } else {
                         setActiveModal('addPartner');
                       }
@@ -469,14 +469,14 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 <div className="flex gap-3 overflow-x-auto pb-2 px-1">
                   {addedPartners.map((c: any) => (
                     <div key={c.id} className="relative group">
-                      <button 
+                      <button
                         onClick={() => handleUpdateCoupleSpace({ partnerId: c.id })}
                         className={`flex flex-col items-center gap-2 p-2 rounded-xl min-w-[70px] transition-all ${coupleSpace.partnerId === c.id ? 'bg-rose-100 ring-2 ring-rose-300' : 'hover:bg-zinc-100'}`}
                       >
                         <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover" alt={c.name} />
                         <span className="text-xs font-medium text-zinc-700 truncate w-full text-center">{c.name}</span>
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setPartnerToDelete(c.id);
@@ -491,8 +491,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 </div>
               </div>
 
-              <div className="hidden">
-                <div 
+              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
+                <div
                   onClick={() => setActiveModal('date')}
                   className="flex items-center justify-between p-4 border-b border-zinc-100 active:bg-zinc-50 transition-colors cursor-pointer"
                 >
@@ -502,8 +502,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                     <ChevronLeft size={16} className="rotate-180" />
                   </div>
                 </div>
-                
-                <div 
+
+                <div
                   onClick={() => {
                     setTempInput(coupleSpace.backgroundUrl || '');
                     setActiveModal('background');
@@ -517,7 +517,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   </div>
                 </div>
 
-                <div 
+                <div
                   onClick={() => {
                     setTempInput(coupleSpace.userAvatarFrame || '');
                     setActiveModal('avatarFrameUser');
@@ -531,7 +531,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   </div>
                 </div>
 
-                <div 
+                <div
                   onClick={() => {
                     setTempInput(coupleSpace.partnerAvatarFrame || '');
                     setActiveModal('avatarFramePartner');
@@ -546,11 +546,11 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 </div>
               </div>
 
-              <div className="hidden">
+              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
                 <button
                   type="button"
                   onClick={() => setIsModuleCustomizationOpen((prev) => !prev)}
-                  className="w-full p-4 border-b border-zinc-100 flex items-center justify-between text-left active:bg-zinc-50 transition-colors"
+                  className="w-full p-4 flex items-center justify-between text-left active:bg-zinc-50 transition-colors"
                 >
                   <h3 className="font-bold text-zinc-800">模块自定义</h3>
                   <ChevronLeft
@@ -558,110 +558,93 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                     className={`text-zinc-400 transition-transform ${isModuleCustomizationOpen ? '-rotate-90' : 'rotate-180'}`}
                   />
                 </button>
-                <div className={isModuleCustomizationOpen ? "hidden" : "hidden"}>
-                  <h3 className="font-bold text-zinc-800">模块自定义</h3>
-                </div>
-                
+
                 {isModuleCustomizationOpen && (
                   <>
-                {/* Love Letter Settings */}
-                <div className="p-4 border-b border-zinc-100">
-                  <p className="text-xs font-bold text-zinc-400 uppercase mb-3">情书设置</p>
-                  <div className="space-y-3">
-                    <div 
-                      onClick={() => {
-                        setTempInput(coupleSpace.loveLetterEnvelopeBg || '');
-                        setActiveModal('loveLetterEnvelopeBg');
-                      }}
-                      className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
-                    >
-                      <span className="text-sm text-zinc-700">信封背景图</span>
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <span className="text-xs">{coupleSpace.loveLetterEnvelopeBg ? '已设置' : '默认'}</span>
-                        <ChevronLeft size={14} className="rotate-180" />
+                    <div className="p-4 border-t border-zinc-100 border-b border-zinc-100">
+                      <p className="text-xs font-bold text-zinc-400 uppercase mb-3">情书设置</p>
+                      <div className="space-y-3">
+                        <div
+                          onClick={() => {
+                            setTempInput(coupleSpace.loveLetterEnvelopeBg || '');
+                            setActiveModal('loveLetterEnvelopeBg');
+                          }}
+                          className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
+                        >
+                          <span className="text-sm text-zinc-700">信封背景图</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <span className="text-xs">{coupleSpace.loveLetterEnvelopeBg ? '已设置' : '默认'}</span>
+                            <ChevronLeft size={14} className="rotate-180" />
+                          </div>
+                        </div>
+                        <div
+                          onClick={() => {
+                            setSelectedEnvelopeColor(coupleSpace.loveLetterEnvelopeColor || '#f5e6d3');
+                            setActiveModal('loveLetterEnvelopeColor');
+                          }}
+                          className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
+                        >
+                          <span className="text-sm text-zinc-700">信封颜色</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <div className="w-4 h-4 rounded-full border border-zinc-200" style={{ backgroundColor: coupleSpace.loveLetterEnvelopeColor || '#f5e6d3' }} />
+                            <ChevronLeft size={14} className="rotate-180" />
+                          </div>
+                        </div>
+                        <div
+                          onClick={() => {
+                            setSelectedPaperTexture(coupleSpace.loveLetterPaperTexture || 'default');
+                            setActiveModal('loveLetterPaperTexture');
+                          }}
+                          className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
+                        >
+                          <span className="text-sm text-zinc-700">信纸质感</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <span className="text-xs">
+                              {coupleSpace.loveLetterPaperTexture === 'vintage'
+                                ? '复古'
+                                : coupleSpace.loveLetterPaperTexture === 'grid'
+                                  ? '网格'
+                                  : coupleSpace.loveLetterPaperTexture === 'floral'
+                                    ? '花草'
+                                    : '默认'}
+                            </span>
+                            <ChevronLeft size={14} className="rotate-180" />
+                          </div>
+                        </div>
+                        <div
+                          onClick={() => {
+                            setTempInput(coupleSpace.loveLetterPaperBg || '');
+                            setActiveModal('loveLetterPaperBg');
+                          }}
+                          className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
+                        >
+                          <span className="text-sm text-zinc-700">信纸背景图</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <span className="text-xs">{coupleSpace.loveLetterPaperBg ? '已设置' : '默认'}</span>
+                            <ChevronLeft size={14} className="rotate-180" />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div 
-                      onClick={() => {
-                        setSelectedEnvelopeColor(coupleSpace.loveLetterEnvelopeColor || '#f5e6d3');
-                        setActiveModal('loveLetterEnvelopeColor');
-                      }}
-                      className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
-                    >
-                      <span className="text-sm text-zinc-700">信封颜色</span>
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <div className="w-4 h-4 rounded-full border border-zinc-200" style={{ backgroundColor: coupleSpace.loveLetterEnvelopeColor || '#f5e6d3' }} />
-                        <ChevronLeft size={14} className="rotate-180" />
-                      </div>
-                    </div>
-                    <div 
-                      onClick={() => {
-                        setSelectedPaperTexture(coupleSpace.loveLetterPaperTexture || 'default');
-                        setActiveModal('loveLetterPaperTexture');
-                      }}
-                      className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
-                    >
-                      <span className="text-sm text-zinc-700">信纸质感</span>
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <span className="text-xs">
-                          {coupleSpace.loveLetterPaperTexture === 'vintage' ? '复古' : 
-                           coupleSpace.loveLetterPaperTexture === 'grid' ? '网格' : 
-                           coupleSpace.loveLetterPaperTexture === 'floral' ? '花卉' : '默认'}
-                        </span>
-                        <ChevronLeft size={14} className="rotate-180" />
-                      </div>
-                    </div>
-                    <div 
-                      onClick={() => {
-                        setTempInput(coupleSpace.loveLetterPaperBg || '');
-                        setActiveModal('loveLetterPaperBg');
-                      }}
-                      className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
-                    >
-                      <span className="text-sm text-zinc-700">信纸背景图</span>
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <span className="text-xs">{coupleSpace.loveLetterPaperBg ? '已设置' : '默认'}</span>
-                        <ChevronLeft size={14} className="rotate-180" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Calendar Settings */}
-                <div className="p-4">
-                  <p className="text-xs font-bold text-zinc-400 uppercase mb-3">日历设置</p>
-                  <div 
-                    onClick={() => {
-                      setTempInput(coupleSpace.calendarBg || '');
-                      setActiveModal('calendarBg');
-                    }}
-                    className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
-                  >
-                    <span className="text-sm text-zinc-700">日历背景图</span>
-                    <div className="flex items-center gap-2 text-zinc-500">
-                      <span className="text-xs">{coupleSpace.calendarBg ? '已设置' : '默认'}</span>
-                      <ChevronLeft size={14} className="rotate-180" />
+                    <div className="p-4">
+                      <p className="text-xs font-bold text-zinc-400 uppercase mb-3">日历设置</p>
+                      <div
+                        onClick={() => {
+                          setTempInput(coupleSpace.calendarBg || '');
+                          setActiveModal('calendarBg');
+                        }}
+                        className="flex items-center justify-between active:bg-zinc-50 transition-colors cursor-pointer py-1"
+                      >
+                        <span className="text-sm text-zinc-700">日历背景图</span>
+                        <div className="flex items-center gap-2 text-zinc-500">
+                          <span className="text-xs">{coupleSpace.calendarBg ? '已设置' : '默认'}</span>
+                          <ChevronLeft size={14} className="rotate-180" />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
                   </>
                 )}
-              </div>
-
-              <div className="hidden">
-                <div className="p-4 border-b border-zinc-100">
-                  <h3 className="font-bold text-zinc-800">数据管理</h3>
-                </div>
-                <div 
-                  onClick={() => setActiveModal('dataManagement')}
-                  className="flex items-center justify-between p-4 active:bg-zinc-50 transition-colors cursor-pointer"
-                >
-                  <span className="text-zinc-800">高级数据管理</span>
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <span className="text-xs">导出/清空</span>
-                    <ChevronLeft size={16} className="rotate-180" />
-                  </div>
-                </div>
               </div>
 
               <CoupleSpaceInitiativeSettingsCard
@@ -913,7 +896,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   : 'bg-[#f6b6cd] shadow-[#f6b6cd]/30'
                               }`}
                             >
-                              {manageAction === 'export' ? '导出选中数据' : '确认清空'}
+                              {manageAction === 'export' ? '瀵煎嚭閫変腑鏁版嵁' : '纭娓呯┖'}
                             </button>
                           </div>
                         </div>
@@ -996,7 +979,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                               <option value="default">默认 - 经典信纸</option>
                               <option value="vintage">复古 - 做旧质感</option>
                               <option value="grid">网格 - 清新格纹</option>
-                              <option value="floral">花卉 - 浪漫碎花</option>
+                              <option value="floral">花草 - 浪漫碎花</option>
                             </select>
                             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
                               <ChevronLeft size={16} className="-rotate-90" />
@@ -1255,10 +1238,11 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       try {
         const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
         if (activeConfig.apiKey) {
-          const prompt = `你扮演${partner.name}，${partner.setting}。
-我们在情侣空间里。你发了一条动态："${post.content}"
-我刚刚评论了你的动态："${newComment.content}"
-请你回复我的评论，简短自然。`;
+          const prompt =
+            '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
+            '我们在情侣空间里。你发了一条动态：“' + post.content + '”\n' +
+            '我刚刚评论了你的动态：“' + newComment.content + '”\n' +
+            '请你回复我的评论，简短自然。';
           const responseText = await generateTextWithConfig({
             activeConfig,
             prompt,
@@ -1322,16 +1306,31 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       <p className="text-zinc-800 text-[15px] mb-3 whitespace-pre-wrap">{post.content}</p>
       
       {post.images && post.images.length > 0 && (
-        <div className={`grid gap-2 mb-3 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div
+          className={
+            'grid gap-2 mb-3 ' +
+            (post.images.length === 1
+              ? 'grid-cols-1'
+              : post.images.length === 2
+                ? 'grid-cols-2'
+                : 'grid-cols-3')
+          }
+        >
           {post.images.map((img: string, idx: number) => (
-            <ResolvedImage key={`${post.id}-${idx}`} value={img} className="w-full h-32 object-cover rounded-xl" alt="" />
+            <ResolvedImage key={String(post.id) + '-' + String(idx)} value={img} className="w-full h-32 object-cover rounded-xl" alt="" />
           ))}
         </div>
       )}
 
       <div className="flex items-center justify-between pt-3 border-t border-zinc-50">
         <div className="flex gap-4">
-          <button onClick={handleLike} className={`flex items-center gap-1.5 text-sm transition-colors ${isLiked ? 'text-red-500' : 'text-zinc-500'}`}>
+          <button
+            onClick={handleLike}
+            className={
+              'flex items-center gap-1.5 text-sm transition-colors ' +
+              (isLiked ? 'text-red-500' : 'text-zinc-500')
+            }
+          >
             <Heart size={18} className={isLiked ? 'fill-red-500' : ''} />
             <span>{post.likes.length || '赞'}</span>
           </button>
@@ -1361,7 +1360,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
                 type="text" 
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                placeholder="评论..."
+                placeholder="璇勮..."
                 className="flex-1 bg-white border border-zinc-200 rounded-full px-3 py-1.5 text-sm outline-none focus:border-blue-400"
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && handleComment()}
@@ -1395,10 +1394,11 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const prompt = `你扮演${partner.name}，${partner.setting}。
-我和你正在使用情侣空间的"情侣互记"功能，写下我们想一起做的事情。
-我刚刚写了："${newNote.content}"
-请你也写下一件你想和我一起做的事情，简短一点（20字以内）。`;
+        const prompt =
+          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
+          '我和你正在使用情侣空间的“情侣互记”功能，写下我们想一起做的事情。\n' +
+          '我刚刚写了：“' + newNote.content + '”\n' +
+          '请你也写下一件你想和我一起做的事情，简短一点（20字以内）。';
         const responseText = await generateTextWithConfig({
           activeConfig,
           prompt,
@@ -1443,7 +1443,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
           type="text" 
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="写下想一起做的事..."
+          placeholder="鍐欎笅鎯充竴璧峰仛鐨勪簨..."
           className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-full px-4 py-3 text-sm outline-none shadow-sm"
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
@@ -1455,12 +1455,31 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
         {(coupleSpace.coNotes || []).map((note: CoNote) => {
           const author = note.authorId === 'user' ? user : partner;
           return (
-            <div key={note.id} className={`bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white flex items-start gap-3 transition-opacity ${note.isCompleted ? 'opacity-60' : ''}`}>
-              <button onClick={() => toggleNote(note.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${note.isCompleted ? 'bg-zinc-800 border-zinc-800 text-white' : 'border-zinc-300'}`}>
+            <div
+              key={note.id}
+              className={
+                'bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white flex items-start gap-3 transition-opacity ' +
+                (note.isCompleted ? 'opacity-60' : '')
+              }
+            >
+              <button
+                onClick={() => toggleNote(note.id)}
+                className={
+                  'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ' +
+                  (note.isCompleted ? 'bg-zinc-800 border-zinc-800 text-white' : 'border-zinc-300')
+                }
+              >
                 {note.isCompleted && <Heart size={14} className="fill-white" />}
               </button>
               <div className="flex-1 min-w-0">
-                <p className={`text-[15px] text-zinc-800 ${note.isCompleted ? 'line-through text-zinc-500' : ''}`}>{note.content}</p>
+                <p
+                  className={
+                    'text-[15px] text-zinc-800 ' +
+                    (note.isCompleted ? 'line-through text-zinc-500' : '')
+                  }
+                >
+                  {note.content}
+                </p>
                 <div className="flex items-center gap-2 mt-2">
                   <div className="relative w-4 h-4">
                     <ResolvedImage value={author.avatar} className="w-full h-full rounded-full object-cover" alt={author.name} />
@@ -1533,15 +1552,31 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             <ResolvedImage value={partner.avatar} className="w-full h-full rounded-full object-cover" alt={partner.name} />
             <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
-          <div className="text-xs text-zinc-500">{partner.name}支出</div>
-          <div className="font-bold text-zinc-800">¥{totalPartner.toFixed(2)}</div>
+          <div className="text-xs text-zinc-500">{partner.name}鏀嚭</div>
+          <div className="font-bold text-zinc-800">楼{totalPartner.toFixed(2)}</div>
         </div>
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 space-y-3">
         <div className="flex gap-2">
-          <button onClick={() => setPayer('user')} className={`flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ${payer === 'user' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500'}`}>我付的</button>
-          <button onClick={() => setPayer('partner')} className={`flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ${payer === 'partner' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500'}`}>{partner.name}付的</button>
+          <button
+            onClick={() => setPayer('user')}
+            className={
+              'flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ' +
+              (payer === 'user' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500')
+            }
+          >
+            我付的
+          </button>
+          <button
+            onClick={() => setPayer('partner')}
+            className={
+              'flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ' +
+              (payer === 'partner' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500')
+            }
+          >
+            {partner.name}付的
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
           <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="金额" className="flex-1 min-w-[80px] bg-zinc-50 border border-zinc-200 rounded-2xl px-3 py-2.5 text-sm outline-none focus:border-zinc-800" />
@@ -1556,7 +1591,12 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
           return (
             <div key={entry.id} className="bg-white/60 backdrop-blur-sm rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${isUser ? 'bg-zinc-400' : 'bg-zinc-800'}`}>
+                <div
+                  className={
+                    'w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ' +
+                    (isUser ? 'bg-zinc-400' : 'bg-zinc-800')
+                  }
+                >
                   {isUser ? '我' : 'TA'}
                 </div>
                 <div>
@@ -1608,10 +1648,11 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const prompt = `你扮演${partner.name}，${partner.setting}。
-我和你正在使用情侣空间的"情书"功能。
-我刚刚给你写了一封情书："${newLetter.content}"
-请你回复我的情书，可以是对这封情书的评论，也可以是写给我的回信。充满爱意。`;
+        const prompt =
+          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
+          '我和你正在使用情侣空间的“情书”功能。\n' +
+          '我刚刚给你写了一封情书：“' + newLetter.content + '”\n' +
+          '请你回复我的情书，可以是对这封情书的评论，也可以是写给我的回信，充满爱意。';
         const responseText = await generateTextWithConfig({
           activeConfig,
           prompt,
@@ -1664,25 +1705,25 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
   };
 
   const paperStyle = coupleSpace.loveLetterPaperTexture === 'vintage' ? {
-    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? "url('" + resolvedLoveLetterPaperBgUrl + "')" : 'none',
     bgColor: 'bg-[#f4ecd8]',
     overlay: 'https://www.transparenttextures.com/patterns/old-paper.png',
     overlayOpacity: 'opacity-[0.08]',
     lineColor: '#d4c4a8'
   } : coupleSpace.loveLetterPaperTexture === 'grid' ? {
-    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? "url('" + resolvedLoveLetterPaperBgUrl + "')" : 'none',
     bgColor: 'bg-white',
     overlay: 'https://www.transparenttextures.com/patterns/graphy.png',
     overlayOpacity: 'opacity-[0.05]',
     lineColor: '#e5e7eb'
   } : coupleSpace.loveLetterPaperTexture === 'floral' ? {
-    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? "url('" + resolvedLoveLetterPaperBgUrl + "')" : 'none',
     bgColor: 'bg-[#fff9fb]',
     overlay: 'https://www.transparenttextures.com/patterns/flowers.png',
     overlayOpacity: 'opacity-[0.1]',
     lineColor: '#fbcfe8'
   } : {
-    bg: resolvedLoveLetterPaperBgUrl ? `url('${resolvedLoveLetterPaperBgUrl}')` : 'none',
+    bg: resolvedLoveLetterPaperBgUrl ? "url('" + resolvedLoveLetterPaperBgUrl + "')" : 'none',
     bgColor: 'bg-[#fdf7f9]',
     overlay: 'https://www.transparenttextures.com/patterns/paper-fibers.png',
     overlayOpacity: 'opacity-[0.03]',
@@ -1692,11 +1733,14 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
   if (writing) {
     return (
       <div className="px-4 flex-1 flex flex-col w-full relative">
-        <div className={`flex-1 ${paperStyle.bgColor} rounded-2xl p-8 shadow-xl border border-[#f5e6d3] relative overflow-hidden`} style={{ backgroundImage: paperStyle.bg, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div
+          className={'flex-1 ' + paperStyle.bgColor + ' rounded-2xl p-8 shadow-xl border border-[#f5e6d3] relative overflow-hidden'}
+          style={{ backgroundImage: paperStyle.bg, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        >
           <textarea 
             value={content}
             onChange={e => setContent(e.target.value)}
-            placeholder="亲爱的，我想对你说..."
+            placeholder="浜茬埍鐨勶紝鎴戞兂瀵逛綘璇?.."
             className="w-full h-full bg-transparent text-zinc-800 outline-none resize-none font-serif text-lg relative z-10"
             autoFocus
           />
@@ -1758,7 +1802,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
             <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <BookOpen size={32} className="text-rose-200" />
             </div>
-            <p className="text-zinc-400 font-medium">还没有情书哦，给TA写一封吧！</p>
+            <p className="text-zinc-400 font-medium">还没有情书哦，给 TA 写一封吧！</p>
           </div>
         )}
       </div>
@@ -1777,7 +1821,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
               initial={{ y: 100, opacity: 0, scale: 0.9 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 100, opacity: 0, scale: 0.9 }}
-              className={`w-full max-w-[340px] h-[70vh] ${paperStyle.bgColor} rounded-lg shadow-2xl border border-[#f5e6d3] overflow-hidden flex flex-col relative`}
+              className={'w-full max-w-[340px] h-[70vh] ' + paperStyle.bgColor + ' rounded-lg shadow-2xl border border-[#f5e6d3] overflow-hidden flex flex-col relative'}
               style={{ backgroundImage: paperStyle.bg, backgroundSize: 'cover', backgroundPosition: 'center' }}
               onClick={e => e.stopPropagation()}
             >
@@ -1829,7 +1873,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
                             type="text" 
                             value={commentText}
                             onChange={e => setCommentText(e.target.value)}
-                            placeholder="写下你的回复..."
+                            placeholder="鍐欎笅浣犵殑鍥炲..."
                             className="flex-1 bg-white border border-[#f5e6d3] rounded-full px-4 py-2.5 text-sm outline-none focus:border-zinc-800 shadow-inner"
                             autoFocus
                             onKeyDown={e => e.key === 'Enter' && handleComment(letter.id)}
@@ -1843,12 +1887,12 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
                           <div className="flex gap-6">
                             <button onClick={() => setCommentingOn(letter.id)} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-blue-500 font-bold transition-colors">
                               <MessageCircle size={20} />
-                              <span>评论</span>
+                              <span>璇勮</span>
                             </button>
                             {letter.authorId === 'user' && (
                               <button onClick={() => deleteLetter(letter.id)} className="flex items-center gap-2 text-sm text-zinc-400 hover:text-red-500 font-bold transition-colors">
                                 <Trash2 size={20} />
-                                <span>删除</span>
+                                <span>鍒犻櫎</span>
                               </button>
                             )}
                           </div>
@@ -1960,21 +2004,29 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
           
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((day, idx) => {
-              if (day === null) return <div key={`empty-${idx}`} className="aspect-square" />;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              if (day === null) return <div key={'empty-' + String(idx)} className="aspect-square" />;
+              const dateStr = String(year) + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
               const hasEvents = eventsByDate[dateStr];
               const isToday = new Date().toISOString().split('T')[0] === dateStr;
               
               return (
                 <div 
                   key={dateStr} 
-                  className={`aspect-square flex flex-col items-center justify-center rounded-xl text-sm relative transition-all ${isToday ? 'bg-zinc-800 text-white shadow-md' : 'hover:bg-zinc-50 text-zinc-700'}`}
+                  className={
+                    'aspect-square flex flex-col items-center justify-center rounded-xl text-sm relative transition-all ' +
+                    (isToday ? 'bg-zinc-800 text-white shadow-md' : 'hover:bg-zinc-50 text-zinc-700')
+                  }
                 >
-                  <span className="font-medium">{day}</span>
-                  {hasEvents && (
-                    <div className={`w-1 h-1 rounded-full absolute bottom-1.5 ${isToday ? 'bg-white' : 'bg-zinc-800'}`} />
-                  )}
-                </div>
+                    <span className="font-medium">{day}</span>
+                    {hasEvents && (
+                      <div
+                        className={
+                          'w-1 h-1 rounded-full absolute bottom-1.5 ' +
+                          (isToday ? 'bg-white' : 'bg-zinc-800')
+                        }
+                      />
+                    )}
+                  </div>
               );
             })}
           </div>
@@ -1982,7 +2034,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
 
         {/* Event List */}
         <div className="space-y-4 pb-20 no-scrollbar">
-          <h4 className="font-bold text-zinc-800 text-sm px-1">特别记忆</h4>
+          <h4 className="font-bold text-zinc-800 text-sm px-1">鐗瑰埆璁板繂</h4>
           {Object.keys(eventsByDate).sort().reverse().map(d => (
             <div key={d} className="relative pl-4 border-l-2 border-blue-200">
               <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-zinc-800" />
@@ -2005,7 +2057,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Calendar size={28} className="text-blue-200" />
               </div>
-              <p className="text-zinc-400 text-sm">还没有特别的记忆哦，快来记录吧！</p>
+              <p className="text-zinc-400 text-sm">杩樻病鏈夌壒鍒殑璁板繂鍝︼紝蹇潵璁板綍鍚э紒</p>
             </div>
           )}
         </div>
@@ -2029,7 +2081,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-zinc-800">添加特别记忆</h3>
+                <h3 className="text-lg font-bold text-zinc-800">娣诲姞鐗瑰埆璁板繂</h3>
                 <button onClick={() => setShowAddModal(false)} className="p-1.5 bg-zinc-100 rounded-full text-zinc-500">
                   <X size={18} />
                 </button>
@@ -2037,18 +2089,18 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">日期</label>
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鏃ユ湡</label>
                   <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">标题</label>
-                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="发生了什么特别的事？" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鏍囬</label>
+                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="鍙戠敓浜嗕粈涔堢壒鍒殑浜嬶紵" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">描述</label>
-                  <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="详细描述 (可选)..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500 resize-none h-24" />
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鎻忚堪</label>
+                  <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="璇︾粏鎻忚堪 (鍙€?..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500 resize-none h-24" />
                 </div>
-                <button onClick={handleAdd} className="w-full bg-rose-300 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-rose-200/50 active:scale-95 transition-transform mt-2">记录</button>
+                <button onClick={handleAdd} className="w-full bg-rose-300 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-rose-200/50 active:scale-95 transition-transform mt-2">璁板綍</button>
               </div>
             </motion.div>
           </motion.div>
@@ -2088,9 +2140,10 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const prompt = `你扮演${partner.name}，${partner.setting}。
-我们在情侣空间里。我刚刚发了一条动态："${newPost.content}"
-请你给我的动态写一条评论，简短自然。`;
+        const prompt =
+          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
+          '我们在情侣空间里。我刚刚发了一条动态：“' + newPost.content + '”\n' +
+          '请你给我的动态写一条评论，简短自然。';
         const responseText = await generateTextWithConfig({
           activeConfig,
           prompt,
@@ -2181,7 +2234,7 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
           <textarea 
             value={urlInput}
             onChange={e => setUrlInput(e.target.value)}
-            placeholder="支持输入图片链接、Markdown图片格式、HTML img标签"
+            placeholder="支持输入图片链接、Markdown 图片格式或 HTML img 标签"
             className="w-full h-24 bg-zinc-50 rounded-xl p-3 text-sm outline-none border border-zinc-100 mb-3 resize-none"
           />
           <button 
@@ -2232,7 +2285,7 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 space-y-3 shrink-0">
         <h3 className="font-bold text-zinc-800 text-sm">添加纪念日</h3>
-        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="纪念日名称 (如：TA的生日)" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500" />
+        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="纪念日名称（如：TA 的生日）" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500" />
         <div className="flex gap-2">
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500" />
           <button onClick={handleAdd} className="bg-red-500 text-white px-4 rounded-xl font-bold shadow-sm active:scale-95">添加</button>
@@ -2291,9 +2344,10 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
     try {
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (activeConfig.apiKey) {
-        const prompt = `你扮演${partner.name}，${partner.setting}。
-我们在情侣空间的留言板里。我刚刚给你留言："${newMsg.content}"
-请你也给我留一条言作为回复，简短温馨。`;
+        const prompt =
+          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
+          '我们在情侣空间的留言板里。我刚刚给你留言：“' + newMsg.content + '”\n' +
+          '请你也给我留一条留言作为回复，简短温馨。';
         const responseText = await generateTextWithConfig({
           activeConfig,
           prompt,
@@ -2330,11 +2384,11 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
         <textarea 
           value={content}
           onChange={e => setContent(e.target.value)}
-          placeholder="主人寄语..."
+          placeholder="涓讳汉瀵勮..."
           className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-sm outline-none focus:border-purple-500 resize-none h-20 mb-3"
         />
         <div className="flex justify-end">
-          <button onClick={handleLeaveMessage} className="bg-rose-300 text-white px-6 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">留言</button>
+          <button onClick={handleLeaveMessage} className="bg-rose-300 text-white px-6 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">鐣欒█</button>
         </div>
       </div>
 
@@ -2360,7 +2414,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
                 <p className="text-zinc-700 text-sm whitespace-pre-wrap">{msg.content}</p>
                 {msg.authorId === 'user' && (
                   <div className="mt-2 text-right">
-                    <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-red-500">删除</button>
+                    <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-red-500">鍒犻櫎</button>
                   </div>
                 )}
               </div>
@@ -2368,7 +2422,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
           );
         })}
         {(!coupleSpace.messageBoard || coupleSpace.messageBoard.length === 0) && (
-          <div className="text-center text-zinc-400 mt-10">留言板空空如也，快来踩一踩！</div>
+          <div className="text-center text-zinc-400 mt-10">留言板空空如也，快来踩一踩吧！</div>
         )}
       </div>
     </motion.div>
