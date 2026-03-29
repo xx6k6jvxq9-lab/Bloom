@@ -44,7 +44,7 @@ function SelectRow({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="appearance-none rounded-full border border-zinc-200 bg-white px-4 py-2 pr-9 text-sm text-zinc-700 shadow-sm outline-none"
+          className="appearance-none rounded-full border border-[#f2cddd] bg-[#fff8fb] px-4 py-2 pr-9 text-sm text-zinc-700 shadow-sm outline-none"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -54,7 +54,7 @@ function SelectRow({
         </select>
         <ChevronLeft
           size={14}
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 -rotate-90 text-zinc-500"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 -rotate-90 text-[#d99ab5]"
         />
       </div>
     </div>
@@ -82,14 +82,14 @@ export function CoupleSpaceInitiativeSettingsCard({
         </div>
         <ChevronLeft
           size={18}
-          className={`text-zinc-500 transition-transform ${isOpen ? '-rotate-90' : 'rotate-180'}`}
+          className={`transition-transform ${isOpen ? '-rotate-90' : 'rotate-180'} text-[#d99ab5]`}
         />
       </button>
 
       {isOpen && (
-        <div className="border-t border-zinc-100">
-          <div className="p-4 border-b border-zinc-100">
-            <p className="mb-3 text-xs font-bold uppercase text-zinc-400">发布类</p>
+        <div className="border-t border-[#f7d7e3]">
+          <div className="p-4 border-b border-[#f7d7e3]">
+            <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">发布类</p>
             <div className="space-y-3">
               <SelectRow
                 label="情侣日常"
@@ -145,8 +145,8 @@ export function CoupleSpaceInitiativeSettingsCard({
             </div>
           </div>
 
-          <div className="p-4 border-b border-zinc-100">
-            <p className="mb-3 text-xs font-bold uppercase text-zinc-400">互记类</p>
+          <div className="p-4 border-b border-[#f7d7e3]">
+            <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">互记类</p>
             <label className="mb-3 flex items-center justify-between gap-3 py-1">
               <span className="text-sm text-zinc-700">主动补记互记</span>
               <input
@@ -164,7 +164,7 @@ export function CoupleSpaceInitiativeSettingsCard({
                     },
                   })
                 }
-                className="h-4 w-4 rounded border-zinc-300"
+                className="h-4 w-4 rounded border-[#f2cddd] accent-[#f6b6cd]"
               />
             </label>
             <SelectRow
@@ -187,8 +187,8 @@ export function CoupleSpaceInitiativeSettingsCard({
             />
           </div>
 
-          <div className="p-4 border-b border-zinc-100">
-            <p className="mb-3 text-xs font-bold uppercase text-zinc-400">记录类</p>
+          <div className="p-4 border-b border-[#f7d7e3]">
+            <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">记录类</p>
             <label className="flex items-center justify-between gap-3 py-1">
               <div>
                 <span className="text-sm text-zinc-700">账本待确认记录</span>
@@ -211,13 +211,13 @@ export function CoupleSpaceInitiativeSettingsCard({
                     },
                   })
                 }
-                className="h-4 w-4 rounded border-zinc-300"
+                className="h-4 w-4 rounded border-[#f2cddd] accent-[#f6b6cd]"
               />
             </label>
           </div>
 
           <div className="p-4">
-            <p className="mb-3 text-xs font-bold uppercase text-zinc-400">互动类</p>
+            <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">互动类</p>
             <div className="space-y-3">
               <SelectRow
                 label="情书回复"
