@@ -9,6 +9,10 @@ import { usePersistentFieldActions } from '../../../features/persistence/usePers
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
+import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/coupleSpaceTriggerPolicy';
+import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/runCoupleSpaceInitiativeManualCheck';
+import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
+import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -108,6 +112,17 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [manageAction, setManageAction] = useState<'export' | 'delete'>('export');
   const [manageDataTypes, setManageDataTypes] = useState<string[]>(['posts', 'conotes', 'ledger', 'loveletters']);
   const [manageTargets, setManageTargets] = useState<string[]>(['user', 'partner']);
+  const [isModuleCustomizationOpen, setIsModuleCustomizationOpen] = useState(false);
+  const [isInitiativeSettingsOpen, setIsInitiativeSettingsOpen] = useState(false);
+  const [isInitiativeCheckOpen, setIsInitiativeCheckOpen] = useState(false);
+  const [initiativeCheckBusy, setInitiativeCheckBusy] = useState(false);
+  const [initiativeCheckStatus, setInitiativeCheckStatus] = useState<string | null>(null);
+  const [initiativeArtifactPreview, setInitiativeArtifactPreview] = useState<{
+    kind: 'draft' | 'confirmation';
+    title: string;
+    content: string;
+    note?: string;
+  } | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -144,6 +159,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   }, [activeModal]);
 
   const addedPartnerIds = coupleSpace.addedPartnerIds || (coupleSpace.partnerId ? [coupleSpace.partnerId] : []);
+  const initiativeSettings = normalizeCoupleSpaceInitiativeSettings(coupleSpace.initiativeSettings);
   const { getCharacterById, getCharactersByIds } = createCharacterDirectory({ characters: appData.characters });
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
@@ -189,6 +205,36 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         }
       };
     });
+  };
+
+  const handleUpdateInitiativeSettings = (next: typeof initiativeSettings) => {
+    handleUpdateCoupleSpace({ initiativeSettings: next });
+  };
+
+  const handleManualInitiativeCheck = async () => {
+    if (!partner || initiativeCheckBusy) return;
+
+    setInitiativeCheckBusy(true);
+    try {
+      const result = await runCoupleSpaceInitiativeManualCheck({
+        user,
+        partner,
+        coupleSpace,
+        chatHistory: appData.chatHistory,
+        appSettings: settings,
+        now: Date.now(),
+      });
+
+      handleUpdateCoupleSpace(result.nextCoupleSpace);
+      setInitiativeCheckStatus(result.statusText);
+      setInitiativeArtifactPreview(result.artifactPreview);
+    } catch (error) {
+      console.error('Manual initiative check failed:', error);
+      setInitiativeCheckStatus('主动内容检查失败，请查看控制台日志。');
+      setInitiativeArtifactPreview(null);
+    } finally {
+      setInitiativeCheckBusy(false);
+    }
   };
 
   if (!partner && activeView === 'main') {
@@ -445,7 +491,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
+              <div className="hidden">
                 <div 
                   onClick={() => setActiveModal('date')}
                   className="flex items-center justify-between p-4 border-b border-zinc-100 active:bg-zinc-50 transition-colors cursor-pointer"
@@ -500,11 +546,24 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-4 border-b border-zinc-100">
+              <div className="hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsModuleCustomizationOpen((prev) => !prev)}
+                  className="w-full p-4 border-b border-zinc-100 flex items-center justify-between text-left active:bg-zinc-50 transition-colors"
+                >
+                  <h3 className="font-bold text-zinc-800">模块自定义</h3>
+                  <ChevronLeft
+                    size={16}
+                    className={`text-zinc-400 transition-transform ${isModuleCustomizationOpen ? '-rotate-90' : 'rotate-180'}`}
+                  />
+                </button>
+                <div className={isModuleCustomizationOpen ? "hidden" : "hidden"}>
                   <h3 className="font-bold text-zinc-800">模块自定义</h3>
                 </div>
                 
+                {isModuleCustomizationOpen && (
+                  <>
                 {/* Love Letter Settings */}
                 <div className="p-4 border-b border-zinc-100">
                   <p className="text-xs font-bold text-zinc-400 uppercase mb-3">情书设置</p>
@@ -585,6 +644,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                     </div>
                   </div>
                 </div>
+                  </>
+                )}
               </div>
 
               <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
@@ -592,6 +653,38 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <h3 className="font-bold text-zinc-800">数据管理</h3>
                 </div>
                 <div 
+                  onClick={() => setActiveModal('dataManagement')}
+                  className="flex items-center justify-between p-4 active:bg-zinc-50 transition-colors cursor-pointer"
+                >
+                  <span className="text-zinc-800">高级数据管理</span>
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <span className="text-xs">导出/清空</span>
+                    <ChevronLeft size={16} className="rotate-180" />
+                  </div>
+                </div>
+              </div>
+
+              <CoupleSpaceInitiativeSettingsCard
+                isOpen={isInitiativeSettingsOpen}
+                onToggle={() => setIsInitiativeSettingsOpen((prev) => !prev)}
+                settings={initiativeSettings}
+                onChange={handleUpdateInitiativeSettings}
+              />
+
+              <CoupleSpaceInitiativeCheckCard
+                isOpen={isInitiativeCheckOpen}
+                onToggle={() => setIsInitiativeCheckOpen((prev) => !prev)}
+                busy={initiativeCheckBusy}
+                statusText={initiativeCheckStatus}
+                artifactPreview={initiativeArtifactPreview}
+                onCheck={handleManualInitiativeCheck}
+              />
+
+              <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-zinc-100">
+                  <h3 className="font-bold text-zinc-800">数据管理</h3>
+                </div>
+                <div
                   onClick={() => setActiveModal('dataManagement')}
                   className="flex items-center justify-between p-4 active:bg-zinc-50 transition-colors cursor-pointer"
                 >
