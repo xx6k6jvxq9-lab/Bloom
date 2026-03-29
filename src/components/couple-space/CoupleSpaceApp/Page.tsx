@@ -759,13 +759,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                           <div className="flex bg-zinc-100 p-1 rounded-xl">
                             <button 
                               onClick={() => setManageAction('export')}
-                              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manageAction === 'export' ? 'bg-white text-pink-500 shadow-sm' : 'text-zinc-500'}`}
+                              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manageAction === 'export' ? 'bg-white text-[#f6b6cd] shadow-sm' : 'text-zinc-500'}`}
                             >
                               导出数据
                             </button>
                             <button 
                               onClick={() => setManageAction('delete')}
-                              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manageAction === 'delete' ? 'bg-white text-red-500 shadow-sm' : 'text-zinc-500'}`}
+                              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manageAction === 'delete' ? 'bg-white text-[#f6b6cd] shadow-sm' : 'text-zinc-500'}`}
                             >
                               清空数据
                             </button>
@@ -792,12 +792,12 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   }}
                                   className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex items-center justify-between ${
                                     manageDataTypes.includes(type.id) 
-                                      ? 'bg-pink-50 border-pink-200 text-pink-600' 
+                                      ? 'bg-[#fff7fb] border-[#f2cddd] text-[#d99ab5]' 
                                       : 'bg-white border-zinc-200 text-zinc-600'
                                   }`}
                                 >
                                   {type.label}
-                                  {manageDataTypes.includes(type.id) && <div className="w-2 h-2 rounded-full bg-zinc-800" />}
+                                  {manageDataTypes.includes(type.id) && <div className="w-2 h-2 rounded-full bg-[#f6b6cd]" />}
                                 </button>
                               ))}
                             </div>
@@ -822,12 +822,12 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   }}
                                   className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition-all flex items-center justify-center gap-2 ${
                                     manageTargets.includes(target.id) 
-                                      ? 'bg-pink-50 border-pink-200 text-pink-600' 
+                                      ? 'bg-[#fff7fb] border-[#f2cddd] text-[#d99ab5]' 
                                       : 'bg-white border-zinc-200 text-zinc-600'
                                   }`}
                                 >
                                   {target.label}
-                                  {manageTargets.includes(target.id) && <div className="w-2 h-2 rounded-full bg-zinc-800" />}
+                                  {manageTargets.includes(target.id) && <div className="w-2 h-2 rounded-full bg-[#f6b6cd]" />}
                                 </button>
                               ))}
                             </div>
@@ -909,8 +909,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                               }}
                               className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 ${
                                 manageAction === 'delete' 
-                                  ? 'bg-red-500 shadow-red-500/30' 
-                                  : 'bg-zinc-800 shadow-zinc-800/20'
+                                  ? 'bg-[#f6b6cd] shadow-[#f6b6cd]/30' 
+                                  : 'bg-[#f6b6cd] shadow-[#f6b6cd]/30'
                               }`}
                             >
                               {manageAction === 'export' ? '导出选中数据' : '确认清空'}
@@ -951,7 +951,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                 setActiveModal(null);
                                 setPartnerToDelete(null);
                               }} 
-                              className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-bold shadow-lg shadow-red-500/30 active:scale-95 transition-transform"
+                              className="flex-1 bg-[#f6b6cd] text-white py-2.5 rounded-xl font-bold shadow-lg shadow-[#f6b6cd]/30 active:scale-95 transition-transform"
                             >
                               删除
                             </button>
