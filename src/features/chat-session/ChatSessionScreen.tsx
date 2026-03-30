@@ -217,6 +217,7 @@ export function ChatSessionScreen({
     sendImageMessage,
     sendStickerMessage,
     sendLocationMessage,
+    sendCoupleSpaceInvitation,
     sendInnerVoiceProbe,
     sendSpeechTranscript,
     finalizeVoiceCall,
@@ -888,6 +889,45 @@ export function ChatSessionScreen({
                   ) : (
                     <>
                       {(() => {
+                        if (msg.text.trim() === '[COUPLE_SPACE_INVITE]') {
+                          return (
+                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div
+                                onClick={(e) => {
+                                  if (multiSelectMode) {
+                                    handleMessageClick(e, i);
+                                  }
+                                }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  handleMessageClick(e, i);
+                                }}
+                                className="w-64 rounded-2xl overflow-hidden shadow-sm border border-pink-100 bg-gradient-to-br from-pink-50 via-white to-rose-50"
+                              >
+                                <div className="p-4 flex items-start gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-500 flex items-center justify-center shrink-0">
+                                    <Heart size={20} fill="currentColor" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[13px] font-bold text-zinc-900">情侣空间邀请</div>
+                                    <p className="mt-1 text-[12px] leading-5 text-zinc-600">
+                                      你向 {character.name} 发出了建立情侣空间的邀请。
+                                    </p>
+                                    <div className="mt-3 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-medium text-pink-600">
+                                      等待回应
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              {character.showTime && (
+                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
+
                         const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
                         const gameCardMatch = msg.text.match(gameCardRegex);
                         
@@ -1544,6 +1584,19 @@ export function ChatSessionScreen({
                       <Coffee size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">线下约会</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowFunPanel(false);
+                      sendCoupleSpaceInvitation();
+                    }}
+                    className="flex flex-col items-center gap-2"
+                  >
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-pink-500 active:scale-95 transition-transform">
+                      <Heart size={28} fill="currentColor" />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">情侣空间</span>
                   </button>
 
                   <button 

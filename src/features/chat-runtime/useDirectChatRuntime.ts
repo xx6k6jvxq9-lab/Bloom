@@ -124,6 +124,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   sendImageMessage: (base64String: string) => void;
   sendStickerMessage: () => void;
   sendLocationMessage: (text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => void;
+  sendCoupleSpaceInvitation: () => void;
   sendInnerVoiceProbe: () => void;
   sendSpeechTranscript: (transcript: string) => void;
   finalizeVoiceCall: (params: {
@@ -733,6 +734,15 @@ export function useDirectChatRuntime({
     handleSendRef.current(text, locationData);
   }, []);
 
+  const sendCoupleSpaceInvitation = useCallback(() => {
+    const userMsg: ChatMessage = {
+      role: 'user',
+      text: '[COUPLE_SPACE_INVITE]',
+      timestamp: Date.now(),
+    };
+    setHistory([...history, userMsg]);
+  }, [history, setHistory]);
+
   const sendInnerVoiceProbe = useCallback(() => {
     const userMsg: ChatMessage = {
       role: 'user',
@@ -957,6 +967,7 @@ export function useDirectChatRuntime({
     sendImageMessage,
     sendStickerMessage,
     sendLocationMessage,
+    sendCoupleSpaceInvitation,
     sendInnerVoiceProbe,
     sendSpeechTranscript,
     finalizeVoiceCall,
