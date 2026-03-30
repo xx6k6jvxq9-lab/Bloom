@@ -1552,8 +1552,8 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             <ResolvedImage value={partner.avatar} className="w-full h-full rounded-full object-cover" alt={partner.name} />
             <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
-          <div className="text-xs text-zinc-500">{partner.name}鏀嚭</div>
-          <div className="font-bold text-zinc-800">楼{totalPartner.toFixed(2)}</div>
+          <div className="text-xs text-zinc-500">{partner.name}支出</div>
+          <div className="font-bold text-zinc-800">¥{totalPartner.toFixed(2)}</div>
         </div>
       </div>
 
@@ -1563,7 +1563,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             onClick={() => setPayer('user')}
             className={
               'flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ' +
-              (payer === 'user' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500')
+              (payer === 'user' ? 'bg-[#f6b6cd] text-white shadow-md shadow-[#f6b6cd]/30' : 'bg-zinc-100 text-zinc-500')
             }
           >
             我付的
@@ -1572,16 +1572,16 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             onClick={() => setPayer('partner')}
             className={
               'flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all ' +
-              (payer === 'partner' ? 'bg-zinc-800 text-white shadow-md shadow-zinc-800/20' : 'bg-zinc-100 text-zinc-500')
+              (payer === 'partner' ? 'bg-[#f6b6cd] text-white shadow-md shadow-[#f6b6cd]/30' : 'bg-zinc-100 text-zinc-500')
             }
           >
             {partner.name}付的
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="金额" className="flex-1 min-w-[80px] bg-zinc-50 border border-zinc-200 rounded-2xl px-3 py-2.5 text-sm outline-none focus:border-zinc-800" />
-          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="用途..." className="flex-[2] min-w-[120px] bg-zinc-50 border border-zinc-200 rounded-2xl px-3 py-2.5 text-sm outline-none focus:border-zinc-800" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
-          <button onClick={handleAdd} className="bg-zinc-800 text-white px-5 py-2.5 rounded-2xl font-bold shadow-md shadow-zinc-800/20 active:scale-95 transition-transform">记</button>
+          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="金额" className="flex-1 min-w-[80px] bg-zinc-50 border border-zinc-200 rounded-2xl px-3 py-2.5 text-sm outline-none focus:border-[#f6b6cd]" />
+          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="用途..." className="flex-[2] min-w-[120px] bg-zinc-50 border border-zinc-200 rounded-2xl px-3 py-2.5 text-sm outline-none focus:border-[#f6b6cd]" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
+          <button onClick={handleAdd} className="bg-[#f6b6cd] text-white px-5 py-2.5 rounded-2xl font-bold shadow-md shadow-[#f6b6cd]/30 active:scale-95 transition-transform">记</button>
         </div>
       </div>
 
@@ -1594,7 +1594,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
                 <div
                   className={
                     'w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ' +
-                    (isUser ? 'bg-zinc-400' : 'bg-zinc-800')
+                    (isUser ? 'bg-[#f6b6cd]' : 'bg-[#efadc7]')
                   }
                 >
                   {isUser ? '我' : 'TA'}
@@ -1605,8 +1605,8 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-bold text-zinc-800">¥{entry.amount.toFixed(2)}</span>
-                <button onClick={() => deleteEntry(entry.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={14} /></button>
+                <span className="font-bold text-[#d98cab]">¥{entry.amount.toFixed(2)}</span>
+                <button onClick={() => deleteEntry(entry.id)} className="text-zinc-300 hover:text-[#f6b6cd]"><Trash2 size={14} /></button>
               </div>
             </div>
           );
