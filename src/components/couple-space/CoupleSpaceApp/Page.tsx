@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -8,10 +8,16 @@ import { saveUploadedDataUrl } from '../../../features/persistence/persistentAss
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
-import { generateCoupleDailyCommentReply } from '../../../services/ai/coupleSpacePromptService';
+import {
+  generateCoupleDailyComment,
+  generateCoupleDailyCommentReply,
+  generateCoupleLoveLetterReply,
+  generateCoupleMessageBoardReply,
+} from '../../../services/ai/couple-space/prompt/coupleSpacePromptService';
+import { createCoupleSpacePromptCommonInput } from '../../../services/ai/couple-space/context/createCoupleSpacePromptCommonInput';
 import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
-import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/coupleSpaceTriggerPolicy';
-import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/runCoupleSpaceInitiativeManualCheck';
+import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
@@ -73,6 +79,14 @@ function getImageModalFileName(activeModal: ImageModalType): string {
   if (activeModal === 'loveLetterEnvelopeBg') return 'couple-space-envelope.jpg';
   if (activeModal === 'calendarBg') return 'couple-space-calendar.jpg';
   return 'couple-space-paper.jpg';
+}
+
+function getCoupleSpaceInteractionSettings(coupleSpace: any) {
+  return normalizeCoupleSpaceInitiativeSettings(coupleSpace?.initiativeSettings).interaction;
+}
+
+function getCoupleSpaceMemoSettings(coupleSpace: any) {
+  return normalizeCoupleSpaceInitiativeSettings(coupleSpace?.initiativeSettings).memo;
 }
 
 function ResolvedImage({
@@ -322,7 +336,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 : 'bg-zinc-200 text-white cursor-not-allowed'
             }`}
           >
-            寮€鍚?
+            开启
           </button>
         </div>
       </div>
@@ -902,7 +916,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                   : 'bg-[#f6b6cd] shadow-[#f6b6cd]/30'
                               }`}
                             >
-                              {manageAction === 'export' ? '瀵煎嚭閫変腑鏁版嵁' : '纭娓呯┖'}
+                              {manageAction === 'export' ? '导出选中数据' : '确认清空'}
                             </button>
                           </div>
                         </div>
@@ -1157,6 +1171,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               user={user}
               partner={partner}
               settings={settings}
+              masks={appData.masks || []}
+              worldBooks={appData.worldBooks || []}
               onOpenLetter={(letterId: string) => {
                 setSelectedLoveLetterId(letterId);
                 setActiveView('loveletter-detail');
@@ -1287,7 +1303,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
     setShowCommentInput(false);
 
     // If user commented on AI's post, AI might reply
-    if (post.authorId === partner.id) {
+    if (post.authorId === partner.id && getCoupleSpaceInteractionSettings(coupleSpace).replyDailyComment.enabled) {
       try {
         const responseText = await generateCoupleDailyCommentReply(settings, {
           mode: 'passive',
@@ -1443,6 +1459,17 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
 
 function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any) {
   const [text, setText] = useState('');
+  const allNotes: CoNote[] = coupleSpace.coNotes || [];
+  const noteMap = new Map(allNotes.map((note) => [note.id, note]));
+  const topLevelNotes = allNotes.filter((note) => !note.replyToNoteId || !noteMap.has(note.replyToNoteId));
+  const repliesByNoteId = allNotes.reduce((acc: Record<string, CoNote[]>, note: CoNote) => {
+    if (!note.replyToNoteId) return acc;
+    if (!acc[note.replyToNoteId]) {
+      acc[note.replyToNoteId] = [];
+    }
+    acc[note.replyToNoteId].push(note);
+    return acc;
+  }, {});
 
   const handleAdd = async () => {
     if (!text.trim()) return;
@@ -1451,21 +1478,19 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
       authorId: 'user',
       content: text,
       timestamp: Date.now(),
-      isCompleted: false
+      isCompleted: false,
     };
-    const updatedNotes = [newNote, ...(coupleSpace.coNotes || [])];
-    updateSpace({ coNotes: updatedNotes });
+    updateSpace({ coNotes: [newNote, ...allNotes] });
     setText('');
 
-    // AI Partner might add one too
     try {
+      const memoSettings = getCoupleSpaceMemoSettings(coupleSpace);
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
-      if (activeConfig.apiKey) {
-        const prompt =
-          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
-          '我和你正在使用情侣空间的“情侣互记”功能，写下我们想一起做的事情。\n' +
-          '我刚刚写了：“' + newNote.content + '”\n' +
-          '请你也写下一件你想和我一起做的事情，简短一点（20字以内）。';
+      if (memoSettings.writeCoNote.enabled && activeConfig.apiKey) {
+        const prompt = `你扮演 ${partner.name}，${partner.setting}。
+我和你正在使用情侣空间的“情侣互记”功能，记录想一起做的事情。
+我刚刚写了一条互记：“${newNote.content}”
+请你像在这条互记下面顺手回复我一样，接一句回应，简短自然，20字以内。`;
         const responseText = await generateTextWithConfig({
           activeConfig,
           prompt,
@@ -1473,15 +1498,18 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
         });
         if (responseText) {
           setTimeout(() => {
-            const aiNote: CoNote = {
+            const aiReply: CoNote = {
               id: Date.now().toString() + '_ai',
               authorId: partner.id,
               content: responseText,
               timestamp: Date.now(),
-              isCompleted: false
+              isCompleted: false,
+              replyToNoteId: newNote.id,
+              replyToAuthorId: newNote.authorId,
+              replyToAuthorName: user.name,
             };
-            updateSpace((prev: any) => ({ 
-              coNotes: [aiNote, ...(prev.coNotes || [])] 
+            updateSpace((prev: any) => ({
+              coNotes: [...(prev.coNotes || []), aiReply],
             }));
           }, 2000);
         }
@@ -1492,73 +1520,91 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
   };
 
   const toggleNote = (id: string) => {
-    updateSpace((prev: any) => ({ 
-      coNotes: (prev.coNotes || []).map((n: CoNote) => n.id === id ? { ...n, isCompleted: !n.isCompleted } : n) 
+    updateSpace((prev: any) => ({
+      coNotes: (prev.coNotes || []).map((n: CoNote) => (n.id === id ? { ...n, isCompleted: !n.isCompleted } : n)),
     }));
   };
 
   const deleteNote = (id: string) => {
-    updateSpace((prev: any) => ({ 
-      coNotes: (prev.coNotes || []).filter((n: CoNote) => n.id !== id) 
+    updateSpace((prev: any) => ({
+      coNotes: (prev.coNotes || []).filter((n: CoNote) => n.id !== id && n.replyToNoteId !== id),
     }));
+  };
+
+  const renderNoteMeta = (note: CoNote) => {
+    const author = note.authorId === 'user' ? user : partner;
+    return (
+      <div className="mt-2 flex items-center gap-2">
+        <div className="relative h-4 w-4">
+          <ResolvedImage value={author.avatar} className="h-full w-full rounded-full object-cover" alt={author.name} />
+          {note.authorId === 'user' && (
+            <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 h-full w-full scale-[1.2] object-cover pointer-events-none" alt="" />
+          )}
+          {note.authorId !== 'user' && (
+            <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 h-full w-full scale-[1.2] object-cover pointer-events-none" alt="" />
+          )}
+        </div>
+        <span className="text-[11px] text-zinc-400">{new Date(note.timestamp).toLocaleDateString()}</span>
+      </div>
+    );
   };
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
-      <div className="flex gap-2 mb-4 shrink-0">
-        <input 
-          type="text" 
+      <div className="mb-4 flex gap-2 shrink-0">
+        <input
+          type="text"
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="写下想一起做的事..."
-          className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-full px-4 py-3 text-sm outline-none shadow-sm"
+          className="flex-1 rounded-full border border-white bg-white/80 px-4 py-3 text-sm outline-none shadow-sm backdrop-blur-md"
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
-        <button onClick={handleAdd} className="w-12 h-12 bg-rose-300 text-white rounded-full flex items-center justify-center shadow-md shadow-rose-200/50 active:scale-95 transition-transform">
+        <button onClick={handleAdd} className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-300 text-white shadow-md shadow-rose-200/50 transition-transform active:scale-95">
           <Plus size={20} />
         </button>
       </div>
       <div className="space-y-3 pb-20">
-        {(coupleSpace.coNotes || []).map((note: CoNote) => {
-          const author = note.authorId === 'user' ? user : partner;
+        {topLevelNotes.map((note: CoNote) => {
+          const replies = (repliesByNoteId[note.id] || []).sort((a, b) => a.timestamp - b.timestamp);
           return (
             <div
               key={note.id}
               className={
-                'bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white flex items-start gap-3 transition-opacity ' +
+                'flex items-start gap-3 rounded-2xl border border-white bg-white/80 p-4 shadow-sm backdrop-blur-md transition-opacity ' +
                 (note.isCompleted ? 'opacity-60' : '')
               }
             >
               <button
                 onClick={() => toggleNote(note.id)}
                 className={
-                  'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ' +
-                  (note.isCompleted ? 'bg-zinc-800 border-zinc-800 text-white' : 'border-zinc-300')
+                  'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ' +
+                  (note.isCompleted ? 'border-zinc-800 bg-zinc-800 text-white' : 'border-zinc-300')
                 }
               >
                 {note.isCompleted && <Heart size={14} className="fill-white" />}
               </button>
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <p
                   className={
                     'text-[15px] text-zinc-800 ' +
-                    (note.isCompleted ? 'line-through text-zinc-500' : '')
+                    (note.isCompleted ? 'text-zinc-500 line-through' : '')
                   }
                 >
                   {note.content}
                 </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="relative w-4 h-4">
-                    <ResolvedImage value={author.avatar} className="w-full h-full rounded-full object-cover" alt={author.name} />
-                    {note.authorId === 'user' && (
-                      <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
-                    )}
-                    {note.authorId !== 'user' && (
-                      <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
-                    )}
+                {renderNoteMeta(note)}
+
+                {replies.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-2xl bg-zinc-50/80 p-3">
+                    {replies.map((reply) => (
+                      <div key={reply.id} className="rounded-xl bg-white/90 px-3 py-2 shadow-sm">
+                        <p className="text-[14px] text-zinc-700">{reply.content}</p>
+                        {renderNoteMeta(reply)}
+                      </div>
+                    ))}
                   </div>
-                  <span className="text-[11px] text-zinc-400">{new Date(note.timestamp).toLocaleDateString()}</span>
-                </div>
+                )}
               </div>
               <button onClick={() => deleteNote(note.id)} className="p-2 text-zinc-300 hover:text-red-500">
                 <Trash2 size={16} />
@@ -1566,8 +1612,8 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
             </div>
           );
         })}
-        {(!coupleSpace.coNotes || coupleSpace.coNotes.length === 0) && (
-          <div className="text-center text-zinc-400 mt-10">还没有记录哦，快写下第一件想做的事吧！</div>
+        {topLevelNotes.length === 0 && (
+          <div className="mt-10 text-center text-zinc-400">???????????????????</div>
         )}
       </div>
     </motion.div>
@@ -1611,7 +1657,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             <ResolvedImage value={coupleSpace.userAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
           <div className="text-xs text-zinc-500">我支出</div>
-          <div className="font-bold text-zinc-800">¥{totalUser.toFixed(2)}</div>
+          <div className="font-bold text-zinc-800">￥{totalUser.toFixed(2)}</div>
         </div>
         <div className="w-px h-12 bg-zinc-200 mx-4" />
         <div className="text-center flex-1">
@@ -1620,7 +1666,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
             <ResolvedImage value={coupleSpace.partnerAvatarFrame} className="absolute inset-0 w-full h-full object-cover scale-[1.2] pointer-events-none" alt="" />
           </div>
           <div className="text-xs text-zinc-500">{partner.name}支出</div>
-          <div className="font-bold text-zinc-800">¥{totalPartner.toFixed(2)}</div>
+          <div className="font-bold text-zinc-800">￥{totalPartner.toFixed(2)}</div>
         </div>
       </div>
 
@@ -1672,7 +1718,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-bold text-[#d98cab]">¥{entry.amount.toFixed(2)}</span>
+                <span className="font-bold text-[#d98cab]">￥{entry.amount.toFixed(2)}</span>
                 <button onClick={() => deleteEntry(entry.id)} className="text-zinc-300 hover:text-[#f6b6cd]"><Trash2 size={14} /></button>
               </div>
             </div>
@@ -1683,7 +1729,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, onOpenLetter }: any) {
+function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, masks = [], worldBooks = [], onOpenLetter }: any) {
   const [writing, setWriting] = useState(false);
   const [content, setContent] = useState('');
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
@@ -1713,34 +1759,49 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, on
 
     // AI Partner replies with a comment or a new letter
     try {
-      const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
-      if (activeConfig.apiKey) {
-        const prompt =
-          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
-          '我和你正在使用情侣空间的“情书”功能。\n' +
-          '我刚刚给你写了一封情书：“' + newLetter.content + '”\n' +
-          '请你回复我的情书，可以是对这封情书的评论，也可以是写给我的回信，充满爱意。';
-        const responseText = await generateTextWithConfig({
-          activeConfig,
-          prompt,
-          temperature: 0.9,
-        });
-        if (responseText) {
-          setTimeout(() => {
-            const aiComment = {
-              id: Date.now().toString() + '_ai',
-              authorId: partner.id,
-              content: responseText,
-              timestamp: Date.now()
-            };
-            // Use functional state update to ensure we have the latest state
-            updateSpace((prev: any) => ({
-              loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
-                l.id === newLetter.id ? { ...l, comments: [...(l.comments || []), aiComment] } : l
-              )
-            }));
-          }, 3000);
-        }
+      if (!getCoupleSpaceInteractionSettings(coupleSpace).replyLoveLetter.enabled) {
+        return;
+      }
+
+      const commonInputEnvelope = createCoupleSpacePromptCommonInput({
+        source: {
+          user,
+          partner,
+          coupleSpace,
+          masks,
+          worldBooks,
+          settings: {
+            initiativeSettings: coupleSpace.initiativeSettings,
+          },
+        },
+        scene: {
+          mode: 'passive',
+          actionType: 'reply_love_letter',
+        },
+      });
+
+      const responseText = await generateCoupleLoveLetterReply(settings, {
+        ...commonInputEnvelope.common,
+        loveLetterReplyContext: {
+          receivedLetterContent: newLetter.content,
+          replyIntent: '回复 user 刚写下的情书，像真正收到信后的回信',
+        },
+      });
+      if (responseText) {
+        setTimeout(() => {
+          const aiComment = {
+            id: Date.now().toString() + '_ai',
+            authorId: partner.id,
+            content: responseText,
+            timestamp: Date.now()
+          };
+          // Use functional state update to ensure we have the latest state
+          updateSpace((prev: any) => ({
+            loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
+              l.id === newLetter.id ? { ...l, comments: [...(l.comments || []), aiComment] } : l
+            )
+          }));
+        }, 3000);
       }
     } catch (e) {
       console.error(e);
@@ -1807,7 +1868,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, on
           <textarea 
             value={content}
             onChange={e => setContent(e.target.value)}
-            placeholder="浜茬埍鐨勶紝鎴戞兂瀵逛綘璇?.."
+            placeholder="亲爱的，我想对你说..."
             className="w-full h-full bg-transparent text-zinc-800 outline-none resize-none font-serif text-lg relative z-10"
             autoFocus
           />
@@ -1940,7 +2001,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, on
                             type="text" 
                             value={commentText}
                             onChange={e => setCommentText(e.target.value)}
-                            placeholder="鍐欎笅浣犵殑鍥炲..."
+                            placeholder="写下你的回复..."
                             className="flex-1 bg-white border border-[#f5e6d3] rounded-full px-4 py-2.5 text-sm outline-none focus:border-zinc-800 shadow-inner"
                             autoFocus
                             onKeyDown={e => e.key === 'Enter' && handleComment(letter.id)}
@@ -2197,16 +2258,24 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
 
     // AI Partner might comment on the new post
     try {
-      const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
-      if (activeConfig.apiKey) {
-        const prompt =
-          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
-          '我们在情侣空间里。我刚刚发了一条动态：“' + newPost.content + '”\n' +
-          '请你给我的动态写一条评论，简短自然。';
-        const responseText = await generateTextWithConfig({
-          activeConfig,
-          prompt,
-          temperature: 0.9,
+      const interactionSettings = getCoupleSpaceInteractionSettings(coupleSpace);
+      if (interactionSettings.reactToExistingPost.enabled) {
+        const responseText = await generateCoupleDailyComment(settings, {
+          mode: 'passive',
+          actionType: 'react_to_existing_post',
+          characterProfile: {
+            characterName: partner.name,
+            personaSummary: partner.setting,
+          },
+          relationshipContext: {
+            userName: user.name,
+          },
+          dailyCommentContext: {
+            coupleDailyContent: newPost.content,
+            contentAuthor: 'user',
+            commentIntent: '接住 user 刚发出的情侣动态，像空间里顺手留下一句自然评论',
+            maxLength: 30,
+          },
         });
         if (responseText) {
           setTimeout(() => {
@@ -2401,16 +2470,23 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
 
     // AI Partner might reply
     try {
-      const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
-      if (activeConfig.apiKey) {
-        const prompt =
-          '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
-          '我们在情侣空间的留言板里。我刚刚给你留言：“' + newMsg.content + '”\n' +
-          '请你也给我留一条留言作为回复，简短温馨。';
-        const responseText = await generateTextWithConfig({
-          activeConfig,
-          prompt,
-          temperature: 0.9,
+      const interactionSettings = getCoupleSpaceInteractionSettings(coupleSpace);
+      if (interactionSettings.replyMessageBoard.enabled) {
+        const responseText = await generateCoupleMessageBoardReply(settings, {
+          mode: 'passive',
+          actionType: 'reply_message_board',
+          characterProfile: {
+            characterName: partner.name,
+            personaSummary: partner.setting,
+          },
+          relationshipContext: {
+            userName: user.name,
+          },
+          messageBoardContext: {
+            latestUserMessage: newMsg.content,
+            boardToneHint: '接住 user 刚留在留言板里的这句话，像空间里顺手回的一句温柔留言',
+            maxLength: 30,
+          },
         });
         if (responseText) {
           setTimeout(() => {
