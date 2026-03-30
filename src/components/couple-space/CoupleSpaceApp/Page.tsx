@@ -9,6 +9,7 @@ import { usePersistentFieldActions } from '../../../features/persistence/usePers
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import {
+  generateCoupleCoNote,
   generateCoupleDailyComment,
   generateCoupleDailyCommentReply,
   generateCoupleLoveLetterReply,
@@ -1168,7 +1169,16 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'conotes' && partner && (
-            <CoNotesView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} settings={settings} />
+            <CoNotesView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              user={user}
+              partner={partner}
+              settings={settings}
+              chatHistory={appData.chatHistory}
+              masks={appData.masks || []}
+              worldBooks={appData.worldBooks || []}
+            />
           )}
 
           {activeView === 'ledger' && partner && (
@@ -1498,7 +1508,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
   );
 }
 
-function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any) {
+function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [text, setText] = useState('');
   const allNotes: CoNote[] = coupleSpace.coNotes || [];
   const noteMap = new Map(allNotes.map((note) => [note.id, note]));
@@ -1526,6 +1536,54 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
 
     try {
       const memoSettings = getCoupleSpaceMemoSettings(coupleSpace);
+      if (memoSettings.writeCoNote.enabled) {
+        const commonInputEnvelope = createCoupleSpacePromptCommonInput({
+          source: {
+            user,
+            partner,
+            coupleSpace,
+            chatHistory,
+            masks,
+            worldBooks,
+            settings: {
+              initiativeSettings: coupleSpace.initiativeSettings,
+            },
+          },
+          scene: {
+            mode: 'passive',
+            actionType: 'write_co_note',
+          },
+        });
+
+        const responseText = await generateCoupleCoNote(settings, {
+          ...commonInputEnvelope.common,
+          coNoteContext: {
+            userNoteContent: newNote.content,
+            noteThemeHint: '接住 user 刚写下的这条互记，像在这条互记下面顺手回一句简短自然的话。',
+            maxLength: 20,
+          },
+        });
+
+        if (responseText) {
+          setTimeout(() => {
+            const aiReply: CoNote = {
+              id: Date.now().toString() + '_ai',
+              authorId: partner.id,
+              content: responseText,
+              timestamp: Date.now(),
+              isCompleted: false,
+              replyToNoteId: newNote.id,
+              replyToAuthorId: newNote.authorId,
+              replyToAuthorName: user.name,
+            };
+            updateSpace((prev: any) => ({
+              coNotes: [...(prev.coNotes || []), aiReply],
+            }));
+          }, 2000);
+        }
+        return;
+      }
+
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (memoSettings.writeCoNote.enabled && activeConfig.apiKey) {
         const prompt = `你扮演 ${partner.name}，${partner.setting}。
