@@ -8,6 +8,7 @@ import { saveUploadedDataUrl } from '../../../features/persistence/persistentAss
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
+import { generateCoupleDailyCommentReply } from '../../../services/ai/coupleSpacePromptService';
 import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/runCoupleSpaceInitiativeManualCheck';
@@ -1288,36 +1289,40 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
     // If user commented on AI's post, AI might reply
     if (post.authorId === partner.id) {
       try {
-        const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
-        if (activeConfig.apiKey) {
-          const prompt =
-            '你扮演 ' + partner.name + '，' + partner.setting + '。\n' +
-            '我们在情侣空间里。你发了一条动态：“' + post.content + '”\n' +
-            '我刚刚评论了你的动态：“' + newComment.content + '”\n' +
-            '请你回复我的评论，简短自然。';
-          const responseText = await generateTextWithConfig({
-            activeConfig,
-            prompt,
-            temperature: 0.9,
-          });
-          if (responseText) {
-            setTimeout(() => {
-              const aiComment = {
-                id: Date.now().toString() + '_ai',
-                authorId: partner.id,
-                content: responseText,
-                timestamp: Date.now(),
-                replyToCommentId: newComment.id,
-                replyToAuthorId: newComment.authorId,
-                replyToAuthorName: user.name
-              };
-              updateSpace((prev: any) => ({
-                posts: (prev.posts || []).map((p: any) => 
-                  p.id === post.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
-                )
-              }));
-            }, 3000);
-          }
+        const responseText = await generateCoupleDailyCommentReply(settings, {
+          mode: 'passive',
+          actionType: 'reply_daily_comment',
+          characterProfile: {
+            characterName: partner.name,
+            personaSummary: partner.setting,
+          },
+          relationshipContext: {
+            userName: user.name,
+          },
+          dailyCommentReplyContext: {
+            coupleDailyContent: post.content,
+            userComment: newComment.content,
+            contentAuthor: post.authorId === partner.id ? 'character' : 'user',
+            replyIntent: '接住用户在情侣动态下的评论，像顺手回一句',
+          },
+        });
+        if (responseText) {
+          setTimeout(() => {
+            const aiComment = {
+              id: Date.now().toString() + '_ai',
+              authorId: partner.id,
+              content: responseText,
+              timestamp: Date.now(),
+              replyToCommentId: newComment.id,
+              replyToAuthorId: newComment.authorId,
+              replyToAuthorName: user.name
+            };
+            updateSpace((prev: any) => ({
+              posts: (prev.posts || []).map((p: any) => 
+                p.id === post.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
+              )
+            }));
+          }, 3000);
         }
       } catch (e) {
         console.error(e);
