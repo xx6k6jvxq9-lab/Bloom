@@ -2040,9 +2040,9 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
         {/* Calendar Grid */}
         <div className="bg-white/80 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white mb-6">
           <div className="flex justify-between items-center mb-6">
-            <button onClick={prevMonth} className="p-2 hover:bg-zinc-100 rounded-full transition-colors"><ChevronLeft size={20} className="text-zinc-400" /></button>
+            <button onClick={prevMonth} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} className="text-[#f6b6cd]" /></button>
             <h3 className="font-bold text-zinc-800">{year}年 {month + 1}月</h3>
-            <button onClick={nextMonth} className="p-2 hover:bg-zinc-100 rounded-full transition-colors"><ChevronLeft size={20} className="text-zinc-400 rotate-180" /></button>
+            <button onClick={nextMonth} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} className="text-[#f6b6cd] rotate-180" /></button>
           </div>
           
           <div className="grid grid-cols-7 gap-1 mb-2">
@@ -2063,7 +2063,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
                   key={dateStr} 
                   className={
                     'aspect-square flex flex-col items-center justify-center rounded-xl text-sm relative transition-all ' +
-                    (isToday ? 'bg-zinc-800 text-white shadow-md' : 'hover:bg-zinc-50 text-zinc-700')
+                    (isToday ? 'bg-[#f6b6cd] text-white shadow-md shadow-[#f6b6cd]/35' : 'hover:bg-rose-50 text-zinc-700')
                   }
                 >
                     <span className="font-medium">{day}</span>
@@ -2071,7 +2071,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
                       <div
                         className={
                           'w-1 h-1 rounded-full absolute bottom-1.5 ' +
-                          (isToday ? 'bg-white' : 'bg-zinc-800')
+                          (isToday ? 'bg-white' : 'bg-[#f6b6cd]')
                         }
                       />
                     )}
@@ -2083,17 +2083,17 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
 
         {/* Event List */}
         <div className="space-y-4 pb-20 no-scrollbar">
-          <h4 className="font-bold text-zinc-800 text-sm px-1">鐗瑰埆璁板繂</h4>
+          <h4 className="font-bold text-zinc-800 text-sm px-1">特别记忆</h4>
           {Object.keys(eventsByDate).sort().reverse().map(d => (
-            <div key={d} className="relative pl-4 border-l-2 border-blue-200">
-              <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-zinc-800" />
-              <div className="font-bold text-blue-600 text-[11px] mb-2">{d}</div>
+            <div key={d} className="relative pl-4 border-l-2 border-rose-200">
+              <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-[#f6b6cd]" />
+              <div className="font-bold text-[#d98cab] text-[11px] mb-2">{d}</div>
               <div className="space-y-2">
                 {eventsByDate[d].map((event: CalendarEvent) => (
                   <div key={event.id} className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-white relative group">
                     <h4 className="font-bold text-zinc-800 text-[15px]">{event.title}</h4>
                     {event.description && <p className="text-sm text-zinc-600 mt-1">{event.description}</p>}
-                    <button onClick={() => deleteEvent(event.id)} className="absolute top-4 right-4 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => deleteEvent(event.id)} className="absolute top-4 right-4 text-zinc-300 hover:text-[#f6b6cd] opacity-0 group-hover:opacity-100 transition-opacity">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -2433,11 +2433,11 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
         <textarea 
           value={content}
           onChange={e => setContent(e.target.value)}
-          placeholder="涓讳汉瀵勮..."
-          className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-sm outline-none focus:border-purple-500 resize-none h-20 mb-3"
+          placeholder="留下这次想说的话..."
+          className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-sm outline-none focus:border-[#f6b6cd] resize-none h-20 mb-3"
         />
         <div className="flex justify-end">
-          <button onClick={handleLeaveMessage} className="bg-rose-300 text-white px-6 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">鐣欒█</button>
+          <button onClick={handleLeaveMessage} className="bg-[#f6b6cd] text-white px-6 py-1.5 rounded-full font-bold shadow-sm shadow-[#f6b6cd]/40 active:scale-95 transition-transform">留言</button>
         </div>
       </div>
 
@@ -2463,7 +2463,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
                 <p className="text-zinc-700 text-sm whitespace-pre-wrap">{msg.content}</p>
                 {msg.authorId === 'user' && (
                   <div className="mt-2 text-right">
-                    <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-red-500">鍒犻櫎</button>
+                    <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">删除</button>
                   </div>
                 )}
               </div>
