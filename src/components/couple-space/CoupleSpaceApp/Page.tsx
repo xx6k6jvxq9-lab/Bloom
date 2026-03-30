@@ -159,7 +159,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed'>('main');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'addPartner' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
+  const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
   const [partnerToDelete, setPartnerToDelete] = useState<string | null>(null);
   const [tempInput, setTempInput] = useState('');
   const [selectedPaperTexture, setSelectedPaperTexture] = useState<'default' | 'vintage' | 'grid' | 'floral'>('default');
@@ -213,10 +213,6 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
   const selectedLoveLetter = (coupleSpace.loveLetters || []).find((letter: LoveLetter) => letter.id === selectedLoveLetterId) || null;
-  const availablePartnerIds = appData.characters
-    .map((character: any) => character.id)
-    .filter((id: string) => !addedPartnerIds.includes(id));
-  const availablePartners = getCharactersByIds(availablePartnerIds);
   const user = appData.userProfile;
   const { setRemoteUrl, clearValue } = usePersistentFieldActions();
   const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(coupleSpace.backgroundUrl);
@@ -262,28 +258,6 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           spacesByPartnerId: nextSpaces,
         },
         coupleSpace: nextCurrentSpace,
-      };
-    });
-  };
-
-  const handleAddPartnerSpace = (partnerId: string) => {
-    setAppData((prev: any) => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-
-      return {
-        ...prev,
-        coupleSpaceState: {
-          currentPartnerId: prevState.currentPartnerId,
-          spacesByPartnerId: {
-            ...prevState.spacesByPartnerId,
-            [partnerId]: prevState.spacesByPartnerId?.[partnerId] ?? createDefaultCoupleSpaceData({ partnerId }),
-          },
-        },
       };
     });
   };
@@ -399,19 +373,29 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 exit={{ opacity: 0, height: 0, y: -20 }}
                 className="w-64 bg-white/85 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
               >
-                <div className="p-2 grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
-                      {appData.characters.map((c: any) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setSelectedPartnerId(c.id);
-                        setIsSelectorOpen(false);
-                      }}
-                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-rose-300 scale-95' : 'border-transparent hover:border-rose-200'}`}
-                    >
-                      <ResolvedImage value={c.avatar} className="w-full h-full object-cover" alt={c.name} />
-                    </button>
-                  ))}
+                <div className="p-2">
+                  {addedPartners.length > 0 ? (
+                    <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                      {addedPartners.map((c: any) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setSelectedPartnerId(c.id);
+                            setIsSelectorOpen(false);
+                          }}
+                          className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-rose-300 scale-95' : 'border-transparent hover:border-rose-200'}`}
+                        >
+                          <ResolvedImage value={c.avatar} className="w-full h-full object-cover" alt={c.name} />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-sm text-zinc-500 leading-6">
+                      还没有已建立的情侣空间。
+                      <br />
+                      先去聊天里邀请角色，等 TA 同意后再来这里选择。
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -420,10 +404,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           <button 
             onClick={() => {
               if (selectedPartnerId) {
-                handleAddPartnerSpace(selectedPartnerId);
                 handleUpdateCoupleSpace({
                   partnerId: selectedPartnerId,
-                  anniversaryDate: Date.now()
                 });
               }
             }}
@@ -582,18 +564,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-bold text-zinc-800">选择伴侣</h3>
-                  <button
-                    onClick={() => {
-                      if (availablePartners.length === 0) {
-                        alert('已创建的角色都已经添加过了');
-                      } else {
-                        setActiveModal('addPartner');
-                      }
-                    }}
-                    className="p-1.5 bg-rose-100 text-rose-400 rounded-full active:scale-90 transition-transform"
-                  >
-                    <Plus size={16} />
-                  </button>
+                  <span className="text-[11px] text-zinc-400">仅显示已建立空间的角色</span>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 px-1">
                   {addedPartners.map((c: any) => (
@@ -833,8 +804,6 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                           {activeModal === 'avatarFramePartner' && 'TA的头像框'}
                           {activeModal === 'deletePartner' && '删除伴侣'}
                           {activeModal === 'dataManagement' && '数据管理'}
-                          {activeModal === 'addPartner' && '添加伴侣'}
-                          {activeModal === 'loveLetterEnvelopeBg' && '信封背景图'}
                           {activeModal === 'loveLetterEnvelopeColor' && '信封颜色'}
                           {activeModal === 'loveLetterPaperTexture' && '信纸质感'}
                           {activeModal === 'calendarBg' && '日历背景图'}
@@ -844,25 +813,6 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                         </button>
                       </div>
 
-                      {activeModal === 'addPartner' && (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
-                            {availablePartners.map((c: any) => (
-                              <button
-                                key={c.id}
-                                onClick={() => {
-                                  handleAddPartnerSpace(c.id);
-                                  setActiveModal(null);
-                                }}
-                                className="flex flex-col items-center gap-2 p-3 rounded-xl bg-zinc-50 hover:bg-pink-50 active:scale-95 transition-all border border-transparent hover:border-pink-200"
-                              >
-                                <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover shadow-sm" alt={c.name} />
-                                <span className="text-xs font-medium text-zinc-700 truncate w-full text-center">{c.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
 
                       {activeModal === 'dataManagement' && (
                         <div className="space-y-5">
