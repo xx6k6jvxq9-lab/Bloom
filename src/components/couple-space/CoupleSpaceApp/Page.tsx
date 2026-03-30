@@ -13,6 +13,7 @@ import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/cou
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/runCoupleSpaceInitiativeManualCheck';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
+import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -101,7 +102,7 @@ type Props = {
 };
 
 export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props) {
-  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed'>('main');
+  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed'>('main');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'addPartner' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
@@ -115,6 +116,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [isModuleCustomizationOpen, setIsModuleCustomizationOpen] = useState(false);
   const [isInitiativeSettingsOpen, setIsInitiativeSettingsOpen] = useState(false);
   const [isInitiativeCheckOpen, setIsInitiativeCheckOpen] = useState(false);
+  const [selectedLoveLetterId, setSelectedLoveLetterId] = useState<string | null>(null);
   const [initiativeCheckBusy, setInitiativeCheckBusy] = useState(false);
   const [initiativeCheckStatus, setInitiativeCheckStatus] = useState<string | null>(null);
   const [initiativeArtifactPreview, setInitiativeArtifactPreview] = useState<{
@@ -163,6 +165,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const { getCharacterById, getCharactersByIds } = createCharacterDirectory({ characters: appData.characters });
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
+  const selectedLoveLetter = (coupleSpace.loveLetters || []).find((letter: LoveLetter) => letter.id === selectedLoveLetterId) || null;
   const availablePartnerIds = appData.characters
     .map((character: any) => character.id)
     .filter((id: string) => !addedPartnerIds.includes(id));
@@ -337,35 +340,37 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       </div>
 
       {/* Header */}
-      <div
-        className="couple-space-topbar absolute top-0 left-0 right-0 z-20 px-4 pb-4 flex items-center justify-between transition-colors bg-transparent"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 30px)' }}
-      >
-        <button onClick={activeView === 'main' ? onBack : () => setActiveView('main')} className={`p-2 rounded-full backdrop-blur-md ${activeView === 'main' ? 'bg-black/20 text-white' : 'bg-white/50 text-zinc-800'}`}>
-          <ChevronLeft size={24} />
-        </button>
-        <h1 className={`text-lg font-bold ${activeView === 'main' ? 'text-white drop-shadow-md' : 'text-zinc-800'}`}>
-          {activeView === 'main' && '情侣空间'}
-          {activeView === 'settings' && '空间设置'}
-          {activeView === 'conotes' && '情侣互记'}
-          {activeView === 'ledger' && '小账本'}
-          {activeView === 'loveletters' && '情书'}
-          {activeView === 'calendar' && '情侣日历'}
-          {activeView === 'anniversaries' && '纪念日'}
-          {activeView === 'messageboard' && '留言板'}
-          {activeView === 'post-feed' && '情侣动态'}
-        </h1>
-        {activeView === 'main' ? (
-          <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
-            <Settings size={20} />
+      {activeView !== 'loveletter-detail' && (
+        <div
+          className="couple-space-topbar absolute top-0 left-0 right-0 z-20 px-4 pb-4 flex items-center justify-between transition-colors bg-transparent"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 30px)' }}
+        >
+          <button onClick={activeView === 'main' ? onBack : () => setActiveView('main')} className={`p-2 rounded-full backdrop-blur-md ${activeView === 'main' ? 'bg-black/20 text-white' : 'bg-white/50 text-zinc-800'}`}>
+            <ChevronLeft size={24} />
           </button>
-        ) : (
-          <div className="w-10" />
-        )}
-      </div>
+          <h1 className={`text-lg font-bold ${activeView === 'main' ? 'text-white drop-shadow-md' : 'text-zinc-800'}`}>
+            {activeView === 'main' && '情侣空间'}
+            {activeView === 'settings' && '空间设置'}
+            {activeView === 'conotes' && '情侣互记'}
+            {activeView === 'ledger' && '小账本'}
+            {activeView === 'loveletters' && '情书'}
+            {activeView === 'calendar' && '情侣日历'}
+            {activeView === 'anniversaries' && '纪念日'}
+            {activeView === 'messageboard' && '留言板'}
+            {activeView === 'post-feed' && '情侣动态'}
+          </h1>
+          {activeView === 'main' ? (
+            <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
+              <Settings size={20} />
+            </button>
+          ) : (
+            <div className="w-10" />
+          )}
+        </div>
+      )}
 
       {/* Content */}
-      <div className={`relative z-10 flex-1 flex flex-col ${activeView === 'main' ? 'overflow-y-auto' : 'couple-space-subview pt-[112px] overflow-hidden'}`}>
+      <div className={`relative z-10 flex-1 flex flex-col ${activeView === 'main' ? 'overflow-y-auto' : activeView === 'loveletter-detail' ? 'overflow-hidden' : 'couple-space-subview pt-[112px] overflow-hidden'}`}>
         <AnimatePresence mode="wait">
           {activeView === 'main' && partner && (
             <motion.div 
@@ -1145,7 +1150,51 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'loveletters' && partner && (
-            <LoveLettersView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} settings={settings} />
+            <LoveLettersView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              user={user}
+              partner={partner}
+              settings={settings}
+              onOpenLetter={(letterId: string) => {
+                setSelectedLoveLetterId(letterId);
+                setActiveView('loveletter-detail');
+              }}
+            />
+          )}
+
+          {activeView === 'loveletter-detail' && partner && selectedLoveLetter && (
+            <LoveLetterDetailPage
+              letter={selectedLoveLetter}
+              user={user}
+              partner={partner}
+              appearance={{
+                envelopeBg: coupleSpace.loveLetterEnvelopeBg,
+                envelopeColor: coupleSpace.loveLetterEnvelopeColor,
+                paperTexture: coupleSpace.loveLetterPaperTexture,
+                paperBg: coupleSpace.loveLetterPaperBg,
+              }}
+              onClose={() => setActiveView('loveletters')}
+              onAddComment={
+                selectedLoveLetter.authorId !== 'user'
+                  ? (content: string) => {
+                      const newComment = {
+                        id: Date.now().toString(),
+                        authorId: 'user',
+                        content,
+                        timestamp: Date.now(),
+                      };
+                      handleUpdateCoupleSpace((prev: any) => ({
+                        loveLetters: (prev.loveLetters || []).map((letter: LoveLetter) =>
+                          letter.id === selectedLoveLetter.id
+                            ? { ...letter, comments: [...(letter.comments || []), newComment] }
+                            : letter
+                        ),
+                      }));
+                    }
+                  : undefined
+              }
+            />
           )}
 
           {activeView === 'calendar' && partner && (
@@ -1616,7 +1665,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: any) {
+function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, onOpenLetter }: any) {
   const [writing, setWriting] = useState(false);
   const [content, setContent] = useState('');
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
@@ -1764,7 +1813,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings }: 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                onClick={() => setExpandedLetterId(letter.id)}
+                onClick={() => onOpenLetter(letter.id)}
                 className="cursor-pointer group"
               >
                 {/* Envelope UI */}
