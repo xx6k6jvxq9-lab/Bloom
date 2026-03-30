@@ -36,6 +36,22 @@ export type RunCoupleSpaceInitiativeAutoCheckResult = {
 };
 
 /**
+ * Auto-check and manual-check now intentionally share the same prepared
+ * execution path, so both entrypoints consume the same unified common context.
+ *
+ * We keep the wrapper local to auto-check to make that dependency explicit
+ * without widening this phase into a larger refactor.
+ */
+async function runPreparedAutoCandidates(
+  input: CoupleSpaceInitiativeCheckCommonContext & {
+    devCheck: RunCoupleSpaceInitiativeDevCheckResult;
+    now?: number;
+  },
+) {
+  return runPreparedCoupleSpaceInitiativeCandidates(input);
+}
+
+/**
  * Product-side auto-check service.
  *
  * Purpose:
@@ -92,7 +108,7 @@ export async function runCoupleSpaceInitiativeAutoCheck(
     };
   }
 
-  const attemptResult = await runPreparedCoupleSpaceInitiativeCandidates({
+  const attemptResult = await runPreparedAutoCandidates({
     ...input,
     devCheck,
   });
