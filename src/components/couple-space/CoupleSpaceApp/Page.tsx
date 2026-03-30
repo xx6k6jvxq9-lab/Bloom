@@ -2103,10 +2103,10 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
           ))}
           {(!coupleSpace.calendarEvents || coupleSpace.calendarEvents.length === 0) && (
             <div className="text-center py-12">
-              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar size={28} className="text-blue-200" />
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar size={28} className="text-[#f6b6cd]" />
               </div>
-              <p className="text-zinc-400 text-sm">杩樻病鏈夌壒鍒殑璁板繂鍝︼紝蹇潵璁板綍鍚э紒</p>
+              <p className="text-zinc-400 text-sm">还没有特别记忆哦，快来记录吧！</p>
             </div>
           )}
         </div>
@@ -2130,7 +2130,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-zinc-800">娣诲姞鐗瑰埆璁板繂</h3>
+                <h3 className="text-lg font-bold text-zinc-800">添加特别记忆</h3>
                 <button onClick={() => setShowAddModal(false)} className="p-1.5 bg-zinc-100 rounded-full text-zinc-500">
                   <X size={18} />
                 </button>
@@ -2138,18 +2138,18 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鏃ユ湡</label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">日期</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd]" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鏍囬</label>
-                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="鍙戠敓浜嗕粈涔堢壒鍒殑浜嬶紵" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">标题</label>
+                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="发生了什么特别的事？" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd]" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">鎻忚堪</label>
-                  <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="璇︾粏鎻忚堪 (鍙€?..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500 resize-none h-24" />
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">描述</label>
+                  <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="详细描述（可选）..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd] resize-none h-24" />
                 </div>
-                <button onClick={handleAdd} className="w-full bg-rose-300 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-rose-200/50 active:scale-95 transition-transform mt-2">璁板綍</button>
+                <button onClick={handleAdd} className="w-full bg-[#f6b6cd] text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-[#f6b6cd]/40 active:scale-95 transition-transform mt-2">记录</button>
               </div>
             </motion.div>
           </motion.div>
