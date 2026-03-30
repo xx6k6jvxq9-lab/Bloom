@@ -16,7 +16,6 @@ import {
   generateCoupleMessageBoardReply,
 } from '../../../services/ai/couple-space/prompt/coupleSpacePromptService';
 import { createCoupleSpacePromptCommonInput } from '../../../services/ai/couple-space/context/createCoupleSpacePromptCommonInput';
-import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
@@ -1584,6 +1583,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
         return;
       }
 
+      /* Legacy co-note prompt path retained only as historical reference after migration.
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (memoSettings.writeCoNote.enabled && activeConfig.apiKey) {
         const prompt = `你扮演 ${partner.name}，${partner.setting}。
@@ -1613,6 +1613,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
           }, 2000);
         }
       }
+      */
     } catch (e) {
       console.error(e);
     }
