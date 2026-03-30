@@ -17,6 +17,8 @@ import type {
   BuildCoupleLoveLetterReplyPromptOptions,
   BuildCoupleMessageBoardPromptOptions,
 } from '../../prompts';
+import { createCoupleSpacePromptCommonInput } from '../context/createCoupleSpacePromptCommonInput';
+import type { CoupleSpacePromptCommonSections } from '../context/types';
 import type { CoupleSpaceInitiativeExecutionContext } from '../execution/coupleSpaceInitiativeExecutor';
 import type { CoupleSpaceInitiativeExecutionRequest } from '../execution/coupleSpaceInitiativeExecutionRequest';
 import { buildCoupleSpaceInitiativeExecutionPlan } from '../execution/coupleSpaceInitiativeExecutionPlan';
@@ -273,12 +275,34 @@ function buildCommonPromptInput({ user, partner, coupleSpace }: CoupleSpaceIniti
   };
 }
 
+function buildUnifiedCommonPromptInput(
+  input: CoupleSpaceInitiativeCheckCommonContext,
+): CoupleSpacePromptCommonSections {
+  const envelope = createCoupleSpacePromptCommonInput({
+    source: {
+      user: input.user,
+      partner: input.partner,
+      coupleSpace: input.coupleSpace,
+      chatHistory: input.chatHistory,
+      // Manual check is the first adopted entrypoint. This phase intentionally
+      // stays inside the data already owned by the manual-check context, so
+      // masks/worldBooks remain omitted instead of widening the scope here.
+      settings: {
+        initiativeSettings: input.coupleSpace.initiativeSettings,
+      },
+      now: input.now,
+    },
+  });
+
+  return envelope.common;
+}
+
 export function buildCoupleSpaceInitiativeExecutionContext(
   input: CoupleSpaceInitiativeCheckCommonContext,
   candidate: CoupleSpaceInitiativeCandidate | null,
   devCheck: RunCoupleSpaceInitiativeDevCheckResult,
 ): CoupleSpaceInitiativeExecutionContext {
-  const common = buildCommonPromptInput(input);
+  const common = buildUnifiedCommonPromptInput(input);
   const normalized = devCheck.harnessResult.normalizedContext;
   const targetRefs: CoupleSpaceInitiativeExecutionContext['targetRefs'] = {};
   const promptInputs: CoupleSpaceInitiativeExecutionContext['promptInputs'] = {};
