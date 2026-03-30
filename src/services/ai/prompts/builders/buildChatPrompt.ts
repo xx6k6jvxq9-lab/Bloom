@@ -10,8 +10,19 @@ export type BuildChatPromptOptions = {
   mode?: 'chat' | 'autoReply';
   characterCore?: CharacterCoreSectionsInput;
   memoryContext?: MemoryContextInput;
+  recentCoupleSpaceSummary?: string;
   includeProtocolRules?: boolean;
   sections?: string[];
+};
+
+const buildRecentCoupleSpaceSection = (summary?: string): string => {
+  const normalizedSummary = summary?.trim();
+  if (!normalizedSummary) return '';
+
+  return [
+    '## 最近情侣空间关系事件摘要',
+    normalizedSummary,
+  ].join('\n');
 };
 
 /**
@@ -28,6 +39,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
     buildMemoryContextSection(options.memoryContext ?? {}),
+    buildRecentCoupleSpaceSection(options.recentCoupleSpaceSummary),
     scenario,
     OUTPUT_RULES_PROMPT,
     ...(includeProtocolRules ? [PROTOCOL_RULES_PROMPT] : []),

@@ -272,9 +272,7 @@ export function useDirectChatRuntime({
               perceptionPrompt,
             },
             includeProtocolRules: false,
-            // Phase B only prepares lightweight couple-space context at the chat entrypoint.
-            // A later step can decide how to serialize it into the final chat prompt.
-            ...(recentCoupleSpaceSummary ? { sections: [] } : {}),
+            recentCoupleSpaceSummary,
           });
 
           await streamTextWithConfig({
@@ -586,9 +584,7 @@ export function useDirectChatRuntime({
           memorySummary: normalizedMemoryPrompt,
           perceptionPrompt,
         },
-        // Phase B only prepares lightweight couple-space context at the chat entrypoint.
-        // A later step can decide how to serialize it into the final chat prompt.
-        ...(recentCoupleSpaceSummary ? { sections: [] } : {}),
+        recentCoupleSpaceSummary,
       });
 
       await streamTextWithConfig({
