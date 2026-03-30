@@ -1422,7 +1422,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
                 type="text" 
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                placeholder="璇勮..."
+                placeholder="评论..."
                 className="flex-1 bg-white border border-zinc-200 rounded-full px-3 py-1.5 text-sm outline-none focus:border-blue-400"
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && handleComment()}
