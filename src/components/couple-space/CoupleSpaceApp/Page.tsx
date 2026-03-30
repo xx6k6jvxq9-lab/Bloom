@@ -1270,7 +1270,10 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
       id: Date.now().toString(),
       authorId: 'user',
       content: commentText,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      replyToCommentId: undefined,
+      replyToAuthorId: undefined,
+      replyToAuthorName: undefined
     };
     
     updateSpace((prev: any) => ({
@@ -1303,7 +1306,10 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
                 id: Date.now().toString() + '_ai',
                 authorId: partner.id,
                 content: responseText,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                replyToCommentId: newComment.id,
+                replyToAuthorId: newComment.authorId,
+                replyToAuthorName: user.name
               };
               updateSpace((prev: any) => ({
                 posts: (prev.posts || []).map((p: any) => 
@@ -1395,9 +1401,16 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
         <div className="mt-4 bg-zinc-50 rounded-xl p-3 space-y-2">
           {post.comments?.map((c: any) => {
             const cAuthor = c.authorId === 'user' ? user : partner;
+            const replyTarget = c.replyToCommentId
+              ? post.comments?.find((item: any) => item.id === c.replyToCommentId)
+              : null;
+            const replyTargetName = c.replyToAuthorName
+              || (replyTarget ? (replyTarget.authorId === 'user' ? user.name : partner.name) : null);
             return (
               <div key={c.id} className="text-sm">
-                <span className="font-bold text-zinc-700">{cAuthor.name}: </span>
+                <span className="font-bold text-zinc-700">
+                  {replyTargetName ? `${cAuthor.name} 回复 ${replyTargetName}: ` : `${cAuthor.name}: `}
+                </span>
                 <span className="text-zinc-600">{c.content}</span>
               </div>
             );

@@ -246,6 +246,9 @@ export type CouplePostComment = {
   authorId: string;
   content: string;
   timestamp: number;
+  replyToCommentId?: string;
+  replyToAuthorId?: string;
+  replyToAuthorName?: string;
 };
 
 export type CouplePost = {
@@ -270,6 +273,120 @@ export type MessageBoardEntry = {
   authorId: string;
   content: string;
   timestamp: number;
+};
+
+export type CoupleSpaceInitiativeCadence = 'off' | 'low' | 'medium' | 'high';
+
+export type CoupleSpaceOpportunityLevel = 'off' | 'low' | 'medium' | 'high';
+
+export type CoupleSpaceInitiativeGroup =
+  | 'publishing'
+  | 'memo'
+  | 'recording'
+  | 'interaction';
+
+export type CoupleSpaceCommitMode = 'auto' | 'draft' | 'confirm';
+
+export type CoupleSpaceEvidenceLevel = 'none' | 'light' | 'explicit';
+
+export type CoupleSpaceInitiativeSource =
+  | 'cadence_window'
+  | 'recent_interaction'
+  | 'reply_opportunity'
+  | 'light_evidence'
+  | 'explicit_evidence'
+  | 'manual_check';
+
+export type CoupleSpaceInitiativeActionType =
+  | 'post_couple_daily'
+  | 'write_love_letter'
+  | 'post_message_board_entry'
+  | 'write_co_note'
+  | 'create_ledger_entry'
+  | 'reply_love_letter'
+  | 'reply_daily_comment'
+  | 'reply_message_board'
+  | 'react_to_existing_post';
+
+export type CoupleSpacePublishingActionSettings = {
+  enabled: boolean;
+  cadence: CoupleSpaceInitiativeCadence;
+};
+
+export type CoupleSpacePublishingSettings = {
+  dailyPost: CoupleSpacePublishingActionSettings;
+  loveLetter: CoupleSpacePublishingActionSettings;
+  messageBoard: CoupleSpacePublishingActionSettings;
+};
+
+export type CoupleSpaceMemoSettings = {
+  writeCoNote: {
+    enabled: boolean;
+    opportunityLevel: CoupleSpaceOpportunityLevel;
+    evidenceLevel: Extract<CoupleSpaceEvidenceLevel, 'light'>;
+    defaultCommitMode: Extract<CoupleSpaceCommitMode, 'auto' | 'draft'>;
+  };
+};
+
+export type CoupleSpaceRecordingSettings = {
+  createLedgerEntry: {
+    enabled: boolean;
+    evidenceLevel: Extract<CoupleSpaceEvidenceLevel, 'explicit'>;
+    defaultCommitMode: Extract<CoupleSpaceCommitMode, 'confirm'>;
+  };
+};
+
+export type CoupleSpaceInteractionSettings = {
+  replyLoveLetter: {
+    enabled: boolean;
+    opportunityLevel: CoupleSpaceOpportunityLevel;
+  };
+  replyDailyComment: {
+    enabled: boolean;
+    opportunityLevel: CoupleSpaceOpportunityLevel;
+  };
+  replyMessageBoard: {
+    enabled: boolean;
+    opportunityLevel: CoupleSpaceOpportunityLevel;
+  };
+  reactToExistingPost: {
+    enabled: boolean;
+    opportunityLevel: CoupleSpaceOpportunityLevel;
+  };
+};
+
+export type CoupleSpaceInitiativeSettings = {
+  publishing: CoupleSpacePublishingSettings;
+  memo: CoupleSpaceMemoSettings;
+  recording: CoupleSpaceRecordingSettings;
+  interaction: CoupleSpaceInteractionSettings;
+};
+
+export type CoupleSpaceInitiativeRuntimeRule = {
+  actionType: CoupleSpaceInitiativeActionType;
+  group: CoupleSpaceInitiativeGroup;
+  enabled: boolean;
+  commitMode: CoupleSpaceCommitMode;
+  evidenceLevel: CoupleSpaceEvidenceLevel;
+  cadence?: CoupleSpaceInitiativeCadence;
+  opportunityLevel?: CoupleSpaceOpportunityLevel;
+  cooldownHours?: number;
+  lastTriggeredAt: number | null;
+  lastDraftedAt: number | null;
+  lastCommittedAt: number | null;
+};
+
+export type CoupleSpaceInitiativeRuntimeState = {
+  rules: Record<CoupleSpaceInitiativeActionType, CoupleSpaceInitiativeRuntimeRule>;
+};
+
+export type CoupleSpaceInitiativeCandidate = {
+  actionType: CoupleSpaceInitiativeActionType;
+  group: CoupleSpaceInitiativeGroup;
+  commitMode: CoupleSpaceCommitMode;
+  source: CoupleSpaceInitiativeSource;
+  reason?: string;
+  evidenceSummary?: string;
 };
 
 export type Character = {
@@ -412,6 +529,7 @@ export type CoupleSpaceData = {
   messageBoard?: MessageBoardEntry[];
   addedPartnerIds?: string[];
   perception?: PerceptionSettings;
+  initiativeSettings?: CoupleSpaceInitiativeSettings;
 };
 
 export type ForumComment = {
