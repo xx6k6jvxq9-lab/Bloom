@@ -65,6 +65,13 @@ import { getDisplayableAssetValue } from './features/persistence/persistentAsset
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import {
+  createDefaultCoupleSpaceData,
+  createDefaultCoupleSpaceState,
+  getCurrentCoupleSpaceData,
+  hydrateCoupleSpaceState,
+  projectCoupleSpaceStateFromCurrentSpace,
+} from './features/persistence/coupleSpaceStore';
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -133,6 +140,7 @@ type AppData = {
   moments: Moment[];
   worldBooks: WorldBookEntry[];
   coupleSpace?: import('./types').CoupleSpaceData;
+  coupleSpaceState?: import('./types').CoupleSpaceState;
   friendRequests?: import('./types').FriendRequest[];
   chatGroups?: import('./types').ChatGroup[];
   callHistory?: CallRecord[];
@@ -456,7 +464,15 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
 
 function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
   const { characters: _characters, ...persistableAppData } = appData;
-  return persistableAppData;
+  const projectedCoupleSpaceState = projectCoupleSpaceStateFromCurrentSpace(
+    appData.coupleSpace,
+  );
+
+  return {
+    ...persistableAppData,
+    coupleSpace: getCurrentCoupleSpaceData(projectedCoupleSpaceState, appData.coupleSpace),
+    coupleSpaceState: projectedCoupleSpaceState,
+  };
 }
 
 function hydratePersistedCharacters(
@@ -1217,18 +1233,8 @@ export default function App() {
     groups: ['家人', '朋友', '同事', '星标'],
     moments: DEFAULT_MOMENTS,
     worldBooks: [],
-    coupleSpace: {
-      partnerId: null,
-      anniversaryDate: null,
-      backgroundUrl: null,
-      coNotes: [],
-      ledger: [],
-      loveLetters: [],
-      calendarEvents: [],
-      loveLetterEnvelopeColor: '#f6d9e4',
-      loveLetterPaperTexture: 'default',
-      initiativeSettings: createDefaultCoupleSpaceInitiativeSettings(),
-    },
+    coupleSpace: createDefaultCoupleSpaceData(),
+    coupleSpaceState: createDefaultCoupleSpaceState(),
     musicData: {
       currentSong: null,
       isPlaying: false,
@@ -1253,7 +1259,8 @@ export default function App() {
   });
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
-  const couplePartnerCharacter = getCharacterById(appData.coupleSpace?.partnerId) || appData.characters[0] || null;
+  const couplePartnerId = appData.coupleSpaceState?.currentPartnerId ?? appData.coupleSpace?.partnerId;
+  const couplePartnerCharacter = getCharacterById(couplePartnerId) || appData.characters[0] || null;
   const setCharacters = useCallback((characters: Character[]) => {
     setAppData(prev => ({
       ...prev,
@@ -1352,18 +1359,17 @@ export default function App() {
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
-          coupleSpace: parsed.coupleSpace || {
-            partnerId: null,
-            anniversaryDate: null,
-            backgroundUrl: null,
-            coNotes: [],
-            ledger: [],
-            loveLetters: [],
-            calendarEvents: [],
-            loveLetterEnvelopeColor: '#f6d9e4',
-            loveLetterPaperTexture: 'default',
-            initiativeSettings: createDefaultCoupleSpaceInitiativeSettings(),
-          },
+          coupleSpaceState: hydrateCoupleSpaceState(
+            parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
+            createDefaultCoupleSpaceState(),
+          ),
+          coupleSpace: getCurrentCoupleSpaceData(
+            hydrateCoupleSpaceState(
+              parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
+              createDefaultCoupleSpaceState(),
+            ),
+            createDefaultCoupleSpaceData(),
+          ),
           visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
         });
       } catch (e) {

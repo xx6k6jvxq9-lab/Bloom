@@ -208,6 +208,9 @@ export type CoNote = {
   content: string;
   timestamp: number;
   isCompleted: boolean;
+  replyToNoteId?: string;
+  replyToAuthorId?: string;
+  replyToAuthorName?: string;
 };
 
 export type LedgerEntry = {
@@ -530,6 +533,11 @@ export type CoupleSpaceData = {
   addedPartnerIds?: string[];
   perception?: PerceptionSettings;
   initiativeSettings?: CoupleSpaceInitiativeSettings;
+};
+
+export type CoupleSpaceState = {
+  currentPartnerId: string | null;
+  spacesByPartnerId: Record<string, CoupleSpaceData>;
 };
 
 export type ForumComment = {
