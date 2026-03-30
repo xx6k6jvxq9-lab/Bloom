@@ -1988,7 +1988,6 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const { resolvedUrl: resolvedCalendarBgUrl } = useResolvedPersistentValue(coupleSpace.calendarBg);
 
   const handleAdd = () => {
     if (!title.trim() || !date) return;
@@ -2035,13 +2034,6 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar">
-      {/* Calendar Background */}
-      {resolvedCalendarBgUrl && (
-        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-          <img src={resolvedCalendarBgUrl} className="w-full h-full object-cover" alt="calendar-bg" />
-        </div>
-      )}
-
       <button 
         onClick={() => setShowAddModal(true)}
         className="absolute -top-[56px] left-0 z-[30] p-2 bg-white/50 backdrop-blur-md rounded-full text-zinc-800 shadow-sm active:scale-90 transition-transform"
