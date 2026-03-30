@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+﻿import { useCallback, useEffect, useRef } from 'react';
 import type {
   ApiConfig,
   CallRecord,
@@ -79,7 +79,7 @@ const splitStreamingModelResponseIntoMessages = (
   const explicitParts = mainText.split('\n').map(part => part.trim()).filter(Boolean);
   const parts = explicitParts.length > 1
     ? explicitParts
-    : (mainText.match(/[^。！�??�?\n]+[。！�??�?]?/g)?.map(part => part.trim()).filter(Boolean) ?? [mainText]);
+    : (mainText.match(/[^。！？?\n]+[。！？?]?/g)?.map(part => part.trim()).filter(Boolean) ?? [mainText]);
 
   return parts.map((part, index) => ({
     role: 'model' as const,
@@ -393,9 +393,9 @@ export function useDirectChatRuntime({
     }
 
     try {
-      const prompt = `���������û���������ͨ��������趨�ǣ�${character.setting}
-�û�����һ�仰�ǣ�"${userText}"
-���Կ��ﻯ�ķ�ʽ��̻�Ӧ��50�����ڣ���`;
+      const prompt = `你正在与用户进行语音通话。你的设定是：${character.setting}
+用户的上一句话是："${userText}"
+请以口语化的方式简短回应（50字以内）。`;
 
       const responseText = await generateTextWithConfig({
         activeConfig,
@@ -433,7 +433,7 @@ export function useDirectChatRuntime({
 
     const userMsg: ChatMessage = {
       role: 'user',
-      text: textToSend.trim() || (locationData ? `[分享位置] ${locationData.name}` : ''),
+      text: textToSend.trim() || (locationData ? `[位置分享] ${locationData.name}` : ''),
       timestamp: Date.now(),
       ...(replyingTo ? { replyTo: replyingTo } : {}),
       ...(locationData ? { location: locationData } : {}),
@@ -455,7 +455,7 @@ export function useDirectChatRuntime({
     let latestHistory = newHistory;
     let renderedAssistantMessageCount = 0;
     const stripPseudoMomentPrefix = (text: string) =>
-      text.replace(/^\s*(动态|状态|朋友圈|说说)[:：]\s*/u, '').trim();
+      text.replace(/^\s*(动态|状态|朋友圈说说)[:：]\s*/u, '').trim();
 
     const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
       const displayText = stripPseudoMomentPrefix(text);
@@ -586,7 +586,7 @@ export function useDirectChatRuntime({
       });
 
       if (!currentResponseText) {
-        throw new Error('模型返回为空');
+        throw new Error('妯″瀷杩斿洖涓虹┖');
       }
       if (activeGenerationIdRef.current !== generationId) {
         return;
@@ -642,7 +642,7 @@ export function useDirectChatRuntime({
               memorySummary: character.memorySummary?.trim() || '',
             },
             sections: [
-              summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
+              summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '鐢ㄦ埛' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
             ],
           });
 
@@ -667,7 +667,7 @@ export function useDirectChatRuntime({
         return;
       }
       console.error('Chat error:', sendError);
-      setHistory([...newHistory, { role: 'model', text: `错误: ${sendError.message}`, timestamp: Date.now() }]);
+      setHistory([...newHistory, { role: 'model', text: `閿欒: ${sendError.message}`, timestamp: Date.now() }]);
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;
@@ -690,7 +690,7 @@ export function useDirectChatRuntime({
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[发送了一张图片]');
+      setInput('[鍙戦€佷簡涓€寮犲浘鐗嘳');
       handleSendRef.current();
     }, 100);
   }, [history, setHistory, setInput]);
@@ -698,13 +698,13 @@ export function useDirectChatRuntime({
   const sendStickerMessage = useCallback(() => {
     const userMsg: ChatMessage = {
       role: 'user',
-      text: '[表情包]',
+      text: '[琛ㄦ儏鍖匽',
       timestamp: Date.now(),
     };
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[发送了一个表情]');
+      setInput('[鍙戦€佷簡涓€涓〃鎯匽');
       handleSendRef.current();
     }, 100);
   }, [history, setHistory, setInput]);
@@ -716,7 +716,7 @@ export function useDirectChatRuntime({
   const sendInnerVoiceProbe = useCallback(() => {
     const userMsg: ChatMessage = {
       role: 'user',
-      text: '[使用道具：倾听Ta的心声]',
+      text: '[浣跨敤閬撳叿锛氬€惧惉Ta鐨勫績澹癩',
       timestamp: Date.now(),
       isInnerVoice: true,
     };
@@ -754,7 +754,7 @@ export function useDirectChatRuntime({
     setHistory([...history, userMsg]);
 
     const fullText = voiceCallHistory
-      .map(m => `${m.role === 'user' ? '�û�' : character.name}: ${m.text}`)
+      .map(m => `${m.role === 'user' ? '用户' : character.name}: ${m.text}`)
       .join('\n');
 
     if (isRecordingCall && fullText.trim() && onAddCallRecord) {
@@ -854,7 +854,7 @@ export function useDirectChatRuntime({
       const newCards = cards.map(c => c.id === selectedCardId ? { ...c, balance: c.balance - amount } : c);
       const newTransaction = {
         id: `t-${Date.now()}`,
-        title: `转账�?${character.name}`,
+        title: `转账给 ${character.name}`,
         type: 'expense' as const,
         amount,
         date: '刚刚',
@@ -887,7 +887,7 @@ export function useDirectChatRuntime({
 
     newHistory.push({
       role: 'user',
-      text: `${receiverName} ����ȡת�� ��${amountStr}`,
+      text: `${receiverName} 已领取转账 ￥${amountStr}`,
       timestamp: Date.now(),
       isSystem: true,
     } as ChatMessage);
@@ -952,6 +952,9 @@ export function useDirectChatRuntime({
     handleReceiveTransfer,
   };
 }
+
+
+
 
 
 

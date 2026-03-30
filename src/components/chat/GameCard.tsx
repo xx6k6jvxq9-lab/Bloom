@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Zap, MessageCircle, HelpCircle, X } from 'lucide-react';
@@ -225,3 +225,4 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
     </>
   );
 };
+

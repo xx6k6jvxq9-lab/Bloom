@@ -1,4 +1,4 @@
-import type { Character, ChatMessage, FavoriteMessage } from '../../types';
+﻿import type { Character, ChatMessage, FavoriteMessage } from '../../types';
 
 export type CopyMessageResult = {
   ok: boolean;
@@ -347,3 +347,4 @@ export const deleteMessagesByIndexes = (
 export const copyMessageText = async (message: ChatMessage): Promise<CopyMessageResult> => {
   return copyTextContent(getMessageActionText(message));
 };
+
