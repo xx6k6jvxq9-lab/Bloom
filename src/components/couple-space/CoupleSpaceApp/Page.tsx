@@ -2334,10 +2334,10 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 space-y-3 shrink-0">
         <h3 className="font-bold text-zinc-800 text-sm">添加纪念日</h3>
-        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="纪念日名称（如：TA 的生日）" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500" />
+        <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="纪念日名称（如：TA 的生日）" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#f6b6cd]" />
         <div className="flex gap-2">
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500" />
-          <button onClick={handleAdd} className="bg-red-500 text-white px-4 rounded-xl font-bold shadow-sm active:scale-95">添加</button>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#f6b6cd]" />
+          <button onClick={handleAdd} className="bg-[#f6b6cd] text-white px-4 rounded-xl font-bold shadow-sm shadow-[#f6b6cd]/40 active:scale-95">添加</button>
         </div>
       </div>
 
@@ -2350,16 +2350,16 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
 
           return (
             <div key={anniv.id} className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex items-center justify-between relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1.5 h-full bg-red-400" />
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-[#f6b6cd]" />
               <div className="pl-2">
                 <div className="font-bold text-zinc-800 mb-1">{anniv.title}</div>
                 <div className="text-xs text-zinc-500">{anniv.date}</div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-zinc-500 mb-0.5">{isFuture ? '还有' : '已经'}</div>
-                <div className="text-red-500 font-bold"><span className="text-2xl">{diffDays}</span> 天</div>
+                <div className="text-[#d98cab] font-bold"><span className="text-2xl">{diffDays}</span> 天</div>
               </div>
-              <button onClick={() => deleteAnniv(anniv.id)} className="absolute top-2 right-2 text-zinc-200 hover:text-red-500">
+              <button onClick={() => deleteAnniv(anniv.id)} className="absolute top-2 right-2 text-zinc-200 hover:text-[#f6b6cd]">
                 <X size={14} />
               </button>
             </div>
