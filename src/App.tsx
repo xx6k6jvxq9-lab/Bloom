@@ -1260,6 +1260,10 @@ export default function App() {
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
   const couplePartnerId = appData.coupleSpaceState?.currentPartnerId ?? appData.coupleSpace?.partnerId;
+  const currentCoupleSpace = getCurrentCoupleSpaceData(
+    appData.coupleSpaceState ?? createDefaultCoupleSpaceState(couplePartnerId ?? null),
+    appData.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: couplePartnerId ?? null }),
+  );
   const couplePartnerCharacter = getCharacterById(couplePartnerId) || appData.characters[0] || null;
   const setCharacters = useCallback((characters: Character[]) => {
     setAppData(prev => ({
@@ -1287,6 +1291,41 @@ export default function App() {
       ...prev,
       characters: upsertCharacter(prev.characters, character),
     }));
+  }, []);
+  const handleUpdateCurrentCoupleSpace = useCallback((updates: any) => {
+    setAppData(prev => {
+      const prevState =
+        prev.coupleSpaceState ??
+        projectCoupleSpaceStateFromCurrentSpace(
+          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
+        ) ??
+        createDefaultCoupleSpaceState();
+      const currentPartnerId = prevState.currentPartnerId ?? prev.coupleSpace?.partnerId ?? null;
+      const prevCurrentSpace = getCurrentCoupleSpaceData(
+        prevState,
+        prev.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
+      );
+      const nextCurrentSpace = {
+        ...prevCurrentSpace,
+        ...(typeof updates === 'function' ? updates(prevCurrentSpace) : updates),
+        partnerId: currentPartnerId,
+      };
+      const nextSpaces = currentPartnerId
+        ? {
+            ...prevState.spacesByPartnerId,
+            [currentPartnerId]: nextCurrentSpace,
+          }
+        : { ...prevState.spacesByPartnerId };
+
+      return {
+        ...prev,
+        coupleSpaceState: {
+          currentPartnerId,
+          spacesByPartnerId: nextSpaces,
+        },
+        coupleSpace: nextCurrentSpace,
+      };
+    });
   }, []);
 
   useEffect(() => {
@@ -1750,11 +1789,8 @@ export default function App() {
           )}
           {activeApp === 'perception' && (
             <PerceptionView
-              coupleSpace={appData.coupleSpace}
-              updateSpace={(updates) => setAppData(prev => ({
-                ...prev,
-                coupleSpace: { ...prev.coupleSpace!, ...updates }
-              }))}
+              coupleSpace={currentCoupleSpace}
+              updateSpace={handleUpdateCurrentCoupleSpace}
               onBack={() => setActiveApp('home')}
             />
           )}
