@@ -1332,11 +1332,11 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
             }
           >
             <Heart size={18} className={isLiked ? 'fill-red-500' : ''} />
-            <span>{post.likes.length || '赞'}</span>
+            <span>赞</span>
           </button>
           <button onClick={() => setShowCommentInput(!showCommentInput)} className="flex items-center gap-1.5 text-sm text-zinc-500">
             <Edit3 size={18} />
-            <span>{post.comments?.length || '评论'}</span>
+            <span>评论</span>
           </button>
         </div>
       </div>
