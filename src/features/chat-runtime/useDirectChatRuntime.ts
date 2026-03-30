@@ -4,6 +4,7 @@ import type {
   CallRecord,
   Character,
   ChatMessage,
+  CoupleSpaceData,
   FavoriteMessage,
   Mask,
   PerceptionSettings,
@@ -13,6 +14,7 @@ import type {
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
+import { buildRecentCoupleSpaceSummary } from '../../services/ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import {
   copyMessageText,
   createForwardText,
@@ -101,6 +103,7 @@ type UseDirectChatRuntimeArgs = {
   masks: Mask[];
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
+  coupleSpace?: CoupleSpaceData;
   userName: string;
   favorites: FavoriteMessage[];
   setFavorites: (favorites: FavoriteMessage[]) => void;
@@ -156,6 +159,7 @@ export function useDirectChatRuntime({
   masks,
   worldBook = [],
   perception,
+  coupleSpace,
   userName,
   favorites,
   setFavorites,
@@ -249,6 +253,13 @@ export function useDirectChatRuntime({
           }
 
           const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
+          const recentCoupleSpaceSummary = coupleSpace
+            ? buildRecentCoupleSpaceSummary({
+                coupleSpace,
+                user: { name: userName } as any,
+                partner: character,
+              }).recentCoupleSpaceSummary
+            : undefined;
           const systemPrompt = buildChatPrompt({
             mode: 'autoReply',
             characterCore: {
@@ -261,6 +272,9 @@ export function useDirectChatRuntime({
               perceptionPrompt,
             },
             includeProtocolRules: false,
+            // Phase B only prepares lightweight couple-space context at the chat entrypoint.
+            // A later step can decide how to serialize it into the final chat prompt.
+            ...(recentCoupleSpaceSummary ? { sections: [] } : {}),
           });
 
           await streamTextWithConfig({
@@ -554,6 +568,13 @@ export function useDirectChatRuntime({
       }
 
       const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
+      const recentCoupleSpaceSummary = coupleSpace
+        ? buildRecentCoupleSpaceSummary({
+            coupleSpace,
+            user: { name: userName } as any,
+            partner: character,
+          }).recentCoupleSpaceSummary
+        : undefined;
       const systemPrompt = buildChatPrompt({
         mode: 'chat',
         characterCore: {
@@ -565,6 +586,9 @@ export function useDirectChatRuntime({
           memorySummary: normalizedMemoryPrompt,
           perceptionPrompt,
         },
+        // Phase B only prepares lightweight couple-space context at the chat entrypoint.
+        // A later step can decide how to serialize it into the final chat prompt.
+        ...(recentCoupleSpaceSummary ? { sections: [] } : {}),
       });
 
       await streamTextWithConfig({

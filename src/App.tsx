@@ -62,7 +62,9 @@ import { usePersistedCharactersBridge } from './features/persistence/usePersiste
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
+import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
+import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -434,9 +436,16 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
   const persistedCharacters = (characters || [])
     .filter(character => !REMOVED_CHARACTER_IDS.has(character.id) && !REMOVED_CHARACTER_NAMES.has(character.name))
     .map(character =>
-      character.id === 'char-zhou-jibai' && (!character.avatar || character.avatar === DEFAULT_WHITE_AVATAR)
-        ? { ...character, avatar: DEFAULT_ZHOU_JIBAI_AVATAR }
-        : character,
+      character.id === 'char-zhou-jibai'
+        ? {
+            ...character,
+            avatar:
+              sanitizeTransientAssetValue(character.avatar) || DEFAULT_ZHOU_JIBAI_AVATAR,
+          }
+        : {
+            ...character,
+            avatar: sanitizeTransientAssetValue(character.avatar),
+          },
     );
 
   const existingIds = new Set(persistedCharacters.map(character => character.id));
@@ -1217,7 +1226,8 @@ export default function App() {
       loveLetters: [],
       calendarEvents: [],
       loveLetterEnvelopeColor: '#f6d9e4',
-      loveLetterPaperTexture: 'default'
+      loveLetterPaperTexture: 'default',
+      initiativeSettings: createDefaultCoupleSpaceInitiativeSettings(),
     },
     musicData: {
       currentSong: null,
@@ -1331,6 +1341,12 @@ export default function App() {
         setAppData({
           ...parsed,
           characters: sanitizePersistedCharacters(parsed.characters),
+          userProfile: parsed.userProfile
+            ? {
+                ...parsed.userProfile,
+                avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
+              }
+            : parsed.userProfile,
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
@@ -1345,7 +1361,8 @@ export default function App() {
             loveLetters: [],
             calendarEvents: [],
             loveLetterEnvelopeColor: '#f6d9e4',
-            loveLetterPaperTexture: 'default'
+            loveLetterPaperTexture: 'default',
+            initiativeSettings: createDefaultCoupleSpaceInitiativeSettings(),
           },
           visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
         });
@@ -1578,6 +1595,7 @@ export default function App() {
             groups={appData.groups}
             worldBook={appData.worldBooks || []}
             perception={appData.coupleSpace?.perception}
+            coupleSpace={appData.coupleSpace}
             callHistory={appData.callHistory || []}
             setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
             savedDates={appData.savedDates || []}
@@ -1698,6 +1716,12 @@ export default function App() {
                   setAppData({
                     ...parsed,
                     characters: sanitizePersistedCharacters(parsed.characters),
+                    userProfile: parsed.userProfile
+                      ? {
+                          ...parsed.userProfile,
+                          avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
+                        }
+                      : parsed.userProfile,
                   });
                   alert('导入成功！');
                 } catch (e) {

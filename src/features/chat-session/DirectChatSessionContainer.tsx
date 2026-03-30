@@ -3,6 +3,7 @@ import type {
   CallRecord,
   Character,
   ChatHistory,
+  CoupleSpaceData,
   DateSession,
   FavoriteMessage,
   Mask,
@@ -34,6 +35,7 @@ type DirectChatSessionContainerProps = {
   groups: string[];
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
+  coupleSpace?: CoupleSpaceData;
   onViewForumPost?: (postId: string) => void;
   callHistory: CallRecord[];
   setCallHistory: (callHistory: CallRecord[]) => void;
@@ -65,6 +67,7 @@ export function DirectChatSessionContainer({
   groups,
   worldBook = [],
   perception,
+  coupleSpace,
   onViewForumPost,
   callHistory,
   setCallHistory,
@@ -102,6 +105,7 @@ export function DirectChatSessionContainer({
       onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
       worldBook={worldBook}
       perception={perception}
+      coupleSpace={coupleSpace}
       settings={settings}
       onBack={onBack}
       userAvatar={userAvatar}

@@ -4,6 +4,7 @@ import type {
   ChatGroup,
   ChatHistory,
   Character,
+  CoupleSpaceData,
   DateSession,
   FavoriteMessage,
   Mask,
@@ -38,6 +39,7 @@ type ChatSessionMountProps = {
   groups: string[];
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
+  coupleSpace?: CoupleSpaceData;
   callHistory: CallRecord[];
   setCallHistory: (callHistory: CallRecord[]) => void;
   savedDates: DateSession[];
@@ -74,6 +76,7 @@ export function ChatSessionMount({
   groups,
   worldBook = [],
   perception,
+  coupleSpace,
   callHistory,
   setCallHistory,
   savedDates,
@@ -115,6 +118,7 @@ export function ChatSessionMount({
           patchCharacter={patchCharacter}
           worldBook={worldBook}
           perception={perception}
+          coupleSpace={coupleSpace}
           settings={settings}
           onBack={onBackToChat}
           userAvatar={userAvatar}

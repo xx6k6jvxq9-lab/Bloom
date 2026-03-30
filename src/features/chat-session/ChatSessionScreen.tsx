@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
   Character, ChatMessage, PerceptionSettings,
-  ApiConfig, AppSettings, CallRecord, DateSession, WalletData,
+  ApiConfig, AppSettings, CallRecord, CoupleSpaceData, DateSession, WalletData,
 } from '../../types';
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
@@ -109,6 +109,7 @@ export function ChatSessionScreen({
   groups,
   worldBook = [],
   perception,
+  coupleSpace,
   onViewForumPost,
   callHistory,
   onAddCallRecord,
@@ -140,6 +141,7 @@ export function ChatSessionScreen({
   worldBook?: WorldBookEntry[];
   key?: string;
   perception?: PerceptionSettings;
+  coupleSpace?: CoupleSpaceData;
   onViewForumPost?: (postId: string) => void;
   callHistory?: CallRecord[];
   onAddCallRecord?: (record: CallRecord) => void;
@@ -240,6 +242,7 @@ export function ChatSessionScreen({
     masks,
     worldBook,
     perception,
+    coupleSpace,
     userName,
     favorites,
     setFavorites,
