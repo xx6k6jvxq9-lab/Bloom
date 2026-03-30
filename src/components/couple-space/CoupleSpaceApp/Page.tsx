@@ -1505,7 +1505,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings }: any)
           type="text" 
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="鍐欎笅鎯充竴璧峰仛鐨勪簨..."
+          placeholder="写下想一起做的事..."
           className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-full px-4 py-3 text-sm outline-none shadow-sm"
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
