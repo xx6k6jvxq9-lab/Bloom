@@ -1231,7 +1231,17 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'post-feed' && partner && (
-            <PostFeedView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} settings={settings} onBack={() => setActiveView('main')} />
+            <PostFeedView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              user={user}
+              partner={partner}
+              settings={settings}
+              onBack={() => setActiveView('main')}
+              chatHistory={appData.chatHistory}
+              masks={appData.masks || []}
+              worldBooks={appData.worldBooks || []}
+            />
           )}
 
           {activeView === 'anniversaries' && partner && (
@@ -2262,7 +2272,7 @@ function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBack }: any) {
+function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBack, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
   const [imgUrls, setImgUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
@@ -2292,16 +2302,26 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
     try {
       const interactionSettings = getCoupleSpaceInteractionSettings(coupleSpace);
       if (interactionSettings.reactToExistingPost.enabled) {
+        const commonInputEnvelope = createCoupleSpacePromptCommonInput({
+          source: {
+            user,
+            partner,
+            coupleSpace,
+            chatHistory,
+            masks,
+            worldBooks,
+            settings: {
+              initiativeSettings: coupleSpace.initiativeSettings,
+            },
+          },
+          scene: {
+            mode: 'passive',
+            actionType: 'react_to_existing_post',
+          },
+        });
+
         const responseText = await generateCoupleDailyComment(settings, {
-          mode: 'passive',
-          actionType: 'react_to_existing_post',
-          characterProfile: {
-            characterName: partner.name,
-            personaSummary: partner.setting,
-          },
-          relationshipContext: {
-            userName: user.name,
-          },
+          ...commonInputEnvelope.common,
           dailyCommentContext: {
             coupleDailyContent: newPost.content,
             contentAuthor: 'user',
