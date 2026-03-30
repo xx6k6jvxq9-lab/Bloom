@@ -47,6 +47,7 @@ type DirectChatSessionContainerProps = {
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
+  onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
 
 export function DirectChatSessionContainer({
@@ -79,6 +80,7 @@ export function DirectChatSessionContainer({
   onPublishMoment,
   onOpenCharacterMoments,
   onStatusBarVisibilityChange,
+  onAcceptCoupleSpaceInvite,
 }: DirectChatSessionContainerProps) {
   usePersistedCallHistoryBridge(callHistory, setCallHistory);
   usePersistedDatingRecordsBridge(savedDates, collectedDates, setDatingRecords);
@@ -145,6 +147,7 @@ export function DirectChatSessionContainer({
       onPublishMoment={onPublishMoment}
       onOpenCharacterMoments={onOpenCharacterMoments}
       onStatusBarVisibilityChange={onStatusBarVisibilityChange}
+      onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
     />
   );
 }

@@ -1327,6 +1327,38 @@ export default function App() {
       };
     });
   }, []);
+  const handleAcceptCoupleSpaceInvite = useCallback((partnerId: string) => {
+    setAppData(prev => {
+      const prevState =
+        prev.coupleSpaceState ??
+        projectCoupleSpaceStateFromCurrentSpace(
+          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
+        ) ??
+        createDefaultCoupleSpaceState();
+
+      const existingSpace = prevState.spacesByPartnerId[partnerId];
+      const acceptedSpace = existingSpace ?? createDefaultCoupleSpaceData({
+        partnerId,
+        anniversaryDate: Date.now(),
+      });
+      const nextState = {
+        currentPartnerId: partnerId,
+        spacesByPartnerId: {
+          ...prevState.spacesByPartnerId,
+          [partnerId]: {
+            ...acceptedSpace,
+            partnerId,
+          },
+        },
+      };
+
+      return {
+        ...prev,
+        coupleSpaceState: nextState,
+        coupleSpace: getCurrentCoupleSpaceData(nextState, acceptedSpace),
+      };
+    });
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1688,6 +1720,7 @@ export default function App() {
               setActiveApp('character-moments');
             }}
             onStatusBarVisibilityChange={setStatusBarVisible}
+            onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
           />
           {activeApp === 'add-character' && (
             <AddCharacter

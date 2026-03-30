@@ -91,6 +91,10 @@ function InlineResolvedImage({
   return <img src={src} className={className} style={style} alt={alt} />;
 }
 
+function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return <Star size={size} className={className} />;
+}
+
 export function ChatSessionScreen({ 
   character, 
   history, 
@@ -121,7 +125,8 @@ export function ChatSessionScreen({
   onUpdateWalletData,
   onPublishMoment,
   onOpenCharacterMoments,
-  onStatusBarVisibilityChange
+  onStatusBarVisibilityChange,
+  onAcceptCoupleSpaceInvite,
 }: { 
   character: Character;
   history: ChatMessage[];
@@ -154,6 +159,7 @@ export function ChatSessionScreen({
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
+  onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 }) {
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
@@ -252,6 +258,7 @@ export function ChatSessionScreen({
     onUpdateCharacter,
     onPublishMoment,
     onAddCallRecord,
+    onAcceptCoupleSpaceInvite,
   });
 
   useEffect(() => {
@@ -902,19 +909,58 @@ export function ChatSessionScreen({
                                   e.preventDefault();
                                   handleMessageClick(e, i);
                                 }}
-                                className="w-64 rounded-2xl overflow-hidden shadow-sm border border-pink-100 bg-gradient-to-br from-pink-50 via-white to-rose-50"
+                                className="w-64 rounded-2xl overflow-hidden shadow-sm border border-pink-100 bg-gradient-to-br from-pink-50 via-rose-50 to-white"
                               >
                                 <div className="p-4 flex items-start gap-3">
-                                  <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-500 flex items-center justify-center shrink-0">
-                                    <Heart size={20} fill="currentColor" />
+                                  <div className="w-10 h-10 rounded-full bg-pink-50 text-pink-400 flex items-center justify-center shrink-0">
+                                    <CoupleSpaceInviteIcon size={22} />
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="text-[13px] font-bold text-zinc-900">情侣空间邀请</div>
                                     <p className="mt-1 text-[12px] leading-5 text-zinc-600">
                                       你向 {character.name} 发出了建立情侣空间的邀请。
                                     </p>
-                                    <div className="mt-3 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-medium text-pink-600">
+                                    <div className="mt-3 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-medium text-pink-500">
                                       等待回应
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              {character.showTime && (
+                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (msg.text.trim() === '[COUPLE_SPACE_INVITE_ACCEPTED]') {
+                          return (
+                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div
+                                onClick={(e) => {
+                                  if (multiSelectMode) {
+                                    handleMessageClick(e, i);
+                                  }
+                                }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  handleMessageClick(e, i);
+                                }}
+                                className="w-64 rounded-2xl overflow-hidden shadow-sm border border-pink-100 bg-gradient-to-br from-pink-50 via-rose-50 to-white"
+                              >
+                                <div className="p-4 flex items-start gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-pink-50 text-pink-400 flex items-center justify-center shrink-0">
+                                    <CoupleSpaceInviteIcon size={22} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[13px] font-bold text-zinc-900">情侣空间已建立</div>
+                                    <p className="mt-1 text-[12px] leading-5 text-zinc-600">
+                                      {character.name} 已经接下这份邀请，你们的情侣空间现在正式开启了。
+                                    </p>
+                                    <div className="mt-3 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-medium text-pink-500">
+                                      已同意
                                     </div>
                                   </div>
                                 </div>
@@ -1593,8 +1639,8 @@ export function ChatSessionScreen({
                     }}
                     className="flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-pink-500 active:scale-95 transition-transform">
-                      <Heart size={28} fill="currentColor" />
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                      <CoupleSpaceInviteIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">情侣空间</span>
                   </button>

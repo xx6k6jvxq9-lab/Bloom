@@ -113,6 +113,7 @@ type UseDirectChatRuntimeArgs = {
   onPatchCharacter?: (patch: Partial<Character>) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
+  onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
 
 type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
@@ -170,11 +171,17 @@ export function useDirectChatRuntime({
   onPatchCharacter,
   onPublishMoment,
   onAddCallRecord,
+  onAcceptCoupleSpaceInvite,
 }: UseDirectChatRuntimeArgs): UseDirectChatRuntimeResult {
   const lastMomentPublishAtRef = useRef<number | null>(null);
   const { isLoading, error, setError: setErrorState, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const activeAssistantMessageIdRef = useRef<number | null>(null);
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
+  const historyRef = useRef(history);
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   const setError = useCallback((value: string | null) => {
     setErrorState(value);
@@ -740,8 +747,24 @@ export function useDirectChatRuntime({
       text: '[COUPLE_SPACE_INVITE]',
       timestamp: Date.now(),
     };
-    setHistory([...history, userMsg]);
-  }, [history, setHistory]);
+    setHistory([...historyRef.current, userMsg]);
+
+    window.setTimeout(() => {
+      const latestHistory = historyRef.current;
+      const modelReply: ChatMessage = {
+        role: 'model',
+        text: '……好。那就从现在开始，把这里只留给我们。',
+        timestamp: Date.now(),
+      };
+      const acceptedCard: ChatMessage = {
+        role: 'model',
+        text: '[COUPLE_SPACE_INVITE_ACCEPTED]',
+        timestamp: Date.now() + 1,
+      };
+      setHistory([...latestHistory, modelReply, acceptedCard]);
+      onAcceptCoupleSpaceInvite?.(character.id);
+    }, 800);
+  }, [character.id, onAcceptCoupleSpaceInvite, setHistory]);
 
   const sendInnerVoiceProbe = useCallback(() => {
     const userMsg: ChatMessage = {

@@ -54,6 +54,7 @@ type ChatSessionMountProps = {
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
+  onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
 
 export function ChatSessionMount({
@@ -91,6 +92,7 @@ export function ChatSessionMount({
   onPublishMoment,
   onOpenCharacterMoments,
   onStatusBarVisibilityChange,
+  onAcceptCoupleSpaceInvite,
 }: ChatSessionMountProps) {
   const { getCharacterById } = createCharacterDirectory({ characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
@@ -140,6 +142,7 @@ export function ChatSessionMount({
           onPublishMoment={onPublishMoment}
           onOpenCharacterMoments={onOpenCharacterMoments}
           onStatusBarVisibilityChange={onStatusBarVisibilityChange}
+          onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
         />
       )}
 
