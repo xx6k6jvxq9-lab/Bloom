@@ -457,7 +457,18 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 <h3 className="font-bold text-zinc-800 text-lg mb-2">情侣动态</h3>
                 {(coupleSpace.posts || []).length > 0 ? (
                   (coupleSpace.posts || []).sort((a: any, b: any) => b.timestamp - a.timestamp).map((post: any) => (
-                    <PostCard key={post.id} post={post} user={user} partner={partner} updateSpace={handleUpdateCoupleSpace} coupleSpace={coupleSpace} settings={settings} />
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      user={user}
+                      partner={partner}
+                      updateSpace={handleUpdateCoupleSpace}
+                      coupleSpace={coupleSpace}
+                      settings={settings}
+                      chatHistory={appData.chatHistory}
+                      masks={appData.masks || []}
+                      worldBooks={appData.worldBooks || []}
+                    />
                   ))
                 ) : (
                   <div className="text-center text-zinc-400 py-10">
@@ -1171,6 +1182,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               user={user}
               partner={partner}
               settings={settings}
+              chatHistory={appData.chatHistory}
               masks={appData.masks || []}
               worldBooks={appData.worldBooks || []}
               onOpenLetter={(letterId: string) => {
@@ -1227,7 +1239,16 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'messageboard' && partner && (
-            <MessageBoardView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} settings={settings} />
+            <MessageBoardView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              user={user}
+              partner={partner}
+              settings={settings}
+              chatHistory={appData.chatHistory}
+              masks={appData.masks || []}
+              worldBooks={appData.worldBooks || []}
+            />
           )}
 
         </AnimatePresence>
@@ -1261,7 +1282,7 @@ function MiniAppIcon({ icon, title, onClick }: { icon: React.ReactNode, title: s
 
 // --- Sub Views ---
 
-function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: any) {
+function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
   const [commentText, setCommentText] = useState('');
   const [showCommentInput, setShowCommentInput] = useState(false);
   const author = post.authorId === 'user' ? user : partner;
@@ -1305,16 +1326,26 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings }: a
     // If user commented on AI's post, AI might reply
     if (post.authorId === partner.id && getCoupleSpaceInteractionSettings(coupleSpace).replyDailyComment.enabled) {
       try {
+        const commonInputEnvelope = createCoupleSpacePromptCommonInput({
+          source: {
+            user,
+            partner,
+            coupleSpace,
+            chatHistory,
+            masks,
+            worldBooks,
+            settings: {
+              initiativeSettings: coupleSpace.initiativeSettings,
+            },
+          },
+          scene: {
+            mode: 'passive',
+            actionType: 'reply_daily_comment',
+          },
+        });
+
         const responseText = await generateCoupleDailyCommentReply(settings, {
-          mode: 'passive',
-          actionType: 'reply_daily_comment',
-          characterProfile: {
-            characterName: partner.name,
-            personaSummary: partner.setting,
-          },
-          relationshipContext: {
-            userName: user.name,
-          },
+          ...commonInputEnvelope.common,
           dailyCommentReplyContext: {
             coupleDailyContent: post.content,
             userComment: newComment.content,
@@ -1729,7 +1760,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, masks = [], worldBooks = [], onOpenLetter }: any) {
+function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks = [], worldBooks = [], onOpenLetter }: any) {
   const [writing, setWriting] = useState(false);
   const [content, setContent] = useState('');
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
@@ -1768,6 +1799,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ma
           user,
           partner,
           coupleSpace,
+          chatHistory,
           masks,
           worldBooks,
           settings: {
@@ -2452,7 +2484,7 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }: any) {
+function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
 
   const handleLeaveMessage = async () => {
@@ -2472,16 +2504,26 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings }:
     try {
       const interactionSettings = getCoupleSpaceInteractionSettings(coupleSpace);
       if (interactionSettings.replyMessageBoard.enabled) {
+        const commonInputEnvelope = createCoupleSpacePromptCommonInput({
+          source: {
+            user,
+            partner,
+            coupleSpace,
+            chatHistory,
+            masks,
+            worldBooks,
+            settings: {
+              initiativeSettings: coupleSpace.initiativeSettings,
+            },
+          },
+          scene: {
+            mode: 'passive',
+            actionType: 'reply_message_board',
+          },
+        });
+
         const responseText = await generateCoupleMessageBoardReply(settings, {
-          mode: 'passive',
-          actionType: 'reply_message_board',
-          characterProfile: {
-            characterName: partner.name,
-            personaSummary: partner.setting,
-          },
-          relationshipContext: {
-            userName: user.name,
-          },
+          ...commonInputEnvelope.common,
           messageBoardContext: {
             latestUserMessage: newMsg.content,
             boardToneHint: '接住 user 刚留在留言板里的这句话，像空间里顺手回的一句温柔留言',
