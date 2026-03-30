@@ -1961,7 +1961,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, on
 
       <button 
         onClick={startWriting}
-        className="absolute bottom-6 right-0 w-14 h-14 bg-rose-300 text-white rounded-full shadow-lg shadow-rose-200/50 flex items-center justify-center active:scale-90 transition-transform z-30"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-rose-300 text-white rounded-full shadow-lg shadow-rose-200/50 flex items-center justify-center active:scale-90 transition-transform z-30"
       >
         <Plus size={28} />
       </button>
