@@ -234,6 +234,7 @@ export type LoveLetter = {
   content: string;
   timestamp: number;
   comments: LoveLetterComment[];
+  isArchived?: boolean;
 };
 
 export type CalendarEvent = {

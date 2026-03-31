@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { Archive, ArchiveRestore, Trash2, X } from 'lucide-react';
 import { LoveLetter } from '../../../types';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { LoveLetterContentSection } from './LoveLetterContentSection';
@@ -22,6 +23,9 @@ type LoveLetterDetailPageProps = {
   appearance: LoveLetterAppearance;
   onClose: () => void;
   onAddComment?: (content: string) => void;
+  onArchive?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
 };
 
 export function LoveLetterDetailPage({
@@ -29,6 +33,9 @@ export function LoveLetterDetailPage({
   appearance,
   onClose,
   onAddComment,
+  onArchive,
+  onRestore,
+  onDelete,
 }: LoveLetterDetailPageProps) {
   const { resolvedUrl: resolvedPaperBgUrl } = useResolvedPersistentValue(appearance.paperBg);
   const paperBackgroundImage = resolvedPaperBgUrl ? `url('${resolvedPaperBgUrl}')` : 'none';
@@ -82,14 +89,43 @@ export function LoveLetterDetailPage({
           style={{ backgroundImage: `url('${paperStyle.overlay}')` }}
         />
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-7 top-[calc(env(safe-area-inset-top)+38px)] z-20 text-[28px] leading-none text-zinc-500/80 transition-colors hover:text-zinc-700 active:scale-95"
-          aria-label="关闭"
-        >
-          ×
-        </button>
+        <div className="absolute right-7 top-[calc(env(safe-area-inset-top)+30px)] z-20 flex items-center gap-2">
+          {letter.isArchived ? (
+            <button
+              type="button"
+              onClick={onRestore}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 shadow-sm backdrop-blur-md transition-colors hover:text-rose-400 active:scale-95"
+              aria-label="恢复情书"
+            >
+              <ArchiveRestore size={17} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onArchive}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 shadow-sm backdrop-blur-md transition-colors hover:text-rose-400 active:scale-95"
+              aria-label="归档情书"
+            >
+              <Archive size={17} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 shadow-sm backdrop-blur-md transition-colors hover:text-red-500 active:scale-95"
+            aria-label="删除情书"
+          >
+            <Trash2 size={17} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 shadow-sm backdrop-blur-md transition-colors hover:text-zinc-700 active:scale-95"
+            aria-label="关闭"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
         <div className="relative z-10 px-7 pb-14 pt-[calc(env(safe-area-inset-top)+76px)] md:px-10">
           <LoveLetterContentSection letter={letter} />
