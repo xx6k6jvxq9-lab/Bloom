@@ -247,6 +247,24 @@ export type CalendarEvent = {
   authorId: string;
 };
 
+export type CalendarMoodStampId =
+  | 'missing_you'
+  | 'clingy'
+  | 'happy'
+  | 'expecting'
+  | 'quiet'
+  | 'sulky'
+  | 'flutter'
+  | 'softened';
+
+export type CalendarMoodStamp = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  actorId: 'user' | 'partner';
+  mood: CalendarMoodStampId;
+  createdAt: number;
+};
+
 export type CouplePostComment = {
   id: string;
   authorId: string;
@@ -534,6 +552,7 @@ export type CoupleSpaceData = {
   ledger: LedgerEntry[];
   loveLetters: LoveLetter[];
   calendarEvents: CalendarEvent[];
+  moodStamps?: CalendarMoodStamp[];
   posts?: CouplePost[];
   anniversaries?: Anniversary[];
   messageBoard?: MessageBoardEntry[];
