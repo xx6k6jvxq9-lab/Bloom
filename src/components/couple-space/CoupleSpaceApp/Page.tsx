@@ -415,12 +415,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               </button>
             </>
           ) : (
-            <div className="w-[300px] rounded-[28px] bg-white/80 backdrop-blur-md shadow-xl px-6 py-7 text-center space-y-4">
-              <div className="mx-auto w-16 h-16 rounded-full bg-rose-100/80 flex items-center justify-center">
-                <Heart size={26} className="text-rose-300 fill-rose-300" />
-              </div>
+            <div className="w-[312px] text-center space-y-5">
+              <Heart
+                size={62}
+                className="mx-auto text-rose-300 fill-rose-300 animate-bounce drop-shadow-[0_12px_28px_rgba(244,114,182,0.24)]"
+              />
               <div className="space-y-2">
-                <h2 className="text-lg font-bold text-zinc-800">还没有建立情侣空间</h2>
+                <h2 className="text-lg font-bold tracking-[0.01em] text-zinc-800">还没有建立情侣空间</h2>
                 <p className="text-sm leading-6 text-zinc-500">
                   先去聊天里邀请角色，等 TA 同意后，
                   这里才会开启属于你们的情侣空间。
@@ -428,7 +429,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               </div>
               <button
                 onClick={onBack}
-                className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-zinc-800 text-white font-bold shadow-lg shadow-zinc-800/15 active:scale-95 transition-transform"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-full border border-rose-100 bg-white/85 text-rose-400 font-semibold shadow-[0_8px_24px_rgba(244,114,182,0.10)] active:scale-95 transition-transform"
               >
                 去聊天邀请
               </button>
