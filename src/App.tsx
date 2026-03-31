@@ -464,9 +464,20 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
 
 function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
   const { characters: _characters, ...persistableAppData } = appData;
-  const projectedCoupleSpaceState = projectCoupleSpaceStateFromCurrentSpace(
+  const baseCoupleSpaceState =
+    appData.coupleSpaceState ??
+    projectCoupleSpaceStateFromCurrentSpace(appData.coupleSpace);
+  const currentSpaceProjection = projectCoupleSpaceStateFromCurrentSpace(
     appData.coupleSpace,
   );
+  const projectedCoupleSpaceState = {
+    currentPartnerId:
+      currentSpaceProjection.currentPartnerId ?? baseCoupleSpaceState.currentPartnerId,
+    spacesByPartnerId: {
+      ...baseCoupleSpaceState.spacesByPartnerId,
+      ...currentSpaceProjection.spacesByPartnerId,
+    },
+  };
 
   return {
     ...persistableAppData,
