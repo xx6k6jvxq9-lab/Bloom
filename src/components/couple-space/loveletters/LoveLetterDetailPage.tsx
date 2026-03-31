@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Archive, ArchiveRestore, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Pin, PinOff, Trash2, X } from 'lucide-react';
 import { LoveLetter } from '../../../types';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { LoveLetterContentSection } from './LoveLetterContentSection';
@@ -25,6 +25,8 @@ type LoveLetterDetailPageProps = {
   onAddComment?: (content: string) => void;
   onArchive?: () => void;
   onRestore?: () => void;
+  onPin?: () => void;
+  onUnpin?: () => void;
   onDelete?: () => void;
 };
 
@@ -35,6 +37,8 @@ export function LoveLetterDetailPage({
   onAddComment,
   onArchive,
   onRestore,
+  onPin,
+  onUnpin,
   onDelete,
 }: LoveLetterDetailPageProps) {
   const { resolvedUrl: resolvedPaperBgUrl } = useResolvedPersistentValue(appearance.paperBg);
@@ -90,6 +94,25 @@ export function LoveLetterDetailPage({
         />
 
         <div className="absolute right-7 top-[calc(env(safe-area-inset-top)+30px)] z-20 flex items-center gap-2">
+          {letter.isPinned ? (
+            <button
+              type="button"
+              onClick={onUnpin}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-rose-400 shadow-sm backdrop-blur-md transition-colors hover:text-rose-500 active:scale-95"
+              aria-label="取消置顶情书"
+            >
+              <PinOff size={17} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onPin}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 shadow-sm backdrop-blur-md transition-colors hover:text-rose-400 active:scale-95"
+              aria-label="置顶情书"
+            >
+              <Pin size={17} />
+            </button>
+          )}
           {letter.isArchived ? (
             <button
               type="button"

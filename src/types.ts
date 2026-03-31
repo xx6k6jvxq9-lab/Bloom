@@ -1,4 +1,4 @@
-
+﻿
 export type Mask = {
   id: string;
   name: string;
@@ -208,6 +208,7 @@ export type CoNote = {
   content: string;
   timestamp: number;
   isCompleted: boolean;
+  isArchived?: boolean;
   replyToNoteId?: string;
   replyToAuthorId?: string;
   replyToAuthorName?: string;
@@ -235,6 +236,7 @@ export type LoveLetter = {
   timestamp: number;
   comments: LoveLetterComment[];
   isArchived?: boolean;
+  isPinned?: boolean;
 };
 
 export type CalendarEvent = {
@@ -263,6 +265,8 @@ export type CouplePost = {
   timestamp: number;
   likes: string[];
   comments: CouplePostComment[];
+  isArchived?: boolean;
+  isPinned?: boolean;
 };
 
 export type Anniversary = {
@@ -277,6 +281,8 @@ export type MessageBoardEntry = {
   authorId: string;
   content: string;
   timestamp: number;
+  isArchived?: boolean;
+  isPinned?: boolean;
 };
 
 export type CoupleSpaceInitiativeCadence = 'off' | 'low' | 'medium' | 'high';

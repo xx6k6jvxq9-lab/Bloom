@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search } from 'lucide-react';
+import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent } from '../../../types';
+import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent, CouplePost } from '../../../types';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
@@ -27,6 +27,7 @@ import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
+import { CoupleSpaceArchiveCenter } from '../archive/CoupleSpaceArchiveCenter';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -148,6 +149,15 @@ function ResolvedImage({
   return <img src={src} className={className} alt={alt} />;
 }
 
+function sortPinnedByTimestampDesc<T extends { isPinned?: boolean; timestamp: number }>(items: T[]) {
+  return [...items].sort((a, b) => {
+    if (Boolean(a.isPinned) !== Boolean(b.isPinned)) {
+      return a.isPinned ? -1 : 1;
+    }
+    return b.timestamp - a.timestamp;
+  });
+}
+
 type Props = {
   appData: any;
   setAppData: any;
@@ -156,7 +166,8 @@ type Props = {
 };
 
 export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props) {
-  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed'>('main');
+  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'archive'>('main');
+  const [loveLetterReturnView, setLoveLetterReturnView] = useState<'loveletters' | 'archive'>('loveletters');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
@@ -476,6 +487,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             {activeView === 'anniversaries' && '纪念日'}
             {activeView === 'messageboard' && '留言板'}
             {activeView === 'post-feed' && '情侣动态'}
+            {activeView === 'archive' && '归档'}
           </h1>
           {activeView === 'main' ? (
             <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
@@ -552,14 +564,16 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <MiniAppIcon icon={<Calendar size={24} className="text-rose-300" />} title="日历" onClick={() => setActiveView('calendar')} />
                   <MiniAppIcon icon={<Heart size={24} className="text-rose-300" />} title="纪念日" onClick={() => setActiveView('anniversaries')} />
                   <MiniAppIcon icon={<Edit3 size={24} className="text-rose-300" />} title="留言板" onClick={() => setActiveView('messageboard')} />
+                  <MiniAppIcon icon={<Archive size={24} className="text-rose-300" />} title="归档" onClick={() => setActiveView('archive')} />
                 </div>
               </div>
 
               {/* Feed Section */}
               <div className="px-4 space-y-4">
                 <h3 className="font-bold text-zinc-800 text-lg mb-2">情侣动态</h3>
-                {(coupleSpace.posts || []).length > 0 ? (
-                  (coupleSpace.posts || []).sort((a: any, b: any) => b.timestamp - a.timestamp).map((post: any) => (
+                {sortPinnedByTimestampDesc((coupleSpace.posts || []).filter((post: CouplePost) => !post.isArchived)).length > 0 ? (
+                  sortPinnedByTimestampDesc((coupleSpace.posts || []).filter((post: CouplePost) => !post.isArchived))
+                    .map((post: any) => (
                     <PostCard
                       key={post.id}
                       post={post}
@@ -1254,6 +1268,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               masks={appData.masks || []}
               worldBooks={appData.worldBooks || []}
               onOpenLetter={(letterId: string) => {
+                setLoveLetterReturnView('loveletters');
                 setSelectedLoveLetterId(letterId);
                 setActiveView('loveletter-detail');
               }}
@@ -1271,16 +1286,16 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 paperTexture: coupleSpace.loveLetterPaperTexture,
                 paperBg: coupleSpace.loveLetterPaperBg,
               }}
-              onClose={() => setActiveView('loveletters')}
+              onClose={() => setActiveView(loveLetterReturnView)}
               onArchive={() => {
                 handleUpdateCoupleSpace((prev: any) => ({
                   loveLetters: (prev.loveLetters || []).map((letter: LoveLetter) =>
                     letter.id === selectedLoveLetter.id
-                      ? { ...letter, isArchived: true }
+                      ? { ...letter, isArchived: true, isPinned: false }
                       : letter
                   ),
                 }));
-                setActiveView('loveletters');
+                setActiveView(loveLetterReturnView);
               }}
               onRestore={() => {
                 handleUpdateCoupleSpace((prev: any) => ({
@@ -1290,7 +1305,25 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                       : letter
                   ),
                 }));
-                setActiveView('loveletters');
+                setActiveView(loveLetterReturnView);
+              }}
+              onPin={() => {
+                handleUpdateCoupleSpace((prev: any) => ({
+                  loveLetters: (prev.loveLetters || []).map((letter: LoveLetter) =>
+                    letter.id === selectedLoveLetter.id
+                      ? { ...letter, isPinned: true }
+                      : letter
+                  ),
+                }));
+              }}
+              onUnpin={() => {
+                handleUpdateCoupleSpace((prev: any) => ({
+                  loveLetters: (prev.loveLetters || []).map((letter: LoveLetter) =>
+                    letter.id === selectedLoveLetter.id
+                      ? { ...letter, isPinned: false }
+                      : letter
+                  ),
+                }));
               }}
               onDelete={async () => {
                 if (!(await showInAppConfirm('确定要删除这封情书吗？删除后无法恢复。'))) {
@@ -1299,7 +1332,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 handleUpdateCoupleSpace((prev: any) => ({
                   loveLetters: (prev.loveLetters || []).filter((letter: LoveLetter) => letter.id !== selectedLoveLetter.id),
                 }));
-                setActiveView('loveletters');
+                setActiveView(loveLetterReturnView);
               }}
               onAddComment={
                 selectedLoveLetter.authorId !== 'user'
@@ -1338,6 +1371,23 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               chatHistory={appData.chatHistory}
               masks={appData.masks || []}
               worldBooks={appData.worldBooks || []}
+            />
+          )}
+
+          {activeView === 'archive' && partner && (
+            <CoupleSpaceArchiveCenter
+              loveLetters={coupleSpace.loveLetters || []}
+              posts={coupleSpace.posts || []}
+              coNotes={coupleSpace.coNotes || []}
+              messageBoard={coupleSpace.messageBoard || []}
+              user={user}
+              partner={partner}
+              updateSpace={handleUpdateCoupleSpace}
+              onOpenLetter={(letterId: string) => {
+                setLoveLetterReturnView('archive');
+                setSelectedLoveLetterId(letterId);
+                setActiveView('loveletter-detail');
+              }}
             />
           )}
 
@@ -1394,6 +1444,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
   const [showCommentInput, setShowCommentInput] = useState(false);
   const author = post.authorId === 'user' ? user : partner;
   const isLiked = post.likes.includes('user');
+  const isArchived = Boolean(post.isArchived);
 
   const handleLike = () => {
     updateSpace((prev: any) => ({
@@ -1492,6 +1543,40 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
     }
   };
 
+  const archivePost = async () => {
+    if (await showInAppConfirm('要把这条动态归档吗？归档后会从主列表移到已归档里。')) {
+      updateSpace((prev: any) => ({
+        posts: (prev.posts || []).map((p: any) =>
+          p.id === post.id ? { ...p, isArchived: true, isPinned: false } : p
+        )
+      }));
+    }
+  };
+
+  const restorePost = () => {
+    updateSpace((prev: any) => ({
+      posts: (prev.posts || []).map((p: any) =>
+        p.id === post.id ? { ...p, isArchived: false } : p
+      )
+    }));
+  };
+
+  const pinPost = () => {
+    updateSpace((prev: any) => ({
+      posts: (prev.posts || []).map((p: any) =>
+        p.id === post.id ? { ...p, isPinned: true } : p
+      )
+    }));
+  };
+
+  const unpinPost = () => {
+    updateSpace((prev: any) => ({
+      posts: (prev.posts || []).map((p: any) =>
+        p.id === post.id ? { ...p, isPinned: false } : p
+      )
+    }));
+  };
+
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100">
       <div className="flex items-start justify-between mb-3">
@@ -1510,11 +1595,29 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
             <div className="text-xs text-zinc-400">{new Date(post.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
           </div>
         </div>
-        {post.authorId === 'user' && (
-          <button onClick={deletePost} className="text-zinc-300 hover:text-red-500">
+        <div className="flex items-center gap-2">
+          {post.isPinned ? (
+            <button onClick={unpinPost} className="text-rose-300 hover:text-rose-400" aria-label="取消置顶动态">
+              <PinOff size={16} />
+            </button>
+          ) : (
+            <button onClick={pinPost} className="text-zinc-300 hover:text-rose-400" aria-label="置顶动态">
+              <Pin size={16} />
+            </button>
+          )}
+          {isArchived ? (
+            <button onClick={restorePost} className="text-zinc-300 hover:text-rose-400" aria-label="恢复动态">
+              <ArchiveRestore size={16} />
+            </button>
+          ) : (
+            <button onClick={archivePost} className="text-zinc-300 hover:text-rose-400" aria-label="归档动态">
+              <Archive size={16} />
+            </button>
+          )}
+          <button onClick={deletePost} className="text-zinc-300 hover:text-red-500" aria-label="删除动态">
             <Trash2 size={16} />
           </button>
-        )}
+        </div>
       </div>
       
       <p className="text-zinc-800 text-[15px] mb-3 whitespace-pre-wrap">{post.content}</p>
@@ -1599,9 +1702,9 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
   const [text, setText] = useState('');
   const allNotes: CoNote[] = coupleSpace.coNotes || [];
   const noteMap = new Map(allNotes.map((note) => [note.id, note]));
-  const topLevelNotes = allNotes.filter((note) => !note.replyToNoteId || !noteMap.has(note.replyToNoteId));
+  const topLevelNotes = allNotes.filter((note) => !note.isArchived && (!note.replyToNoteId || !noteMap.has(note.replyToNoteId)));
   const repliesByNoteId = allNotes.reduce((acc: Record<string, CoNote[]>, note: CoNote) => {
-    if (!note.replyToNoteId) return acc;
+    if (note.isArchived || !note.replyToNoteId) return acc;
     if (!acc[note.replyToNoteId]) {
       acc[note.replyToNoteId] = [];
     }
@@ -1719,6 +1822,16 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
     }));
   };
 
+  const archiveNote = (id: string) => {
+    updateSpace((prev: any) => ({
+      coNotes: (prev.coNotes || []).map((n: CoNote) =>
+        n.id === id || n.replyToNoteId === id
+          ? { ...n, isArchived: true, isPinned: false }
+          : n,
+      ),
+    }));
+  };
+
   const renderNoteMeta = (note: CoNote) => {
     const author = note.authorId === 'user' ? user : partner;
     return (
@@ -1794,14 +1907,19 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
                   </div>
                 )}
               </div>
-              <button onClick={() => deleteNote(note.id)} className="p-2 text-zinc-300 hover:text-red-500">
-                <Trash2 size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => archiveNote(note.id)} className="p-2 text-zinc-300 hover:text-rose-400">
+                  <Archive size={16} />
+                </button>
+                <button onClick={() => deleteNote(note.id)} className="p-2 text-zinc-300 hover:text-red-500">
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           );
         })}
         {topLevelNotes.length === 0 && (
-          <div className="mt-10 text-center text-zinc-400">???????????????????</div>
+          <div className="mt-10 text-center text-zinc-400">还没有互记，写下第一条想一起做的事吧。</div>
         )}
       </div>
     </motion.div>
@@ -1923,35 +2041,12 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [expandedLetterId, setExpandedLetterId] = useState<string | null>(null);
-  const [showArchivedLetters, setShowArchivedLetters] = useState(false);
-  const [archivedSearchQuery, setArchivedSearchQuery] = useState('');
   const { resolvedUrl: resolvedLoveLetterPaperBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterPaperBg);
   const { resolvedUrl: resolvedLoveLetterEnvelopeBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterEnvelopeBg);
   const allLetters: LoveLetter[] = coupleSpace.loveLetters || [];
-  const activeLetters = allLetters.filter((letter: LoveLetter) => !letter.isArchived);
-  const archivedLetters = allLetters.filter((letter: LoveLetter) => letter.isArchived);
-  const normalizedArchivedSearchQuery = archivedSearchQuery.trim().toLowerCase();
-  const filteredArchivedLetters = archivedLetters.filter((letter: LoveLetter) => {
-    if (!normalizedArchivedSearchQuery) return true;
-
-    const contentMatch = letter.content.toLowerCase().includes(normalizedArchivedSearchQuery);
-    const commentMatch = (letter.comments || []).some((comment: any) =>
-      comment.content.toLowerCase().includes(normalizedArchivedSearchQuery)
-    );
-
-    return contentMatch || commentMatch;
-  });
-  const now = Date.now();
-  const recentArchivedLetters = filteredArchivedLetters.filter(
-    (letter: LoveLetter) => now - letter.timestamp <= 30 * 24 * 60 * 60 * 1000,
+  const activeLetters = sortPinnedByTimestampDesc(
+    allLetters.filter((letter: LoveLetter) => !letter.isArchived),
   );
-  const olderArchivedLetters = filteredArchivedLetters.filter(
-    (letter: LoveLetter) => now - letter.timestamp > 30 * 24 * 60 * 60 * 1000,
-  );
-  const archivedLetterGroups = [
-    { label: '最近 30 天', items: recentArchivedLetters },
-    { label: '更早', items: olderArchivedLetters },
-  ].filter((group) => group.items.length > 0);
 
   const startWriting = () => {
     setContent('Dear: \n\n');
@@ -2044,7 +2139,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
   const archiveLetter = (id: string) => {
     updateSpace((prev: any) => ({
       loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
-        l.id === id ? { ...l, isArchived: true } : l
+        l.id === id ? { ...l, isArchived: true, isPinned: false } : l
       )
     }));
     if (expandedLetterId === id) setExpandedLetterId(null);
@@ -2066,6 +2161,22 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
       loveLetters: (prev.loveLetters || []).filter((l: LoveLetter) => l.id !== id) 
     }));
     if (expandedLetterId === id) setExpandedLetterId(null);
+  };
+
+  const pinLetter = (id: string) => {
+    updateSpace((prev: any) => ({
+      loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
+        l.id === id ? { ...l, isPinned: true } : l
+      )
+    }));
+  };
+
+  const unpinLetter = (id: string) => {
+    updateSpace((prev: any) => ({
+      loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
+        l.id === id ? { ...l, isPinned: false } : l
+      )
+    }));
   };
 
   const paperStyle = coupleSpace.loveLetterPaperTexture === 'vintage' ? {
@@ -2119,39 +2230,11 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="text-[13px] font-medium text-zinc-400">
-          {showArchivedLetters ? `已归档 ${archivedLetters.length} 封` : `当前 ${activeLetters.length} 封`}
-        </div>
-        <button
-          onClick={() => setShowArchivedLetters((prev) => !prev)}
-          className="inline-flex items-center gap-2 rounded-full border border-rose-100 bg-white/75 px-3 py-2 text-[13px] font-medium text-rose-400 shadow-sm backdrop-blur-md transition-colors hover:bg-white"
-        >
-          {showArchivedLetters ? <ArchiveRestore size={15} /> : <Archive size={15} />}
-          <span>{showArchivedLetters ? '返回情书' : '已归档'}</span>
-        </button>
+      <div className="mb-4 text-[13px] font-medium text-zinc-400">
+        当前 {activeLetters.length} 封
       </div>
-      {showArchivedLetters && (
-        <div className="mb-5 space-y-3">
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-300" />
-            <input
-              type="text"
-              value={archivedSearchQuery}
-              onChange={(e) => setArchivedSearchQuery(e.target.value)}
-              placeholder="搜索归档情书和回复内容"
-              className="w-full rounded-2xl border border-rose-100 bg-white/80 py-3 pl-11 pr-4 text-sm text-zinc-700 outline-none backdrop-blur-sm placeholder:text-zinc-300 focus:border-rose-200"
-            />
-          </div>
-          <div className="text-[12px] text-zinc-400">
-            {normalizedArchivedSearchQuery
-              ? `匹配到 ${filteredArchivedLetters.length} 封归档情书`
-              : `已归档 ${archivedLetters.length} 封情书`}
-          </div>
-        </div>
-      )}
       <div className="space-y-6">
-        {!showArchivedLetters && activeLetters.map((letter: LoveLetter) => {
+        {activeLetters.map((letter: LoveLetter) => {
           const author = letter.authorId === 'user' ? user : partner;
 
           return (
@@ -2183,6 +2266,12 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
                     <span className="text-[10px] text-zinc-500 font-medium">{new Date(letter.timestamp).toLocaleDateString()}</span>
                   </div>
 
+                  {letter.isPinned && (
+                    <div className="absolute top-4 left-4 z-30 rounded-full bg-white/85 p-1.5 shadow-sm">
+                      <Pin size={14} className="fill-rose-300 text-rose-300" />
+                    </div>
+                  )}
+
                   {/* Heart Seal */}
                   <div className="absolute bottom-4 right-4 z-30 opacity-40 group-hover:opacity-100 transition-opacity">
                     <Heart size={24} className="text-rose-300 fill-rose-300" />
@@ -2192,73 +2281,12 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
             </div>
           );
         })}
-        {showArchivedLetters && archivedLetterGroups.length > 0 && (
-          <div className="space-y-7">
-            {archivedLetterGroups.map((group) => (
-              <div key={group.label} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-rose-100/80" />
-                  <div className="text-[12px] font-semibold tracking-wide text-zinc-400">{group.label}</div>
-                  <div className="h-px flex-1 bg-rose-100/80" />
-                </div>
-                <div className="space-y-6">
-                  {group.items.map((letter: LoveLetter) => {
-                    const author = letter.authorId === 'user' ? user : partner;
-
-                    return (
-                      <div key={letter.id} className="relative">
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          onClick={() => onOpenLetter(letter.id)}
-                          className="cursor-pointer group"
-                        >
-                          <div
-                            className="rounded-xl shadow-lg p-1 relative overflow-hidden aspect-[3/2] flex flex-col items-center justify-center border-2 border-black/5"
-                            style={{ backgroundColor: coupleSpace.loveLetterEnvelopeColor || '#f5e6d3' }}
-                          >
-                            {resolvedLoveLetterEnvelopeBgUrl && (
-                              <img src={resolvedLoveLetterEnvelopeBgUrl} className="absolute inset-0 w-full h-full object-cover opacity-40 z-0" alt="" />
-                            )}
-                            <div className="absolute top-0 left-0 right-0 h-1/2 bg-black/5 rounded-b-[50%] shadow-inner z-10" />
-
-                            <div className="relative z-20 flex flex-col items-center gap-2">
-                              <div className="w-12 h-12 rounded-full border-2 border-white shadow-md overflow-hidden">
-                                <ResolvedImage value={author.avatar} className="w-full h-full object-cover" alt={author.name} />
-                              </div>
-                              <div className="bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
-                                <span className="text-xs font-bold text-zinc-700">{author.name} 的情书</span>
-                              </div>
-                              <span className="text-[10px] text-zinc-500 font-medium">{new Date(letter.timestamp).toLocaleDateString()}</span>
-                            </div>
-
-                            <div className="absolute bottom-4 right-4 z-30 opacity-50 group-hover:opacity-100 transition-opacity">
-                              <Archive size={22} className="text-rose-300" />
-                            </div>
-                          </div>
-                        </motion.div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {(!(showArchivedLetters ? filteredArchivedLetters : activeLetters).length) && (
+        {!activeLetters.length && (
           <div className="text-center py-20">
             <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              {showArchivedLetters ? (
-                <Archive size={32} className="text-rose-200" />
-              ) : (
-                <BookOpen size={32} className="text-rose-200" />
-              )}
+              <BookOpen size={32} className="text-rose-200" />
             </div>
-            <p className="text-zinc-400 font-medium">
-              {showArchivedLetters
-                ? (normalizedArchivedSearchQuery ? '没有找到匹配的归档情书。' : '还没有归档的情书。')
-                : '还没有情书哦，给 TA 写一封吧！'}
-            </p>
+            <p className="text-zinc-400 font-medium">还没有情书哦，给 TA 写一封吧！</p>
           </div>
         )}
       </div>
@@ -2360,10 +2388,9 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
         )}
       </AnimatePresence>
 
-      <button 
+      <button
         onClick={startWriting}
         className="fixed bottom-6 right-6 w-14 h-14 bg-rose-300 text-white rounded-full shadow-lg shadow-rose-200/50 flex items-center justify-center active:scale-90 transition-transform z-30"
-        disabled={showArchivedLetters}
       >
         <Plus size={28} />
       </button>
@@ -2787,6 +2814,9 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
 
 function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
+  const visibleMessages = sortPinnedByTimestampDesc(
+    (coupleSpace.messageBoard || []).filter((msg: any) => !msg.isArchived)
+  );
 
   const handleLeaveMessage = async () => {
     if (!content.trim()) return;
@@ -2856,6 +2886,38 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, c
     }));
   };
 
+  const archiveMessage = (id: string) => {
+    updateSpace((prev: any) => ({
+      messageBoard: (prev.messageBoard || []).map((m: any) =>
+        m.id === id ? { ...m, isArchived: true, isPinned: false } : m
+      )
+    }));
+  };
+
+  const restoreMessage = (id: string) => {
+    updateSpace((prev: any) => ({
+      messageBoard: (prev.messageBoard || []).map((m: any) =>
+        m.id === id ? { ...m, isArchived: false } : m
+      )
+    }));
+  };
+
+  const pinMessage = (id: string) => {
+    updateSpace((prev: any) => ({
+      messageBoard: (prev.messageBoard || []).map((m: any) =>
+        m.id === id ? { ...m, isPinned: true } : m
+      )
+    }));
+  };
+
+  const unpinMessage = (id: string) => {
+    updateSpace((prev: any) => ({
+      messageBoard: (prev.messageBoard || []).map((m: any) =>
+        m.id === id ? { ...m, isPinned: false } : m
+      )
+    }));
+  };
+
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 shrink-0">
@@ -2871,7 +2933,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, c
       </div>
 
       <div className="space-y-4 pb-20">
-        {(coupleSpace.messageBoard || []).map((msg: any) => {
+        {visibleMessages.map((msg: any) => {
           const author = msg.authorId === 'user' ? user : partner;
           return (
             <div key={msg.id} className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-100 flex gap-3">
@@ -2890,16 +2952,24 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, c
                   <div className="text-[10px] text-zinc-400">{new Date(msg.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
                 <p className="text-zinc-700 text-sm whitespace-pre-wrap">{msg.content}</p>
-                {msg.authorId === 'user' && (
-                  <div className="mt-2 text-right">
-                    <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">删除</button>
-                  </div>
-                )}
+                <div className="mt-2 flex items-center justify-end gap-4 text-right">
+                  {msg.isPinned ? (
+                    <button onClick={() => unpinMessage(msg.id)} className="text-xs text-rose-300 hover:text-[#f6b6cd]">取消置顶</button>
+                  ) : (
+                    <button onClick={() => pinMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">置顶</button>
+                  )}
+                  {msg.isArchived ? (
+                    <button onClick={() => restoreMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">恢复</button>
+                  ) : (
+                    <button onClick={() => archiveMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">归档</button>
+                  )}
+                  <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-300 hover:text-[#f6b6cd]">删除</button>
+                </div>
               </div>
             </div>
           );
         })}
-        {(!coupleSpace.messageBoard || coupleSpace.messageBoard.length === 0) && (
+        {visibleMessages.length === 0 && (
           <div className="text-center text-zinc-400 mt-10">留言板空空如也，快来踩一踩吧！</div>
         )}
       </div>
