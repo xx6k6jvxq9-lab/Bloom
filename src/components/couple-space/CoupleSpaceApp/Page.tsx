@@ -328,6 +328,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
   if (!partner && activeView === 'main') {
     const selectedPartner = getCharacterById(selectedPartnerId);
+    const hasEstablishedPartners = addedPartners.length > 0;
     
     return (
       <div className="absolute inset-0 bg-gradient-to-br from-rose-100 via-pink-50 to-stone-50 flex flex-col items-center justify-center z-50">
@@ -339,85 +340,100 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         </button>
 
         <div className="flex flex-col items-center gap-8">
-          <div className="flex items-center gap-6">
-            <div className="relative">
-              <div className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden">
-                <ResolvedImage value={user.avatar} className="w-full h-full object-cover" alt="User" />
-              </div>
-              <div className="absolute -top-2 -right-2 bg-white rounded-full p-1.5 shadow-md">
-                <Heart size={16} className="text-rose-400 fill-rose-400 animate-pulse" />
-              </div>
-            </div>
+          {hasEstablishedPartners ? (
+            <>
+              <div className="flex items-center gap-6">
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden">
+                    <ResolvedImage value={user.avatar} className="w-full h-full object-cover" alt="User" />
+                  </div>
+                  <div className="absolute -top-2 -right-2 bg-white rounded-full p-1.5 shadow-md">
+                    <Heart size={16} className="text-rose-400 fill-rose-400 animate-pulse" />
+                  </div>
+                </div>
 
-            <Heart size={32} className="text-rose-200 animate-bounce" />
+                <Heart size={32} className="text-rose-200 animate-bounce" />
 
-            <div className="relative">
-              <button 
-                onClick={() => setIsSelectorOpen(!isSelectorOpen)}
-                className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform"
-              >
-                {selectedPartner ? (
-                  <ResolvedImage value={selectedPartner.avatar} className="w-full h-full object-cover" alt="Partner" />
-                ) : (
-                  <Plus size={32} className="text-rose-200" />
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsSelectorOpen(!isSelectorOpen)}
+                    className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform"
+                  >
+                    {selectedPartner ? (
+                      <ResolvedImage value={selectedPartner.avatar} className="w-full h-full object-cover" alt="Partner" />
+                    ) : (
+                      <Plus size={32} className="text-rose-200" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <AnimatePresence>
+                {isSelectorOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0, y: -20 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -20 }}
+                    className="w-64 bg-white/85 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
+                  >
+                    <div className="p-2">
+                      <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                        {addedPartners.map((c: any) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedPartnerId(c.id);
+                              setIsSelectorOpen(false);
+                            }}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-rose-300 scale-95' : 'border-transparent hover:border-rose-200'}`}
+                          >
+                            <ResolvedImage value={c.avatar} className="w-full h-full object-cover" alt={c.name} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
                 )}
+              </AnimatePresence>
+
+              <button 
+                onClick={() => {
+                  if (selectedPartnerId) {
+                    handleUpdateCoupleSpace({
+                      partnerId: selectedPartnerId,
+                    });
+                  }
+                }}
+                disabled={!selectedPartnerId}
+                className={`mt-8 px-12 py-3 rounded-full font-bold text-lg shadow-lg transition-all ${
+                  selectedPartnerId 
+                    ? 'bg-zinc-800 text-white shadow-zinc-800/20 active:scale-95' 
+                    : 'bg-zinc-200 text-white cursor-not-allowed'
+                }`}
+              >
+                开启
+              </button>
+            </>
+          ) : (
+            <div className="w-[300px] rounded-[28px] bg-white/80 backdrop-blur-md shadow-xl px-6 py-7 text-center space-y-4">
+              <div className="mx-auto w-16 h-16 rounded-full bg-rose-100/80 flex items-center justify-center">
+                <Heart size={26} className="text-rose-300 fill-rose-300" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-lg font-bold text-zinc-800">还没有建立情侣空间</h2>
+                <p className="text-sm leading-6 text-zinc-500">
+                  先去聊天里邀请角色，等 TA 同意后，
+                  这里才会开启属于你们的情侣空间。
+                </p>
+              </div>
+              <button
+                onClick={onBack}
+                className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-zinc-800 text-white font-bold shadow-lg shadow-zinc-800/15 active:scale-95 transition-transform"
+              >
+                去聊天邀请
               </button>
             </div>
-          </div>
-
-          <AnimatePresence>
-            {isSelectorOpen && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0, y: -20 }}
-                animate={{ opacity: 1, height: 'auto', y: 0 }}
-                exit={{ opacity: 0, height: 0, y: -20 }}
-                className="w-64 bg-white/85 backdrop-blur-md rounded-2xl shadow-lg overflow-hidden"
-              >
-                <div className="p-2">
-                  {addedPartners.length > 0 ? (
-                    <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
-                      {addedPartners.map((c: any) => (
-                        <button
-                          key={c.id}
-                          onClick={() => {
-                            setSelectedPartnerId(c.id);
-                            setIsSelectorOpen(false);
-                          }}
-                          className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedPartnerId === c.id ? 'border-rose-300 scale-95' : 'border-transparent hover:border-rose-200'}`}
-                        >
-                          <ResolvedImage value={c.avatar} className="w-full h-full object-cover" alt={c.name} />
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-6 text-center text-sm text-zinc-500 leading-6">
-                      还没有已建立的情侣空间。
-                      <br />
-                      先去聊天里邀请角色，等 TA 同意后再来这里选择。
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <button 
-            onClick={() => {
-              if (selectedPartnerId) {
-                handleUpdateCoupleSpace({
-                  partnerId: selectedPartnerId,
-                });
-              }
-            }}
-            disabled={!selectedPartnerId}
-            className={`mt-8 px-12 py-3 rounded-full font-bold text-lg shadow-lg transition-all ${
-              selectedPartnerId 
-                ? 'bg-zinc-800 text-white shadow-zinc-800/20 active:scale-95' 
-                : 'bg-zinc-200 text-white cursor-not-allowed'
-            }`}
-          >
-            开启
-          </button>
+          )}
         </div>
       </div>
     );
