@@ -742,6 +742,21 @@ export function useDirectChatRuntime({
   }, []);
 
   const sendCoupleSpaceInvitation = useCallback(() => {
+    const openedPartnerIds = new Set<string>();
+    if (coupleSpace?.partnerId) {
+      openedPartnerIds.add(coupleSpace.partnerId);
+    }
+    for (const partnerId of coupleSpace?.addedPartnerIds || []) {
+      if (partnerId) {
+        openedPartnerIds.add(partnerId);
+      }
+    }
+
+    if (openedPartnerIds.has(character.id)) {
+      alert(`${character.name} 的情侣空间已经开通，不能重复邀请。`);
+      return;
+    }
+
     const userMsg: ChatMessage = {
       role: 'user',
       text: '[COUPLE_SPACE_INVITE]',
@@ -776,7 +791,7 @@ export function useDirectChatRuntime({
       setHistory([...latestHistory, modelReply, acceptedCard]);
       onAcceptCoupleSpaceInvite?.(character.id);
     })();
-  }, [activeConfig, character, onAcceptCoupleSpaceInvite, setHistory, userName]);
+  }, [activeConfig, character, coupleSpace, onAcceptCoupleSpaceInvite, setHistory, userName]);
 
   const sendInnerVoiceProbe = useCallback(() => {
     const userMsg: ChatMessage = {
