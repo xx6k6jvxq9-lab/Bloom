@@ -159,18 +159,28 @@ export async function streamTextWithConfig(options: {
   }
 
   const decoder = new TextDecoder();
+  let pendingChunk = '';
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      pendingChunk += decoder.decode();
+    } else {
+      pendingChunk += decoder.decode(value, { stream: true });
+    }
 
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+    const events = pendingChunk.split(/\r?\n\r?\n/);
+    pendingChunk = events.pop() || '';
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
+    for (const eventBlock of events) {
+      const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
+      const dataLines = lines
+        .filter(line => line.startsWith('data: '))
+        .map(line => line.slice(6));
 
-      const dataStr = line.slice(6);
+      if (dataLines.length === 0) continue;
+
+      const dataStr = dataLines.join('\n');
       if (dataStr === '[DONE]') continue;
 
       try {
@@ -183,5 +193,38 @@ export async function streamTextWithConfig(options: {
         console.error('Error parsing SSE chunk', error);
       }
     }
+
+    if (done) {
+      break;
+    }
+  }
+
+  const finalData = pendingChunk.trim();
+  if (!finalData) {
+    return;
+  }
+
+  const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
+  const finalDataLines = finalLines
+    .filter(line => line.startsWith('data: '))
+    .map(line => line.slice(6));
+
+  if (finalDataLines.length === 0) {
+    return;
+  }
+
+  const finalDataStr = finalDataLines.join('\n');
+  if (finalDataStr === '[DONE]') {
+    return;
+  }
+
+  try {
+    const data = JSON.parse(finalDataStr);
+    const content = data.choices?.[0]?.delta?.content || '';
+    if (content) {
+      onTextChunk(content);
+    }
+  } catch (error) {
+    console.error('Error parsing final SSE chunk', error);
   }
 }
