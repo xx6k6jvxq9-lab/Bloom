@@ -362,6 +362,9 @@ export function ChatSessionScreen({
         
         if (finalTranscript) {
            const activeSessionId = voiceCallSessionIdRef.current;
+           if (!showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) {
+             return;
+           }
            const userMsg = { role: 'user' as const, text: finalTranscript };
            setVoiceCallHistory(prev => {
              const newHistory = [...prev, userMsg];
