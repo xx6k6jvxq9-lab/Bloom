@@ -506,7 +506,9 @@ export type ChatMessage = {
   timestamp: number;
   isRecalled?: boolean;
   isFavorited?: boolean;
-  transferStatus?: 'pending' | 'received';
+  transferStatus?: 'pending' | 'received' | 'rejected';
+  transferId?: string;
+  transferCardId?: string;
   isSystem?: boolean;
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;

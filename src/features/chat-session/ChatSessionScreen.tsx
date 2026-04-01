@@ -1404,12 +1404,28 @@ export function ChatSessionScreen({
 
                             {transferMatch && (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                {(() => {
+                                  const isReceived = msg.transferStatus === 'received';
+                                  const isRejected = msg.transferStatus === 'rejected';
+                                  const canManualReceive = msg.role === 'model' && !isReceived && !isRejected;
+                                  const cardBgClass = isReceived
+                                    ? 'bg-[#FBC48A]'
+                                    : isRejected
+                                      ? 'bg-zinc-400'
+                                      : 'bg-[#FA9D3B]';
+                                  const cardLabel = isReceived
+                                    ? (msg.role === 'user' ? '对方已收钱' : '已收钱')
+                                    : isRejected
+                                      ? (msg.role === 'user' ? '已退回' : '已失效')
+                                      : (msg.role === 'user' ? `待 ${character.name} 确认` : `转账给 ${userName}`);
+
+                                  return (
                                 <div 
                                   onClick={(e) => {
                                     if (multiSelectMode) {
                                       handleMessageClick(e, i);
                                     } else {
-                                      if (msg.transferStatus !== 'received') {
+                                      if (canManualReceive) {
                                         handleReceiveTransfer(i);
                                       } else {
                                         handleMessageClick(e, i);
@@ -1420,26 +1436,23 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity ${msg.transferStatus === 'received' ? 'opacity-60' : ''}`}
+                                  className={`w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity ${isReceived || isRejected ? 'opacity-60' : ''}`}
                                 >
-                                  <div className={`${msg.transferStatus === 'received' ? 'bg-[#FBC48A]' : 'bg-[#FA9D3B]'} p-3.5 flex items-center gap-3`}>
+                                  <div className={`${cardBgClass} p-3.5 flex items-center gap-3`}>
                                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white shrink-0">
-                                      {msg.transferStatus === 'received' ? <Check size={24} /> : <Banknote size={24} />}
+                                      {isReceived ? <Check size={24} /> : isRejected ? <X size={24} /> : <Banknote size={24} />}
                                     </div>
                                     <div className="flex flex-col text-white min-w-0">
                                       <span className="text-[16px] font-bold">￥{amount}</span>
-                                      <span className="text-[12px] opacity-80 truncate">
-                                        {msg.transferStatus === 'received' 
-                                          ? (msg.role === 'user' ? '对方已收钱' : '已收钱')
-                                          : (msg.role === 'user' ? `转账给 ${character.name}` : `转账给 ${userName}`)
-                                        }
-                                      </span>
+                                      <span className="text-[12px] opacity-80 truncate">{cardLabel}</span>
                                     </div>
                                   </div>
                                   <div className="bg-white p-2 border border-zinc-100 border-t-0">
                                     <span className="text-[10px] text-zinc-400 ml-1">微信转账</span>
                                   </div>
                                 </div>
+                                  );
+                                })()}
                                 {character.showTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
                                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

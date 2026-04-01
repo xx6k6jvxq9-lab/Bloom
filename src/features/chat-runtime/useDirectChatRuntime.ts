@@ -27,6 +27,7 @@ import {
   toggleFavoriteMessage,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import { decideTransferOutcome } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
 import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp/Page';
@@ -182,6 +183,7 @@ export function useDirectChatRuntime({
   const historyRef = useRef(history);
   const inputRef = useRef(input);
   const pendingCoupleSpaceInviteRef = useRef(false);
+  const pendingTransferDecisionIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     historyRef.current = history;
@@ -835,6 +837,116 @@ export function useDirectChatRuntime({
     }, 100);
   }, [setInput]);
 
+  const applyTransferDecision = useCallback((params: {
+    transferId: string;
+    status: 'received' | 'rejected';
+    replyText?: string;
+  }) => {
+    const { transferId, status, replyText } = params;
+    const latestHistory = historyRef.current;
+    const transferIndex = latestHistory.findIndex(message => message.transferId === transferId);
+    const transferMessage = transferIndex >= 0 ? latestHistory[transferIndex] : null;
+    if (!transferMessage || transferMessage.transferStatus !== 'pending') {
+      return;
+    }
+
+    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
+    const amountStr = transferMessage.text.match(transferRegex)?.[1] || '0.00';
+    const amount = parseFloat(amountStr);
+    const nextHistory = [...latestHistory];
+    nextHistory[transferIndex] = {
+      ...transferMessage,
+      transferStatus: status,
+    };
+
+    if (replyText) {
+      nextHistory.push({
+        role: 'model',
+        text: replyText,
+        timestamp: Date.now(),
+      });
+    }
+
+    if (status === 'received') {
+      nextHistory.push({
+        role: 'user',
+        text: `${character.name} 已领取转账 ￥${amountStr}`,
+        timestamp: Date.now() + 1,
+        isSystem: true,
+      } as ChatMessage);
+    } else {
+      nextHistory.push({
+        role: 'user',
+        text: `${character.name} 已退回转账 ￥${amountStr}`,
+        timestamp: Date.now() + 1,
+        isSystem: true,
+      } as ChatMessage);
+
+      if (!Number.isNaN(amount) && amount > 0 && transferMessage.transferCardId) {
+        const cards = walletData?.cards || MOCK_CARDS;
+        const newCards = cards.map(card =>
+          card.id === transferMessage.transferCardId
+            ? { ...card, balance: card.balance + amount }
+            : card,
+        );
+        const newTransaction = {
+          id: `t-${Date.now()}`,
+          title: `${character.name} 退回转账`,
+          type: 'income' as const,
+          amount,
+          date: '刚刚',
+          icon: 'transfer',
+          category: '转账退款',
+          cardId: transferMessage.transferCardId,
+        };
+        const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+        onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
+      }
+    }
+
+    setHistory(nextHistory);
+  }, [character.name, onUpdateWalletData, setHistory, walletData]);
+
+  const queueTransferDecision = useCallback((params: {
+    transferId: string;
+    amount: number;
+  }) => {
+    const { transferId, amount } = params;
+    if (!activeConfig || pendingTransferDecisionIdsRef.current.has(transferId)) {
+      return;
+    }
+
+    pendingTransferDecisionIdsRef.current.add(transferId);
+    const decisionPromise = decideTransferOutcome({
+      activeConfig,
+      character,
+      amount,
+      history: historyRef.current,
+      userName,
+    });
+    const timeoutPromise = new Promise<null>(resolve => {
+      setTimeout(() => resolve(null), 2500);
+    });
+
+    void Promise.race([decisionPromise, timeoutPromise])
+      .then(result => {
+        if (!result) {
+          return;
+        }
+        applyTransferDecision({
+          transferId,
+          status: result.decision === 'accept' ? 'received' : 'rejected',
+          replyText: result.replyText,
+        });
+      })
+      .catch(error => {
+        console.error('Transfer decision failed:', error);
+      })
+      .finally(() => {
+        pendingTransferDecisionIdsRef.current.delete(transferId);
+      });
+  }, [activeConfig, applyTransferDecision, character, userName]);
+
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
     voiceCallHistory: { role: 'user' | 'model'; text: string }[];
@@ -942,6 +1054,11 @@ export function useDirectChatRuntime({
     }
 
     if (transferType === 'toCharacter') {
+      if (!activeConfig) {
+        alert('当前未选择有效的 API 配置。');
+        return false;
+      }
+
       if (!selectedCardId) {
         alert('请选择支付卡片');
         return false;
@@ -967,18 +1084,37 @@ export function useDirectChatRuntime({
       };
       const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
       onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
-      handleSend(`[转账 ${transferAmount}]`);
+      const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const transferMessage: ChatMessage = {
+        role: 'user',
+        text: `[转账 ${transferAmount}]`,
+        timestamp: Date.now(),
+        transferStatus: 'pending',
+        transferId,
+        transferCardId: selectedCardId,
+      };
+      setHistory([...historyRef.current, transferMessage]);
+      queueTransferDecision({
+        transferId,
+        amount,
+      });
       return true;
     }
 
-    const modelMsg: ChatMessage = { role: 'model', text: `[转账 ${transferAmount}]`, timestamp: Date.now() };
-    setHistory([...history, modelMsg]);
+    const modelMsg: ChatMessage = {
+      role: 'model',
+      text: `[转账 ${transferAmount}]`,
+      timestamp: Date.now(),
+      transferStatus: 'pending',
+      transferId: `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    };
+    setHistory([...historyRef.current, modelMsg]);
     return true;
-  }, [character.name, handleSend, history, onUpdateWalletData, setHistory, walletData]);
+  }, [activeConfig, character.name, onUpdateWalletData, queueTransferDecision, setHistory, walletData]);
 
   const handleReceiveTransfer = useCallback((index: number) => {
     const msg = history[index];
-    if (!msg || msg.transferStatus === 'received') return;
+    if (!msg || msg.transferStatus === 'received' || msg.transferStatus === 'rejected') return;
 
     const newHistory = [...history];
     newHistory[index] = { ...msg, transferStatus: 'received' };
@@ -1017,17 +1153,6 @@ export function useDirectChatRuntime({
       }
     }
   }, [character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
-
-  useEffect(() => {
-    const lastMsg = history[history.length - 1];
-    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
-    if (lastMsg && lastMsg.role === 'user' && transferRegex.test(lastMsg.text) && !lastMsg.transferStatus) {
-      const timer = setTimeout(() => {
-        handleReceiveTransfer(history.length - 1);
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [handleReceiveTransfer, history]);
 
   return {
     isLoading,
