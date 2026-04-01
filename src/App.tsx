@@ -72,6 +72,7 @@ import {
   getCurrentCoupleSpaceData,
   hydrateCoupleSpaceState,
   projectCoupleSpaceStateFromCurrentSpace,
+  resolveCoupleSpaceState,
   resolveCurrentCoupleSpace,
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
@@ -303,9 +304,7 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
 
 function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
   const { characters: _characters, ...persistableAppData } = appData;
-  const baseCoupleSpaceState =
-    appData.coupleSpaceState ??
-    projectCoupleSpaceStateFromCurrentSpace(appData.coupleSpace);
+  const baseCoupleSpaceState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
   const currentSpaceProjection = projectCoupleSpaceStateFromCurrentSpace(
     appData.coupleSpace,
   );
@@ -1224,6 +1223,10 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
+        const hydratedCoupleSpaceState = hydrateCoupleSpaceState(
+          parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
+          createDefaultCoupleSpaceState(),
+        );
         setAppData({
           ...parsed,
           characters: sanitizePersistedCharacters(parsed.characters),
@@ -1238,15 +1241,9 @@ export default function App() {
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
-          coupleSpaceState: hydrateCoupleSpaceState(
-            parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
-            createDefaultCoupleSpaceState(),
-          ),
+          coupleSpaceState: hydratedCoupleSpaceState,
           coupleSpace: getCurrentCoupleSpaceData(
-            hydrateCoupleSpaceState(
-              parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
-              createDefaultCoupleSpaceState(),
-            ),
+            hydratedCoupleSpaceState,
             createDefaultCoupleSpaceData(),
           ),
           visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
@@ -1479,8 +1476,8 @@ export default function App() {
             setVisualSettings={(visualSettings) => setAppData(prev => ({ ...prev, visualSettings }))}
             groups={appData.groups}
             worldBook={appData.worldBooks || []}
-            perception={appData.coupleSpace?.perception}
-            coupleSpace={appData.coupleSpace}
+            perception={currentCoupleSpace.perception}
+            coupleSpace={currentCoupleSpace}
             callHistory={appData.callHistory || []}
             setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
             savedDates={appData.savedDates || []}
