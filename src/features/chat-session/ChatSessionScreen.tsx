@@ -22,32 +22,11 @@ import {
   getUserReadStatusLabel,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
-
-const sanitizePipeMarkers = (text: string, replacement: '\n' | ' ' = '\n'): string => {
-  const replaced = text.replace(/\s*\|\|\|\s*/g, replacement);
-  return replacement === '\n'
-    ? replaced.replace(/\r?\n{3,}/g, '\n\n').trim()
-    : replaced.replace(/[ \t]{2,}/g, ' ').trim();
-};
-
-const getLegacyTranslationParts = (text: string): { mainText: string; translation: string } => {
-  const parts = text.split('---TRANSLATION---');
-  if (parts.length > 1 && parts[0].trim() !== parts[1].trim()) {
-    return {
-      mainText: parts[0].trim(),
-      translation: parts.slice(1).join('---TRANSLATION---').trim(),
-    };
-  }
-
-  return {
-    mainText: text.trim(),
-    translation: '',
-  };
-};
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
