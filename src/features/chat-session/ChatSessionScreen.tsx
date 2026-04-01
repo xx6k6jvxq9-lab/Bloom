@@ -188,7 +188,14 @@ export function ChatSessionScreen({
   const voiceCallTimerRef = useRef<NodeJS.Timeout | null>(null);
   const voiceCallRecognitionRef = useRef<any>(null);
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    index: number;
+    messageTimestamp: number;
+    messageRole: ChatMessage['role'];
+    messageText: string;
+  } | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
@@ -448,6 +455,27 @@ export function ChatSessionScreen({
     }
   }, [voiceCallHistory, currentInterimSpeech, showVoiceCall]);
 
+  const getContextMenuMessageIndex = () => {
+    if (!contextMenu) {
+      return -1;
+    }
+
+    const matchesContextMenuMessage = (message: ChatMessage | undefined) =>
+      !!message
+      && message.timestamp === contextMenu.messageTimestamp
+      && message.role === contextMenu.messageRole
+      && message.text === contextMenu.messageText;
+
+    if (matchesContextMenuMessage(history[contextMenu.index])) {
+      return contextMenu.index;
+    }
+
+    return history.findIndex(matchesContextMenuMessage);
+  };
+
+  const contextMenuMessageIndex = getContextMenuMessageIndex();
+  const contextMenuMessage = contextMenuMessageIndex >= 0 ? history[contextMenuMessageIndex] : null;
+
   const handleMessageClick = (e: React.MouseEvent, index: number) => {
     if (multiSelectMode) {
       const newSelected = new Set(selectedMessages);
@@ -463,29 +491,43 @@ export function ChatSessionScreen({
     e.preventDefault();
     
     const container = document.getElementById('phone-container');
-    setContextMenu(getContextMenuPosition({
+    const targetMessage = history[index];
+    if (!targetMessage) {
+      return;
+    }
+
+    setContextMenu({
+      ...getContextMenuPosition({
       containerRect: container?.getBoundingClientRect(),
       clickX: e.clientX,
       clickY: e.clientY,
       index,
-    }));
+      }),
+      messageTimestamp: targetMessage.timestamp,
+      messageRole: targetMessage.role,
+      messageText: targetMessage.text,
+    });
   };
 
   const closeContextMenu = () => setContextMenu(null);
 
   const handleRecall = () => {
-    if (contextMenu) {
-      recallMessageAt(contextMenu.index);
+    if (!contextMenuMessage) {
       closeContextMenu();
-    }
-  };
-
-  const handleCopy = async () => {
-    if (!contextMenu) {
       return;
     }
 
-    const result = await copyMessageAt(contextMenu.index);
+    recallMessageAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleCopy = async () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    const result = await copyMessageAt(contextMenuMessageIndex);
     closeContextMenu();
 
     if (!result.ok) {
@@ -494,47 +536,63 @@ export function ChatSessionScreen({
   };
 
   const handleFavorite = () => {
-    if (contextMenu) {
-      toggleFavoriteAt(contextMenu.index);
+    if (!contextMenuMessage) {
       closeContextMenu();
-    }
-  };
-
-  const handleDeleteMessage = () => {
-    if (contextMenu) {
-      deleteMessageAt(contextMenu.index);
-      closeContextMenu();
-    }
-  };
-
-  const handleMultiSelect = () => {
-    if (contextMenu) {
-      setMultiSelectMode(true);
-      setSelectedMessages(new Set([contextMenu.index]));
-      closeContextMenu();
-    }
-  };
-
-  const handleQuoteReply = () => {
-    if (contextMenu) {
-      quoteReplyAt(contextMenu.index);
-      closeContextMenu();
-    }
-  };
-
-  const handleForward = () => {
-    if (contextMenu) {
-      forwardMessageAt(contextMenu.index);
-      closeContextMenu();
-    }
-  };
-
-  const handleShare = () => {
-    if (!contextMenu) {
       return;
     }
 
-    const payload = createSharePayloadAt(contextMenu.index);
+    toggleFavoriteAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleDeleteMessage = () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    deleteMessageAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleMultiSelect = () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    setMultiSelectMode(true);
+    setSelectedMessages(new Set([contextMenuMessageIndex]));
+    closeContextMenu();
+  };
+
+  const handleQuoteReply = () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    quoteReplyAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleForward = () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    forwardMessageAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleShare = () => {
+    if (!contextMenuMessage) {
+      closeContextMenu();
+      return;
+    }
+
+    const payload = createSharePayloadAt(contextMenuMessageIndex);
     if (payload) {
       setPendingShare(payload);
     }
@@ -1982,7 +2040,7 @@ export function ChatSessionScreen({
         )}
         
       {/* Context Menu */}
-        {contextMenu && (
+        {contextMenu && contextMenuMessage && (
           <>
             <div 
               className="absolute inset-0 z-[90]" 
@@ -2003,7 +2061,7 @@ export function ChatSessionScreen({
                 >
                   <MessageSquarePlus size={20} />
                 </button>
-                {history[contextMenu.index].role === 'user' && !history[contextMenu.index].isRecalled && (
+                {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (
                   <button 
                     onClick={handleRecall}
                     className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
@@ -2022,9 +2080,9 @@ export function ChatSessionScreen({
                 <button 
                   onClick={handleFavorite}
                   className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
-                  title={history[contextMenu.index].isFavorited ? '取消收藏' : '收藏'}
+                  title={contextMenuMessage.isFavorited ? '取消收藏' : '收藏'}
                 >
-                  <Star size={20} fill={history[contextMenu.index].isFavorited ? "currentColor" : "none"} className={history[contextMenu.index].isFavorited ? "text-yellow-400" : ""} />
+                  <Star size={20} fill={contextMenuMessage.isFavorited ? "currentColor" : "none"} className={contextMenuMessage.isFavorited ? "text-yellow-400" : ""} />
                 </button>
                 <button 
                   onClick={handleShare}
