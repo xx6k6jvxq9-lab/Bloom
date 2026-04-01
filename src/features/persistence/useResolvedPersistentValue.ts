@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { parseUploadedAssetRef } from './persistentAssetRef';
-import { revoke } from './objectUrlRegistry';
 import { resolveValueToDisplayUrl } from './persistentAssetService';
 
 type ResolvedPersistentValueState = {
@@ -18,7 +16,6 @@ export function useResolvedPersistentValue(value: string | null | undefined): Re
 
   useEffect(() => {
     let cancelled = false;
-    const assetRef = parseUploadedAssetRef(value);
 
     if (!value || !value.trim()) {
       setState({ resolvedUrl: null, loading: false, error: null });
@@ -47,9 +44,6 @@ export function useResolvedPersistentValue(value: string | null | undefined): Re
 
     return () => {
       cancelled = true;
-      if (assetRef) {
-        revoke(assetRef.id);
-      }
     };
   }, [value]);
 

@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff } from 'lucide-react';
+import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff, Sparkles } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent, CouplePost } from '../../../types';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
@@ -28,6 +28,8 @@ import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativ
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
 import { CoupleSpaceArchiveCenter } from '../archive/CoupleSpaceArchiveCenter';
+import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
+import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -166,7 +168,7 @@ type Props = {
 };
 
 export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props) {
-  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'archive'>('main');
+  const [activeView, setActiveView] = useState<'main' | 'settings' | 'conotes' | 'ledger' | 'loveletters' | 'loveletter-detail' | 'calendar' | 'anniversaries' | 'messageboard' | 'post-feed' | 'archive' | 'interaction'>('main');
   const [loveLetterReturnView, setLoveLetterReturnView] = useState<'loveletters' | 'archive'>('loveletters');
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -488,6 +490,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             {activeView === 'messageboard' && '留言板'}
             {activeView === 'post-feed' && '情侣动态'}
             {activeView === 'archive' && '归档'}
+            {activeView === 'interaction' && '互动'}
           </h1>
           {activeView === 'main' ? (
             <button onClick={() => setActiveView('settings')} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white">
@@ -565,6 +568,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <MiniAppIcon icon={<Heart size={24} className="text-rose-300" />} title="纪念日" onClick={() => setActiveView('anniversaries')} />
                   <MiniAppIcon icon={<Edit3 size={24} className="text-rose-300" />} title="留言板" onClick={() => setActiveView('messageboard')} />
                   <MiniAppIcon icon={<Archive size={24} className="text-rose-300" />} title="归档" onClick={() => setActiveView('archive')} />
+                  <MiniAppIcon icon={<Sparkles size={24} className="text-rose-300" />} title="互动" onClick={() => setActiveView('interaction')} />
                 </div>
               </div>
 
@@ -1357,7 +1361,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'calendar' && partner && (
-            <CalendarView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} />
+            <CoupleSpaceCalendarView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              user={user}
+              partner={partner}
+              chatHistory={appData.chatHistory}
+            />
           )}
 
           {activeView === 'post-feed' && partner && (
@@ -1389,6 +1399,17 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 setActiveView('loveletter-detail');
               }}
             />
+          )}
+
+          {activeView === 'interaction' && partner && (
+            <CoupleSpaceInteractionCenter
+                user={user}
+                partner={partner}
+                coupleSpace={coupleSpace}
+                chatHistory={appData.chatHistory}
+                activeConfig={settings?.configs?.find((c: any) => c.id === settings?.activeConfigId) || settings?.configs?.[0]}
+                updateSpace={handleUpdateCoupleSpace}
+              />
           )}
 
           {activeView === 'anniversaries' && partner && (
@@ -2394,188 +2415,6 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
       >
         <Plus size={28} />
       </button>
-    </motion.div>
-  );
-}
-
-function CalendarView({ coupleSpace, updateSpace, user, partner }: any) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [title, setTitle] = useState('');
-  const [desc, setDesc] = useState('');
-
-  const handleAdd = () => {
-    if (!title.trim() || !date) return;
-    const newEvent: CalendarEvent = {
-      id: Date.now().toString(),
-      date,
-      title,
-      description: desc,
-      authorId: 'user'
-    };
-    updateSpace({ calendarEvents: [newEvent, ...(coupleSpace.calendarEvents || [])].sort((a, b) => a.date.localeCompare(b.date)) });
-    setTitle('');
-    setDesc('');
-    setShowAddModal(false);
-  };
-
-  const deleteEvent = (id: string) => {
-    updateSpace((prev: any) => ({ 
-      calendarEvents: (prev.calendarEvents || []).filter((e: CalendarEvent) => e.id !== id) 
-    }));
-  };
-
-  // Calendar logic
-  const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const days = daysInMonth(year, month);
-  const firstDay = firstDayOfMonth(year, month);
-
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-
-  const eventsByDate = (coupleSpace.calendarEvents || []).reduce((acc: any, event: CalendarEvent) => {
-    if (!acc[event.date]) acc[event.date] = [];
-    acc[event.date].push(event);
-    return acc;
-  }, {});
-
-  const calendarDays = [];
-  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
-  for (let i = 1; i <= days; i++) calendarDays.push(i);
-
-  return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar">
-      <button 
-        onClick={() => setShowAddModal(true)}
-        className="absolute -top-[56px] left-0 z-[30] p-2 bg-white/50 backdrop-blur-md rounded-full text-zinc-800 shadow-sm active:scale-90 transition-transform"
-      >
-        <Plus size={24} />
-      </button>
-
-      <div className="relative z-10 flex-1 flex flex-col">
-        {/* Calendar Grid */}
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <button onClick={prevMonth} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} className="text-[#f6b6cd]" /></button>
-            <h3 className="font-bold text-zinc-800">{year}年 {month + 1}月</h3>
-            <button onClick={nextMonth} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} className="text-[#f6b6cd] rotate-180" /></button>
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {['日', '一', '二', '三', '四', '五', '六'].map(d => (
-              <div key={d} className="text-center text-[10px] font-bold text-zinc-400 uppercase">{d}</div>
-            ))}
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day, idx) => {
-              if (day === null) return <div key={'empty-' + String(idx)} className="aspect-square" />;
-              const dateStr = String(year) + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-              const hasEvents = eventsByDate[dateStr];
-              const isToday = new Date().toISOString().split('T')[0] === dateStr;
-              
-              return (
-                <div 
-                  key={dateStr} 
-                  className={
-                    'aspect-square flex flex-col items-center justify-center rounded-xl text-sm relative transition-all ' +
-                    (isToday ? 'bg-[#f6b6cd] text-white shadow-md shadow-[#f6b6cd]/35' : 'hover:bg-rose-50 text-zinc-700')
-                  }
-                >
-                    <span className="font-medium">{day}</span>
-                    {hasEvents && (
-                      <div
-                        className={
-                          'w-1 h-1 rounded-full absolute bottom-1.5 ' +
-                          (isToday ? 'bg-white' : 'bg-[#f6b6cd]')
-                        }
-                      />
-                    )}
-                  </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Event List */}
-        <div className="space-y-4 pb-20 no-scrollbar">
-          <h4 className="font-bold text-zinc-800 text-sm px-1">特别记忆</h4>
-          {Object.keys(eventsByDate).sort().reverse().map(d => (
-            <div key={d} className="relative pl-4 border-l-2 border-rose-200">
-              <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-[#f6b6cd]" />
-              <div className="font-bold text-[#d98cab] text-[11px] mb-2">{d}</div>
-              <div className="space-y-2">
-                {eventsByDate[d].map((event: CalendarEvent) => (
-                  <div key={event.id} className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-white relative group">
-                    <h4 className="font-bold text-zinc-800 text-[15px]">{event.title}</h4>
-                    {event.description && <p className="text-sm text-zinc-600 mt-1">{event.description}</p>}
-                    <button onClick={() => deleteEvent(event.id)} className="absolute top-4 right-4 text-zinc-300 hover:text-[#f6b6cd] opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          {(!coupleSpace.calendarEvents || coupleSpace.calendarEvents.length === 0) && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar size={28} className="text-[#f6b6cd]" />
-              </div>
-              <p className="text-zinc-400 text-sm">还没有特别记忆哦，快来记录吧！</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add Memory Modal */}
-      <AnimatePresence>
-        {showAddModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowAddModal(false)}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white w-full max-w-[320px] rounded-3xl p-6 shadow-2xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-zinc-800">添加特别记忆</h3>
-                <button onClick={() => setShowAddModal(false)} className="p-1.5 bg-zinc-100 rounded-full text-zinc-500">
-                  <X size={18} />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">日期</label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd]" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">标题</label>
-                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="发生了什么特别的事？" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd]" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1.5 ml-1">描述</label>
-                  <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="详细描述（可选）..." className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#f6b6cd] resize-none h-24" />
-                </div>
-                <button onClick={handleAdd} className="w-full bg-[#f6b6cd] text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-[#f6b6cd]/40 active:scale-95 transition-transform mt-2">记录</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }

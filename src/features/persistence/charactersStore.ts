@@ -1,9 +1,14 @@
 import type { Character } from '../../types';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
+import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { STORAGE_KEYS } from './storageKeys';
 
 export function sanitizeCharacters(value: unknown, fallback: Character[]): Character[] {
-  return Array.isArray(value) ? (value as Character[]) : fallback;
+  if (!Array.isArray(value)) return fallback;
+  return (value as Character[]).map((character) => ({
+    ...character,
+    avatar: sanitizeTransientAssetValue(character.avatar),
+  }));
 }
 
 export function hydrateCharacters(

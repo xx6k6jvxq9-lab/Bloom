@@ -88,7 +88,7 @@ export function CoupleSpaceInitiativeSettingsCard({
 
       {isOpen && (
         <div className="border-t border-[#f7d7e3]">
-          <div className="p-4 border-b border-[#f7d7e3]">
+          <div className="border-b border-[#f7d7e3] p-4">
             <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">发布类</p>
             <div className="space-y-3">
               <SelectRow
@@ -145,7 +145,7 @@ export function CoupleSpaceInitiativeSettingsCard({
             </div>
           </div>
 
-          <div className="p-4 border-b border-[#f7d7e3]">
+          <div className="border-b border-[#f7d7e3] p-4">
             <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">互记类</p>
             <label className="mb-3 flex items-center justify-between gap-3 py-1">
               <span className="text-sm text-zinc-700">主动补记互记</span>
@@ -187,7 +187,7 @@ export function CoupleSpaceInitiativeSettingsCard({
             />
           </div>
 
-          <div className="p-4 border-b border-[#f7d7e3]">
+          <div className="border-b border-[#f7d7e3] p-4">
             <p className="mb-3 text-xs font-bold uppercase text-[#d99ab5]">记录类</p>
             <label className="flex items-center justify-between gap-3 py-1">
               <div>

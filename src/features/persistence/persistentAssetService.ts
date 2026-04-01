@@ -10,7 +10,7 @@ function createAssetId(): string {
 }
 
 function isDirectDisplayValue(value: string): boolean {
-  return /^(https?:|data:|blob:)/i.test(value);
+  return /^(https?:|data:)/i.test(value);
 }
 
 export async function saveUploadedBlob(
@@ -58,6 +58,13 @@ export async function resolveValueToDisplayUrl(value: string | null | undefined)
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
+
+  // blob: URLs are session-scoped temporary object URLs.
+  // They should never be treated as durable persisted asset values because
+  // they become invalid after refresh / import / cross-session reuse.
+  if (/^blob:/i.test(trimmed)) {
+    return null;
+  }
 
   if (isDirectDisplayValue(trimmed)) {
     return trimmed;

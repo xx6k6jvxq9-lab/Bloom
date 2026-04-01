@@ -6,6 +6,20 @@ export type RuntimeChatMessage = {
   content: string;
 };
 
+function sanitizeModelOutput(text: string) {
+  if (!text) return '';
+
+  let cleaned = text.trim();
+
+  // Strip hidden reasoning blocks if a provider leaks them.
+  cleaned = cleaned.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '').trim();
+
+  // If the model starts a think block but never closes it, drop that tail entirely.
+  cleaned = cleaned.replace(/<think\b[^>]*>[\s\S]*$/gi, '').trim();
+
+  return cleaned;
+}
+
 export function isGeminiConfig(activeConfig: ApiConfig) {
   return activeConfig.provider === 'Google Gemini' || !activeConfig.baseUrl?.trim();
 }
@@ -40,8 +54,9 @@ export async function generateTextWithConfig(options: {
   activeConfig: ApiConfig;
   prompt: string;
   temperature?: number;
+  maxOutputTokens?: number;
 }) {
-  const { activeConfig, prompt, temperature } = options;
+  const { activeConfig, prompt, temperature, maxOutputTokens } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
 
   if (isGeminiConfig(activeConfig)) {
@@ -51,10 +66,11 @@ export async function generateTextWithConfig(options: {
       contents: prompt,
       config: {
         temperature: activeConfig.temperature ?? temperature ?? 1.0,
+        maxOutputTokens,
       },
     });
 
-    return (response.text || '').trim();
+    return sanitizeModelOutput(response.text || '');
   }
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -67,6 +83,7 @@ export async function generateTextWithConfig(options: {
       model,
       messages: [{ role: 'system', content: prompt }],
       temperature: activeConfig.temperature ?? temperature ?? 0.7,
+      max_tokens: maxOutputTokens,
       stream: false,
     }),
   });
@@ -77,7 +94,7 @@ export async function generateTextWithConfig(options: {
   }
 
   const data = await res.json();
-  return (data.choices?.[0]?.message?.content || '').trim();
+  return sanitizeModelOutput(data.choices?.[0]?.message?.content || '');
 }
 
 export async function streamTextWithConfig(options: {

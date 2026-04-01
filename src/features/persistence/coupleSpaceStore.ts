@@ -15,6 +15,10 @@ export function createDefaultCoupleSpaceData(
     loveLetters: [],
     calendarEvents: [],
     moodStamps: [],
+    heartCapsuleMachine: {
+      todayDraw: null,
+      history: [],
+    },
     posts: [],
     anniversaries: [],
     messageBoard: [],
@@ -56,6 +60,12 @@ export function hydrateCoupleSpace(
     loveLetters: Array.isArray(source?.loveLetters) ? source.loveLetters : fallback.loveLetters,
     calendarEvents: Array.isArray(source?.calendarEvents) ? source.calendarEvents : fallback.calendarEvents,
     moodStamps: Array.isArray(source?.moodStamps) ? source.moodStamps : fallback.moodStamps,
+    heartCapsuleMachine: {
+      todayDraw: source?.heartCapsuleMachine?.todayDraw ?? fallback.heartCapsuleMachine?.todayDraw ?? null,
+      history: Array.isArray(source?.heartCapsuleMachine?.history)
+        ? source.heartCapsuleMachine.history
+        : (fallback.heartCapsuleMachine?.history ?? []),
+    },
     posts: Array.isArray(source?.posts) ? source.posts : fallback.posts,
     anniversaries: Array.isArray(source?.anniversaries) ? source.anniversaries : fallback.anniversaries,
     messageBoard: Array.isArray(source?.messageBoard) ? source.messageBoard : fallback.messageBoard,

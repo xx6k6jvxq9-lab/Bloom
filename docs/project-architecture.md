@@ -1,870 +1,1197 @@
-﻿# 项目架构说明
+# Bloom 项目架构说明
+
+本文档以当前仓库代码为准，描述的是“现状架构”，不是理想态设计。
+目标读者是需要继续开发、维护、拆分或接手这个项目的人。
 
 ## 1. 项目定位
 
-这是一个以“手机桌面壳 + AI 角色互动”为核心体验的 React + TypeScript 项目。
-它不是单一聊天页，而是把聊天、通讯录、动态、约会、情侣空间、音乐、钱包、论坛、监控、桌面自定义等能力包装成一个统一的手机容器。
+Bloom 是一个以“手机桌面壳 + AI 角色互动”为核心体验的 React + TypeScript 项目。
+它不是单一聊天页，而是把聊天、通讯录、动态、约会、情侣空间、音乐、钱包、论坛、监控、桌面自定义和小游戏整合进统一手机容器中的关系型产品。
 
-### 产品感受描述
+从架构角度看，当前项目处于一种典型的“过渡态”：
 
-如果只从“功能清单”理解这个项目，会低估它真正想传达的体验。
-更贴近产品侧的描述是：它像一部住着角色、情绪和关系的手机。
+- 顶层入口和大量业务装配仍然集中在 `src/App.tsx`
+- 但聊天、持久化、角色域、动态编排、情侣空间 AI 主链已经逐步拆出
+- 代码已经明显脱离“单文件原型期”，但还没有进入“彻底领域化”的成熟阶段
 
-- 你打开的不是一个普通聊天窗口，而是一个会亮起桌面、会切换页面、会沉淀回忆的陪伴式设备。
-- 角色不只在聊天里回复你，还会出现在动态、约会、情侣空间、音乐、收藏和日常痕迹里。
-- 用户感受到的不是“一个 AI 功能入口”，而是“一个被包装成生活容器的关系型产品”。
-- 它带有一点恋爱模拟、一点陪伴产品、一点手机养成和一点互动世界的娱乐化气质。
+理解这个项目最重要的一点是：
+它不是普通的“页面集合”，而是一个围绕“关系持续存在”组织起来的前端应用壳。
+很多模块看起来彼此独立，实际上会通过角色、聊天、记忆、视觉配置和持久化层彼此联动。
 
-从产品表达上，它更接近“可以游玩的 AI 关系空间”，而不只是“可配置的大模型聊天壳”。
+## 2. 技术栈与运行方式
 
-当前架构已经从“`src/App.tsx` 承担一切”进入到“`App.tsx` 仍是顶层壳，但 persistence / chat-session / chat-runtime / character-domain 逐步独立”的形态：
-
-- 页面层已经拆出大量独立组件和业务页。
-- Prompt、AI 调用、动态生成、消息操作、浏览器持久化已经开始 feature / service 化。
-- 顶层状态和页面切换仍然主要由 `src/App.tsx` 持有。
-- 聊天主链已经不再直接内嵌在 `App.tsx` 中，而是拆成 mount / container / screen / runtime / runtime core。
-
-这份文档以“当前真实代码结构”为准，不描述理想态。
-
----
-
-## 2. 技术栈与运行入口
-
-### 前端
+### 2.1 前端技术栈
 
 - React 19
 - TypeScript
 - Vite
 - Tailwind CSS 4
-- `motion/react` 用于页面和面板动效
-- `lucide-react` 用于图标
+- `motion`
+- `lucide-react`
 
-### AI 与数据
+### 2.2 服务与依赖
 
-- `@google/genai` 用于 Gemini 请求
-- OpenAI 兼容接口通过 `fetch(baseUrl + /chat/completions)` 调用
-- 当前主要数据仍保存在前端内存与本地持久化链路中
+- Express
+- `@google/genai`
+- OpenAI 兼容接口调用
+- `better-sqlite3`
 
-### 本地开发与服务端入口
+当前要注意的是：
 
-- [package.json](/e:/小手机/Bloom/package.json)
-  - `npm run dev` 实际启动的是 `tsx server.ts`
-- [server.ts](/e:/小手机/Bloom/server.ts)
-  - Express + Vite 中间层开发服务器
-  - 提供 `/api/health`
-  - 提供网易云音乐代理接口，如歌曲、歌词、歌单详情
-- [src/main.tsx](/e:/小手机/Bloom/src/main.tsx)
+- `better-sqlite3` 已在依赖里，但现阶段主数据链仍以浏览器本地持久化为主
+- AI 调用统一收口到前端服务层，不是每个模块各自直接请求 provider
+
+### 2.3 运行入口
+
+- [`package.json`](../package.json)
+  - `npm run dev` -> `tsx server.ts`
+  - `npm run build` -> `vite build`
+  - `npm run preview` -> `vite preview`
+  - `npm run lint` -> `tsc --noEmit`
+- [`server.ts`](../server.ts)
+  - 本地 Express 服务入口
+  - 开发模式下挂载 Vite middleware
+  - 生产模式下托管 `dist`
+  - 提供音乐代理接口
+- [`src/main.tsx`](../src/main.tsx)
   - React 挂载入口
+- [`src/App.tsx`](../src/App.tsx)
+  - 应用总装配入口
 
-### 当前结论
+### 2.4 当前环境变量心智
 
-这个项目不是纯静态前端：
+项目当前并不是“只靠 `.env` 驱动所有 AI 配置”的架构。
 
-- 前端 UI 和大多数业务状态在 React 内完成。
-- 本地开发时通过 `server.ts` 承担开发服务器与部分代理能力。
+- [`.env.example`](../.env.example) 主要给 Gemini 和部署环境预留变量
+- 实际业务里还支持在应用内部维护 API 配置
+- `runtimeClient` 会根据 active config 判断走 Gemini 还是 OpenAI 兼容接口
 
----
+这意味着：
+
+- 环境变量更像基础兜底
+- 真正运行时使用哪套模型配置，更多由应用状态决定
 
 ## 3. 根目录结构
 
-### 根目录关键文件
+```text
+Bloom/
+├─ src/                前端主代码
+├─ docs/               项目文档
+├─ app/                保留目录，当前不是主架构核心
+├─ dist/               构建产物
+├─ server.ts           本地服务与代理入口
+├─ package.json
+├─ vite.config.ts
+├─ tsconfig.json
+└─ metadata.json
+```
 
-- [README.md](/e:/小手机/Bloom/README.md)
-  - 运行说明，当前也存在中文乱码问题
-- [docs/project-architecture.md](/e:/小手机/Bloom/docs/project-architecture.md)
-  - 当前这份架构说明
-- [src/App.tsx](/e:/小手机/Bloom/src/App.tsx)
-  - 顶层状态、页面切换、主聊天链路、应用内弹窗总线
-- [src/types.ts](/e:/小手机/Bloom/src/types.ts)
-  - 全局核心类型
-- [src/utils.ts](/e:/小手机/Bloom/src/utils.ts)
-  - 通用工具、图片提取、应用内对话框事件
-- [src/index.css](/e:/小手机/Bloom/src/index.css)
-  - 全局样式与手机容器约束
-- [server.ts](/e:/小手机/Bloom/server.ts)
+### 3.1 根目录关键文件
+
+- [`src/App.tsx`](../src/App.tsx)
+  - 当前仍然是总装配中心
+  - 管顶层页面切换、主要业务状态、弹层总线、大量模块衔接
+- [`src/types.ts`](../src/types.ts)
+  - 全局核心类型中心
+- [`server.ts`](../server.ts)
   - 本地服务端入口
+- [`src/main.tsx`](../src/main.tsx)
+  - React 入口
+- [`README.md`](../README.md)
+  - 对外入口说明
+- [`docs/product-introduction.md`](./product-introduction.md)
+  - 产品向介绍
+- [`docs/project-architecture.md`](./project-architecture.md)
+  - 当前这份工程向文档
 
-### 主要目录
+## 4. 总体分层
 
-- [src/components](/e:/小手机/Bloom/src/components)
-  - UI 页面与业务组件
-- [src/services](/e:/小手机/Bloom/src/services)
-  - AI、聊天消息操作、动态生成等服务层
-- [src/features](/e:/小手机/Bloom/src/features)
-  - 持久化、聊天域、角色域等 feature 分层
-- [docs](/e:/小手机/Bloom/docs)
-  - 项目文档与历史资料
-- [app](/e:/小手机/Bloom/app)
-  - 当前仓库中仅保留 `applet` 目录，暂未成为主架构的一部分
+当前项目大体可以理解成六层：
 
----
+1. 页面与 UI 层
+2. 页面装配层
+3. 业务运行时层
+4. 服务层
+5. 持久化层
+6. 本地代理服务层
 
-## 4. 目录分层
+更具体一点：
 
-### 4.1 `src/components`
+- `components`
+  - 更偏“看得见的页面和控件”
+- `features`
+  - 更偏“可复用的领域边界与运行时能力”
+- `services`
+  - 更偏“AI、规则、生成、编排”
+- `persistence` 子域
+  - 更偏“数据如何在本地保存、恢复和避免污染”
+- `server.ts`
+  - 更偏“开发时 BFF / 代理层”
 
-#### 首页与手机桌面
+这个分层并不是严格 DDD，也不是完全分离干净的 clean architecture。
+它更像是从大型 `App.tsx` 中逐步长出来的“半领域化结构”。
 
-- [src/components/home/HomeScreen/Page.tsx](/e:/小手机/Bloom/src/components/home/HomeScreen/Page.tsx)
-  - 手机首页桌面
-  - 图标、Dock、顶部导航卡片、桌面分页、拖拽布局
-  - 根据容器宽高推导 `sizeTier` 与高屏修正
-- [src/components/home/HomeScreen/layout.ts](/e:/小手机/Bloom/src/components/home/HomeScreen/layout.ts)
-  - 首页桌面布局算法
-  - 输出 slot、dock、navbar、widget 布局指标
-- [src/components/home/HomeScreen/HomeScreen.css](/e:/小手机/Bloom/src/components/home/HomeScreen/HomeScreen.css)
+## 5. `src/components` 层
+
+`src/components` 负责页面、可视模块和面向 UI 的业务组件。
+
+### 5.1 首页与手机桌面
+
+- [`src/components/home/HomeScreen/Page.tsx`](../src/components/home/HomeScreen/Page.tsx)
+  - 手机首页入口
+  - 负责桌面图标、Dock、导航区、小组件与布局适配
+- [`src/components/home/HomeScreen/layout.ts`](../src/components/home/HomeScreen/layout.ts)
+  - 首页布局计算逻辑
+- [`src/components/home/HomeScreen/HomeScreen.css`](../src/components/home/HomeScreen/HomeScreen.css)
   - 首页样式
-- [src/components/shared/DesktopWidgets.tsx](/e:/小手机/Bloom/src/components/shared/DesktopWidgets.tsx)
-  - 桌面小组件渲染
+- [`src/components/shared/DesktopWidgets.tsx`](../src/components/shared/DesktopWidgets.tsx)
+  - 小组件渲染
 
-#### 主应用壳
+这条线更偏“手机壳体验层”，不是业务核心，却决定了产品感。
 
-- [src/components/main/MainAppShell/Page.tsx](/e:/小手机/Bloom/src/components/main/MainAppShell/Page.tsx)
-  - 主壳容器
-  - `chat / contacts / moments / me` 四个 tab 的组织与切换
-- [src/components/main/ContactsShell/Page.tsx](/e:/小手机/Bloom/src/components/main/ContactsShell/Page.tsx)
-  - 通讯录、好友申请、群聊管理入口、联系人分组
-- [src/components/main/NewFriendsPage.tsx](/e:/小手机/Bloom/src/components/main/NewFriendsPage.tsx)
+### 5.2 主应用壳
+
+- [`src/components/main/MainAppShell/Page.tsx`](../src/components/main/MainAppShell/Page.tsx)
+  - 主应用壳
+  - 承接聊天 / 通讯录 / 动态 / 我的四大主入口
+- [`src/components/main/ContactsShell/Page.tsx`](../src/components/main/ContactsShell/Page.tsx)
+  - 联系人、角色资料与通讯录组织
+- [`src/components/main/NewFriendsPage.tsx`](../src/components/main/NewFriendsPage.tsx)
   - 新朋友页
-- [src/components/main/GroupChatManagerPage.tsx](/e:/小手机/Bloom/src/components/main/GroupChatManagerPage.tsx)
-  - 群聊创建与解散管理
-- [src/components/main/MePage.tsx](/e:/小手机/Bloom/src/components/main/MePage.tsx)
-  - 我的页面
-  - 角色、面具、收藏、数据管理、世界书管理等入口
+- [`src/components/main/GroupChatManagerPage.tsx`](../src/components/main/GroupChatManagerPage.tsx)
+  - 群聊管理
+- [`src/components/main/MePage.tsx`](../src/components/main/MePage.tsx)
+  - 我的页面，承担大量配置和数据入口
 
-#### 聊天相关
+### 5.3 聊天相关 UI
 
-- [src/components/chat/ChatSettingsPanel.tsx](/e:/小手机/Bloom/src/components/chat/ChatSettingsPanel.tsx)
-  - 聊天设置、角色资料、摘要生成、通话记录管理
-- [src/components/chat/GameCard.tsx](/e:/小手机/Bloom/src/components/chat/GameCard.tsx)
-  - 聊天流内游戏卡片，弹层挂载到手机容器内
+- [`src/components/chat/ChatSettingsPanel.tsx`](../src/components/chat/ChatSettingsPanel.tsx)
+  - 聊天设置
+  - 角色资料、摘要、通话、部分 AI 配置相关入口
+- [`src/components/chat/GameCard.tsx`](../src/components/chat/GameCard.tsx)
+  - 聊天流中的游戏卡片
 
-#### 约会模块
+### 5.4 约会模块
 
-- [src/components/dating/DatingModal.tsx](/e:/小手机/Bloom/src/components/dating/DatingModal.tsx)
-  - 约会规划入口与恢复入口
-- [src/components/dating/DatingScene.tsx](/e:/小手机/Bloom/src/components/dating/DatingScene.tsx)
-  - 正式约会场景页，基于消息流承载剧情卡片与状态
-- [src/components/dating/sessionUtils.ts](/e:/小手机/Bloom/src/components/dating/sessionUtils.ts)
-  - 约会 session 规范化、背景图、兼容处理
-- [src/components/dating/DatingScene.css](/e:/小手机/Bloom/src/components/dating/DatingScene.css)
-  - 约会样式
+- [`src/components/dating/DatingModal.tsx`](../src/components/dating/DatingModal.tsx)
+  - 约会规划或恢复入口
+- [`src/components/dating/DatingScene.tsx`](../src/components/dating/DatingScene.tsx)
+  - 正式约会场景页
+- [`src/components/dating/sessionUtils.ts`](../src/components/dating/sessionUtils.ts)
+  - 约会 session 兼容与辅助逻辑
 
-#### 其它业务模块
+### 5.5 情侣空间 UI
 
-- [src/components/couple-space/CoupleSpaceApp/Page.tsx](/e:/小手机/Bloom/src/components/couple-space/CoupleSpaceApp/Page.tsx)
-  - 情侣空间
-- [src/components/couple-space/PerceptionView.tsx](/e:/小手机/Bloom/src/components/couple-space/PerceptionView.tsx)
-  - 感知页
-- [src/components/media/MusicApp.tsx](/e:/小手机/Bloom/src/components/media/MusicApp.tsx)
-  - 音乐模块
-- [src/components/wallet/WalletApp/Page.tsx](/e:/小手机/Bloom/src/components/wallet/WalletApp/Page.tsx)
-  - 钱包模块
-- [src/components/social/ForumApp/Page.tsx](/e:/小手机/Bloom/src/components/social/ForumApp/Page.tsx)
-  - 论坛模块
-- [src/components/monitor/MonitorApp/Page.tsx](/e:/小手机/Bloom/src/components/monitor/MonitorApp/Page.tsx)
-  - 监控模块
-- [src/components/monitor/PhoneInterface.tsx](/e:/小手机/Bloom/src/components/monitor/PhoneInterface.tsx)
-  - 监控模块中的手机界面视图
-- [src/components/customization/CustomizationApp/Page.tsx](/e:/小手机/Bloom/src/components/customization/CustomizationApp/Page.tsx)
-  - 桌面与视觉自定义、数据导入导出
-- [src/components/games/GameCenter.tsx](/e:/小手机/Bloom/src/components/games/GameCenter.tsx)
-  - 游戏中心容器
-- [src/components/games](/e:/小手机/Bloom/src/components/games)
-  - 内含五子棋、贪吃蛇、真心话大冒险、石头剪刀布、连连看、卡牌对决、情侣问答等游戏实现
+情侣空间现在已经不是单页，而是一组页面族：
 
-### 4.2 `src/services`
+- [`src/components/couple-space/CoupleSpaceApp/Page.tsx`](../src/components/couple-space/CoupleSpaceApp/Page.tsx)
+  - 情侣空间主页面
+  - 当前承担入口切换、当前 partner 视图、手动触发与数据写回
+- [`src/components/couple-space/PerceptionView.tsx`](../src/components/couple-space/PerceptionView.tsx)
+  - 历史遗留视图，仍有兼容价值
+- `calendar/*`
+  - 日历、心情印章等关系时间内容
+- `loveletters/*`
+  - 情书展示与回复区
+- `archive/*`
+  - 归档中心
+- `interaction/*`
+  - 互动中心、回忆卷轴、心动胶囊等玩法区
+- `settings/*`
+  - 主动能力相关设置与检查卡片
 
-#### AI 运行时与 Prompt
+### 5.6 其他业务页面
 
-- [src/services/ai/runtimeClient.ts](/e:/小手机/Bloom/src/services/ai/runtimeClient.ts)
-  - 统一 AI 调用层
-  - 支持 Gemini 与 OpenAI 兼容接口
-  - 提供 `generateTextWithConfig` 和 `streamTextWithConfig`
-- [src/services/ai/prompts/builders/buildChatPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildChatPrompt.ts)
-  - 主聊天 prompt builder
-- [src/services/ai/prompts/builders/buildDatingPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildDatingPrompt.ts)
-  - 约会 prompt builder
-- [src/services/ai/prompts/builders/buildSummaryPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildSummaryPrompt.ts)
-  - 聊天摘要 prompt builder
-- [src/services/ai/prompts/builders/buildMomentsPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildMomentsPrompt.ts)
-  - 动态生成 prompt builder
-- [src/services/ai/prompts/builders/buildMomentCommentReplyPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildMomentCommentReplyPrompt.ts)
-  - 动态评论回复 prompt builder
-- [src/services/ai/prompts/index.ts](/e:/小手机/Bloom/src/services/ai/prompts/index.ts)
-  - Prompt 导出中心
+- [`src/components/media/MusicApp.tsx`](../src/components/media/MusicApp.tsx)
+- [`src/components/wallet/WalletApp/Page.tsx`](../src/components/wallet/WalletApp/Page.tsx)
+- [`src/components/social/ForumApp/Page.tsx`](../src/components/social/ForumApp/Page.tsx)
+- [`src/components/monitor/MonitorApp/Page.tsx`](../src/components/monitor/MonitorApp/Page.tsx)
+- [`src/components/monitor/PhoneInterface.tsx`](../src/components/monitor/PhoneInterface.tsx)
+- [`src/components/customization/CustomizationApp/Page.tsx`](../src/components/customization/CustomizationApp/Page.tsx)
+- [`src/components/games/GameCenter.tsx`](../src/components/games/GameCenter.tsx)
 
-#### 聊天消息操作
+这些模块大多是“业务视图层”，真正的规则、存储和生成逻辑往下沉在 `features` 与 `services`。
 
-- [src/services/chat/messageActions.ts](/e:/小手机/Bloom/src/services/chat/messageActions.ts)
-  - 复制、引用、转发、收藏、删除、分享、回复预览、布局辅助
+## 6. `src/features` 层
 
-#### 动态相关
+`src/features` 是当前最值得关注的架构演进层，因为它承载的是“从大文件里拆出来的领域边界”。
 
-- [src/services/moments/orchestrator.ts](/e:/小手机/Bloom/src/services/moments/orchestrator.ts)
-  - 动态发布与自动触发编排
-- [src/services/moments/generators.ts](/e:/小手机/Bloom/src/services/moments/generators.ts)
-  - 动态、评论回复、fallback 内容生成
-- [src/services/moments/triggers.ts](/e:/小手机/Bloom/src/services/moments/triggers.ts)
-  - 动态触发条件与上下文提取
+### 6.1 `features/chat-session`
 
-### 4.3 `src/features`
+核心文件：
 
-#### 浏览器持久化
+- [`src/features/chat-session/ChatSessionMount.tsx`](../src/features/chat-session/ChatSessionMount.tsx)
+- [`src/features/chat-session/DirectChatSessionContainer.tsx`](../src/features/chat-session/DirectChatSessionContainer.tsx)
+- [`src/features/chat-session/GroupChatSessionContainer.tsx`](../src/features/chat-session/GroupChatSessionContainer.tsx)
+- [`src/features/chat-session/ChatSessionScreen.tsx`](../src/features/chat-session/ChatSessionScreen.tsx)
+- [`src/features/chat-session/GroupChatSessionScreen.tsx`](../src/features/chat-session/GroupChatSessionScreen.tsx)
+- [`src/features/chat-session/ChatSessionPersistenceBridge.tsx`](../src/features/chat-session/ChatSessionPersistenceBridge.tsx)
 
-- [src/features/persistence](/e:/小手机/Bloom/src/features/persistence)
-  - 当前浏览器持久化基础设施与业务数据 store / bridge
-  - 包括：
-    - `storageKeys`
-    - `localConfigStore`
-    - `browserDb`
-    - `persistentAssetService`
-    - `useResolvedPersistentValue`
-    - `usePersistentFieldActions`
-    - `visualSettingsStore`
-    - `userProfile / moments / forumData / coupleSpace / chatHistory / callHistory / datingRecords` 等 store 与 bridge
+职责：
 
-#### 聊天域
+- 根据 `activeApp` 决定当前挂载直聊还是群聊会话
+- 从 `selectedCharacterId / selectedGroupId` 找到当前目标
+- 组装会话所需依赖并下发给 container
+- 把会话层与持久化 bridge 串起来
 
-- [src/features/chat-session](/e:/小手机/Bloom/src/features/chat-session)
-  - 聊天挂载层与页面容器层
-  - 目前包括：
-    - `ChatSessionMount`
-    - `ChatSessionPersistenceBridge`
-    - `DirectChatSessionContainer`
-    - `GroupChatSessionContainer`
-    - `ChatSessionScreen`
-    - `GroupChatSessionScreen`
+`ChatSessionMount` 的意义是把“会话装配”从 `App.tsx` 中独立出来。
+它本身不负责真正的生成逻辑，而是做“选谁、挂谁、把依赖传进去”。
 
-- [src/features/chat-runtime](/e:/小手机/Bloom/src/features/chat-runtime)
-  - 聊天运行时层
-  - 目前包括：
-    - `useDirectChatRuntime`
-    - `useGroupChatRuntime`
-    - `useSessionRuntimeCore`
-    - `types`
+### 6.2 `features/chat-runtime`
 
-#### 角色域
+核心文件：
 
-- [src/features/character-domain](/e:/小手机/Bloom/src/features/character-domain)
-  - 角色域已完成读取边界第一刀，并已进入第二刀前两部分的第一版落地阶段
-  - 当前包括：
-    - `createCharacterDirectory(...)` 负责角色按 id / name / group member 的只读查询
-    - `characterMutations.ts` 负责 `replace / updateById / patchById / remove / upsert` 等统一写入语义
-  - 第二刀第三部分（角色资源与复杂联动边界）仍未开始，后续再进入
+- [`src/features/chat-runtime/useDirectChatRuntime.ts`](../src/features/chat-runtime/useDirectChatRuntime.ts)
+- [`src/features/chat-runtime/useGroupChatRuntime.ts`](../src/features/chat-runtime/useGroupChatRuntime.ts)
+- [`src/features/chat-runtime/useSessionRuntimeCore.ts`](../src/features/chat-runtime/useSessionRuntimeCore.ts)
+- [`src/features/chat-runtime/types.ts`](../src/features/chat-runtime/types.ts)
 
-## 5. 顶层状态与核心数据
+职责：
 
-### 5.1 `App.tsx` 仍然是主状态中心
+- 管理一轮消息生成是否在进行中
+- 维护当前 generation id
+- 防止旧请求覆盖新请求结果
+- 统一运行时错误态
+- 为直聊与群聊提供共享运行时内核
 
-[src/App.tsx](/e:/小手机/Bloom/src/App.tsx) 当前仍掌握这些顶层状态：
+[`useSessionRuntimeCore.ts`](../src/features/chat-runtime/useSessionRuntimeCore.ts) 当前非常关键，因为它把“生成状态控制”收口成了一个可共享核心：
 
-- 当前应用页：`activeApp`
-- 主应用内 tab：`activeTab`
-- 当前角色：`selectedCharacterId`
-- 当前群聊：`selectedGroupId`
-- 当前论坛帖子：`selectedForumPostId`
-- 设置中心：`settings`
-- 顶层业务数据：`appData`
-- 应用内对话框状态与事件接管
+- `isLoading`
+- `error`
+- `activeGenerationIdRef`
+- `runGeneration`
 
-### 5.2 `appData` 的主要内容
+这条线是聊天链真正摆脱“页面直接调 AI”的关键一步。
 
-当前 `appData` 主要包含：
+### 6.3 `features/persistence`
+
+这是当前项目最稳定的一层基础设施之一。
+
+#### 基础文件
+
+- [`src/features/persistence/browserDb.ts`](../src/features/persistence/browserDb.ts)
+- [`src/features/persistence/localConfigStore.ts`](../src/features/persistence/localConfigStore.ts)
+- [`src/features/persistence/storageKeys.ts`](../src/features/persistence/storageKeys.ts)
+- [`src/features/persistence/persistentAssetService.ts`](../src/features/persistence/persistentAssetService.ts)
+- [`src/features/persistence/persistentAssetRef.ts`](../src/features/persistence/persistentAssetRef.ts)
+- [`src/features/persistence/objectUrlRegistry.ts`](../src/features/persistence/objectUrlRegistry.ts)
+- [`src/features/persistence/sanitizeTransientAssetValue.ts`](../src/features/persistence/sanitizeTransientAssetValue.ts)
+- [`src/features/persistence/useResolvedPersistentValue.ts`](../src/features/persistence/useResolvedPersistentValue.ts)
+
+#### 业务 store / bridge
+
+当前已经拆出对应存储域的模块：
+
+- `charactersStore.ts`
+- `visualSettingsStore.ts`
+- `userProfileStore.ts`
+- `momentsStore.ts`
+- `forumDataStore.ts`
+- `coupleSpaceStore.ts`
+- `chatOrganizationStore.ts`
+- `meDataStore.ts`
+- `musicDataStore.ts`
+- `walletDataStore.ts`
+- `friendRequestsStore.ts`
+- `callHistoryStore.ts`
+- `datingRecordsStore.ts`
+- `chatHistoryStore.ts`
+
+以及对应的 `usePersisted*Bridge.ts`。
+
+#### 这一层解决的问题
+
+1. 不把所有业务数据都绑在同一个 `appData` 整包 localStorage 上
+2. 避免首屏空值把已有本地数据覆盖掉
+3. 让资源类字段和普通 JSON 字段分开处理
+4. 给后续域拆分留出持久化边界
+
+#### 资源持久化心智
+
+资源类字段不是简单字符串。
+当前这条链已经开始区分：
+
+- 原始临时值
+- 已持久化引用
+- 页面可显示的最终 URL
+
+这也是为什么会存在：
+
+- `sanitizeTransientAssetValue`
+- `persistentAssetRef`
+- `useResolvedPersistentValue`
+
+### 6.4 `features/character-domain`
+
+核心文件：
+
+- [`src/features/character-domain/useCharacterDirectory.ts`](../src/features/character-domain/useCharacterDirectory.ts)
+- [`src/features/character-domain/characterMutations.ts`](../src/features/character-domain/characterMutations.ts)
+
+职责：
+
+- 建立角色读取边界
+- 建立角色写入边界
+- 减少页面直接散写 `characters`
+
+[`characterMutations.ts`](../src/features/character-domain/characterMutations.ts) 当前是很明确的“统一 mutation 入口”：
+
+- `replaceCharacters`
+- `updateCharacterById`
+- `patchCharacterById`
+- `removeCharacterById`
+- `upsertCharacter`
+
+这一层虽然还很轻，但意义很大。
+它代表项目已经开始从“页面直接 `map`/`filter` 角色数组”转向“角色写入由角色域表达”。
+
+### 6.5 `features/couple-space-interactions`
+
+这一层目前最突出的是 `heart-capsule-machine`。
+
+包含内容：
+
+- 页面
+- 回合类型
+- prompt
+- 回复生成
+- 历史记录
+- 每日抽取逻辑
+
+这一层说明情侣空间已经不再只是内容展示页，而是开始有自己独立的互动玩法域。
+
+## 7. `src/services` 层
+
+`services` 负责 AI 调用、业务规则、生成逻辑和流程编排。
+
+### 7.1 `services/ai/runtimeClient`
+
+核心文件：
+
+- [`src/services/ai/runtimeClient.ts`](../src/services/ai/runtimeClient.ts)
+
+职责：
+
+- 判断当前 active config 走 Gemini 还是 OpenAI 兼容接口
+- 校验 `apiKey / baseUrl / model`
+- 提供 `generateTextWithConfig`
+- 提供 `streamTextWithConfig`
+- 清理 provider 可能泄露出的 `<think>` 内容
+
+这层非常关键，因为它让上层业务不需要每个场景都知道 provider 细节。
+上层更关心的是：
+
+- 我要生成什么
+- 用哪套配置
+- 是一次性文本还是流式消息
+
+### 7.2 Prompt 体系
+
+主要位于：
+
+- `services/ai/prompts/base`
+- `services/ai/prompts/builders`
+- `services/ai/prompts/scenarios`
+- `services/ai/prompts/character`
+- `services/ai/prompts/coupleSpace`
+
+当前已明确拆分出的 prompt 场景包括：
+
+- 普通聊天
+- 群聊
+- 摘要
+- 动态生成
+- 动态评论回复
+- 约会
+- 情侣空间多子场景
+
+这意味着 Prompt 已经不再只是零散模板，而是逐步演进成“AI 行为规则层”。
+
+### 7.3 `services/chat`
+
+- [`src/services/chat/messageActions.ts`](../src/services/chat/messageActions.ts)
+
+职责：
+
+- 收藏
+- 转发
+- 引用
+- 删除
+- 分享
+- 回复预览
+- 聊天 header 状态和布局辅助
+
+这层的价值在于把“消息操作规则”从 UI 组件里拿出来。
+
+### 7.4 `services/moments`
+
+核心文件：
+
+- [`src/services/moments/triggers.ts`](../src/services/moments/triggers.ts)
+- [`src/services/moments/generators.ts`](../src/services/moments/generators.ts)
+- [`src/services/moments/orchestrator.ts`](../src/services/moments/orchestrator.ts)
+
+当前分层非常清楚：
+
+- `triggers`
+  - 判断是否应触发
+- `generators`
+  - 生成动态文本或评论回复
+- `orchestrator`
+  - 串起触发与生成，并输出最终结果
+
+[`orchestrator.ts`](../src/services/moments/orchestrator.ts) 当前可以理解为“动态系统的薄编排层”：
+
+- 命令触发发布
+- 自动触发发布
+- chat reaction 生成
+- 正式内容生成
+
+### 7.5 `services/relationship-time`
+
+负责纪念日、关系时间线、心情印章等偏关系时间维度的逻辑。
+
+### 7.6 `services/couple-space`
+
+负责情侣空间中偏业务辅助的部分，例如回忆条目模板与构造逻辑。
+
+## 8. 情侣空间 AI 架构
+
+这是当前项目里最复杂、也是最值得单独理解的一组结构。
+
+### 8.1 数据层心智
+
+核心文件：
+
+- [`src/features/persistence/coupleSpaceStore.ts`](../src/features/persistence/coupleSpaceStore.ts)
+
+当前情侣空间已经不是单空间对象，而是：
+
+- `currentPartnerId`
+- `spacesByPartnerId`
+
+也就是“当前查看哪个 partner 的空间 + 所有 partner 的空间仓库”。
+
+`coupleSpaceStore.ts` 当前承担的真实职责包括：
+
+- 创建默认数据
+- 创建默认 state
+- 把旧版单空间数据迁移成 per-partner 结构
+- 对单个 partner 的空间做 hydrate
+- 根据当前 partner 投影出当前正在编辑的空间数据
+
+这意味着它不仅是 store，还是兼容层和迁移层。
+
+### 8.2 Prompt 与上下文层
+
+核心目录：
+
+- `services/ai/couple-space/context`
+- `services/ai/couple-space/prompt`
+- `services/ai/prompts/builders/*Couple*`
+
+职责分工：
+
+- `context`
+  - 统一收口角色信息、关系上下文、最近聊天、最近情侣空间痕迹
+- `builders`
+  - 根据具体动作生成 prompt
+- `promptService`
+  - 负责挑选 builder 并调用 runtime
+
+这条线的结果是：
+页面不再直接承担 prompt 拼装。
+
+### 8.3 主动能力静态决策链
+
+主要位于：
+
+- `services/ai/couple-space/initiative`
+
+当前已经具备的链路大致是：
+
+1. signal collector
+2. normalized context
+3. runner
+4. scorer
+5. selector
+6. decision trace
+7. trace serializer
+
+这条链的意义不是立即执行，而是：
+
+- 选出候选动作
+- 给出为什么选它
+- 给出后续执行应该怎么接
+
+### 8.4 执行桥
+
+主要位于：
+
+- `services/ai/couple-space/execution`
+
+当前已经具备：
+
+- execution plan
+- commit route
+- execution bridge
+- readiness
+- execution request
+- executor capability map
+- draft / direct-write / confirm sink
+
+这一层把“决策结果”往“可执行请求”推进了一步。
+
+### 8.5 真实动作 helper
+
+主要位于：
+
+- `services/ai/couple-space/actions`
+
+当前已覆盖的动作包括：
+
+- `post_couple_daily`
+- `post_message_board_entry`
+- `write_love_letter`
+- `write_co_note`
+- `reply_message_board`
+- `react_to_existing_post`
+- `reply_daily_comment`
+- `reply_love_letter`
+- `create_ledger_entry`
+
+### 8.6 产品入口
+
+当前已经接入的入口包括：
+
+- `runCoupleSpaceInitiativeManualCheck`
+- `runCoupleSpaceInitiativeAutoCheck`
+- `coupleSpaceInitiativeAutoCheckGate`
+
+这表示情侣空间主动能力已经从“未来规划”变成“最小产品能力”。
+
+## 9. 顶层状态与类型中心
+
+### 9.1 类型中心
+
+[`src/types.ts`](../src/types.ts) 仍然是全局核心类型中心。
+
+当前最关键的类型包括：
+
+- `Character`
+- `ChatMessage`
+- `ChatHistory`
+- `VisualSettings`
+- `AppSettings`
+- `ApiConfig`
+- `CallRecord`
+- `DateSession`
+- `WalletData`
+- `ChatGroup`
+- `CoupleSpaceData`
+- `CoupleSpaceState`
+- `CoupleSpaceInitiative*`
+
+### 9.2 `App.tsx` 中的顶层业务数据
+
+当前 `App.tsx` 内定义的 `AppData` 仍然管理大量核心数据：
+
+- characters
+- chatHistory
+- userProfile
+- masks
+- favorites
+- visualSettings
+- groups
+- moments
+- worldBooks
+- coupleSpace
+- coupleSpaceState
+- friendRequests
+- chatGroups
+- callHistory
+- savedDates
+- collectedDates
+- musicData
+- walletData
+
+这说明项目虽然已经分层，但真正的“统一业务总线”仍然在顶层。
+
+## 10. 关键主链路
+
+### 10.1 应用启动链
+
+1. `server.ts` 启动本地 Express + Vite 服务
+2. `src/main.tsx` 挂载 React
+3. `src/App.tsx` 初始化顶层状态和默认数据
+4. 各类 persistence bridge 把本地存储 hydrate 回应用状态
+5. 页面根据 `activeApp / selected*` 状态渲染对应模块
+
+### 10.2 聊天主链
+
+1. 用户进入聊天会话
+2. `ChatSessionMount` 决定挂载直聊还是群聊
+3. 对应 container 接收角色、群组、设置、历史、持久化写回函数
+4. `useDirectChatRuntime` / `useGroupChatRuntime` 触发生成
+5. `useSessionRuntimeCore` 统一控制 loading / error / generation id
+6. prompt builder 组装输入
+7. `runtimeClient` 发起请求
+8. 结果写回 `chatHistory` 或群聊历史
+
+### 10.3 动态主链
+
+1. 聊天或页面触发动态相关行为
+2. `triggers.ts` 判断是否应触发
+3. `generators.ts` 生成内容或评论回复
+4. `orchestrator.ts` 输出最终结果
+5. 顶层状态写回动态数据
+
+### 10.4 约会主链
+
+1. 聊天入口触发约会
+2. `DatingModal` 规划或恢复 session
+3. `DatingScene` 承载正式场景
+4. `buildDatingPrompt`
+5. `runtimeClient`
+6. 写回 `DateSession`
+
+### 10.5 情侣空间主链
+
+1. 页面进入情侣空间
+2. 根据 `currentPartnerId` 获取当前 partner 的空间数据
+3. 页面触发某个生成或回复动作
+4. `createCoupleSpacePromptCommonInput`
+5. `coupleSpacePromptService`
+6. 某个 `buildCouple*Prompt`
+7. `runtimeClient`
+8. 写回当前 partner 的 `posts / loveLetters / messageBoard / coNotes / ...`
+
+## 11. 本地持久化架构
+
+### 11.1 分层心智
+
+当前本地持久化不是一层简单的 `localStorage.setItem`，而是三层：
+
+1. 配置/JSON 层
+2. 资源层
+3. bridge 层
+
+### 11.2 JSON 层
+
+由 `localConfigStore` 和各类 `*Store.ts` 负责：
+
+- 存
+- 读
+- 删除
+- 提供默认值
+
+### 11.3 资源层
+
+由 `browserDb`、`persistentAssetService`、`objectUrlRegistry` 负责：
+
+- 把资源保存在浏览器数据库中
+- 提供资源引用而不是直接散落原始 blob URL
+- 在页面显示时再解析成可用地址
+
+### 11.4 bridge 层
+
+由 `usePersisted*Bridge.ts` 负责：
+
+- 首屏 hydrate
+- 后续自动保存
+- 避免未初始化数据覆盖已有本地数据
+
+## 12. 本地服务端架构
+
+[`server.ts`](../server.ts) 当前的角色更接近“开发期本地 BFF”。
+
+### 12.1 当前接口
+
+- `GET /api/health`
+- `GET /api/netease/song`
+- `GET /api/netease/lyric`
+- `GET /api/netease/song/detail`
+- `GET /api/netease/playlist`
+
+### 12.2 当前职责
+
+- 提供健康检查
+- 提供网易云音乐歌曲直链代理
+- 提供歌词、歌曲详情、歌单详情代理
+- 开发模式下托管 Vite middleware
+- 生产模式下返回前端构建产物
+
+### 12.3 当前边界
+
+这个服务端目前不是完整业务后端。
+它更偏：
+
+- 本地开发承载层
+- 第三方接口代理层
+- 前端体验补充层
+
+## 13. 当前架构特征
+
+从当前仓库来看，最真实的结构特征是：
+
+- 顶层 `App.tsx` 依然重，但已经不是唯一业务中心
+- 聊天链是当前拆分最成熟的主链之一
+- 持久化层已经具备比较稳定的基础设施价值
+- 情侣空间是最近扩展最快、服务层最复杂的业务域
+- 角色域已经开始建立统一读写边界，但仍未彻底完成
+- 业务状态仍然存在“顶层集中 + 子域分流”并存的状态
+
+## 14. 当前风险
+
+### 14.1 `App.tsx` 过大
+
+虽然很多链路已经拆出，但顶层仍承担：
+
+- 大量状态
+- 页面切换
+- 模块编排
+- 回调下发
+- 弹层与容器协调
+
+这仍然是最大的维护风险。
+
+### 14.2 顶层状态过重
+
+`AppData` 仍集中承载多类业务对象。
+短期方便联动，长期会让：
+
+- 修改影响面变大
+- 回归成本变高
+- 子域边界继续模糊
+
+### 14.3 角色域仍在收口期
+
+已经有读取与 mutation 入口，但距离完整角色域仍有距离，特别是资源字段与跨模块联动。
+
+### 14.4 文档与命名历史包袱
+
+当前仓库中仍能看到：
+
+- 历史乱码痕迹
+- 遗留命名
+- 旧心智与新结构并存
+
+## 15. 后续更合理的演进方向
+
+1. 继续减少 `App.tsx` 的总装配复杂度
+2. 继续把角色写入与资源联动收口到 `character-domain`
+3. 继续把情侣空间产品入口与状态流收紧
+4. 视聊天链复杂度决定是否再抽更高一层 shared runtime
+5. 持续减少“单一顶层整包状态”的依赖
+
+## 16. 目录树总览
+
+下面这份目录树不是完整文件清单，而是为了帮助建立“目录职责心智”的工程视图。
+
+```text
+src/
+├─ App.tsx
+├─ main.tsx
+├─ types.ts
+├─ utils.ts
+├─ index.css
+├─ assets/
+├─ components/
+│  ├─ chat/
+│  ├─ couple-space/
+│  ├─ customization/
+│  ├─ dating/
+│  ├─ games/
+│  ├─ home/
+│  ├─ main/
+│  ├─ media/
+│  ├─ monitor/
+│  ├─ shared/
+│  ├─ social/
+│  └─ wallet/
+├─ features/
+│  ├─ character-domain/
+│  ├─ chat-runtime/
+│  ├─ chat-session/
+│  ├─ couple-space-interactions/
+│  └─ persistence/
+└─ services/
+   ├─ ai/
+   │  ├─ couple-space/
+   │  └─ prompts/
+   ├─ chat/
+   ├─ couple-space/
+   ├─ moments/
+   └─ relationship-time/
+```
+
+### 16.1 目录职责速记
+
+- `components`
+  - 页面和 UI 表达
+- `features`
+  - 领域边界、会话装配、运行时、持久化
+- `services`
+  - 规则、生成、AI 调用、业务编排
+- `types.ts`
+  - 共享数据模型中心
+- `App.tsx`
+  - 当前总装配核心
+
+### 16.2 新代码放哪里
+
+这是后续维护很容易踩坑的地方。
+
+- 如果是页面、按钮、卡片、列表、弹层：
+  - 优先放 `components`
+- 如果是某条业务链的状态控制、装配逻辑、bridge、domain helper：
+  - 优先放 `features`
+- 如果是 Prompt、AI 调用、候选选择、内容生成、统一动作 helper：
+  - 优先放 `services`
+- 如果只是因为“在 `App.tsx` 里顺手好写”：
+  - 通常应该先停一下，判断是否真的该继续堆进顶层
+
+## 17. 关键状态对象说明
+
+这部分是为了帮助理解“现在到底有哪些状态是顶层的、哪些已经拆出去、哪些仍然耦合”。
+
+### 17.1 顶层页面态
+
+`App.tsx` 当前维护的高频页面态包括：
+
+- `activeApp`
+  - 当前打开的是首页、聊天、情侣空间、监控、论坛等哪个应用
+- `activeTab`
+  - 主壳中的 `chat / contacts / moments / me`
+- `selectedCharacterId`
+  - 当前选中的角色
+- `selectedGroupId`
+  - 当前选中的群聊
+- `selectedForumPostId`
+  - 当前正在查看的论坛帖子
+- `statusBarVisible`
+  - 状态栏显隐
+
+这一层决定“用户现在在哪个页面、看谁、从哪返回”。
+
+### 17.2 顶层业务态
+
+`appData` 是当前最核心的业务对象聚合体。
+
+它至少包含：
 
 - `characters`
 - `chatHistory`
 - `userProfile`
 - `masks`
 - `favorites`
+- `friendRequests`
+- `chatGroups`
+- `callHistory`
 - `visualSettings`
 - `groups`
 - `moments`
 - `worldBooks`
 - `coupleSpace`
-- `friendRequests`
-- `chatGroups`
-- `callHistory`
-- `savedDates`
-- `collectedDates`
+- `coupleSpaceState`
 - `musicData`
 - `walletData`
+- `savedDates`
+- `collectedDates`
 
-### 5.3 关键类型
+这意味着：
 
-[src/types.ts](/e:/小手机/Bloom/src/types.ts) 中的重点类型包括：
+- 大部分主业务都还会在顶层相遇
+- 子域虽然拆出去了，但最终装配和联动依旧通过顶层完成
 
-- `Character`
-- `ChatMessage`
-- `ChatHistory`
-- `ApiConfig`
-- `AppSettings`
-- `VisualSettings`
-- `WidgetConfig`
-- `DesktopIconConfig`
-- `DateSession`
-- `CallRecord`
-- `MusicData`
-- `WalletData`
-- `FriendRequest`
-- `ChatGroup`
+### 17.3 `settings`
 
-其中 `VisualSettings` 已经成为首页、桌面布局、聊天视觉、动态卡片样式的统一承载对象。
+`settings` 是另一类与 `appData` 并列的重要对象。
 
----
+它承载的不是“用户内容数据”，而是运行时偏系统级的配置，例如：
 
-## 6. 页面流转与主链路
+- 当前可用模型配置列表
+- 当前激活配置
+- 一些 AI 行为相关设置
 
-### 6.1 首页到应用页
+很多 AI 链路不会直接从 `.env` 读配置，而是从这里取 active config。
 
-入口：
+### 17.4 `VisualSettings`
 
-- [src/components/home/HomeScreen/Page.tsx](/e:/小手机/Bloom/src/components/home/HomeScreen/Page.tsx)
+`VisualSettings` 是当前非常重要、也比较重的一个对象。
 
-链路：
+它不仅仅是主题色，而是覆盖：
 
-1. 用户点击桌面图标。
-2. `HomeScreen` 通过 `onOpenApp(appId)` 把事件抛给 `App.tsx`。
-3. `App.tsx` 更新 `activeApp`。
-4. 渲染对应的主壳页面或独立模块页面。
+- 全局壁纸
+- 桌面图标配置
+- 小组件配置
+- 顶部导航配置
+- 桌面排布参数
+- 聊天外观配置
+- 动态卡片配置
+- 全局 CSS
 
-### 6.2 主应用壳内流转
+也就是说，视觉系统已经是“配置驱动 UI”的形态，不是几组简单样式变量。
 
-入口：
+### 17.5 `CoupleSpaceData` 与 `CoupleSpaceState`
 
-- [src/components/main/MainAppShell/Page.tsx](/e:/小手机/Bloom/src/components/main/MainAppShell/Page.tsx)
+这一组对象需要单独理解：
 
-当前主壳内包含：
+- `CoupleSpaceData`
+  - 单个 partner 的空间内容
+- `CoupleSpaceState`
+  - 全部 partner 空间的容器状态
 
-- `chat`
-- `contacts`
-- `moments`
-- `me`
+当前心智是：
 
-这四个区域本身已拆为页面组件，但数据与回调仍然主要从 `App.tsx` 注入。
+- `currentPartnerId`
+  - 当前正在查看谁
+- `spacesByPartnerId`
+  - 所有 partner 的空间仓库
 
-### 6.3 联系人与群聊流转
+这层很重要，因为它解释了为什么情侣空间现在能支持：
 
-入口：
+- 每个角色独立空间
+- 旧数据向新结构迁移
+- 页面按当前 partner 投影视图
 
-- [src/components/main/ContactsShell/Page.tsx](/e:/小手机/Bloom/src/components/main/ContactsShell/Page.tsx)
+### 17.6 `ChatHistory` 与 `ChatGroup[]`
 
-当前支持：
+聊天当前不是单一数组，而是两套结构并行：
 
-- 联系人搜索与分组过滤
-- 新朋友页
-- 群聊管理页
-- 从联系人打开单聊
-- 从主聊天列表打开群聊会话
-
-### 6.4 约会入口
-
-当前约会入口仍在聊天会话链路中：
-
-1. 用户在聊天页触发约会。
-2. `App.tsx` 控制 `showDatingModal = true`。
-3. 渲染 [src/components/dating/DatingModal.tsx](/e:/小手机/Bloom/src/components/dating/DatingModal.tsx)。
-4. `DatingModal` 决定进入“规划页”还是恢复已保存 session。
-5. 再进入 [src/components/dating/DatingScene.tsx](/e:/小手机/Bloom/src/components/dating/DatingScene.tsx)。
-
----
-
-## 7. AI 调用架构
-
-### 7.1 当前统一点
-
-统一配置来源已经基本收口到 `settings.configs + settings.activeConfigId`。
-
-- provider
-- model
-- baseUrl
-- apiKey
-- temperature
-
-### 7.2 已服务化并接入统一调用层的部分
-
-- 普通聊天与群聊都已经接到 [src/services/ai/runtimeClient.ts](/e:/小手机/Bloom/src/services/ai/runtimeClient.ts)
-- 摘要生成使用 `buildSummaryPrompt`
-- 动态与评论回复使用 `services/moments/*`
-- 情侣空间中的多条 AI 文本生成入口也已统一走 `runtimeClient`
-- 聊天设置中的记忆总结也已统一走 `runtimeClient`
-
-### 7.3 当前仍保留差异化组织的部分
-
-虽然调用层已经基本统一，但聊天域仍不是最终形态：
-
-- direct / group runtime 已拆出，但尚未完全抽成更高一层 shared session runtime
-- prompt builder 的内容仍按直聊、群聊、动态、约会分开维护
-- `characters` 域目前只完成了读取边界第一刀，尚未进入持久化与写入边界阶段
-
-这也是当前最真实的架构状态。
-
----
-
-## 8. 聊天、摘要与消息操作
-
-### 8.1 普通聊天链路
-
-普通聊天链路已经从 `App.tsx` 里抽出到聊天域：
-
-- [src/features/chat-session/ChatSessionMount.tsx](/e:/小手机/Bloom/src/features/chat-session/ChatSessionMount.tsx)
-- [src/features/chat-session/DirectChatSessionContainer.tsx](/e:/小手机/Bloom/src/features/chat-session/DirectChatSessionContainer.tsx)
-- [src/features/chat-session/ChatSessionScreen.tsx](/e:/小手机/Bloom/src/features/chat-session/ChatSessionScreen.tsx)
-- [src/features/chat-runtime/useDirectChatRuntime.ts](/e:/小手机/Bloom/src/features/chat-runtime/useDirectChatRuntime.ts)
-- [src/features/chat-runtime/useSessionRuntimeCore.ts](/e:/小手机/Bloom/src/features/chat-runtime/useSessionRuntimeCore.ts)
-
-当前核心包括：
-
-- 构建聊天 prompt
-- 走统一 `runtimeClient`
-- 流式接收文本
-- 按句拆分为多气泡消息
-- 写回 `chatHistory`
-- 承接图片、位置、语音、转账、收藏、删除、转发、引用等主要会话动作
-
-### 8.2 摘要链路
-
-摘要能力已经显式拆分：
-
-- [src/services/ai/prompts/builders/buildSummaryPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildSummaryPrompt.ts)
-- [src/components/chat/ChatSettingsPanel.tsx](/e:/小手机/Bloom/src/components/chat/ChatSettingsPanel.tsx)
-
-当前用于：
-
-- 最近聊天总结
-- 角色记忆摘要整理
-- 设置面板中的摘要相关操作
-
-### 8.3 消息操作链路
-
-消息操作已从 `App.tsx` 收口到：
-
-- [src/services/chat/messageActions.ts](/e:/小手机/Bloom/src/services/chat/messageActions.ts)
-
-当前集中处理：
-
-- `copy`
-- `quote`
-- `favorite`
-- `delete`
-- `share`
-- `forward`
-- reply payload
-- 文本提取与预览
-- 会话头部状态与已读标签辅助
-
-当前消息动作调用点已经主要转移到 direct runtime，由 screen 负责触发 UI，runtime 负责改动 history / favorites / share payload。
-
----
-
-## 9. 动态模块架构
-
-动态相关已经具备较明确的三层结构：
-
-- 触发层： [src/services/moments/triggers.ts](/e:/小手机/Bloom/src/services/moments/triggers.ts)
-- 生成层： [src/services/moments/generators.ts](/e:/小手机/Bloom/src/services/moments/generators.ts)
-- 编排层： [src/services/moments/orchestrator.ts](/e:/小手机/Bloom/src/services/moments/orchestrator.ts)
-
-当前作用包括：
-
-- 自动发布动态
-- 根据上下文生成评论回复
-- 命令触发动态发布
-- 动态回退内容生成
-
-这一块相比普通聊天主链路，已经更接近“服务层先行”的结构。
-
----
-
-## 10. 约会模块架构
-
-### 10.1 当前分层
-
-规划层：
-
-- [src/components/dating/DatingModal.tsx](/e:/小手机/Bloom/src/components/dating/DatingModal.tsx)
-
-场景层：
-
-- [src/components/dating/DatingScene.tsx](/e:/小手机/Bloom/src/components/dating/DatingScene.tsx)
-
-辅助层：
-
-- [src/components/dating/sessionUtils.ts](/e:/小手机/Bloom/src/components/dating/sessionUtils.ts)
-
-Prompt 与规则层：
-
-- [src/services/ai/prompts/builders/buildDatingPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildDatingPrompt.ts)
-- [src/services/ai/prompts/scenarios/dating.ts](/e:/小手机/Bloom/src/services/ai/prompts/scenarios/dating.ts)
-
-### 10.2 当前特征
-
-- 正式约会页已是“消息流驱动”而不是单块面板驱动。
-- 角色剧情消息可携带 `narrative / status / playlist` 等结构化内容。
-- `savedDates` 与 `collectedDates` 分别承载继续会话与收藏记录。
-- 背景图优先级已从 session 配置与工具函数统一处理。
-
-### 10.3 当前恢复规则
-
-- 明确保存过的约会才会进入可恢复记录。
-- 未保存直接退出，不会自动恢复现场。
-
----
-
-## 11. 首页桌面与视觉自定义
-
-### 11.1 首页桌面
-
-首页桌面的布局重心已经从固定 360 宽设计，演进为“容器尺寸驱动”的布局计算：
-
-- 宽度档位：`compact / regular / large`
-- 高屏修正：`isTallPhone`
-- 布局输出：slot、dock、navbar、widget、usable 区域
-
-关键文件：
-
-- [src/components/home/HomeScreen/Page.tsx](/e:/小手机/Bloom/src/components/home/HomeScreen/Page.tsx)
-- [src/components/home/HomeScreen/layout.ts](/e:/小手机/Bloom/src/components/home/HomeScreen/layout.ts)
-- [src/components/home/HomeScreen/HomeScreen.css](/e:/小手机/Bloom/src/components/home/HomeScreen/HomeScreen.css)
-
-### 11.2 桌面自定义
-
-- [src/components/customization/CustomizationApp/Page.tsx](/e:/小手机/Bloom/src/components/customization/CustomizationApp/Page.tsx)
-
-当前直接修改：
-
-- `visualSettings.desktop`
-- `visualSettings.desktopIcons`
-- `visualSettings.widgets`
-- `visualSettings.navBar`
-- 全局视觉配置与数据导入导出
-
-`visualSettings` 已经是桌面与视觉系统的核心配置中心，而不是分散在多个主题对象里。
-
----
-
-## 12. 应用内弹层与手机容器约束
-
-这是近期已经明确收口的一条架构线。
-
-### 12.1 统一入口
-
-- [src/utils.ts](/e:/小手机/Bloom/src/utils.ts)
-  - `APP_DIALOG_EVENT`
-  - `showInAppAlert`
-  - `showInAppConfirm`
-  - `showInAppPrompt`
-- [src/App.tsx](/e:/小手机/Bloom/src/App.tsx)
-  - 统一监听应用内 dialog 事件并渲染
-
-### 12.2 当前目标
-
-- 尽量把弹窗、确认框、输入框收敛到手机容器内部
-- 避免浏览器原生 `alert / confirm / prompt` 破坏手机壳体验
-- 让 forum、group chat 等内页在 flex 链路中正确滚动
-- 减少 header、状态栏、浮层相互覆盖
-
-### 12.3 相关文件
-
-- [src/index.css](/e:/小手机/Bloom/src/index.css)
-- [src/components/chat/GameCard.tsx](/e:/小手机/Bloom/src/components/chat/GameCard.tsx)
-- [src/components/social/ForumApp/Page.tsx](/e:/小手机/Bloom/src/components/social/ForumApp/Page.tsx)
-- [src/components/main/MainAppShell/Page.tsx](/e:/小手机/Bloom/src/components/main/MainAppShell/Page.tsx)
-
----
-
-## 13. 当前最重要的真实主链路
-
-### 13.1 聊天主链
-
-- `ChatSessionMount`
-- `DirectChatSessionContainer` / `GroupChatSessionContainer`
-- `ChatSessionPersistenceBridge`
-- `useDirectChatRuntime` / `useGroupChatRuntime`
-- `useSessionRuntimeCore`
-- `buildChatPrompt` / `buildGroupChatPrompt`
-- `runtimeClient`
-- 写回 `chatHistory` / `chatGroups[].history`
-
-### 13.2 约会主链
-
-- 聊天会话触发 `DatingModal`
-- `DatingModal` 规划或恢复 session
-- `DatingScene` 承载正式消息流
-- `buildDatingPrompt`
-- `runtimeClient`
-- 写回 `DateSession.messages`
-
-### 13.3 动态主链
-
-- `App.tsx` 中的动态数据状态
-- `services/moments/*`
-- 动态发布、自动触发、评论回复
-
-### 13.4 首页主链
-
-- `HomeScreen`
-- `layout.ts`
-- `visualSettings`
-- `CustomizationApp`
-
----
-
-## 14. 当前架构风险与维护建议
-
-### 14.1 现状风险
-
-1. [src/App.tsx](/e:/小手机/Bloom/src/App.tsx) 仍然过大。
-   - 仍然承担顶层状态、页面切换、应用内弹窗、默认数据拼装。
-   - 虽然聊天 screen 已迁出，但顶层状态中心仍集中在这里。
-
-2. 会话运行时尚未彻底统一。
-   - 目前已经有 `direct/group runtime + runtime core`，但尚未形成更高一层 shared session runtime 抽象。
-
-3. 类型与文档存在历史包袱。
-   - [src/types.ts](/e:/小手机/Bloom/src/types.ts) 和 [README.md](/e:/小手机/Bloom/README.md) 中仍能看到中文乱码痕迹。
-
-4. 前端状态体量持续增大。
-   - `appData` 已同时承载角色、动态、情侣空间、音乐、钱包、约会、通话、群聊等多类数据，后续维护成本会上升。
-
-### 14.2 建议的整理顺序
-
-1. 先把 `character-domain` 第二刀前两部分收尾验收。
-2. 再评估是否需要把 direct / group runtime 再抽一层 shared session runtime。
-3. 最后继续拆分 `App.tsx` 中剩余的顶层业务状态与回调。
-
-不建议先做大规模 UI 拆分而不处理聊天主链，因为那样对复杂度下降帮助有限。
-
----
-
-## 15. 当前阶段判断
-
-当前项目已经不再是“铺基础设施”的阶段，而是“主线阶段性收官”状态。
-
-### 15.1 当前完成度
-
-- 整体主线完成度：约 `97%`
-- 聊天拆分主线完成度：约 `93% ~ 95%`
-
-### 15.2 已阶段性完成的主线
-
-- 浏览器持久化基础设施
-- 视觉资源持久化主线
-- 业务 JSON 持久化主线
-- `callHistory / savedDates / collectedDates / chatHistory` bridge
-- `chat-session` 分层
-- `chat-runtime` 分层
-- `character-domain` 读取边界第一刀
-- `character-domain` 第二刀前两部分第一版
-  - `charactersStore + usePersistedCharactersBridge`
-  - `characterMutations`
-  - 主壳与聊天主链的高频角色写入点初步收口
-- 普通聊天 / 群聊 / 动态 / 情侣空间 / 聊天设置的主要 AI 调用链统一到 `runtimeClient`
-
-### 15.3 当前剩余项
-
-严格来说，当前剩余已经主要是“后续优化项”，而不是主线 blocker：
-
-1. `character-domain` 第二刀收尾与第三部分
-2. 是否继续抽更高一层 shared session runtime
-3. `App.tsx` 顶层状态进一步拆分
-
-### 15.4 `character-domain` 第二刀
-
-这是当前主线之后最值得进入的下一阶段之一。目前已经完成前两部分的第一版，接下来更准确的任务是“收尾验收 + 决定何时进入第三部分”。
-
-#### 为什么要做
-
-虽然当前已经通过 `createCharacterDirectory(...)` 建立了角色读取边界第一刀，但 `characters` 仍然是一个被多个模块共同读取和写回的顶层共享数组：
-
-- 聊天
-- 通讯录
-- 群聊成员
-- 动态作者
-- 论坛分享目标
-- 情侣空间 partner
-- 面具 / 世界书 / 角色资源
-
-这意味着如果不继续推进第二刀，后面会越来越容易出现：
-
-- 角色对象在不同页面以不同方式写回
-- 持久化边界不清楚
-- 头像 / 背景 / 气泡 / 表情包等资源处理继续散落
-- 顶层 `appData.characters` 成为新的维护瓶颈
-
-#### 必要性判断
-
-- 短期必要性：中高
-- 中长期必要性：高
-
-如果后续还会继续推进：
-
-- 角色设置
-- 群聊成员能力
-- 角色资料编辑
-- 角色资源持久化
-- 聊天域进一步拆分
-
-那么 `character-domain` 第二刀基本是必做项。
-
-#### 第二刀建议分成 3 部分
-
-##### 第一部分：持久化边界
-
-目标：
-
-- 给 `characters` 建立独立 store / bridge
-- 让角色数据不再只是整包 `appData` 的顺带保存对象
-
-建议新增：
-
-- `charactersStore.ts`
-- `usePersistedCharactersBridge.ts`
-
-预期职责：
-
-- `loadCharacters`
-- `saveCharacters`
-- `patchCharacters`
-- `resetCharacters`
-- 首屏 hydrate
-- 后续自动保存
-- 防止首帧空值覆盖
-
-当前状态：
-
-- 已完成第一版落地
-- 已新增 `charactersStore.ts`
-- 已新增 `usePersistedCharactersBridge.ts`
-- `characters` 已不再只作为整包 `appData` 的顺带保存对象
-
-当前剩余：
-
-- 做最终手动验收
-- 继续避免新增散写角色持久化逻辑
-
-##### 第二部分：写入边界
-
-目标：
-
-- 让角色更新开始通过角色域入口走
-- 逐步减少业务页直接修改 `appData.characters`
-
-后续会涉及：
-
-- `updateCharacterById`
-- `patchCharacter`
-- `removeCharacter`
-- `replaceCharacters`
-
-这一部分的意义在于：
-
-- 降低旧角色快照覆盖新字段的风险
-- 避免不同页面各自维护一套更新语义
-
-当前状态：
-
-- 已完成第一版落地
-- 已新增 `characterMutations.ts`
-- `App.tsx`、`MainAppShell`、聊天主链中的高频角色更新已开始收口到统一入口
-
-当前剩余：
-
-- 对现有高频写入点做收尾验收
-- 后续新增角色更新逻辑默认走统一 mutation
-
-##### 第三部分：资源与复杂联动边界
-
-目标：
-
-- 把角色资源和复杂关系联动从散落页面中继续往角色域收
-
-重点对象包括：
-
-- `character.avatar`
-- `character.background`
-- `character.bubbleImage`
-- `character.userBubbleImage`
-- `character.stickers`
-
-以及与这些对象相关的联动：
-
-- `masks`
-- `worldBooks`
+- `chatHistory`
+  - 直聊历史，通常按角色 id 分桶
 - `chatGroups`
-- `moments`
-- `forum`
+  - 群聊对象数组，每个群对象内部包含自己的 `history`
 
-这一部分最重，因此应放在第二刀最后处理。
+而持久化层又会把群聊历史抽成：
 
-#### 第二刀建议顺序
+- `groupHistories: Record<string, ChatMessage[]>`
 
-1. 先做角色持久化边界
-2. 再做角色写入边界
-3. 最后处理角色资源与复杂联动
+所以聊天链实际上有三层视角：
 
-#### 第二刀当前判断
+1. 顶层 UI 视角
+2. 会话容器视角
+3. 持久化标准化视角
 
-- 前两部分已经完成第一版，不再属于“未开始”
-- 当前更合适的动作是：收尾验收，而不是继续无限扩大改造范围
-- 第三部分仍未进入，应放到情侣空间 / 监控等当前模块优化之后再评估
+## 18. 数据流与时序说明
 
----
+这部分不是严格 UML，只是把当前真实数据流写清楚。
 
-## 16. 后续阶段路线
+### 18.1 启动与 hydrate 时序
 
-当前主线已经阶段性收官。后续更合理的推进方式不是继续零散补功能，而是按域分阶段推进。
+1. `server.ts` 启动开发服务
+2. `main.tsx` 渲染 `App`
+3. `App.tsx` 先以默认状态启动
+4. 各类 `usePersisted*Bridge` 或 store 加载本地数据
+5. hydrate 后回写到顶层状态
+6. 页面重新渲染到真实本地状态
 
-### 16.1 近期优先级
+关键点：
 
-1. `character-domain` 第二刀前两部分收尾验收
-   - 角色独立持久化链路验收
-   - 高频角色写入点最终确认
-2. 进入情侣空间与监控的模块优化
-3. 再评估是否需要更高一层 `shared session runtime`
+- 默认值不是最终值
+- 真正用户状态通常要等 bridge 完成 hydrate
+- 这也是为什么 bridge 层需要避免“首帧空值覆盖已有数据”
 
-### 16.2 中期方向
+### 18.2 聊天发送时序
 
-1. 角色资源统一持久化与写入边界
-2. 群聊 prompt 和行为策略继续优化
-3. 角色域与聊天域、动态域、论坛域、情侣空间域的联动收口
+1. 用户在聊天 UI 中输入内容
+2. 会话 container 组装上下文
+3. runtime hook 开始 `runGeneration`
+4. prompt builder 生成 prompt
+5. `runtimeClient` 发起请求
+6. 流式内容逐步回写消息列表
+7. 最终消息写回 `chatHistory` 或群历史
+8. persistence bridge 观察到状态变化并保存
 
-### 16.3 长期方向
+关键点：
 
-1. 进一步拆分 `App.tsx`
-2. 形成更明确的领域层次：
-   - persistence
-   - character-domain
-   - chat-session
-   - chat-runtime
-   - moments
-   - forum
-   - couple-space
-3. 逐步减少“整包 `appData` 中央汇总”的依赖
+- 运行时和持久化是分层的
+- UI 不直接等同于存储
+- `generationId` 用来避免并发覆盖
 
----
+### 18.3 动态发布时序
 
-## 17. 建议阅读顺序
+1. 聊天或页面行为触发动态机会
+2. `triggers.ts` 判断是否应发布
+3. `generators.ts` 生成聊天反应或动态正文
+4. `orchestrator.ts` 返回标准结果
+5. 顶层状态更新 `moments`
+6. 持久化层保存 moments
 
-如果要快速理解当前项目，建议按这个顺序阅读：
+### 18.4 情侣空间生成时序
 
-1. [src/types.ts](/e:/小手机/Bloom/src/types.ts)
-2. [src/App.tsx](/e:/小手机/Bloom/src/App.tsx)
-3. [src/components/main/MainAppShell/Page.tsx](/e:/小手机/Bloom/src/components/main/MainAppShell/Page.tsx)
-4. [src/components/home/HomeScreen/Page.tsx](/e:/小手机/Bloom/src/components/home/HomeScreen/Page.tsx)
-5. [src/services/chat/messageActions.ts](/e:/小手机/Bloom/src/services/chat/messageActions.ts)
-6. [src/components/dating/DatingModal.tsx](/e:/小手机/Bloom/src/components/dating/DatingModal.tsx)
-7. [src/components/dating/DatingScene.tsx](/e:/小手机/Bloom/src/components/dating/DatingScene.tsx)
-8. [src/services/ai/runtimeClient.ts](/e:/小手机/Bloom/src/services/ai/runtimeClient.ts)
-9. [src/services/ai/prompts/builders/buildChatPrompt.ts](/e:/小手机/Bloom/src/services/ai/prompts/builders/buildChatPrompt.ts)
-10. [src/services/moments/orchestrator.ts](/e:/小手机/Bloom/src/services/moments/orchestrator.ts)
+1. 页面进入当前 partner 的情侣空间
+2. 用户触发某个动作，或系统执行 manual/auto check
+3. 上下文层收集角色、关系、最近聊天、最近情侣空间痕迹
+4. prompt builder 生成对应动作 prompt
+5. `coupleSpacePromptService` 统一调用 `runtimeClient`
+6. 结果进入对应 sink 或页面写回逻辑
+7. 更新当前 partner 的空间数据
+8. 最终由持久化层保存
 
-这样能最快串起：
+### 18.5 聊天历史持久化时序
 
-- 顶层状态
-- 页面切换
-- 聊天链路
-- 约会链路
-- 动态链路
-- 首页与视觉配置链路
+从 [`usePersistedChatHistoryBridge.ts`](../src/features/persistence/usePersistedChatHistoryBridge.ts) 可以看到，这条链是比较典型的“双阶段”：
 
+1. 先加载本地持久化记录
+2. 如果本地记录与当前内存不同，就先把本地记录 hydrate 回内存
+3. 只有 hydrate 完成后，后续状态变更才允许写回
+
+这说明当前持久化设计已经明确考虑了“首次装载覆盖”的问题。
+
+## 19. 高风险改动点
+
+这一节很实用，后面谁改代码都建议先看。
+
+### 19.1 [`src/App.tsx`](../src/App.tsx)
+
+这是当前最典型的高风险文件。
+
+原因不是它“写得不好”，而是它承担的职责实在太多：
+
+- 页面路由态
+- 顶层业务态
+- 默认数据
+- 大量回调下发
+- 业务模块拼装
+- 弹层与容器协调
+
+改这个文件时容易出现：
+
+- 改一个入口影响多个模块
+- 某个状态字段改名导致多个页面一起坏
+- 局部需求顺手写进去后进一步加深耦合
+
+### 19.2 [`src/types.ts`](../src/types.ts)
+
+这个文件的改动面非常广。
+
+风险点：
+
+- 类型一改，会波及大量业务域
+- 历史字段兼容问题容易被忽略
+- 某些字段不仅用于 UI，还参与持久化和旧数据迁移
+
+### 19.3 `features/persistence/*`
+
+风险点：
+
+- 改 store 结构容易影响已有本地数据
+- 改 hydrate 行为可能导致老数据丢失或被清空
+- 改资源字段处理可能引发图片/背景/头像显示异常
+
+### 19.4 `coupleSpaceStore.ts`
+
+这是情侣空间里极高风险的结构文件。
+
+风险原因：
+
+- 承担新旧结构兼容
+- 承担 per-partner state 组织
+- 牵涉情侣空间所有子模块
+
+如果这里处理不慎，很容易出现：
+
+- 当前 partner 丢失
+- 旧数据读不出来
+- 写回时串到错误 partner
+
+### 19.5 `runtimeClient.ts`
+
+这里是所有 AI 调用的共用入口之一。
+
+风险点：
+
+- provider 判断出错会影响多个功能域
+- 错误处理方式变化会同时影响聊天、动态、约会、情侣空间
+- 流式输出解析变更可能造成全局回归
+
+## 20. 建议拆分路线图
+
+这部分不是硬性计划，而是基于当前代码现实更合理的演进顺序。
+
+### 20.1 第一阶段
+
+目标：
+
+- 继续减轻 `App.tsx`
+- 不引入大范围回归
+
+建议动作：
+
+- 把顶层页面装配逻辑继续抽成更清晰的 mount / shell
+- 把和某个业务域强绑定的回调继续从顶层下沉
+- 保持状态 shape 不大改，优先做装配拆分
+
+### 20.2 第二阶段
+
+目标：
+
+- 巩固领域边界
+
+建议动作：
+
+- 继续完善 `character-domain`
+- 把角色资源类写入也逐步归口
+- 减少业务页直接修改角色数组
+
+### 20.3 第三阶段
+
+目标：
+
+- 把情侣空间从“复杂功能域”进一步整理成“稳定子系统”
+
+建议动作：
+
+- 继续统一 manual check / auto check / sink 的接入方式
+- 继续减少页面层对内部执行细节的感知
+- 明确哪些写回属于页面职责，哪些写回应由 service/execution 接管
+
+### 20.4 第四阶段
+
+目标：
+
+- 再评估聊天链是否值得继续抽象
+
+建议动作：
+
+- 如果 direct/group runtime 的重复开始增加，再考虑更高一层 shared runtime
+- 如果重复仍可控，就保持当前结构，不要为抽象而抽象
+
+### 20.5 第五阶段
+
+目标：
+
+- 从“顶层大聚合状态”转向“领域化状态组织”
+
+建议动作：
+
+- 逐步减少 `appData` 的中心化程度
+- 让更多业务域拥有自己的稳定边界和装配入口
+- 保持迁移过程分阶段、可回归，不做一次性大重构
+
+## 21. 建议阅读顺序
+
+如果第一次接手项目，建议按下面顺序看：
+
+1. [`src/types.ts`](../src/types.ts)
+2. [`src/App.tsx`](../src/App.tsx)
+3. [`src/components/main/MainAppShell/Page.tsx`](../src/components/main/MainAppShell/Page.tsx)
+4. [`src/features/chat-session/ChatSessionMount.tsx`](../src/features/chat-session/ChatSessionMount.tsx)
+5. [`src/features/chat-runtime/useSessionRuntimeCore.ts`](../src/features/chat-runtime/useSessionRuntimeCore.ts)
+6. [`src/services/ai/runtimeClient.ts`](../src/services/ai/runtimeClient.ts)
+7. [`src/services/ai/prompts/builders/buildChatPrompt.ts`](../src/services/ai/prompts/builders/buildChatPrompt.ts)
+8. [`src/services/moments/orchestrator.ts`](../src/services/moments/orchestrator.ts)
+9. [`src/features/persistence/coupleSpaceStore.ts`](../src/features/persistence/coupleSpaceStore.ts)
+10. [`src/components/couple-space/CoupleSpaceApp/Page.tsx`](../src/components/couple-space/CoupleSpaceApp/Page.tsx)
+11. [`src/services/ai/couple-space/prompt/coupleSpacePromptService.ts`](../src/services/ai/couple-space/prompt/coupleSpacePromptService.ts)
+
+按这个顺序，可以最快建立以下认知：
+
+- 顶层状态怎么组织
+- 聊天会话怎么挂载、怎么运行
+- AI 调用入口在哪里
+- 动态系统怎么编排
+- 情侣空间为什么会变成当前这种结构
+- 持久化边界已经拆到了什么程度

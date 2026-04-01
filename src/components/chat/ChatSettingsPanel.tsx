@@ -8,6 +8,7 @@ import { generateTextWithConfig } from '../../services/ai/runtimeClient';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 
 function SettingsSection({
   title,
@@ -88,6 +89,7 @@ export function ChatSettingsPanel({
   visualSettings: VisualSettings;
   onUpdateVisualSettings: (settings: VisualSettings) => void;
 }) {
+  const { setUploadedFile } = usePersistentFieldActions();
   const [activeSection, setActiveSection] = useState<'menu' | 'basic' | 'chat' | 'model' | 'resource'>('menu');
   const [tempAvatar, setTempAvatar] = useState('');
   const [tempBg, setTempBg] = useState('');
@@ -439,12 +441,12 @@ export function ChatSettingsPanel({
                       <input
                         type="file"
                         className="hidden"
-                        onChange={e => {
+                        onChange={async e => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => onUpdate({ ...character, avatar: reader.result as string });
-                            reader.readAsDataURL(file);
+                            const persistedValue = await setUploadedFile(file);
+                            onUpdate({ ...character, avatar: persistedValue });
+                            e.currentTarget.value = '';
                           }
                         }}
                       />

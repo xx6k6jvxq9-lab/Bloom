@@ -265,6 +265,41 @@ export type CalendarMoodStamp = {
   createdAt: number;
 };
 
+export type HeartCapsuleCategory =
+  | 'relationship_shift'
+  | 'async_dual_rule'
+  | 'truth_variant';
+
+export type HeartCapsuleDrawSource = 'self' | 'partner';
+
+export type HeartCapsuleMachineHistoryEntry = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  drawnAt: number;
+  drawnBy: HeartCapsuleDrawSource;
+  capsuleId: string;
+  capsuleName: string;
+  capsuleCategory: HeartCapsuleCategory;
+  summary: string;
+  selectedQuestion?: string | null;
+  roundCompletedAt?: number | null;
+  openingText?: string | null;
+  userAnswer?: string | null;
+  resultReply?: string | null;
+  hiddenThought?: string | null;
+  partnerAnswerGuess?: string | null;
+  ruleGuess?: string | null;
+};
+
+export type HeartCapsuleTodayDraw = HeartCapsuleMachineHistoryEntry & {
+  revealedAt?: number | null;
+};
+
+export type HeartCapsuleMachineState = {
+  todayDraw: HeartCapsuleTodayDraw | null;
+  history: HeartCapsuleMachineHistoryEntry[];
+};
+
 export type CouplePostComment = {
   id: string;
   authorId: string;
@@ -553,6 +588,7 @@ export type CoupleSpaceData = {
   loveLetters: LoveLetter[];
   calendarEvents: CalendarEvent[];
   moodStamps?: CalendarMoodStamp[];
+  heartCapsuleMachine?: HeartCapsuleMachineState;
   posts?: CouplePost[];
   anniversaries?: Anniversary[];
   messageBoard?: MessageBoardEntry[];
@@ -565,6 +601,7 @@ export type CoupleSpaceState = {
   currentPartnerId: string | null;
   spacesByPartnerId: Record<string, CoupleSpaceData>;
 };
+
 
 export type ForumComment = {
   id: string;

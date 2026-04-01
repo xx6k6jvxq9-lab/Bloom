@@ -1,5 +1,6 @@
 import type { UserProfileExtended } from '../../types';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
+import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { STORAGE_KEYS } from './storageKeys';
 
 export function hydrateUserProfile(
@@ -8,7 +9,7 @@ export function hydrateUserProfile(
 ): UserProfileExtended {
   return {
     name: source?.name || fallback.name,
-    avatar: source?.avatar || fallback.avatar,
+    avatar: sanitizeTransientAssetValue(source?.avatar) || fallback.avatar,
     id: source?.id || fallback.id,
     bio: source?.bio || fallback.bio,
     mood: source?.mood || fallback.mood,

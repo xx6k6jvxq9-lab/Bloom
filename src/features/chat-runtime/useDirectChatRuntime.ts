@@ -15,6 +15,8 @@ import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildRecentCoupleSpaceSummary } from '../../services/ai/couple-space/context/buildRecentCoupleSpaceSummary';
+import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
+import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
 import {
   copyMessageText,
   createForwardText,
@@ -614,7 +616,7 @@ export function useDirectChatRuntime({
       });
 
       if (!currentResponseText) {
-        throw new Error('妯″瀷杩斿洖涓虹┖');
+        throw new Error('模型返回为空');
       }
       if (activeGenerationIdRef.current !== generationId) {
         return;
@@ -670,7 +672,7 @@ export function useDirectChatRuntime({
               memorySummary: character.memorySummary?.trim() || '',
             },
             sections: [
-              summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '鐢ㄦ埛' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
+              summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
             ],
           });
 
@@ -695,7 +697,7 @@ export function useDirectChatRuntime({
         return;
       }
       console.error('Chat error:', sendError);
-      setHistory([...newHistory, { role: 'model', text: `閿欒: ${sendError.message}`, timestamp: Date.now() }]);
+      setHistory([...newHistory, { role: 'model', text: `错误: ${sendError.message}`, timestamp: Date.now() }]);
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;
@@ -718,7 +720,7 @@ export function useDirectChatRuntime({
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[鍙戦€佷簡涓€寮犲浘鐗嘳');
+      setInput('[发送了一张图片]');
       handleSendRef.current();
     }, 100);
   }, [history, setHistory, setInput]);
@@ -726,13 +728,13 @@ export function useDirectChatRuntime({
   const sendStickerMessage = useCallback(() => {
     const userMsg: ChatMessage = {
       role: 'user',
-      text: '[琛ㄦ儏鍖匽',
+      text: '[表情包]',
       timestamp: Date.now(),
     };
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[鍙戦€佷簡涓€涓〃鎯匽');
+      setInput('[发送了一个表情包]');
       handleSendRef.current();
     }, 100);
   }, [history, setHistory, setInput]);
@@ -747,13 +749,25 @@ export function useDirectChatRuntime({
       text: '[COUPLE_SPACE_INVITE]',
       timestamp: Date.now(),
     };
-    setHistory([...historyRef.current, userMsg]);
+    const nextHistory = [...historyRef.current, userMsg];
+    setHistory(nextHistory);
 
-    window.setTimeout(() => {
+    void (async () => {
+      const inviteContext = buildCoupleSpaceInviteContext({
+        userName,
+        character,
+        history: nextHistory,
+      });
+
+      const replyText = await generateCoupleSpaceInviteReply({
+        activeConfig,
+        context: inviteContext,
+      });
+
       const latestHistory = historyRef.current;
       const modelReply: ChatMessage = {
         role: 'model',
-        text: '……好。那就从现在开始，把这里只留给我们。',
+        text: replyText,
         timestamp: Date.now(),
       };
       const acceptedCard: ChatMessage = {
@@ -763,13 +777,13 @@ export function useDirectChatRuntime({
       };
       setHistory([...latestHistory, modelReply, acceptedCard]);
       onAcceptCoupleSpaceInvite?.(character.id);
-    }, 800);
-  }, [character.id, onAcceptCoupleSpaceInvite, setHistory]);
+    })();
+  }, [activeConfig, character, onAcceptCoupleSpaceInvite, setHistory, userName]);
 
   const sendInnerVoiceProbe = useCallback(() => {
     const userMsg: ChatMessage = {
       role: 'user',
-      text: '[浣跨敤閬撳叿锛氬€惧惉Ta鐨勫績澹癩',
+      text: '[使用道具：倾听Ta的心声]',
       timestamp: Date.now(),
       isInnerVoice: true,
     };
