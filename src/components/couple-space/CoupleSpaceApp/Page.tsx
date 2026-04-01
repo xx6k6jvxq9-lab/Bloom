@@ -275,6 +275,54 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     });
   };
 
+  const handleUpdatePartnerSpace = (
+    partnerId: string,
+    updates: any | ((prevCoupleSpace: any) => any),
+  ) => {
+    setAppData((prev: any) => {
+      const prevState =
+        prev.coupleSpaceState ??
+        projectCoupleSpaceStateFromCurrentSpace(
+          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
+        ) ??
+        createDefaultCoupleSpaceState();
+      const nextSpaces = { ...(prevState.spacesByPartnerId || {}) };
+      const prevPartnerSpace = getCurrentCoupleSpaceData(
+        {
+          currentPartnerId: partnerId,
+          spacesByPartnerId: nextSpaces,
+        },
+        createDefaultCoupleSpaceData({
+          ...(prev.coupleSpace || {}),
+          partnerId,
+        }),
+      );
+      const newUpdates = typeof updates === 'function' ? updates(prevPartnerSpace) : updates;
+      const nextPartnerSpace = hydrateCurrentPartnerSpace(partnerId, nextSpaces, prev.coupleSpace, newUpdates);
+      nextSpaces[partnerId] = nextPartnerSpace;
+
+      const currentPartnerId = prevState.currentPartnerId ?? prev.coupleSpace?.partnerId ?? null;
+      const nextCurrentSpace = currentPartnerId
+        ? getCurrentCoupleSpaceData(
+            {
+              currentPartnerId,
+              spacesByPartnerId: nextSpaces,
+            },
+            prev.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
+          )
+        : prev.coupleSpace ?? createDefaultCoupleSpaceData();
+
+      return {
+        ...prev,
+        coupleSpaceState: {
+          currentPartnerId,
+          spacesByPartnerId: nextSpaces,
+        },
+        coupleSpace: nextCurrentSpace,
+      };
+    });
+  };
+
   const handleDeletePartnerSpace = (partnerId: string) => {
     setAppData((prev: any) => {
       const prevState =
@@ -584,6 +632,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                       user={user}
                       partner={partner}
                       updateSpace={handleUpdateCoupleSpace}
+                      updateSpaceForPartner={handleUpdatePartnerSpace}
                       coupleSpace={coupleSpace}
                       settings={settings}
                       chatHistory={appData.chatHistory}
@@ -1248,6 +1297,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             <CoNotesView
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
+              updateSpaceForPartner={handleUpdatePartnerSpace}
               user={user}
               partner={partner}
               settings={settings}
@@ -1265,6 +1315,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             <LoveLettersView
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
+              updateSpaceForPartner={handleUpdatePartnerSpace}
               user={user}
               partner={partner}
               settings={settings}
@@ -1374,6 +1425,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             <PostFeedView
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
+              updateSpaceForPartner={handleUpdatePartnerSpace}
               user={user}
               partner={partner}
               settings={settings}
@@ -1420,6 +1472,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
             <MessageBoardView
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
+              updateSpaceForPartner={handleUpdatePartnerSpace}
               user={user}
               partner={partner}
               settings={settings}
@@ -1460,12 +1513,13 @@ function MiniAppIcon({ icon, title, onClick }: { icon: React.ReactNode, title: s
 
 // --- Sub Views ---
 
-function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
+function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
   const [commentText, setCommentText] = useState('');
   const [showCommentInput, setShowCommentInput] = useState(false);
   const author = post.authorId === 'user' ? user : partner;
   const isLiked = post.likes.includes('user');
   const isArchived = Boolean(post.isArchived);
+  const scopedPartnerId = coupleSpace.partnerId || partner.id;
 
   const handleLike = () => {
     updateSpace((prev: any) => ({
@@ -1543,7 +1597,7 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
               replyToAuthorId: newComment.authorId,
               replyToAuthorName: user.name
             };
-            updateSpace((prev: any) => ({
+            updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               posts: (prev.posts || []).map((p: any) => 
                 p.id === post.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
@@ -1719,11 +1773,12 @@ function PostCard({ post, user, partner, updateSpace, coupleSpace, settings, cha
   );
 }
 
-function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks, worldBooks }: any) {
+function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [text, setText] = useState('');
   const allNotes: CoNote[] = coupleSpace.coNotes || [];
   const noteMap = new Map(allNotes.map((note) => [note.id, note]));
   const topLevelNotes = allNotes.filter((note) => !note.isArchived && (!note.replyToNoteId || !noteMap.has(note.replyToNoteId)));
+  const scopedPartnerId = coupleSpace.partnerId || partner.id;
   const repliesByNoteId = allNotes.reduce((acc: Record<string, CoNote[]>, note: CoNote) => {
     if (note.isArchived || !note.replyToNoteId) return acc;
     if (!acc[note.replyToNoteId]) {
@@ -1787,7 +1842,7 @@ function CoNotesView({ coupleSpace, updateSpace, user, partner, settings, chatHi
               replyToAuthorId: newNote.authorId,
               replyToAuthorName: user.name,
             };
-            updateSpace((prev: any) => ({
+            updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               coNotes: [...(prev.coNotes || []), aiReply],
             }));
           }, 2000);
@@ -2056,12 +2111,13 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks = [], worldBooks = [], onOpenLetter }: any) {
+function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks = [], worldBooks = [], onOpenLetter }: any) {
   const [writing, setWriting] = useState(false);
   const [content, setContent] = useState('');
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [expandedLetterId, setExpandedLetterId] = useState<string | null>(null);
+  const scopedPartnerId = coupleSpace.partnerId || partner.id;
   const { resolvedUrl: resolvedLoveLetterPaperBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterPaperBg);
   const { resolvedUrl: resolvedLoveLetterEnvelopeBgUrl } = useResolvedPersistentValue(coupleSpace.loveLetterEnvelopeBg);
   const allLetters: LoveLetter[] = coupleSpace.loveLetters || [];
@@ -2127,8 +2183,7 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
             content: responseText,
             timestamp: Date.now()
           };
-          // Use functional state update to ensure we have the latest state
-          updateSpace((prev: any) => ({
+          updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
             loveLetters: (prev.loveLetters || []).map((l: LoveLetter) =>
               l.id === newLetter.id ? { ...l, comments: [...(l.comments || []), aiComment] } : l
             )
@@ -2419,11 +2474,12 @@ function LoveLettersView({ coupleSpace, updateSpace, user, partner, settings, ch
   );
 }
 
-function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBack, chatHistory, masks, worldBooks }: any) {
+function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, onBack, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
   const [imgUrls, setImgUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const scopedPartnerId = coupleSpace.partnerId || partner.id;
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
 
   const handlePost = async () => {
@@ -2484,7 +2540,7 @@ function PostFeedView({ coupleSpace, updateSpace, user, partner, settings, onBac
               content: responseText,
               timestamp: Date.now()
             };
-            updateSpace((prev: any) => ({
+            updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               posts: (prev.posts || []).map((p: any) => 
                 p.id === newPost.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
@@ -2651,8 +2707,9 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, chatHistory, masks, worldBooks }: any) {
+function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
+  const scopedPartnerId = coupleSpace.partnerId || partner.id;
   const visibleMessages = sortPinnedByTimestampDesc(
     (coupleSpace.messageBoard || []).filter((msg: any) => !msg.isArchived)
   );
@@ -2708,7 +2765,7 @@ function MessageBoardView({ coupleSpace, updateSpace, user, partner, settings, c
               content: responseText,
               timestamp: Date.now()
             };
-            updateSpace((prev: any) => ({
+            updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               messageBoard: [aiMsg, ...(prev.messageBoard || [])]
             }));
           }, 2000);
