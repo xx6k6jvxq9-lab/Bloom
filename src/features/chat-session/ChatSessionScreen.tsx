@@ -1428,10 +1428,14 @@ export function ChatSessionScreen({
 
           {isVoiceMode ? (
             <button
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
+              onPointerDown={startRecording}
+              onPointerUp={stopRecording}
+              onPointerCancel={stopRecording}
+              onPointerLeave={() => {
+                if (isRecording) {
+                  stopRecording();
+                }
+              }}
               className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isRecording 
                   ? 'bg-zinc-200 text-zinc-800' 

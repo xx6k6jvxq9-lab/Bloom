@@ -904,6 +904,11 @@ export function useDirectChatRuntime({
     }
 
     const amount = parseFloat(transferAmount);
+    if (amount <= 0) {
+      alert('请输入大于 0 的金额');
+      return false;
+    }
+
     if (transferType === 'toCharacter') {
       if (!selectedCardId) {
         alert('请选择支付卡片');
