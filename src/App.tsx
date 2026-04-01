@@ -67,11 +67,11 @@ import { patchCharacterById, replaceCharacters, updateCharacterById, upsertChara
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
   acceptCoupleSpaceInviteState,
+  buildPersistableCoupleSpacePayload,
   createDefaultCoupleSpaceData,
   createDefaultCoupleSpaceState,
   getCurrentCoupleSpaceData,
   hydrateCoupleSpaceState,
-  projectCoupleSpaceStateFromCurrentSpace,
   resolveCoupleSpaceState,
   resolveCurrentCoupleSpace,
   updateCurrentCoupleSpaceState,
@@ -304,23 +304,15 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
 
 function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
   const { characters: _characters, ...persistableAppData } = appData;
-  const baseCoupleSpaceState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
-  const currentSpaceProjection = projectCoupleSpaceStateFromCurrentSpace(
+  const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
+    appData.coupleSpaceState,
     appData.coupleSpace,
   );
-  const projectedCoupleSpaceState = {
-    currentPartnerId:
-      currentSpaceProjection.currentPartnerId ?? baseCoupleSpaceState.currentPartnerId,
-    spacesByPartnerId: {
-      ...baseCoupleSpaceState.spacesByPartnerId,
-      ...currentSpaceProjection.spacesByPartnerId,
-    },
-  };
 
   return {
     ...persistableAppData,
-    coupleSpace: getCurrentCoupleSpaceData(projectedCoupleSpaceState, appData.coupleSpace),
-    coupleSpaceState: projectedCoupleSpaceState,
+    coupleSpace,
+    coupleSpaceState,
   };
 }
 

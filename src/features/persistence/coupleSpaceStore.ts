@@ -380,6 +380,27 @@ export function acceptCoupleSpaceInviteState(
   };
 }
 
+export function buildPersistableCoupleSpacePayload(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const baseCoupleSpaceState = resolveCoupleSpaceState(state, currentSpace);
+  const currentSpaceProjection = projectCoupleSpaceStateFromCurrentSpace(currentSpace);
+  const coupleSpaceState = {
+    currentPartnerId:
+      currentSpaceProjection.currentPartnerId ?? baseCoupleSpaceState.currentPartnerId,
+    spacesByPartnerId: {
+      ...baseCoupleSpaceState.spacesByPartnerId,
+      ...currentSpaceProjection.spacesByPartnerId,
+    },
+  };
+
+  return {
+    coupleSpaceState,
+    coupleSpace: resolveCurrentCoupleSpace(coupleSpaceState, currentSpace),
+  };
+}
+
 /**
  * Phase 1 keeps app runtime behavior backward-compatible by projecting the
  * currently edited single-space view back into a per-partner container shape.
