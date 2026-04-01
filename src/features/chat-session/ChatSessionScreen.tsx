@@ -270,6 +270,7 @@ export function ChatSessionScreen({
   }, [showDatingModal, onStatusBarVisibilityChange]);
   
   const showVoiceCallRef = useRef(false);
+  const voiceCallSessionIdRef = useRef(0);
   const [voiceCallHistory, setVoiceCallHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
   const [currentInterimSpeech, setCurrentInterimSpeech] = useState('');
   const voiceCallHistoryRef = useRef<{role: 'user' | 'model', text: string}[]>([]);
@@ -297,6 +298,7 @@ export function ChatSessionScreen({
     if (!voiceCallInput.trim()) return;
     
     const text = voiceCallInput;
+    const activeSessionId = voiceCallSessionIdRef.current;
     setVoiceCallInput('');
     
     const userMsg = { role: 'user' as const, text: text };
@@ -307,7 +309,7 @@ export function ChatSessionScreen({
     });
     
     handleVoiceCallAIResponse(text).then((responseText) => {
-      if (!responseText) return;
+      if (!responseText || !showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) return;
       const aiMsg = { role: 'model' as const, text: responseText };
       setVoiceCallHistory(prev => {
         const newHistory = [...prev, aiMsg];
@@ -320,6 +322,7 @@ export function ChatSessionScreen({
   const startVoiceCall = () => {
     setShowVoiceCall(true);
     showVoiceCallRef.current = true;
+    voiceCallSessionIdRef.current += 1;
     setVoiceCallDuration(0);
     setVoiceCallHistory([]);
     setCurrentInterimSpeech('');
@@ -351,6 +354,7 @@ export function ChatSessionScreen({
         }
         
         if (finalTranscript) {
+           const activeSessionId = voiceCallSessionIdRef.current;
            const userMsg = { role: 'user' as const, text: finalTranscript };
            setVoiceCallHistory(prev => {
              const newHistory = [...prev, userMsg];
@@ -372,7 +376,7 @@ export function ChatSessionScreen({
            // So I will trigger AI response always.
            
            handleVoiceCallAIResponse(finalTranscript).then((responseText) => {
-             if (!responseText) return;
+             if (!responseText || !showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) return;
              const aiMsg = { role: 'model' as const, text: responseText };
              setVoiceCallHistory(prev => {
                const newHistory = [...prev, aiMsg];
@@ -420,6 +424,7 @@ export function ChatSessionScreen({
 
   const endVoiceCall = () => {
     showVoiceCallRef.current = false;
+    voiceCallSessionIdRef.current += 1;
     if (voiceCallTimerRef.current) clearInterval(voiceCallTimerRef.current);
     if (voiceCallRecognitionRef.current) {
       voiceCallRecognitionRef.current.stop();
