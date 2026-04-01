@@ -180,6 +180,7 @@ export function useDirectChatRuntime({
   const activeAssistantMessageIdRef = useRef<number | null>(null);
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
   const historyRef = useRef(history);
+  const pendingCoupleSpaceInviteRef = useRef(false);
 
   useEffect(() => {
     historyRef.current = history;
@@ -742,6 +743,11 @@ export function useDirectChatRuntime({
   }, []);
 
   const sendCoupleSpaceInvitation = useCallback(() => {
+    if (pendingCoupleSpaceInviteRef.current) {
+      alert('情侣空间邀请发送中，请稍候。');
+      return;
+    }
+
     const openedPartnerIds = new Set<string>();
     if (coupleSpace?.partnerId) {
       openedPartnerIds.add(coupleSpace.partnerId);
@@ -763,33 +769,38 @@ export function useDirectChatRuntime({
       timestamp: Date.now(),
     };
     const nextHistory = [...historyRef.current, userMsg];
+    pendingCoupleSpaceInviteRef.current = true;
     setHistory(nextHistory);
 
     void (async () => {
-      const inviteContext = buildCoupleSpaceInviteContext({
-        userName,
-        character,
-        history: nextHistory,
-      });
+      try {
+        const inviteContext = buildCoupleSpaceInviteContext({
+          userName,
+          character,
+          history: nextHistory,
+        });
 
-      const replyText = await generateCoupleSpaceInviteReply({
-        activeConfig,
-        context: inviteContext,
-      });
+        const replyText = await generateCoupleSpaceInviteReply({
+          activeConfig,
+          context: inviteContext,
+        });
 
-      const latestHistory = historyRef.current;
-      const modelReply: ChatMessage = {
-        role: 'model',
-        text: replyText,
-        timestamp: Date.now(),
-      };
-      const acceptedCard: ChatMessage = {
-        role: 'model',
-        text: '[COUPLE_SPACE_INVITE_ACCEPTED]',
-        timestamp: Date.now() + 1,
-      };
-      setHistory([...latestHistory, modelReply, acceptedCard]);
-      onAcceptCoupleSpaceInvite?.(character.id);
+        const latestHistory = historyRef.current;
+        const modelReply: ChatMessage = {
+          role: 'model',
+          text: replyText,
+          timestamp: Date.now(),
+        };
+        const acceptedCard: ChatMessage = {
+          role: 'model',
+          text: '[COUPLE_SPACE_INVITE_ACCEPTED]',
+          timestamp: Date.now() + 1,
+        };
+        setHistory([...latestHistory, modelReply, acceptedCard]);
+        onAcceptCoupleSpaceInvite?.(character.id);
+      } finally {
+        pendingCoupleSpaceInviteRef.current = false;
+      }
     })();
   }, [activeConfig, character, coupleSpace, onAcceptCoupleSpaceInvite, setHistory, userName]);
 
