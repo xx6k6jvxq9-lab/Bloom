@@ -49,6 +49,10 @@ const getLegacyTranslationParts = (text: string): { mainText: string; translatio
   };
 };
 
+const getMessageSelectionKey = (message: ChatMessage) => (
+  `${message.timestamp}::${message.role}::${message.text}`
+);
+
 function PersistentImage({
   value,
   fallbackValue,
@@ -197,7 +201,7 @@ export function ChatSessionScreen({
     messageText: string;
   } | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
-  const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set());
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -481,11 +485,17 @@ export function ChatSessionScreen({
 
   const handleMessageClick = (e: React.MouseEvent, index: number) => {
     if (multiSelectMode) {
+      const targetMessage = history[index];
+      if (!targetMessage) {
+        return;
+      }
+
+      const selectionKey = getMessageSelectionKey(targetMessage);
       const newSelected = new Set(selectedMessages);
-      if (newSelected.has(index)) {
-        newSelected.delete(index);
+      if (newSelected.has(selectionKey)) {
+        newSelected.delete(selectionKey);
       } else {
-        newSelected.add(index);
+        newSelected.add(selectionKey);
       }
       setSelectedMessages(newSelected);
       return;
@@ -565,7 +575,7 @@ export function ChatSessionScreen({
     }
 
     setMultiSelectMode(true);
-    setSelectedMessages(new Set([contextMenuMessageIndex]));
+    setSelectedMessages(new Set([getMessageSelectionKey(contextMenuMessage)]));
     closeContextMenu();
   };
 
@@ -603,7 +613,14 @@ export function ChatSessionScreen({
   };
 
   const deleteSelectedMessages = () => {
-    deleteSelectedMessagesFromRuntime(selectedMessages);
+    const selectedIndexes = history.reduce<number[]>((acc, message, index) => {
+      if (selectedMessages.has(getMessageSelectionKey(message))) {
+        acc.push(index);
+      }
+      return acc;
+    }, []);
+
+    deleteSelectedMessagesFromRuntime(selectedIndexes);
     setMultiSelectMode(false);
     setSelectedMessages(new Set());
   };
@@ -868,6 +885,7 @@ export function ChatSessionScreen({
         </div>
 
         {history.map((msg, i) => {
+          const messageSelectionKey = getMessageSelectionKey(msg);
           if (msg.isSystem) {
             return (
               <div key={i} className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
@@ -887,9 +905,9 @@ export function ChatSessionScreen({
                        e.stopPropagation();
                        handleMessageClick(e, i);
                      }}
-                     className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${selectedMessages.has(i) ? 'bg-zinc-900 border-zinc-900 text-white' : 'border-zinc-300 bg-white'}`}
+                     className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${selectedMessages.has(messageSelectionKey) ? 'bg-zinc-900 border-zinc-900 text-white' : 'border-zinc-300 bg-white'}`}
                    >
-                     {selectedMessages.has(i) && <Check size={12} strokeWidth={3} />}
+                     {selectedMessages.has(messageSelectionKey) && <Check size={12} strokeWidth={3} />}
                    </button>
                  </div>
               )}
