@@ -1241,7 +1241,7 @@ export function HomeScreen({
                       </div>
                       <div className="h-[1px] bg-zinc-100" />
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-zinc-400 ml-1">鏇存崲澶村儚</label>
+                        <label className="text-[10px] text-zinc-400 ml-1">更换头像</label>
                         <input
                           type="text"
                           placeholder="绮樿创鍥剧墖閾炬帴..."
