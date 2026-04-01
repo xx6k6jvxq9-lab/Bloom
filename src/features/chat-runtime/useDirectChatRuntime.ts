@@ -180,11 +180,16 @@ export function useDirectChatRuntime({
   const activeAssistantMessageIdRef = useRef<number | null>(null);
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
   const historyRef = useRef(history);
+  const inputRef = useRef(input);
   const pendingCoupleSpaceInviteRef = useRef(false);
 
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
 
   const setError = useCallback((value: string | null) => {
     setErrorState(value);
@@ -718,12 +723,12 @@ export function useDirectChatRuntime({
       imageUrl: base64String,
       timestamp: Date.now(),
     };
-    setHistory([...history, userMsg]);
+    setHistory([...historyRef.current, userMsg]);
 
     setTimeout(() => {
       handleSendRef.current('[发送了一张图片]');
     }, 100);
-  }, [history, setHistory]);
+  }, [setHistory]);
 
   const sendStickerMessage = useCallback(() => {
     const userMsg: ChatMessage = {
@@ -731,12 +736,12 @@ export function useDirectChatRuntime({
       text: '[表情包]',
       timestamp: Date.now(),
     };
-    setHistory([...history, userMsg]);
+    setHistory([...historyRef.current, userMsg]);
 
     setTimeout(() => {
       handleSendRef.current('[发送了一个表情包]');
     }, 100);
-  }, [history, setHistory]);
+  }, [setHistory]);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
     handleSendRef.current(text, locationData);
@@ -811,23 +816,24 @@ export function useDirectChatRuntime({
       timestamp: Date.now(),
       isInnerVoice: true,
     };
-    setHistory([...history, userMsg]);
+    setHistory([...historyRef.current, userMsg]);
 
     setTimeout(() => {
       handleSendRef.current('[倾听心声]');
     }, 100);
-  }, [history, setHistory]);
+  }, [setHistory]);
 
   const sendSpeechTranscript = useCallback((transcript: string) => {
     const trimmedTranscript = transcript.trim();
     if (!trimmedTranscript) return;
 
-    const nextText = `${input}${trimmedTranscript}`.trim();
+    const nextText = `${inputRef.current}${trimmedTranscript}`.trim();
+    inputRef.current = '';
     setInput('');
     setTimeout(() => {
       handleSendRef.current(nextText);
     }, 100);
-  }, [input, setInput]);
+  }, [setInput]);
 
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
@@ -843,7 +849,7 @@ export function useDirectChatRuntime({
       duration,
       timestamp: Date.now(),
     };
-    setHistory([...history, userMsg]);
+    setHistory([...historyRef.current, userMsg]);
 
     const fullText = voiceCallHistory
       .map(m => `${m.role === 'user' ? '用户' : character.name}: ${m.text}`)
@@ -859,7 +865,7 @@ export function useDirectChatRuntime({
       };
       onAddCallRecord(newRecord);
     }
-  }, [character.id, character.name, history, onAddCallRecord, setHistory]);
+  }, [character.id, character.name, onAddCallRecord, setHistory]);
 
   const recallMessageAt = useCallback((index: number) => {
     const nextHistory = [...history];
