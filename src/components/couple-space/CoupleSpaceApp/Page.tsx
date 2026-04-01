@@ -8,10 +8,12 @@ import { saveUploadedDataUrl } from '../../../features/persistence/persistentAss
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import {
+  deletePartnerCoupleSpaceState,
   createDefaultCoupleSpaceData,
-  createDefaultCoupleSpaceState,
-  getCurrentCoupleSpaceData,
-  projectCoupleSpaceStateFromCurrentSpace,
+  resolveCurrentCoupleSpace,
+  resolveCoupleSpaceState,
+  updateCurrentCoupleSpaceState,
+  updatePartnerCoupleSpaceState,
 } from '../../../features/persistence/coupleSpaceStore';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import {
@@ -98,39 +100,6 @@ function getCoupleSpaceMemoSettings(coupleSpace: any) {
   return normalizeCoupleSpaceInitiativeSettings(coupleSpace?.initiativeSettings).memo;
 }
 
-function hydrateCurrentPartnerSpace(
-  partnerId: string | null,
-  spacesByPartnerId: Record<string, any>,
-  fallbackSpace: any,
-  updates: any,
-) {
-  if (!partnerId) {
-    return {
-      ...createDefaultCoupleSpaceData({ partnerId: null }),
-      ...(fallbackSpace || {}),
-      ...(updates || {}),
-      partnerId: null,
-    };
-  }
-
-  const baseSpace = getCurrentCoupleSpaceData(
-    {
-      currentPartnerId: partnerId,
-      spacesByPartnerId,
-    },
-    createDefaultCoupleSpaceData({
-      ...(fallbackSpace || {}),
-      partnerId,
-    }),
-  );
-
-  return {
-    ...baseSpace,
-    ...(updates || {}),
-    partnerId,
-  };
-}
-
 function ResolvedImage({
   value,
   fallbackValue,
@@ -198,15 +167,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [isCropping, setIsCropping] = useState(false);
 
-  const coupleSpaceState =
-    appData.coupleSpaceState ??
-    projectCoupleSpaceStateFromCurrentSpace(
-      appData.coupleSpace ?? createDefaultCoupleSpaceData(),
-    );
-  const coupleSpace = getCurrentCoupleSpaceData(
-    coupleSpaceState,
-    appData.coupleSpace ?? createDefaultCoupleSpaceData(),
-  );
+  const coupleSpaceState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
+  const coupleSpace = resolveCurrentCoupleSpace(coupleSpaceState, appData.coupleSpace);
 
   // Ensure addedPartnerIds is initialized
   useEffect(() => {
@@ -241,36 +203,15 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
   const handleUpdateCoupleSpace = (updates: any | ((prevCoupleSpace: any) => any)) => {
     setAppData((prev: any) => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-      const prevCoupleSpace = getCurrentCoupleSpaceData(
-        prevState,
-        prev.coupleSpace ?? createDefaultCoupleSpaceData(),
+      const { coupleSpaceState, coupleSpace } = updateCurrentCoupleSpaceState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
+        updates,
       );
-      const newUpdates = typeof updates === 'function' ? updates(prevCoupleSpace) : updates;
-      const nextPartnerId =
-        Object.prototype.hasOwnProperty.call(newUpdates ?? {}, 'partnerId')
-          ? newUpdates.partnerId
-          : (prevState.currentPartnerId ?? prevCoupleSpace.partnerId ?? null);
-
-      const nextSpaces = { ...(prevState.spacesByPartnerId || {}) };
-      const nextCurrentSpace = hydrateCurrentPartnerSpace(nextPartnerId, nextSpaces, prev.coupleSpace, newUpdates);
-
-      if (nextPartnerId) {
-        nextSpaces[nextPartnerId] = nextCurrentSpace;
-      }
-
       return {
         ...prev,
-        coupleSpaceState: {
-          currentPartnerId: nextPartnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        coupleSpace: nextCurrentSpace,
+        coupleSpaceState,
+        coupleSpace,
       };
     });
   };
@@ -280,79 +221,31 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     updates: any | ((prevCoupleSpace: any) => any),
   ) => {
     setAppData((prev: any) => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-      const nextSpaces = { ...(prevState.spacesByPartnerId || {}) };
-      const prevPartnerSpace = getCurrentCoupleSpaceData(
-        {
-          currentPartnerId: partnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        createDefaultCoupleSpaceData({
-          ...(prev.coupleSpace || {}),
-          partnerId,
-        }),
+      const { coupleSpaceState, coupleSpace } = updatePartnerCoupleSpaceState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
+        partnerId,
+        updates,
       );
-      const newUpdates = typeof updates === 'function' ? updates(prevPartnerSpace) : updates;
-      const nextPartnerSpace = hydrateCurrentPartnerSpace(partnerId, nextSpaces, prev.coupleSpace, newUpdates);
-      nextSpaces[partnerId] = nextPartnerSpace;
-
-      const currentPartnerId = prevState.currentPartnerId ?? prev.coupleSpace?.partnerId ?? null;
-      const nextCurrentSpace = currentPartnerId
-        ? getCurrentCoupleSpaceData(
-            {
-              currentPartnerId,
-              spacesByPartnerId: nextSpaces,
-            },
-            prev.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
-          )
-        : prev.coupleSpace ?? createDefaultCoupleSpaceData();
-
       return {
         ...prev,
-        coupleSpaceState: {
-          currentPartnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        coupleSpace: nextCurrentSpace,
+        coupleSpaceState,
+        coupleSpace,
       };
     });
   };
 
   const handleDeletePartnerSpace = (partnerId: string) => {
     setAppData((prev: any) => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-      const nextSpaces = { ...(prevState.spacesByPartnerId || {}) };
-      delete nextSpaces[partnerId];
-
-      const remainingPartnerIds = Object.keys(nextSpaces);
-      const nextCurrentPartnerId = prevState.currentPartnerId === partnerId
-        ? (remainingPartnerIds[0] ?? null)
-        : prevState.currentPartnerId;
-      const nextCurrentSpace = getCurrentCoupleSpaceData(
-        {
-          currentPartnerId: nextCurrentPartnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        createDefaultCoupleSpaceData({ partnerId: nextCurrentPartnerId }),
+      const { coupleSpaceState, coupleSpace } = deletePartnerCoupleSpaceState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
+        partnerId,
       );
-
       return {
         ...prev,
-        coupleSpaceState: {
-          currentPartnerId: nextCurrentPartnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        coupleSpace: nextCurrentSpace,
+        coupleSpaceState,
+        coupleSpace,
       };
     });
   };

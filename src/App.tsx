@@ -66,11 +66,14 @@ import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTran
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
+  acceptCoupleSpaceInviteState,
   createDefaultCoupleSpaceData,
   createDefaultCoupleSpaceState,
   getCurrentCoupleSpaceData,
   hydrateCoupleSpaceState,
   projectCoupleSpaceStateFromCurrentSpace,
+  resolveCurrentCoupleSpace,
+  updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
 
 // Global styles for hiding scrollbar to make it look more like a native app
@@ -1106,11 +1109,8 @@ export default function App() {
   });
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
-  const couplePartnerId = appData.coupleSpaceState?.currentPartnerId ?? appData.coupleSpace?.partnerId;
-  const currentCoupleSpace = getCurrentCoupleSpaceData(
-    appData.coupleSpaceState ?? createDefaultCoupleSpaceState(couplePartnerId ?? null),
-    appData.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: couplePartnerId ?? null }),
-  );
+  const currentCoupleSpace = resolveCurrentCoupleSpace(appData.coupleSpaceState, appData.coupleSpace);
+  const couplePartnerId = appData.coupleSpaceState?.currentPartnerId ?? currentCoupleSpace.partnerId;
   const couplePartnerCharacter = getCharacterById(couplePartnerId) || appData.characters[0] || null;
   const setCharacters = useCallback((characters: Character[]) => {
     setAppData(prev => ({
@@ -1141,68 +1141,29 @@ export default function App() {
   }, []);
   const handleUpdateCurrentCoupleSpace = useCallback((updates: any) => {
     setAppData(prev => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-      const currentPartnerId = prevState.currentPartnerId ?? prev.coupleSpace?.partnerId ?? null;
-      const prevCurrentSpace = getCurrentCoupleSpaceData(
-        prevState,
-        prev.coupleSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
+      const { coupleSpaceState, coupleSpace } = updateCurrentCoupleSpaceState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
+        updates,
       );
-      const nextCurrentSpace = {
-        ...prevCurrentSpace,
-        ...(typeof updates === 'function' ? updates(prevCurrentSpace) : updates),
-        partnerId: currentPartnerId,
-      };
-      const nextSpaces = currentPartnerId
-        ? {
-            ...prevState.spacesByPartnerId,
-            [currentPartnerId]: nextCurrentSpace,
-          }
-        : { ...prevState.spacesByPartnerId };
-
       return {
         ...prev,
-        coupleSpaceState: {
-          currentPartnerId,
-          spacesByPartnerId: nextSpaces,
-        },
-        coupleSpace: nextCurrentSpace,
+        coupleSpaceState,
+        coupleSpace,
       };
     });
   }, []);
   const handleAcceptCoupleSpaceInvite = useCallback((partnerId: string) => {
     setAppData(prev => {
-      const prevState =
-        prev.coupleSpaceState ??
-        projectCoupleSpaceStateFromCurrentSpace(
-          prev.coupleSpace ?? createDefaultCoupleSpaceData(),
-        ) ??
-        createDefaultCoupleSpaceState();
-
-      const existingSpace = prevState.spacesByPartnerId[partnerId];
-      const acceptedSpace = existingSpace ?? createDefaultCoupleSpaceData({
+      const { coupleSpaceState, coupleSpace } = acceptCoupleSpaceInviteState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
         partnerId,
-        anniversaryDate: Date.now(),
-      });
-      const nextState = {
-        currentPartnerId: partnerId,
-        spacesByPartnerId: {
-          ...prevState.spacesByPartnerId,
-          [partnerId]: {
-            ...acceptedSpace,
-            partnerId,
-          },
-        },
-      };
-
+      );
       return {
         ...prev,
-        coupleSpaceState: nextState,
-        coupleSpace: getCurrentCoupleSpaceData(nextState, acceptedSpace),
+        coupleSpaceState,
+        coupleSpace,
       };
     });
   }, []);

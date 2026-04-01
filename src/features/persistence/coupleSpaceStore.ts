@@ -201,6 +201,185 @@ export function getCurrentCoupleSpaceData(
   );
 }
 
+export function resolveCoupleSpaceState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+): CoupleSpaceState {
+  return state ?? projectCoupleSpaceStateFromCurrentSpace(currentSpace ?? createDefaultCoupleSpaceData());
+}
+
+export function resolveCurrentCoupleSpace(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+): CoupleSpaceData {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const currentPartnerId = resolvedState.currentPartnerId ?? currentSpace?.partnerId ?? null;
+
+  return getCurrentCoupleSpaceData(
+    resolvedState,
+    currentSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
+  );
+}
+
+function hydratePartnerSpace(
+  partnerId: string | null,
+  spacesByPartnerId: Record<string, CoupleSpaceData>,
+  fallbackSpace: CoupleSpaceData | null | undefined,
+  updates: Partial<CoupleSpaceData> | CoupleSpaceData | null | undefined,
+): CoupleSpaceData {
+  if (!partnerId) {
+    return {
+      ...createDefaultCoupleSpaceData({ partnerId: null }),
+      ...(fallbackSpace || {}),
+      ...(updates || {}),
+      partnerId: null,
+    };
+  }
+
+  const baseSpace = getCurrentCoupleSpaceData(
+    {
+      currentPartnerId: partnerId,
+      spacesByPartnerId,
+    },
+    createDefaultCoupleSpaceData({
+      ...(fallbackSpace || {}),
+      partnerId,
+    }),
+  );
+
+  return {
+    ...baseSpace,
+    ...(updates || {}),
+    partnerId,
+  };
+}
+
+export function updateCurrentCoupleSpaceState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  updates: Partial<CoupleSpaceData> | ((prev: CoupleSpaceData) => Partial<CoupleSpaceData> | CoupleSpaceData),
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const currentPartnerId = resolvedState.currentPartnerId ?? currentSpace?.partnerId ?? null;
+  const prevCurrentSpace = resolveCurrentCoupleSpace(resolvedState, currentSpace);
+  const nextPatch = typeof updates === 'function' ? updates(prevCurrentSpace) : updates;
+  const nextCurrentSpace = hydratePartnerSpace(
+    currentPartnerId,
+    resolvedState.spacesByPartnerId,
+    currentSpace,
+    nextPatch,
+  );
+  const nextSpaces = currentPartnerId
+    ? {
+        ...resolvedState.spacesByPartnerId,
+        [currentPartnerId]: nextCurrentSpace,
+      }
+    : { ...resolvedState.spacesByPartnerId };
+
+  return {
+    coupleSpaceState: {
+      currentPartnerId,
+      spacesByPartnerId: nextSpaces,
+    },
+    coupleSpace: nextCurrentSpace,
+  };
+}
+
+export function updatePartnerCoupleSpaceState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+  updates: Partial<CoupleSpaceData> | ((prev: CoupleSpaceData) => Partial<CoupleSpaceData> | CoupleSpaceData),
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const nextSpaces = { ...(resolvedState.spacesByPartnerId || {}) };
+  const prevPartnerSpace = getCurrentCoupleSpaceData(
+    {
+      currentPartnerId: partnerId,
+      spacesByPartnerId: nextSpaces,
+    },
+    createDefaultCoupleSpaceData({
+      ...(currentSpace || {}),
+      partnerId,
+    }),
+  );
+  const nextPatch = typeof updates === 'function' ? updates(prevPartnerSpace) : updates;
+  const nextPartnerSpace = hydratePartnerSpace(partnerId, nextSpaces, currentSpace, nextPatch);
+  nextSpaces[partnerId] = nextPartnerSpace;
+
+  const currentPartnerId = resolvedState.currentPartnerId ?? currentSpace?.partnerId ?? null;
+  return {
+    coupleSpaceState: {
+      currentPartnerId,
+      spacesByPartnerId: nextSpaces,
+    },
+    coupleSpace: currentPartnerId
+      ? getCurrentCoupleSpaceData(
+          {
+            currentPartnerId,
+            spacesByPartnerId: nextSpaces,
+          },
+          currentSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
+        )
+      : (currentSpace ?? createDefaultCoupleSpaceData()),
+  };
+}
+
+export function deletePartnerCoupleSpaceState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const nextSpaces = { ...(resolvedState.spacesByPartnerId || {}) };
+  delete nextSpaces[partnerId];
+
+  const remainingPartnerIds = Object.keys(nextSpaces);
+  const nextCurrentPartnerId = resolvedState.currentPartnerId === partnerId
+    ? (remainingPartnerIds[0] ?? null)
+    : resolvedState.currentPartnerId;
+  const nextState = {
+    currentPartnerId: nextCurrentPartnerId,
+    spacesByPartnerId: nextSpaces,
+  };
+
+  return {
+    coupleSpaceState: nextState,
+    coupleSpace: getCurrentCoupleSpaceData(
+      nextState,
+      createDefaultCoupleSpaceData({ partnerId: nextCurrentPartnerId }),
+    ),
+  };
+}
+
+export function acceptCoupleSpaceInviteState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const existingSpace = resolvedState.spacesByPartnerId[partnerId];
+  const acceptedSpace = existingSpace ?? createDefaultCoupleSpaceData({
+    partnerId,
+    anniversaryDate: Date.now(),
+  });
+  const nextState = {
+    currentPartnerId: partnerId,
+    spacesByPartnerId: {
+      ...resolvedState.spacesByPartnerId,
+      [partnerId]: {
+        ...acceptedSpace,
+        partnerId,
+      },
+    },
+  };
+
+  return {
+    coupleSpaceState: nextState,
+    coupleSpace: getCurrentCoupleSpaceData(nextState, acceptedSpace),
+  };
+}
+
 /**
  * Phase 1 keeps app runtime behavior backward-compatible by projecting the
  * currently edited single-space view back into a per-partner container shape.
