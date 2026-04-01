@@ -720,10 +720,9 @@ export function useDirectChatRuntime({
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[发送了一张图片]');
-      handleSendRef.current();
+      handleSendRef.current('[发送了一张图片]');
     }, 100);
-  }, [history, setHistory, setInput]);
+  }, [history, setHistory]);
 
   const sendStickerMessage = useCallback(() => {
     const userMsg: ChatMessage = {
@@ -734,10 +733,9 @@ export function useDirectChatRuntime({
     setHistory([...history, userMsg]);
 
     setTimeout(() => {
-      setInput('[发送了一个表情包]');
-      handleSendRef.current();
+      handleSendRef.current('[发送了一个表情包]');
     }, 100);
-  }, [history, setHistory, setInput]);
+  }, [history, setHistory]);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
     handleSendRef.current(text, locationData);
@@ -798,9 +796,10 @@ export function useDirectChatRuntime({
     const trimmedTranscript = transcript.trim();
     if (!trimmedTranscript) return;
 
-    setInput(input + trimmedTranscript);
+    const nextText = `${input}${trimmedTranscript}`.trim();
+    setInput('');
     setTimeout(() => {
-      handleSendRef.current();
+      handleSendRef.current(nextText);
     }, 100);
   }, [input, setInput]);
 
