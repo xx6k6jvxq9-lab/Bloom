@@ -15,8 +15,8 @@ import type {
 } from '../../types';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
-import { ChatSessionPersistenceBridge } from './ChatSessionPersistenceBridge';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
+import { usePersistedChatHistoryBridge } from '../persistence/usePersistedChatHistoryBridge';
 import { GroupChatSessionContainer } from './GroupChatSessionContainer';
 
 type ChatSessionMountProps = {
@@ -100,17 +100,13 @@ export function ChatSessionMount({
     ? chatGroups.find(group => group.id === selectedGroupId) || null
     : null;
 
+  usePersistedChatHistoryBridge(chatHistory, chatGroups, ({ directHistory, chatGroups: nextChatGroups }) => {
+    setChatHistory(directHistory);
+    setChatGroups(nextChatGroups);
+  });
+
   return (
     <>
-      <ChatSessionPersistenceBridge
-        directHistory={chatHistory}
-        chatGroups={chatGroups}
-        setChatData={({ directHistory, chatGroups: nextChatGroups }) => {
-          setChatHistory(directHistory);
-          setChatGroups(nextChatGroups);
-        }}
-      />
-
       {activeApp === 'chat-session' && selectedCharacter && (
         <DirectChatSessionContainer
           character={selectedCharacter}
