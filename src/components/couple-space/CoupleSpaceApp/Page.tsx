@@ -2,7 +2,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff, Sparkles } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { AppDataExtended, CoNote, LedgerEntry, LoveLetter, CalendarEvent, CouplePost } from '../../../types';
+import { AppDataExtended, CoNote, CoupleSpaceData, LedgerEntry, LoveLetter, CalendarEvent, CouplePost } from '../../../types';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
@@ -92,11 +92,11 @@ function getImageModalFileName(activeModal: ImageModalType): string {
   return 'couple-space-paper.jpg';
 }
 
-function getCoupleSpaceInteractionSettings(coupleSpace: any) {
+function getCoupleSpaceInteractionSettings(coupleSpace?: CoupleSpaceData | null) {
   return normalizeCoupleSpaceInitiativeSettings(coupleSpace?.initiativeSettings).interaction;
 }
 
-function getCoupleSpaceMemoSettings(coupleSpace: any) {
+function getCoupleSpaceMemoSettings(coupleSpace?: CoupleSpaceData | null) {
   return normalizeCoupleSpaceInitiativeSettings(coupleSpace?.initiativeSettings).memo;
 }
 

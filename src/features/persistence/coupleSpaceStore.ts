@@ -401,6 +401,16 @@ export function buildPersistableCoupleSpacePayload(
   };
 }
 
+export function hydratePersistedCoupleSpacePayload(
+  source: Partial<CoupleSpaceState> | Partial<CoupleSpaceData> | null | undefined,
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const coupleSpaceState = hydrateCoupleSpaceState(source, createDefaultCoupleSpaceState());
+  return {
+    coupleSpaceState,
+    coupleSpace: getCurrentCoupleSpaceData(coupleSpaceState, createDefaultCoupleSpaceData()),
+  };
+}
+
 /**
  * Phase 1 keeps app runtime behavior backward-compatible by projecting the
  * currently edited single-space view back into a per-partner container shape.

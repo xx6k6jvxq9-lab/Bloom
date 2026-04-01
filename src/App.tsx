@@ -70,7 +70,7 @@ import {
   buildPersistableCoupleSpacePayload,
   createDefaultCoupleSpaceData,
   createDefaultCoupleSpaceState,
-  getCurrentCoupleSpaceData,
+  hydratePersistedCoupleSpacePayload,
   hydrateCoupleSpaceState,
   resolveCoupleSpaceState,
   resolveCurrentCoupleSpace,
@@ -1215,9 +1215,8 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
-        const hydratedCoupleSpaceState = hydrateCoupleSpaceState(
+        const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
           parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
-          createDefaultCoupleSpaceState(),
         );
         setAppData({
           ...parsed,
@@ -1233,11 +1232,8 @@ export default function App() {
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
-          coupleSpaceState: hydratedCoupleSpaceState,
-          coupleSpace: getCurrentCoupleSpaceData(
-            hydratedCoupleSpaceState,
-            createDefaultCoupleSpaceData(),
-          ),
+          coupleSpaceState,
+          coupleSpace,
           visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
         });
       } catch (e) {
