@@ -5,6 +5,9 @@ import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, Fa
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig } from '../../services/ai/runtimeClient';
+import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
+import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -134,8 +137,11 @@ export function ChatSettingsPanel({
 
   const currentGroupLabel = character.groupId || '无分组';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
-  const settingSummary = character.setting.trim()
-    ? `${character.setting.trim().slice(0, 48)}${character.setting.trim().length > 48 ? '...' : ''}`
+  const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
+  const shortTermSummary = buildShortTermSummary(character) || '';
+  const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
+  const settingSummary = resolvedCorePersona
+    ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
   const sectionTitleMap: Record<'menu' | 'basic' | 'chat' | 'model' | 'resource', string> = {
     menu: '聊天设置',
@@ -167,46 +173,29 @@ export function ChatSettingsPanel({
       const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-      const maskPrompt = activeMask
-        ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-        : '';
-
       const activeWorldBooks = worldBooks.filter(wb =>
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)
       );
-      const worldBookPrompt = activeWorldBooks.length > 0
-        ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
-        : '';
 
-      const memorySummary = character.memorySummary?.trim() || '';
-
-      const mainChatPrompt = buildChatPrompt({
+      const mainChatPrompt = buildChatPrompt(buildChatSceneInput({
         mode: 'chat',
-        characterCore: {
-          characterSetting: character.setting,
-          maskPrompt,
-          worldBookPrompt,
-        },
-        memoryContext: {
-          memorySummary,
-          perceptionPrompt: '',
-        },
-      });
+        character,
+        userName: '用户',
+        activeMask,
+        activeWorldBooks,
+        perceptionPrompt: '',
+      }));
 
-      const autoReplyPrompt = buildChatPrompt({
+      const autoReplyPrompt = buildChatPrompt(buildChatSceneInput({
         mode: 'autoReply',
-        characterCore: {
-          characterSetting: character.setting,
-          maskPrompt,
-          worldBookPrompt,
-        },
-        memoryContext: {
-          memorySummary,
-          perceptionPrompt: '',
-        },
         includeProtocolRules: false,
-      });
+        character,
+        userName: '用户',
+        activeMask,
+        activeWorldBooks,
+        perceptionPrompt: '',
+      }));
 
       const latestModelMessage = [...history]
         .reverse()
@@ -220,10 +209,10 @@ export function ChatSettingsPanel({
         ? buildSummaryPrompt({
             mode: 'small',
             characterCore: {
-              characterSetting: character.setting,
+              characterSetting: resolvedCorePersona,
             },
             memoryContext: {
-              memorySummary,
+              memorySummary: longTermMemoryProfile,
             },
             sections: [summaryHistoryWindowText],
           })
@@ -262,10 +251,10 @@ export function ChatSettingsPanel({
       const prompt = buildSummaryPrompt({
         mode: 'large',
         characterCore: {
-          characterSetting: character.setting,
+          characterSetting: resolvedCorePersona,
         },
         memoryContext: {
-          memorySummary: character.memorySummary?.trim() || '',
+          memorySummary: longTermMemoryProfile,
         },
         sections: [
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
@@ -277,7 +266,7 @@ export function ChatSettingsPanel({
       });
 
       if (responseText) {
-        onUpdate({ ...character, memorySummary: responseText });
+        onUpdate({ ...character, longTermMemoryProfile: responseText });
         alert('总结完成！');
       }
     } catch (error: any) {
@@ -937,7 +926,7 @@ export function ChatSettingsPanel({
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span className="text-[14px] text-zinc-700">当前记忆总结</span>
+                        <span className="text-[14px] text-zinc-700">长期记忆 / 长期画像</span>
                         <button
                           onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
                           className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
@@ -950,15 +939,27 @@ export function ChatSettingsPanel({
                         disabled={isSummarizing}
                         className="px-3 py-1 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
                       >
-                        {isSummarizing ? '总结中...' : '立刻总结'}
+                        {isSummarizing ? '总结中...' : '生成长期总结'}
                       </button>
                     </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[12px] text-zinc-500">近期记忆 / 短期总结</span>
+                      <textarea
+                        value={shortTermSummary}
+                        onChange={e => onUpdate({ ...character, shortTermSummary: e.target.value })}
+                        placeholder="最近几轮互动的状态与余波会出现在这里..."
+                        className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900 min-h-[72px] resize-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[12px] text-zinc-500">长期记忆 / 长期画像</span>
                     <textarea
-                      value={character.memorySummary || ''}
-                      onChange={e => onUpdate({ ...character, memorySummary: e.target.value })}
-                      placeholder="暂无记忆总结，点击上方按钮生成或手动输入..."
+                      value={longTermMemoryProfile}
+                      onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}
+                      placeholder="长期沉淀下来的稳定印象、偏好、边界会保存在这里..."
                       className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-zinc-900 min-h-[80px] resize-none"
                     />
+                    </div>
                   </div>
                 </div>
               )}
@@ -1064,12 +1065,12 @@ export function ChatSettingsPanel({
               <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
                 <div className="mb-3">
                   <h2 className="text-[15px] font-semibold text-zinc-800">角色设定</h2>
-                  <p className="text-[11px] text-zinc-500 mt-1">修改设定会立即影响后续对话的生成效果。</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
                 </div>
                 <textarea
-                  value={character.setting}
-                  onChange={e => onUpdate({ ...character, setting: e.target.value })}
-                  placeholder="输入角色设定..."
+                  value={character.corePersona ?? character.setting}
+                  onChange={e => onUpdate({ ...character, corePersona: e.target.value })}
+                  placeholder="输入核心人设..."
                   className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[320px] resize-none"
                 />
               </div>

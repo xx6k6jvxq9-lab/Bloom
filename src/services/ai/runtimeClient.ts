@@ -20,6 +20,42 @@ function sanitizeModelOutput(text: string) {
   return cleaned;
 }
 
+function extractTextFromSsePayload(raw: string) {
+  const lines = raw
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.startsWith('data: '))
+    .map(line => line.slice(6).trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  const chunks: string[] = [];
+
+  for (const line of lines) {
+    if (line === '[DONE]') {
+      continue;
+    }
+
+    try {
+      const data = JSON.parse(line);
+      const messageContent = data.choices?.[0]?.message?.content;
+      const deltaContent = data.choices?.[0]?.delta?.content;
+      const textContent = typeof data.text === 'string' ? data.text : '';
+      const content = messageContent || deltaContent || textContent;
+      if (content) {
+        chunks.push(content);
+      }
+    } catch {
+      return '';
+    }
+  }
+
+  return chunks.join('');
+}
+
 export function isGeminiConfig(activeConfig: ApiConfig) {
   return activeConfig.provider === 'Google Gemini' || !activeConfig.baseUrl?.trim();
 }
@@ -93,8 +129,20 @@ export async function generateTextWithConfig(options: {
     throw new Error(errData.error?.message || `API error (${res.status})`);
   }
 
-  const data = await res.json();
-  return sanitizeModelOutput(data.choices?.[0]?.message?.content || '');
+  const rawResponse = await res.text();
+
+  try {
+    const data = JSON.parse(rawResponse);
+    return sanitizeModelOutput(data.choices?.[0]?.message?.content || '');
+  } catch (error) {
+    const fallbackText = extractTextFromSsePayload(rawResponse);
+    if (fallbackText) {
+      console.warn('[runtimeClient] Received SSE payload on non-stream request, falling back to SSE parser.', error);
+      return sanitizeModelOutput(fallbackText);
+    }
+
+    throw new Error(`Unable to parse model response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export async function streamTextWithConfig(options: {
