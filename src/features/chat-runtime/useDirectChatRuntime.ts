@@ -82,8 +82,25 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
     .filter(Boolean);
 
   const groupedParts: string[] = [];
-  for (let i = 0; i < explicitParts.length; i += 2) {
-    groupedParts.push(explicitParts.slice(i, i + 2).join('\n'));
+  let currentGroup = '';
+
+  for (const part of explicitParts) {
+    const nextGroup = currentGroup ? `${currentGroup}\n${part}` : part;
+    const shouldFlush =
+      currentGroup.length > 0 &&
+      (part.length >= 24 || nextGroup.length >= 34);
+
+    if (shouldFlush) {
+      groupedParts.push(currentGroup);
+      currentGroup = part;
+      continue;
+    }
+
+    currentGroup = nextGroup;
+  }
+
+  if (currentGroup) {
+    groupedParts.push(currentGroup);
   }
 
   const finalParts = groupedParts.length > 0 ? groupedParts : [normalizedText];
