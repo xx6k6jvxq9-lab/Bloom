@@ -283,6 +283,7 @@ export function ChatSessionScreen({
     createSharePayloadAt,
     submitTransfer,
     handleReceiveTransfer,
+    handleRejectTransfer,
   } = useDirectChatRuntime({
     character,
     history,
@@ -1484,6 +1485,30 @@ export function ChatSessionScreen({
                                   </div>
                                   <div className={`p-2 border border-t-0 ${cardBodyClass}`}>
                                     <span className={`text-[10px] ml-1 ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
+                                    {canManualReceive && (
+                                      <div className="mt-2 flex gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRejectTransfer(i);
+                                          }}
+                                          className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-medium text-zinc-500"
+                                        >
+                                          退回
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleReceiveTransfer(i);
+                                          }}
+                                          className="flex-1 rounded-lg bg-[#FA9D3B] px-3 py-1.5 text-[11px] font-medium text-white"
+                                        >
+                                          领取
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                   );

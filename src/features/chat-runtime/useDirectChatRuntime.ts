@@ -227,6 +227,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
     selectedCardId: string;
   }) => boolean;
   handleReceiveTransfer: (index: number) => void;
+  handleRejectTransfer: (index: number) => void;
 };
 
 function formatChatApiError(error: unknown): string {
@@ -1236,6 +1237,33 @@ export function useDirectChatRuntime({
     }
   }, [activeConfig, character, character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
 
+  const handleRejectTransfer = useCallback((index: number) => {
+    const msg = history[index];
+    if (!msg || msg.role !== 'model' || msg.transferStatus === 'received' || msg.transferStatus === 'rejected') return;
+
+    const amountStr = extractTransferAmount(msg.text) || '0.00';
+    const amount = parseFloat(amountStr);
+    const nextHistory = [...history];
+    nextHistory[index] = { ...msg, transferStatus: 'rejected' };
+    nextHistory.push({
+      role: 'user',
+      text: `[转账 ${amountStr}]`,
+      timestamp: Date.now(),
+      transferStatus: 'rejected',
+      transferDisplayLabel: '已退回',
+      transferTargetLabel: character.name,
+    });
+
+    setHistory(nextHistory);
+
+    if (!Number.isNaN(amount) && amount > 0) {
+      triggerTransferEventReaction({
+        amount,
+        direction: 'character_to_user_rejected',
+      });
+    }
+  }, [character.name, history, setHistory]);
+
   return {
     isLoading,
     error,
@@ -1261,6 +1289,7 @@ export function useDirectChatRuntime({
     createSharePayloadAt,
     submitTransfer,
     handleReceiveTransfer,
+    handleRejectTransfer,
   };
 }
 
