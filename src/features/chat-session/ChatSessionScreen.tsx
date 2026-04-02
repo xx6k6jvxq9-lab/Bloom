@@ -1223,11 +1223,17 @@ export function ChatSessionScreen({
                                         const normalizedTranslationText = sanitizePipeMarkers(translationText, '\n');
                                         return (
                                           <div className="flex flex-col gap-2">
-                                            <span className="block text-[14px] leading-6 whitespace-normal break-normal text-left">
+                                            <span
+                                              className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
+                                              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                            >
                                               {normalizedMainText}
                                             </span>
                                             <div className="h-[1px] bg-black/5 w-full" />
-                                            <p className="text-[13px] leading-6 whitespace-pre-wrap break-normal text-zinc-500">
+                                            <p
+                                              className="text-[13px] leading-6 whitespace-pre-wrap break-words text-zinc-500"
+                                              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                            >
                                               {normalizedTranslationText}
                                             </p>
                                           </div>
@@ -1236,7 +1242,10 @@ export function ChatSessionScreen({
 
                                       return (
                                         <div className="flex flex-col gap-2">
-                                          <span className="block text-[14px] leading-6 whitespace-normal break-normal text-left">
+                                          <span
+                                            className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
+                                            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                          >
                                             {normalizedMainText}
                                           </span>
                                         </div>

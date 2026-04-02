@@ -11,7 +11,7 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
-import { generateTextFromMessagesWithConfig, generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -156,6 +156,19 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleReceiveTransfer: (index: number) => void;
 };
 
+function formatChatApiError(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message : '未知错误';
+  const normalized = rawMessage.replace(/\s+/g, ' ').trim();
+  const statusMatch = normalized.match(/^(\d{3})\s*:\s*(.+)$/);
+
+  if (statusMatch) {
+    const [, statusCode, detail] = statusMatch;
+    return `错误 ${statusCode}: ${detail}`;
+  }
+
+  return `错误: ${normalized}`;
+}
+
 export function useDirectChatRuntime({
   character,
   history,
@@ -279,9 +292,15 @@ export function useDirectChatRuntime({
             perceptionPrompt,
           }));
 
-          await requestChatReplyWithFallback({
-            systemPrompt,
-            historyWindow,
+          await streamTextWithConfig({
+            activeConfig,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...historyWindow.map(m => ({
+                role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+                content: m.text,
+              })),
+            ],
             onTextChunk: (chunkText) => {
               currentResponseText += chunkText;
               updateAssistantMessage(currentResponseText);
@@ -411,57 +430,6 @@ export function useDirectChatRuntime({
       return null;
     }
   }, [activeConfig, character.setting]);
-
-  const requestChatReplyWithFallback = useCallback(async ({
-    systemPrompt,
-    historyWindow,
-    onTextChunk,
-  }: {
-    systemPrompt: string;
-    historyWindow: ChatMessage[];
-    onTextChunk: (chunkText: string) => void;
-  }) => {
-    if (!activeConfig) {
-      throw new Error('Missing active API config.');
-    }
-
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...historyWindow.map(m => ({
-        role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-        content: m.text,
-      })),
-    ];
-
-    let streamedText = '';
-
-    await streamTextWithConfig({
-      activeConfig,
-      messages,
-      onTextChunk: (chunkText) => {
-        streamedText += chunkText;
-        onTextChunk(chunkText);
-      },
-    });
-
-    if (streamedText.trim()) {
-      return streamedText;
-    }
-
-    console.warn('[chat-runtime] Streaming response was empty, falling back to non-stream generation.');
-
-    const fallbackText = await generateTextFromMessagesWithConfig({
-      activeConfig,
-      messages,
-    });
-
-    if (!fallbackText.trim()) {
-      throw new Error('模型返回为空');
-    }
-
-    onTextChunk(fallbackText);
-    return fallbackText;
-  }, [activeConfig]);
 
   const handleSend = useCallback(async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
     const textToSend = typeof overrideText === 'string' ? overrideText : input;
@@ -610,9 +578,15 @@ export function useDirectChatRuntime({
         perceptionPrompt,
       }));
 
-      await requestChatReplyWithFallback({
-        systemPrompt,
-        historyWindow,
+      await streamTextWithConfig({
+        activeConfig,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...historyWindow.map(m => ({
+            role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+            content: m.text,
+          })),
+        ],
         onTextChunk: (chunkText) => {
           if (activeGenerationIdRef.current !== generationId) {
             return;
@@ -705,14 +679,14 @@ export function useDirectChatRuntime({
         return;
       }
       console.error('Chat error:', sendError);
-      setHistory([...newHistory, { role: 'model', text: `错误: ${sendError.message}`, timestamp: Date.now() }]);
+      setHistory([...newHistory, { role: 'model', text: formatChatApiError(sendError), timestamp: Date.now() }]);
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;
       }
     }
     });
-  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, requestChatReplyWithFallback, setHistory, setInput, setReplyingTo, worldBook]);
+  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

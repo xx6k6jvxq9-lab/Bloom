@@ -6,6 +6,55 @@ export type RuntimeChatMessage = {
   content: string;
 };
 
+function normalizeErrorDetail(detail: string, maxLength = 160) {
+  const normalized = detail.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
+function extractErrorDetail(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+
+  const error = Reflect.get(data, 'error');
+  if (error && typeof error === 'object') {
+    const message = Reflect.get(error, 'message');
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+
+  const message = Reflect.get(data, 'message');
+  if (typeof message === 'string') {
+    return message;
+  }
+
+  const detail = Reflect.get(data, 'detail');
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  return '';
+}
+
+async function throwApiErrorResponse(res: Response): Promise<never> {
+  const rawText = await res.text().catch(() => '');
+  let detail = '';
+
+  if (rawText.trim()) {
+    try {
+      detail = extractErrorDetail(JSON.parse(rawText));
+    } catch {
+      detail = rawText;
+    }
+  }
+
+  const normalizedDetail = normalizeErrorDetail(detail);
+  throw new Error(normalizedDetail ? `${res.status}: ${normalizedDetail}` : `${res.status}: API request failed`);
+}
+
 function sanitizeModelOutput(text: string) {
   if (!text) return '';
 
@@ -20,40 +69,328 @@ function sanitizeModelOutput(text: string) {
   return cleaned;
 }
 
+function buildRawResponsePreview(rawResponse: string, maxLength = 240) {
+  const normalized = rawResponse.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
+function extractTextFromContentValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item;
+        }
+
+        if (!item || typeof item !== 'object') {
+          return '';
+        }
+
+        const text = Reflect.get(item, 'text');
+        if (typeof text === 'string') {
+          return text;
+        }
+
+        const nestedContent = Reflect.get(item, 'content');
+        if (typeof nestedContent === 'string') {
+          return nestedContent;
+        }
+
+        return '';
+      })
+      .filter(Boolean)
+      .join('');
+  }
+
+  return '';
+}
+
+function extractTextFromOutputItems(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return '';
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return '';
+      }
+
+      const directText = extractTextFromContentValue(Reflect.get(item, 'text'));
+      if (directText) {
+        return directText;
+      }
+
+      const contentText = extractTextFromContentValue(Reflect.get(item, 'content'));
+      if (contentText) {
+        return contentText;
+      }
+
+      const nestedOutputText = extractTextFromOutputItems(Reflect.get(item, 'output'));
+      if (nestedOutputText) {
+        return nestedOutputText;
+      }
+
+      return '';
+    })
+    .filter(Boolean)
+    .join('');
+}
+
+function extractTextFromPayload(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+
+  const eventType = Reflect.get(data, 'type');
+  if (typeof eventType === 'string') {
+    const eventDelta = extractTextFromContentValue(Reflect.get(data, 'delta'));
+    if (eventDelta) {
+      return eventDelta;
+    }
+
+    const eventText = extractTextFromContentValue(Reflect.get(data, 'text'));
+    if (eventText) {
+      return eventText;
+    }
+
+    const eventOutputText = extractTextFromContentValue(Reflect.get(data, 'output_text'));
+    if (eventOutputText) {
+      return eventOutputText;
+    }
+
+    const eventResponse = Reflect.get(data, 'response');
+    const nestedResponseText = extractTextFromPayload(eventResponse);
+    if (nestedResponseText) {
+      return nestedResponseText;
+    }
+  }
+
+  const choices = Reflect.get(data, 'choices');
+  if (Array.isArray(choices)) {
+    const chunks = choices
+      .map((choice) => {
+        if (!choice || typeof choice !== 'object') {
+          return '';
+        }
+
+        const message = Reflect.get(choice, 'message');
+        if (message && typeof message === 'object') {
+          const messageContent = extractTextFromContentValue(Reflect.get(message, 'content'));
+          if (messageContent) {
+            return messageContent;
+          }
+        }
+
+        const delta = Reflect.get(choice, 'delta');
+        if (delta && typeof delta === 'object') {
+          const deltaContent = extractTextFromContentValue(Reflect.get(delta, 'content'));
+          if (deltaContent) {
+            return deltaContent;
+          }
+        }
+
+        return extractTextFromContentValue(Reflect.get(choice, 'text'));
+      })
+      .filter(Boolean);
+
+    if (chunks.length > 0) {
+      return chunks.join('');
+    }
+  }
+
+  const directText = extractTextFromContentValue(Reflect.get(data, 'text'));
+  if (directText) {
+    return directText;
+  }
+
+  const outputText = extractTextFromContentValue(Reflect.get(data, 'output_text'));
+  if (outputText) {
+    return outputText;
+  }
+
+  const outputArrayText = extractTextFromOutputItems(Reflect.get(data, 'output'));
+  if (outputArrayText) {
+    return outputArrayText;
+  }
+
+  const nestedResponseText = extractTextFromPayload(Reflect.get(data, 'response'));
+  if (nestedResponseText) {
+    return nestedResponseText;
+  }
+
+  return '';
+}
+
 function extractTextFromSsePayload(raw: string) {
-  const lines = raw
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line.startsWith('data: '))
-    .map(line => line.slice(6).trim())
+  const dataLineMatches = Array.from(raw.matchAll(/(^|\n)\s*data:\s*(.+)$/gim))
+    .map((match) => match[2]?.trim() || '')
     .filter(Boolean);
 
-  if (lines.length === 0) {
+  const eventBlocks = raw
+    .split(/\r?\n\r?\n/)
+    .map(block => block.trim())
+    .filter(Boolean);
+  const directSegments = raw
+    .split(/(?=data:\s*)/i)
+    .map(segment => segment.trim())
+    .filter(segment => /^data:\s*/i.test(segment));
+
+  if (eventBlocks.length === 0 && directSegments.length === 0 && dataLineMatches.length === 0) {
     return '';
   }
 
   const chunks: string[] = [];
+  const candidateBlocks =
+    eventBlocks.length > 0
+      ? eventBlocks
+      : directSegments.length > 0
+        ? directSegments
+        : dataLineMatches.map(line => `data: ${line}`);
 
-  for (const line of lines) {
-    if (line === '[DONE]') {
+  for (const block of candidateBlocks) {
+    const dataLines = block
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => /^data:\s*/i.test(line))
+      .map(line => line.replace(/^data:\s*/i, ''));
+
+    if (dataLines.length === 0) {
+      continue;
+    }
+
+    const payload = dataLines.join('\n').trim();
+    if (!payload || payload === '[DONE]') {
       continue;
     }
 
     try {
-      const data = JSON.parse(line);
-      const messageContent = data.choices?.[0]?.message?.content;
-      const deltaContent = data.choices?.[0]?.delta?.content;
-      const textContent = typeof data.text === 'string' ? data.text : '';
-      const content = messageContent || deltaContent || textContent;
+      const data = JSON.parse(payload);
+      const content = extractTextFromPayload(data);
       if (content) {
         chunks.push(content);
       }
     } catch {
-      return '';
+      // Some providers send SSE-like responses without blank-line event separators.
+      // Fall back to parsing individual data lines to salvage text chunks.
+      for (const line of dataLines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine === '[DONE]') {
+          continue;
+        }
+
+        try {
+          const data = JSON.parse(trimmedLine);
+          const content = extractTextFromPayload(data);
+          if (content) {
+            chunks.push(content);
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      // Last-chance recovery for providers that concatenate SSE objects into one segment.
+      const nestedSegments = block
+        .split(/(?=data:\s*)/i)
+        .map(segment => segment.trim())
+        .filter(segment => /^data:\s*/i.test(segment))
+        .map(segment => segment.replace(/^data:\s*/i, '').trim());
+
+      for (const segment of nestedSegments) {
+        if (!segment || segment === '[DONE]') {
+          continue;
+        }
+
+        try {
+          const data = JSON.parse(segment);
+          const content = extractTextFromPayload(data);
+          if (content) {
+            chunks.push(content);
+          }
+        } catch {
+          continue;
+        }
+      }
     }
   }
 
   return chunks.join('');
+}
+
+function parseTextResponse(rawResponse: string) {
+  const trimmedResponse = rawResponse.trim();
+  const preview = buildRawResponsePreview(trimmedResponse);
+
+  try {
+    const data = JSON.parse(trimmedResponse);
+    const extractedText = sanitizeModelOutput(extractTextFromPayload(data));
+    if (extractedText) {
+      return extractedText;
+    }
+
+    const preview = buildRawResponsePreview(trimmedResponse);
+    throw new Error(
+      preview
+        ? `Model response contained no extractable text. Raw preview: ${preview}`
+        : 'Model response contained no extractable text.',
+    );
+  } catch (error) {
+    const fallbackText = extractTextFromSsePayload(trimmedResponse);
+    if (fallbackText) {
+      console.warn('[runtimeClient] Received SSE payload on non-stream request, falling back to SSE parser.', error);
+      return sanitizeModelOutput(fallbackText);
+    }
+
+    if (/^\s*data:\s*/i.test(trimmedResponse)) {
+      const normalizedResponse = trimmedResponse
+        .split(/\r?\n/)
+        .map(line => line.replace(/^\s*data:\s*/i, '').trim())
+        .filter(line => line && line !== '[DONE]')
+        .join('\n');
+
+      if (normalizedResponse) {
+        try {
+          const data = JSON.parse(normalizedResponse);
+          const extractedText = sanitizeModelOutput(extractTextFromPayload(data));
+          if (extractedText) {
+            return extractedText;
+          }
+          throw new Error(
+            preview
+              ? `SSE response contained no extractable text. Raw preview: ${preview}`
+              : 'SSE response contained no extractable text.',
+          );
+        } catch {
+          // Let the original parse error surface below.
+        }
+      }
+
+      throw new Error(
+        preview
+          ? `Received SSE-style response that could not be parsed. Raw preview: ${preview}`
+          : 'Received SSE-style response that could not be parsed.',
+      );
+    }
+
+    throw new Error(
+      preview
+        ? `Unable to parse model response: ${error instanceof Error ? error.message : 'Unknown error'}. Raw preview: ${preview}`
+        : `Unable to parse model response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    );
+  }
 }
 
 export function isGeminiConfig(activeConfig: ApiConfig) {
@@ -125,24 +462,63 @@ export async function generateTextWithConfig(options: {
   });
 
   if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `API error (${res.status})`);
+    await throwApiErrorResponse(res);
   }
 
   const rawResponse = await res.text();
+  return parseTextResponse(rawResponse);
+}
 
-  try {
-    const data = JSON.parse(rawResponse);
-    return sanitizeModelOutput(data.choices?.[0]?.message?.content || '');
-  } catch (error) {
-    const fallbackText = extractTextFromSsePayload(rawResponse);
-    if (fallbackText) {
-      console.warn('[runtimeClient] Received SSE payload on non-stream request, falling back to SSE parser.', error);
-      return sanitizeModelOutput(fallbackText);
-    }
+export async function generateTextFromMessagesWithConfig(options: {
+  activeConfig: ApiConfig;
+  messages: RuntimeChatMessage[];
+  temperature?: number;
+  maxOutputTokens?: number;
+}) {
+  const { activeConfig, messages, temperature, maxOutputTokens } = options;
+  const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
 
-    throw new Error(`Unable to parse model response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  if (isGeminiConfig(activeConfig)) {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model,
+      contents: messages.map((message) => ({
+        role: message.role === 'assistant' ? 'model' : message.role,
+        parts: [{ text: message.content }],
+      })),
+      config: {
+        temperature: activeConfig.temperature ?? temperature ?? 1.0,
+        maxOutputTokens,
+      },
+    });
+
+    return sanitizeModelOutput(response.text || '');
   }
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: messages.map((message) => ({
+        role: message.role === 'model' ? 'assistant' : message.role,
+        content: message.content,
+      })),
+      temperature: activeConfig.temperature ?? temperature ?? 0.7,
+      max_tokens: maxOutputTokens,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    await throwApiErrorResponse(res);
+  }
+
+  const rawResponse = await res.text();
+  return parseTextResponse(rawResponse);
 }
 
 export async function streamTextWithConfig(options: {
@@ -197,8 +573,7 @@ export async function streamTextWithConfig(options: {
   });
 
   if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `API error (${res.status})`);
+    await throwApiErrorResponse(res);
   }
 
   const reader = res.body?.getReader();
@@ -223,8 +598,8 @@ export async function streamTextWithConfig(options: {
     for (const eventBlock of events) {
       const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
       const dataLines = lines
-        .filter(line => line.startsWith('data: '))
-        .map(line => line.slice(6));
+        .filter(line => /^data:\s*/i.test(line))
+        .map(line => line.replace(/^data:\s*/i, ''));
 
       if (dataLines.length === 0) continue;
 
@@ -233,7 +608,7 @@ export async function streamTextWithConfig(options: {
 
       try {
         const data = JSON.parse(dataStr);
-        const content = data.choices?.[0]?.delta?.content || '';
+        const content = extractTextFromPayload(data);
         if (content) {
           onTextChunk(content);
         }
@@ -254,8 +629,8 @@ export async function streamTextWithConfig(options: {
 
   const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
   const finalDataLines = finalLines
-    .filter(line => line.startsWith('data: '))
-    .map(line => line.slice(6));
+    .filter(line => /^data:\s*/i.test(line))
+    .map(line => line.replace(/^data:\s*/i, ''));
 
   if (finalDataLines.length === 0) {
     return;
@@ -268,7 +643,7 @@ export async function streamTextWithConfig(options: {
 
   try {
     const data = JSON.parse(finalDataStr);
-    const content = data.choices?.[0]?.delta?.content || '';
+    const content = extractTextFromPayload(data);
     if (content) {
       onTextChunk(content);
     }
