@@ -223,8 +223,8 @@ const DEFAULT_USER: UserProfile = {
   name: 'AI 用户',
   avatar: 'https://tu.tuhenmei.com/uploads/allimg/2021090521/s4ljgp4msrd.jpg',
   id: 'user_8888',
-  bio: '探索 AI 的无限可能 ?',
-  mood: '?? 开心',
+  bio: '探索 AI 的无限可能',
+  mood: '今天很开心',
 };
 
 const DEFAULT_CONFIG: ApiConfig = {
@@ -328,7 +328,7 @@ const DEFAULT_MOMENTS: Moment[] = [
   {
     id: 'm1',
     authorId: 'char-2',
-    content: '今天把几个关键测试点都跑了一遍，终于顺下来了。喝杯咖啡缓一缓。??',
+    content: '今天把几个关键测试点都跑了一遍，终于顺下来了。喝杯咖啡缓一缓。',
     images: ['https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'],
     timestamp: Date.now() - 1000 * 60 * 30, // 30 mins ago
     likes: 1,
