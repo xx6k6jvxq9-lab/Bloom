@@ -885,6 +885,15 @@ export function useDirectChatRuntime({
       transferStatus: status,
     };
 
+    nextHistory.push({
+      role: 'model',
+      text: `[转账 ${amountStr}]`,
+      timestamp: Date.now(),
+      transferStatus: status,
+      transferDisplayLabel: status === 'received' ? '已收款' : '已退回',
+      transferTargetLabel: character.name,
+    });
+
     if (replyText) {
       nextHistory.push({
         role: 'model',
