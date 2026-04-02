@@ -1,11 +1,12 @@
 import type { Character } from '../../types';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
+import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { STORAGE_KEYS } from './storageKeys';
 
 export function sanitizeCharacters(value: unknown, fallback: Character[]): Character[] {
   if (!Array.isArray(value)) return fallback;
-  return (value as Character[]).map((character) => ({
+  return migrateCharacterShapes(value as Character[]).map((character) => ({
     ...character,
     avatar: sanitizeTransientAssetValue(character.avatar),
   }));

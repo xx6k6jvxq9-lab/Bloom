@@ -1,0 +1,1 @@
+export const CHARACTER_SCHEMA_VERSION = 1;

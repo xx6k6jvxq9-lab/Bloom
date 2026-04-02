@@ -62,6 +62,7 @@ import { usePersistedCharactersBridge } from './features/persistence/usePersiste
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
+import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
@@ -239,7 +240,7 @@ const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [
 const REMOVED_CHARACTER_IDS = new Set(['gemini-default']);
 const REMOVED_CHARACTER_NAMES = new Set(['阿野']);
 function sanitizePersistedCharacters(characters: Character[] | undefined): Character[] {
-  const persistedCharacters = (characters || [])
+  const persistedCharacters = migrateCharacterShapes(characters || [])
     .filter(character => !REMOVED_CHARACTER_IDS.has(character.id) && !REMOVED_CHARACTER_NAMES.has(character.name))
     .map(character =>
       character.id === 'char-zhou-jibai'
