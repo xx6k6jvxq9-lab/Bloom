@@ -2,6 +2,7 @@ import type { Character, CoupleSpaceData, Mask, WorldBookEntry } from '../../typ
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
 
 type BuildChatSceneInputParams = {
   character: Character;
@@ -44,6 +45,13 @@ export function buildChatSceneInput(
     userName: params.userName,
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
+  const userContext: UserGlobalContext = {
+    userName: params.userName,
+  };
+  const recentContext: ChatRecentContext = {
+    shortTermSummary: characterScopedMemory.shortTermSummary,
+    recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
+  };
 
   return {
     mode: params.mode,
@@ -53,17 +61,12 @@ export function buildChatSceneInput(
       maskPrompt: characterContext.maskPrompt,
       worldBookPrompt: characterContext.worldBookPrompt,
     },
-    userContext: {
-      userName: params.userName,
-    },
+    userContext,
     memoryContext: {
       memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
-    recentContext: {
-      shortTermSummary: characterScopedMemory.shortTermSummary,
-      recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
-    },
+    recentContext,
     sections: buildExtraSections({
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,

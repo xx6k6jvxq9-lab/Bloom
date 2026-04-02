@@ -1,16 +1,7 @@
 import type { Character, CoupleSpaceData } from '../../types';
 import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
-
-export type RelationshipProjection = {
-  characterScopedMemory: {
-    shortTermSummary?: string;
-    longTermMemoryProfile?: string;
-  };
-  sceneScopedSignals: {
-    recentCoupleSpaceSummary?: string;
-  };
-};
+import type { RelationshipProjection } from './types';
 
 type BuildRelationshipProjectionInput = {
   character: Character;
