@@ -57,6 +57,9 @@ export function buildChatSceneInput(
       maskPrompt: characterContext.maskPrompt,
       worldBookPrompt: characterContext.worldBookPrompt,
     },
+    userContext: {
+      userName: params.userName,
+    },
     memoryContext: {
       memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,

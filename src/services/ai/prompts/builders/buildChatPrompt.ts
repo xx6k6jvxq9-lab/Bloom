@@ -10,9 +10,22 @@ export type BuildChatPromptOptions = {
   mode?: 'chat' | 'autoReply';
   characterCore?: CharacterCoreSectionsInput;
   memoryContext?: MemoryContextInput;
+  userContext?: {
+    userName?: string;
+  };
   recentCoupleSpaceSummary?: string;
   includeProtocolRules?: boolean;
   sections?: string[];
+};
+
+const buildUserContextSection = (userContext?: BuildChatPromptOptions['userContext']): string => {
+  const normalizedUserName = userContext?.userName?.trim();
+  if (!normalizedUserName) return '';
+
+  return [
+    '## 用户上下文',
+    `[当前对话用户] ${normalizedUserName}`,
+  ].join('\n');
 };
 
 const buildRecentCoupleSpaceSection = (summary?: string): string => {
@@ -38,6 +51,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
+    buildUserContextSection(options.userContext),
     buildMemoryContextSection(options.memoryContext ?? {}),
     buildRecentCoupleSpaceSection(options.recentCoupleSpaceSummary),
     scenario,
