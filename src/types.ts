@@ -458,6 +458,9 @@ export type Character = {
   gender: 'male' | 'female' | 'other';
   avatar: string;
   setting: string;
+  corePersona?: string;
+  extendedLore?: string;
+  sceneHints?: Record<string, string>;
   signature?: string;
   openingRemark: string;
   lastMessage?: string;
@@ -477,6 +480,8 @@ export type Character = {
   autoSummaryEnabled?: boolean;
   summaryInterval?: number;
   memorySummary?: string;
+  shortTermSummary?: string;
+  longTermMemoryProfile?: string;
   stickers?: string[];
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts
