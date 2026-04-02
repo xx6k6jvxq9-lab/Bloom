@@ -1484,26 +1484,32 @@ export function ChatSessionScreen({
                                     </div>
                                   </div>
                                   <div className={`p-2 border border-t-0 ${cardBodyClass}`}>
-                                    <span className={`text-[10px] ml-1 ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
+                                    <div className="flex items-center justify-between gap-3 px-1">
+                                      <span className={`text-[10px] ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
+                                      {canManualReceive && (
+                                        <span className="text-[10px] text-zinc-300">待处理</span>
+                                      )}
+                                    </div>
                                     {canManualReceive && (
-                                      <div className="mt-2 flex gap-2">
+                                      <div className="mt-2 flex items-center overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50">
                                         <button
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleRejectTransfer(i);
                                           }}
-                                          className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-medium text-zinc-500"
+                                          className="flex-1 bg-transparent px-3 py-2 text-[11px] font-medium text-zinc-500"
                                         >
                                           退回
                                         </button>
+                                        <div className="h-5 w-px bg-zinc-200" />
                                         <button
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleReceiveTransfer(i);
                                           }}
-                                          className="flex-1 rounded-lg bg-[#FA9D3B] px-3 py-1.5 text-[11px] font-medium text-white"
+                                          className="flex-1 bg-transparent px-3 py-2 text-[11px] font-medium text-[#FA9D3B]"
                                         >
                                           领取
                                         </button>
