@@ -1435,7 +1435,9 @@ export function ChatSessionScreen({
                                   const canManualReceive = msg.role === 'model' && !isReceived && !isRejected;
                                   const cardBgClass = isReceived
                                     ? 'bg-[#FBC48A]'
-                                    : 'bg-[#FA9D3B]';
+                                    : isRejected
+                                      ? 'bg-[#F8B86B]'
+                                      : 'bg-[#FA9D3B]';
                                   const cardBodyClass = 'bg-white border-zinc-100';
                                   const cardIconClass = 'bg-white/20 text-white';
                                   const amountClass = 'text-white';
