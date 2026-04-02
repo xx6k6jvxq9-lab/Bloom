@@ -1123,12 +1123,15 @@ export function ChatSessionScreen({
 
                         const transferBracketRegex = /\[转账\s*([\d.]+)\]/i;
                         const transferBlockRegex = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
+                        const transferPipeRegex = /TRANSFER\|([\d.]+)\|([\s\S]*)/i;
                         const transferBracketMatch = msg.text.match(transferBracketRegex);
                         const transferBlockMatch = msg.text.match(transferBlockRegex);
-                        const transferMatch = transferBracketMatch ?? transferBlockMatch;
+                        const transferPipeMatch = msg.text.match(transferPipeRegex);
+                        const transferMatch = transferBracketMatch ?? transferBlockMatch ?? transferPipeMatch;
                         const cleanText = msg.text
                           .replace(/\[转账\s*[\d.]+\]/gi, '')
                           .replace(/\[transfer\]\s*[\d.]+\s*\[\/transfer\]/gi, '')
+                          .replace(/TRANSFER\|[\d.]+\|[\s\S]*/gi, '')
                           .trim();
                         const amount = transferMatch ? transferMatch[1] : '0.00';
 

@@ -38,6 +38,7 @@ import type { BaseSessionRuntimeState } from './types';
 
 const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
 const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
+const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 
 const extractTransferAmount = (text: string) => {
   const bracketMatch = text.match(TRANSFER_BRACKET_REGEX);
@@ -46,13 +47,32 @@ const extractTransferAmount = (text: string) => {
   }
 
   const blockMatch = text.match(TRANSFER_BLOCK_REGEX);
-  return blockMatch?.[1] ?? null;
+  if (blockMatch?.[1]) {
+    return blockMatch[1];
+  }
+
+  const pipeMatch = text.trim().match(TRANSFER_PIPE_REGEX);
+  return pipeMatch?.[1] ?? null;
+};
+
+const parseTransferProtocol = (text: string) => {
+  const trimmedText = text.trim();
+  const amount = extractTransferAmount(trimmedText);
+  if (!amount) {
+    return null;
+  }
+
+  const pipeMatch = trimmedText.match(TRANSFER_PIPE_REGEX);
+  return {
+    amount,
+    note: pipeMatch?.[2]?.trim() || '',
+  };
 };
 
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
-  options: { isInnerVoice?: boolean } = {}
+  options: { isInnerVoice?: boolean; transferTargetLabel?: string } = {}
 ): ChatMessage[] => {
   if (options.isInnerVoice) {
     return [{
@@ -64,11 +84,22 @@ const splitStreamingModelResponseIntoMessages = (
   }
 
   const trimmedText = text.trim();
+  const transferProtocol = parseTransferProtocol(trimmedText);
   if (
     !trimmedText ||
     trimmedText.startsWith('[GAME_CARD]') ||
-    extractTransferAmount(trimmedText)
+    transferProtocol
   ) {
+    if (transferProtocol) {
+      return [{
+        role: 'model',
+        text: `[转账 ${transferProtocol.amount}]`,
+        timestamp: baseTimestamp,
+        transferStatus: 'pending',
+        transferTargetLabel: options.transferTargetLabel,
+      }];
+    }
+
     return [{
       role: 'model',
       text,
@@ -249,7 +280,9 @@ export function useDirectChatRuntime({
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
-          const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId);
+          const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId, {
+            transferTargetLabel: userName,
+          });
           const nextMessages = messages.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
           );
@@ -497,7 +530,10 @@ export function useDirectChatRuntime({
 
     const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
       const displayText = stripPseudoMomentPrefix(text);
-      const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, { isInnerVoice: isInnerVoiceRequest });
+      const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
+        isInnerVoice: isInnerVoiceRequest,
+        transferTargetLabel: userName,
+      });
       const nextMessages = messages.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
       );
