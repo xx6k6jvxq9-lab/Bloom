@@ -1230,10 +1230,10 @@ export function HomeScreen({
                   >
                     <div className="space-y-2">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-zinc-400 ml-1">淇敼鍚嶇О</label>
+                        <label className="text-[10px] text-zinc-400 ml-1">修改名称</label>
                         <input
                           type="text"
-                          placeholder="杈撳叆鍚嶇О..."
+                          placeholder="输入名称..."
                           value={userProfile.name}
                           onChange={e => setUserProfile({ ...userProfile, name: e.target.value })}
                           className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
