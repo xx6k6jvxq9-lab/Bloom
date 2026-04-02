@@ -44,6 +44,50 @@ function parseBubbleStyleCss(styleText?: string) {
   }
 }
 
+function parseGameCardPayload(message: ChatMessage) {
+  const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
+  const gameCardMatch = message.text.match(gameCardRegex);
+  if (!gameCardMatch) return null;
+
+  try {
+    let jsonString = gameCardMatch[1].trim();
+
+    if (jsonString.startsWith('```json')) {
+      jsonString = jsonString.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonString.startsWith('```')) {
+      jsonString = jsonString.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const jsonStart = jsonString.indexOf('{');
+    const jsonEnd = jsonString.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
+    }
+
+    const gameData = JSON.parse(jsonString);
+    const legacyTranslationParts = getLegacyTranslationParts(message.text);
+
+    return {
+      data: {
+        ...gameData,
+        ...(typeof gameData.content === 'string'
+          ? { content: sanitizePipeMarkers(gameData.content, '\n') }
+          : {}),
+        ...(typeof gameData.question === 'string'
+          ? { question: sanitizePipeMarkers(gameData.question, '\n') }
+          : {}),
+      },
+      translation: sanitizePipeMarkers(
+        message.translation?.trim() || legacyTranslationParts.translation,
+        '\n',
+      ),
+    };
+  } catch (error) {
+    console.warn('Ignoring invalid game card payload.', error);
+    return null;
+  }
+}
+
 function PersistentImage({
   value,
   fallbackValue,
@@ -1049,36 +1093,10 @@ export function ChatSessionScreen({
                           );
                         }
 
-                        const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
-                        const gameCardMatch = msg.text.match(gameCardRegex);
-                        
-                        if (gameCardMatch) {
-                          try {
-                            let jsonString = gameCardMatch[1].trim();
-                            // Remove markdown code blocks if present
-                            if (jsonString.startsWith('```json')) {
-                              jsonString = jsonString.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-                            } else if (jsonString.startsWith('```')) {
-                              jsonString = jsonString.replace(/^```\s*/, '').replace(/\s*```$/, '');
-                            }
-                            
-                            // Extract JSON object if there's extra text
-                            const jsonStart = jsonString.indexOf('{');
-                            const jsonEnd = jsonString.lastIndexOf('}');
-                            if (jsonStart !== -1 && jsonEnd !== -1) {
-                              jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
-                            }
+                        const gameCardPayload = parseGameCardPayload(msg);
 
-                            const gameData = JSON.parse(jsonString);
-                            const sanitizedGameData = {
-                              ...gameData,
-                              ...(typeof gameData.content === 'string' ? { content: sanitizePipeMarkers(gameData.content, '\n') } : {}),
-                              ...(typeof gameData.question === 'string' ? { question: sanitizePipeMarkers(gameData.question, '\n') } : {})
-                            };
-                            const legacyTranslationParts = getLegacyTranslationParts(msg.text);
-                            const translation = sanitizePipeMarkers(msg.translation?.trim() || legacyTranslationParts.translation, '\n');
-                            
-                            return (
+                        if (gameCardPayload) {
+                          return (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                 <div 
                                   onClick={(e) => handleMessageClick(e, i)}
@@ -1088,10 +1106,10 @@ export function ChatSessionScreen({
                                   }}
                                 >
                                   <GameCard 
-                                    data={sanitizedGameData} 
+                                    data={gameCardPayload.data} 
                                     isUser={msg.role === 'user'} 
                                     disabled={multiSelectMode}
-                                    translation={translation}
+                                    translation={gameCardPayload.translation}
                                   />
                                 </div>
                                 {character.showTime && (
@@ -1101,9 +1119,6 @@ export function ChatSessionScreen({
                                 )}
                               </div>
                             );
-                          } catch (e) {
-                            // Fallback to text if parse fails
-                          }
                         }
 
                         const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
