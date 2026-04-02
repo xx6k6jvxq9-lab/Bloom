@@ -14,7 +14,7 @@ import type {
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
-import { buildRecentCoupleSpaceSummary } from '../../services/ai/couple-space/context/buildRecentCoupleSpaceSummary';
+import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
 import {
@@ -237,17 +237,11 @@ export function useDirectChatRuntime({
           const historyWindow = historySnapshot.slice(-historyLimit);
 
           const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-          const maskPrompt = activeMask
-            ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-            : '';
 
           const activeWorldBooks = worldBook.filter(wb =>
             (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
             character.activeWorldBookIds?.includes(wb.id)
           );
-          const worldBookPrompt = activeWorldBooks.length > 0
-            ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
-            : '';
 
           let perceptionPrompt = '';
           if (perception) {
@@ -273,28 +267,16 @@ export function useDirectChatRuntime({
             }
           }
 
-          const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
-          const recentCoupleSpaceSummary = coupleSpace
-            ? buildRecentCoupleSpaceSummary({
-                coupleSpace,
-                user: { name: userName } as any,
-                partner: character,
-              }).recentCoupleSpaceSummary
-            : undefined;
-          const systemPrompt = buildChatPrompt({
+          const systemPrompt = buildChatPrompt(buildChatSceneInput({
             mode: 'autoReply',
-            characterCore: {
-              characterSetting: character.setting,
-              maskPrompt,
-              worldBookPrompt,
-            },
-            memoryContext: {
-              memorySummary: normalizedMemoryPrompt,
-              perceptionPrompt,
-            },
             includeProtocolRules: false,
-            recentCoupleSpaceSummary,
-          });
+            character,
+            userName,
+            coupleSpace,
+            activeMask,
+            activeWorldBooks,
+            perceptionPrompt,
+          }));
 
           await streamTextWithConfig({
             activeConfig,
@@ -543,17 +525,11 @@ export function useDirectChatRuntime({
       const historyWindow = newHistory.slice(-historyLimit);
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
-      const maskPrompt = activeMask
-        ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-        : '';
 
       const activeWorldBooks = worldBook.filter(wb =>
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)
       );
-      const worldBookPrompt = activeWorldBooks.length > 0
-        ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
-        : '';
 
       let perceptionPrompt = '';
       if (perception) {
@@ -578,27 +554,15 @@ export function useDirectChatRuntime({
         }
       }
 
-      const normalizedMemoryPrompt = character.memorySummary?.trim() || '';
-      const recentCoupleSpaceSummary = coupleSpace
-        ? buildRecentCoupleSpaceSummary({
-            coupleSpace,
-            user: { name: userName } as any,
-            partner: character,
-          }).recentCoupleSpaceSummary
-        : undefined;
-      const systemPrompt = buildChatPrompt({
+      const systemPrompt = buildChatPrompt(buildChatSceneInput({
         mode: 'chat',
-        characterCore: {
-          characterSetting: character.setting,
-          maskPrompt,
-          worldBookPrompt,
-        },
-        memoryContext: {
-          memorySummary: normalizedMemoryPrompt,
-          perceptionPrompt,
-        },
-        recentCoupleSpaceSummary,
-      });
+        character,
+        userName,
+        coupleSpace,
+        activeMask,
+        activeWorldBooks,
+        perceptionPrompt,
+      }));
 
       await streamTextWithConfig({
         activeConfig,
