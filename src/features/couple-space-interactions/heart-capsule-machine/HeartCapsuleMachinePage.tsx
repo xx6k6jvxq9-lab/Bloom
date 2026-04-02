@@ -153,6 +153,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleTruthVariantRoundPage
+        key={selectedHistoryEntry.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -174,6 +175,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleRelationshipShiftRoundPage
+        key={selectedHistoryEntry.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -195,6 +197,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleAsyncDualRuleRoundPage
+        key={selectedHistoryEntry.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -211,6 +214,7 @@ export function HeartCapsuleMachinePage({
   if (pageState === 'history_detail' && selectedHistoryEntry && selectedHistoryCapsule) {
     return (
       <HeartCapsuleDropResult
+        key={selectedHistoryEntry.id}
         draw={selectedHistoryEntry}
         capsule={selectedHistoryCapsule}
         onBackToMachine={() => setPageState('history')}
@@ -227,6 +231,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleTruthVariantRoundPage
+        key={todayDraw.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -248,6 +253,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleRelationshipShiftRoundPage
+        key={todayDraw.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -269,6 +275,7 @@ export function HeartCapsuleMachinePage({
   ) {
     return (
       <HeartCapsuleAsyncDualRuleRoundPage
+        key={todayDraw.id}
         user={user}
         partner={partner}
         coupleSpace={coupleSpace}
@@ -285,6 +292,7 @@ export function HeartCapsuleMachinePage({
   if (pageState === 'result' && todayDraw && currentCapsule) {
     return (
       <HeartCapsuleDropResult
+        key={todayDraw.id}
         draw={todayDraw}
         capsule={currentCapsule}
         onBackToMachine={() => setPageState('machine')}
