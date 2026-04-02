@@ -17,6 +17,10 @@ const normalizeReplyText = (value: unknown) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const getFallbackReplyText = (decision: TransferDecision['decision']) => {
+  return decision === 'accept' ? '那我就收下啦。' : '这个我先不收。';
+};
+
 const parseDecision = (text: string): TransferDecision | null => {
   try {
     const parsed = JSON.parse(extractJsonObject(text)) as Partial<TransferDecision>;
@@ -24,11 +28,14 @@ const parseDecision = (text: string): TransferDecision | null => {
       return null;
     }
 
+    const replyText = normalizeReplyText(parsed.replyText);
+
     return {
       decision: parsed.decision,
-      replyText: normalizeReplyText(parsed.replyText),
+      replyText: replyText || getFallbackReplyText(parsed.decision),
     };
-  } catch {
+  } catch (error) {
+    console.warn('[transfer-decision] Ignoring invalid JSON payload.', error);
     return null;
   }
 };
