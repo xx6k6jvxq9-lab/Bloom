@@ -1435,18 +1435,12 @@ export function ChatSessionScreen({
                                   const canManualReceive = msg.role === 'model' && !isReceived && !isRejected;
                                   const cardBgClass = isReceived
                                     ? 'bg-[#FBC48A]'
-                                    : isRejected
-                                      ? 'bg-[#CFCFCF]'
-                                      : 'bg-[#FA9D3B]';
-                                  const cardBodyClass = isRejected
-                                    ? 'bg-[#F5F5F5] border-zinc-200'
-                                    : 'bg-white border-zinc-100';
-                                  const cardIconClass = isRejected
-                                    ? 'bg-white/18 text-white'
-                                    : 'bg-white/20 text-white';
-                                  const amountClass = isRejected ? 'text-white/95' : 'text-white';
-                                  const labelClass = isRejected ? 'text-white/85' : 'text-white/80';
-                                  const footerTextClass = isRejected ? 'text-zinc-400' : 'text-zinc-400';
+                                    : 'bg-[#FA9D3B]';
+                                  const cardBodyClass = 'bg-white border-zinc-100';
+                                  const cardIconClass = 'bg-white/20 text-white';
+                                  const amountClass = 'text-white';
+                                  const labelClass = 'text-white/80';
+                                  const footerTextClass = 'text-zinc-400';
                                   const transferTargetName = msg.transferTargetLabel || (msg.role === 'user' ? character.name : userName);
                                   const cardLabel = msg.transferDisplayLabel || (
                                     isReceived
