@@ -1433,9 +1433,18 @@ export function ChatSessionScreen({
                                   const canManualReceive = msg.role === 'model' && !isReceived && !isRejected;
                                   const cardBgClass = isReceived
                                     ? 'bg-[#FBC48A]'
-                                    : 'bg-[#FA9D3B]';
-                                  const cardBodyClass = 'bg-white border-zinc-100';
-                                  const cardIconClass = 'bg-white/20 text-white';
+                                    : isRejected
+                                      ? 'bg-[#CFCFCF]'
+                                      : 'bg-[#FA9D3B]';
+                                  const cardBodyClass = isRejected
+                                    ? 'bg-[#F5F5F5] border-zinc-200'
+                                    : 'bg-white border-zinc-100';
+                                  const cardIconClass = isRejected
+                                    ? 'bg-white/18 text-white'
+                                    : 'bg-white/20 text-white';
+                                  const amountClass = isRejected ? 'text-white/95' : 'text-white';
+                                  const labelClass = isRejected ? 'text-white/85' : 'text-white/80';
+                                  const footerTextClass = isRejected ? 'text-zinc-400' : 'text-zinc-400';
                                   const transferTargetName = msg.transferTargetLabel || (msg.role === 'user' ? character.name : userName);
                                   const cardLabel = msg.transferDisplayLabel || (
                                     isReceived
@@ -1468,13 +1477,13 @@ export function ChatSessionScreen({
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${cardIconClass}`}>
                                       {isReceived ? <Check size={24} /> : isRejected ? <X size={24} /> : <Banknote size={24} />}
                                     </div>
-                                    <div className="flex flex-col text-white min-w-0">
-                                      <span className="text-[16px] font-bold">￥{amount}</span>
-                                      <span className="text-[12px] opacity-80 truncate">{cardLabel}</span>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className={`text-[16px] font-bold ${amountClass}`}>￥{amount}</span>
+                                      <span className={`text-[12px] truncate ${labelClass}`}>{cardLabel}</span>
                                     </div>
                                   </div>
                                   <div className={`p-2 border border-t-0 ${cardBodyClass}`}>
-                                    <span className="text-[10px] text-zinc-400 ml-1">{`转账给 ${transferTargetName}`}</span>
+                                    <span className={`text-[10px] ml-1 ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
                                   </div>
                                 </div>
                                   );
