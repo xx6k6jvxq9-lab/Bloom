@@ -955,7 +955,7 @@ export function useDirectChatRuntime({
       });
   }, [activeConfig, applyTransferDecision, character, userName]);
 
-  const queueTransferEventReaction = useCallback((params: {
+  const triggerTransferEventReaction = (params: {
     amount: number;
     direction: 'character_to_user_received' | 'character_to_user_rejected';
   }) => {
@@ -990,7 +990,7 @@ export function useDirectChatRuntime({
       .catch(error => {
         console.error('Transfer reaction failed:', error);
       });
-  }, [activeConfig, character, setHistory, userName]);
+  };
 
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
@@ -1198,12 +1198,12 @@ export function useDirectChatRuntime({
         onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
       }
 
-      queueTransferEventReaction({
+      triggerTransferEventReaction({
         amount,
         direction: 'character_to_user_received',
       });
     }
-  }, [character.name, history, onUpdateWalletData, queueTransferEventReaction, setHistory, userName, walletData]);
+  }, [activeConfig, character, character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
 
   return {
     isLoading,
