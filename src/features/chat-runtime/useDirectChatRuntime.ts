@@ -85,10 +85,19 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
   let currentGroup = '';
 
   for (const part of explicitParts) {
+    const isQuestionLike = /[？?]$/.test(part);
+    const isAdvisoryLike = /^(别|不要|记得|先|快|少|慢点|赶紧|记住)/.test(part);
+    const isTurnLike = /^(那行|那就|那你|行吧|行，|好吧|好，|不过|但是|还是)/.test(part);
     const nextGroup = currentGroup ? `${currentGroup}\n${part}` : part;
     const shouldFlush =
       currentGroup.length > 0 &&
-      (part.length >= 24 || nextGroup.length >= 34);
+      (
+        isQuestionLike ||
+        isAdvisoryLike ||
+        isTurnLike ||
+        part.length >= 18 ||
+        nextGroup.length >= 26
+      );
 
     if (shouldFlush) {
       groupedParts.push(currentGroup);
@@ -444,11 +453,16 @@ export function useDirectChatRuntime({
       if (messagesToTranslate.length === 0) return;
 
       const translateText = async (prompt: string) => {
-        return generateTextWithConfig({
+        let responseText = '';
+        await streamTextWithConfig({
           activeConfig,
-          prompt,
           temperature: 0.1,
+          messages: [{ role: 'system', content: prompt }],
+          onTextChunk: (chunkText) => {
+            responseText += chunkText;
+          },
         });
+        return responseText;
       };
 
       const newHistory = [...history];
@@ -511,10 +525,14 @@ export function useDirectChatRuntime({
 用户的上一句话是："${userText}"
 请以口语化的方式简短回应（50字以内）。`;
 
-      const responseText = await generateTextWithConfig({
+      let responseText = '';
+      await streamTextWithConfig({
         activeConfig,
-        prompt,
         temperature: 0.7,
+        messages: [{ role: 'system', content: prompt }],
+        onTextChunk: (chunkText) => {
+          responseText += chunkText;
+        },
       });
 
       return responseText || null;
@@ -754,9 +772,13 @@ export function useDirectChatRuntime({
             ],
           });
 
-          const summaryText = await generateTextWithConfig({
+          let summaryText = '';
+          await streamTextWithConfig({
             activeConfig,
-            prompt,
+            messages: [{ role: 'system', content: prompt }],
+            onTextChunk: (chunkText) => {
+              summaryText += chunkText;
+            },
           });
 
           if (summaryText) {

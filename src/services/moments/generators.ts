@@ -2,7 +2,7 @@ import { Character, Mask, ApiConfig, WorldBookEntry } from '../../types';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
-import { generateTextWithConfig } from '../ai/runtimeClient';
+import { streamTextWithConfig } from '../ai/runtimeClient';
 import {
   classifyMomentCommentType,
   getRecentMomentReplyContext,
@@ -152,14 +152,20 @@ async function generateSingleText(options: {
   const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
 
   if (apiKey) {
-    return await generateTextWithConfig({
+    let responseText = '';
+    await streamTextWithConfig({
       activeConfig: {
         ...activeConfig,
         apiKey,
       },
-      prompt,
       temperature: activeConfig.temperature ?? 0.7,
+      messages: [{ role: 'system', content: prompt }],
+      onTextChunk: (chunkText) => {
+        responseText += chunkText;
+      },
     });
+
+    return responseText;
   }
 
   return fallback.trim();
