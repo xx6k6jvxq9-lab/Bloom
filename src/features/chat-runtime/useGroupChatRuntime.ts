@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { ApiConfig, Character, ChatMessage } from '../../types';
-import { generateTextWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
@@ -37,16 +37,25 @@ export function useGroupChatRuntime({
         throw new Error('Missing active API config.');
       }
 
-      const responseText = await generateTextWithConfig({
+      let responseText = '';
+      await streamTextWithConfig({
         activeConfig,
-        prompt: buildGroupChatPrompt({
-          speaker,
-          members,
-          userName,
-          history: currentHistory,
-          mode: 'invited',
-        }),
+        messages: [
+          {
+            role: 'system',
+            content: buildGroupChatPrompt({
+              speaker,
+              members,
+              userName,
+              history: currentHistory,
+              mode: 'invited',
+            }),
+          },
+        ],
         temperature: 0.7,
+        onTextChunk: (chunkText) => {
+          responseText += chunkText;
+        },
       });
 
       if (responseText) {
@@ -95,16 +104,25 @@ export function useGroupChatRuntime({
         throw new Error('Missing active API config.');
       }
 
-      const responseText = await generateTextWithConfig({
+      let responseText = '';
+      await streamTextWithConfig({
         activeConfig,
-        prompt: buildGroupChatPrompt({
-          speaker: responder,
-          members,
-          userName,
-          history: newHistory,
-          mode: 'reply',
-        }),
+        messages: [
+          {
+            role: 'system',
+            content: buildGroupChatPrompt({
+              speaker: responder,
+              members,
+              userName,
+              history: newHistory,
+              mode: 'reply',
+            }),
+          },
+        ],
         temperature: 0.7,
+        onTextChunk: (chunkText) => {
+          responseText += chunkText;
+        },
       });
 
       if (responseText) {
