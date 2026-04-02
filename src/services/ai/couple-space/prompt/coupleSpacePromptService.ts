@@ -17,7 +17,7 @@ import type {
   BuildCoupleLoveLetterReplyPromptOptions,
   BuildCoupleMessageBoardPromptOptions,
 } from '../../prompts';
-import { generateTextWithConfig } from '../../runtimeClient';
+import { streamTextWithConfig } from '../../runtimeClient';
 
 export type CoupleSpaceSettingsLike = {
   activeConfigId?: string;
@@ -40,11 +40,17 @@ async function generateCoupleSpaceText(options: {
   const activeConfig = resolveActiveConfig(options.settings);
   if (!activeConfig) return '';
 
-  return generateTextWithConfig({
+  let responseText = '';
+  await streamTextWithConfig({
     activeConfig,
-    prompt: options.prompt,
+    messages: [{ role: 'system', content: options.prompt }],
     temperature: options.temperature,
+    onTextChunk: (chunkText) => {
+      responseText += chunkText;
+    },
   });
+
+  return responseText;
 }
 
 /**
