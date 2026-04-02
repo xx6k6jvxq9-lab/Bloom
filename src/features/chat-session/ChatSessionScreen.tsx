@@ -1434,8 +1434,14 @@ export function ChatSessionScreen({
                                   const cardBgClass = isReceived
                                     ? 'bg-[#FBC48A]'
                                     : isRejected
-                                      ? 'bg-zinc-400'
+                                      ? 'bg-[#C8C8C8]'
                                       : 'bg-[#FA9D3B]';
+                                  const cardBodyClass = isRejected
+                                    ? 'bg-[#F7F7F7] border-zinc-200'
+                                    : 'bg-white border-zinc-100';
+                                  const cardIconClass = isRejected
+                                    ? 'bg-white/12 text-white'
+                                    : 'bg-white/20 text-white';
                                   const transferTargetName = msg.transferTargetLabel || (msg.role === 'user' ? character.name : userName);
                                   const cardLabel = msg.transferDisplayLabel || (
                                     isReceived
@@ -1462,10 +1468,10 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity ${isReceived || isRejected ? 'opacity-60' : ''}`}
+                                  className="w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity"
                                 >
                                   <div className={`${cardBgClass} p-3.5 flex items-center gap-3`}>
-                                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white shrink-0">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${cardIconClass}`}>
                                       {isReceived ? <Check size={24} /> : isRejected ? <X size={24} /> : <Banknote size={24} />}
                                     </div>
                                     <div className="flex flex-col text-white min-w-0">
@@ -1473,7 +1479,7 @@ export function ChatSessionScreen({
                                       <span className="text-[12px] opacity-80 truncate">{cardLabel}</span>
                                     </div>
                                   </div>
-                                  <div className="bg-white p-2 border border-zinc-100 border-t-0">
+                                  <div className={`p-2 border border-t-0 ${cardBodyClass}`}>
                                     <span className="text-[10px] text-zinc-400 ml-1">{`转账给 ${transferTargetName}`}</span>
                                   </div>
                                 </div>

@@ -987,13 +987,10 @@ export function useDirectChatRuntime({
           return;
         }
 
+        const reactionMessages = splitStreamingModelResponseIntoMessages(replyText, Date.now());
         setHistory([
           ...historyRef.current,
-          {
-            role: 'model',
-            text: replyText,
-            timestamp: Date.now(),
-          },
+          ...reactionMessages,
         ]);
       })
       .catch(error => {
