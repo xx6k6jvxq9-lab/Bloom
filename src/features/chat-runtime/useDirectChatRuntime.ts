@@ -15,6 +15,7 @@ import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
+import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
 import {
@@ -630,13 +631,14 @@ export function useDirectChatRuntime({
       ) {
         try {
           const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, character.memoryLimit);
+          const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
           const prompt = buildSummaryPrompt({
             mode: 'small',
             characterCore: {
               characterSetting: character.setting,
             },
             memoryContext: {
-              memorySummary: character.memorySummary?.trim() || '',
+              memorySummary: longTermMemoryProfile,
             },
             sections: [
               summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
@@ -650,9 +652,9 @@ export function useDirectChatRuntime({
 
           if (summaryText) {
             if (onPatchCharacter) {
-              onPatchCharacter({ memorySummary: summaryText });
+              onPatchCharacter({ shortTermSummary: summaryText });
             } else {
-              onUpdateCharacter({ ...character, memorySummary: summaryText });
+              onUpdateCharacter({ ...character, shortTermSummary: summaryText });
             }
           }
         } catch (summaryError) {
