@@ -73,6 +73,30 @@ const splitStreamingModelResponseIntoMessages = (
   }));
 };
 
+function parseGameCardData(text: string) {
+  if (!text.startsWith('[GAME_CARD]')) return null;
+
+  try {
+    let jsonString = text.replace(/^\[GAME_CARD\]\s*/, '').trim();
+
+    if (jsonString.startsWith('```json')) {
+      jsonString = jsonString.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonString.startsWith('```')) {
+      jsonString = jsonString.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const jsonStart = jsonString.indexOf('{');
+    const jsonEnd = jsonString.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd === -1) return null;
+
+    const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
+    return gameData && typeof gameData === 'object' ? gameData : null;
+  } catch (error) {
+    console.warn('Ignoring invalid runtime game card payload.', error);
+    return null;
+  }
+}
+
 type UseDirectChatRuntimeArgs = {
   character: Character;
   history: ChatMessage[];
@@ -319,16 +343,9 @@ export function useDirectChatRuntime({
           if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
 
           let textToCheck = msg.text.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '');
-          if (msg.text.startsWith('[GAME_CARD]')) {
-            try {
-              const jsonString = msg.text.replace(/^\[GAME_CARD\]\s*/, '');
-              const jsonStart = jsonString.indexOf('{');
-              const jsonEnd = jsonString.lastIndexOf('}');
-              if (jsonStart !== -1 && jsonEnd !== -1) {
-                const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
-                textToCheck = gameData.content || '';
-              }
-            } catch {}
+          const gameData = parseGameCardData(msg.text);
+          if (gameData && typeof gameData.content === 'string') {
+            textToCheck = gameData.content;
           }
 
           return !isMostlyChinese(textToCheck);
@@ -354,20 +371,19 @@ export function useDirectChatRuntime({
           let isQnaAnswer = false;
           let questionToTranslate = '';
 
-          if (msg.text.startsWith('[GAME_CARD]')) {
-            try {
-              const jsonString = msg.text.replace(/^\[GAME_CARD\]\s*/, '');
-              const jsonStart = jsonString.indexOf('{');
-              const jsonEnd = jsonString.lastIndexOf('}');
-              if (jsonStart !== -1 && jsonEnd !== -1) {
-                const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
-                textToTranslate = gameData.content || '';
-                if (gameData.game === 'qna' && gameData.type === 'answer' && gameData.question) {
-                  isQnaAnswer = true;
-                  questionToTranslate = gameData.question;
-                }
-              }
-            } catch {}
+          const gameData = parseGameCardData(msg.text);
+          if (gameData) {
+            if (typeof gameData.content === 'string') {
+              textToTranslate = gameData.content;
+            }
+            if (
+              gameData.game === 'qna'
+              && gameData.type === 'answer'
+              && typeof gameData.question === 'string'
+            ) {
+              isQnaAnswer = true;
+              questionToTranslate = gameData.question;
+            }
           }
 
           const prompt = isQnaAnswer && questionToTranslate
