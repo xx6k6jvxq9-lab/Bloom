@@ -211,6 +211,7 @@ export function ChatSessionScreen({
   const [transferType, setTransferType] = useState<'toUser' | 'toCharacter'>('toCharacter');
   const [transferAmount, setTransferAmount] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const [activeIncomingTransferIndex, setActiveIncomingTransferIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -1462,7 +1463,7 @@ export function ChatSessionScreen({
                                       handleMessageClick(e, i);
                                     } else {
                                       if (canManualReceive) {
-                                        handleReceiveTransfer(i);
+                                        setActiveIncomingTransferIndex(i);
                                       } else {
                                         handleMessageClick(e, i);
                                       }
@@ -1487,34 +1488,9 @@ export function ChatSessionScreen({
                                     <div className="flex items-center justify-between gap-3 px-1">
                                       <span className={`text-[10px] ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
                                       {canManualReceive && (
-                                        <span className="text-[10px] text-zinc-300">待处理</span>
+                                        <span className="text-[10px] text-zinc-300">点击处理</span>
                                       )}
                                     </div>
-                                    {canManualReceive && (
-                                      <div className="mt-2 flex items-center overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50">
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRejectTransfer(i);
-                                          }}
-                                          className="flex-1 bg-transparent px-3 py-2 text-[11px] font-medium text-zinc-500"
-                                        >
-                                          退回
-                                        </button>
-                                        <div className="h-5 w-px bg-zinc-200" />
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleReceiveTransfer(i);
-                                          }}
-                                          className="flex-1 bg-transparent px-3 py-2 text-[11px] font-medium text-[#FA9D3B]"
-                                        >
-                                          领取
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                                   );
@@ -2058,6 +2034,70 @@ export function ChatSessionScreen({
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeIncomingTransferIndex !== null && history[activeIncomingTransferIndex] && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="bg-white w-full max-w-[300px] rounded-2xl p-6 shadow-xl"
+            >
+              <div className="flex justify-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-[#FA9D3B]/12 text-[#FA9D3B] flex items-center justify-center">
+                  <Banknote size={28} />
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-zinc-400">转账金额</div>
+                <div className="mt-2 text-4xl font-bold text-zinc-900">
+                  ￥{(() => {
+                    const msg = history[activeIncomingTransferIndex];
+                    const transferBracketMatch = msg.text.match(/\[转账\s*([\d.]+)\]/i);
+                    const transferBlockMatch = msg.text.match(/\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i);
+                    const transferPipeMatch = msg.text.match(/TRANSFER\|([\d.]+)\|([\s\S]*)/i);
+                    return (transferBracketMatch ?? transferBlockMatch ?? transferPipeMatch)?.[1] ?? '0.00';
+                  })()}
+                </div>
+                <div className="mt-2 text-sm text-zinc-500">{character.name} 向你发起转账</div>
+              </div>
+              <div className="mt-6 rounded-2xl bg-zinc-50 px-4 py-3 text-center text-sm text-zinc-500">
+                请确认是否领取这笔转账
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRejectTransfer(activeIncomingTransferIndex);
+                    setActiveIncomingTransferIndex(null);
+                  }}
+                  className="flex-1 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-500"
+                >
+                  退回
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleReceiveTransfer(activeIncomingTransferIndex);
+                    setActiveIncomingTransferIndex(null);
+                  }}
+                  className="flex-1 rounded-xl bg-[#FA9D3B] px-4 py-3 text-sm font-medium text-white"
+                >
+                  领取
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveIncomingTransferIndex(null)}
+                className="mt-3 w-full text-center text-xs text-zinc-400"
+              >
+                关闭
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
