@@ -1433,15 +1433,9 @@ export function ChatSessionScreen({
                                   const canManualReceive = msg.role === 'model' && !isReceived && !isRejected;
                                   const cardBgClass = isReceived
                                     ? 'bg-[#FBC48A]'
-                                    : isRejected
-                                      ? 'bg-[#C8C8C8]'
-                                      : 'bg-[#FA9D3B]';
-                                  const cardBodyClass = isRejected
-                                    ? 'bg-[#F7F7F7] border-zinc-200'
-                                    : 'bg-white border-zinc-100';
-                                  const cardIconClass = isRejected
-                                    ? 'bg-white/12 text-white'
-                                    : 'bg-white/20 text-white';
+                                    : 'bg-[#FA9D3B]';
+                                  const cardBodyClass = 'bg-white border-zinc-100';
+                                  const cardIconClass = 'bg-white/20 text-white';
                                   const transferTargetName = msg.transferTargetLabel || (msg.role === 'user' ? character.name : userName);
                                   const cardLabel = msg.transferDisplayLabel || (
                                     isReceived

@@ -69,6 +69,31 @@ const parseTransferProtocol = (text: string) => {
   };
 };
 
+const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number): ChatMessage[] => {
+  const normalizedText = sanitizePipeMarkers(text, '\n').trim();
+  if (!normalizedText) {
+    return [];
+  }
+
+  const explicitParts = normalizedText
+    .split(/\n+/)
+    .flatMap(part => part.split(/(?<=[。！？!?])\s*/))
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  const groupedParts: string[] = [];
+  for (let i = 0; i < explicitParts.length; i += 2) {
+    groupedParts.push(explicitParts.slice(i, i + 2).join('\n'));
+  }
+
+  const finalParts = groupedParts.length > 0 ? groupedParts : [normalizedText];
+  return finalParts.map((part, index) => ({
+    role: 'model' as const,
+    text: part,
+    timestamp: baseTimestamp + index,
+  }));
+};
+
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
@@ -987,7 +1012,7 @@ export function useDirectChatRuntime({
           return;
         }
 
-        const reactionMessages = splitStreamingModelResponseIntoMessages(replyText, Date.now());
+        const reactionMessages = splitTransferReactionIntoMessages(replyText, Date.now());
         setHistory([
           ...historyRef.current,
           ...reactionMessages,
