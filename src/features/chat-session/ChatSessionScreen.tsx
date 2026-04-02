@@ -32,6 +32,18 @@ const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
 
+function parseBubbleStyleCss(styleText?: string) {
+  if (!styleText) return {};
+
+  try {
+    const parsed = JSON.parse(styleText);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    console.warn('Ignoring invalid chat bubbleStyleCss JSON.', error);
+    return {};
+  }
+}
+
 function PersistentImage({
   value,
   fallbackValue,
@@ -854,7 +866,7 @@ export function ChatSessionScreen({
                   borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                   ...(resolvedChatMessageBackgroundUrl ? { backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
                   ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {}),
-                  ...(visualSettings?.chat?.bubbleStyleCss ? JSON.parse(visualSettings.chat.bubbleStyleCss || '{}') : {})
+                  ...parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss)
                 }}
               >
                 <p className="text-[14px] text-zinc-800 leading-relaxed whitespace-pre-wrap">{character.openingRemark}</p>
