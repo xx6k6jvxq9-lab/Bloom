@@ -514,6 +514,8 @@ export type ChatMessage = {
   transferStatus?: 'pending' | 'received' | 'rejected';
   transferId?: string;
   transferCardId?: string;
+  transferDisplayLabel?: string;
+  transferTargetLabel?: string;
   isSystem?: boolean;
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;

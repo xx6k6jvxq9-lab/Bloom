@@ -1121,10 +1121,15 @@ export function ChatSessionScreen({
                             );
                         }
 
-                        const transferRegex = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/i;
-                        const transferRegexGlobal = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/gi;
-                        const transferMatch = msg.text.match(transferRegex);
-                        const cleanText = msg.text.replace(transferRegexGlobal, '').trim();
+                        const transferBracketRegex = /\[转账\s*([\d.]+)\]/i;
+                        const transferBlockRegex = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
+                        const transferBracketMatch = msg.text.match(transferBracketRegex);
+                        const transferBlockMatch = msg.text.match(transferBlockRegex);
+                        const transferMatch = transferBracketMatch ?? transferBlockMatch;
+                        const cleanText = msg.text
+                          .replace(/\[转账\s*[\d.]+\]/gi, '')
+                          .replace(/\[transfer\]\s*[\d.]+\s*\[\/transfer\]/gi, '')
+                          .trim();
                         const amount = transferMatch ? transferMatch[1] : '0.00';
 
                         return (
@@ -1428,12 +1433,14 @@ export function ChatSessionScreen({
                                     : isRejected
                                       ? 'bg-zinc-400'
                                       : 'bg-[#FA9D3B]';
-                                  const transferTargetName = msg.role === 'user' ? character.name : userName;
-                                  const cardLabel = isReceived
-                                    ? (msg.role === 'user' ? `${character.name} 已收款` : '你已收款')
-                                    : isRejected
-                                      ? (msg.role === 'user' ? `${character.name} 已退回` : '已退回')
-                                      : (msg.role === 'user' ? `待 ${character.name} 确认` : `待 ${userName} 确认`);
+                                  const transferTargetName = msg.transferTargetLabel || (msg.role === 'user' ? character.name : userName);
+                                  const cardLabel = msg.transferDisplayLabel || (
+                                    isReceived
+                                      ? (msg.role === 'user' ? `${character.name} 已收款` : '你已收款')
+                                      : isRejected
+                                        ? (msg.role === 'user' ? `${character.name} 已退回` : '已退回')
+                                        : (msg.role === 'user' ? `待 ${character.name} 确认` : `待 ${userName} 确认`)
+                                  );
 
                                   return (
                                 <div 

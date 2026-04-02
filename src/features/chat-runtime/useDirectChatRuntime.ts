@@ -36,7 +36,18 @@ import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { BaseSessionRuntimeState } from './types';
 
-const TRANSFER_TOKEN_REGEX = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/i;
+const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
+const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
+
+const extractTransferAmount = (text: string) => {
+  const bracketMatch = text.match(TRANSFER_BRACKET_REGEX);
+  if (bracketMatch?.[1]) {
+    return bracketMatch[1];
+  }
+
+  const blockMatch = text.match(TRANSFER_BLOCK_REGEX);
+  return blockMatch?.[1] ?? null;
+};
 
 const splitStreamingModelResponseIntoMessages = (
   text: string,
@@ -56,7 +67,7 @@ const splitStreamingModelResponseIntoMessages = (
   if (
     !trimmedText ||
     trimmedText.startsWith('[GAME_CARD]') ||
-    TRANSFER_TOKEN_REGEX.test(trimmedText)
+    extractTransferAmount(trimmedText)
   ) {
     return [{
       role: 'model',
@@ -830,7 +841,7 @@ export function useDirectChatRuntime({
       return;
     }
 
-    const amountStr = transferMessage.text.match(TRANSFER_TOKEN_REGEX)?.[1] || '0.00';
+    const amountStr = extractTransferAmount(transferMessage.text) || '0.00';
     const amount = parseFloat(amountStr);
     const nextHistory = [...latestHistory];
     nextHistory[transferIndex] = {
@@ -1082,10 +1093,18 @@ export function useDirectChatRuntime({
     const newHistory = [...history];
     newHistory[index] = { ...msg, transferStatus: 'received' };
 
-    const amountStr = msg.text.match(TRANSFER_TOKEN_REGEX)?.[1] || '0.00';
+    const amountStr = extractTransferAmount(msg.text) || '0.00';
     const amount = parseFloat(amountStr);
+    const receiptCard: ChatMessage = {
+      role: 'user',
+      text: `[转账 ${amountStr}]`,
+      timestamp: Date.now(),
+      transferStatus: 'received',
+      transferDisplayLabel: '已收款',
+      transferTargetLabel: userName,
+    };
 
-    setHistory(newHistory);
+    setHistory([...newHistory, receiptCard]);
 
     if (msg.role === 'model' && !isNaN(amount) && amount > 0) {
       const cards = walletData?.cards || MOCK_CARDS;
