@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, type PanInfo } from 'motion/react';
-import { DesktopIconConfig, VisualSettings, UserProfileExtended, MusicData, WidgetConfig } from '../../../types';
+import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicData, WidgetConfig } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
@@ -22,14 +22,6 @@ import {
 import './HomeScreen.css';
 
 type UserProfile = UserProfileExtended;
-
-type AppData = {
-  visualSettings?: {
-    globalBackground?: string;
-  };
-  musicData?: MusicData;
-  [key: string]: any;
-};
 
 type AppDefinition = {
   id: string;

@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, ChatGroup, FriendRequest } from '../../../types';
+import { AppData, Character, ChatGroup, FriendRequest } from '../../../types';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR } from '../../../utils';
@@ -42,14 +42,6 @@ function ResolvedContactsImage({
 
   return <img src={resolvedUrl} alt={alt} className={className} />;
 }
-
-type AppData = {
-  characters: Character[];
-  groups: string[];
-  friendRequests?: FriendRequest[];
-  chatGroups?: ChatGroup[];
-  [key: string]: any;
-};
 
 export function ContactsApp({ 
   appData, 

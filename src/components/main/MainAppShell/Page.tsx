@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BellOff, ChevronLeft, Compass, MessageSquare, Pin, Plus, User, UserPlus2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, AppSettings } from '../../../types';
+import { AppData, Character, AppSettings } from '../../../types';
 import { MePage } from '../MePage';
 import { ContactsApp, AddFriendModal, GroupManagementModal, NavTab } from '../ContactsShell/Page';
 import { DEFAULT_WHITE_AVATAR, showInAppConfirm } from '../../../utils';
@@ -30,21 +30,6 @@ function ResolvedMainShellAvatar({
 
   return <img src={resolvedUrl} alt={alt} className={className} />;
 }
-
-type AppData = {
-  chatGroups?: any[];
-  characters: Character[];
-  groups: string[];
-  userProfile: any;
-  masks: any[];
-  favorites: any[];
-  visualSettings: any;
-  chatHistory: any;
-  moments: any[];
-  collectedDates?: any[];
-  worldBooks?: any[];
-  [key: string]: any;
-};
 
 export function MainApp({ 
   activeTab, 

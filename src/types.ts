@@ -530,6 +530,29 @@ export type ChatHistory = {
   [characterId: string]: ChatMessage[];
 };
 
+export type MomentComment = {
+  id: string;
+  authorId: string;
+  content: string;
+  timestamp: number;
+  replyToCommentId?: string;
+  replyToAuthorId?: string;
+  replyToAuthorName?: string;
+};
+
+export type MomentItem = {
+  id: string;
+  authorId: string;
+  content: string;
+  images?: string[];
+  timestamp: number;
+  likes: number;
+  likedBy?: string[];
+  isLiked?: boolean;
+  isCollected?: boolean;
+  comments: MomentComment[];
+};
+
 export type PerceptionSettings = {
   enabled: boolean;
   dateTime: { enabled: boolean; value: string };
@@ -793,4 +816,26 @@ export type AppDataExtended = {
   friendRequests?: FriendRequest[];
   chatGroups?: ChatGroup[];
   walletData?: WalletData;
+};
+
+export type AppData = {
+  characters: Character[];
+  chatHistory: ChatHistory;
+  userProfile: UserProfileExtended;
+  masks: Mask[];
+  favorites: FavoriteMessage[];
+  visualSettings: VisualSettings;
+  groups: string[];
+  moments: MomentItem[];
+  worldBooks: WorldBookEntry[];
+  coupleSpace?: CoupleSpaceData;
+  coupleSpaceState?: CoupleSpaceState;
+  friendRequests?: FriendRequest[];
+  chatGroups?: ChatGroup[];
+  callHistory?: CallRecord[];
+  savedDates?: DateSession[];
+  collectedDates?: DateSession[];
+  musicData?: MusicData;
+  walletData?: WalletData;
+  forumData?: ForumData;
 };

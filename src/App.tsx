@@ -2,8 +2,8 @@
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry,
-  Character, ChatMessage, ChatHistory, PerceptionSettings,
+  AppData, Mask, FavoriteMessage, MomentComment, MomentItem, VisualSettings, UserProfileExtended, WorldBookEntry,
+  Character, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
 import { WorldBookManager } from './components/main/MePage';
@@ -92,16 +92,8 @@ const GlobalStyles = ({ customCss }: { customCss?: string }) => (
 );
 
 type UserProfile = UserProfileExtended;
-
-type Comment = {
-  id: string;
-  authorId: string; // 'user' or characterId
-  content: string;
-  timestamp: number;
-  replyToCommentId?: string;
-  replyToAuthorId?: string;
-  replyToAuthorName?: string;
-};
+type Comment = MomentComment;
+type Moment = MomentItem;
 
 function ResolvedAssetImage({
   value,
@@ -119,40 +111,6 @@ function ResolvedAssetImage({
 
   return <img src={src} alt={alt} className={className} />;
 }
-
-type Moment = {
-  id: string;
-  authorId: string; // 'user' or characterId
-  content: string;
-  images?: string[];
-  timestamp: number;
-  likes: number;
-  likedBy?: string[]; // Array of user/character IDs who liked this moment
-  isLiked?: boolean; // Deprecated, use likedBy.includes('user') instead
-  isCollected?: boolean;
-  comments: Comment[];
-};
-
-type AppData = {
-  characters: Character[];
-  chatHistory: ChatHistory;
-  userProfile: UserProfile;
-  masks: Mask[];
-  favorites: FavoriteMessage[];
-  visualSettings: VisualSettings;
-  groups: string[]; // List of group names
-  moments: Moment[];
-  worldBooks: WorldBookEntry[];
-  coupleSpace?: import('./types').CoupleSpaceData;
-  coupleSpaceState?: import('./types').CoupleSpaceState;
-  friendRequests?: import('./types').FriendRequest[];
-  chatGroups?: import('./types').ChatGroup[];
-  callHistory?: CallRecord[];
-  savedDates?: DateSession[];
-  collectedDates?: DateSession[];
-  musicData?: import('./types').MusicData;
-  walletData?: WalletData;
-};
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
