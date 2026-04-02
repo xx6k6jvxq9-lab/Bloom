@@ -6,6 +6,10 @@ export type TransferDecision = {
   replyText: string;
 };
 
+export type TransferReactionResult = {
+  replyText: string;
+};
+
 const extractJsonObject = (text: string) => {
   const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fencedMatch?.[1] ?? text;
@@ -81,10 +85,10 @@ export async function decideTransferOutcome(options: {
     compactHistory || '无',
     '',
     '请只返回 JSON，不要输出任何解释，也不要使用 Markdown 代码块。',
-    '格式如下：{"decision":"accept","replyText":"一句不超过20字的自然回复"}',
+    '格式如下：{"decision":"accept","replyText":"角色在这个场景下会自然说出的回应"}',
     '规则：',
     '1. decision 只能是 accept 或 reject。',
-    '2. replyText 必须像角色本人说的话，简短自然。',
+    '2. replyText 必须像角色本人说的话，自然、贴合人设和当前气氛，不要写成系统说明。',
     '3. 如果角色会收款就返回 accept，否则返回 reject。',
   ].join('\n');
 
@@ -94,4 +98,45 @@ export async function decideTransferOutcome(options: {
   });
 
   return parseDecision(result);
+}
+
+export async function generateTransferEventReaction(options: {
+  activeConfig: ApiConfig;
+  character: Character;
+  amount: number;
+  history: ChatMessage[];
+  userName: string;
+  direction: 'character_to_user_received' | 'character_to_user_rejected';
+}) {
+  const { activeConfig, character, amount, history, userName, direction } = options;
+  const compactHistory = history
+    .slice(-8)
+    .map(message => `${message.role === 'user' ? userName : character.name}: ${message.text}`)
+    .join('\n');
+
+  const eventLine = direction === 'character_to_user_received'
+    ? `${userName} 刚刚领取了 ${character.name} 转出的 ${amount.toFixed(2)} 元。`
+    : `${userName} 刚刚退回了 ${character.name} 转出的 ${amount.toFixed(2)} 元。`;
+
+  const prompt = [
+    '你现在只负责生成角色在转账结果落地后的即时自然反应。',
+    `角色名：${character.name}`,
+    `角色设定：${character.setting || '未提供'}`,
+    `事件：${eventLine}`,
+    '最近聊天：',
+    compactHistory || '无',
+    '',
+    '请只输出角色此刻会自然说出的内容，不要输出 JSON、协议、旁白、解释或系统提示。',
+    '反应长度和语气由角色人设、关系和当前气氛自然决定，但必须像真实聊天。',
+    '不要再次输出任何转账协议，例如 [transfer]、[转账]、TRANSFER|...|... 。',
+  ].join('\n');
+
+  const replyText = (await generateTransferDecisionText({
+    activeConfig,
+    prompt,
+  })).trim();
+
+  return {
+    replyText,
+  } satisfies TransferReactionResult;
 }

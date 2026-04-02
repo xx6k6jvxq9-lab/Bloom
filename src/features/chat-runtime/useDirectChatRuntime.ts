@@ -29,7 +29,7 @@ import {
   type ShareActionResult,
 } from '../../services/chat/messageActions';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
-import { decideTransferOutcome } from '../../services/chat/decideTransferOutcome';
+import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
 import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp/Page';
@@ -955,6 +955,43 @@ export function useDirectChatRuntime({
       });
   }, [activeConfig, applyTransferDecision, character, userName]);
 
+  const queueTransferEventReaction = useCallback((params: {
+    amount: number;
+    direction: 'character_to_user_received' | 'character_to_user_rejected';
+  }) => {
+    if (!activeConfig) {
+      return;
+    }
+
+    const historySnapshot = historyRef.current;
+    void generateTransferEventReaction({
+      activeConfig,
+      character,
+      amount: params.amount,
+      history: historySnapshot,
+      userName,
+      direction: params.direction,
+    })
+      .then(result => {
+        const replyText = result.replyText.trim();
+        if (!replyText) {
+          return;
+        }
+
+        setHistory([
+          ...historyRef.current,
+          {
+            role: 'model',
+            text: replyText,
+            timestamp: Date.now(),
+          },
+        ]);
+      })
+      .catch(error => {
+        console.error('Transfer reaction failed:', error);
+      });
+  }, [activeConfig, character, setHistory, userName]);
+
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
     voiceCallHistory: { role: 'user' | 'model'; text: string }[];
@@ -1160,8 +1197,13 @@ export function useDirectChatRuntime({
         const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
         onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
       }
+
+      queueTransferEventReaction({
+        amount,
+        direction: 'character_to_user_received',
+      });
     }
-  }, [character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
+  }, [character.name, history, onUpdateWalletData, queueTransferEventReaction, setHistory, userName, walletData]);
 
   return {
     isLoading,
