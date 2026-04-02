@@ -3,6 +3,8 @@ import { ChevronLeft, Send, MoreVertical } from 'lucide-react';
 import { ChatGroup, Character, ChatMessage, AppSettings } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
+import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
@@ -11,6 +13,29 @@ const formatMessagePreview = (text: string | undefined): string => {
   }
   return text;
 };
+
+function GroupMessageAvatar({
+  value,
+  fallbackValue,
+  alt,
+}: {
+  value?: string | null;
+  fallbackValue?: string | null;
+  alt: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
+  const src =
+    getDisplayableAssetValue(value, resolvedUrl)
+    || getDisplayableAssetValue(fallbackValue, resolvedFallbackUrl)
+    || null;
+
+  if (!src) {
+    return <div className="w-10 h-10 rounded-full bg-zinc-200 shrink-0" aria-label={alt} />;
+  }
+
+  return <img src={src} alt={alt} className="w-10 h-10 rounded-full bg-zinc-200 shrink-0 object-cover" />;
+}
 
 export function GroupChatSessionScreen({
   group,
@@ -92,9 +117,10 @@ export function GroupChatSessionScreen({
 
           return (
             <div key={idx} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-              <img
-                src={isUser ? userAvatar : (avatar || 'https://picsum.photos/seed/unknown/200')}
-                className="w-10 h-10 rounded-full bg-zinc-200 shrink-0"
+              <GroupMessageAvatar
+                value={isUser ? userAvatar : avatar}
+                fallbackValue={isUser ? null : 'https://picsum.photos/seed/unknown/200'}
+                alt={isUser ? userName : senderName}
               />
               <div className={`max-w-[70%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
                 {!isUser && <span className="text-[11px] text-zinc-400 mb-1 ml-1">{senderName}</span>}

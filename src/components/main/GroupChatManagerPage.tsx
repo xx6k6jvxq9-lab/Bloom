@@ -4,15 +4,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChatGroup, Character } from '../../types';
 import { showInAppConfirm } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 
 function ResolvedGroupAvatar({ value, alt, className }: { value?: string | null; alt: string; className: string }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
 
-  if (!resolvedUrl) {
+  if (!src) {
     return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
   }
 
-  return <img src={resolvedUrl} alt={alt} className={className} />;
+  return <img src={src} alt={alt} className={className} />;
 }
 
 export function GroupChatManagerPage({
