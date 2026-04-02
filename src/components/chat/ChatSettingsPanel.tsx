@@ -56,6 +56,19 @@ function ResolvedSettingsImage({
   return <img src={src} alt={alt} className={className} />;
 }
 
+function parseJsonFileContent(raw: string) {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    console.warn('[chat-settings] Ignoring invalid JSON file.', error);
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 export function ChatSettingsPanel({ 
   character, 
   onUpdate, 
@@ -291,18 +304,24 @@ export function ChatSettingsPanel({
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result as string);
-          if (data.character) {
-            onUpdate({ ...character, ...data.character });
-          }
-          if (data.history) {
-            setHistory(data.history);
-          }
-          setShowImportDialog(false);
-        } catch (err) {
+        const data = parseJsonFileContent(reader.result as string);
+        if (!isRecord(data)) {
           alert('无效的 JSON 文件');
+          return;
         }
+
+        if (isRecord(data.character)) {
+          onUpdate({ ...character, ...data.character });
+        }
+        if (Array.isArray(data.history)) {
+          setHistory(data.history as ChatMessage[]);
+        }
+        if ('character' in data || 'history' in data) {
+          setShowImportDialog(false);
+          return;
+        }
+
+        alert('JSON 文件缺少可导入的 character 或 history 字段');
       };
       reader.readAsText(file);
     }
@@ -1101,22 +1120,18 @@ export function ChatSettingsPanel({
                           const reader = new FileReader();
                           reader.onload = () => {
                             if (file.type === 'application/json' || file.name.endsWith('.json')) {
-                              try {
-                                const data = JSON.parse(reader.result as string);
-                                if (Array.isArray(data)) {
-                                  newStickers = [...newStickers, ...data.filter(item => typeof item === 'string')];
-                                } else if (data && typeof data === 'object') {
-                                  if (Array.isArray(data.stickers)) {
-                                    newStickers = [...newStickers, ...data.stickers.filter(item => typeof item === 'string')];
-                                  } else {
-                                    const arrayProp = Object.values(data).find(val => Array.isArray(val));
-                                    if (arrayProp) {
-                                      newStickers = [...newStickers, ...arrayProp.filter(item => typeof item === 'string')];
-                                    }
+                              const data = parseJsonFileContent(reader.result as string);
+                              if (Array.isArray(data)) {
+                                newStickers = [...newStickers, ...data.filter(item => typeof item === 'string')];
+                              } else if (isRecord(data)) {
+                                if (Array.isArray(data.stickers)) {
+                                  newStickers = [...newStickers, ...data.stickers.filter(item => typeof item === 'string')];
+                                } else {
+                                  const arrayProp = Object.values(data).find(val => Array.isArray(val));
+                                  if (arrayProp) {
+                                    newStickers = [...newStickers, ...arrayProp.filter(item => typeof item === 'string')];
                                   }
                                 }
-                              } catch (err) {
-                                console.error('Failed to parse JSON file', err);
                               }
                             } else {
                               newStickers.push(reader.result as string);
