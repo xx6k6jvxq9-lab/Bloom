@@ -17,7 +17,6 @@ type BuildChatSceneInputParams = {
 function buildExtraSections(input: {
   extendedLore?: string;
   chatSceneHint?: string;
-  shortTermSummary?: string;
 }): string[] {
   const sections = [
     input.extendedLore
@@ -25,9 +24,6 @@ function buildExtraSections(input: {
       : '',
     input.chatSceneHint
       ? ['## 当前聊天场景补充', input.chatSceneHint].join('\n')
-      : '',
-    input.shortTermSummary
-      ? ['## 近期关系余波', input.shortTermSummary].join('\n')
       : '',
   ].filter(Boolean);
 
@@ -64,11 +60,13 @@ export function buildChatSceneInput(
       memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
-    recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
+    recentContext: {
+      shortTermSummary: characterScopedMemory.shortTermSummary,
+      recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
+    },
     sections: buildExtraSections({
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
-      shortTermSummary: characterScopedMemory.shortTermSummary,
     }),
   };
 }

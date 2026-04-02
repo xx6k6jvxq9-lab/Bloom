@@ -1,4 +1,4 @@
-﻿import { EXISTENCE_PROMPT } from '../base/existence';
+import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
@@ -13,7 +13,10 @@ export type BuildChatPromptOptions = {
   userContext?: {
     userName?: string;
   };
-  recentCoupleSpaceSummary?: string;
+  recentContext?: {
+    shortTermSummary?: string;
+    recentCoupleSpaceSummary?: string;
+  };
   includeProtocolRules?: boolean;
   sections?: string[];
 };
@@ -28,13 +31,20 @@ const buildUserContextSection = (userContext?: BuildChatPromptOptions['userConte
   ].join('\n');
 };
 
-const buildRecentCoupleSpaceSection = (summary?: string): string => {
-  const normalizedSummary = summary?.trim();
-  if (!normalizedSummary) return '';
+const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recentContext']): string => {
+  const shortTermSummary = recentContext?.shortTermSummary?.trim();
+  const recentCoupleSpaceSummary = recentContext?.recentCoupleSpaceSummary?.trim();
+
+  const lines = [
+    shortTermSummary ? `[近期关系余波] ${shortTermSummary}` : '',
+    recentCoupleSpaceSummary ? `[最近情侣空间关系事件摘要] ${recentCoupleSpaceSummary}` : '',
+  ].filter(Boolean);
+
+  if (lines.length === 0) return '';
 
   return [
-    '## 最近情侣空间关系事件摘要',
-    normalizedSummary,
+    '## 最近场景信号',
+    ...lines,
   ].join('\n');
 };
 
@@ -53,7 +63,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     buildCharacterCoreSection(options.characterCore ?? {}),
     buildUserContextSection(options.userContext),
     buildMemoryContextSection(options.memoryContext ?? {}),
-    buildRecentCoupleSpaceSection(options.recentCoupleSpaceSummary),
+    buildRecentContextSection(options.recentContext),
     scenario,
     OUTPUT_RULES_PROMPT,
     ...(includeProtocolRules ? [PROTOCOL_RULES_PROMPT] : []),
