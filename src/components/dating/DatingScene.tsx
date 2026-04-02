@@ -77,6 +77,16 @@ function extractJsonObject(text: string): string {
   return trimmed;
 }
 
+function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | null {
+  try {
+    const parsed = JSON.parse(extractJsonObject(text));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn('[dating-scene] Ignoring invalid generated JSON payload.', error);
+    return null;
+  }
+}
+
 function normalizeGeneratedContent(
   parsed: Partial<DatingGeneratedContent> | null | undefined,
   session: DateSession,
@@ -276,8 +286,10 @@ export function DatingScene({
       });
 
       const rawText = await generateTextWithConfig({ activeConfig, prompt });
-      const jsonText = extractJsonObject(rawText);
-      const parsed = JSON.parse(jsonText) as DatingGeneratedContent;
+      const parsed = parseGeneratedContent(rawText);
+      if (!parsed) {
+        throw new Error('约会内容格式不完整，请稍后再试。');
+      }
       const normalizedContent = normalizeGeneratedContent(parsed, pendingSession, character);
       const sceneMessage = createSceneMessage(normalizedContent, placeholderMessage.timestamp);
       sceneMessage.id = placeholderId;
