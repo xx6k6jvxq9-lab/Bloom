@@ -3,9 +3,13 @@ import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildR
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 
 export type RelationshipProjection = {
-  shortTermSummary?: string;
-  longTermMemoryProfile?: string;
-  recentCoupleSpaceSummary?: string;
+  characterScopedMemory: {
+    shortTermSummary?: string;
+    longTermMemoryProfile?: string;
+  };
+  sceneScopedSignals: {
+    recentCoupleSpaceSummary?: string;
+  };
 };
 
 type BuildRelationshipProjectionInput = {
@@ -14,21 +18,36 @@ type BuildRelationshipProjectionInput = {
   userName: string;
 };
 
+function shouldUseCoupleSpaceForCharacter(
+  character: Character,
+  coupleSpace?: CoupleSpaceData,
+) {
+  if (!coupleSpace?.partnerId) {
+    return false;
+  }
+
+  return coupleSpace.partnerId === character.id;
+}
+
 export function buildRelationshipProjection(
   input: BuildRelationshipProjectionInput,
 ): RelationshipProjection {
   const memoryLayers = buildResolvedMemoryLayers(input.character);
-  const recentCoupleSpaceSummary = input.coupleSpace
+  const recentCoupleSpaceSummary = shouldUseCoupleSpaceForCharacter(input.character, input.coupleSpace)
     ? buildRecentCoupleSpaceSummary({
-        coupleSpace: input.coupleSpace,
+        coupleSpace: input.coupleSpace!,
         user: { name: input.userName } as any,
         partner: input.character,
       }).recentCoupleSpaceSummary
     : undefined;
 
   return {
-    shortTermSummary: memoryLayers.shortTermSummary,
-    longTermMemoryProfile: memoryLayers.longTermMemoryProfile,
-    recentCoupleSpaceSummary,
+    characterScopedMemory: {
+      shortTermSummary: memoryLayers.shortTermSummary,
+      longTermMemoryProfile: memoryLayers.longTermMemoryProfile,
+    },
+    sceneScopedSignals: {
+      recentCoupleSpaceSummary,
+    },
   };
 }

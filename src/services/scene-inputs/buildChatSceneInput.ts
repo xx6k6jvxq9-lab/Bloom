@@ -47,6 +47,7 @@ export function buildChatSceneInput(
     coupleSpace: params.coupleSpace,
     userName: params.userName,
   });
+  const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
 
   return {
     mode: params.mode,
@@ -57,14 +58,14 @@ export function buildChatSceneInput(
       worldBookPrompt: characterContext.worldBookPrompt,
     },
     memoryContext: {
-      memorySummary: relationshipProjection.longTermMemoryProfile ?? '',
+      memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
-    recentCoupleSpaceSummary: relationshipProjection.recentCoupleSpaceSummary,
+    recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
     sections: buildExtraSections({
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
-      shortTermSummary: relationshipProjection.shortTermSummary,
+      shortTermSummary: characterScopedMemory.shortTermSummary,
     }),
   };
 }

@@ -133,7 +133,7 @@ function summarizeContentFocus(content?: string): string {
     return '最近的相处和挂念';
   }
 
-  const compact = normalized.replace(/[，。！？；、,.!?;:：]/g, ' ');
+  const compact = normalized.replace(/[，。！；、,.!?;:]/g, ' ');
   const candidate = compact
     .split(/\s+/)
     .map((part) => part.trim())
@@ -154,6 +154,6 @@ function summarizeContentFocus(content?: string): string {
 function normalizeText(content?: string): string {
   return (content ?? '')
     .replace(/\s+/g, ' ')
-    .replace(/[“”"]/g, '')
+    .replace(/[“”]/g, '')
     .trim();
 }
