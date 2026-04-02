@@ -36,6 +36,8 @@ import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { BaseSessionRuntimeState } from './types';
 
+const TRANSFER_TOKEN_REGEX = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/i;
+
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
@@ -51,7 +53,11 @@ const splitStreamingModelResponseIntoMessages = (
   }
 
   const trimmedText = text.trim();
-  if (!trimmedText || trimmedText.startsWith('[GAME_CARD]') || /^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/.test(trimmedText)) {
+  if (
+    !trimmedText ||
+    trimmedText.startsWith('[GAME_CARD]') ||
+    TRANSFER_TOKEN_REGEX.test(trimmedText)
+  ) {
     return [{
       role: 'model',
       text,
@@ -824,8 +830,7 @@ export function useDirectChatRuntime({
       return;
     }
 
-    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
-    const amountStr = transferMessage.text.match(transferRegex)?.[1] || '0.00';
+    const amountStr = transferMessage.text.match(TRANSFER_TOKEN_REGEX)?.[1] || '0.00';
     const amount = parseFloat(amountStr);
     const nextHistory = [...latestHistory];
     nextHistory[transferIndex] = {
@@ -841,21 +846,7 @@ export function useDirectChatRuntime({
       });
     }
 
-    if (status === 'received') {
-      nextHistory.push({
-        role: 'user',
-        text: `${character.name} 已领取转账 ￥${amountStr}`,
-        timestamp: Date.now() + 1,
-        isSystem: true,
-      } as ChatMessage);
-    } else {
-      nextHistory.push({
-        role: 'user',
-        text: `${character.name} 已退回转账 ￥${amountStr}`,
-        timestamp: Date.now() + 1,
-        isSystem: true,
-      } as ChatMessage);
-
+    if (status === 'rejected') {
       if (!Number.isNaN(amount) && amount > 0 && transferMessage.transferCardId) {
         const cards = walletData?.cards || MOCK_CARDS;
         const newCards = cards.map(card =>
@@ -884,25 +875,21 @@ export function useDirectChatRuntime({
   const queueTransferDecision = useCallback((params: {
     transferId: string;
     amount: number;
+    history: ChatMessage[];
   }) => {
-    const { transferId, amount } = params;
+    const { transferId, amount, history } = params;
     if (!activeConfig || pendingTransferDecisionIdsRef.current.has(transferId)) {
       return;
     }
 
     pendingTransferDecisionIdsRef.current.add(transferId);
-    const decisionPromise = decideTransferOutcome({
+    void decideTransferOutcome({
       activeConfig,
       character,
       amount,
-      history: historyRef.current,
+      history,
       userName,
-    });
-    const timeoutPromise = new Promise<null>(resolve => {
-      setTimeout(() => resolve(null), 2500);
-    });
-
-    void Promise.race([decisionPromise, timeoutPromise])
+    })
       .then(result => {
         if (!result) {
           return;
@@ -1067,10 +1054,12 @@ export function useDirectChatRuntime({
         transferId,
         transferCardId: selectedCardId,
       };
-      setHistory([...historyRef.current, transferMessage]);
+      const nextHistory = [...historyRef.current, transferMessage];
+      setHistory(nextHistory);
       queueTransferDecision({
         transferId,
         amount,
+        history: nextHistory,
       });
       return true;
     }
@@ -1093,17 +1082,8 @@ export function useDirectChatRuntime({
     const newHistory = [...history];
     newHistory[index] = { ...msg, transferStatus: 'received' };
 
-    const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
-    const amountStr = msg.text.match(transferRegex)?.[1] || '0.00';
+    const amountStr = msg.text.match(TRANSFER_TOKEN_REGEX)?.[1] || '0.00';
     const amount = parseFloat(amountStr);
-    const receiverName = msg.role === 'user' ? character.name : userName;
-
-    newHistory.push({
-      role: 'user',
-      text: `${receiverName} 已领取转账 ￥${amountStr}`,
-      timestamp: Date.now(),
-      isSystem: true,
-    } as ChatMessage);
 
     setHistory(newHistory);
 

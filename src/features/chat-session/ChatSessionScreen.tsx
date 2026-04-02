@@ -1121,8 +1121,8 @@ export function ChatSessionScreen({
                             );
                         }
 
-                        const transferRegex = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/;
-                        const transferRegexGlobal = /\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g;
+                        const transferRegex = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/i;
+                        const transferRegexGlobal = /\[(?:transfer\]?)?\s*(?:转账\s*)?([\d.]+)(?:\[\/transfer\])?\]/gi;
                         const transferMatch = msg.text.match(transferRegex);
                         const cleanText = msg.text.replace(transferRegexGlobal, '').trim();
                         const amount = transferMatch ? transferMatch[1] : '0.00';
@@ -1428,11 +1428,12 @@ export function ChatSessionScreen({
                                     : isRejected
                                       ? 'bg-zinc-400'
                                       : 'bg-[#FA9D3B]';
+                                  const transferTargetName = msg.role === 'user' ? character.name : userName;
                                   const cardLabel = isReceived
-                                    ? (msg.role === 'user' ? '对方已收钱' : '已收钱')
+                                    ? (msg.role === 'user' ? `${character.name} 已收款` : '你已收款')
                                     : isRejected
-                                      ? (msg.role === 'user' ? '已退回' : '已失效')
-                                      : (msg.role === 'user' ? `待 ${character.name} 确认` : `转账给 ${userName}`);
+                                      ? (msg.role === 'user' ? `${character.name} 已退回` : '已退回')
+                                      : (msg.role === 'user' ? `待 ${character.name} 确认` : `待 ${userName} 确认`);
 
                                   return (
                                 <div 
@@ -1463,7 +1464,7 @@ export function ChatSessionScreen({
                                     </div>
                                   </div>
                                   <div className="bg-white p-2 border border-zinc-100 border-t-0">
-                                    <span className="text-[10px] text-zinc-400 ml-1">微信转账</span>
+                                    <span className="text-[10px] text-zinc-400 ml-1">{`转账给 ${transferTargetName}`}</span>
                                   </div>
                                 </div>
                                   );
