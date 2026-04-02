@@ -11,7 +11,7 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
-import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextFromMessagesWithConfig, generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -279,15 +279,9 @@ export function useDirectChatRuntime({
             perceptionPrompt,
           }));
 
-          await streamTextWithConfig({
-            activeConfig,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...historyWindow.map(m => ({
-                role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-                content: m.text,
-              })),
-            ],
+          await requestChatReplyWithFallback({
+            systemPrompt,
+            historyWindow,
             onTextChunk: (chunkText) => {
               currentResponseText += chunkText;
               updateAssistantMessage(currentResponseText);
@@ -417,6 +411,57 @@ export function useDirectChatRuntime({
       return null;
     }
   }, [activeConfig, character.setting]);
+
+  const requestChatReplyWithFallback = useCallback(async ({
+    systemPrompt,
+    historyWindow,
+    onTextChunk,
+  }: {
+    systemPrompt: string;
+    historyWindow: ChatMessage[];
+    onTextChunk: (chunkText: string) => void;
+  }) => {
+    if (!activeConfig) {
+      throw new Error('Missing active API config.');
+    }
+
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...historyWindow.map(m => ({
+        role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+        content: m.text,
+      })),
+    ];
+
+    let streamedText = '';
+
+    await streamTextWithConfig({
+      activeConfig,
+      messages,
+      onTextChunk: (chunkText) => {
+        streamedText += chunkText;
+        onTextChunk(chunkText);
+      },
+    });
+
+    if (streamedText.trim()) {
+      return streamedText;
+    }
+
+    console.warn('[chat-runtime] Streaming response was empty, falling back to non-stream generation.');
+
+    const fallbackText = await generateTextFromMessagesWithConfig({
+      activeConfig,
+      messages,
+    });
+
+    if (!fallbackText.trim()) {
+      throw new Error('模型返回为空');
+    }
+
+    onTextChunk(fallbackText);
+    return fallbackText;
+  }, [activeConfig]);
 
   const handleSend = useCallback(async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
     const textToSend = typeof overrideText === 'string' ? overrideText : input;
@@ -565,15 +610,9 @@ export function useDirectChatRuntime({
         perceptionPrompt,
       }));
 
-      await streamTextWithConfig({
-        activeConfig,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...historyWindow.map(m => ({
-            role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-            content: m.text,
-          })),
-        ],
+      await requestChatReplyWithFallback({
+        systemPrompt,
+        historyWindow,
         onTextChunk: (chunkText) => {
           if (activeGenerationIdRef.current !== generationId) {
             return;
@@ -673,7 +712,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, worldBook]);
+  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, requestChatReplyWithFallback, setHistory, setInput, setReplyingTo, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
