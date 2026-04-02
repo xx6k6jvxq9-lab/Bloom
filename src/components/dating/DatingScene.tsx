@@ -10,7 +10,7 @@ import type {
   DatingGeneratedContent,
   UserProfileExtended,
 } from '../../types';
-import { generateTextWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -285,7 +285,14 @@ export function DatingScene({
         latestUserInput,
       });
 
-      const rawText = await generateTextWithConfig({ activeConfig, prompt });
+      let rawText = '';
+      await streamTextWithConfig({
+        activeConfig,
+        messages: [{ role: 'system', content: prompt }],
+        onTextChunk: (chunkText) => {
+          rawText += chunkText;
+        },
+      });
       const parsed = parseGeneratedContent(rawText);
       if (!parsed) {
         throw new Error('约会内容格式不完整，请稍后再试。');
