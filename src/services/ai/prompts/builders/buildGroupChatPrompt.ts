@@ -1,52 +1,34 @@
-import type { Character, ChatMessage } from '../../../../types';
+import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
 
 export type BuildGroupChatPromptOptions = {
-  speaker: Character;
-  members: Character[];
-  userName: string;
-  history: ChatMessage[];
-  mode?: 'reply' | 'invited';
+  sceneInput: GroupChatSceneInput;
 };
 
-function buildGroupChatHistorySection(history: ChatMessage[], userName: string): string {
-  return history
-    .map(message => {
-      if (message.role === 'user') {
-        return `${userName}: ${message.text}`;
-      }
-      return message.text;
-    })
-    .join('\n');
-}
-
-export function buildGroupChatPrompt({
-  speaker,
-  members,
-  userName,
-  history,
-  mode = 'reply',
-}: BuildGroupChatPromptOptions): string {
-  const roleInstruction = mode === 'invited'
-    ? 'You were just @mentioned or invited to speak. Please reply to the conversation.'
-    : 'Please reply to the conversation in the group chat context.';
-  const mentionInstruction = mode === 'reply'
-    ? 'If you want to invite another character to speak, you can @mention them (e.g., "@Name").'
-    : '';
-
+export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions): string {
   return [
-    `You are in a group chat. Your name is ${speaker.name}.`,
-    `Group members: ${members.map(member => member.name).join(', ')}.`,
-    `User: ${userName}.`,
+    `You are in a group chat. Your name is ${sceneInput.speakerName}.`,
+    `Group members: ${sceneInput.memberNames.join(', ')}.`,
+    `User: ${sceneInput.userName}.`,
     '',
-    `Your setting: ${speaker.setting}`,
+    `Your core persona: ${sceneInput.speakerCorePersona || 'Not provided.'}`,
+    sceneInput.speakerSignature ? `Your signature: ${sceneInput.speakerSignature}` : '',
+    sceneInput.recentContext?.shortTermSummary
+      ? `Recent relationship afterglow: ${sceneInput.recentContext.shortTermSummary}`
+      : '',
+    sceneInput.recentContext?.longTermMemoryProfile
+      ? `Long-term relationship memory: ${sceneInput.recentContext.longTermMemoryProfile}`
+      : '',
+    sceneInput.recentContext?.groupSceneHint
+      ? `Group chat scene hint: ${sceneInput.recentContext.groupSceneHint}`
+      : '',
     '',
-    roleInstruction,
-    mentionInstruction,
+    sceneInput.roleInstruction,
+    sceneInput.mentionInstruction,
     'Keep your response concise and in character.',
     '',
     'Chat History:',
-    buildGroupChatHistorySection(history, userName),
+    sceneInput.historyTranscript,
     '',
-    `${speaker.name}:`,
+    `${sceneInput.speakerName}:`,
   ].filter(Boolean).join('\n');
 }

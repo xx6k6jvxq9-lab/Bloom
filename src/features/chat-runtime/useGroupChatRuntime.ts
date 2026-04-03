@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { ApiConfig, Character, ChatMessage } from '../../types';
 import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
+import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { SendCapableSessionRuntime } from './types';
@@ -44,11 +45,13 @@ export function useGroupChatRuntime({
           {
             role: 'system',
             content: buildGroupChatPrompt({
-              speaker,
-              members,
-              userName,
-              history: currentHistory,
-              mode: 'invited',
+              sceneInput: buildGroupChatSceneInput({
+                speaker,
+                members,
+                userName,
+                history: currentHistory,
+                mode: 'invited',
+              }),
             }),
           },
         ],
@@ -111,11 +114,13 @@ export function useGroupChatRuntime({
           {
             role: 'system',
             content: buildGroupChatPrompt({
-              speaker: responder,
-              members,
-              userName,
-              history: newHistory,
-              mode: 'reply',
+              sceneInput: buildGroupChatSceneInput({
+                speaker: responder,
+                members,
+                userName,
+                history: newHistory,
+                mode: 'reply',
+              }),
             }),
           },
         ],
