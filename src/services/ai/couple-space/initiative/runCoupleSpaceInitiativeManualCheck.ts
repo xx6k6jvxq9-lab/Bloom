@@ -31,6 +31,7 @@ import {
   type RunCoupleSpaceInitiativeDevCheckResult,
 } from './runCoupleSpaceInitiativeDevCheck';
 import { runCoupleSpaceInitiativeCandidate } from './runCoupleSpaceInitiativeCandidate';
+import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 
 export type CoupleSpaceInitiativeCheckCommonContext = {
   user: UserProfileExtended;
@@ -251,11 +252,12 @@ export function buildArtifactPreview(
 }
 
 function buildCommonPromptInput({ user, partner, coupleSpace }: CoupleSpaceInitiativeCheckCommonContext) {
+  const personaSummary = buildCharacterContext({ character: partner }).corePersona;
   return {
     characterProfile: {
       characterName: partner.name,
       signature: partner.signature,
-      personaSummary: partner.setting,
+      personaSummary,
       speakingStyle: partner.signature || undefined,
       initiativeStyle: partner.postFrequency || undefined,
     },
