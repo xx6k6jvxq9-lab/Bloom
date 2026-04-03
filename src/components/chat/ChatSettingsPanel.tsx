@@ -114,7 +114,8 @@ export function ChatSettingsPanel({
   const [showStickers, setShowStickers] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isLongTermSummarizing, setIsLongTermSummarizing] = useState(false);
+  const [isShortTermSummarizing, setIsShortTermSummarizing] = useState(false);
   const [showMemorySettings, setShowMemorySettings] = useState(false);
   const [showWorldBookSelector, setShowWorldBookSelector] = useState(false);
   const [showCallHistory, setShowCallHistory] = useState(false);
@@ -234,7 +235,17 @@ export function ChatSettingsPanel({
   const toggleMute = () => onUpdate({ ...character, isMuted: !character.isMuted });
   const togglePin = () => onUpdate({ ...character, isPinned: !character.isPinned });
 
-  const handleSummarize = async () => {
+  const handleGenerateSummary = async ({
+    mode,
+    memorySummary,
+    onComplete,
+    setLoading,
+  }: {
+    mode: 'small' | 'large';
+    memorySummary: string;
+    onComplete: (responseText: string) => void;
+    setLoading: (value: boolean) => void;
+  }) => {
     if (!activeConfig?.apiKey) {
       alert('请先配置 API Key');
       return;
@@ -244,17 +255,17 @@ export function ChatSettingsPanel({
       return;
     }
 
-    setIsSummarizing(true);
+    setLoading(true);
     try {
       const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
       
       const prompt = buildSummaryPrompt({
-        mode: 'large',
+        mode,
         characterCore: {
           characterSetting: resolvedCorePersona,
         },
         memoryContext: {
-          memorySummary: longTermMemoryProfile,
+          memorySummary,
         },
         sections: [
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
@@ -270,7 +281,7 @@ export function ChatSettingsPanel({
       });
 
       if (responseText) {
-        onUpdate({ ...character, longTermMemoryProfile: responseText });
+        onComplete(responseText);
         alert('总结完成！');
       }
     } catch (error: any) {
@@ -278,8 +289,26 @@ export function ChatSettingsPanel({
       const message = error instanceof Error ? error.message : '未知错误';
       alert(`总结失败: ${message.split(' Raw preview:')[0]}`);
     } finally {
-      setIsSummarizing(false);
+      setLoading(false);
     }
+  };
+
+  const handleSummarizeShortTerm = async () => {
+    await handleGenerateSummary({
+      mode: 'small',
+      memorySummary: longTermMemoryProfile,
+      onComplete: (responseText) => onUpdate({ ...character, shortTermSummary: responseText }),
+      setLoading: setIsShortTermSummarizing,
+    });
+  };
+
+  const handleSummarizeLongTerm = async () => {
+    await handleGenerateSummary({
+      mode: 'large',
+      memorySummary: longTermMemoryProfile,
+      onComplete: (responseText) => onUpdate({ ...character, longTermMemoryProfile: responseText }),
+      setLoading: setIsLongTermSummarizing,
+    });
   };
 
   const handleExport = () => {
@@ -935,12 +964,21 @@ export function ChatSettingsPanel({
                           <span className="text-[14px] text-zinc-700 font-medium">近期记忆 / 短期总结</span>
                           <span className="text-[11px] text-zinc-500">这里放最近几轮互动的状态、余波和当前气氛，适合被自动总结频繁刷新。</span>
                         </div>
-                        <button
-                          onClick={() => alert('近期总结详情页稍后接入，这里会进入短期总结记录列表。')}
-                          className="shrink-0 text-[11px] text-zinc-500 hover:text-zinc-900 underline"
-                        >
-                          查看详情
-                        </button>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <button
+                            onClick={handleSummarizeShortTerm}
+                            disabled={isShortTermSummarizing}
+                            className="px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
+                          >
+                            {isShortTermSummarizing ? '总结中...' : '刷新近期总结'}
+                          </button>
+                          <button
+                            onClick={() => alert('近期总结详情页稍后接入，这里会进入短期总结记录列表。')}
+                            className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                          >
+                            查看详情
+                          </button>
+                        </div>
                       </div>
                       <div className="px-4 py-3">
                       <textarea
@@ -960,11 +998,11 @@ export function ChatSettingsPanel({
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <button
-                            onClick={handleSummarize}
-                            disabled={isSummarizing}
+                            onClick={handleSummarizeLongTerm}
+                            disabled={isLongTermSummarizing}
                             className="px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
                           >
-                            {isSummarizing ? '总结中...' : '生成长期画像'}
+                            {isLongTermSummarizing ? '总结中...' : '生成长期画像'}
                           </button>
                           <button
                             onClick={() => alert('长期画像详情页稍后接入，这里会进入长期画像记录列表。')}
