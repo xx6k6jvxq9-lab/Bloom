@@ -1,4 +1,6 @@
 import type { Character, ChatMessage } from '../../../types';
+import { buildResolvedMemoryLayers } from '../../memory/buildResolvedMemoryLayers';
+import { buildCharacterContext } from '../../relationship-context/buildCharacterContext';
 import type { CoupleSpaceInviteContext } from './coupleSpaceInviteTypes';
 
 const INVITE_CONTEXT_WINDOW = 6;
@@ -8,6 +10,10 @@ export function buildCoupleSpaceInviteContext(params: {
   character: Character;
   history: ChatMessage[];
 }): CoupleSpaceInviteContext {
+  const characterContext = buildCharacterContext({
+    character: params.character,
+  });
+  const memory = buildResolvedMemoryLayers(params.character);
   const recentMessages = params.history
     .filter((message) => !message.isSystem)
     .filter((message) => {
@@ -20,7 +26,7 @@ export function buildCoupleSpaceInviteContext(params: {
     userName: params.userName,
     character: params.character,
     recentMessages,
-    memorySummary: params.character.memorySummary?.trim() || undefined,
+    corePersona: characterContext.corePersona,
+    longTermMemoryProfile: memory.longTermMemoryProfile,
   };
 }
-

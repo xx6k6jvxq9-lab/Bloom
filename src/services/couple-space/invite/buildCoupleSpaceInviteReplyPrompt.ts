@@ -19,10 +19,10 @@ export function buildCoupleSpaceInviteReplyPrompt(context: CoupleSpaceInviteCont
   return buildChatPrompt({
     mode: 'chat',
     characterCore: {
-      characterSetting: context.character.setting,
+      characterSetting: context.corePersona || context.character.setting,
     },
     memoryContext: {
-      memorySummary: context.memorySummary || '',
+      memorySummary: context.longTermMemoryProfile || '',
     },
     includeProtocolRules: false,
     sections: [
@@ -44,4 +44,3 @@ export function buildCoupleSpaceInviteReplyPrompt(context: CoupleSpaceInviteCont
     ],
   });
 }
-
