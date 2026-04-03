@@ -325,6 +325,34 @@ export function updatePartnerCoupleSpaceState(
   };
 }
 
+export function switchCurrentCoupleSpaceState(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const nextSpaces = { ...(resolvedState.spacesByPartnerId || {}) };
+  const nextCurrentSpace = getCurrentCoupleSpaceData(
+    {
+      currentPartnerId: partnerId,
+      spacesByPartnerId: nextSpaces,
+    },
+    createDefaultCoupleSpaceData({
+      ...(currentSpace || {}),
+      partnerId,
+    }),
+  );
+  const nextState = {
+    currentPartnerId: partnerId,
+    spacesByPartnerId: nextSpaces,
+  };
+
+  return {
+    coupleSpaceState: nextState,
+    coupleSpace: nextCurrentSpace,
+  };
+}
+
 export function deletePartnerCoupleSpaceState(
   state: CoupleSpaceState | null | undefined,
   currentSpace: CoupleSpaceData | null | undefined,

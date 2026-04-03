@@ -12,6 +12,7 @@ import {
   createDefaultCoupleSpaceData,
   resolveCurrentCoupleSpace,
   resolveCoupleSpaceState,
+  switchCurrentCoupleSpaceState,
   updateCurrentCoupleSpaceState,
   updatePartnerCoupleSpaceState,
 } from '../../../features/persistence/coupleSpaceStore';
@@ -252,6 +253,21 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
   const handleUpdateInitiativeSettings = (next: typeof initiativeSettings) => {
     handleUpdateCoupleSpace({ initiativeSettings: next });
+  };
+
+  const handleSwitchCoupleSpace = (partnerId: string) => {
+    setAppData((prev: any) => {
+      const { coupleSpaceState, coupleSpace } = switchCurrentCoupleSpaceState(
+        prev.coupleSpaceState,
+        prev.coupleSpace,
+        partnerId,
+      );
+      return {
+        ...prev,
+        coupleSpaceState,
+        coupleSpace,
+      };
+    });
   };
 
   const handleManualInitiativeCheck = async () => {
@@ -553,7 +569,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   {addedPartners.map((c: any) => (
                     <div key={c.id} className="relative group">
                       <button
-                        onClick={() => handleUpdateCoupleSpace({ partnerId: c.id })}
+                        onClick={() => handleSwitchCoupleSpace(c.id)}
                         className={`flex flex-col items-center gap-2 p-2 rounded-xl min-w-[70px] transition-all ${coupleSpace.partnerId === c.id ? 'bg-rose-100 ring-2 ring-rose-300' : 'hover:bg-zinc-100'}`}
                       >
                         <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover" alt={c.name} />
@@ -1746,7 +1762,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
       /* Legacy co-note prompt path retained only as historical reference after migration.
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (memoSettings.writeCoNote.enabled && activeConfig.apiKey) {
-        const prompt = `你扮演 ${partner.name}，${partner.setting}。
+        const prompt = `你扮演 ${partner.name}，${partner.corePersona || partner.setting}。
 我和你正在使用情侣空间的“情侣互记”功能，记录想一起做的事情。
 我刚刚写了一条互记：“${newNote.content}”
 请你像在这条互记下面顺手回复我一样，接一句回应，简短自然，20字以内。`;
