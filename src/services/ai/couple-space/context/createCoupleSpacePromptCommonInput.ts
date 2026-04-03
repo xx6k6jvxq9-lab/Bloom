@@ -10,6 +10,8 @@ import type {
   MessageBoardEntry,
 } from '../../../../types';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
+import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
+import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import type {
   CoupleSpacePromptCommonInputDiagnostics,
   CoupleSpacePromptCommonInputEnvelope,
@@ -49,6 +51,10 @@ export function createCoupleSpacePromptCommonInput(
   const { source, scene } = params;
   const options = mergeBuildOptions(params.options);
   const policy = buildRuntimePolicy(source, scene, options);
+  const characterContext = buildCharacterContext({
+    character: source.partner,
+  });
+  const resolvedMemory = buildResolvedMemoryLayers(source.partner);
   const characterCoreResult = buildCharacterCore(source);
   const recentChatMessages = getRecentChatMessages(source, options, policy);
   const recentChatTurns = options.includeRecentChatTurns
@@ -89,12 +95,12 @@ export function createCoupleSpacePromptCommonInput(
       actionType: scene?.actionType,
       characterCore: characterCoreResult.value,
       memoryContext: {
-        memorySummary: source.partner.memorySummary?.trim() || undefined,
+        memorySummary: resolvedMemory.longTermMemoryProfile,
       },
       characterProfile: {
         characterName: source.partner.name,
         signature: source.partner.signature?.trim() || undefined,
-        personaSummary: source.partner.setting?.trim() || undefined,
+        personaSummary: characterContext.corePersona,
         speakingStyle: source.partner.signature?.trim() || undefined,
         initiativeStyle:
           source.partner.postFrequency && source.partner.postFrequency !== 'none'
@@ -305,7 +311,9 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
 
   return {
     value: {
-      characterSetting: source.partner.setting?.trim() || undefined,
+      characterSetting: buildCharacterContext({
+        character: source.partner,
+      }).corePersona,
       maskPrompt,
       worldBookPrompt,
     },
