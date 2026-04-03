@@ -11,11 +11,12 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
-import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
 import {
@@ -521,7 +522,10 @@ export function useDirectChatRuntime({
     }
 
     try {
-      const prompt = `你正在与用户进行语音通话。你的设定是：${character.setting}
+      const characterCorePersona = buildCharacterContext({
+        character,
+      }).corePersona || character.setting;
+      const prompt = `你正在与用户进行语音通话。你的核心人设是：${characterCorePersona}
 用户的上一句话是："${userText}"
 请以口语化的方式简短回应（50字以内）。`;
 
@@ -540,7 +544,7 @@ export function useDirectChatRuntime({
       console.error('Voice call AI generation failed', voiceCallError);
       return null;
     }
-  }, [activeConfig, character.setting]);
+  }, [activeConfig, character]);
 
   const handleSend = useCallback(async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
     const textToSend = typeof overrideText === 'string' ? overrideText : input;
@@ -759,10 +763,13 @@ export function useDirectChatRuntime({
         try {
           const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, character.memoryLimit);
           const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
+          const characterCorePersona = buildCharacterContext({
+            character,
+          }).corePersona || character.setting;
           const prompt = buildSummaryPrompt({
             mode: 'small',
             characterCore: {
-              characterSetting: character.setting,
+              characterSetting: characterCorePersona,
             },
             memoryContext: {
               memorySummary: longTermMemoryProfile,
