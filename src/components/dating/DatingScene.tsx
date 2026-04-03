@@ -12,6 +12,7 @@ import type {
 } from '../../types';
 import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
+import { buildDatingSceneInput } from '../../services/scene-inputs/buildDatingSceneInput';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import {
@@ -273,16 +274,18 @@ export function DatingScene({
 
     try {
       const prompt = buildDatingPrompt({
-        mode,
-        character,
-        userProfile,
-        session: {
-          ...pendingSession,
-          messages: workingMessages,
-          generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
-        },
-        chatHistory,
-        latestUserInput,
+        sceneInput: buildDatingSceneInput({
+          mode,
+          character,
+          userProfile,
+          session: {
+            ...pendingSession,
+            messages: workingMessages,
+            generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
+          },
+          chatHistory,
+          latestUserInput,
+        }),
       });
 
       let rawText = '';
