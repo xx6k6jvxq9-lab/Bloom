@@ -3,6 +3,7 @@ import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPro
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
+import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
   character: Character;
@@ -52,6 +53,13 @@ export function buildChatSceneInput(
     shortTermSummary: characterScopedMemory.shortTermSummary,
     recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
   };
+  const budgetedContext = applyChatPromptBudget({
+    recentContext,
+    sections: buildExtraSections({
+      extendedLore: characterContext.extendedLore,
+      chatSceneHint: characterContext.sceneHints?.chat,
+    }),
+  });
 
   return {
     mode: params.mode,
@@ -66,10 +74,7 @@ export function buildChatSceneInput(
       memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
-    recentContext,
-    sections: buildExtraSections({
-      extendedLore: characterContext.extendedLore,
-      chatSceneHint: characterContext.sceneHints?.chat,
-    }),
+    recentContext: budgetedContext.recentContext,
+    sections: budgetedContext.sections,
   };
 }
