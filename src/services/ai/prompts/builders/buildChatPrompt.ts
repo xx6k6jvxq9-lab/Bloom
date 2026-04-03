@@ -1,5 +1,5 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
-import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
+import { CHAT_OUTPUT_RULES, COMMON_OUTPUT_RULES } from '../base/outputRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
 import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
@@ -65,7 +65,8 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     buildMemoryContextSection(options.memoryContext ?? {}),
     buildRecentContextSection(options.recentContext),
     scenario,
-    OUTPUT_RULES_PROMPT,
+    COMMON_OUTPUT_RULES,
+    CHAT_OUTPUT_RULES,
     ...(includeProtocolRules ? [PROTOCOL_RULES_PROMPT] : []),
     ...(options.sections ?? []),
   ].filter(Boolean);
