@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
-import { generateTextWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -260,9 +260,13 @@ export function ChatSettingsPanel({
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
         ],
       });
-      const responseText = await generateTextWithConfig({
+      let responseText = '';
+      await streamTextWithConfig({
         activeConfig,
-        prompt,
+        messages: [{ role: 'system', content: prompt }],
+        onTextChunk: (chunkText) => {
+          responseText += chunkText;
+        },
       });
 
       if (responseText) {
@@ -271,7 +275,8 @@ export function ChatSettingsPanel({
       }
     } catch (error: any) {
       console.error('Failed to summarize:', error);
-      alert(`总结失败: ${error.message}`);
+      const message = error instanceof Error ? error.message : '未知错误';
+      alert(`总结失败: ${message.split(' Raw preview:')[0]}`);
     } finally {
       setIsSummarizing(false);
     }
@@ -819,7 +824,7 @@ export function ChatSettingsPanel({
         {activeSection === 'model' && (
         <SettingsSection
           title="模型与记忆"
-          summary="上下文窗口、Token 估算和长期记忆相关设置"
+          summary="上下文窗口、Token 估算和短期/长期记忆设置"
           defaultOpen
         >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
@@ -898,8 +903,8 @@ export function ChatSettingsPanel({
                 <div className="px-4 pb-4 pt-2 bg-white/30 border-t border-white/20 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-[14px] text-zinc-700">自动总结记忆</span>
-                      <span className="text-[11px] text-zinc-500">开启后，更早聊天内容会逐步沉淀成记忆；关闭时，AI主要依赖最近窗口和已有长期记忆。</span>
+                      <span className="text-[14px] text-zinc-700">自动刷新近期总结</span>
+                      <span className="text-[11px] text-zinc-500">开启后，聊天主链会按间隔更新短期总结；关闭时，AI主要依赖最近窗口和已有长期画像。</span>
                     </div>
                     <div
                       onClick={() => onUpdate({ ...character, autoSummaryEnabled: !character.autoSummaryEnabled })}
@@ -927,6 +932,7 @@ export function ChatSettingsPanel({
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
                         <span className="text-[14px] text-zinc-700">长期记忆 / 长期画像</span>
+                        <span className="text-[11px] text-zinc-500">手动总结会把这段关系里更稳定的印象、偏好和边界沉淀到这里。</span>
                         <button
                           onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
                           className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
@@ -939,11 +945,12 @@ export function ChatSettingsPanel({
                         disabled={isSummarizing}
                         className="px-3 py-1 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
                       >
-                        {isSummarizing ? '总结中...' : '生成长期总结'}
+                        {isSummarizing ? '总结中...' : '生成长期画像'}
                       </button>
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="text-[12px] text-zinc-500">近期记忆 / 短期总结</span>
+                      <span className="text-[11px] text-zinc-400">这里放最近几轮互动的状态、余波和当前气氛，适合被自动总结频繁刷新。</span>
                       <textarea
                         value={shortTermSummary}
                         onChange={e => onUpdate({ ...character, shortTermSummary: e.target.value })}
@@ -953,6 +960,7 @@ export function ChatSettingsPanel({
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="text-[12px] text-zinc-500">长期记忆 / 长期画像</span>
+                      <span className="text-[11px] text-zinc-400">这里放更稳定的关系理解和角色印象，不需要像近期总结那样频繁变化。</span>
                     <textarea
                       value={longTermMemoryProfile}
                       onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}

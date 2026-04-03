@@ -13,8 +13,8 @@ export type BuildSummaryPromptOptions = {
 };
 
 /**
- * Draft prompt composer for summary scenarios.
- * Keep this builder independent from current App.tsx logic for now.
+ * Shared prompt composer for summary scenarios.
+ * It is used by both short-term refreshes and long-term profile generation.
  */
 export function buildSummaryPrompt(options: BuildSummaryPromptOptions = {}): string {
   const scenario = options.mode === 'large'
