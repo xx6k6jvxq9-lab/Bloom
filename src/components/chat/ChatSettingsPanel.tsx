@@ -928,46 +928,61 @@ export function ChatSettingsPanel({
                     </div>
                   )}
 
-                  <div className="flex flex-col gap-3">
-                    <div className="rounded-2xl bg-white/45 border border-white/30 px-3 py-3 flex flex-col gap-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[14px] text-zinc-700 font-medium">近期记忆 / 短期总结</span>
-                        <span className="text-[11px] text-zinc-500">这里放最近几轮互动的状态、余波和当前气氛，适合被自动总结频繁刷新。</span>
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-2xl bg-white/55 border border-white/40 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[14px] text-zinc-700 font-medium">近期记忆 / 短期总结</span>
+                          <span className="text-[11px] text-zinc-500">这里放最近几轮互动的状态、余波和当前气氛，适合被自动总结频繁刷新。</span>
+                        </div>
+                        <button
+                          onClick={() => alert('近期总结详情页稍后接入，这里会进入短期总结记录列表。')}
+                          className="shrink-0 text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                        >
+                          查看详情
+                        </button>
                       </div>
+                      <div className="px-4 py-3">
                       <textarea
                         value={shortTermSummary}
                         onChange={e => onUpdate({ ...character, shortTermSummary: e.target.value })}
                         placeholder="最近几轮互动的状态与余波会出现在这里..."
-                        className="w-full bg-white/60 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[112px] resize-none"
+                        className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[132px] resize-none"
                       />
                     </div>
+                    </div>
 
-                    <div className="rounded-2xl bg-white/45 border border-white/30 px-3 py-3 flex flex-col gap-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex flex-col gap-1 min-w-0">
+                    <div className="rounded-2xl bg-white/55 border border-white/40 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
+                        <div className="flex flex-col gap-1 min-w-0 pr-2">
                           <span className="text-[14px] text-zinc-700 font-medium">长期记忆 / 长期画像</span>
                           <span className="text-[11px] text-zinc-500">手动整理会把这段关系里更稳定的印象、偏好和边界沉淀到这里。</span>
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
                           <button
-                            onClick={() => alert('查看历史总结记录：\n1. 2024-03-01: 初始对话总结\n2. 2024-03-02: 关于爱好的讨论\n3. 2024-03-04: 当前状态总结')}
-                            className="text-left text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                            onClick={handleSummarize}
+                            disabled={isSummarizing}
+                            className="px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
                           >
-                            查看总结记录
+                            {isSummarizing ? '总结中...' : '生成长期画像'}
+                          </button>
+                          <button
+                            onClick={() => alert('长期画像详情页稍后接入，这里会进入长期画像记录列表。')}
+                            className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
+                          >
+                            查看详情
                           </button>
                         </div>
-                        <button
-                          onClick={handleSummarize}
-                          disabled={isSummarizing}
-                          className="shrink-0 px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
-                        >
-                          {isSummarizing ? '总结中...' : '生成长期画像'}
-                        </button>
                       </div>
-                      <textarea
-                        value={longTermMemoryProfile}
-                        onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}
-                        placeholder="长期沉淀下来的稳定印象、偏好、边界会保存在这里..."
-                        className="w-full bg-white/60 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[156px] resize-none"
-                      />
+                      <div className="px-4 py-3">
+                        <div className="mb-2 text-[11px] text-zinc-400">当前生效的长期画像</div>
+                        <textarea
+                          value={longTermMemoryProfile}
+                          onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}
+                          placeholder="长期沉淀下来的稳定印象、偏好、边界会保存在这里..."
+                          className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
