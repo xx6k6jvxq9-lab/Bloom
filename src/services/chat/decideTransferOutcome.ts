@@ -49,7 +49,13 @@ async function generateTransferDecisionText(options: {
 
   await streamTextWithConfig({
     activeConfig: options.activeConfig,
-    messages: [{ role: 'system', content: options.prompt }],
+    messages: [
+      {
+        role: 'system',
+        content: '你是一个只负责完成当前任务的角色判断与角色回复生成器。严格遵守用户消息里的格式要求。',
+      },
+      { role: 'user', content: options.prompt },
+    ],
     temperature: 0.2,
     onTextChunk: (chunkText) => {
       responseText += chunkText;
@@ -65,7 +71,14 @@ async function generateTransferDecisionText(options: {
 }
 
 function resolveTransferPersonaSummary(character: Character): string {
-  return buildCharacterContext({ character }).corePersona ?? '未提供';
+  const characterContext = buildCharacterContext({ character });
+  const parts = [
+    characterContext.corePersona,
+    character.signature?.trim(),
+    character.openingRemark?.trim(),
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join('\n') : '未提供';
 }
 
 export async function decideTransferOutcome(options: {
