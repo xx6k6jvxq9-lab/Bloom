@@ -1,4 +1,5 @@
 import type { Character, ChatMessage, CoupleSpaceData, LoveLetter } from '../../../types';
+import { buildCharacterContext } from '../../relationship-context/buildCharacterContext';
 import {
   DOCUMENTARY_TEMPLATE_BANK,
   OBSERVATION_TEMPLATE_BANK,
@@ -408,7 +409,8 @@ function renderFact(fact: ExtractedFact, persona: PersonaFlavor) {
 }
 
 function inferPersonaFlavor(partner: Character): PersonaFlavor {
-  const text = `${partner.setting || ''} ${partner.signature || ''} ${partner.openingRemark || ''}`;
+  const corePersona = buildCharacterContext({ character: partner }).corePersona || '';
+  const text = `${corePersona} ${partner.signature || ''} ${partner.openingRemark || ''}`;
   if (/(傲娇|嘴硬|别扭|毒舌)/u.test(text)) return 'tsundere';
   if (/(黏人|撒娇|小狗|直球)/u.test(text)) return 'clingy';
   if (/(温柔|体贴|治愈|耐心|柔软)/u.test(text)) return 'gentle';
