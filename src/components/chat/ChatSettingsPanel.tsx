@@ -17,14 +17,20 @@ function SettingsSection({
   title,
   summary,
   defaultOpen = false,
+  hideHeader = false,
   children,
 }: {
   title: string;
   summary?: string;
   defaultOpen?: boolean;
+  hideHeader?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  if (hideHeader) {
+    return <div className="mt-3">{children}</div>;
+  }
 
   return (
     <div className="mt-6 px-4">
@@ -106,7 +112,7 @@ export function ChatSettingsPanel({
   onUpdateVisualSettings: (settings: VisualSettings) => void;
 }) {
   const { setUploadedFile } = usePersistentFieldActions();
-  const [activeSection, setActiveSection] = useState<'menu' | 'basic' | 'chat' | 'model' | 'resource'>('menu');
+  const [expandedSection, setExpandedSection] = useState<'basic' | 'chat' | 'model' | 'resource' | null>(null);
   const [tempAvatar, setTempAvatar] = useState('');
   const [tempBg, setTempBg] = useState('');
   const [showAvatarInput, setShowAvatarInput] = useState(false);
@@ -140,18 +146,12 @@ export function ChatSettingsPanel({
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
   const expressionStyle = character.expressionStyle?.trim() || '';
+  const boundaryPack = character.boundaryPack?.trim() || '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const settingSummary = resolvedCorePersona
     ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
-  const sectionTitleMap: Record<'menu' | 'basic' | 'chat' | 'model' | 'resource', string> = {
-    menu: '聊天设置',
-    basic: '基础设置',
-    chat: '聊天设置',
-    model: '模型与记忆',
-    resource: '资源与内容',
-  };
 
   const calculateTokens = () => {
       const estimateTextTokens = (text: string) => {
@@ -367,79 +367,72 @@ export function ChatSettingsPanel({
       {/* Header */}
       <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
         <button
-          onClick={() => {
-            if (activeSection === 'menu') {
-              onBack();
-              return;
-            }
-            setActiveSection('menu');
-          }}
+          onClick={onBack}
           className="p-1 -ml-1 text-zinc-600 active:text-zinc-800"
         >
           <ChevronLeft size={24} />
         </button>
-        <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">{sectionTitleMap[activeSection]}</h1>
+        <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">聊天设置</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-10">
-        {activeSection === 'menu' ? (
-          <div className="px-4 pt-6 space-y-3">
+        <div className="px-4 pt-6 flex flex-col gap-3">
             <button
-              onClick={() => setActiveSection('basic')}
-              className="w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
+              onClick={() => setExpandedSection(prev => (prev === 'basic' ? null : 'basic'))}
+              className="order-1 w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
             >
               <div>
                 <h2 className="text-[15px] font-semibold text-zinc-800">基础设置</h2>
                 <p className="text-[11px] text-zinc-500 mt-1">头像、分组、签名与角色基础资料</p>
               </div>
-              <ChevronRight size={18} className="text-zinc-400" />
+              <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'basic' ? '' : '-rotate-90'}`} />
             </button>
             <button
-              onClick={() => setActiveSection('chat')}
-              className="w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
+              onClick={() => setExpandedSection(prev => (prev === 'chat' ? null : 'chat'))}
+              className="order-3 w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
             >
               <div>
                 <h2 className="text-[15px] font-semibold text-zinc-800">聊天设置</h2>
                 <p className="text-[11px] text-zinc-500 mt-1">回复习惯、显示偏好和互动相关设置</p>
               </div>
-              <ChevronRight size={18} className="text-zinc-400" />
+              <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'chat' ? '' : '-rotate-90'}`} />
             </button>
             <button
-              onClick={() => setActiveSection('model')}
-              className="w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
+              onClick={() => setExpandedSection(prev => (prev === 'model' ? null : 'model'))}
+              className="order-5 w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
             >
               <div>
                 <h2 className="text-[15px] font-semibold text-zinc-800">模型与记忆</h2>
                 <p className="text-[11px] text-zinc-500 mt-1">上下文窗口、记忆总结和世界书读取</p>
               </div>
-              <ChevronRight size={18} className="text-zinc-400" />
+              <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'model' ? '' : '-rotate-90'}`} />
             </button>
             <button
-              onClick={() => setActiveSection('resource')}
-              className="w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
+              onClick={() => setExpandedSection(prev => (prev === 'resource' ? null : 'resource'))}
+              className="order-7 w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
             >
               <div>
                 <h2 className="text-[15px] font-semibold text-zinc-800">资源与内容</h2>
                 <p className="text-[11px] text-zinc-500 mt-1">导入导出、表情包与内容管理</p>
               </div>
-              <ChevronRight size={18} className="text-zinc-400" />
+              <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'resource' ? '' : '-rotate-90'}`} />
             </button>
             <button
               onClick={async () => {
                 if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
               }}
-              className="w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
+              className="order-9 w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
             >
               清空聊天记录
             </button>
-          </div>
-        ) : (
-          <>
-        {activeSection === 'basic' && (
+        
+        {expandedSection === 'basic' && (
+        <div className="order-2">
         <SettingsSection
           title="基础设置"
           summary={`常用资料与聊天入口，当前分组：${currentGroupLabel}`}
           defaultOpen
+          hideHeader
         >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm">
             <div className="p-3 flex flex-col items-center gap-2 border-b border-white/30">
@@ -596,13 +589,16 @@ export function ChatSettingsPanel({
             </div>
           </div>
         </SettingsSection>
+        </div>
         )}
 
-        {activeSection === 'chat' && (
+        {expandedSection === 'chat' && (
+        <div className="order-4">
         <SettingsSection
           title="聊天设置"
           summary="高频聊天行为、显示偏好和互动相关设置"
           defaultOpen
+          hideHeader
         >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
             <div className="px-4 py-3.5 flex flex-col gap-3">
@@ -849,13 +845,16 @@ export function ChatSettingsPanel({
           </div>
 
         </SettingsSection>
+        </div>
         )}
 
-        {activeSection === 'model' && (
+        {expandedSection === 'model' && (
+        <div className="order-6">
         <SettingsSection
           title="模型与记忆"
           summary="上下文窗口、Token 估算和短期/长期记忆设置"
           defaultOpen
+          hideHeader
         >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
             <div className="px-4 py-3.5 flex flex-col gap-3">
@@ -1042,14 +1041,16 @@ export function ChatSettingsPanel({
             </button>
           </div>
         </SettingsSection>
+        </div>
         )}
 
-        {activeSection === 'resource' && (
-        <>
+        {expandedSection === 'resource' && (
+        <div className="order-8">
         <SettingsSection
           title="资源与内容"
           summary="表情包、导入导出等低频内容操作"
           defaultOpen
+          hideHeader
         >
           <div className="bg-white/60 backdrop-blur-md rounded-2xl overflow-hidden border border-white/40 shadow-sm divide-y divide-white/30">
             <div className="grid grid-cols-2 divide-x divide-white/30">
@@ -1086,21 +1087,9 @@ export function ChatSettingsPanel({
             </div>
           </div>
         </SettingsSection>
-
-        <div className="mt-8 px-4">
-          <button 
-            onClick={async () => {
-              if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
-            }}
-            className="w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm"
-          >
-            清空聊天记录
-          </button>
         </div>
-        </>
         )}
-        </>
-        )}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -1153,6 +1142,23 @@ export function ChatSettingsPanel({
                     onChange={e => onUpdate({ ...character, expressionStyle: e.target.value })}
                     placeholder="例如：嘴硬时会先轻轻顶一句，再把真实关心补回来；靠近时不黏腻，会用很自然的小动作和短句试探。"
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[180px] resize-none"
+                  />
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="边界与禁区"
+                summary="角色不能越过什么线、不能失真什么地方"
+              >
+                <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
+                  <p className="text-[11px] text-zinc-500 mb-3">
+                    写清楚不能编造什么、不能突破什么亲密强度、不能为了推进互动牺牲哪些角色原则。
+                  </p>
+                  <textarea
+                    value={boundaryPack}
+                    onChange={e => onUpdate({ ...character, boundaryPack: e.target.value })}
+                    placeholder="例如：不把关心写成控制；关系没到时不主动说过火的话；不能编造不存在的共同经历。"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[160px] resize-none"
                   />
                 </div>
               </SettingsSection>
