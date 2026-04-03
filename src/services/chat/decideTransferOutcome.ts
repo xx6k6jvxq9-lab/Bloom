@@ -1,5 +1,6 @@
 import type { ApiConfig, Character, ChatMessage } from '../../types';
 import { streamTextWithConfig } from '../ai/runtimeClient';
+import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 
 export type TransferDecision = {
   decision: 'accept' | 'reject';
@@ -63,6 +64,10 @@ async function generateTransferDecisionText(options: {
   return normalized;
 }
 
+function resolveTransferPersonaSummary(character: Character): string {
+  return buildCharacterContext({ character }).corePersona ?? '未提供';
+}
+
 export async function decideTransferOutcome(options: {
   activeConfig: ApiConfig;
   character: Character;
@@ -75,11 +80,12 @@ export async function decideTransferOutcome(options: {
     .slice(-6)
     .map(message => `${message.role === 'user' ? userName : character.name}: ${message.text}`)
     .join('\n');
+  const personaSummary = resolveTransferPersonaSummary(character);
 
   const prompt = [
     '你现在只负责判断一个聊天角色是否会收下用户的转账。',
     `角色名：${character.name}`,
-    `角色设定：${character.setting || '未提供'}`,
+    `角色设定：${personaSummary}`,
     `转账金额：${amount.toFixed(2)} 元`,
     '最近聊天：',
     compactHistory || '无',
@@ -113,6 +119,7 @@ export async function generateTransferEventReaction(options: {
     .slice(-8)
     .map(message => `${message.role === 'user' ? userName : character.name}: ${message.text}`)
     .join('\n');
+  const personaSummary = resolveTransferPersonaSummary(character);
 
   const eventLine = direction === 'character_to_user_received'
     ? `${userName} 刚刚领取了 ${character.name} 转出的 ${amount.toFixed(2)} 元。`
@@ -121,7 +128,7 @@ export async function generateTransferEventReaction(options: {
   const prompt = [
     '你现在只负责生成角色在转账结果落地后的即时自然反应。',
     `角色名：${character.name}`,
-    `角色设定：${character.setting || '未提供'}`,
+    `角色设定：${personaSummary}`,
     `事件：${eventLine}`,
     '最近聊天：',
     compactHistory || '无',
