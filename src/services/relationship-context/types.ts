@@ -1,6 +1,7 @@
 export type CharacterContext = {
   corePersona?: string;
   expressionStyle?: string;
+  boundaryPack?: string;
   extendedLore?: string;
   sceneHints?: Record<string, string>;
   maskPrompt?: string;

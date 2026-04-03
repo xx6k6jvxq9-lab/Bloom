@@ -67,6 +67,7 @@ export function migrateCharacterShape(character: Character): Character {
     ?? normalizeOptionalText(character.setting);
   const expressionStyle = normalizeOptionalText(character.expressionStyle)
     ?? extractExpressionStyleSections(basePersonaSource);
+  const boundaryPack = normalizeOptionalText(character.boundaryPack);
   const corePersona = stripExpressionStyleSections(basePersonaSource);
   const extendedLore = normalizeOptionalText(character.extendedLore);
   const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
@@ -78,6 +79,7 @@ export function migrateCharacterShape(character: Character): Character {
     ...character,
     corePersona,
     expressionStyle,
+    boundaryPack,
     extendedLore,
     sceneHints,
     shortTermSummary,

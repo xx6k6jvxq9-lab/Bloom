@@ -58,6 +58,7 @@ export function buildCharacterContext(input: BuildCharacterContextInput): Charac
   return {
     corePersona,
     expressionStyle: normalizeOptionalText(input.character.expressionStyle),
+    boundaryPack: normalizeOptionalText(input.character.boundaryPack),
     extendedLore: normalizeOptionalText(input.character.extendedLore),
     sceneHints: normalizeSceneHints(input.character.sceneHints),
     maskPrompt: buildMaskPrompt(input.activeMask),
