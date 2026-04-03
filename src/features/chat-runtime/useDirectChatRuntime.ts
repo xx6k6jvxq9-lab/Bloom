@@ -524,7 +524,7 @@ export function useDirectChatRuntime({
     try {
       const characterCorePersona = buildCharacterContext({
         character,
-      }).corePersona || character.setting;
+      }).corePersona ?? '';
       const prompt = `你正在与用户进行语音通话。你的核心人设是：${characterCorePersona}
 用户的上一句话是："${userText}"
 请以口语化的方式简短回应（50字以内）。`;
@@ -765,14 +765,14 @@ export function useDirectChatRuntime({
           const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
           const characterCorePersona = buildCharacterContext({
             character,
-          }).corePersona || character.setting;
+          }).corePersona ?? '';
           const prompt = buildSummaryPrompt({
             mode: 'small',
             characterCore: {
               characterSetting: characterCorePersona,
             },
             memoryContext: {
-              memorySummary: longTermMemoryProfile,
+              longTermMemoryProfile,
             },
             sections: [
               summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),

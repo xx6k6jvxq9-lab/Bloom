@@ -40,9 +40,11 @@ export function buildHeartCapsulePromptContext({
 }: HeartCapsuleContextOptions) {
   const memory = buildResolvedMemoryLayers(partner);
   const characterContext = buildCharacterContext({ character: partner });
+
   const lines = [
     `角色名字：${partner.name}`,
     `角色核心人设：${characterContext.corePersona || '未提供'}`,
+    characterContext.expressionStyle ? `表达风格与相处方式：${characterContext.expressionStyle}` : '',
     partner.signature ? `角色签名：${partner.signature}` : '',
     partner.openingRemark ? `角色初始语气：${partner.openingRemark}` : '',
     memory.shortTermSummary ? `短期记忆摘要：${memory.shortTermSummary}` : '',

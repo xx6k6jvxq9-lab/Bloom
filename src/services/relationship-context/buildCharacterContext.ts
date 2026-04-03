@@ -53,11 +53,11 @@ function normalizeSceneHints(value: Record<string, string> | undefined): Record<
 }
 
 export function buildCharacterContext(input: BuildCharacterContextInput): CharacterContext {
-  const corePersona = normalizeOptionalText(input.character.corePersona)
-    ?? normalizeOptionalText(input.character.setting);
+  const corePersona = normalizeOptionalText(input.character.corePersona);
 
   return {
     corePersona,
+    expressionStyle: normalizeOptionalText(input.character.expressionStyle),
     extendedLore: normalizeOptionalText(input.character.extendedLore),
     sceneHints: normalizeSceneHints(input.character.sceneHints),
     maskPrompt: buildMaskPrompt(input.activeMask),

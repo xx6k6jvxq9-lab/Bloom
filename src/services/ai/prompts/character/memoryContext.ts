@@ -8,7 +8,7 @@
  */
 
 export type MemoryContextInput = {
-  memorySummary?: string;
+  longTermMemoryProfile?: string;
   perceptionPrompt?: string;
 };
 
@@ -27,8 +27,8 @@ export const LONG_TERM_MEMORY_CONTEXT_HEADER = [
 export function buildShortTermMemoryContextSection(input: MemoryContextInput): string {
   const sections = [
     SHORT_TERM_MEMORY_CONTEXT_HEADER,
-    input.memorySummary?.trim()
-      ? ['[近期记忆 / 最近几轮仍会影响后续互动的状态与余波]', input.memorySummary.trim()].join('\n')
+    input.longTermMemoryProfile?.trim()
+      ? ['[近期记忆 / 最近几轮仍会影响后续互动的状态与余波]', input.longTermMemoryProfile.trim()].join('\n')
       : '',
     input.perceptionPrompt?.trim()
       ? ['[当前感知 / 此刻的状态与处境]', input.perceptionPrompt.trim()].join('\n')
@@ -41,8 +41,8 @@ export function buildShortTermMemoryContextSection(input: MemoryContextInput): s
 export function buildLongTermMemoryContextSection(input: MemoryContextInput): string {
   const sections = [
     LONG_TERM_MEMORY_CONTEXT_HEADER,
-    input.memorySummary?.trim()
-      ? ['[长期记忆 / 已沉淀的关系印象、偏好与边界]', input.memorySummary.trim()].join('\n')
+    input.longTermMemoryProfile?.trim()
+      ? ['[长期记忆 / 已沉淀的关系印象、偏好与边界]', input.longTermMemoryProfile.trim()].join('\n')
       : '',
     input.perceptionPrompt?.trim()
       ? ['[当前感知 / 此刻的状态与处境]', input.perceptionPrompt.trim()].join('\n')

@@ -459,6 +459,7 @@ export type Character = {
   avatar: string;
   setting: string;
   corePersona?: string;
+  expressionStyle?: string;
   extendedLore?: string;
   sceneHints?: Record<string, string>;
   signature?: string;

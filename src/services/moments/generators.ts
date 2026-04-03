@@ -3,6 +3,8 @@ import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { streamTextWithConfig } from '../ai/runtimeClient';
+import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
+import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import {
   classifyMomentCommentType,
   getRecentMomentReplyContext,
@@ -98,6 +100,45 @@ function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[])
     : '';
 }
 
+function buildMomentCharacterCore(options: {
+  character: Character;
+  masks: Mask[];
+  worldBook: WorldBookEntry[];
+}) {
+  const { character, masks, worldBook } = options;
+  const characterContext = buildCharacterContext({
+    character,
+  });
+
+  return {
+    characterSetting: characterContext.corePersona ?? '',
+    maskPrompt: buildMaskPrompt(character.id, masks),
+    worldBookPrompt: buildWorldBookPrompt(character, worldBook),
+  };
+}
+
+function buildMomentMemoryContext(character: Character) {
+  const memory = buildResolvedMemoryLayers(character);
+
+  return {
+    longTermMemoryProfile: memory.longTermMemoryProfile ?? '',
+  };
+}
+
+function buildMomentExpressionStyleSection(character: Character) {
+  const expressionStyle = buildCharacterContext({ character }).expressionStyle?.trim();
+  return expressionStyle ? ['## 表达风格与相处方式', expressionStyle].join('\n') : undefined;
+}
+
+function buildMomentCommentToneGuardSection() {
+  return [
+    '## 评论区语气约束',
+    '不要写成长辈腔、说教口吻或过度管束感。',
+    '优先保留角色原本的少年感、自然感和轻微嘴硬。',
+    '像评论区顺手回一句，不要把气氛写成训人或教育人。',
+  ].join('\n');
+}
+
 function getCleanMomentFallback() {
   return MOMENT_TEMPLATES[Math.floor(Math.random() * MOMENT_TEMPLATES.length)];
 }
@@ -180,14 +221,8 @@ function buildMomentPostPrompt(options: {
 }) {
   const { character, masks, worldBook, triggerHint, extraStyleHints = [] } = options;
   return buildMomentsPrompt({
-    characterCore: {
-      characterSetting: character.setting,
-      maskPrompt: buildMaskPrompt(character.id, masks),
-      worldBookPrompt: buildWorldBookPrompt(character, worldBook),
-    },
-    memoryContext: {
-      memorySummary: character.memorySummary?.trim() || '',
-    },
+    characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
+    memoryContext: buildMomentMemoryContext(character),
     postContext: {
       signature: character.signature,
       relationship: '角色在社交动态页发一条公开可见的状态',
@@ -269,14 +304,8 @@ export async function generateMomentChatReaction(options: {
   const { activeConfig, character, masks, worldBook, requestText } = options;
   const reactionPrompt = buildChatPrompt({
     mode: 'chat',
-    characterCore: {
-      characterSetting: character.setting,
-      maskPrompt: buildMaskPrompt(character.id, masks),
-      worldBookPrompt: buildWorldBookPrompt(character, worldBook),
-    },
-    memoryContext: {
-      memorySummary: character.memorySummary?.trim() || '',
-    },
+    characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
+    memoryContext: buildMomentMemoryContext(character),
     sections: [
       `【特殊当前任务】
 用户刚刚要求你去发一条动态，原话是：“${requestText}”
@@ -385,11 +414,9 @@ export async function generateMomentCommentReply(options: {
   try {
     const prompt = buildMomentCommentReplyPrompt({
       characterCore: {
-        characterSetting: replyCharacter.setting,
+        characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
       },
-      memoryContext: {
-        memorySummary: replyCharacter.memorySummary?.trim() || '',
-      },
+      memoryContext: buildMomentMemoryContext(replyCharacter),
       momentContext: {
         momentContent: moment.content,
         momentTone: inferMomentTone(moment.content),
@@ -409,6 +436,10 @@ export async function generateMomentCommentReply(options: {
           '按评论类型自然区分回应方式',
         ],
       },
+      sections: [
+        buildMomentExpressionStyleSection(replyCharacter),
+        buildMomentCommentToneGuardSection(),
+      ].filter(Boolean) as string[],
     });
 
     const response = await generateSingleText({
@@ -466,11 +497,9 @@ export async function generateMomentAutoComment(options: {
   try {
     const prompt = buildMomentCommentReplyPrompt({
       characterCore: {
-        characterSetting: replyCharacter.setting,
+        characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
       },
-      memoryContext: {
-        memorySummary: replyCharacter.memorySummary?.trim() || '',
-      },
+      memoryContext: buildMomentMemoryContext(replyCharacter),
       momentContext: {
         momentContent: moment.content,
         momentTone: inferMomentTone(moment.content),
@@ -488,6 +517,10 @@ export async function generateMomentAutoComment(options: {
           '最近几条评论不要重复句型',
         ],
       },
+      sections: [
+        buildMomentExpressionStyleSection(replyCharacter),
+        buildMomentCommentToneGuardSection(),
+      ].filter(Boolean) as string[],
     });
 
     const response = await generateSingleText({

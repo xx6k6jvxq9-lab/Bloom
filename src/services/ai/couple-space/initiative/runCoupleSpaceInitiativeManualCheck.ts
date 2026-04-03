@@ -258,7 +258,7 @@ function buildCommonPromptInput({ user, partner, coupleSpace }: CoupleSpaceIniti
       characterName: partner.name,
       signature: partner.signature,
       personaSummary,
-      speakingStyle: partner.signature || undefined,
+      speakingStyle: buildCharacterContext({ character: partner }).expressionStyle ?? (partner.signature || undefined),
       initiativeStyle: partner.postFrequency || undefined,
     },
     relationshipContext: {

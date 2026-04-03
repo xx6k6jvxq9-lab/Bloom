@@ -18,6 +18,9 @@ export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions
     sceneInput.recentContext?.longTermMemoryProfile
       ? `Long-term relationship memory: ${sceneInput.recentContext.longTermMemoryProfile}`
       : '',
+    sceneInput.recentContext?.expressionStyle
+      ? `Public-facing expression style: ${sceneInput.recentContext.expressionStyle}`
+      : '',
     sceneInput.recentContext?.groupSceneHint
       ? `Group chat scene hint: ${sceneInput.recentContext.groupSceneHint}`
       : '',

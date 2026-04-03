@@ -741,6 +741,218 @@ Bloom/
 - 角色域已经开始建立统一读写边界，但仍未彻底完成
 - 业务状态仍然存在“顶层集中 + 子域分流”并存的状态
 
+## 13A. 当前阶段校正结论（2026-04-04）
+
+这一节用于补充“按当前代码现实重新校正后的阶段判断”。
+
+它不是替代长期蓝图，而是回答一个更工程化的问题：
+
+- 当前到底已经做到哪一步
+- 哪些内容只是文档目标
+- 哪些内容已经真正落进运行链
+- 下一步主线为什么应该这样排
+
+### 13A.1 当前真实阶段
+
+按当前仓库代码现实判断，Bloom 现在不再处于“继续讨论骨架”的阶段，而处于：
+
+- `Phase A / 最小承重骨架`：基本完成
+- `Phase B / 主链打实与角色收口`：已经开始，并且已经进入中段
+- `Phase B2 / 旧路径清理`：已经正式开始，但还没完成
+- `Phase C / 深关系场景接统一关系链`：部分链路已有局部接入，不是完全未开始
+
+更具体地说：
+
+- 聊天主链已经开始走最小新骨架
+- 群聊、约会、情侣空间公共输入层已经部分接入新结构
+- 角色输入、活人感迁移和场景读取规则已经补齐成单独文档
+- 但“完整角色结构”还没有全部正式写进代码
+
+因此当前最准确的工程判断是：
+
+**现在已经可以正式进入“角色主路径收口”的代码阶段。**
+
+### 13A.2 当前代码里已经存在的最小新骨架
+
+当前代码里已经真实存在、并在主链中开始被消费的“最小新骨架”包括：
+
+- `corePersona`
+- `extendedLore`
+- `sceneHints`
+- `shortTermSummary`
+- `longTermMemoryProfile`
+
+以及对应入口：
+
+- [`src/services/relationship-context/buildCharacterContext.ts`](../src/services/relationship-context/buildCharacterContext.ts)
+- [`src/services/memory/buildResolvedMemoryLayers.ts`](../src/services/memory/buildResolvedMemoryLayers.ts)
+- [`src/services/scene-inputs/buildChatSceneInput.ts`](../src/services/scene-inputs/buildChatSceneInput.ts)
+- [`src/services/scene-inputs/buildGroupChatSceneInput.ts`](../src/services/scene-inputs/buildGroupChatSceneInput.ts)
+- [`src/services/scene-inputs/buildDatingSceneInput.ts`](../src/services/scene-inputs/buildDatingSceneInput.ts)
+
+这里要特别区分：
+
+- 这些是“当前已落代码的最小新骨架”
+- 不是“完整角色结构已经全部落地”
+
+当前仍未正式写进运行链的完整角色结构，还包括：
+
+- `Expression Style`
+- `Boundary Pack`
+- `Raw Persona Archive`
+- 正式 snapshot 优先级治理
+- 更完整的场景读取矩阵实现
+
+### 13A.3 当前已落地的主链接入状态
+
+截至当前盘查，以下链路已经不再属于“纯旧结构”：
+
+- 单聊 scene input：[`src/services/scene-inputs/buildChatSceneInput.ts`](../src/services/scene-inputs/buildChatSceneInput.ts)
+- 群聊 scene input：[`src/services/scene-inputs/buildGroupChatSceneInput.ts`](../src/services/scene-inputs/buildGroupChatSceneInput.ts)
+- 约会 scene input：[`src/services/scene-inputs/buildDatingSceneInput.ts`](../src/services/scene-inputs/buildDatingSceneInput.ts)
+- 情侣空间公共输入：[`src/services/ai/couple-space/context/createCoupleSpacePromptCommonInput.ts`](../src/services/ai/couple-space/context/createCoupleSpacePromptCommonInput.ts)
+- 情侣空间邀请链：[`src/services/couple-space/invite/buildCoupleSpaceInviteContext.ts`](../src/services/couple-space/invite/buildCoupleSpaceInviteContext.ts)
+- 动态生成链：[`src/services/moments/generators.ts`](../src/services/moments/generators.ts)
+
+这意味着：
+
+- 主聊天链和若干深关系场景已经开始住进新骨架
+- 当前真正缺的，不是再发明一套新 contract
+- 而是继续把仍在运行中的旧回退路径收口
+
+### 13A.4 当前仍在运行中的旧回退点
+
+这次盘查后，仍值得继续收口的运行中旧回退点主要有两类。
+
+第一类：角色入口仍保留旧字段 fallback
+
+- [`src/services/relationship-context/buildCharacterContext.ts`](../src/services/relationship-context/buildCharacterContext.ts)
+  - 现状：`corePersona` 为空时回退到 `setting`
+- [`src/services/memory/buildLongTermMemoryProfile.ts`](../src/services/memory/buildLongTermMemoryProfile.ts)
+  - 现状：`longTermMemoryProfile` 为空时回退到 `memorySummary`
+
+第二类：主运行时仍有旧字段兜底
+
+- [`src/features/chat-runtime/useDirectChatRuntime.ts`](../src/features/chat-runtime/useDirectChatRuntime.ts)
+  - 现状：仍存在 `buildCharacterContext(...).corePersona || character.setting`
+  - 影响：单聊主回复与自动总结 prompt 仍带旧回退心智
+
+这里要注意：
+
+- 这些点是“仍在运行中的旧回退”
+- 和“展示页回显旧字段”不是同一类问题
+- 和“兼容迁移层保留旧字段映射”也不是同一类问题
+
+### 13A.5 当前不应优先当成主线问题的点
+
+下面这些内容虽然还能看到旧字段，但当前不应优先当成主线代码收口目标：
+
+- 设置页和展示页回显旧字段
+  - 例如 [`src/components/chat/ChatSettingsPanel.tsx`](../src/components/chat/ChatSettingsPanel.tsx)
+  - 例如 [`src/components/monitor/MonitorApp/Page.tsx`](../src/components/monitor/MonitorApp/Page.tsx)
+- 兼容迁移层保留旧字段映射
+  - 例如 [`src/features/persistence/migrateCharacterShape.ts`](../src/features/persistence/migrateCharacterShape.ts)
+- 注释中的历史旧路径
+  - 例如 [`src/components/couple-space/CoupleSpaceApp/Page.tsx`](../src/components/couple-space/CoupleSpaceApp/Page.tsx) 里保留的 legacy prompt 参考块
+
+这些点当前更像：
+
+- 兼容层
+- 编辑层
+- 展示层
+- 历史参考层
+
+而不是“真正仍在污染生成主链的运行逻辑”。
+
+### 13A.6 当前主线顺序的工程化更新
+
+基于当前代码现实，当前主线顺序建议校正为：
+
+1. 继续收掉仍在运行中的旧读取路径
+2. 先收单聊主运行时的旧回退
+3. 再收统一角色入口层的 fallback
+4. 最后再收旧命名和语义层
+
+这比“继续抽象讨论角色方案”更贴近当前阶段。
+
+原因是：
+
+- 规则文档已经够开工
+- 最小新骨架已经存在
+- 现在继续停留在方案层，收益会明显低于主链收口
+
+### 13A.7 与当前角色文档的关系
+
+当前角色相关技术文档可以理解为“三份规则 + 一份现状架构说明”：
+
+- [`docs/character-input-contract.md`](./character-input-contract.md)
+- [`docs/character-presence-migration-rules.md`](./character-presence-migration-rules.md)
+- [`docs/character-scene-read-matrix.md`](./character-scene-read-matrix.md)
+- [`docs/project-architecture.md`](./project-architecture.md)
+
+其中：
+
+- 三份角色文档负责定义“目标规则”
+- 本文档负责描述“当前代码现实”
+
+后续如果规则与现实出现偏差，应以“代码现状 + 主线收口顺序”来决定下一步实施，而不是直接把理想态当成已完成事实。
+
+### 13A.8 当前这轮已新增的角色层接入进展
+
+在完成上一轮“旧读取路径收口”之后，当前这一轮已经正式把 `Expression Style` 从文档规则推进到了运行链里。
+
+当前已经落地的点包括：
+
+- 数据层：
+  - [`src/types.ts`](../src/types.ts) 新增 `expressionStyle`
+  - [`src/features/persistence/migrateCharacterShape.ts`](../src/features/persistence/migrateCharacterShape.ts) 已开始把老角色文本中属于“活人感细节 / 相处模式 / 经典状态关键词 / 核心感觉”的块迁入 `expressionStyle`
+- 统一入口层：
+  - [`src/services/relationship-context/buildCharacterContext.ts`](../src/services/relationship-context/buildCharacterContext.ts) 已正式输出 `expressionStyle`
+  - [`src/services/relationship-context/types.ts`](../src/services/relationship-context/types.ts) 已补齐对应类型
+- 设置与编辑入口：
+  - [`src/components/chat/ChatSettingsPanel.tsx`](../src/components/chat/ChatSettingsPanel.tsx) 已补上“表达风格与相处方式”编辑入口，并改成折叠展开式编辑
+  - [`src/App.tsx`](../src/App.tsx) 中的周既白默认数据已补入一版 `expressionStyle` 测试样本
+
+当前已经接入 `Expression Style` 的主场景链包括：
+
+- 单聊：
+  - [`src/services/scene-inputs/buildChatSceneInput.ts`](../src/services/scene-inputs/buildChatSceneInput.ts)
+- 群聊：
+  - [`src/services/scene-inputs/buildGroupChatSceneInput.ts`](../src/services/scene-inputs/buildGroupChatSceneInput.ts)
+  - [`src/services/ai/prompts/builders/buildGroupChatPrompt.ts`](../src/services/ai/prompts/builders/buildGroupChatPrompt.ts)
+- 约会：
+  - [`src/services/scene-inputs/buildDatingSceneInput.ts`](../src/services/scene-inputs/buildDatingSceneInput.ts)
+- 情侣空间公共链：
+  - [`src/services/ai/couple-space/context/createCoupleSpacePromptCommonInput.ts`](../src/services/ai/couple-space/context/createCoupleSpacePromptCommonInput.ts)
+  - [`src/services/ai/prompts/builders/coupleSpaceShared.ts`](../src/services/ai/prompts/builders/coupleSpaceShared.ts)
+  - [`src/services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck.ts`](../src/services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck.ts)
+- 动态评论链：
+  - [`src/services/moments/generators.ts`](../src/services/moments/generators.ts)
+  - 当前不仅接入了 `Expression Style`，还补了一段轻约束，用来压住“长辈腔 / 说教感”
+- 心动扭蛋链：
+  - [`src/features/couple-space-interactions/heart-capsule-machine/buildHeartCapsulePromptContext.ts`](../src/features/couple-space-interactions/heart-capsule-machine/buildHeartCapsulePromptContext.ts)
+
+这意味着：
+
+- `Expression Style` 已不再只是文档层目标，而是已经进入多场景主运行链
+- 当前更适合先把这条主线接到主要场景，再进入 `Boundary Pack`
+- 当前仍未明显接入 `Expression Style` 的，主要已退到少量旁支链，例如：
+  - [`src/services/chat/decideTransferOutcome.ts`](../src/services/chat/decideTransferOutcome.ts)
+  - [`src/services/couple-space/interaction/buildTaRememberedEntries.ts`](../src/services/couple-space/interaction/buildTaRememberedEntries.ts)
+
+除此之外，这一轮还补了一条和主线不冲突、但用户侧明显缺失的闭环：
+
+- [`src/components/couple-space/CoupleSpaceApp/Page.tsx`](../src/components/couple-space/CoupleSpaceApp/Page.tsx)
+  - 已补上“情侣动态评论可点击回复”的 UI 入口
+  - 已支持把回复关系写入 `replyToCommentId / replyToAuthorId / replyToAuthorName`
+  - 已优化为“默认不显示输入框，点评论或点某条评论时才展开”
+
+基于以上进展，当前最合理的主线更新为：
+
+1. `Expression Style` 主场景接入已基本完成
+2. 情侣空间评论回复闭环已补上
+3. 下一步应正式进入 `Boundary Pack`
+
 ## 14. 当前风险
 
 ### 14.1 `App.tsx` 过大

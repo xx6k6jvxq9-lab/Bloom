@@ -22,7 +22,7 @@ export function buildCoupleSpaceInviteReplyPrompt(context: CoupleSpaceInviteCont
       characterSetting: context.corePersona,
     },
     memoryContext: {
-      memorySummary: context.longTermMemoryProfile || '',
+      longTermMemoryProfile: context.longTermMemoryProfile || '',
     },
     includeProtocolRules: false,
     sections: [

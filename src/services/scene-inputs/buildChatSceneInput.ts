@@ -17,10 +17,14 @@ type BuildChatSceneInputParams = {
 };
 
 function buildExtraSections(input: {
+  expressionStyle?: string;
   extendedLore?: string;
   chatSceneHint?: string;
 }): string[] {
   const sections = [
+    input.expressionStyle
+      ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
+      : '',
     input.extendedLore
       ? ['## 扩展背景与长期补充', input.extendedLore].join('\n')
       : '',
@@ -56,6 +60,7 @@ export function buildChatSceneInput(
   const budgetedContext = applyChatPromptBudget({
     recentContext,
     sections: buildExtraSections({
+      expressionStyle: characterContext.expressionStyle,
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
     }),
@@ -71,7 +76,7 @@ export function buildChatSceneInput(
     },
     userContext,
     memoryContext: {
-      memorySummary: characterScopedMemory.longTermMemoryProfile ?? '',
+      longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
     recentContext: budgetedContext.recentContext,

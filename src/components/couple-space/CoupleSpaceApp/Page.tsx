@@ -1425,6 +1425,7 @@ function MiniAppIcon({ icon, title, onClick }: { icon: React.ReactNode, title: s
 function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
   const [commentText, setCommentText] = useState('');
   const [showCommentInput, setShowCommentInput] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const author = post.authorId === 'user' ? user : partner;
   const isLiked = post.likes.includes('user');
   const isArchived = Boolean(post.isArchived);
@@ -1446,14 +1447,17 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
 
   const handleComment = async () => {
     if (!commentText.trim()) return;
+    const shouldTriggerPartnerReply = post.authorId === partner.id || replyingTo?.authorId === partner.id;
     const newComment = {
       id: Date.now().toString(),
       authorId: 'user',
       content: commentText,
       timestamp: Date.now(),
-      replyToCommentId: undefined,
-      replyToAuthorId: undefined,
-      replyToAuthorName: undefined
+      replyToCommentId: replyingTo?.id,
+      replyToAuthorId: replyingTo?.authorId,
+      replyToAuthorName: replyingTo
+        ? (replyingTo.authorId === 'user' ? user.name : partner.name)
+        : undefined
     };
     
     updateSpace((prev: any) => ({
@@ -1464,9 +1468,10 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
     
     setCommentText('');
     setShowCommentInput(false);
+    setReplyingTo(null);
 
-    // If user commented on AI's post, AI might reply
-    if (post.authorId === partner.id && getCoupleSpaceInteractionSettings(coupleSpace).replyDailyComment.enabled) {
+    // If user commented on AI's post or directly replied to AI's comment, AI might continue the thread
+    if (shouldTriggerPartnerReply && getCoupleSpaceInteractionSettings(coupleSpace).replyDailyComment.enabled) {
       try {
         const commonInputEnvelope = createCoupleSpacePromptCommonInput({
           source: {
@@ -1492,7 +1497,9 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
             coupleDailyContent: post.content,
             userComment: newComment.content,
             contentAuthor: post.authorId === partner.id ? 'character' : 'user',
-            replyIntent: '接住用户在情侣动态下的评论，像顺手回一句',
+            replyIntent: replyingTo
+              ? '顺着这条评论线程继续接一句，像楼中楼自然回话'
+              : '接住用户在情侣动态下的评论，像顺手回一句',
           },
         });
         if (responseText) {
@@ -1653,27 +1660,53 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
             const replyTargetName = c.replyToAuthorName
               || (replyTarget ? (replyTarget.authorId === 'user' ? user.name : partner.name) : null);
             return (
-              <div key={c.id} className="text-sm">
-                <span className="font-bold text-zinc-700">
-                  {replyTargetName ? `${cAuthor.name} 回复 ${replyTargetName}: ` : `${cAuthor.name}: `}
-                </span>
-                <span className="text-zinc-600">{c.content}</span>
-              </div>
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setReplyingTo(c);
+                  setShowCommentInput(true);
+                }}
+                className="block w-full px-1 py-1 text-left text-sm"
+              >
+                <div>
+                  <span className="font-bold text-zinc-700">
+                    {replyTargetName ? `${cAuthor.name} 回复 ${replyTargetName}: ` : `${cAuthor.name}: `}
+                  </span>
+                  <span className="text-zinc-600">{c.content}</span>
+                </div>
+              </button>
             );
           })}
           
           {showCommentInput && (
-            <div className="flex gap-2 mt-2 pt-2 border-t border-zinc-200/50">
+            <div className="mt-2 pt-2 border-t border-zinc-200/50">
+              <div className="flex gap-2">
               <input 
                 type="text" 
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                placeholder="评论..."
+                placeholder={replyingTo ? `回复 ${replyingTo.authorId === 'user' ? user.name : partner.name}...` : '评论...'}
                 className="flex-1 bg-white border border-zinc-200 rounded-full px-3 py-1.5 text-sm outline-none focus:border-blue-400"
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && handleComment()}
               />
               <button onClick={handleComment} className="text-zinc-800"><Send size={18} /></button>
+              </div>
+              {replyingTo && (
+                <div className="mt-2 text-right">
+                  <button
+                    onClick={() => {
+                      setReplyingTo(null);
+                      setCommentText('');
+                      setShowCommentInput(false);
+                    }}
+                    className="text-[12px] text-zinc-400 transition-colors hover:text-zinc-600"
+                  >
+                    取消回复
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

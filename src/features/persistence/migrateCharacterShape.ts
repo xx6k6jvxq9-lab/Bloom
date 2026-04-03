@@ -17,9 +17,57 @@ function normalizeSceneHints(value: unknown): Record<string, string> | undefined
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+const EXPRESSION_STYLE_SECTION_HEADERS = [
+  '活人感细节：',
+  '相处模式：',
+  '经典状态关键词：',
+  '核心感觉：',
+] as const;
+
+function extractSectionBlock(source: string, header: string): string | undefined {
+  const startIndex = source.indexOf(header);
+  if (startIndex < 0) return undefined;
+
+  const nextIndex = EXPRESSION_STYLE_SECTION_HEADERS
+    .map((candidate) => source.indexOf(candidate, startIndex + header.length))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
+
+  const block = source.slice(startIndex, nextIndex ?? source.length).trim();
+  return block || undefined;
+}
+
+function extractExpressionStyleSections(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+
+  const sections = EXPRESSION_STYLE_SECTION_HEADERS
+    .map((header) => extractSectionBlock(source, header))
+    .filter((value): value is string => Boolean(value));
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
+function stripExpressionStyleSections(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+
+  const stripped = EXPRESSION_STYLE_SECTION_HEADERS.reduce((current, header) => {
+    const block = extractSectionBlock(current, header);
+    return block ? current.replace(block, '').trim() : current;
+  }, source);
+
+  const normalized = stripped
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return normalized || undefined;
+}
+
 export function migrateCharacterShape(character: Character): Character {
-  const corePersona = normalizeOptionalText(character.corePersona)
+  const basePersonaSource = normalizeOptionalText(character.corePersona)
     ?? normalizeOptionalText(character.setting);
+  const expressionStyle = normalizeOptionalText(character.expressionStyle)
+    ?? extractExpressionStyleSections(basePersonaSource);
+  const corePersona = stripExpressionStyleSections(basePersonaSource);
   const extendedLore = normalizeOptionalText(character.extendedLore);
   const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
     ?? normalizeOptionalText(character.memorySummary);
@@ -29,6 +77,7 @@ export function migrateCharacterShape(character: Character): Character {
   return {
     ...character,
     corePersona,
+    expressionStyle,
     extendedLore,
     sceneHints,
     shortTermSummary,

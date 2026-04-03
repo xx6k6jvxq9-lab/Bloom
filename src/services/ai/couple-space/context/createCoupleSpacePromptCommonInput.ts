@@ -95,13 +95,13 @@ export function createCoupleSpacePromptCommonInput(
       actionType: scene?.actionType,
       characterCore: characterCoreResult.value,
       memoryContext: {
-        memorySummary: resolvedMemory.longTermMemoryProfile,
+        longTermMemoryProfile: resolvedMemory.longTermMemoryProfile,
       },
       characterProfile: {
         characterName: source.partner.name,
         signature: source.partner.signature?.trim() || undefined,
         personaSummary: characterContext.corePersona,
-        speakingStyle: source.partner.signature?.trim() || undefined,
+        speakingStyle: characterContext.expressionStyle ?? (source.partner.signature?.trim() || undefined),
         initiativeStyle:
           source.partner.postFrequency && source.partner.postFrequency !== 'none'
             ? source.partner.postFrequency
@@ -678,7 +678,7 @@ function collectWarnings(
   }
 
   if (selectedRecentTurnCount === 0) {
-    warnings.push('Recent chat turns are empty; prompt continuity relies on memorySummary and relationshipContext.');
+    warnings.push('Recent chat turns are empty; prompt continuity relies on longTermMemoryProfile and relationshipContext.');
   }
 
   if (selectedArtifactCount === 0) {

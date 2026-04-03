@@ -139,6 +139,7 @@ export function ChatSettingsPanel({
   const currentGroupLabel = character.groupId || '无分组';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
+  const expressionStyle = character.expressionStyle?.trim() || '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const settingSummary = resolvedCorePersona
@@ -213,7 +214,7 @@ export function ChatSettingsPanel({
               characterSetting: resolvedCorePersona,
             },
             memoryContext: {
-              memorySummary: longTermMemoryProfile,
+              longTermMemoryProfile,
             },
             sections: [summaryHistoryWindowText],
           })
@@ -237,12 +238,12 @@ export function ChatSettingsPanel({
 
   const handleGenerateSummary = async ({
     mode,
-    memorySummary,
+    longTermMemoryProfile,
     onComplete,
     setLoading,
   }: {
     mode: 'small' | 'large';
-    memorySummary: string;
+    longTermMemoryProfile: string;
     onComplete: (responseText: string) => void;
     setLoading: (value: boolean) => void;
   }) => {
@@ -265,7 +266,7 @@ export function ChatSettingsPanel({
           characterSetting: resolvedCorePersona,
         },
         memoryContext: {
-          memorySummary,
+          longTermMemoryProfile,
         },
         sections: [
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
@@ -296,7 +297,7 @@ export function ChatSettingsPanel({
   const handleSummarizeShortTerm = async () => {
     await handleGenerateSummary({
       mode: 'small',
-      memorySummary: longTermMemoryProfile,
+      longTermMemoryProfile,
       onComplete: (responseText) => onUpdate({ ...character, shortTermSummary: responseText }),
       setLoading: setIsShortTermSummarizing,
     });
@@ -305,7 +306,7 @@ export function ChatSettingsPanel({
   const handleSummarizeLongTerm = async () => {
     await handleGenerateSummary({
       mode: 'large',
-      memorySummary: longTermMemoryProfile,
+      longTermMemoryProfile,
       onComplete: (responseText) => onUpdate({ ...character, longTermMemoryProfile: responseText }),
       setLoading: setIsLongTermSummarizing,
     });
@@ -1123,19 +1124,38 @@ export function ChatSettingsPanel({
               <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">编辑角色设定</h1>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
-                <div className="mb-3">
-                  <h2 className="text-[15px] font-semibold text-zinc-800">角色设定</h2>
-                  <p className="text-[11px] text-zinc-500 mt-1">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
+            <div className="flex-1 overflow-y-auto pb-6">
+              <SettingsSection
+                title="核心人设"
+                summary="角色是谁、基本气质和稳定关系姿态"
+              >
+                <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
+                  <p className="text-[11px] text-zinc-500 mb-3">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
+                  <textarea
+                    value={character.corePersona ?? character.setting}
+                    onChange={e => onUpdate({ ...character, corePersona: e.target.value })}
+                    placeholder="输入核心人设..."
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[320px] resize-none"
+                  />
                 </div>
-                <textarea
-                  value={character.corePersona ?? character.setting}
-                  onChange={e => onUpdate({ ...character, corePersona: e.target.value })}
-                  placeholder="输入核心人设..."
-                  className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[320px] resize-none"
-                />
-              </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="表达风格与相处方式"
+                summary="角色怎么说话、怎么靠近你、怎么收着表达"
+              >
+                <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
+                  <p className="text-[11px] text-zinc-500 mb-3">
+                    写这个角色怎么说话、怎么转折、怎么靠近你、又会怎么收着表达，尽量少写空泛标签。
+                  </p>
+                  <textarea
+                    value={expressionStyle}
+                    onChange={e => onUpdate({ ...character, expressionStyle: e.target.value })}
+                    placeholder="例如：嘴硬时会先轻轻顶一句，再把真实关心补回来；靠近时不黏腻，会用很自然的小动作和短句试探。"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[180px] resize-none"
+                  />
+                </div>
+              </SettingsSection>
             </div>
           </motion.div>
         )}

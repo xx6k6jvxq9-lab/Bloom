@@ -15,6 +15,7 @@ export type GroupChatSceneInput = {
     shortTermSummary?: string;
     longTermMemoryProfile?: string;
     groupSceneHint?: string;
+    expressionStyle?: string;
   };
   historyTranscript: string;
 };
@@ -67,6 +68,7 @@ export function buildGroupChatSceneInput(
       shortTermSummary: memory.shortTermSummary,
       longTermMemoryProfile: memory.longTermMemoryProfile,
       groupSceneHint: characterContext.sceneHints?.groupChat,
+      expressionStyle: characterContext.expressionStyle,
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),
   };
