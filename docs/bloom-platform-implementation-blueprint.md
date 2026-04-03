@@ -1,0 +1,1727 @@
+# Bloom 平台化实施蓝图
+
+更新时间：2026-04-03
+适用范围：Bloom 当前仓库与后续长期迭代
+文档定位：长期主线蓝图、实施顺序、进度台账、架构约束总文档
+
+---
+
+## 1. 这份文档解决什么问题
+
+Bloom 未来不只是继续做聊天，还会继续扩展：
+
+- 更强的记忆系统
+- 更完整的共享关系语境层
+- 更正式的自主决策引擎
+- 群聊
+- 约会
+- 更复杂的 AI 论坛体
+- 书城
+- 商城
+- 外卖
+- 后续更多生活场景
+
+如果继续按“每个功能自己长一套逻辑”的方式推进，系统会越来越难维护，升级和加功能的成本会持续上升。
+
+这份文档的目标，是把 Bloom 从“多模块 AI 手机”推进成“可持续扩展的关系连续性平台”，让未来新增功能都长在同一套基础设施上，而不是继续堆在页面和临时逻辑里。
+
+---
+
+## 2. 最终产品判断
+
+Bloom 最核心的价值，不是“功能很多”，而是：
+
+- 聊天陪伴有活人感
+- 角色在不同场景里持续存在
+- 关系会沉淀、会延续、会回流
+- 系统能长期更新而不失稳
+
+一句话概括：
+
+**Bloom 要成为一个以聊天陪伴为主入口、以关系连续性为骨架、以记忆和可控主动性为增长引擎的 AI 生活平台。**
+
+这意味着当前阶段最重要的任务，不是继续扩很多页面，而是先把“关系连续性底座”做成真正能承重的平台基础设施。
+
+---
+
+## 3. 当前最主要的事情
+
+当前最主要不是单独做某一个新功能，而是先完成下面这条主线：
+
+**把聊天、群聊、情侣空间、约会、未来论坛和生活模块统一到同一套关系语境、记忆、场景适配、执行和持久化骨架上。**
+
+这条主线同时服务 5 个目标：
+
+1. 让聊天陪伴的活人感更稳定
+2. 让群聊和约会更容易真正跑通
+3. 让记忆系统以后能持续增强，而不是越来越乱
+4. 让未来自主决策引擎有可靠输入基础
+5. 让论坛、书城、商城、外卖等新功能以后能稳定接入
+
+---
+
+## 4. 平台化总骨架
+
+Bloom 后续应固定为五层骨架。
+
+### 4.1 Shared Relationship Context Layer
+
+这是关系理解层。
+
+职责：
+
+- 统一角色上下文
+- 统一关系证据收集
+- 统一关系投影
+- 统一跨模块轻量语境
+
+这层回答的问题是：
+
+- 角色是谁
+- 和用户现在是什么关系
+- 最近发生了什么
+- 当前关系氛围怎样
+- 当前有哪些值得参考的轻量痕迹
+
+这层不负责执行具体功能。
+
+### 4.2 Memory System Layer
+
+这是长期连续性层。
+
+职责：
+
+- 存储原始痕迹
+- 结构化抽取记忆
+- 生成摘要与关系画像
+- 进行轻量召回
+- 为聊天和未来主动行为提供长期背景
+
+这层回答的问题是：
+
+- 什么要记住
+- 记忆该怎么分层
+- 什么时候压缩
+- 什么时候召回
+- 如何让过去影响未来
+
+### 4.3 Scene Adapter Layer
+
+这是场景适配层。
+
+职责：
+
+- 按场景裁剪共享语境和记忆
+- 补充场景专属约束
+- 输出标准 scene input
+
+这层回答的问题是：
+
+- 聊天需要拿哪些字段
+- 群聊需要拿哪些字段
+- 约会需要拿哪些字段
+- 论坛、书城、商城、外卖以后需要拿哪些字段
+
+### 4.3.1 Context Budget / Snapshot Layer
+
+这是位于 `scene adapter` 与 `execution` 之间的中间约束层。它不改变原五层骨架，但应该正式纳入蓝图，作为场景执行前的本轮快照治理层。
+
+这层要明确一件事：`scene input` 不是最终模型输入。它的职责是把 `scene input` 压成“本轮真正送给模型的最优快照”，并承担 token 预算分配、上下文优先级治理、超限时压缩与降级策略。
+
+它回答的问题不是“系统里有哪些记忆”，而是“这一轮哪些信息必须送给模型、哪些内容是常驻、哪些内容是临时、预算不够时先保留哪些核心再压缩哪些次要内容”。
+
+建议至少提前治理 persona 常驻预算、short-term / long-term memory 配额、recent context 上限、scene-specific context 上限、multimodal 附件上下文占比，以及超限时的摘要压缩与模式降级。
+
+需要明确的原则是：这层做的是“本轮快照治理”，不是“记忆系统本体”；它只决定“本轮传什么”，不等于底层记忆被删除；预算层做得对，会减少 OOC，而不是增加 OOC；错误的不是有预算治理，而是没有优先级地乱截内容；`corePersona`、relationship boundary、scene-critical input 应有更高优先级。
+
+### 4.4 Domain Service / Execution Layer
+后续为了避免 execution 再次长成大泥球，这一层内部要再明确拆成两个方向：`Scene Capability` 与 `Commit Route`。
+
+`Scene Capability` 负责界定该场景能做什么、能读什么、能写什么，能否发图、发语音、发帖、写记录、触发主动行为，以及群聊、约会、论坛、商城、外卖等不同场景的能力边界分别在哪里。
+
+`Commit Route` 负责决定本次结果是 `Auto`、`Draft`、`Confirm` 还是 `Silent Skip`，也就是哪些内容能直接写入、哪些必须确认、哪些只能生成草稿、哪些应该静默跳过。
+
+这个拆分后续会直接服务于 initiative 与高风险 action gating、多模态动作的场景能力管理、forum / shop / delivery 等新场景的稳定接入，并把 execution 从“场景规则 + 提交决策 + 写回方式”的混合体里拆开。
+
+这是场景执行层。
+
+职责：
+
+- 论坛怎么发帖、回帖、串楼
+- 商城怎么推荐和交互
+- 外卖怎么下单和陪伴决策
+- 书城怎么推荐和收藏
+- 聊天怎么生成回复
+- 约会怎么推进
+- 情侣空间怎么写入内容
+
+共享的是“关系理解”，不是“执行逻辑”。
+
+### 4.5 Persistence / Import / Migration Layer
+
+这是长期升级稳定层。
+
+职责：
+
+- 持久化
+- 导入导出
+- 版本迁移
+- 向后兼容
+- 新模块接入时的数据安全
+
+以后能不能稳定更新，很多时候不是 prompt 决定的，而是这一层决定的。
+
+---
+
+## 5. 共享但不污染的核心原则
+
+Bloom 以后功能越来越多时，要稳定，必须守住下面这些规则。
+
+### 5.1 共享理解，不共享执行
+
+共享层只负责标准化关系理解。
+
+不把下面这些塞进共享层：
+
+- 页面动作
+- 业务执行
+- UI 状态
+- 实际写回逻辑
+- 功能专属流程控制
+
+### 5.2 共享协议，不共享原始大对象
+
+场景不能直接到处读：
+
+- `appData`
+- 整包 `chatHistory`
+- 整包 `coupleSpaceState`
+- 整包 `datingRecords`
+- 整包 `moments`
+
+它们应该通过共享层先变成标准协议，再被各场景消费。
+
+### 5.3 场景必须经由 Adapter 接入
+
+以后新模块接入时，不允许直接拼底层 prompt 输入。
+
+必须经过：
+
+- shared context
+- memory layer
+- scene adapter
+
+### 5.4 轻量回流，不全文灌入
+
+关系系统回流的是：
+
+- 事件
+- 摘要
+- 状态
+- 提示
+
+不是把整篇内容原样塞回所有场景。
+
+### 5.5 Schema 要稳定、可版本化
+
+共享层和记忆层输出结构必须稳定。
+
+新增字段优先增量扩展，少做破坏性修改。
+
+### 5.6 读取路径和写回路径分离
+
+谁读取关系语境，不代表谁可以直接改底层状态。
+
+要避免“读的时候顺手写一堆状态”的隐式耦合。
+
+---
+
+## 6. Bloom 未来的核心数据流
+
+### 6.1 Evidence Layer
+Evidence Layer 不应只停留在“原始关系证据”的概念说明，而应逐步演化成正式写入契约层。
+
+也就是说，未来各个场景往关系系统里写入痕迹时，不能继续各写各的，而应该优先写入统一语义的 evidence contract。这样 forum、bookstore、shop、delivery、multimodal、initiative 后续接入时，才能先进入同一层关系写入协议，再进入 projection、summary 与 memory 流程。
+
+建议 evidence 至少逐步统一以下字段语义：`sourceScene`、`characterId / partnerId / groupId`、`eventType`、`timestamp`、`importance`、`scope`、`rawPayload`、`derivedHints`、`writePolicy`。
+
+需要明确的原则是：新模块接入前，必须先定义 evidence write schema；不允许每个模块继续用自己的方式随意写“关系痕迹”；evidence、summary、structured memory 不应混写成一层。evidence 负责留下可追溯痕迹，summary 负责压缩关系状态，structured memory 负责沉淀结构化长期资产。
+
+收集原始关系证据，不解释。
+
+来源包括：
+
+- 单聊历史
+- 群聊历史
+- 情侣空间
+- 约会记录
+- moments / 评论 / 回复
+- 通话记录
+- 论坛互动
+- 书城偏好痕迹
+- 商城浏览与购买痕迹
+- 外卖偏好与下单痕迹
+- 未来更多生活模块痕迹
+
+输出建议：
+
+- `chatEvidence`
+- `groupEvidence`
+- `coupleEvidence`
+- `datingEvidence`
+- `momentEvidence`
+- `forumEvidence`
+- `lifestyleEvidence`
+- `auxiliaryEvidence`
+
+### 6.2 Projection Layer
+Projection Layer 除了继续承担关系压缩与共享上下文投影，还应该尽早预留时间上下文 contract，而不是等完整 initiative 系统落地后再补。
+
+完整的 temporal awareness 与主动触达系统可以后做，但 shared context / projection 层建议尽早预留这些公共字段：`currentLocalTime`、`dayPhase`、`weekdayInfo`、`daysSinceLastChat`、`daysSinceLastMeaningfulInteraction`。
+
+这样做的目的不是提前做完整主动系统，而是避免后续 chat、dating、couple-space、bookstore、shop、delivery、initiative 再反复改 adapter。时间事实应尽量先成为公共 contract，再决定哪些场景消费它、哪些决策链真正依赖它。
+
+把原始证据压缩成共享关系语境。
+
+标准输出建议：
+
+- `characterContext`
+- `relationshipState`
+- `recentChatSummary`
+- `recentCoupleSummary`
+- `recentEvents`
+- `crossModuleHints`
+- `policyConstraints`
+- `temporalContext`
+
+### 6.3 Scene Input Layer
+Scene Input Layer 到这里为止，得到的仍然是“场景标准输入”，而不是“最终模型输入”。因此从蓝图约束上，应把它与后面的 Context Budget / Snapshot Layer 串起来理解：scene adapter 负责决定本场景需要哪些类型的输入，snapshot layer 负责决定本轮真正送模型的快照长什么样。
+
+由 adapter 生成场景输入。
+
+建议固定为：
+
+- `buildChatSceneInput`
+- `buildGroupChatSceneInput`
+- `buildCoupleSceneInput`
+- `buildDatingSceneInput`
+- `buildForumSceneInput`
+- `buildBookstoreSceneInput`
+- `buildShopSceneInput`
+- `buildDeliverySceneInput`
+
+### 6.4 Execution Layer
+Execution Layer 在蓝图里应进一步明确分成两件事：第一是场景能力本身，第二是结果提交路径。前者回答“这个场景可以做什么”，后者回答“这次做出来的结果该怎么落地”。
+
+因此后续无论是聊天生成、约会推进、论坛互动、多模态动作还是自主决策，都不应再把“能力边界”与“提交方式”混成一团。先由 `Scene Capability` 约束场景可读、可写、可行动作，再由 `Commit Route` 决定这次结果是 `Auto`、`Draft`、`Confirm` 还是 `Silent Skip`。
+
+这层如果不提前拆清，后续 initiative、高风险动作、跨场景写回、多模态能力一接入，就很容易重新把 execution 长回大泥球。
+
+### 6.4.1 Chat Generation Snapshot 与 Decision Snapshot 分离
+
+聊天回复使用的应该是 `chat generation snapshot`；自主决策使用的应该是更稳定的 `decision snapshot` 或 decision input。二者不应直接复用同一份 prompt 快照。
+
+聊天生成更关注当前轮用户输入、当前场景目标、当前轮所需的 recent context、scene-specific constraints；自主决策更关注 `relationshipProjection`、memory summaries、unresolved items、policy hints、`temporalContext`。
+
+核心结论是：聊天快照是“为了本轮回复优化过的输入”，决策输入则应更稳定、更面向长期关系与规则判断。二者如果直接混成一份，短期看似省事，长期会让决策被聊天裁剪快照牵着走。
+
+每个场景根据自己的 scene input 完成：
+
+- prompt 生成
+- runtime 调用
+- 结果校验
+- 业务写回
+- 持久化
+
+### 6.5 多模态预留原则
+
+后续 Bloom 很可能会接入：
+
+- 图像生成
+- 语音输入
+- 语音输出
+- 语音通话
+- 多模态理解
+
+这意味着现在的架构不能把“AI 调用”默认写死成只有文字聊天。
+
+这里需要明确一个原则：
+
+**业务链要分开，底层 AI runtime 要统一。**
+
+也就是说：
+
+- 聊天、群聊、约会、论坛、商城、外卖等业务链继续分开
+- 但底层不要为每个业务各自维护一套完全独立的模型调用和响应解析
+
+更稳的方向是：
+
+- 上层按场景分 `scene input`
+- 中层按场景分 `prompt / execution`
+- 底层统一 `runtime`
+
+后续 runtime 可以在内部继续演化出：
+
+- `text runtime`
+- `stream text runtime`
+- later: `image runtime`
+- later: `speech runtime`
+- later: `multimodal runtime`
+
+但它们应属于同一套基础设施，而不是每个业务模块各造一套。
+
+这样做的好处是：
+
+- 图像和语音以后接入时，不需要重写角色、记忆、关系语境读取
+- provider 适配和响应解析问题只需要在公共层修一次
+- 新的多模态能力可以复用 shared context、memory layer、scene adapter
+
+需要提前守住的工程约束：
+
+1. 新增图像或语音功能时，仍然必须走 `scene input`
+2. 记忆系统不能只假设自己服务纯文本聊天
+3. runtime 公共层只能负责模型调用、返回解析和基础清洗，不能夹带业务判断
+4. 如果未来 provider 差异变大，应在 runtime 内部做 provider adapter，而不是让每个业务模块各自兼容
+
+---
+
+## 7. 记忆系统的正确建设方式
+
+记忆系统后面一定要做强，但不能从一开始就做成过重、不可控的大系统。
+
+建议正式分为四层。
+
+### 7.0 先明确一个判断：记忆总结不等于整个记忆系统
+
+这点必须写清楚。
+
+**记忆总结属于记忆系统，但不等于记忆系统本身。**
+
+更准确地说：
+
+- 记忆系统是整套“怎么记、记什么、怎么压缩、怎么召回、怎么回流、怎么影响后续行为”的基础设施
+- 记忆总结只是这套系统里的“压缩与整理”能力
+
+通俗理解：
+
+- 记忆系统像仓库
+- 记忆总结像整理员
+
+整理员很重要，但只有整理员，不等于仓库已经建好。
+
+Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整“记忆系统”。
+
+### 7.0.1 当前仓库里的真实现状
+
+当前仓库已经存在的记忆相关能力，主要包括：
+
+- 聊天自动总结
+- 聊天手动总结
+- 情侣空间最近事件轻量摘要
+- 若干 recent summary / relationship summary 雏形
+
+但当前还缺少：
+
+- 短期记忆与长期记忆的正式分层
+- 统一 memory write schema
+- 结构化记忆抽取
+- 正式 recall layer
+- 跨场景统一消费协议
+
+### 7.0.2 当前最真实的问题
+
+当前项目中的 `memorySummary` 更像是“混合记忆字段”。
+
+它一边被当作：
+
+- 长期记忆沉淀
+
+另一边又会被：
+
+- 自动总结逻辑持续刷新
+
+这意味着短期余波和长期关系印象，现在住在同一个抽屉里。
+
+这在功能还不多时勉强能用，但随着群聊、约会、论坛、生活模块接入，会越来越混乱。
+
+### 7.0.3 所以现在该怎么做
+
+现在不应该等到“终极记忆系统”再动手。
+
+应该立刻做一个**最小可承重版本**：
+
+1. 先把记忆总结和记忆系统概念分开
+2. 先把 `memorySummary` 拆成最小双层
+3. 再逐步演化成正式 memory layer
+
+最小双层建议：
+
+- `shortTermSummary`
+- `longTermMemoryProfile`
+
+短期摘要负责：
+
+- 最近几轮关系余波
+- 当前小情绪、小误会、小推进
+- 接下来几轮聊天仍会带着的状态
+
+长期记忆负责：
+
+- 稳定偏好
+- 边界
+- 关系印象
+- 重要回忆
+- 长期相处模式
+
+也就是说，当前阶段不是“不做记忆系统”，而是：
+
+**现在就做记忆体系的最小骨架，不现在做终极完整版。**
+
+### 7.1 Raw Trace Layer
+
+原始痕迹层。
+
+保存：
+
+- chat history
+- group history
+- couple space 内容
+- dating records
+- moments
+- love letters
+- 留言板
+- 共同笔记
+- 收藏
+- 日历事件
+- stamps
+- 论坛帖与回帖
+- 书城偏好
+- 商城偏好
+- 外卖偏好
+
+### 7.2 Structured Memory Layer
+
+结构化记忆层。
+
+至少抽取：
+
+- `factualMemory`
+- `preferenceMemory`
+- `relationshipStateMemory`
+- `milestoneMemory`
+- `boundaryMemory`
+- `emotionalAtmosphereMemory`
+- `unresolvedItemMemory`
+
+### 7.3 Summary / Projection Layer
+
+摘要与关系画像层。
+
+至少包括：
+
+- `recentChatSummary`
+- `recentCoupleSummary`
+- `recentRelationshipSummary`
+- `longTermRelationshipProfile`
+- `characterPreferenceProfile`
+- `sharedLifeHints`
+
+### 7.4 Recall Layer
+
+召回层先做轻量版。
+
+优先支持：
+
+- partner / character 过滤
+- tags / keywords
+- 时间窗口
+- 结构过滤
+- 轻量重排
+
+当前不建议一开始就把系统重心放到重型向量记忆上。
+
+### 7.5 记忆系统的实施顺序
+
+记忆系统应按下面顺序逐步落地，而不是一口气重做全部。
+
+#### Step 1：最小分层
+
+先把当前单一 `memorySummary` 拆成：
+
+- `shortTermSummary`
+- `longTermMemoryProfile`
+
+这是当前最值得立刻推进的一步。
+
+#### Step 2：统一写入规则
+
+明确什么内容：
+
+- 只留 raw trace
+- 写进 short term
+- 沉淀进 long term
+- 进入 structured memory extraction
+
+#### Step 3：正式结构化记忆
+
+开始抽取：
+
+- factual
+- preference
+- relationship state
+- milestones
+- unresolved items
+- emotional atmosphere
+
+#### Step 4：轻量召回
+
+先做可控 recall，再决定是否需要更重方案。
+
+#### Step 5：接入自主决策与更多生活模块
+
+让 initiative、论坛、书城、商城、外卖都基于统一 memory layer 读写。
+
+### 7.5.1 页面上也应区分短期总结和长期总结
+
+这点后续也要正式落地，不应只停留在底层字段分离。
+
+原因很简单：
+
+- 它们的用途不同
+- 如果页面不分，测试、调试和后续维护都会混淆
+
+通俗理解：
+
+- 短期总结像便签纸
+- 长期总结像档案夹
+
+它们不应该长期挤在同一个输入框或同一个“记忆”概念里。
+
+### 7.5.2 页面分离的正确时机
+
+页面当然要分，但不建议现在立刻做重型记忆管理器。
+
+最合理的节奏是：
+
+1. 先在底层完成最小双层分离
+2. 等底层分层开始稳定参与主链后
+3. 再在角色设置或聊天设置里做轻量分栏
+
+最佳时机：
+
+**第一阶段收口后，到第二阶段前半。**
+
+### 7.5.3 页面第一版应该做成什么样
+
+第一版不需要复杂，只要做到“清楚区分”即可。
+
+建议先分成两个区域：
+
+#### 近期记忆 / 短期总结
+
+说明：
+
+- 最近几轮互动的状态与余波
+- 会随聊天滚动更新
+- 不代表长期稳定关系结论
+
+#### 长期记忆 / 长期画像
+
+说明：
+
+- 已经沉淀下来的稳定印象、偏好、边界、关系理解
+- 不应被高频自动覆盖
+- 是未来 initiative 和更深层关系系统的重要输入
+
+### 7.5.3.1 触发方式和记忆层不要混成一个概念
+
+这里要明确区分两类东西：
+
+1. 触发方式
+   - 自动总结
+   - 手动总结
+2. 记忆层
+   - 短期总结
+   - 长期画像
+
+也就是说：
+
+- 自动总结和手动总结是“怎么更新”
+- 短期总结和长期画像是“更新到哪里”
+
+如果页面长期把这两类概念混着摆，用户会误以为按钮本身就是一种记忆类型，后续维护时也会把写入语义继续搞混。
+
+### 7.5.3.2 后续记忆页应演化成“当前摘要 + 历史记录”
+
+在第二阶段把短期 / 长期语义收稳之后，记忆 UI 不应长期停留在两个小输入框。
+
+更合理的方向是：
+
+1. 页面顶部保留当前生效摘要
+   - 当前短期总结
+   - 当前长期画像
+2. 页面下方提供记忆历史记录区
+   - 按生成时间归档
+   - 支持下拉展开查看全文
+   - 支持编辑
+   - 支持删除
+   - 支持多选导出
+
+这样做的好处是：
+
+- 当前主链仍然有明确的“当前生效值”
+- 用户又能看到历史沉淀过程，而不是只有一个被反复覆盖的大框
+- 后面正式 memory layer、summary caching、structured memory extraction 接入时，页面也更容易承接
+
+### 7.5.3.3 手动总结的建议方向
+
+后续短期总结和长期画像都应支持手动触发，但职责不同：
+
+#### 手动短期总结
+
+- 用于立即刷新近期状态
+- 生成后更新当前 `shortTermSummary`
+- 第一版可以同时新增一条短期总结历史记录
+
+#### 手动长期画像
+
+- 用于整理更稳定的关系印象和长期理解
+- 生成后更新当前 `longTermMemoryProfile`
+- 第一版可以同时新增一条长期画像历史记录
+
+建议默认规则：
+
+- 手动总结成功一次，就写入一条历史记录
+- 自动短期总结第一版先只更新当前值，不急着无条件写满历史记录，避免列表爆炸
+
+### 7.5.3.4 布局上的最低要求
+
+后续即使还是先从设置页承接，也应满足这些最低要求：
+
+1. 长期画像的触发按钮应放在长期画像区域，而不是悬在混合区块里
+2. 短期总结和长期画像应视觉上分区
+3. 长期内容区不应长期被限制成过小输入框
+4. 后续应提供进入独立记忆页或历史记录页的入口
+5. 页面结构要能自然过渡到“可展开记录列表”，而不是以后被迫整页推翻
+
+### 7.5.4 当前阶段不建议做什么
+
+当前还不建议：
+
+- 先做重型记忆中心
+- 先做复杂记忆编辑器
+- 在底层仍混用时把 UI 做得很重
+
+当前更合理的是：
+
+**先让底层真的分层，再让页面轻量分层。**
+
+但需要补充一个边界：
+
+当前不建议直接一口气做完整记忆管理器，不等于后续还长期停留在两个小框。第二阶段应先把短期 / 长期语义、触发方式和当前生效值收清；等主链稳定后，应尽快演化出独立的记忆历史记录页。
+
+### 7.6 当前阶段的明确判断
+
+基于当前整体目标，记忆系统现在就要开始写，但当前阶段写的是**记忆体系骨架**，不是最终完整版记忆引擎。  
+如果继续只保留“总结功能”，后面新增场景越多，记忆会越碎，最终会反过来拖累聊天活人感和后续扩展。
+
+---
+
+## 7A. 角色设定分层与 Prompt 预算治理
+
+这是当前必须纳入蓝图的重要部分。
+
+### 7A.1 当前现实问题
+
+当前角色创建和编辑入口，前端基本没有针对 `setting` 的产品级长度治理。
+
+这意味着：
+
+- 表单上几乎想写多长都能写
+- 但模型真正消费时，会把整段人设原样塞进角色核心 section
+
+再叠加：
+
+- mask
+- world book
+- memory summary
+- recent summaries
+- history window
+
+最终问题不是“存不进去”，而是：
+
+**长人设会挤占 prompt 预算，压缩聊天历史、记忆和关系上下文。**
+
+### 7A.2 这会带来什么后果
+
+当角色人设过长时，系统容易出现：
+
+- 回复发飘
+- 上下文记忆变差
+- 群聊更容易乱
+- 长期关系感不稳定
+- 新模块接入后 prompt 更快超重
+
+这不是某一个模型单独的问题，而是当前角色输入结构本身不够分层。
+
+### 7A.3 正确做法：角色设定正式分层
+
+角色设定应尽快从单一 `setting` 演化为三层。
+
+#### Core Persona
+
+最核心、最稳定、必须每轮都读。
+
+建议只保留：
+
+- 性格核心
+- 关系起点
+- 边界
+- 说话质地
+- 关键气质
+
+要求：
+
+- 短
+- 稳
+- 高密度
+- 每轮可常驻
+
+#### Extended Lore
+
+背景经历、额外设定、世界观细节。
+
+特点：
+
+- 不需要每轮都全量注入
+- 按场景选择性读取
+- 主要服务深场景和特定功能
+
+#### Scene Hints
+
+场景专属附加信息。
+
+例如：
+
+- 群聊提示
+- 论坛表达规则
+- 约会语境
+- 商城 / 外卖 / 书城中的场景偏好
+
+### 7A.4 为什么这件事要现在做
+
+角色设定分层不只是优化输入体验，它直接影响：
+
+- 聊天主链稳定性
+- 群聊
+- 约会
+- 后续 memory layer
+- 后续 initiative engine
+- 未来新模块接入成本
+
+所以它不是“以后顺手整理一下”的小优化，而是 P0 级底座工作。
+
+### 7A.5 当前阶段怎么落地最合适
+
+当前不一定要立刻重做全部角色编辑 UI。
+
+更务实的顺序是：
+
+1. 先在数据层和 shared context 层预留三层结构
+2. 先从现有 `setting` 中抽出 `corePersona`
+3. 让 prompt builder 优先读 `corePersona`
+4. 再逐步把 `extendedLore` 和 `sceneHints` 接入不同场景
+
+也就是说：
+
+**先改骨架，再改编辑体验。**
+
+---
+
+## 8. 自主决策引擎应该怎么做
+
+自主决策引擎不是简单“自动发一句话”，而是 Bloom 的可控主动性系统。
+
+它必须建立在共享关系语境和记忆系统稳定之后。
+
+### 8.1 决策引擎的目标
+
+决定：
+
+- 现在要不要行动
+- 适合做什么
+- 多大力度
+- 是否自动执行
+- 是否只生成草稿
+- 是否需要用户确认
+- 是否应该静默跳过
+
+### 8.2 六层决策链
+
+建议固定为：
+
+1. `Signal Layer`
+2. `Opportunity Layer`
+3. `Candidate Layer`
+4. `Policy Layer`
+5. `Scoring Layer`
+6. `Commit Layer`
+
+### 8.3 决策引擎只能吃什么
+
+它应该消费：
+
+- `relationshipProjection`
+- `memory summaries`
+- `unresolved items`
+- `policy hints`
+- `temporalContext`
+
+它不应该再直接四处读取原始业务对象。
+
+---
+
+## 9. 你刚补充的“现实时间感知”和“保活式主动触达”应该怎么落地
+
+这是 Bloom 以后非常关键的一部分，而且必须现在就纳入底座设计。
+
+### 9.1 目标定义
+
+你要的不是简单定时器，而是角色基于“现实时间流逝”的长期存在感。
+
+也就是说：
+
+- 如果现实里过了一天，系统里也认知为过了一天
+- 如果几天没聊天，角色能在合理时机主动触达
+- 如果开启全局感知，角色的主动行为和时间判断都基于现实时间
+- 这种能力要像“后台保活”一样长期有效，但又不能失控打扰
+
+### 9.2 需要新增的时间认知层
+
+建议在共享关系层之上，单独定义：
+
+`Temporal Awareness Layer`
+
+职责：
+
+- 读取真实当前时间
+- 计算距离上次聊天多久
+- 计算距离上次高价值互动多久
+- 识别昼夜、工作日、周末、节日、纪念日
+- 识别时间流逝对关系节奏的影响
+
+建议输出：
+
+- `currentLocalTime`
+- `dayPhase`
+- `weekdayInfo`
+- `daysSinceLastChat`
+- `daysSinceLastMeaningfulInteraction`
+- `daysSinceLastCoupleEvent`
+- `upcomingImportantDates`
+- `timeBasedRiskHints`
+- `reengagementWindow`
+
+### 9.3 时间感知触发不等于自动骚扰
+
+要把“能感知时间”和“该不该主动发消息”分开。
+
+建议流程：
+
+1. Temporal Awareness 只提供时间事实
+2. Initiative Engine 判断是否值得发起
+3. Policy Layer 判断用户设置、频率和打扰风险
+4. Commit Layer 决定 Auto / Draft / Confirm / Silent Skip
+
+### 9.4 现实时间驱动的主动场景
+
+后续应支持：
+
+- 超过 1 天未聊天的轻度问候
+- 超过多天未互动的关系保温
+- 夜晚 / 清晨 / 周末等时段的轻度语境差异
+- 节日与纪念日触发
+- 约会后隔天回想
+- 论坛或生活模块中的“后续延续感”
+
+### 9.5 后台保活式触达的正确做法
+
+“保活”不应理解成无脑定时发消息，而应理解成：
+
+**当关系连续性快断掉时，由系统判断是否进行低打扰、低风险、符合角色气质的再连接。**
+
+这需要：
+
+- 时间信号
+- 关系阶段
+- 最近活跃度
+- 用户偏好设置
+- 历史打扰反馈
+- 是否存在未完成话题
+
+### 9.6 为未来持续升级保留的能力
+
+以后你扩展到更多场景时，时间感知也应复用，而不是每个模块单独写：
+
+- 外卖里的饭点建议
+- 商城里的节日礼物建议
+- 书城里的睡前阅读氛围
+- 论坛里的白天 / 深夜表达差异
+
+也就是说，时间认知应该成为 Bloom 的公共能力，不应只属于聊天。
+
+---
+
+## 10. 未来论坛、书城、商城、外卖到底怎么稳定接入
+
+这些未来模块不应各自长成一套独立系统。
+
+它们应该都遵循同一接入法则：
+
+### 10.1 论坛
+
+论坛未来应定义为：
+
+**公共空间表达层**
+
+需要接入：
+
+- `buildForumSceneInput`
+- public expression rules
+- forum memory write-back
+- thread / reply / role differentiation
+
+论坛不能只是页面壳，它必须能把“角色在公共空间里的表达”写回关系系统。
+
+### 10.2 书城
+
+书城未来应定义为：
+
+**偏好沉淀与陪伴式推荐场景**
+
+需要接入：
+
+- preference memory
+- relationship projection
+- book interaction write-back
+- scene-specific prompt adapter
+
+### 10.3 商城
+
+商城未来应定义为：
+
+**生活偏好与关系化消费建议场景**
+
+需要接入：
+
+- long-term preference memory
+- relationship stage hints
+- recommendation adapter
+- purchase / browse trace write-back
+
+### 10.4 外卖
+
+外卖未来应定义为：
+
+**生活陪伴决策场景**
+
+需要接入：
+
+- meal preference memory
+- temporal awareness
+- recent mood / relationship hints
+- order trace write-back
+
+### 10.5 统一接入规则
+
+以后新增功能时，只允许以这种方式接入：
+
+1. 接 evidence source
+2. 接 shared relationship context
+3. 接 memory read / write
+4. 写对应 scene adapter
+5. 写自己的 domain service
+6. 接 persistence / migration
+
+如果某个新功能绕过这条路径，后续大概率会成为维护负担。
+
+---
+
+## 11. Bug、稳定性与长期升级应该怎么处理
+
+以后 Bloom 不能只按“哪里炸了修哪里”来维护。
+
+建议把问题分成三类。
+
+### 11.1 A 类：底座 bug
+
+例如：
+
+- 共享关系语境错误
+- 记忆抽取错误
+- adapter 输入错误
+- 导入迁移错误
+- 时间认知错误
+
+这类优先级最高，因为会污染所有新功能。
+
+### 11.2 B 类：主链 bug
+
+例如：
+
+- 群聊跑不通
+- 约会跑不通
+- 聊天回流断裂
+- 情侣空间写回异常
+
+这类直接影响核心体验，应高优先级持续收敛。
+
+### 11.3 C 类：单场景体验 bug
+
+例如：
+
+- 某个面板小交互
+- 某个卡片显示
+- 某段文案或样式问题
+
+这类不应长期抢占底座建设资源。
+
+---
+
+## 12. 现在到未来的实施顺序
+
+下面这个顺序，是结合当前仓库状态、你未来的产品目标、以及后续扩展要求后最合理的主线。
+
+### Phase A：先打最小承重骨架
+
+这是现在必须开始的阶段。
+
+目标：
+
+- 让聊天、群聊、情侣空间、约会后续都能吃同一种关系输入
+- 为记忆系统和自主决策引擎留下标准接口
+
+应完成：
+
+1. `buildCharacterContext`
+2. `collectRelationshipEvidence`
+3. `buildRelationshipProjection`
+4. shared schema / shared types
+5. `buildChatSceneInput`
+6. `buildGroupChatSceneInput`
+7. `buildCoupleSceneInput`
+8. `buildDatingSceneInput`
+9. `buildTemporalContext`
+10. 角色设定最小分层
+11. 记忆最小双层
+12. 统一 import / validation / migration 工具
+
+### Phase B：先打通聊天主链和最小群聊闭环
+
+目标：
+
+- 强化聊天活人感
+- 让群聊成为真正可用的主链分支
+
+应完成：
+
+1. 单聊接入统一 scene input
+2. 群聊最小闭环
+3. 角色分层设定
+4. 记忆最小双层接入聊天主链
+5. 标准化 relationship flow-back
+6. 角色一致性和差异性收敛
+
+### Phase B2：Old Path Cleanup
+
+这不是附属清理工作，而是平台化收口的一部分。
+如果双路径长期共存，系统比接多模态更容易腐烂；真正让平台失控的，往往不是新能力太多，而是旧路径一直不退位。
+
+这一阶段的目标是：
+- `setting / memorySummary` 从主链退位
+- 审计主链是否仍在直读旧字段
+- 审计旧 prompt builder 与旧 prompt 拼装入口
+- 让兼容层只保留迁移职责，不长期承担主逻辑职责
+- 在正式有用户前，尽量让内部主路径统一
+
+这一阶段的判断标准不是“旧逻辑还能不能跑”，而是“新骨架是否已经成为真正主路径”。只要主链已经站稳，就应尽快收口旧入口，避免双系统长期并行变成常态。
+
+### Phase C：把约会和情侣空间接到同一条关系链上
+
+目标：
+
+- 让约会和情侣空间不再是关系孤岛
+
+应完成：
+
+1. 约会接 shared context
+2. 约会结果写回 evidence
+3. 情侣空间继续保留 domain service，但底层输入改走 shared context
+4. 统一最近关系事件摘要
+
+### Phase D：正式做记忆分层
+
+目标：
+
+- 让记忆从“存过东西”升级成“能支持连续陪伴”
+
+应完成：
+
+1. raw trace layer
+2. structured memory extraction
+3. summary caching
+4. lightweight recall
+5. long-term relationship profile
+
+### Phase E：做时间感知 + 自主决策底座
+
+目标：
+
+- 让角色具备现实时间流逝认知和低打扰主动性
+
+应完成：
+
+1. temporal awareness layer
+2. initiative signal pipeline
+3. candidate generation
+4. policy gating
+5. scoring
+6. commit routing
+7. re-engagement strategy
+
+### Phase F：在稳定底座上接新生活模块
+
+目标：
+
+- 让论坛、书城、商城、外卖都稳定长进去
+
+建议顺序：
+
+1. 论坛
+2. 书城
+3. 商城
+4. 外卖
+
+原因：
+
+- 论坛最接近“关系表达”
+- 书城最适合沉淀偏好
+- 商城和外卖更依赖稳定的记忆和时间感知
+
+---
+
+### 12.1 优化建议版顺序（作为补充说明，不替代原主线）
+
+在不改变 Phase A-F 主结构的前提下，可以把当前蓝图的实施节奏进一步优化为：
+
+- Phase A：底座 contract 固化
+- 重点收口 shared context contract、evidence write contract、scene input schema、memory 最小双层、context budget 最小版、runtime 统一入口
+
+- Phase B：聊天 / 群聊主链打实
+- 重点收口单聊彻底样板化、群聊最小闭环、OOC 基础治理、角色分层真正扶正
+
+- Phase B2：旧路径清理
+- 重点收口 `setting / memorySummary` 主链退位、旧 prompt 入口审计、双路径只保留迁移兼容不保留长期主逻辑
+
+- Phase C：约会 / couple-space 接统一关系链
+- Phase D：正式 memory layer
+- Phase E：时间感知 + initiative
+- Phase F：新生活模块 + 多模态
+
+这版顺序不是推翻原蓝图，而是把原有主线进一步做成“先固化 contract，再打实主链，再收口旧路径，再继续扩场景”的增强实施建议。
+
+## 13. 当前阶段的明确优先级
+
+基于当前仓库和主线目标，建议把接下来优先级写死为：
+
+### P0：现在就该推进
+
+1. 最小共享关系语境骨架
+2. 最小群聊闭环
+3. 聊天主链接 scene input
+4. 角色分层设定
+5. 记忆最小双层
+6. 标准化 flow-back
+7. 统一导入 / 校验 / 迁移基础
+
+### P1：紧接着做
+
+1. 完整 shared relationship context layer
+2. 约会接入 shared context
+3. 记忆正式分层
+4. structured memory extraction
+5. summary caching
+6. temporal awareness layer
+7. couple-space 稳定 initiative 基础
+
+### P2：后续推进
+
+1. Bloom-wide initiative engine
+2. 论坛复杂 AI 化
+3. 书城
+4. 商城
+5. 外卖
+6. relationship stage model
+
+---
+
+## 14. 当前不该抢主线资源的事情
+
+这些不是不重要，而是不应该压过底座建设：
+
+- 大量新页面扩展
+- 为了“聪明感”过早做重型主动行为
+- 每个模块都单独做一套上下文拼装
+- 提前上特别重的向量记忆系统
+- 把所有业务继续堆进 `App.tsx`
+
+---
+
+## 15. 未来更新升级要怎么保证能跟上
+
+你明确说了这个项目会长期更新，所以现在的底座必须支持未来升级。
+
+建议固定这些工程要求。
+
+### 15.1 所有平台基础结构都要有版本字段
+
+至少这些对象建议预留版本：
+
+- app persistence schema
+- shared relationship schema
+- structured memory schema
+- import / export schema
+- scene input schema
+
+### 15.2 新模块接入必须带迁移方案
+
+以后每新增模块，不能只写页面和 service，还要补：
+
+- 数据写入结构
+- 旧数据兼容
+- 导入导出影响
+- 回流影响
+- 是否进入 memory extraction
+
+### 15.2.1 当前没有正式用户时的兼容策略
+
+这一点对 Bloom 当前阶段非常重要。
+
+如果当前还没有真正上线用户，主要还是开发者自己测试，那么兼容策略应该更主动、更收敛。
+
+建议明确成下面这条原则：
+
+**当前阶段兼容的目标，是为了平滑过渡，不是为了长期双系统共存。**
+
+也就是说：
+
+- 需要兼容旧数据
+- 需要兼容旧备份
+- 需要兼容旧字段到新字段的迁移
+
+但不应该因为“可能未来会有用户”而长期保留两套运行路径。
+
+更具体地说：
+
+#### 应长期保留的兼容
+
+- 旧存档读取
+- 旧备份导入
+- schema migration
+- 旧字段到新字段的映射工具
+
+#### 不应长期保留的兼容
+
+- 主链长期直接读取旧字段
+- 多场景长期保留旧 prompt 拼装方式
+- 新旧架构双轨并行成为常态
+- 旧混合字段语义继续承担主职责
+
+### 15.2.2 当前阶段应采取的节奏
+
+既然目前没有正式用户，那么升级节奏可以更积极：
+
+1. 短期保留兼容，保证测试数据平稳过渡
+2. 第一阶段后开始让主链优先走新骨架
+3. 第二阶段中后段逐步清理旧读取路径
+4. 正式有用户前，尽量让内部主路径已经统一
+
+目标：
+
+**尽快完成从旧架构到新骨架的收口，而不是长期保留双路径。**
+
+### 15.2.3 旧路径清理应被视为正式阶段
+
+后续蓝图里应把旧路径清理视为正式阶段，而不是附属提醒。原因很简单：双路径长期共存，比继续接一个新场景、甚至比接入多模态，更容易让系统内部腐烂。
+
+因此需要正式审计主链是否仍在直读旧字段、旧 prompt builder 是否仍在承担主逻辑、兼容层是否已经越界进入长期业务链、新旧路径是否已经形成事实上的双系统并行。
+
+平台化真正收口的标志，不只是“新路径已经存在”，而是“旧路径已经退出主链”。
+
+### 15.3 所有公共层都要可测试
+
+至少应优先给下面这些补测试：
+
+- shared context builders
+- memory extractors
+- temporal awareness
+- scene adapters
+- import validators
+
+### 15.4 页面层继续瘦身
+
+以后真正该变稳定的，是 service / schema / adapter。
+
+页面应逐渐退回到：
+
+- 展示
+- 触发
+- 收参
+- 状态切换
+
+### 15.5 新功能立项前先过“接入清单”
+
+每个新功能都先回答：
+
+1. 它要写哪些 evidence
+2. 它要读哪些 shared context
+3. 它要不要进 memory
+4. 它的 adapter 长什么样
+5. 它的写回和迁移怎么做
+
+如果这 5 个问题答不出来，就不该直接开始做 UI。
+
+---
+
+## 16. 当前仓库建议的落地文件方向
+
+下面不是一次性全建完，而是后续实施时应逐步形成的目录方向。
+
+### 16.1 共享关系与时间层
+
+建议方向：
+
+- `src/services/relationship-context/`
+- `src/services/temporal-awareness/`
+
+建议包含：
+
+- `buildCharacterContext.ts`
+- `collectRelationshipEvidence.ts`
+- `buildRelationshipProjection.ts`
+- `buildTemporalContext.ts`
+- `types.ts`
+
+### 16.2 场景适配层
+
+建议方向：
+
+- `src/services/scene-inputs/`
+
+建议包含：
+
+- `buildChatSceneInput.ts`
+- `buildGroupChatSceneInput.ts`
+- `buildCoupleSceneInput.ts`
+- `buildDatingSceneInput.ts`
+- later: `buildForumSceneInput.ts`
+- later: `buildBookstoreSceneInput.ts`
+- later: `buildShopSceneInput.ts`
+- later: `buildDeliverySceneInput.ts`
+
+### 16.3 记忆层
+
+建议方向：
+
+- `src/services/memory/`
+
+建议包含：
+
+- `buildShortTermSummary.ts`
+- `buildLongTermMemoryProfile.ts`
+- `extractStructuredMemory.ts`
+- `buildMemorySummaries.ts`
+- `recallMemory.ts`
+- `types.ts`
+
+### 16.3.1 角色分层输入
+
+建议角色结构后续逐步演化出：
+
+- `corePersona`
+- `extendedLore`
+- `sceneHints`
+
+短期内即使 UI 还未完全分拆，shared context 和 prompt builder 也应优先朝这个结构收口。
+
+### 16.4 自主决策层
+
+建议方向：
+
+- `src/services/initiative/`
+
+建议包含：
+
+- `collectInitiativeSignals.ts`
+- `buildInitiativeCandidates.ts`
+- `scoreInitiativeCandidates.ts`
+- `applyInitiativePolicy.ts`
+- `decideInitiativeCommitRoute.ts`
+
+### 16.5 导入、迁移与校验层
+
+建议方向：
+
+- `src/services/persistence/`
+- `src/services/imports/`
+
+建议包含：
+
+- `safeParseJson.ts`
+- `validateImportedAppData.ts`
+- `validateBackupImport.ts`
+- `migrateAppData.ts`
+- `schemaVersions.ts`
+
+---
+
+## 17. 当前已知现实情况
+
+截至本次文档更新，Bloom 的现实状态可以概括为：
+
+- 聊天是当前最强主链
+- 群聊还未真正打通
+- 约会逻辑还未完全跑通
+- 情侣空间已经较强，但仍偏领域内公共层
+- 聊天回流和公共输入层方向已经开始形成
+- 当前已经有总结能力，但短期记忆和长期记忆还没有正式拆开
+- 当前角色 `setting` 仍偏“大字段直塞 prompt”，长人设会明显挤压上下文预算
+- 近期若干高风险 JSON 解析问题已被修补
+- 项目仍存在大文件、导入校验、迁移基础不足等长期维护问题
+
+因此当前阶段的目标，不是“再造更多功能”，而是“把已有核心链路装进可持续升级的骨架里”。
+
+---
+
+## 18. 进度台账
+
+这个部分后续每次推进都可以继续更新。
+
+### 18.1 当前总状态
+
+- [x] Shared Relationship Context Layer 最小骨架
+- [x] Chat Scene Input 正式接入
+- [ ] Group Chat 最小闭环
+- [ ] Dating Scene Input 正式接入
+- [ ] Temporal Awareness Layer
+- [x] Character Setup 最小分层
+- [x] Memory 最小双层
+- [ ] Memory 分层正式落地
+- [ ] Initiative Engine 底座
+- [ ] Forum Scene Adapter
+- [ ] Bookstore Scene Adapter
+- [ ] Shop Scene Adapter
+- [ ] Delivery Scene Adapter
+- [x] Persistence / Import / Migration 统一化
+
+### 18.2 近期已完成
+
+- [x] 聊天气泡样式 JSON 安全解析
+- [x] 游戏卡片消息渲染安全解析
+- [x] 运行时 GAME_CARD 解析加固
+- [x] 约会生成内容解析加固
+- [x] 聊天设置 JSON 导入校验加固
+- [x] Character 新字段预留：`corePersona / extendedLore / sceneHints / shortTermSummary / longTermMemoryProfile`
+- [x] 旧角色迁移与兼容层：`setting -> corePersona`，`memorySummary -> longTermMemoryProfile`
+- [x] `buildCharacterContext` 最小骨架
+- [x] 记忆最小双层 builder：`buildShortTermSummary / buildLongTermMemoryProfile / buildResolvedMemoryLayers`
+- [x] `buildRelationshipProjection`
+- [x] `buildChatSceneInput`
+- [x] 聊天主链开始通过 shared scene builder 组装 prompt
+- [x] 自动总结开始写入 `shortTermSummary`
+- [x] 设置页开始区分短期记忆和长期记忆
+- [x] 手动长期总结开始写入 `longTermMemoryProfile`
+- [x] runtime 公共层兼容“非流式请求却返回 SSE data”的兜底解析
+
+### 18.3 第一阶段结论
+
+第一阶段已经收口，当前状态可以概括为：
+
+- 聊天主链已经开始住进新骨架
+- 旧数据兼容路径已建立
+- 角色读取和记忆读取已经有统一入口
+- 记忆开始从单一混合字段走向短期 / 长期双层
+- 当前仍处于“主链开始不混，外围继续兼容”的过渡态
+
+### 18.4 第二阶段总清单
+
+第二阶段的核心目标：
+
+**先把角色边界、记忆语义、角色稳定性和群聊主链收稳。**
+
+#### P2-1 角色边界隔离
+
+目标：
+
+- 让角色只读到属于自己的关系痕迹
+- 避免 A 的情侣空间痕迹串到 B
+
+要做：
+
+1. 聊天主链里，情侣空间摘要必须按 `partnerId === character.id` 隔离
+2. 检查 `recentCoupleSpaceSummary` 的生成与注入范围
+3. 区分 `character-scoped relationship context` 和 `global user context`
+4. `couple-space` 写回和读取都要有明确角色边界
+
+当前状态：
+
+- 第一刀已经开始做
+
+#### P2-2 记忆语义分层
+
+目标：
+
+- 让短期记忆和长期记忆开始写不同类型的内容
+
+要做：
+
+1. 短期总结只写最近几轮状态、当前气氛、未完事项、近期余波
+2. 长期总结只写稳定印象、偏好、边界、长期相处模式、阶段性变化
+3. 避免短期总结写成长期画像
+4. 避免长期总结把最近流水账整段吞进去
+5. 明确“自动 / 手动”是触发方式，不是记忆层
+6. 明确短期和长期后续都可支持手动总结，但写入目标不同
+
+#### P2-3 设置页动作和文案对齐
+
+目标：
+
+- 让页面动作和底层分层语义一致
+
+要做：
+
+1. 记忆区动作拆成“刷新近期总结 / 生成长期画像”
+2. 页面说明明确短期会滚动更新、长期不应高频覆盖
+3. 用户不再误以为点一次按钮会同时重写两层
+4. 长期画像按钮放到长期画像区域
+5. 页面不要长期停留在两个过小文本框
+6. 给后续独立记忆页 / 历史记录页预留入口
+
+#### P2-3.1 记忆页后续目标
+
+这一阶段不要求立刻做完整记忆管理器，但要把后续目标写清：
+
+1. 短期和长期都可手动总结
+2. 每次手动总结成功后，自动新增一条历史记录
+3. 历史记录按时间归档展示
+4. 每条记录支持下拉展开查看
+5. 后续逐步补编辑、删除、多选、导出
+
+#### P2-4 基础 OOC 治理
+
+目标：
+
+- 第二阶段先做基础治理，不现在做完整人格稳定系统
+
+要做：
+
+1. 角色入口轻量分层
+2. 长人设治理
+3. scene input 优先吃短而硬的核心 persona
+4. 记忆不要把一时发挥轻易沉淀成人设本体
+5. 群聊里强化角色差异
+
+#### P2-5 群聊最小闭环
+
+目标：
+
+- 把群聊从“有页面”做成“有机制”
+
+要做：
+
+1. 新建 `buildGroupChatSceneInput`
+2. 补群聊 prompt 第一版
+3. 群聊输出结构化
+4. 增加最小调度规则
+5. 强化角色差异
+
+#### P2-6 约会接共享关系输入
+
+目标：
+
+- 让约会不再是孤岛
+
+要做：
+
+1. 新建 `buildDatingSceneInput`
+2. `buildDatingPrompt` 优先读新结构
+3. `DatingScene` 开始吃 shared context
+4. 为约会结果写回 evidence 做准备
+
+#### P2-7 couple-space 主链接新骨架
+
+目标：
+
+- 让 `couple-space` 开始真正住进新骨架
+
+要做：
+
+1. persona 读取优先走新结构
+2. 长期记忆读取优先走新结构
+3. 先选一条核心主链验证
+4. 不全量推翻现有逻辑
+
+### 18.5 当前建议执行顺序
+
+1. 完成并提交 `P2-1` 角色边界隔离
+2. 再做 `P2-2` 记忆语义分层
+3. 再做 `P2-3` 设置页动作对齐
+4. 接着做 `P2-4` 基础 OOC 治理
+5. 然后推进 `P2-5` 群聊最小闭环
+6. 再做 `P2-6` 约会接 shared context
+7. 最后做 `P2-7` couple-space 主链接新骨架
+
+### 18.6 每次实施时的要求
+
+后续每一步都固定按下面的规则推进：
+
+1. 一次只做一个边界清晰的小步骤
+2. 优先新建小文件，不继续往大文件堆核心逻辑
+3. 遇到会污染当前步骤的旧 bug，可以顺手处理，但不能把主线打散成“无限修 bug”
+4. 如果涉及兼容，默认优先服务平滑过渡，不长期保留双系统主路径
+5. 发现源码级乱码、边界串味、明显 OOC 风险时，应优先标记并收口
+
+### 18.7 每次完成后的固定检查要求
+
+每一步完成后，固定执行：
+
+1. `npm run lint`
+2. `npm run build`
+3. 静态检查本次改动边界是否清楚
+4. 检查是否引入代码乱码
+5. 检查是否引入明显 bug
+6. 用户做手动验收
+7. 验收通过后再单独提交 git
+
+### 18.8 每次完成后的输出要求
+
+每一步完成后，对外输出固定包含：
+
+1. 这一步改了什么
+2. 为什么这样改
+3. 通俗解释这一步的意义
+4. 检查结果
+   - lint
+   - build
+   - 是否发现乱码
+   - 是否发现边界混乱
+5. 建议的手动验收点
+6. 通过后对应的 git commit 信息
+
+---
+
+## 19. 一句话最终结论
+
+Bloom 现在最该做的，不是继续零散加功能，而是先把它做成一个能承载聊天、记忆、时间感知、自主决策和未来生活模块扩展的“关系连续性平台”。
+
+只有这层底座立住了，未来论坛、书城、商城、外卖，以及你要的现实时间驱动主动触达，才能稳定地长进去，并且长期跟得上项目更新。
