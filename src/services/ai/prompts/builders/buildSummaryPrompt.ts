@@ -1,7 +1,15 @@
 ﻿import { EXISTENCE_PROMPT } from '../base/existence';
-import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
+import {
+  COMMON_OUTPUT_RULES,
+  LONG_TERM_PROFILE_RULES,
+  SHORT_TERM_SUMMARY_RULES,
+} from '../base/outputRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
-import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
+import {
+  buildLongTermMemoryContextSection,
+  buildShortTermMemoryContextSection,
+  MemoryContextInput,
+} from '../character/memoryContext';
 import { SUMMARY_SMALL_SCENARIO_PROMPT } from '../scenarios/summarySmall';
 import { SUMMARY_LARGE_SCENARIO_PROMPT } from '../scenarios/summaryLarge';
 
@@ -17,16 +25,24 @@ export type BuildSummaryPromptOptions = {
  * It is used by both short-term refreshes and long-term profile generation.
  */
 export function buildSummaryPrompt(options: BuildSummaryPromptOptions = {}): string {
-  const scenario = options.mode === 'large'
+  const isLargeSummary = options.mode === 'large';
+  const scenario = isLargeSummary
     ? SUMMARY_LARGE_SCENARIO_PROMPT
     : SUMMARY_SMALL_SCENARIO_PROMPT;
+  const memoryContextSection = isLargeSummary
+    ? buildLongTermMemoryContextSection(options.memoryContext ?? {})
+    : buildShortTermMemoryContextSection(options.memoryContext ?? {});
+  const outputRules = isLargeSummary
+    ? LONG_TERM_PROFILE_RULES
+    : SHORT_TERM_SUMMARY_RULES;
 
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
-    buildMemoryContextSection(options.memoryContext ?? {}),
+    memoryContextSection,
     scenario,
-    OUTPUT_RULES_PROMPT,
+    COMMON_OUTPUT_RULES,
+    outputRules,
     ...(options.sections ?? []),
   ].filter(Boolean);
 
