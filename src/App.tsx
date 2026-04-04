@@ -1696,6 +1696,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
   const [remarkName, setRemarkName] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
   const [avatar, setAvatar] = useState(`https://picsum.photos/seed/${Math.random()}/200`);
+  const [avatarDraft, setAvatarDraft] = useState('');
   const [setting, setSetting] = useState('');
   const [signature, setSignature] = useState('');
   const [openingRemark, setOpeningRemark] = useState('');
@@ -1762,62 +1763,66 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
         {view === 'edit' ? (
           <div className="space-y-6">
             {/* Avatar */}
-            <div className="flex flex-col items-center gap-3">
-              <div className="relative group flex-1 min-w-0 flex flex-col gap-1 items-center">
-                <ResolvedAssetImage value={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
-                <button 
-                  onClick={() => setAvatar(`https://picsum.photos/seed/${Math.random()}/200`)}
-                  className="absolute bottom-0 right-0 w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center text-white border-2 border-white shadow-sm active:scale-90"
-                >
-                  <RefreshCw size={14} />
-                </button>
-              </div>
-              
-              <div className="flex gap-2 w-full">
-                <div className="flex-1 relative">
-                   <input 
-                    type="text" 
-                    placeholder="输入头像链接..."
-                    value={avatar.startsWith('data:') ? '' : avatar}
-                    onChange={e => setAvatar(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-blue-500"
-                  />
-                </div>
-                <label className="bg-zinc-100 text-zinc-600 rounded-lg px-3 py-2 text-[12px] font-medium active:opacity-80 cursor-pointer whitespace-nowrap flex items-center gap-1">
-                  <Upload size={12} />
-                  上传
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden" 
-                    onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setAvatar(reader.result as string);
-                        };
-                        reader.readAsDataURL(file);
-                      }
+            <div className="bg-white rounded-[28px] border border-zinc-100 shadow-sm p-5 flex flex-col items-center gap-4">
+              <ResolvedAssetImage value={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
+
+              <div className="w-full max-w-[320px] space-y-3">
+                <p className="text-[12px] text-zinc-400 text-center">支持链接、Markdown或HTML图片</p>
+                <input
+                  type="text"
+                  placeholder="输入头像链接..."
+                  value={avatarDraft}
+                  onChange={e => setAvatarDraft(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2.5 text-[12px] outline-none focus:border-blue-500"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      const nextAvatar = avatarDraft.trim();
+                      if (!nextAvatar) return;
+                      setAvatar(extractImageUrls(nextAvatar)[0] || nextAvatar);
+                      setAvatarDraft('');
                     }}
-                  />
-                </label>
+                    className="bg-zinc-900 text-white text-[14px] py-3 rounded-xl font-semibold active:opacity-90"
+                  >
+                    确认
+                  </button>
+                  <label className="bg-white text-zinc-700 text-[14px] py-3 rounded-xl font-medium text-center cursor-pointer border border-zinc-100 active:opacity-80">
+                    上传文件
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setAvatar(reader.result as string);
+                            setAvatarDraft('');
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="w-full flex flex-col items-center gap-0.5">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="角色姓名"
+                  className="text-[15px] font-bold text-zinc-900 text-center bg-transparent border-none outline-none focus:ring-1 focus:ring-zinc-100 rounded px-2"
+                />
+                <span className="text-[10px] text-zinc-400">点击名称可修改</span>
               </div>
             </div>
 
             {/* Form */}
             <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[13px] text-zinc-500 ml-1">角色姓名</label>
-                <input 
-                  type="text" 
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="例如：林婉儿"
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors"
-                />
-              </div>
-
               <div className="space-y-1.5">
                 <label className="text-[13px] text-zinc-500 ml-1">备注</label>
                 <input
