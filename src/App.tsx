@@ -62,7 +62,7 @@ import { usePersistedCharactersBridge } from './features/persistence/usePersiste
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
-import { migrateCharacterShape, migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
+import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
@@ -1705,7 +1705,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
 
   const handleSave = () => {
     if (!name.trim()) return alert('请输入角色姓名');
-    onSave(migrateCharacterShape({
+    onSave({
       id: Date.now().toString(),
       name,
       remarkName: remarkName.trim() || undefined,
@@ -1715,14 +1715,14 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
       signature: signature.trim() || undefined,
       openingRemark,
       groupId: groupId || undefined,
-    }));
+    });
   };
 
   const handleImport = () => {
     try {
       const data = JSON.parse(importJson);
       if (!data.name) throw new Error('缺少角色姓名');
-      onSave(migrateCharacterShape({
+      onSave({
         id: Date.now().toString(),
         name: data.name,
         remarkName: data.remarkName || undefined,
@@ -1732,7 +1732,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
         signature: data.signature || undefined,
         openingRemark: data.openingRemark || '',
         groupId: data.groupId || undefined,
-      }));
+      });
     } catch (e: any) {
       alert('导入失败: ' + e.message);
     }
@@ -1857,6 +1857,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   placeholder="写这个角色是谁、怎么说话、关系气质和核心设定..."
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[120px] resize-none"
                 />
+                <p className="text-[12px] text-zinc-400 ml-1">先写完整设定，后续可在设置里细化。</p>
               </div>
 
               <div className="space-y-1.5">
