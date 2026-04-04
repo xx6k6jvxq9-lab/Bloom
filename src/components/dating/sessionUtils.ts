@@ -43,10 +43,10 @@ export function createSceneMessage(content: DatingGeneratedContent, timestamp = 
 
 export function normalizeDateSessionMessages(session: DateSession): DateMessage[] {
   const normalized = (session.messages || []).map((message, index) => ({
+    ...message,
     id: message.id || `${message.role}-${session.id}-${index}`,
     timestamp: message.timestamp || session.timestamp || Date.now(),
-    kind: message.kind || (message.role === 'user' ? 'user' : message.generatedContent ? 'scene' : 'scene'),
-    ...message,
+    kind: message.kind || (message.role === 'user' ? 'user' : 'scene'),
   }));
 
   if (normalized.length > 0) {
