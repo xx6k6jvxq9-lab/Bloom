@@ -136,6 +136,10 @@ export function ChatSettingsPanel({
   const [showBatchMenu, setShowBatchMenu] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showSettingEditor, setShowSettingEditor] = useState(false);
+  const [showRemarkEditor, setShowRemarkEditor] = useState(false);
+  const [showSignatureEditor, setShowSignatureEditor] = useState(false);
+  const [pendingRemarkName, setPendingRemarkName] = useState('');
+  const [pendingSignature, setPendingSignature] = useState('');
 
   if (!character) return null;
 
@@ -143,6 +147,7 @@ export function ChatSettingsPanel({
   const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
 
   const currentGroupLabel = character.groupId || '无分组';
+  const remarkName = character.remarkName?.trim() || '';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
   const expressionStyle = character.expressionStyle?.trim() || '';
@@ -152,6 +157,14 @@ export function ChatSettingsPanel({
   const settingSummary = resolvedCorePersona
     ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
+
+  useEffect(() => {
+    setPendingRemarkName(character.remarkName ?? '');
+  }, [character.remarkName]);
+
+  useEffect(() => {
+    setPendingSignature(character.signature ?? '');
+  }, [character.signature]);
 
   const calculateTokens = () => {
       const estimateTextTokens = (text: string) => {
@@ -567,12 +580,70 @@ export function ChatSettingsPanel({
             </div>
 
             <div className="p-4 space-y-3">
-              <div className="rounded-xl bg-white/40 border border-white/30 px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="text-[14px] text-zinc-700 font-medium">个性签名 / 角色资料摘要</h3>
-                    <p className="text-[12px] text-zinc-500 mt-1 break-words">{profileSummary}</p>
-                  </div>
+              <div className="rounded-xl bg-white/40 border border-white/30 px-3 py-3 space-y-3">
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowRemarkEditor(prev => !prev)}
+                    className="w-full flex items-center justify-between gap-3 text-left"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-[14px] text-zinc-700 font-medium">备注</h3>
+                      <p className="text-[11px] text-zinc-500 mt-1 break-words">{remarkName || '点击展开后填写备注'}</p>
+                    </div>
+                    <ChevronDown size={18} className={`text-zinc-400 transition-transform shrink-0 ${showRemarkEditor ? '' : '-rotate-90'}`} />
+                  </button>
+                  {showRemarkEditor && (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={pendingRemarkName}
+                        onChange={e => setPendingRemarkName(e.target.value)}
+                        placeholder="例如：阿白、学长、小周"
+                        className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-zinc-900"
+                      />
+                      <button
+                        onClick={() => {
+                          onUpdate({ ...character, remarkName: pendingRemarkName });
+                          setShowRemarkEditor(false);
+                        }}
+                        className="w-full bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                      >
+                        确认
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowSignatureEditor(prev => !prev)}
+                    className="w-full flex items-center justify-between gap-3 text-left"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-[14px] text-zinc-700 font-medium">个性签名 / 角色资料摘要</h3>
+                      <p className="text-[11px] text-zinc-500 mt-1 break-words">{profileSummary}</p>
+                    </div>
+                    <ChevronDown size={18} className={`text-zinc-400 transition-transform shrink-0 ${showSignatureEditor ? '' : '-rotate-90'}`} />
+                  </button>
+                  {showSignatureEditor && (
+                    <div className="space-y-2">
+                      <textarea
+                        value={pendingSignature}
+                        onChange={e => setPendingSignature(e.target.value)}
+                        placeholder="这个角色希望在资料页展示的一句签名..."
+                        className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[88px] resize-none"
+                      />
+                      <button
+                        onClick={() => {
+                          onUpdate({ ...character, signature: pendingSignature });
+                          setShowSignatureEditor(false);
+                        }}
+                        className="w-full bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                      >
+                        确认
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -582,7 +653,6 @@ export function ChatSettingsPanel({
               >
                 <div className="min-w-0 text-left">
                   <h3 className="text-[14px] text-zinc-700 font-medium">角色设定</h3>
-                  <p className="text-[12px] text-zinc-500 mt-1 break-words">{settingSummary}</p>
                 </div>
                 <ChevronRight size={18} className="text-zinc-400 shrink-0" />
               </button>

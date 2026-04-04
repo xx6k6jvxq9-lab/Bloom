@@ -1693,9 +1693,11 @@ export default function App() {
 function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) => void; onBack: () => void; groups: string[]; key?: string }) {
   const [view, setView] = useState<'edit' | 'import'>('edit');
   const [name, setName] = useState('');
+  const [remarkName, setRemarkName] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('other');
   const [avatar, setAvatar] = useState(`https://picsum.photos/seed/${Math.random()}/200`);
   const [setting, setSetting] = useState('');
+  const [signature, setSignature] = useState('');
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
@@ -1705,9 +1707,11 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
     onSave({
       id: Date.now().toString(),
       name,
+      remarkName: remarkName.trim() || undefined,
       gender,
       avatar,
       setting,
+      signature: signature.trim() || undefined,
       openingRemark,
       groupId: groupId || undefined,
     });
@@ -1720,9 +1724,11 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
       onSave({
         id: Date.now().toString(),
         name: data.name,
+        remarkName: data.remarkName || undefined,
         gender: data.gender || 'other',
         avatar: data.avatar || DEFAULT_WHITE_AVATAR,
         setting: data.setting || '',
+        signature: data.signature || undefined,
         openingRemark: data.openingRemark || '',
         groupId: data.groupId || undefined,
       });
@@ -1813,6 +1819,17 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
               </div>
 
               <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">备注</label>
+                <input
+                  type="text"
+                  value={remarkName}
+                  onChange={e => setRemarkName(e.target.value)}
+                  placeholder="例如：阿白、学长、小周"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="text-[13px] text-zinc-500 ml-1">性别</label>
                 <div className="flex gap-2">
                   {(['male', 'female', 'other'] as const).map(g => (
@@ -1834,6 +1851,16 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   onChange={e => setSetting(e.target.value)}
                   placeholder="描述角色的性格、背景、说话方式等..."
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">个性签名</label>
+                <textarea
+                  value={signature}
+                  onChange={e => setSignature(e.target.value)}
+                  placeholder="这个角色在资料页里显示的一句签名..."
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[80px] resize-none"
                 />
               </div>
 

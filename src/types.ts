@@ -463,6 +463,7 @@ export type Character = {
   boundaryPack?: string;
   extendedLore?: string;
   sceneHints?: Record<string, string>;
+  remarkName?: string;
   signature?: string;
   openingRemark: string;
   lastMessage?: string;

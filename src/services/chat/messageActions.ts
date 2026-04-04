@@ -174,7 +174,7 @@ const deriveMoodFromRecentText = (recentText: string): string => {
 };
 
 export const getChatHeaderState = (
-  character: Pick<Character, 'name' | 'signature' | 'openingRemark'>,
+  character: Pick<Character, 'name' | 'remarkName' | 'signature' | 'openingRemark'>,
   history: ChatMessage[],
   isLoading: boolean
 ): ChatHeaderState => {
@@ -184,8 +184,9 @@ export const getChatHeaderState = (
     || '';
   const mood = deriveMoodFromRecentText(recentModelText);
   const isTyping = isLoading;
+  const displayName = character.remarkName?.trim() || character.name;
   return {
-    title: isTyping ? '正在输入...' : character.name,
+    title: isTyping ? '正在输入...' : displayName,
     subtitle: `当前心情：${mood}`,
     mood,
     isTyping,
