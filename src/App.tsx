@@ -272,8 +272,16 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
   return [...persistedCharacters, ...missingDefaults];
 }
 
-function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
-  const { characters: _characters, ...persistableAppData } = appData;
+function getPersistableAppData(
+  appData: AppData,
+): Omit<AppData, 'characters' | 'groups' | 'chatGroups' | 'chatHistory'> {
+  const {
+    characters: _characters,
+    groups: _groups,
+    chatGroups: _chatGroups,
+    chatHistory: _chatHistory,
+    ...persistableAppData
+  } = appData;
   const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
     appData.coupleSpaceState,
     appData.coupleSpace,
@@ -1191,6 +1199,7 @@ export default function App() {
         setAppData({
           ...parsed,
           characters: sanitizePersistedCharacters(parsed.characters),
+          chatHistory: {},
           userProfile: parsed.userProfile
             ? {
                 ...parsed.userProfile,
@@ -1199,7 +1208,8 @@ export default function App() {
             : parsed.userProfile,
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
-          groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
+          groups: ['家人', '朋友', '同事', '星标'],
+          chatGroups: [],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
           coupleSpaceState,
