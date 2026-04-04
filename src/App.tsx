@@ -1773,7 +1773,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   placeholder="输入头像链接..."
                   value={avatarDraft}
                   onChange={e => setAvatarDraft(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2.5 text-[12px] outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2.5 text-[12px] outline-none focus:border-zinc-900"
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -1830,7 +1830,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   value={remarkName}
                   onChange={e => setRemarkName(e.target.value)}
                   placeholder="例如：阿白、学长、小周"
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors"
                 />
               </div>
 
@@ -1850,12 +1850,12 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[13px] text-zinc-500 ml-1">角色设定 (System Prompt)</label>
+                <label className="text-[13px] text-zinc-500 ml-1">角色设定</label>
                 <textarea 
                   value={setting}
                   onChange={e => setSetting(e.target.value)}
-                  placeholder="描述角色的性格、背景、说话方式等..."
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[100px] resize-none"
+                  placeholder="写这个角色是谁、怎么说话、关系气质和核心设定..."
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[120px] resize-none"
                 />
               </div>
 
@@ -1865,7 +1865,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   value={signature}
                   onChange={e => setSignature(e.target.value)}
                   placeholder="这个角色在资料页里显示的一句签名..."
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[80px] resize-none"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[80px] resize-none"
                 />
               </div>
 
@@ -1875,7 +1875,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   value={openingRemark}
                   onChange={e => setOpeningRemark(e.target.value)}
                   placeholder="角色对你说的第一句话..."
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-blue-500 transition-colors min-h-[80px] resize-none"
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[80px] resize-none"
                 />
               </div>
 
@@ -1884,7 +1884,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setGroupId('')}
-                    className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${!groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${!groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                   >
                     无分组
                   </button>
@@ -1892,7 +1892,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                     <button
                       key={g}
                       onClick={() => setGroupId(g)}
-                      className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                      className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                     >
                       {g}
                     </button>
