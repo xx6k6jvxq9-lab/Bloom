@@ -58,6 +58,8 @@ import {
 import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { resetCharacters } from './features/persistence/charactersStore';
+import { loadChatHistoryRecords, saveChatHistoryRecords, extractGroupHistories } from './features/persistence/chatHistoryStore';
+import { loadPersistedChatOrganization, persistChatOrganization } from './features/persistence/chatOrganizationStore';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
@@ -292,6 +294,57 @@ function getPersistableAppData(
     coupleSpace,
     coupleSpaceState,
   };
+}
+
+function migrateLegacyChatPersistence(source: Partial<AppData> | null | undefined): void {
+  if (!source) return;
+
+  const legacyDirectHistory = source.chatHistory && typeof source.chatHistory === 'object'
+    ? source.chatHistory
+    : {};
+  const legacyChatGroups = Array.isArray(source.chatGroups) ? source.chatGroups : [];
+  const legacyGroups = Array.isArray(source.groups) ? source.groups : ['家人', '朋友', '同事', '星标'];
+
+  const currentChatHistory = loadChatHistoryRecords({
+    directHistory: {},
+    groupHistories: {},
+  });
+  const mergedDirectHistory = {
+    ...legacyDirectHistory,
+    ...currentChatHistory.directHistory,
+  };
+  const mergedGroupHistories = {
+    ...extractGroupHistories(legacyChatGroups),
+    ...currentChatHistory.groupHistories,
+  };
+
+  if (
+    Object.keys(mergedDirectHistory).length > 0
+    || Object.keys(mergedGroupHistories).length > 0
+  ) {
+    saveChatHistoryRecords({
+      directHistory: mergedDirectHistory,
+      groupHistories: mergedGroupHistories,
+    });
+  }
+
+  const currentChatOrganization = loadPersistedChatOrganization({
+    groups: ['家人', '朋友', '同事', '星标'],
+    chatGroups: [],
+  });
+  const hasCurrentGroups = currentChatOrganization.chatGroups.length > 0;
+  const nextChatGroups = hasCurrentGroups ? currentChatOrganization.chatGroups : legacyChatGroups;
+  const nextGroups = currentChatOrganization.groups.length > 0 ? currentChatOrganization.groups : legacyGroups;
+
+  if (nextChatGroups.length > 0 || nextGroups.length > 0) {
+    persistChatOrganization({
+      groups: nextGroups,
+      chatGroups: nextChatGroups.map(group => ({
+        ...group,
+        history: undefined,
+      })),
+    });
+  }
 }
 
 function hydratePersistedCharacters(
@@ -1193,6 +1246,7 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
+        migrateLegacyChatPersistence(parsed);
         const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
           parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
         );
