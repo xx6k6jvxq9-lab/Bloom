@@ -32,7 +32,7 @@ function migrateZhouJibaiBoundaryPack(input: {
     return { expressionStyle, boundaryPack };
   }
 
-  const rulePattern = /(?:^|\n)\s*(?:注意[:：]?\s*)?不会说脏话\s*(?=\n|$)/;
+  const rulePattern = /(?:^|\r?\n)\s*(?:注意[:：]?\s*)?不会说脏话\s*(?=\r?\n|$)/;
   const matchedRule = expressionStyle.match(rulePattern)?.[0];
 
   if (!matchedRule) {

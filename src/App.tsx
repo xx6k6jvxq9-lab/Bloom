@@ -1252,7 +1252,7 @@ export default function App() {
         characters: normalizedCharacters,
       };
     });
-  }, [hasHydratedStorage]);
+  }, [appData.characters, hasHydratedStorage]);
 
   useEffect(() => {
     const handleDialogRequest = (event: Event) => {
