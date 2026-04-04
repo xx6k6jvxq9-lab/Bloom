@@ -263,16 +263,20 @@ export function ContactsApp({
                 <h2 className="text-[12px] font-bold text-blue-500 uppercase tracking-wider">{selectedGroup} 成员</h2>
               </div>
               <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar pb-4">
-                {groupMembers.map(char => (
-                  <div 
-                    key={char.id}
-                    onClick={() => onOpenProfile(char.id)}
-                    className="flex-shrink-0 w-[100px] rounded-2xl border shadow-sm p-3 flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer bg-white border-zinc-100"
-                  >
-                    <ResolvedContactsAvatar value={char.avatar} alt={char.name} className="w-12 h-12 rounded-full object-cover bg-zinc-100" />
-                    <span className="text-[12px] font-bold text-zinc-800 truncate w-full text-center">{char.name}</span>
-                  </div>
-                ))}
+                {groupMembers.map(char => {
+                  const displayName = char.remarkName?.trim() || char.name;
+
+                  return (
+                    <div 
+                      key={char.id}
+                      onClick={() => onOpenProfile(char.id)}
+                      className="flex-shrink-0 w-[100px] rounded-2xl border shadow-sm p-3 flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer bg-white border-zinc-100"
+                    >
+                      <ResolvedContactsAvatar value={char.avatar} alt={displayName} className="w-12 h-12 rounded-full object-cover bg-zinc-100" />
+                      <span className="text-[12px] font-bold text-zinc-800 truncate w-full text-center">{displayName}</span>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -294,31 +298,35 @@ export function ContactsApp({
             className="rounded-t-[32px] overflow-hidden border-t border-zinc-100 shadow-sm bg-white"
           >
             <div className="divide-y divide-zinc-200/20">
-              {filteredCharacters.map(char => (
-                <div 
-                  key={char.id}
-                  onClick={() => onOpenProfile(char.id)}
-                  className="flex items-center gap-3 p-4 active:bg-white/50 transition-colors cursor-pointer"
-                >
-                <button
-                  className="shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenProfile(char.id);
-                  }}
-                >
-                  <ResolvedContactsAvatar 
-                    value={char.avatar} 
-                    alt={char.name} 
-                    className="w-10 h-10 rounded-full object-cover bg-zinc-100 shrink-0" 
-                  />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{char.name}</h3>
-                  <p className="text-[11px] text-zinc-400 truncate">{char.setting.slice(0, 30)}...</p>
+              {filteredCharacters.map(char => {
+                const displayName = char.remarkName?.trim() || char.name;
+
+                return (
+                  <div 
+                    key={char.id}
+                    onClick={() => onOpenProfile(char.id)}
+                    className="flex items-center gap-3 p-4 active:bg-white/50 transition-colors cursor-pointer"
+                  >
+                  <button
+                    className="shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenProfile(char.id);
+                    }}
+                  >
+                    <ResolvedContactsAvatar 
+                      value={char.avatar} 
+                      alt={displayName} 
+                      className="w-10 h-10 rounded-full object-cover bg-zinc-100 shrink-0" 
+                    />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
+                    <p className="text-[11px] text-zinc-400 truncate">{char.setting.slice(0, 30)}...</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {filteredCharacters.length === 0 && (
               <div className="py-12 text-center text-zinc-300">
                 <p className="text-[14px]">未找到联系人</p>
@@ -353,6 +361,7 @@ export function CharacterProfile({
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
 }) {
+  const displayName = character.remarkName?.trim() || character.name;
   const fallbackSignature = character.openingRemark?.trim()
     || `${character.setting.trim().slice(0, 36)}${character.setting.trim().length > 36 ? '...' : ''}`;
   const profileSignature = character.signature?.trim() || fallbackSignature;
@@ -378,9 +387,9 @@ export function CharacterProfile({
       <div className="flex-1 overflow-y-auto bg-zinc-50/50">
         {/* Profile Info Card */}
         <div className="bg-white px-4 py-4 flex items-center gap-3 mb-2.5">
-          <ResolvedContactsAvatar value={character.avatar} alt={character.name} className="w-14 h-14 rounded-xl object-cover shadow-sm" />
+          <ResolvedContactsAvatar value={character.avatar} alt={displayName} className="w-14 h-14 rounded-xl object-cover shadow-sm" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-[18px] font-bold text-zinc-900 truncate">{character.name}</h2>
+            <h2 className="text-[18px] font-bold text-zinc-900 truncate">{displayName}</h2>
             <p className="text-[12px] text-zinc-400 mt-0.5">ID: {character.id}</p>
           </div>
         </div>
@@ -493,6 +502,7 @@ export function CharacterMomentsProfile({
   moments: CharacterMoment[];
   onBack: () => void;
 }) {
+  const displayName = character.remarkName?.trim() || character.name;
   const ownMoments = moments
     .filter(moment => moment.authorId === character.id)
     .sort((a, b) => b.timestamp - a.timestamp);
@@ -529,11 +539,11 @@ export function CharacterMomentsProfile({
           <div className="px-5 relative -mt-10 flex items-end gap-3 justify-start z-10">
             <div className="relative flex-1 min-w-0 flex flex-col gap-1">
               <div className="absolute inset-0 bg-black/5 rounded-2xl blur-sm transform translate-y-1" />
-              <ResolvedContactsAvatar value={character.avatar} alt={character.name} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
+              <ResolvedContactsAvatar value={character.avatar} alt={displayName} className="w-20 h-20 rounded-2xl border-[3px] border-white object-cover bg-white shadow-md relative z-10" />
             </div>
             <div className="mb-1.5 flex-1 text-left">
               <div className="flex items-center justify-start gap-2">
-                <h2 className="text-[20px] font-bold text-zinc-900">{character.name}</h2>
+                <h2 className="text-[20px] font-bold text-zinc-900">{displayName}</h2>
                 <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-medium rounded-full">
                   {character.gender === 'female' ? '她的动态' : character.gender === 'male' ? '他的动态' : '角色动态'}
                 </span>
@@ -555,10 +565,10 @@ export function CharacterMomentsProfile({
                 className="p-4 mx-4 backdrop-blur-md border border-white/50 shadow-sm flex gap-3 transition-colors bg-white/90"
                 style={{ borderRadius: 24 }}
               >
-                <ResolvedContactsAvatar value={character.avatar} alt={character.name} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
+                <ResolvedContactsAvatar value={character.avatar} alt={displayName} className="w-10 h-10 rounded-full object-cover border border-zinc-100 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    <h3 className="font-bold text-[15px] text-zinc-900">{character.name}</h3>
+                    <h3 className="font-bold text-[15px] text-zinc-900">{displayName}</h3>
                     <span className="text-[12px] text-zinc-400">
                       {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>

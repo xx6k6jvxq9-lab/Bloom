@@ -189,38 +189,42 @@ export function MainApp({
                 if (!a.isPinned && b.isPinned) return 1;
                 return (b.lastTime || 0) - (a.lastTime || 0);
               })
-              .map(char => (
-              <div 
-                key={char.id}
-                onClick={() => onOpenChat(char.id)}
-                className="flex items-center gap-3 p-4 transition-colors cursor-pointer backdrop-blur-md rounded-2xl border shadow-sm"
-                style={{
-                  backgroundColor: char.isPinned ? '#f4f4f5' : 'white',
-                  borderColor: '#e4e4e7'
-                }}
-              >
-                <ResolvedMainShellAvatar 
-                  value={char.avatar} 
-                  alt={char.name} 
-                  className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" 
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center mb-0.5">
-                    <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{char.name}</h3>
-                    <span className="text-[11px] text-zinc-400">
-                      {char.lastTime ? new Date(char.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center gap-2">
-                    <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(char.lastMessage) || formatMessagePreview(char.openingRemark)}</p>
-                    <div className="flex items-center gap-1">
-                      {char.isMuted && <BellOff size={12} className="text-zinc-400" />}
-                      {char.isPinned && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
+              .map(char => {
+                const displayName = char.remarkName?.trim() || char.name;
+
+                return (
+                  <div 
+                    key={char.id}
+                    onClick={() => onOpenChat(char.id)}
+                    className="flex items-center gap-3 p-4 transition-colors cursor-pointer backdrop-blur-md rounded-2xl border shadow-sm"
+                    style={{
+                      backgroundColor: char.isPinned ? '#f4f4f5' : 'white',
+                      borderColor: '#e4e4e7'
+                    }}
+                  >
+                    <ResolvedMainShellAvatar 
+                      value={char.avatar} 
+                      alt={displayName} 
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" 
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-0.5">
+                        <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
+                        <span className="text-[11px] text-zinc-400">
+                          {char.lastTime ? new Date(char.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center gap-2">
+                        <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(char.lastMessage) || formatMessagePreview(char.openingRemark)}</p>
+                        <div className="flex items-center gap-1">
+                          {char.isMuted && <BellOff size={12} className="text-zinc-400" />}
+                          {char.isPinned && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
           </div>
         )}
 
