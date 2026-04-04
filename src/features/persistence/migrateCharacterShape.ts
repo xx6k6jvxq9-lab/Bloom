@@ -24,11 +24,20 @@ const EXPRESSION_STYLE_SECTION_HEADERS = [
   '核心感觉：',
 ] as const;
 
+const BOUNDARY_PACK_SECTION_HEADERS = [
+  '边界与禁忌：',
+  '边界：',
+  '禁忌：',
+  '不能越线的内容：',
+  '不可违背点：',
+] as const;
+
 function extractSectionBlock(source: string, header: string): string | undefined {
   const startIndex = source.indexOf(header);
   if (startIndex < 0) return undefined;
 
-  const nextIndex = EXPRESSION_STYLE_SECTION_HEADERS
+  const allHeaders = [...EXPRESSION_STYLE_SECTION_HEADERS, ...BOUNDARY_PACK_SECTION_HEADERS];
+  const nextIndex = allHeaders
     .map((candidate) => source.indexOf(candidate, startIndex + header.length))
     .filter((index) => index >= 0)
     .sort((left, right) => left - right)[0];
@@ -41,6 +50,16 @@ function extractExpressionStyleSections(source: string | undefined): string | un
   if (!source) return undefined;
 
   const sections = EXPRESSION_STYLE_SECTION_HEADERS
+    .map((header) => extractSectionBlock(source, header))
+    .filter((value): value is string => Boolean(value));
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
+function extractBoundaryPackSections(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+
+  const sections = BOUNDARY_PACK_SECTION_HEADERS
     .map((header) => extractSectionBlock(source, header))
     .filter((value): value is string => Boolean(value));
 
@@ -62,13 +81,29 @@ function stripExpressionStyleSections(source: string | undefined): string | unde
   return normalized || undefined;
 }
 
+function stripBoundaryPackSections(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+
+  const stripped = BOUNDARY_PACK_SECTION_HEADERS.reduce((current, header) => {
+    const block = extractSectionBlock(current, header);
+    return block ? current.replace(block, '').trim() : current;
+  }, source);
+
+  const normalized = stripped
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return normalized || undefined;
+}
+
 export function migrateCharacterShape(character: Character): Character {
   const basePersonaSource = normalizeOptionalText(character.corePersona)
     ?? normalizeOptionalText(character.setting);
   const expressionStyle = normalizeOptionalText(character.expressionStyle)
     ?? extractExpressionStyleSections(basePersonaSource);
-  const boundaryPack = normalizeOptionalText(character.boundaryPack);
-  const corePersona = stripExpressionStyleSections(basePersonaSource);
+  const boundaryPack = normalizeOptionalText(character.boundaryPack)
+    ?? extractBoundaryPackSections(basePersonaSource);
+  const corePersona = stripBoundaryPackSections(stripExpressionStyleSections(basePersonaSource));
   const extendedLore = normalizeOptionalText(character.extendedLore);
   const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
     ?? normalizeOptionalText(character.memorySummary);
