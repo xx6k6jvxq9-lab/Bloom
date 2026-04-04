@@ -152,37 +152,6 @@ function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | 
   }
 }
 
-function hasMeaningfulStatusContent(parsed: Partial<DatingGeneratedContent> | null | undefined) {
-  return Boolean(
-    parsed?.status?.location?.trim()
-      || parsed?.status?.time?.trim()
-      || parsed?.status?.mood?.trim()
-      || parsed?.status?.innerThought?.trim(),
-  );
-}
-
-function hasMeaningfulPlaylistContent(parsed: Partial<DatingGeneratedContent> | null | undefined) {
-  return Boolean(
-    parsed?.playlist?.some(song => song.title?.trim() && song.artist?.trim()),
-  );
-}
-
-function isGeneratedContentStructurallyValid(parsed: Partial<DatingGeneratedContent> | null | undefined) {
-  const segments = parsed?.narrative?.segments ?? [];
-  const normalizedSegments = segments.filter(segment => segment?.text?.trim());
-  const dialogueCount = normalizedSegments.filter(segment => segment.type === 'dialogue').length;
-
-  return Boolean(
-    parsed?.background?.atmosphere?.trim()
-      && parsed?.background?.focus?.trim()
-      && parsed?.narrative?.title?.trim()
-      && normalizedSegments.length >= 6
-      && dialogueCount >= 2
-      && hasMeaningfulStatusContent(parsed)
-      && hasMeaningfulPlaylistContent(parsed),
-  );
-}
-
 function normalizeGeneratedContent(
   parsed: Partial<DatingGeneratedContent> | null | undefined,
   session: DateSession,
@@ -394,13 +363,6 @@ export function DatingScene({
       const parsed = parseGeneratedContent(rawText);
       if (!parsed) {
         throw new Error('约会内容格式不完整，请稍后再试。');
-      }
-      if (!isGeneratedContentStructurallyValid(parsed)) {
-        console.warn('[dating-scene] Parsed JSON did not meet structural requirements.', {
-          rawPreview: buildRawPreview(rawText),
-          extractedPreview: buildRawPreview(extractJsonObject(rawText)),
-        });
-        throw new Error('约会内容结构不完整，请稍后再试。');
       }
       const normalizedContent = normalizeGeneratedContent(parsed, pendingSession, character);
       const sceneMessage = createSceneMessage(normalizedContent, placeholderMessage.timestamp);
