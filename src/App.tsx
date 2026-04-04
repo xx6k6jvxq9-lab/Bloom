@@ -1191,6 +1191,7 @@ export default function App() {
         setAppData({
           ...parsed,
           characters: sanitizePersistedCharacters(parsed.characters),
+          chatHistory: parsed.chatHistory || {},
           userProfile: parsed.userProfile
             ? {
                 ...parsed.userProfile,
@@ -1200,6 +1201,7 @@ export default function App() {
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
+          chatGroups: parsed.chatGroups || [],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
           coupleSpaceState,
