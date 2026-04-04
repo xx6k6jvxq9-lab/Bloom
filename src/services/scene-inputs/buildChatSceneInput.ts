@@ -18,12 +18,16 @@ type BuildChatSceneInputParams = {
 
 function buildExtraSections(input: {
   expressionStyle?: string;
+  boundaryPack?: string;
   extendedLore?: string;
   chatSceneHint?: string;
 }): string[] {
   const sections = [
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
+      : '',
+    input.boundaryPack
+      ? ['## 边界与禁区', input.boundaryPack].join('\n')
       : '',
     input.extendedLore
       ? ['## 扩展背景与长期补充', input.extendedLore].join('\n')
@@ -61,6 +65,7 @@ export function buildChatSceneInput(
     recentContext,
     sections: buildExtraSections({
       expressionStyle: characterContext.expressionStyle,
+      boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
     }),
