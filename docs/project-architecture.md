@@ -1407,3 +1407,68 @@ src/
 - åŠ¨æ€ç³»ç»Ÿæ€ä¹ˆç¼–æ’
 - æƒ…ä¾£ç©ºé—´ä¸ºä»€ä¹ˆä¼šå˜æˆå½“å‰è¿™ç§ç»“æ„
 - æŒä¹…åŒ–è¾¹ç•Œå·²ç»æ‹†åˆ°äº†ä»€ä¹ˆç¨‹åº¦
+
+## µ±Ç°Ö÷Ïß×´Ì¬£¨2026-04-04£©
+
+ÕâÒ»½ÚÖ»¼ÇÂ¼µ±Ç°ÕæÊµ´úÂë×´Ì¬£¬ÓÃÀ´¸øºóĞøÖ÷ÏßÊÕ¿Ú×ö»ùÏß¡£
+
+### µ±Ç°Ëù´¦½×¶Î
+
+- µ±Ç°ÈÔ´¦ÓÚ½×¶Î B ÖĞºó¶Î£¬Ö÷Õ½³¡ÊÇ `B4 »ù´¡ OOC ÖÎÀí`
+- `Boundary Pack` ÒÑ¾­´ÓÎÄµµ¸ÅÄî½øÈë´úÂë½á¹¹£¬µ«»¹Ã»ÓĞÍê³ÉËùÓĞÖ÷³¡¾°ÊÕ¿Ú
+- µ±Ç°Ö÷ÏßÄ¿±ê²»ÊÇ¼ÌĞø²¹Ñù±¾½ÇÉ«ÎÄ°¸£¬¶øÊÇ°Ñ±ß½ç²ãÎÈ¶¨½ÓÈë¸÷ÔËĞĞÁ´
+
+### ÒÑÈ·ÈÏÂäµØ
+
+- ½ÇÉ«½á¹¹²ãÒÑ¾­ÓĞ£º
+  - `corePersona`
+  - `expressionStyle`
+  - `boundaryPack`
+  - `remarkName`
+  - Î»ÖÃ¼û [`src/types.ts`](../src/types.ts)
+- ½ÇÉ«ÉÏÏÂÎÄÒÑ¾­ÕıÊ½Êä³ö£º
+  - `corePersona`
+  - `expressionStyle`
+  - `boundaryPack`
+  - Î»ÖÃ¼û [`src/services/relationship-context/buildCharacterContext.ts`](../src/services/relationship-context/buildCharacterContext.ts)
+- ÉèÖÃÒ³ÒÑ¾­ÓĞÕıÊ½±à¼­Èë¿Ú£º
+  - ±¸×¢
+  - ¸öĞÔÇ©Ãû
+  - ºËĞÄÈËÉè
+  - ±í´ï·ç¸ñÓëÏà´¦·½Ê½
+  - ±ß½çÓë½ûÇø
+  - Î»ÖÃ¼û [`src/components/chat/ChatSettingsPanel.tsx`](../src/components/chat/ChatSettingsPanel.tsx)
+- ´´½¨½ÇÉ«Ò³ÒÑ¾­Í¬²½µ½ĞÂ×ÊÁÏ½á¹¹£º
+  - Ö§³Ö `remarkName`
+  - Ö§³Ö¸öĞÔÇ©Ãû
+  - ½ÇÉ«Éè¶¨ÏÂ·½ÓĞ¡°ÏÈĞ´ÍêÕûÉè¶¨£¬ºóĞø¿ÉÔÚÉèÖÃÀïÏ¸»¯¡±µÄÌáÊ¾
+  - Î»ÖÃ¼û [`src/App.tsx`](../src/App.tsx)
+- ±¸×¢ÏÔÊ¾Á´ÒÑ¾­½ÓÈë¸ßÆµÊÓÍ¼£º
+  - ÁÄÌìÒ³±êÌâ
+  - ÁÄÌìÁĞ±í
+  - Í¨Ñ¶Â¼ÁĞ±í/ÏêÇé
+  - Î»ÖÃ¼û [`src/services/chat/messageActions.ts`](../src/services/chat/messageActions.ts)
+  - ÒÔ¼° [`src/components/main/MainAppShell/Page.tsx`](../src/components/main/MainAppShell/Page.tsx)
+  - ÒÔ¼° [`src/components/main/ContactsShell/Page.tsx`](../src/components/main/ContactsShell/Page.tsx)
+
+### Boundary Pack µ±Ç°½ÓÈë×´Ì¬
+
+- µ¥ÁÄÒÑ½ÓÈë `boundaryPack`
+  - Î»ÖÃ¼û [`src/services/scene-inputs/buildChatSceneInput.ts`](../src/services/scene-inputs/buildChatSceneInput.ts)
+- Ô¼»áÒÑ½ÓÈë `boundaryPack`
+  - Î»ÖÃ¼û [`src/services/scene-inputs/buildDatingSceneInput.ts`](../src/services/scene-inputs/buildDatingSceneInput.ts)
+- ÈºÁÄÔÚµ±Ç°¹¤×÷ÇøÒÑÓĞ½ÓÏß¸Ä¶¯£¬µ«»¹²»Ó¦ÊÓÎªÎÈ¶¨Ö÷Ïß½áÂÛ
+  - ĞèÒªÔÚÔËĞĞÑéÖ¤Í¨¹ıºóÔÙÕıÊ½È·ÈÏ
+- `couple-space` Ïà¹ØÔËĞĞÁ´Ä¿Ç°»¹Ã»ÓĞÕıÊ½½ÓÈë `boundaryPack`
+
+### µ±Ç°²»ÒªÔÙ×öµÄÊÂÇé
+
+- ²»Òª¼ÌĞøÓÃ¡°ÖÜ¼È°××¨ÊôÇ¨ÒÆ¹æÔò¡±È¥°áÔËµ¥¾äÎÄ±¾
+- ²»Òª°Ñµ¥½ÇÉ«Ñù±¾ĞŞ²¹µ±³ÉÖ÷ÏßÍÆ½ø
+- ²»Òª°Ñ `NSFW / ÆÆ¼×´Ê` ÀıÍâ»úÖÆÌáÇ°µ½Ö÷ÏßÖ®Ç°´¦Àí
+
+### ÏÂÒ»²½Ö÷Ïß½¨Òé
+
+- ÓÅÏÈĞŞÎÈÔ¼»áÉú³ÉÁ´µÄ¸ñÊ½ÎÊÌâ£¬ÔÙ¼ÌĞøÑéÖ¤Ô¼»á³¡¾°ÏÂµÄ `boundaryPack`
+- È»ºóÔÙÈ·ÈÏÈºÁÄÕâÌõ±ß½çÁ´ÊÇ·ñÒªÕıÊ½ÄÉÈëÖ÷Ïß
+- ×îºóÔÙ½øÈë `couple-space` Ïà¹Ø½ÓÈë
