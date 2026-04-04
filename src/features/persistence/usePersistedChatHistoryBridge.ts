@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { ChatGroup, ChatHistory } from '../../types';
+import type { ChatGroup, ChatHistory, ChatMessage } from '../../types';
 import {
   extractGroupHistories,
   loadChatHistoryRecords,
@@ -10,6 +10,10 @@ import {
 
 function serializeChatHistoryRecords(data: PersistedChatHistoryData): string {
   return JSON.stringify(data);
+}
+
+function serializeGroupHistories(groupHistories: Record<string, ChatMessage[]>): string {
+  return JSON.stringify(groupHistories);
 }
 
 export function usePersistedChatHistoryBridge(
@@ -54,6 +58,28 @@ export function usePersistedChatHistoryBridge(
 
     hasHydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    const persisted = loadChatHistoryRecords({
+      directHistory: {},
+      groupHistories: {},
+    });
+    const currentGroupHistories = extractGroupHistories(chatGroups);
+    const mergedChatGroups = mergeGroupHistoriesIntoChatGroups(chatGroups, persisted.groupHistories);
+    const mergedGroupHistories = extractGroupHistories(mergedChatGroups);
+
+    if (
+      serializeGroupHistories(currentGroupHistories)
+      === serializeGroupHistories(mergedGroupHistories)
+    ) {
+      return;
+    }
+
+    setChatDataRef.current({
+      directHistory,
+      chatGroups: mergedChatGroups,
+    });
+  }, [chatGroups, directHistory]);
 
   useEffect(() => {
     const currentData = {
