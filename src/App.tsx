@@ -1495,76 +1495,78 @@ export default function App() {
               onBack={() => setActiveApp(characterMomentsBackApp)}
             />
           )}
-          <ChatSessionMount
-            activeApp={activeApp}
-            selectedCharacterId={selectedCharacterId}
-            selectedGroupId={selectedGroupId}
-            characters={appData.characters}
-            chatGroups={appData.chatGroups || []}
-            setChatGroups={(chatGroups) => setAppData(prev => ({ ...prev, chatGroups }))}
-            chatHistory={appData.chatHistory}
-            setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
-            settings={settings}
-            userAvatar={appData.userProfile.avatar}
-            userName={appData.userProfile.name}
-            masks={appData.masks}
-            favorites={appData.favorites}
-            setFavorites={(f) => setAppData(prev => ({ ...prev, favorites: f }))}
-            visualSettings={appData.visualSettings}
-            setVisualSettings={(visualSettings) => setAppData(prev => ({ ...prev, visualSettings }))}
-            groups={appData.groups}
-            worldBook={appData.worldBooks || []}
-            perception={currentCoupleSpace.perception}
-            coupleSpace={currentCoupleSpace}
-            callHistory={appData.callHistory || []}
-            setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
-            savedDates={appData.savedDates || []}
-            collectedDates={appData.collectedDates || []}
-            setDatingRecords={({ savedDates, collectedDates }) =>
-              setAppData(prev => ({
-                ...prev,
-                savedDates,
-                collectedDates,
-              }))
-            }
-            walletData={appData.walletData}
-            setWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
-            updateCharacter={handleMergeCharacter}
-            patchCharacter={handlePatchCharacterById}
-            onBackToChat={() => setActiveApp('chat')}
-            onViewForumPost={(postId) => {
-              setSelectedForumPostId(postId);
-              setActiveApp('forum');
-            }}
-            onPublishMoment={({ authorId, content, images }) => {
-              console.info('[moment-special] onPublishMoment called', {
-                authorId,
-                content,
-                imagesCount: images?.length || 0,
-              });
-              setAppData(prev => ({
-                ...(console.info('[moment-special] moments latest', {
-                  length: (prev.moments?.length || 0) + 1,
-                  latestContent: content,
-                }), prev),
-                moments: [{
-                  id: Date.now().toString(),
+          {hasHydratedStorage && (
+            <ChatSessionMount
+              activeApp={activeApp}
+              selectedCharacterId={selectedCharacterId}
+              selectedGroupId={selectedGroupId}
+              characters={appData.characters}
+              chatGroups={appData.chatGroups || []}
+              setChatGroups={(chatGroups) => setAppData(prev => ({ ...prev, chatGroups }))}
+              chatHistory={appData.chatHistory}
+              setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
+              settings={settings}
+              userAvatar={appData.userProfile.avatar}
+              userName={appData.userProfile.name}
+              masks={appData.masks}
+              favorites={appData.favorites}
+              setFavorites={(f) => setAppData(prev => ({ ...prev, favorites: f }))}
+              visualSettings={appData.visualSettings}
+              setVisualSettings={(visualSettings) => setAppData(prev => ({ ...prev, visualSettings }))}
+              groups={appData.groups}
+              worldBook={appData.worldBooks || []}
+              perception={currentCoupleSpace.perception}
+              coupleSpace={currentCoupleSpace}
+              callHistory={appData.callHistory || []}
+              setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
+              savedDates={appData.savedDates || []}
+              collectedDates={appData.collectedDates || []}
+              setDatingRecords={({ savedDates, collectedDates }) =>
+                setAppData(prev => ({
+                  ...prev,
+                  savedDates,
+                  collectedDates,
+                }))
+              }
+              walletData={appData.walletData}
+              setWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
+              updateCharacter={handleMergeCharacter}
+              patchCharacter={handlePatchCharacterById}
+              onBackToChat={() => setActiveApp('chat')}
+              onViewForumPost={(postId) => {
+                setSelectedForumPostId(postId);
+                setActiveApp('forum');
+              }}
+              onPublishMoment={({ authorId, content, images }) => {
+                console.info('[moment-special] onPublishMoment called', {
                   authorId,
                   content,
-                  images,
-                  timestamp: Date.now(),
-                  likes: 0,
-                  comments: []
-                }, ...(prev.moments || [])]
-              }));
-            }}
-            onOpenCharacterMoments={() => {
-              setCharacterMomentsBackApp('chat-session');
-              setActiveApp('character-moments');
-            }}
-            onStatusBarVisibilityChange={setStatusBarVisible}
-            onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
-          />
+                  imagesCount: images?.length || 0,
+                });
+                setAppData(prev => ({
+                  ...(console.info('[moment-special] moments latest', {
+                    length: (prev.moments?.length || 0) + 1,
+                    latestContent: content,
+                  }), prev),
+                  moments: [{
+                    id: Date.now().toString(),
+                    authorId,
+                    content,
+                    images,
+                    timestamp: Date.now(),
+                    likes: 0,
+                    comments: []
+                  }, ...(prev.moments || [])]
+                }));
+              }}
+              onOpenCharacterMoments={() => {
+                setCharacterMomentsBackApp('chat-session');
+                setActiveApp('character-moments');
+              }}
+              onStatusBarVisibilityChange={setStatusBarVisible}
+              onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
+            />
+          )}
           {activeApp === 'add-character' && (
             <AddCharacter
               key="add-character"
