@@ -322,7 +322,6 @@ export function ContactsApp({
                   </button>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
-                    <p className="text-[11px] text-zinc-400 truncate">{char.setting.slice(0, 30)}...</p>
                   </div>
                 </div>
               );
