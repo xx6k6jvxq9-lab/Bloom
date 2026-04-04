@@ -17,11 +17,54 @@ function normalizeSceneHints(value: unknown): Record<string, string> | undefined
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+function migrateZhouJibaiBoundaryPack(input: {
+  characterId: string;
+  expressionStyle?: string;
+  boundaryPack?: string;
+}): {
+  expressionStyle?: string;
+  boundaryPack?: string;
+} {
+  const expressionStyle = normalizeOptionalText(input.expressionStyle);
+  const boundaryPack = normalizeOptionalText(input.boundaryPack);
+
+  if (input.characterId !== 'char-zhou-jibai' || !expressionStyle) {
+    return { expressionStyle, boundaryPack };
+  }
+
+  const rulePattern = /(?:^|\n)\s*注意[:：]?\s*不会说脏话\s*(?=\n|$)/;
+  const matchedRule = expressionStyle.match(rulePattern)?.[0];
+
+  if (!matchedRule) {
+    return { expressionStyle, boundaryPack };
+  }
+
+  const cleanedExpressionStyle = normalizeOptionalText(
+    expressionStyle
+      .replace(rulePattern, '\n')
+      .replace(/\n{3,}/g, '\n\n'),
+  );
+  const normalizedRule = '不会说脏话';
+  const mergedBoundaryPack = normalizeOptionalText(
+    [boundaryPack, normalizedRule].filter(Boolean).join('\n'),
+  );
+
+  return {
+    expressionStyle: cleanedExpressionStyle,
+    boundaryPack: mergedBoundaryPack,
+  };
+}
+
 export function migrateCharacterShape(character: Character): Character {
   const corePersona = normalizeOptionalText(character.corePersona)
     ?? normalizeOptionalText(character.setting);
-  const expressionStyle = normalizeOptionalText(character.expressionStyle);
-  const boundaryPack = normalizeOptionalText(character.boundaryPack);
+  const zhouJibaiSections = migrateZhouJibaiBoundaryPack({
+    characterId: character.id,
+    expressionStyle: character.expressionStyle,
+    boundaryPack: character.boundaryPack,
+  });
+  const expressionStyle = zhouJibaiSections.expressionStyle;
+  const boundaryPack = zhouJibaiSections.boundaryPack;
   const extendedLore = normalizeOptionalText(character.extendedLore);
   const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
     ?? normalizeOptionalText(character.memorySummary);
