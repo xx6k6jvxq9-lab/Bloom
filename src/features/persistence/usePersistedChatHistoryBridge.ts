@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { ChatGroup, ChatHistory, ChatMessage } from '../../types';
+import type { ChatGroup, ChatHistory } from '../../types';
 import {
   extractGroupHistories,
   loadChatHistoryRecords,
@@ -10,10 +10,6 @@ import {
 
 function serializeChatHistoryRecords(data: PersistedChatHistoryData): string {
   return JSON.stringify(data);
-}
-
-function serializeGroupHistories(groupHistories: Record<string, ChatMessage[]>): string {
-  return JSON.stringify(groupHistories);
 }
 
 export function usePersistedChatHistoryBridge(
@@ -60,39 +56,11 @@ export function usePersistedChatHistoryBridge(
   }, []);
 
   useEffect(() => {
-    const persisted = loadChatHistoryRecords({
-      directHistory: {},
-      groupHistories: {},
-    });
-    const currentGroupHistories = extractGroupHistories(chatGroups);
-    const mergedChatGroups = mergeGroupHistoriesIntoChatGroups(chatGroups, persisted.groupHistories);
-    const mergedGroupHistories = extractGroupHistories(mergedChatGroups);
-
-    if (
-      serializeGroupHistories(currentGroupHistories)
-      === serializeGroupHistories(mergedGroupHistories)
-    ) {
-      return;
-    }
-
-    setChatDataRef.current({
-      directHistory,
-      chatGroups: mergedChatGroups,
-    });
-  }, [chatGroups, directHistory]);
-
-  useEffect(() => {
     const currentData = {
       directHistory,
       groupHistories: extractGroupHistories(chatGroups),
     };
     const serialized = serializeChatHistoryRecords(currentData);
-    const persistedData = loadChatHistoryRecords({
-      directHistory: {},
-      groupHistories: {},
-    });
-    const hasPersistedGroupHistories = Object.keys(persistedData.groupHistories).length > 0;
-    const hasCurrentGroupHistories = Object.keys(currentData.groupHistories).length > 0;
 
     if (skipUntilHydratedRef.current) {
       if (serialized === hydrationTargetRef.current) {
@@ -105,12 +73,6 @@ export function usePersistedChatHistoryBridge(
 
     if (!hasHydratedRef.current) {
       hasHydratedRef.current = true;
-    }
-
-    // On refresh, group organization may hydrate slightly later than chat history.
-    // Avoid overwriting persisted group histories with an empty boot snapshot.
-    if (chatGroups.length === 0 && !hasCurrentGroupHistories && hasPersistedGroupHistories) {
-      return;
     }
 
     if (lastPersistedRef.current === serialized) {

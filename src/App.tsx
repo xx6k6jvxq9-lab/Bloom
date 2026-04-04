@@ -58,8 +58,6 @@ import {
 import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { resetCharacters } from './features/persistence/charactersStore';
-import { loadChatHistoryRecords, saveChatHistoryRecords, extractGroupHistories } from './features/persistence/chatHistoryStore';
-import { loadPersistedChatOrganization, persistChatOrganization } from './features/persistence/chatOrganizationStore';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
@@ -274,16 +272,8 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
   return [...persistedCharacters, ...missingDefaults];
 }
 
-function getPersistableAppData(
-  appData: AppData,
-): Omit<AppData, 'characters' | 'groups' | 'chatGroups' | 'chatHistory'> {
-  const {
-    characters: _characters,
-    groups: _groups,
-    chatGroups: _chatGroups,
-    chatHistory: _chatHistory,
-    ...persistableAppData
-  } = appData;
+function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
+  const { characters: _characters, ...persistableAppData } = appData;
   const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
     appData.coupleSpaceState,
     appData.coupleSpace,
@@ -294,57 +284,6 @@ function getPersistableAppData(
     coupleSpace,
     coupleSpaceState,
   };
-}
-
-function migrateLegacyChatPersistence(source: Partial<AppData> | null | undefined): void {
-  if (!source) return;
-
-  const legacyDirectHistory = source.chatHistory && typeof source.chatHistory === 'object'
-    ? source.chatHistory
-    : {};
-  const legacyChatGroups = Array.isArray(source.chatGroups) ? source.chatGroups : [];
-  const legacyGroups = Array.isArray(source.groups) ? source.groups : ['家人', '朋友', '同事', '星标'];
-
-  const currentChatHistory = loadChatHistoryRecords({
-    directHistory: {},
-    groupHistories: {},
-  });
-  const mergedDirectHistory = {
-    ...legacyDirectHistory,
-    ...currentChatHistory.directHistory,
-  };
-  const mergedGroupHistories = {
-    ...extractGroupHistories(legacyChatGroups),
-    ...currentChatHistory.groupHistories,
-  };
-
-  if (
-    Object.keys(mergedDirectHistory).length > 0
-    || Object.keys(mergedGroupHistories).length > 0
-  ) {
-    saveChatHistoryRecords({
-      directHistory: mergedDirectHistory,
-      groupHistories: mergedGroupHistories,
-    });
-  }
-
-  const currentChatOrganization = loadPersistedChatOrganization({
-    groups: ['家人', '朋友', '同事', '星标'],
-    chatGroups: [],
-  });
-  const hasCurrentGroups = currentChatOrganization.chatGroups.length > 0;
-  const nextChatGroups = hasCurrentGroups ? currentChatOrganization.chatGroups : legacyChatGroups;
-  const nextGroups = currentChatOrganization.groups.length > 0 ? currentChatOrganization.groups : legacyGroups;
-
-  if (nextChatGroups.length > 0 || nextGroups.length > 0) {
-    persistChatOrganization({
-      groups: nextGroups,
-      chatGroups: nextChatGroups.map(group => ({
-        ...group,
-        history: undefined,
-      })),
-    });
-  }
 }
 
 function hydratePersistedCharacters(
@@ -1246,14 +1185,12 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
-        migrateLegacyChatPersistence(parsed);
         const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
           parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
         );
         setAppData({
           ...parsed,
           characters: sanitizePersistedCharacters(parsed.characters),
-          chatHistory: {},
           userProfile: parsed.userProfile
             ? {
                 ...parsed.userProfile,
@@ -1262,8 +1199,7 @@ export default function App() {
             : parsed.userProfile,
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
-          groups: ['家人', '朋友', '同事', '星标'],
-          chatGroups: [],
+          groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
           coupleSpaceState,
@@ -1495,78 +1431,76 @@ export default function App() {
               onBack={() => setActiveApp(characterMomentsBackApp)}
             />
           )}
-          {hasHydratedStorage && (
-            <ChatSessionMount
-              activeApp={activeApp}
-              selectedCharacterId={selectedCharacterId}
-              selectedGroupId={selectedGroupId}
-              characters={appData.characters}
-              chatGroups={appData.chatGroups || []}
-              setChatGroups={(chatGroups) => setAppData(prev => ({ ...prev, chatGroups }))}
-              chatHistory={appData.chatHistory}
-              setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
-              settings={settings}
-              userAvatar={appData.userProfile.avatar}
-              userName={appData.userProfile.name}
-              masks={appData.masks}
-              favorites={appData.favorites}
-              setFavorites={(f) => setAppData(prev => ({ ...prev, favorites: f }))}
-              visualSettings={appData.visualSettings}
-              setVisualSettings={(visualSettings) => setAppData(prev => ({ ...prev, visualSettings }))}
-              groups={appData.groups}
-              worldBook={appData.worldBooks || []}
-              perception={currentCoupleSpace.perception}
-              coupleSpace={currentCoupleSpace}
-              callHistory={appData.callHistory || []}
-              setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
-              savedDates={appData.savedDates || []}
-              collectedDates={appData.collectedDates || []}
-              setDatingRecords={({ savedDates, collectedDates }) =>
-                setAppData(prev => ({
-                  ...prev,
-                  savedDates,
-                  collectedDates,
-                }))
-              }
-              walletData={appData.walletData}
-              setWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
-              updateCharacter={handleMergeCharacter}
-              patchCharacter={handlePatchCharacterById}
-              onBackToChat={() => setActiveApp('chat')}
-              onViewForumPost={(postId) => {
-                setSelectedForumPostId(postId);
-                setActiveApp('forum');
-              }}
-              onPublishMoment={({ authorId, content, images }) => {
-                console.info('[moment-special] onPublishMoment called', {
+          <ChatSessionMount
+            activeApp={activeApp}
+            selectedCharacterId={selectedCharacterId}
+            selectedGroupId={selectedGroupId}
+            characters={appData.characters}
+            chatGroups={appData.chatGroups || []}
+            setChatGroups={(chatGroups) => setAppData(prev => ({ ...prev, chatGroups }))}
+            chatHistory={appData.chatHistory}
+            setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
+            settings={settings}
+            userAvatar={appData.userProfile.avatar}
+            userName={appData.userProfile.name}
+            masks={appData.masks}
+            favorites={appData.favorites}
+            setFavorites={(f) => setAppData(prev => ({ ...prev, favorites: f }))}
+            visualSettings={appData.visualSettings}
+            setVisualSettings={(visualSettings) => setAppData(prev => ({ ...prev, visualSettings }))}
+            groups={appData.groups}
+            worldBook={appData.worldBooks || []}
+            perception={currentCoupleSpace.perception}
+            coupleSpace={currentCoupleSpace}
+            callHistory={appData.callHistory || []}
+            setCallHistory={(callHistory) => setAppData(prev => ({ ...prev, callHistory }))}
+            savedDates={appData.savedDates || []}
+            collectedDates={appData.collectedDates || []}
+            setDatingRecords={({ savedDates, collectedDates }) =>
+              setAppData(prev => ({
+                ...prev,
+                savedDates,
+                collectedDates,
+              }))
+            }
+            walletData={appData.walletData}
+            setWalletData={(data) => setAppData(prev => ({ ...prev, walletData: data }))}
+            updateCharacter={handleMergeCharacter}
+            patchCharacter={handlePatchCharacterById}
+            onBackToChat={() => setActiveApp('chat')}
+            onViewForumPost={(postId) => {
+              setSelectedForumPostId(postId);
+              setActiveApp('forum');
+            }}
+            onPublishMoment={({ authorId, content, images }) => {
+              console.info('[moment-special] onPublishMoment called', {
+                authorId,
+                content,
+                imagesCount: images?.length || 0,
+              });
+              setAppData(prev => ({
+                ...(console.info('[moment-special] moments latest', {
+                  length: (prev.moments?.length || 0) + 1,
+                  latestContent: content,
+                }), prev),
+                moments: [{
+                  id: Date.now().toString(),
                   authorId,
                   content,
-                  imagesCount: images?.length || 0,
-                });
-                setAppData(prev => ({
-                  ...(console.info('[moment-special] moments latest', {
-                    length: (prev.moments?.length || 0) + 1,
-                    latestContent: content,
-                  }), prev),
-                  moments: [{
-                    id: Date.now().toString(),
-                    authorId,
-                    content,
-                    images,
-                    timestamp: Date.now(),
-                    likes: 0,
-                    comments: []
-                  }, ...(prev.moments || [])]
-                }));
-              }}
-              onOpenCharacterMoments={() => {
-                setCharacterMomentsBackApp('chat-session');
-                setActiveApp('character-moments');
-              }}
-              onStatusBarVisibilityChange={setStatusBarVisible}
-              onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
-            />
-          )}
+                  images,
+                  timestamp: Date.now(),
+                  likes: 0,
+                  comments: []
+                }, ...(prev.moments || [])]
+              }));
+            }}
+            onOpenCharacterMoments={() => {
+              setCharacterMomentsBackApp('chat-session');
+              setActiveApp('character-moments');
+            }}
+            onStatusBarVisibilityChange={setStatusBarVisible}
+            onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
+          />
           {activeApp === 'add-character' && (
             <AddCharacter
               key="add-character"
