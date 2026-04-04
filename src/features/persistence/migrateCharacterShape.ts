@@ -1,6 +1,10 @@
 import type { Character } from '../../types';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
 
+const EXPRESSION_TO_BOUNDARY_PATTERNS = [
+  /(?:^|\n)\s*注意[:：]?\s*不会说脏话\s*(?=\n|$)/g,
+] as const;
+
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim();
@@ -17,93 +21,57 @@ function normalizeSceneHints(value: unknown): Record<string, string> | undefined
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-const EXPRESSION_STYLE_SECTION_HEADERS = [
-  '活人感细节：',
-  '相处模式：',
-  '经典状态关键词：',
-  '核心感觉：',
-] as const;
+function moveBoundaryRulesOutOfExpressionStyle(input: {
+  expressionStyle?: string;
+  boundaryPack?: string;
+}): {
+  expressionStyle?: string;
+  boundaryPack?: string;
+} {
+  const expressionStyle = normalizeOptionalText(input.expressionStyle);
+  const boundaryPack = normalizeOptionalText(input.boundaryPack);
 
-const BOUNDARY_PACK_SECTION_HEADERS = [
-  '边界与禁忌：',
-  '边界：',
-  '禁忌：',
-  '不能越线的内容：',
-  '不可违背点：',
-] as const;
+  if (!expressionStyle) {
+    return { expressionStyle, boundaryPack };
+  }
 
-function extractSectionBlock(source: string, header: string): string | undefined {
-  const startIndex = source.indexOf(header);
-  if (startIndex < 0) return undefined;
-
-  const allHeaders = [...EXPRESSION_STYLE_SECTION_HEADERS, ...BOUNDARY_PACK_SECTION_HEADERS];
-  const nextIndex = allHeaders
-    .map((candidate) => source.indexOf(candidate, startIndex + header.length))
-    .filter((index) => index >= 0)
-    .sort((left, right) => left - right)[0];
-
-  const block = source.slice(startIndex, nextIndex ?? source.length).trim();
-  return block || undefined;
-}
-
-function extractExpressionStyleSections(source: string | undefined): string | undefined {
-  if (!source) return undefined;
-
-  const sections = EXPRESSION_STYLE_SECTION_HEADERS
-    .map((header) => extractSectionBlock(source, header))
+  const movedRules = EXPRESSION_TO_BOUNDARY_PATTERNS
+    .flatMap((pattern) => expressionStyle.match(pattern) ?? [])
+    .map((value) => normalizeOptionalText(value.replace(/^注意[:：]?\s*/, '')))
     .filter((value): value is string => Boolean(value));
 
-  return sections.length > 0 ? sections.join('\n\n') : undefined;
-}
+  if (movedRules.length === 0) {
+    return { expressionStyle, boundaryPack };
+  }
 
-function extractBoundaryPackSections(source: string | undefined): string | undefined {
-  if (!source) return undefined;
+  const cleanedExpressionStyle = normalizeOptionalText(
+    EXPRESSION_TO_BOUNDARY_PATTERNS.reduce(
+      (current, pattern) => current.replace(pattern, '\n'),
+      expressionStyle,
+    ).replace(/\n{3,}/g, '\n\n'),
+  );
 
-  const sections = BOUNDARY_PACK_SECTION_HEADERS
-    .map((header) => extractSectionBlock(source, header))
-    .filter((value): value is string => Boolean(value));
+  const mergedBoundaryPack = normalizeOptionalText(
+    [boundaryPack, ...movedRules]
+      .filter(Boolean)
+      .join('\n'),
+  );
 
-  return sections.length > 0 ? sections.join('\n\n') : undefined;
-}
-
-function stripExpressionStyleSections(source: string | undefined): string | undefined {
-  if (!source) return undefined;
-
-  const stripped = EXPRESSION_STYLE_SECTION_HEADERS.reduce((current, header) => {
-    const block = extractSectionBlock(current, header);
-    return block ? current.replace(block, '').trim() : current;
-  }, source);
-
-  const normalized = stripped
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  return normalized || undefined;
-}
-
-function stripBoundaryPackSections(source: string | undefined): string | undefined {
-  if (!source) return undefined;
-
-  const stripped = BOUNDARY_PACK_SECTION_HEADERS.reduce((current, header) => {
-    const block = extractSectionBlock(current, header);
-    return block ? current.replace(block, '').trim() : current;
-  }, source);
-
-  const normalized = stripped
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  return normalized || undefined;
+  return {
+    expressionStyle: cleanedExpressionStyle,
+    boundaryPack: mergedBoundaryPack,
+  };
 }
 
 export function migrateCharacterShape(character: Character): Character {
-  const basePersonaSource = normalizeOptionalText(character.corePersona)
+  const corePersona = normalizeOptionalText(character.corePersona)
     ?? normalizeOptionalText(character.setting);
-  const expressionStyle = normalizeOptionalText(character.expressionStyle)
-    ?? extractExpressionStyleSections(basePersonaSource);
-  const boundaryPack = normalizeOptionalText(character.boundaryPack)
-    ?? extractBoundaryPackSections(basePersonaSource);
-  const corePersona = stripBoundaryPackSections(stripExpressionStyleSections(basePersonaSource));
+  const normalizedSections = moveBoundaryRulesOutOfExpressionStyle({
+    expressionStyle: character.expressionStyle,
+    boundaryPack: character.boundaryPack,
+  });
+  const expressionStyle = normalizedSections.expressionStyle;
+  const boundaryPack = normalizedSections.boundaryPack;
   const extendedLore = normalizeOptionalText(character.extendedLore);
   const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
     ?? normalizeOptionalText(character.memorySummary);
