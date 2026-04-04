@@ -70,20 +70,84 @@ function extractJsonObject(text: string): string {
   if (fenced?.[1]) return fenced[1].trim();
 
   const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    return trimmed.slice(start, end + 1);
+  if (start >= 0) {
+    let depth = 0;
+    let inString = false;
+    let isEscaped = false;
+
+    for (let i = start; i < trimmed.length; i += 1) {
+      const char = trimmed[i];
+
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          isEscaped = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = false;
+        }
+
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{') {
+        depth += 1;
+        continue;
+      }
+
+      if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          return trimmed.slice(start, i + 1);
+        }
+      }
+    }
+
+    const end = trimmed.lastIndexOf('}');
+    if (end > start) {
+      return trimmed.slice(start, end + 1);
+    }
   }
 
   return trimmed;
 }
 
+function buildRawPreview(text: string, maxLength = 240): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
 function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | null {
+  const extracted = extractJsonObject(text);
+
   try {
-    const parsed = JSON.parse(extractJsonObject(text));
+    const parsed = JSON.parse(extracted);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch (error) {
-    console.warn('[dating-scene] Ignoring invalid generated JSON payload.', error);
+    console.warn('[dating-scene] Ignoring invalid generated JSON payload.', {
+      error,
+      rawPreview: buildRawPreview(text),
+      extractedPreview: buildRawPreview(extracted),
+    });
     return null;
   }
 }
