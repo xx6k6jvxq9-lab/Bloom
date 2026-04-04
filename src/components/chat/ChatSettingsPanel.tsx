@@ -78,6 +78,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function getSectionPreview(value: string | undefined, emptyLabel: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) return emptyLabel;
+  return `${trimmed.slice(0, 32)}${trimmed.length > 32 ? '...' : ''}`;
+}
+
 export function ChatSettingsPanel({ 
   character, 
   onUpdate, 
@@ -152,6 +158,9 @@ export function ChatSettingsPanel({
   const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
   const expressionStyle = character.expressionStyle?.trim() || '';
   const boundaryPack = character.boundaryPack?.trim() || '';
+  const corePersonaPreview = getSectionPreview(resolvedCorePersona, '还没有识别出核心人设');
+  const expressionStylePreview = getSectionPreview(expressionStyle, '还没有识别出表达风格');
+  const boundaryPackPreview = getSectionPreview(boundaryPack, '还没有识别出边界与禁区');
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const settingSummary = resolvedCorePersona
@@ -651,8 +660,23 @@ export function ChatSettingsPanel({
                 onClick={() => setShowSettingEditor(true)}
                 className="w-full rounded-xl bg-white/40 border border-white/30 px-3 py-3 flex items-center justify-between active:bg-white/60 transition-colors"
               >
-                <div className="min-w-0 text-left">
+                <div className="min-w-0 text-left flex-1">
                   <h3 className="text-[14px] text-zinc-700 font-medium">角色设定</h3>
+                  <p className="text-[11px] text-zinc-500 mt-1">系统会先自动初分，你可以再手动修正。</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-white/65 border border-white/40 px-3 py-2">
+                      <div className="text-[11px] text-zinc-500">核心人设</div>
+                      <div className="text-[12px] text-zinc-700 mt-1 break-words">{corePersonaPreview}</div>
+                    </div>
+                    <div className="rounded-lg bg-white/65 border border-white/40 px-3 py-2">
+                      <div className="text-[11px] text-zinc-500">表达风格与相处方式</div>
+                      <div className="text-[12px] text-zinc-700 mt-1 break-words">{expressionStylePreview}</div>
+                    </div>
+                    <div className="rounded-lg bg-white/65 border border-white/40 px-3 py-2">
+                      <div className="text-[11px] text-zinc-500">边界与禁区</div>
+                      <div className="text-[12px] text-zinc-700 mt-1 break-words">{boundaryPackPreview}</div>
+                    </div>
+                  </div>
                 </div>
                 <ChevronRight size={18} className="text-zinc-400 shrink-0" />
               </button>
@@ -1189,12 +1213,12 @@ export function ChatSettingsPanel({
                 summary="角色是谁、基本气质和稳定关系姿态"
               >
                 <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
-                  <p className="text-[11px] text-zinc-500 mb-3">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
+                  <p className="text-[11px] text-zinc-500 mb-3">系统会先自动初分，这里可以手动修正核心人设，避免把所有背景都塞进一个超长大字段里。</p>
                   <textarea
                     value={character.corePersona ?? character.setting}
                     onChange={e => onUpdate({ ...character, corePersona: e.target.value })}
                     placeholder="输入核心人设..."
-                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[320px] resize-none"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[320px] resize-none"
                   />
                 </div>
               </SettingsSection>
@@ -1211,7 +1235,7 @@ export function ChatSettingsPanel({
                     value={expressionStyle}
                     onChange={e => onUpdate({ ...character, expressionStyle: e.target.value })}
                     placeholder="例如：嘴硬时会先轻轻顶一句，再把真实关心补回来；靠近时不黏腻，会用很自然的小动作和短句试探。"
-                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[180px] resize-none"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
                   />
                 </div>
               </SettingsSection>
@@ -1228,7 +1252,7 @@ export function ChatSettingsPanel({
                     value={boundaryPack}
                     onChange={e => onUpdate({ ...character, boundaryPack: e.target.value })}
                     placeholder="例如：不把关心写成控制；关系没到时不主动说过火的话；不能编造不存在的共同经历。"
-                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-blue-500 min-h-[160px] resize-none"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[160px] resize-none"
                   />
                 </div>
               </SettingsSection>
