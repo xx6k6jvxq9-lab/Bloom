@@ -1239,6 +1239,22 @@ export default function App() {
   });
 
   useEffect(() => {
+    if (!hasHydratedStorage) return;
+
+    setAppData(prev => {
+      const normalizedCharacters = sanitizePersistedCharacters(prev.characters);
+      if (JSON.stringify(normalizedCharacters) === JSON.stringify(prev.characters)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        characters: normalizedCharacters,
+      };
+    });
+  }, [hasHydratedStorage]);
+
+  useEffect(() => {
     const handleDialogRequest = (event: Event) => {
       const detail = (event as CustomEvent<AppDialogRequest>).detail;
       setAppDialogInput(detail.kind === 'prompt' ? detail.defaultValue || '' : '');
