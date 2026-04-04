@@ -103,6 +103,7 @@ function buildTask(options: BuildDatingSceneInputOptions): string {
 
 function buildExtraSections(input: {
   expressionStyle?: string;
+  boundaryPack?: string;
   extendedLore?: string;
   datingSceneHint?: string;
   shortTermSummary?: string;
@@ -111,6 +112,7 @@ function buildExtraSections(input: {
 }): string[] {
   return [
     input.expressionStyle ? ['## 表达风格与相处方式', input.expressionStyle].join('\n') : '',
+    input.boundaryPack ? ['## 边界与禁区', input.boundaryPack].join('\n') : '',
     input.extendedLore ? ['## 扩展背景与长期补充', input.extendedLore].join('\n') : '',
     input.datingSceneHint ? ['## 当前约会场景补充', input.datingSceneHint].join('\n') : '',
     input.shortTermSummary ? ['## 近期关系余波', input.shortTermSummary].join('\n') : '',
@@ -149,6 +151,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     task: buildTask(options),
     sections: buildExtraSections({
       expressionStyle: characterContext.expressionStyle,
+      boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,
       datingSceneHint: characterContext.sceneHints?.dating,
       shortTermSummary: characterScopedMemory.shortTermSummary,
