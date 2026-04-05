@@ -551,40 +551,57 @@ function normalizeChatMessageEnding(text: string): string {
     return normalized;
   }
 
-  const bareLength = stripped.length;
+  const normalizedInnerPunctuation = stripped
+    .replace(/(?<=[\u4e00-\u9fffA-Za-z0-9])[,，](?=[\u4e00-\u9fffA-Za-z0-9])/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const bareLength = normalizedInnerPunctuation.length;
   const endsWithQuestionLike = /[\uFF1F?]$/.test(normalized);
   const endsWithExclaimLike = /[\uFF01!]$/.test(normalized);
   const hasPauseDots = /[\u2026]+$/.test(normalized);
 
   const isChallengeOrQuestion =
-    /^(?:\u4e3a\u4ec0\u4e48|\u51ed\u4ec0\u4e48|\u600e\u4e48|\u8c01|\u54ea|\u4ec0\u4e48|\u771f\u7684\u5047\u7684|\u662f\u4e0d\u662f|\u8981\u4e0d\u8981|\u884c\u4e0d\u884c|\u51ed\u5565)/.test(stripped);
+    /^(?:\u4e3a\u4ec0\u4e48|\u51ed\u4ec0\u4e48|\u600e\u4e48|\u8c01|\u54ea|\u4ec0\u4e48|\u771f\u7684\u5047\u7684|\u662f\u4e0d\u662f|\u8981\u4e0d\u8981|\u884c\u4e0d\u884c|\u51ed\u5565)/.test(normalizedInnerPunctuation);
 
   const isStrongEmotion =
-    /^(?:\u5475|\u54c8|\u7b11\u6b7b|\u6eda|\u64cd|\u8349|\u4f60\u6709\u75c5\u5427|\u771f\u79bb\u8c31|\u79bb\u8c31)/.test(stripped);
+    /^(?:\u5475|\u54c8|\u7b11\u6b7b|\u6eda|\u64cd|\u8349|\u4f60\u6709\u75c5\u5427|\u771f\u79bb\u8c31|\u79bb\u8c31)/.test(normalizedInnerPunctuation);
 
   const looksLikeChatMessage =
-    /^(?:[\u4e00-\u9fffA-Za-z0-9]+(?:[\u4e00-\u9fffA-Za-z0-9\s]+)*)$/.test(stripped)
+    /^(?:[\u4e00-\u9fffA-Za-z0-9]+(?:[\u4e00-\u9fffA-Za-z0-9\s]+)*)$/.test(normalizedInnerPunctuation)
     && bareLength <= 30;
 
   const isNaturalStatementLead =
-    /^(?:\u90a3|\u8fd9|\u963f\u59e8|\u6211\u4eec|\u5979|\u4ed6|\u4f60|\u6211|\u8fd9\u4e2a|\u8fd9\u79cd|\u5176\u5b9e|\u53cd\u6b63|\u8981\u6211\u8bf4|\u770b\u8d77\u6765|\u542c\u8d77\u6765|\u611f\u89c9|\u90a3\u5c31|\u662f\u8fd9\u6837|\u8bf4\u767d\u4e86|\u6211\u89c9\u5f97|\u6211\u770b|\u6211\u60f3)/.test(stripped);
+    /^(?:\u90a3|\u8fd9|\u963f\u59e8|\u6211\u4eec|\u5979|\u4ed6|\u4f60|\u6211|\u8fd9\u4e2a|\u8fd9\u79cd|\u5176\u5b9e|\u53cd\u6b63|\u8981\u6211\u8bf4|\u770b\u8d77\u6765|\u542c\u8d77\u6765|\u611f\u89c9|\u90a3\u5c31|\u662f\u8fd9\u6837|\u8bf4\u767d\u4e86|\u6211\u89c9\u5f97|\u6211\u770b|\u6211\u60f3)/.test(normalizedInnerPunctuation);
 
   const isNaturalConversationalStatement =
-    /^(?:\u90a3\u5c31|\u8fd9\u4e2a|\u6211\u4eec|\u5979\u53ef\u80fd|\u4ed6\u53ef\u80fd|\u6211\u5148|\u6211\u770b|\u6211\u89c9\u5f97|\u6211\u60f3|\u5176\u5b9e|\u53cd\u6b63|\u5c31\u662f|\u672c\u6765|\u5e94\u8be5|\u53ef\u80fd\u662f|\u542c\u8d77\u6765|\u770b\u8d77\u6765|\u8bf4\u767d\u4e86|\u6211\u4eec\u7fa4\u91cc|\u7fa4\u91cc\u6709\u4e2a|\u8fd9\u4e8b|\u8fd9\u8bdd|\u8fd9\u79cd\u8bdd|\u8fd9\u5c31|\u8fd9\u4e0b|\u6211\u5148\u6536\u4e0b\u4e86|\u6211\u4eec\u90fd\u662f|\u8bf4\u5b9a\u4e86)/.test(stripped);
+    /^(?:\u90a3\u5c31|\u8fd9\u4e2a|\u6211\u4eec|\u5979\u53ef\u80fd|\u4ed6\u53ef\u80fd|\u6211\u5148|\u6211\u770b|\u6211\u89c9\u5f97|\u6211\u60f3|\u5176\u5b9e|\u53cd\u6b63|\u5c31\u662f|\u672c\u6765|\u5e94\u8be5|\u53ef\u80fd\u662f|\u542c\u8d77\u6765|\u770b\u8d77\u6765|\u8bf4\u767d\u4e86|\u6211\u4eec\u7fa4\u91cc|\u7fa4\u91cc\u6709\u4e2a|\u8fd9\u4e8b|\u8fd9\u8bdd|\u8fd9\u79cd\u8bdd|\u8fd9\u5c31|\u8fd9\u4e0b|\u6211\u5148\u6536\u4e0b\u4e86|\u6211\u4eec\u90fd\u662f|\u8bf4\u5b9a\u4e86|\u5728\u7b49|\u987a\u4fbf\u786e\u8ba4|\u6bd5\u7adf|\u6211\u5728\u770b)/.test(normalizedInnerPunctuation);
+
+  const isLightQuestion =
+    /^(?:\u73b0\u5728|\u4f60|\u5907\u6ce8|\u6539\u6210|\u521a\u624d|\u8fd8\u6ca1|\u8fd8\u6ca1\u600e\u4e48|\u6539\u4e86|\u4fee\u597d|\u641e\u5b9a)/.test(normalizedInnerPunctuation)
+    && bareLength <= 16
+    && !isChallengeOrQuestion;
 
   const hasSarcasmOrPressureTone =
-    /(?:\u5462|\u5427|\u54e6|\u5466)$/.test(stripped)
-    && /^(?:\u4f60|\u521a\u624d|\u8fd8|\u5c31|\u600e\u4e48|\u539f\u6765|\u90a3\u4f60)/.test(stripped);
+    /(?:\u5462|\u5427|\u54e6|\u5466)$/.test(normalizedInnerPunctuation)
+    && /^(?:\u4f60|\u521a\u624d|\u8fd8|\u5c31|\u600e\u4e48|\u539f\u6765|\u90a3\u4f60)/.test(normalizedInnerPunctuation);
 
   const needsPauseFeeling =
-    /(?:\u7136\u540e|\u4e0d\u8fc7|\u4f46\u662f|\u800c\u4e14|\u6240\u4ee5).{8,}$/.test(stripped);
+    /(?:\u7136\u540e|\u4e0d\u8fc7|\u4f46\u662f|\u800c\u4e14|\u6240\u4ee5).{8,}$/.test(normalizedInnerPunctuation);
 
   const isCompactChatBeat =
     bareLength <= 12
-    && /^(?:\u6211\u5728|\u4f60\u7ee7\u7eed|\u884c\u554a|\u6765\u554a|\u4e0d\u662f\u5427|\u771f\u670d\u4e86|\u4f60\u6b63\u5e38\u70b9|\u8fd8\u5956\u52b1\u5462|\u5c0f\u56de\u522b\u771f\u4fe1\u5979|\u5927\u9e45\u4f60\u5c11\u62f1\u706b|\u6ca1\u773c\u770b|\u6211\u89c9\u5f97\u5f88\u53ef\u7231|\u4f60\u8bf4|\u4f60\u6765)$/.test(stripped);
+    && /^(?:\u6211\u5728|\u4f60\u7ee7\u7eed|\u884c\u554a|\u6765\u554a|\u4e0d\u662f\u5427|\u771f\u670d\u4e86|\u4f60\u6b63\u5e38\u70b9|\u8fd8\u5956\u52b1\u5462|\u5c0f\u56de\u522b\u771f\u4fe1\u5979|\u5927\u9e45\u4f60\u5c11\u62f1\u706b|\u6ca1\u773c\u770b|\u6211\u89c9\u5f97\u5f88\u53ef\u7231|\u4f60\u8bf4|\u4f60\u6765)$/.test(normalizedInnerPunctuation);
+
+  const shouldDropQuestionMark =
+    endsWithQuestionLike
+    && isLightQuestion
+    && !hasSarcasmOrPressureTone
+    && !isStrongEmotion
+    && !needsPauseFeeling;
 
   const shouldDropEnding =
-    !endsWithQuestionLike
+    (!endsWithQuestionLike || shouldDropQuestionMark)
     && !endsWithExclaimLike
     && !hasPauseDots
     && !isChallengeOrQuestion
@@ -599,12 +616,12 @@ function normalizeChatMessageEnding(text: string): string {
       || (
         looksLikeChatMessage
         && bareLength <= 24
-        && /(?:\u8bf4\u5b9a\u4e86|\u6709\u4e2a\u68d7|\u5f00\u73a9\u7b11\u7684|\u5148\u6536\u4e0b\u4e86|\u90fd\u662f.+\u670b\u53cb)$/.test(stripped)
+        && /(?:\u8bf4\u5b9a\u4e86|\u6709\u4e2a\u68d7|\u5f00\u73a9\u7b11\u7684|\u5148\u6536\u4e0b\u4e86|\u90fd\u662f.+\u670b\u53cb)$/.test(normalizedInnerPunctuation)
       )
     );
 
   if (shouldDropEnding) {
-    return stripped;
+    return normalizedInnerPunctuation;
   }
 
   return normalized;

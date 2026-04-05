@@ -523,11 +523,26 @@ export function GroupChatSessionScreen({
     const currentBody = getReadableMessageBody(currentMessage, currentContent);
     const previousLength = previousBody.replace(/\s/g, '').length;
     const currentLength = currentBody.replace(/\s/g, '').length;
-    const previousLooksReactive = previousLength > 0 && previousLength <= 6;
-    const currentLooksIndependent = currentLength >= 14 || /[，,；;：:]/.test(currentBody);
-    const currentStartsFreshThought = /^(那|这个|我们|我先|我看|我觉得|她|他|你|行|还有|刚才|不过|反正|其实)/.test(currentBody);
+    const previousLooksReactive = previousLength > 0 && previousLength <= 8;
+    const currentLooksReactive = currentLength > 0 && currentLength <= 8;
+    const currentLooksIndependent = currentLength >= 13 || /[，,；;：:]/.test(currentBody);
+    const previousWasReply = !!previousMessage.replyTo;
+    const currentStartsFreshThought = /^(那|这个|我们|我先|我看|我觉得|她|他|你|行|还有|刚才|不过|反正|其实|顺便|毕竟|在等)/.test(currentBody);
+    const currentIsStandaloneShortBeat = currentLooksReactive && /^(行|好啊|知道了|行吧|收到|可以|也行|对啊|在呢|来了|没事|别急)/.test(currentBody);
 
     if (previousLooksReactive && currentLooksIndependent) {
+      return true;
+    }
+
+    if (previousWasReply && currentLength >= 7) {
+      return true;
+    }
+
+    if (currentIsStandaloneShortBeat && streakIndex >= 1) {
+      return true;
+    }
+
+    if (!currentLooksReactive && previousLength >= 12 && currentLength >= 10) {
       return true;
     }
 
