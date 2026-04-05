@@ -155,7 +155,7 @@ export function GroupChatSessionScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
+  const { getCharacterById } = createCharacterDirectory({ characters: members });
   const activeConfig = settings.configs.find((config) => config.id === settings.activeConfigId) || settings.configs[0];
   const hasUsableConfig = !!activeConfig?.apiKey?.trim();
   const layoutConfig = getChatLayoutConfig();
@@ -239,7 +239,7 @@ export function GroupChatSessionScreen({
 
     const match = message.text.match(/^([^:]+): (.*)/);
     if (match) {
-      const character = getCharacterByName(match[1]);
+      const character = members.find((member) => member.name === match[1]);
       return {
         senderName: match[1],
         avatar: character?.avatar || '',
@@ -419,8 +419,7 @@ export function GroupChatSessionScreen({
   };
 
   const handleMentionInsert = (member: Character) => {
-    const mentionLabel = member.remarkName?.trim() || member.name;
-    setInput((prev) => prev.replace(/@([^\s@]*)$/, `@${mentionLabel} `));
+    setInput((prev) => prev.replace(/@([^\s@]*)$/, `@${member.name} `));
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
