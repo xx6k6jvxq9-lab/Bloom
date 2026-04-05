@@ -577,6 +577,12 @@ function normalizeChatMessageEnding(text: string): string {
   const isNaturalConversationalStatement =
     /^(?:\u90a3\u5c31|\u8fd9\u4e2a|\u6211\u4eec|\u5979\u53ef\u80fd|\u4ed6\u53ef\u80fd|\u6211\u5148|\u6211\u770b|\u6211\u89c9\u5f97|\u6211\u60f3|\u5176\u5b9e|\u53cd\u6b63|\u5c31\u662f|\u672c\u6765|\u5e94\u8be5|\u53ef\u80fd\u662f|\u542c\u8d77\u6765|\u770b\u8d77\u6765|\u8bf4\u767d\u4e86|\u6211\u4eec\u7fa4\u91cc|\u7fa4\u91cc\u6709\u4e2a|\u8fd9\u4e8b|\u8fd9\u8bdd|\u8fd9\u79cd\u8bdd|\u8fd9\u5c31|\u8fd9\u4e0b|\u6211\u5148\u6536\u4e0b\u4e86|\u6211\u4eec\u90fd\u662f|\u8bf4\u5b9a\u4e86|\u5728\u7b49|\u987a\u4fbf\u786e\u8ba4|\u6bd5\u7adf|\u6211\u5728\u770b)/.test(normalizedInnerPunctuation);
 
+  const isLightTeaseOrJealousLine =
+    /^(?:\u8fd9\u4e00\u53e3|\u4f60\u73b0\u5728|\u773c\u91cc|\u5012\u662f|\u521a\u624d\u4e0d\u662f|\u8fd8\u633a\u4f1a|\u8fd8\u771f\u662f|\u8fd9\u5c31\u5f00\u59cb|\u4e00\u53e3\u4e00\u4e2a|\u8001\u5b9e\u5f85\u7740|\u65e2\u7136.+\u8fd8\u8981\u5fd9)/.test(normalizedInnerPunctuation);
+
+  const isLightConfirmation =
+    /^(?:\u77e5\u9053\u4e86|\u8fd8\u6ca1|\u5728\u5462|\u6765\u4e86|\u6536\u5230|\u53ef\u4ee5|\u884c|\u884c\u554a|\u884c\u5427|\u6ca1\u4e8b|\u5148\u653e\u7740|\u8001\u5b9e\u5f85\u7740)$/.test(normalizedInnerPunctuation);
+
   const isLightQuestion =
     /^(?:\u73b0\u5728|\u4f60|\u5907\u6ce8|\u6539\u6210|\u521a\u624d|\u8fd8\u6ca1|\u8fd8\u6ca1\u600e\u4e48|\u6539\u4e86|\u4fee\u597d|\u641e\u5b9a|\u773c\u91cc|\u8fd8\u6709\u6ca1\u6709|\u4f60\u8fd8|\u5728\u7b49|\u987a\u4fbf\u786e\u8ba4)/.test(normalizedInnerPunctuation)
     && bareLength <= 20
@@ -610,8 +616,10 @@ function normalizeChatMessageEnding(text: string): string {
     && !needsPauseFeeling
     && (
       isCompactChatBeat
+      || isLightConfirmation
       || (looksLikeChatMessage && isNaturalStatementLead)
       || (looksLikeChatMessage && isNaturalConversationalStatement)
+      || (looksLikeChatMessage && isLightTeaseOrJealousLine)
       || (looksLikeChatMessage && bareLength <= 6)
       || (
         looksLikeChatMessage
@@ -645,8 +653,11 @@ function normalizeConversationalParticleLead(text: string): string[] {
   }
 
   const tailLength = trimmedTail.replace(/\s/g, '').length;
+  const particlePrefersStandalone =
+    /^(啧|哟|不是吧)$/.test(particle);
   const tailLooksLikeStandaloneMessage =
-    tailLength >= 9
+    particlePrefersStandalone
+    && tailLength >= 7
     && /^(这一口|你这|我在|毕竟|顺便|现在|眼里|还真|那就|我们|她|他|你|我)/.test(trimmedTail);
 
   if (tailLooksLikeStandaloneMessage) {
