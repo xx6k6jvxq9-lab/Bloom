@@ -527,6 +527,12 @@ export function GroupChatSessionScreen({
     const currentLooksReactive = currentLength > 0 && currentLength <= 8;
     const currentLooksIndependent = currentLength >= 13 || /[，,；;：:]/.test(currentBody);
     const previousWasReply = !!previousMessage.replyTo;
+    const previousLooksLikeToneLine =
+      /^(啧|啊|哟|得了|不是吧|行啊|诶|欸|喂)(?:\s|$)/.test(previousBody)
+      || /^(这一口|你这|我在看|毕竟|顺便确认|在等)/.test(previousBody);
+    const currentIsQuestionLike =
+      /(?:吗|没|没有|是不是|要不要|行不行)$/.test(currentBody)
+      || /[\?？]$/.test(currentBody);
     const currentStartsFreshThought = /^(那|这个|我们|我先|我看|我觉得|她|他|你|行|还有|刚才|不过|反正|其实|顺便|毕竟|在等)/.test(currentBody);
     const currentIsStandaloneShortBeat = currentLooksReactive && /^(行|好啊|知道了|行吧|收到|可以|也行|对啊|在呢|来了|没事|别急)/.test(currentBody);
 
@@ -535,6 +541,10 @@ export function GroupChatSessionScreen({
     }
 
     if (previousWasReply && currentLength >= 7) {
+      return true;
+    }
+
+    if (previousLooksLikeToneLine && currentIsQuestionLike) {
       return true;
     }
 

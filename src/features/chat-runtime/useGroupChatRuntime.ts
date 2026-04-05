@@ -578,8 +578,8 @@ function normalizeChatMessageEnding(text: string): string {
     /^(?:\u90a3\u5c31|\u8fd9\u4e2a|\u6211\u4eec|\u5979\u53ef\u80fd|\u4ed6\u53ef\u80fd|\u6211\u5148|\u6211\u770b|\u6211\u89c9\u5f97|\u6211\u60f3|\u5176\u5b9e|\u53cd\u6b63|\u5c31\u662f|\u672c\u6765|\u5e94\u8be5|\u53ef\u80fd\u662f|\u542c\u8d77\u6765|\u770b\u8d77\u6765|\u8bf4\u767d\u4e86|\u6211\u4eec\u7fa4\u91cc|\u7fa4\u91cc\u6709\u4e2a|\u8fd9\u4e8b|\u8fd9\u8bdd|\u8fd9\u79cd\u8bdd|\u8fd9\u5c31|\u8fd9\u4e0b|\u6211\u5148\u6536\u4e0b\u4e86|\u6211\u4eec\u90fd\u662f|\u8bf4\u5b9a\u4e86|\u5728\u7b49|\u987a\u4fbf\u786e\u8ba4|\u6bd5\u7adf|\u6211\u5728\u770b)/.test(normalizedInnerPunctuation);
 
   const isLightQuestion =
-    /^(?:\u73b0\u5728|\u4f60|\u5907\u6ce8|\u6539\u6210|\u521a\u624d|\u8fd8\u6ca1|\u8fd8\u6ca1\u600e\u4e48|\u6539\u4e86|\u4fee\u597d|\u641e\u5b9a)/.test(normalizedInnerPunctuation)
-    && bareLength <= 16
+    /^(?:\u73b0\u5728|\u4f60|\u5907\u6ce8|\u6539\u6210|\u521a\u624d|\u8fd8\u6ca1|\u8fd8\u6ca1\u600e\u4e48|\u6539\u4e86|\u4fee\u597d|\u641e\u5b9a|\u773c\u91cc|\u8fd8\u6709\u6ca1\u6709|\u4f60\u8fd8|\u5728\u7b49|\u987a\u4fbf\u786e\u8ba4)/.test(normalizedInnerPunctuation)
+    && bareLength <= 20
     && !isChallengeOrQuestion;
 
   const hasSarcasmOrPressureTone =
@@ -627,6 +627,35 @@ function normalizeChatMessageEnding(text: string): string {
   return normalized;
 }
 
+function normalizeConversationalParticleLead(text: string): string[] {
+  const normalized = text.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const particleMatch = normalized.match(/^(啧|啊|哟|得了|不是吧|行啊|诶|欸|喂)[，,\s]+(.+)$/);
+  if (!particleMatch) {
+    return [normalized];
+  }
+
+  const [, particle, tail] = particleMatch;
+  const trimmedTail = normalizeChatMessageEnding(tail.trim());
+  if (!trimmedTail) {
+    return [particle];
+  }
+
+  const tailLength = trimmedTail.replace(/\s/g, '').length;
+  const tailLooksLikeStandaloneMessage =
+    tailLength >= 9
+    && /^(这一口|你这|我在|毕竟|顺便|现在|眼里|还真|那就|我们|她|他|你|我)/.test(trimmedTail);
+
+  if (tailLooksLikeStandaloneMessage) {
+    return [particle, trimmedTail];
+  }
+
+  return [`${particle} ${trimmedTail}`.trim()];
+}
+
 function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimestamp = Date.now()): ChatMessage[] {
   const normalized = text.replace(/\r\n/g, '\n').trim();
   if (!normalized) {
@@ -659,6 +688,7 @@ function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimes
     .flatMap((part) => splitLongChatClause(part))
     .flatMap((part) => splitByNaturalChatBeats(part))
     .map((part) => normalizeChatMessageEnding(part))
+    .flatMap((part) => normalizeConversationalParticleLead(part))
     .map((part) => part.trim())
     .filter((part) => part.length > 1)
     .slice(0, 3);
