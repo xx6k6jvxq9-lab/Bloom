@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import type { ChatMessage } from '../../../types';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
+import { GroupChatProfilePage } from './GroupChatProfilePage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
 
@@ -45,7 +46,7 @@ export function GroupSettingsScreen({
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
-  const [page, setPage] = useState<'settings' | 'search' | 'member-management'>('settings');
+  const [page, setPage] = useState<'settings' | 'search' | 'member-management' | 'profile'>('settings');
 
   return (
     <div className="absolute inset-0 z-[120] flex flex-col bg-zinc-50">
@@ -71,6 +72,7 @@ export function GroupSettingsScreen({
           onOpenMemberManagement={() => setPage('member-management')}
           isInvitingMember={isInvitingMember}
           onOpenSearch={() => setPage('search')}
+          onOpenProfile={() => setPage('profile')}
           onClearHistory={onClearHistory}
           onLeaveGroup={onLeaveGroup}
         />
@@ -94,6 +96,14 @@ export function GroupSettingsScreen({
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
           isRemovingMember={isRemovingMember}
+        />
+      ) : null}
+
+      {page === 'profile' ? (
+        <GroupChatProfilePage
+          formState={formState}
+          onChange={onChange}
+          onBack={() => setPage('settings')}
         />
       ) : null}
     </div>
