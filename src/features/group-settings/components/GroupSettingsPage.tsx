@@ -17,6 +17,7 @@ type GroupSettingsPageProps = {
   isInvitingMember?: boolean;
   onOpenSearch: () => void;
   onOpenProfile: () => void;
+  onOpenCustomization: () => void;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
 };
@@ -33,6 +34,7 @@ export function GroupSettingsPage({
   isInvitingMember = false,
   onOpenSearch,
   onOpenProfile,
+  onOpenCustomization,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsPageProps) {
@@ -60,6 +62,7 @@ export function GroupSettingsPage({
           onChange={onChange}
           onOpenSearch={onOpenSearch}
           onOpenProfile={onOpenProfile}
+          onOpenCustomization={onOpenCustomization}
         />
 
         <GroupChatPreferencesSection

@@ -3,10 +3,12 @@ import { ChevronLeft } from 'lucide-react';
 import type { ChatMessage } from '../../../types';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
+import { GroupCustomizationPage } from './GroupCustomizationPage';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
+import { GroupTitleBadgeSettingsPage } from './GroupTitleBadgeSettingsPage';
 
 type GroupSettingsScreenProps = {
   groupName: string;
@@ -57,7 +59,7 @@ export function GroupSettingsScreen({
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
-  const [page, setPage] = useState<'settings' | 'search' | 'member-management' | 'profile'>('settings');
+  const [page, setPage] = useState<'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'title-badges'>('settings');
 
   return (
     <div className="absolute inset-0 z-[120] flex flex-col bg-zinc-50">
@@ -84,6 +86,7 @@ export function GroupSettingsScreen({
           isInvitingMember={isInvitingMember}
           onOpenSearch={() => setPage('search')}
           onOpenProfile={() => setPage('profile')}
+          onOpenCustomization={() => setPage('customization')}
           onClearHistory={onClearHistory}
           onLeaveGroup={onLeaveGroup}
         />
@@ -107,13 +110,10 @@ export function GroupSettingsScreen({
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
           onToggleAdmin={onToggleAdmin}
-          onUpdateBadge={onUpdateBadge}
           canManageAdmins={actingRole === 'owner'}
           canRemoveMembers={actingRole === 'owner' || actingRole === 'admin'}
-          canEditBadges={actingRole === 'owner' || actingRole === 'admin'}
           isRemovingMember={isRemovingMember}
           isUpdatingAdmin={isUpdatingAdmin}
-          isUpdatingBadge={isUpdatingBadge}
         />
       ) : null}
 
@@ -122,6 +122,23 @@ export function GroupSettingsScreen({
           formState={formState}
           onChange={onChange}
           onBack={() => setPage('settings')}
+        />
+      ) : null}
+
+      {page === 'customization' ? (
+        <GroupCustomizationPage
+          onBack={() => setPage('settings')}
+          onOpenTitleBadges={() => setPage('title-badges')}
+        />
+      ) : null}
+
+      {page === 'title-badges' ? (
+        <GroupTitleBadgeSettingsPage
+          members={members.filter((member) => member.id !== 'user')}
+          onBack={() => setPage('customization')}
+          onUpdateBadge={onUpdateBadge}
+          canEditBadges={actingRole === 'owner' || actingRole === 'admin'}
+          isUpdatingBadge={isUpdatingBadge}
         />
       ) : null}
     </div>
