@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import type { ChatMessage } from '../../../types';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
+import { GroupMemberManagementPage } from './GroupMemberManagementPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
 
 type GroupSettingsScreenProps = {
@@ -16,8 +17,10 @@ type GroupSettingsScreenProps = {
   onAvatarPick: () => void;
   onBack: () => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
+  onRemoveMember: (memberId: string) => Promise<void> | void;
   resolveSenderLabel: (message: ChatMessage) => string;
   isInvitingMember?: boolean;
+  isRemovingMember?: boolean;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
 };
@@ -33,12 +36,14 @@ export function GroupSettingsScreen({
   onAvatarPick,
   onBack,
   onInviteMember,
+  onRemoveMember,
   resolveSenderLabel,
   isInvitingMember = false,
+  isRemovingMember = false,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
-  const [page, setPage] = useState<'settings' | 'search'>('settings');
+  const [page, setPage] = useState<'settings' | 'search' | 'member-management'>('settings');
 
   return (
     <div className="absolute inset-0 z-[120] flex flex-col bg-zinc-50">
@@ -61,6 +66,7 @@ export function GroupSettingsScreen({
           onChange={onChange}
           onAvatarPick={onAvatarPick}
           onInviteMember={onInviteMember}
+          onOpenMemberManagement={() => setPage('member-management')}
           isInvitingMember={isInvitingMember}
           onOpenSearch={() => setPage('search')}
           onClearHistory={onClearHistory}
@@ -74,6 +80,15 @@ export function GroupSettingsScreen({
           messages={messages}
           onBack={() => setPage('settings')}
           resolveSenderLabel={resolveSenderLabel}
+        />
+      ) : null}
+
+      {page === 'member-management' ? (
+        <GroupMemberManagementPage
+          members={members.filter((member) => member.id !== 'user')}
+          onBack={() => setPage('settings')}
+          onRemoveMember={onRemoveMember}
+          isRemovingMember={isRemovingMember}
         />
       ) : null}
     </div>

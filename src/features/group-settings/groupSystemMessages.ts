@@ -14,6 +14,10 @@ export function createInviteMemberSystemMessage(invitedName: string, timestamp: 
   return createGroupNoticeMessage(`你邀请了${invitedName}进群`, timestamp);
 }
 
+export function createRemoveMemberSystemMessage(removedName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你将${removedName}移出了群聊`, timestamp);
+}
+
 export function buildGroupSettingsSystemMessages(
   group: ChatGroup,
   state: GroupSettingsFormState,

@@ -44,7 +44,11 @@ import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
-import { buildGroupSettingsSystemMessages, createInviteMemberSystemMessage } from '../group-settings/groupSystemMessages';
+import {
+  buildGroupSettingsSystemMessages,
+  createInviteMemberSystemMessage,
+  createRemoveMemberSystemMessage,
+} from '../group-settings/groupSystemMessages';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
@@ -274,6 +278,7 @@ export function GroupChatSessionScreen({
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [groupSettingsForm, setGroupSettingsForm] = useState(() => createGroupSettingsFormState(group));
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -823,6 +828,31 @@ export function GroupChatSessionScreen({
     } finally {
       setIsInvitingMember(false);
     }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    const member = members.find((item) => item.id === memberId);
+    if (!member || isRemovingMember) {
+      return;
+    }
+
+    const memberName = member.remarkName?.trim() || member.name;
+    if (!window.confirm(`确认将 ${memberName} 移出当前群聊吗？`)) {
+      return;
+    }
+
+    setIsRemovingMember(true);
+
+    onUpdateGroup({
+      memberIds: group.memberIds.filter((id) => id !== memberId),
+    });
+
+    setHistory((prev) => [
+      ...prev,
+      createRemoveMemberSystemMessage(memberName, Date.now()),
+    ]);
+
+    setIsRemovingMember(false);
   };
 
   const renderTextWithMentions = (text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
@@ -1455,11 +1485,13 @@ export function GroupChatSessionScreen({
                 onAvatarPick={() => groupAvatarInputRef.current?.click()}
                 onBack={handleCloseGroupSettings}
                 onInviteMember={handleInviteMember}
+                onRemoveMember={handleRemoveMember}
                 resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
                   userName: groupUserDisplayName,
                   getCharacterById,
                 })}
                 isInvitingMember={isInvitingMember}
+                isRemovingMember={isRemovingMember}
                 onClearHistory={() => {
                   if (!window.confirm('确认清空当前群聊记录吗？')) return;
                   onClearHistory();

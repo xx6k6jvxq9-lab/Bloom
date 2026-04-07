@@ -13,6 +13,7 @@ type GroupSettingsPageProps = {
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
   onAvatarPick: () => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
+  onOpenMemberManagement: () => void;
   isInvitingMember?: boolean;
   onOpenSearch: () => void;
   onClearHistory: () => void;
@@ -27,6 +28,7 @@ export function GroupSettingsPage({
   onChange,
   onAvatarPick,
   onInviteMember,
+  onOpenMemberManagement,
   isInvitingMember = false,
   onOpenSearch,
   onClearHistory,
@@ -47,6 +49,7 @@ export function GroupSettingsPage({
           members={members}
           inviteCandidates={inviteCandidates}
           onInviteMember={onInviteMember}
+          onOpenMemberManagement={onOpenMemberManagement}
           isInviting={isInvitingMember}
         />
 
