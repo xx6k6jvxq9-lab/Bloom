@@ -44,6 +44,7 @@ import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
+import { buildGroupSettingsSystemMessages, createInviteMemberSystemMessage } from '../group-settings/groupSystemMessages';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
@@ -730,7 +731,11 @@ export function GroupChatSessionScreen({
     const trimmedName = groupSettingsForm.name.trim();
     if (!trimmedName) return;
 
+    const systemMessages = buildGroupSettingsSystemMessages(group, groupSettingsForm, Date.now());
     onUpdateGroup(buildGroupSettingsPatch(groupSettingsForm));
+    if (systemMessages.length > 0) {
+      setHistory((prev) => [...prev, ...systemMessages]);
+    }
   };
 
   const handleCloseGroupSettings = () => {
@@ -754,12 +759,7 @@ export function GroupChatSessionScreen({
 
     const invitedName = invitedCharacter.remarkName?.trim() || invitedCharacter.name;
     const timestamp = Date.now();
-    const noticeMessage: ChatMessage = {
-      role: 'model',
-      text: `[notice] 你邀请了${invitedName}进群`,
-      timestamp,
-      isSystem: true,
-    };
+    const noticeMessage = createInviteMemberSystemMessage(invitedName, timestamp);
     const inviteGenerationHistory = buildInviteGenerationHistory(history, invitedName, timestamp);
 
     setHistory((prev) => [
