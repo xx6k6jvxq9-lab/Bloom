@@ -24,11 +24,10 @@ type Props = {
   onBackToResult: () => void;
 };
 
-const DEFAULT_REPLY_FALLBACK = '他看着你这句，还是顺着这轮气氛把话接了下来。';
 const DEFAULT_OPENING_FALLBACK = '他今天一开口，气氛就已经和平时不一样了。';
-const DEFAULT_ERROR_TEXT = '这一轮暂时没能接上。';
+const DEFAULT_ERROR_TEXT = '未知错误';
 const INPUT_PLACEHOLDER_SELF = '按照这一轮落到你这边的玩法，先把这句话递给他。';
-const INPUT_PLACEHOLDER_PARTNER = '顺着他刚刚先抛过来的这一球，按你这边的玩法接回去。';
+const INPUT_PLACEHOLDER_PARTNER = '顺着他刚刚先抛过来的这颗球，按你这边的玩法接回去。';
 
 export function HeartCapsuleRelationshipShiftRoundPage({
   user,
@@ -41,6 +40,11 @@ export function HeartCapsuleRelationshipShiftRoundPage({
   updateSpace,
   onBackToResult,
 }: Props) {
+  const getDisplayError = React.useCallback(
+    (err: unknown) => (err instanceof Error ? err.message : String(err || DEFAULT_ERROR_TEXT)),
+    [],
+  );
+
   const isPartnerDraw = draw.drawnBy === 'partner';
   const [draft, setDraft] = React.useState('');
   const [submitted, setSubmitted] = React.useState<string | null>(draw.userAnswer ?? null);
@@ -78,12 +82,23 @@ export function HeartCapsuleRelationshipShiftRoundPage({
         setOpeningText(reply || DEFAULT_OPENING_FALLBACK);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+        setError(getDisplayError(err));
       })
       .finally(() => {
         setIsGenerating(false);
       });
-  }, [activeConfig, capsule, chatHistory, coupleSpace, draw.openingText, hasCompletedRound, isPartnerDraw, partner, user]);
+  }, [
+    activeConfig,
+    capsule,
+    chatHistory,
+    coupleSpace,
+    draw.openingText,
+    hasCompletedRound,
+    isPartnerDraw,
+    partner,
+    user,
+    getDisplayError,
+  ]);
 
   const canSubmit =
     draft.trim().length > 0 &&
@@ -112,7 +127,11 @@ export function HeartCapsuleRelationshipShiftRoundPage({
         mode: isPartnerDraw ? 'partner_result' : 'self',
       });
 
-      const finalReply = reply || DEFAULT_REPLY_FALLBACK;
+      const finalReply = reply?.trim();
+      if (!finalReply) {
+        throw new Error('模型返回了空内容，没有生成角色回应。');
+      }
+
       const completedAt = Date.now();
       setReplyText(finalReply);
 
@@ -152,7 +171,7 @@ export function HeartCapsuleRelationshipShiftRoundPage({
         };
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+      setError(getDisplayError(err));
     } finally {
       setIsGenerating(false);
     }
@@ -169,6 +188,7 @@ export function HeartCapsuleRelationshipShiftRoundPage({
     partner,
     updateSpace,
     user,
+    getDisplayError,
   ]);
 
   return (

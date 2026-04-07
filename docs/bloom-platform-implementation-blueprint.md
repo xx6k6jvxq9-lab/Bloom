@@ -1690,7 +1690,7 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 - [x] Shared Relationship Context Layer 最小骨架
 - [x] Chat Scene Input 正式接入
 - [ ] Group Chat 最小闭环
-- [ ] Dating Scene Input 正式接入
+- [x] Dating Scene Input 正式接入
 - [ ] Temporal Awareness Layer
 - [x] Character Setup 最小分层
 - [x] Memory 最小双层
@@ -1715,11 +1715,28 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 - [x] 记忆最小双层 builder：`buildShortTermSummary / buildLongTermMemoryProfile / buildResolvedMemoryLayers`
 - [x] `buildRelationshipProjection`
 - [x] `buildChatSceneInput`
+- [x] `buildGroupChatSceneInput`
+- [x] 群聊 prompt builder 与群聊 runtime 主链接通
+- [x] 群聊意图分类第一版：全员 / 定向 / 停止当前线程 / 普通群体话题 / 普通闲聊
+- [x] 群聊目标识别第一版：`reply > @点名 / 明确文本点名 > 中断场景最近强目标`
+- [x] 群聊停止边界第一版：停止当前线程，但允许自然转场
+- [x] 群聊全员参与细节第一版：未发言角色优先，允许跳脱角色补一句
+- [x] 群体话题检测第一版：日常群问句开始支持动态互动规模，不再只靠固定人数
 - [x] 聊天主链开始通过 shared scene builder 组装 prompt
 - [x] 自动总结开始写入 `shortTermSummary`
 - [x] 设置页开始区分短期记忆和长期记忆
 - [x] 手动长期总结开始写入 `longTermMemoryProfile`
 - [x] runtime 公共层兼容“非流式请求却返回 SSE data”的兜底解析
+- [x] 群聊与单聊记忆互通第一版：`relationship wave` 双向底座
+- [x] 群聊与单聊事实互通第一版：`fact trace` 双向底座
+- [x] `relationship-context` 下已拆出：关系余波类型、最小写回规则、群聊/单聊提取器、记录整合器
+- [x] `relationship-context` 下已拆出：事实类型、最小写入规则、群聊/单聊提取器、记录整合器
+- [x] 群聊正式边界新增：`relationshipWaves / factTraces`
+- [x] 单聊正式边界新增：`directRelationshipWaves / directFactTraces`
+- [x] `buildSharedRelationshipMemory` 已开始同时消费关系余波与事实痕迹
+- [x] 单聊开始可读群聊公开关系余波与公开事实痕迹
+- [x] 群聊开始可读单聊正式事实痕迹第一版
+- [x] 群聊目标识别收口第一步：公开名 / 备注名 / `@点名` / 文本点名稳定性增强
 
 ### 18.3 第一阶段结论
 
@@ -1730,6 +1747,14 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 - 角色读取和记忆读取已经有统一入口
 - 记忆开始从单一混合字段走向短期 / 长期双层
 - 当前仍处于“主链开始不混，外围继续兼容”的过渡态
+
+### 18.3.1 当前真实阶段判断
+
+- 全项目当前更准确处于 `Phase B 中段`
+- 群聊子线当前更准确处于 `P2-5 群聊最小闭环中后段`
+- `群聊 <-> 单聊` 的第一版关系互通与事实互通底座已接通
+- `群 A <-> 群 B` 的正式有限互通尚未开始
+- 当前主矛盾已经从“有没有群聊骨架”切到“群聊调度质量、角色稳定性、跨场景连续性是否像真群”
 
 ### 18.4 第二阶段总清单
 
@@ -1843,6 +1868,29 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 4. 增加最小调度规则
 5. 强化角色差异
 
+当前状态：
+
+- `scene input / prompt / runtime / 结构化消息 / 基础调度` 已接通
+- `全员场景 / 定向场景 / 停止当前线程 / 群体话题` 第一版已落地
+- `群聊 <-> 单聊` 的 `relationship wave` 第一版双向底座已接通
+- `群聊 <-> 单聊` 的 `fact trace` 第一版双向底座已接通
+- 群聊正式边界已开始存：`relationshipWaves / factTraces`
+- 单聊正式边界已开始存：`directRelationshipWaves / directFactTraces`
+- 当前仍未收口的重点是：
+  1. 日常闲聊多人互动稳定性
+  2. 目标识别后的发言调度与旁观插话条件
+  3. 角色差异强化
+  4. 角色稳定性 / OOC
+  5. 记忆互通与事实互通的提取质量、作用域边界、读取手感
+  6. 多群之间的有限互通尚未开始
+
+当前不应误判为已完成的部分：
+
+- 这还不是“正式 memory layer”
+- 这还不是“多群互通”
+- 这还不是“高质量关系网络引擎”
+- 当前完成的是“群聊主线可继续依赖的第一版互通底座”
+
 #### P2-6 约会接共享关系输入
 
 目标：
@@ -1875,9 +1923,17 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 2. 再做 `P2-2` 记忆语义分层
 3. 再做 `P2-3` 设置页动作对齐
 4. 接着做 `P2-4` 基础 OOC 治理
-5. 然后推进 `P2-5` 群聊最小闭环
-6. 再做 `P2-6` 约会接 shared context
-7. 最后做 `P2-7` couple-space 主链接新骨架
+5. 继续收口 `P2-5` 群聊最小闭环
+6. 群聊主线内优先顺序：目标识别 -> 发言调度 / 旁观插话条件 -> 角色稳定性 / OOC -> 记忆互通与事实互通提取质量
+7. `单聊气泡节奏优化` 记为后续体验优化项，不插队，不早于当前群聊主线收口
+8. 再做 `P2-6` 约会接 shared context
+9. 最后做 `P2-7` couple-space 主链接新骨架
+
+补充说明：
+
+- `关系余波层` 与 `事实层` 当前都已经达到“第一版双向可用底座”，短期内不应继续当作主线深挖
+- 当前更高收益的是回到群聊主线，把“谁该回、谁什么时候能插、插得像不像这个人”收稳
+- 多群有限互通应晚于当前群聊主线收口，不建议提前打开
 
 ### 18.6 每次实施时的要求
 

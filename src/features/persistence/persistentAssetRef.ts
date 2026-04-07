@@ -1,4 +1,5 @@
 const UPLOADED_ASSET_PREFIX = 'asset://uploaded/';
+const DIRECT_DISPLAY_VALUE_REGEX = /^(https?:|data:)/i;
 
 export function createUploadedAssetRef(id: string): string {
   return `${UPLOADED_ASSET_PREFIX}${id}`;
@@ -20,5 +21,8 @@ export function getDisplayableAssetValue(
 ): string | null {
   if (resolvedUrl) return resolvedUrl;
   if (!value) return null;
-  return isUploadedAssetRef(value) ? null : value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (isUploadedAssetRef(trimmed)) return null;
+  return DIRECT_DISPLAY_VALUE_REGEX.test(trimmed) ? trimmed : null;
 }

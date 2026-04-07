@@ -26,6 +26,10 @@ function getCategoryLabel(category: HeartCapsule['category']) {
   }
 }
 
+function getDrawnByLabel(drawnBy: HeartCapsuleTodayDraw['drawnBy']) {
+  return drawnBy === 'self' ? '我来扭' : '让 TA 扭';
+}
+
 export function HeartCapsuleDropResult({
   draw,
   capsule,
@@ -65,7 +69,7 @@ export function HeartCapsuleDropResult({
             <h2 className="mt-3 text-[28px] font-black tracking-tight text-zinc-800">{capsule.name}</h2>
           </div>
           <div className="rounded-full bg-pink-50 px-3 py-1 text-xs font-medium text-pink-500">
-            {draw.drawnBy === 'self' ? '我来扭' : '让 TA 扭'}
+            {getDrawnByLabel(draw.drawnBy)}
           </div>
         </div>
 

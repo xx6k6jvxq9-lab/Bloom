@@ -24,9 +24,8 @@ type Props = {
   onBackToResult: () => void;
 };
 
-const DEFAULT_REPLY_FALLBACK = '他没把这层意思一下说透，但还是顺着你的话把球接了回来。';
 const DEFAULT_OPENING_FALLBACK = '他先带着自己那边的底牌开了这个头。';
-const DEFAULT_ERROR_TEXT = '这一轮暂时没能接上。';
+const DEFAULT_ERROR_TEXT = '未知错误';
 const INPUT_PLACEHOLDER_SELF = '按你这边先拿到的信息，把这一句先递给他。';
 const INPUT_PLACEHOLDER_PARTNER = '现在轮到你按自己这边的规则，去接他刚刚递过来的话。';
 const RULE_GUESS_PLACEHOLDER = '猜猜他这一轮拿到的规则是什么。';
@@ -42,6 +41,11 @@ export function HeartCapsuleAsyncDualRuleRoundPage({
   updateSpace,
   onBackToResult,
 }: Props) {
+  const getDisplayError = React.useCallback(
+    (err: unknown) => (err instanceof Error ? err.message : String(err || DEFAULT_ERROR_TEXT)),
+    [],
+  );
+
   const isPartnerDraw = draw.drawnBy === 'partner';
   const [draft, setDraft] = React.useState('');
   const [submitted, setSubmitted] = React.useState<string | null>(draw.userAnswer ?? null);
@@ -82,7 +86,7 @@ export function HeartCapsuleAsyncDualRuleRoundPage({
         setOpeningText(reply || DEFAULT_OPENING_FALLBACK);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+        setError(getDisplayError(err));
       })
       .finally(() => {
         setIsGenerating(false);
@@ -116,7 +120,10 @@ export function HeartCapsuleAsyncDualRuleRoundPage({
         mode: isPartnerDraw ? 'partner_result' : 'self',
       });
 
-      const finalReply = reply || DEFAULT_REPLY_FALLBACK;
+      const finalReply = reply?.trim();
+      if (!finalReply) {
+        throw new Error('模型返回了空内容，没有生成角色回应。');
+      }
       const completedAt = Date.now();
       setReplyText(finalReply);
 
@@ -155,7 +162,7 @@ export function HeartCapsuleAsyncDualRuleRoundPage({
         };
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+      setError(getDisplayError(err));
     } finally {
       setIsGenerating(false);
     }
@@ -172,6 +179,7 @@ export function HeartCapsuleAsyncDualRuleRoundPage({
     partner,
     updateSpace,
     user,
+    getDisplayError,
   ]);
 
   const handleRevealRule = React.useCallback(() => {

@@ -24,10 +24,9 @@ type Props = {
   onBackToResult: () => void;
 };
 
-const DEFAULT_REPLY_FALLBACK = '他看着你这句沉了一会儿，最后还是把话接了回来。';
 const DEFAULT_HIDDEN_THOUGHT = '他嘴上收着，心里其实已经把答案想得更满了。';
 const DEFAULT_OPENING_FALLBACK = '他像是早就想好这句了，还是先把问题递到了你面前。';
-const DEFAULT_ERROR_TEXT = '这一轮暂时没能接上。';
+const DEFAULT_ERROR_TEXT = '未知错误';
 const INPUT_PLACEHOLDER = '先按这一轮的方式，把这句话回给他。';
 
 export function HeartCapsuleTruthVariantRoundPage({
@@ -41,6 +40,11 @@ export function HeartCapsuleTruthVariantRoundPage({
   updateSpace,
   onBackToResult,
 }: Props) {
+  const getDisplayError = React.useCallback(
+    (err: unknown) => (err instanceof Error ? err.message : String(err || DEFAULT_ERROR_TEXT)),
+    [],
+  );
+
   const isPartnerDraw = draw.drawnBy === 'partner';
   const [draft, setDraft] = React.useState('');
   const [submitted, setSubmitted] = React.useState<string | null>(draw.userAnswer ?? null);
@@ -82,7 +86,7 @@ export function HeartCapsuleTruthVariantRoundPage({
         setOpeningText(result.visibleReply || DEFAULT_OPENING_FALLBACK);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+        setError(getDisplayError(err));
       })
       .finally(() => {
         setIsGenerating(false);
@@ -130,7 +134,10 @@ export function HeartCapsuleTruthVariantRoundPage({
         mode: isPartnerDraw ? 'partner_result' : 'self',
       });
 
-      const finalReply = result.visibleReply || DEFAULT_REPLY_FALLBACK;
+      const finalReply = result.visibleReply?.trim();
+      if (!finalReply) {
+        throw new Error('模型返回了空内容，没有生成角色回应。');
+      }
       const finalHiddenThought =
         result.mode === 'partner_opening'
           ? ''
@@ -178,7 +185,7 @@ export function HeartCapsuleTruthVariantRoundPage({
         };
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : DEFAULT_ERROR_TEXT);
+      setError(getDisplayError(err));
     } finally {
       setIsGenerating(false);
     }
@@ -195,6 +202,7 @@ export function HeartCapsuleTruthVariantRoundPage({
     partner,
     updateSpace,
     user,
+    getDisplayError,
   ]);
 
   const currentVisibleReply = replyText || draw.resultReply;

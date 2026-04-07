@@ -1,20 +1,84 @@
-import React, { useState } from 'react';
-import { ChevronLeft, Plus, Trash2, Users, Check, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChatGroup, Character } from '../../types';
-import { showInAppConfirm } from '../../utils';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BellOff, Check, ChevronLeft, Pin, Plus, Trash2, Users, X } from 'lucide-react';
+import type { Character, ChatGroup } from '../../types';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { showInAppConfirm } from '../../utils';
 
-function ResolvedGroupAvatar({ value, alt, className }: { value?: string | null; alt: string; className: string }) {
+function ResolvedGroupAvatar({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const src = getDisplayableAssetValue(value, resolvedUrl);
+  const [hasError, setHasError] = useState(false);
 
-  if (!src) {
+  useEffect(() => {
+    setHasError(false);
+  }, [src, value]);
+
+  if (!src || hasError) {
     return <div className={`${className} bg-zinc-100`} aria-label={alt} />;
   }
 
-  return <img src={src} alt={alt} className={className} />;
+  return <img src={src} alt={alt} className={className} onError={() => setHasError(true)} />;
+}
+
+function GroupCardAvatar({
+  group,
+  members,
+}: {
+  group: ChatGroup;
+  members: Character[];
+}) {
+  const visibleMembers = members.slice(0, 4);
+
+  if (group.avatar) {
+    return (
+      <ResolvedGroupAvatar
+        value={group.avatar}
+        alt={group.name}
+        className="h-12 w-12 rounded-xl object-cover"
+      />
+    );
+  }
+
+  if (visibleMembers.length === 0) {
+    return (
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
+        <Users size={24} />
+      </div>
+    );
+  }
+
+  if (visibleMembers.length === 1) {
+    return (
+      <ResolvedGroupAvatar
+        value={visibleMembers[0].avatar}
+        alt={group.name}
+        className="h-12 w-12 rounded-xl object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="grid h-12 w-12 grid-cols-2 overflow-hidden rounded-xl bg-zinc-100 p-0.5">
+      {visibleMembers.map((member) => (
+        <ResolvedGroupAvatar
+          key={member.id}
+          value={member.avatar}
+          alt={member.name}
+          className="h-full w-full object-cover"
+        />
+      ))}
+    </div>
+  );
 }
 
 export function GroupChatManagerPage({
@@ -22,7 +86,7 @@ export function GroupChatManagerPage({
   characters,
   onCreateGroup,
   onDeleteGroup,
-  onBack
+  onBack,
 }: {
   groups: ChatGroup[];
   characters: Character[];
@@ -34,103 +98,126 @@ export function GroupChatManagerPage({
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
 
+  const closeCreateModal = () => {
+    setShowCreate(false);
+    setNewGroupName('');
+    setSelectedMembers([]);
+  };
+
   return (
-    <div className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
-      {/* Header */}
-      <div className="min-h-[64px] pt-12 pb-3 px-4 flex justify-between items-center bg-white border-b border-zinc-100">
+    <div className="absolute inset-0 z-50 flex flex-col bg-zinc-50">
+      <div className="flex min-h-[64px] items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 pt-12">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
           </button>
           <h1 className="text-[18px] font-bold text-zinc-900">群聊管理</h1>
         </div>
-        <button 
-          onClick={() => setShowCreate(true)}
-          className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white active:scale-90 transition-transform"
+        <button
+          onClick={() => {
+            setNewGroupName('');
+            setSelectedMembers([]);
+            setShowCreate(true);
+          }}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white transition-transform active:scale-90"
         >
           <Plus size={20} />
         </button>
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {groups.length === 0 ? (
-          <div className="text-center py-10 text-zinc-400 text-sm">暂无群聊，点击右上角创建</div>
+          <div className="py-10 text-center text-sm text-zinc-400">暂无群聊，点击右上角创建</div>
         ) : (
-          groups.map(group => (
-            <div key={group.id} className="bg-white p-4 rounded-2xl shadow-sm border border-zinc-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500">
-                  <Users size={24} />
+          groups.map((group) => (
+            (() => {
+              const displayName = group.groupRemark?.trim() || group.name;
+
+              return (
+                <div
+                  key={group.id}
+                  className="flex items-center justify-between rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <GroupCardAvatar
+                      group={group}
+                      members={characters.filter((character) => group.memberIds.includes(character.id))}
+                    />
+                    <div>
+                      <div className="font-bold text-zinc-900">{displayName}</div>
+                      <div className="flex items-center gap-1.5 text-[12px] text-zinc-500">
+                        <span>{group.memberIds.length + 1} 人</span>
+                        {group.muteNotifications && <BellOff size={12} className="text-zinc-400" />}
+                        {group.pinChat && <Pin size={12} className="fill-zinc-400 text-zinc-400" />}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (await showInAppConfirm('确定要解散这个群聊吗？')) {
+                        onDeleteGroup(group.id);
+                      }
+                    }}
+                    className="rounded-lg p-2 text-red-500 active:bg-red-50"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
-                <div>
-                  <div className="font-bold text-zinc-900">{group.name}</div>
-                  <div className="text-[12px] text-zinc-500">{group.memberIds.length} 位成员</div>
-                </div>
-              </div>
-              <button 
-                onClick={async () => {
-                  if (await showInAppConfirm('确定要解散该群聊吗？')) {
-                    onDeleteGroup(group.id);
-                  }
-                }}
-                className="p-2 text-red-500 active:bg-red-50 rounded-lg"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
+              );
+            })()
           ))
         )}
       </div>
 
-      {/* Create Modal */}
       <AnimatePresence>
         {showCreate && (
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
-            <motion.div 
+          <div className="absolute inset-0 z-[60] flex items-end justify-center bg-black/20 backdrop-blur-sm sm:items-center">
+            <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="bg-white w-full sm:w-[90%] sm:rounded-2xl rounded-t-[32px] p-6 max-h-[80vh] flex flex-col shadow-2xl"
+              className="flex max-h-[80vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl sm:w-[90%] sm:rounded-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-[18px] font-bold">创建群聊</h2>
-                <button onClick={() => setShowCreate(false)} className="p-1 text-zinc-400">
+                <button onClick={closeCreateModal} className="p-1 text-zinc-400">
                   <X size={24} />
                 </button>
               </div>
 
-              <input 
+              <input
                 type="text"
                 placeholder="群聊名称"
                 value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 mb-4 outline-none focus:border-blue-500"
+                onChange={(event) => setNewGroupName(event.target.value)}
+                className="mb-4 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 outline-none focus:border-blue-500"
               />
 
-              <div className="flex-1 overflow-y-auto mb-4 min-h-[200px]">
-                <div className="text-[13px] text-zinc-500 mb-2">选择成员</div>
+              <div className="mb-4 min-h-[200px] flex-1 overflow-y-auto">
+                <div className="mb-2 text-[13px] text-zinc-500">选择成员</div>
                 <div className="space-y-2">
-                  {characters.map(char => {
-                    const isSelected = selectedMembers.includes(char.id);
+                  {characters.map((character) => {
+                    const isSelected = selectedMembers.includes(character.id);
                     return (
-                      <div 
-                        key={char.id}
+                      <div
+                        key={character.id}
                         onClick={() => {
-                          setSelectedMembers(prev => 
-                            isSelected 
-                              ? prev.filter(id => id !== char.id)
-                              : [...prev, char.id]
+                          setSelectedMembers((prev) =>
+                            isSelected
+                              ? prev.filter((id) => id !== character.id)
+                              : [...prev, character.id],
                           );
                         }}
-                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                          isSelected 
-                            ? 'bg-blue-50 border-blue-500' 
-                            : 'bg-white border-zinc-100'
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all ${
+                          isSelected ? 'border-blue-500 bg-blue-50' : 'border-zinc-100 bg-white'
                         }`}
                       >
-                        <ResolvedGroupAvatar value={char.avatar} alt={char.name} className="w-10 h-10 rounded-full object-cover" />
-                        <span className="font-medium text-zinc-800 flex-1">{char.name}</span>
+                        <ResolvedGroupAvatar
+                          value={character.avatar}
+                          alt={character.name}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                        <span className="flex-1 font-medium text-zinc-800">{character.name}</span>
                         {isSelected && <Check size={16} className="text-blue-500" />}
                       </div>
                     );
@@ -138,16 +225,14 @@ export function GroupChatManagerPage({
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={() => {
                   if (!newGroupName.trim()) return alert('请输入群聊名称');
                   if (selectedMembers.length === 0) return alert('请至少选择一个成员');
                   onCreateGroup(newGroupName, selectedMembers);
-                  setShowCreate(false);
-                  setNewGroupName('');
-                  setSelectedMembers([]);
+                  closeCreateModal();
                 }}
-                className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold active:scale-95 transition-transform shadow-lg shadow-blue-500/30"
+                className="w-full rounded-xl bg-blue-500 py-3.5 font-bold text-white shadow-lg shadow-blue-500/30 transition-transform active:scale-95"
               >
                 创建
               </button>

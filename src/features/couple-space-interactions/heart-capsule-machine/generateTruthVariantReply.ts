@@ -5,14 +5,11 @@ import type {
   CoupleSpaceData,
   UserProfileExtended,
 } from '../../../types';
-import { generateTextWithConfig } from '../../../services/ai/runtimeClient';
-import { HEART_CAPSULE_BASE_PROMPT } from './heartCapsuleBasePrompt';
 import {
-  TRUTH_VARIANT_PARTNER_OPENING_PROMPT,
-  TRUTH_VARIANT_PARTNER_RESULT_PROMPT,
-  TRUTH_VARIANT_SELF_ROUND_PROMPT,
-  TRUTH_VARIANT_TYPE_PROMPT,
-} from './truthVariantPrompt';
+  streamTextWithConfig,
+  type RuntimeChatMessage,
+} from '../../../services/ai/runtimeClient';
+import { buildHeartCapsulePromptContext } from './buildHeartCapsulePromptContext';
 import type { TruthVariantCapsule } from './types';
 
 type Options = {
@@ -39,144 +36,112 @@ export type TruthVariantGeneratedResult =
       hiddenThought: string;
     };
 
-function getRecentChatSnippet(chatHistory: ChatHistory, partnerId: string) {
-  const messages = chatHistory[partnerId] ?? [];
-  return messages
-    .slice(-4)
-    .map((message) => `${message.role === 'user' ? '用户' : 'TA'}：${message.text}`)
-    .join('\n');
-}
-
-function getRelationshipSummary(coupleSpace: CoupleSpaceData) {
-  const parts: string[] = [];
-
-  if (coupleSpace.anniversaryDate) {
-    const days = Math.max(
-      1,
-      Math.floor((Date.now() - coupleSpace.anniversaryDate) / (1000 * 60 * 60 * 24)),
-    );
-    parts.push(`你们已经在一起或进入情侣空间大约 ${days} 天。`);
-  }
-
-  const letterCount = coupleSpace.loveLetters?.length ?? 0;
-  const noteCount = coupleSpace.coNotes?.length ?? 0;
-  const postCount = coupleSpace.posts?.length ?? 0;
-  const messageBoardCount = coupleSpace.messageBoard?.length ?? 0;
-
-  if (letterCount || noteCount || postCount || messageBoardCount) {
-    parts.push(
-      `情侣空间里已经有 ${letterCount} 封情书、${noteCount} 条互记、${postCount} 条动态、${messageBoardCount} 条留言。`,
-    );
-  }
-
-  return parts.join('\n');
-}
-
-function getLongTermMemorySummary(user: UserProfileExtended, partner: Character) {
-  const lines = [
-    `角色名字：${partner.name}`,
-    `角色设定：${partner.setting || '未提供'}`,
-    partner.signature ? `角色签名：${partner.signature}` : '',
-    partner.openingRemark ? `角色初始语气：${partner.openingRemark}` : '',
-    `用户名字：${user.name || '未命名用户'}`,
-  ].filter(Boolean);
-
-  return lines.join('\n');
-}
-
 function getCapsuleSpecificConstraint(capsule: TruthVariantCapsule) {
   switch (capsule.id) {
     case 'truth-variant-no-direct-answer':
-      return '【硬规则】禁止直接说“是 / 不是 / 会 / 不会”这类正面答案，必须绕开直球，用侧面表达代替。';
+      return '禁止直接回答“是 / 不是 / 会 / 不会”这类正面答案，必须绕开直球，用侧面表达代替。';
     case 'truth-variant-half-admit':
-      return '【硬规则】只能承认一半，另一半必须留白或按住，不能整段全说满。';
+      return '只能承认一半，另一半必须留白或按住，不能整段全说满。';
     case 'truth-variant-tsundere-truth':
-      return '【硬规则】真心可以给，但态度不能太乖，必须保留一点嘴硬或别扭。';
+      return '真心可以给，但态度不能太软，必须保留一点嘴硬或别扭。';
     case 'truth-variant-incomplete':
-      return '【硬规则】最关键的地方必须停住，不能完整说透，要把最重的一截留给对方自己领会。';
+      return '最关键的地方必须停住，不能完整说透，要把最重的一截留给对方自己领会。';
     case 'truth-variant-detour-then-admit':
-      return '【硬规则】可以先绕一下，但最后必须落到真实心意上，不能一直兜圈子不落点。';
+      return '可以先绕一下，但最后必须落到真实心意上，不能一直兜圈子。';
     case 'truth-variant-one-line':
-      return '【硬规则】只能输出一句话，不允许拆成多句。';
+      return '只能输出一句话，不允许拆成多句。';
     case 'truth-variant-no-reasoning':
-      return '【硬规则】禁止讲道理、分析原因，只能给态度和情绪反应。';
+      return '禁止讲道理、分析原因，只能给态度和情绪反应。';
     case 'truth-variant-cannot-ignore':
-      return '【硬规则】不能装作没听见，也不能滑过去，必须正面接住问题。';
+      return '不能装作没听见，也不能滑过去，必须正面接住问题。';
     case 'truth-variant-vague-confession':
-      return '【硬规则】不能直接说“喜欢、爱”这类直白词，要把心意藏进细节和侧面表达里。';
+      return '不能直接说“喜欢、爱”这类直白词，要把心意藏进细节和侧面表达里。';
     case 'truth-variant-privileged-question':
-      return '【硬规则】这一轮允许更往前递一步，不能过于保守躲开。';
+      return '这一轮允许更往前递一步，不能过于保守躲开。';
     default:
       return '';
   }
 }
 
-function getOutputFormatPrompt(mode: 'self' | 'partner_opening' | 'partner_result') {
-  if (mode === 'partner_opening') {
-    return [
-      '【输出格式】',
-      '直接输出角色开场会说的话。',
-      '不要加标题，不要加解释，不要加额外标签。',
-    ].join('\n');
-  }
-
-  return [
-    '【输出格式】',
-    '必须严格按下面格式输出两段内容：',
-    '【表面回复】',
-    '这里写角色这轮真正说出口的话。',
-    '',
-    '【真实想法】',
-    '这里写角色这轮没直接说出口、但当下真实在想的那层心思。',
-    '',
-    '两段都必须输出。',
-    '表面回复必须遵守当前扭蛋规则。',
-    '真实想法可以更直白一点，但仍然要符合角色本人和当前关系。',
-  ].join('\n');
-}
-
-function buildRoundPrompt(options: {
+function buildSystemPrompt(options: {
   user: UserProfileExtended;
   partner: Character;
   coupleSpace: CoupleSpaceData;
-  chatHistory: ChatHistory;
+  capsule: TruthVariantCapsule;
+  question: string;
+  mode: 'self' | 'partner_opening' | 'partner_result';
+}) {
+  const { user, partner, coupleSpace, capsule, question, mode } = options;
+  const context = buildHeartCapsulePromptContext({ user, partner, coupleSpace });
+  const modePrompt =
+    mode === 'partner_opening'
+      ? '这一轮由角色先开场，角色要先把问题抛给用户。'
+      : mode === 'partner_result'
+        ? '这一轮由角色收口，角色要接住用户刚刚的回答。'
+        : '这一轮由用户先回答，角色要在规则限制下回应。';
+
+  return [
+    '你正在完成情侣空间里的心动扭蛋互动。',
+    '这一轮玩法重点是真心话被规则限制：角色心里有更真实的话，但表达必须受当前扭蛋约束。',
+    '你始终是这个角色本人，不要解释玩法，不要解释规则，不要像系统播报。',
+    '可以读取角色与用户的长期记忆和短期关系摘要，但不要引用最近聊天原文，也不要沿用上一轮扭蛋的即时气氛。',
+    '',
+    '【角色与关系背景】',
+    context,
+    '',
+    '【当前扭蛋】',
+    `名称：${capsule.name}`,
+    `当前规则：${capsule.answerRule}`,
+    `当前气氛：${capsule.feeling}`,
+    `当前问题：${question}`,
+    getCapsuleSpecificConstraint(capsule) ? `补充限制：${getCapsuleSpecificConstraint(capsule)}` : '',
+    '',
+    '【当前轮次要求】',
+    modePrompt,
+    '',
+    '【输出规则】',
+    mode === 'partner_opening'
+      ? '直接输出角色会发给用户的那句话，不要附加标题或解释。'
+      : [
+          '必须严格输出两段内容：',
+          '【表面回复】',
+          '这里写角色真正发出口的话。',
+          '',
+          '【真实想法】',
+          '这里写角色这轮没直接说出口、但当下真实在想的那层心思。',
+        ].join('\n'),
+    '',
+    '【通用要求】',
+    '1. 使用自然中文，像真实聊天，不要玩法旁白。',
+    '2. 不要替用户说话，不要假设用户动作，不要写线下动作描写。',
+    '3. 表面回复必须遵守当前扭蛋规则。',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildUserPrompt(options: {
   capsule: TruthVariantCapsule;
   question: string;
   userAnswer?: string;
   mode: 'self' | 'partner_opening' | 'partner_result';
 }) {
-  const { user, partner, coupleSpace, chatHistory, capsule, question, userAnswer, mode } = options;
-  const recentChat = getRecentChatSnippet(chatHistory, partner.id);
-  const relationshipSummary = getRelationshipSummary(coupleSpace);
-  const longTermMemorySummary = getLongTermMemorySummary(user, partner);
-  const roundPrompt =
-    mode === 'partner_opening'
-      ? TRUTH_VARIANT_PARTNER_OPENING_PROMPT
-      : mode === 'partner_result'
-        ? TRUTH_VARIANT_PARTNER_RESULT_PROMPT
-        : TRUTH_VARIANT_SELF_ROUND_PROMPT;
+  const { capsule, question, userAnswer, mode } = options;
+
+  if (mode === 'partner_opening') {
+    return [
+      `请按“${capsule.name}”这轮规则先开场。`,
+      `你要抛出的核心问题是：${question}`,
+      '请直接输出角色发出的那句话。',
+    ].join('\n');
+  }
 
   return [
-    HEART_CAPSULE_BASE_PROMPT,
-    TRUTH_VARIANT_TYPE_PROMPT,
-    roundPrompt,
-    getCapsuleSpecificConstraint(capsule),
-    '【当前固定信息】',
-    longTermMemorySummary,
-    relationshipSummary ? `【当前关系摘要】\n${relationshipSummary}` : '',
-    `【当前扭蛋】${capsule.name}`,
-    `【当前规则】${capsule.answerRule}`,
-    `【当前题目】${question}`,
-    `【当前气氛】${capsule.feeling}`,
-    userAnswer ? `【用户刚刚的回答】${userAnswer}` : '',
-    recentChat ? `【最近相关聊天】\n${recentChat}` : '',
-    '【全局要求】',
-    '不要解释规则，不要解释自己为什么这样说。',
-    '如果你会把答案直接说满，请收回来，改成符合规则的表达。',
-    getOutputFormatPrompt(mode),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+    `当前扭蛋：${capsule.name}`,
+    `当前问题：${question}`,
+    `用户刚刚的回答：${userAnswer || ''}`,
+    '请按当前规则，以角色本人身份回应。',
+  ].join('\n');
 }
 
 function extractSection(text: string, label: string) {
@@ -199,7 +164,7 @@ function parseGeneratedResult(
   }
 
   const visibleReply = extractSection(rawText, '表面回复') || rawText.trim();
-  const hiddenThought = extractSection(rawText, '真实想法') || '他嘴上收着，心里其实已经把答案说得更满了。';
+  const hiddenThought = extractSection(rawText, '真实想法') || '他嘴上收着，心里其实已经把答案想得更满了。';
 
   return {
     mode,
@@ -213,7 +178,7 @@ export async function generateTruthVariantReply({
   user,
   partner,
   coupleSpace,
-  chatHistory,
+  chatHistory: _chatHistory,
   capsule,
   question,
   userAnswer,
@@ -223,21 +188,25 @@ export async function generateTruthVariantReply({
     throw new Error('当前还没有可用的模型配置。');
   }
 
-  const prompt = buildRoundPrompt({
-    user,
-    partner,
-    coupleSpace,
-    chatHistory,
-    capsule,
-    question,
-    userAnswer,
-    mode,
-  });
+  const messages: RuntimeChatMessage[] = [
+    {
+      role: 'system',
+      content: buildSystemPrompt({ user, partner, coupleSpace, capsule, question, mode }),
+    },
+    {
+      role: 'user',
+      content: buildUserPrompt({ capsule, question, userAnswer, mode }),
+    },
+  ];
 
-  const rawText = await generateTextWithConfig({
+  let rawText = '';
+  await streamTextWithConfig({
     activeConfig,
-    prompt,
+    messages,
     temperature: 0.72,
+    onTextChunk: (chunk) => {
+      rawText += chunk;
+    },
   });
 
   return parseGeneratedResult(rawText, mode);

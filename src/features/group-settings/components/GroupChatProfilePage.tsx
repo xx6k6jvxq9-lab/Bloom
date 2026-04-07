@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { GROUP_RELATIONSHIP_OPTIONS, GROUP_SETTINGS_PLACEHOLDERS } from '../constants';
 import type { GroupSettingsFormState } from '../types';
@@ -15,7 +16,7 @@ function SectionCard({
 }: {
   title: string;
   summary: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
@@ -25,6 +26,42 @@ function SectionCard({
       </div>
       <div className="px-4 py-4">{children}</div>
     </section>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-start justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-left"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-zinc-900">{label}</div>
+        <div className="mt-1 text-[12px] leading-5 text-zinc-500">{description}</div>
+      </div>
+      <span
+        className={`relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition-colors ${
+          checked ? 'bg-zinc-900' : 'bg-zinc-200'
+        }`}
+      >
+        <span
+          className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -59,6 +96,18 @@ export function GroupChatProfilePage({
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-3">
+          <SectionCard
+            title="与单聊记忆互通"
+            summary={formState.allowDirectMemoryInterop ? '当前开启' : '当前关闭'}
+          >
+            <ToggleRow
+              label="与单聊记忆互通"
+              description="开启后，这个群里形成的相关群聊记忆可以回流影响对应角色的单聊。关闭后，群内容尽量只留在群里。"
+              checked={formState.allowDirectMemoryInterop}
+              onToggle={() => onChange({ allowDirectMemoryInterop: !formState.allowDirectMemoryInterop })}
+            />
+          </SectionCard>
+
           <SectionCard
             title="群背景简述"
             summary={getDisplayValue(formState.backgroundSummary, GROUP_SETTINGS_PLACEHOLDERS.backgroundSummary)}

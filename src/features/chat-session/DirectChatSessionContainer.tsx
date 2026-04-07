@@ -2,6 +2,7 @@ import type {
   AppSettings,
   CallRecord,
   Character,
+  ChatGroup,
   ChatHistory,
   CoupleSpaceData,
   DateSession,
@@ -21,6 +22,7 @@ type DirectChatSessionContainerProps = {
   character: Character;
   chatHistory: ChatHistory;
   setChatHistory: (chatHistory: ChatHistory) => void;
+  chatGroups: ChatGroup[];
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   settings: AppSettings;
@@ -54,6 +56,7 @@ export function DirectChatSessionContainer({
   character,
   chatHistory,
   setChatHistory,
+  chatGroups,
   updateCharacter,
   patchCharacter,
   settings,
@@ -118,6 +121,8 @@ export function DirectChatSessionContainer({
       visualSettings={visualSettings}
       onUpdateVisualSettings={setVisualSettings}
       groups={groups}
+      chatGroups={chatGroups}
+      directChatHistory={chatHistory}
       onViewForumPost={onViewForumPost}
       callHistory={callHistory}
       onAddCallRecord={(record) => {

@@ -160,6 +160,7 @@ export function ContactsApp({
             name: normalizedName,
             memberIds: normalizedMemberIds,
             groupStage: 'new',
+            allowDirectMemoryInterop: true,
             memberRelationSeeds,
             creatorId: 'user',
             createdAt: Date.now()

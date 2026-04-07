@@ -3,6 +3,8 @@ import type {
   ApiConfig,
   CallRecord,
   Character,
+  ChatGroup,
+  ChatHistory,
   ChatMessage,
   CoupleSpaceData,
   FavoriteMessage,
@@ -212,6 +214,8 @@ type UseDirectChatRuntimeArgs = {
   perception?: PerceptionSettings;
   coupleSpace?: CoupleSpaceData;
   userName: string;
+  directChatHistory?: ChatHistory;
+  chatGroups?: ChatGroup[];
   favorites: FavoriteMessage[];
   setFavorites: (favorites: FavoriteMessage[]) => void;
   walletData?: WalletData;
@@ -284,6 +288,8 @@ export function useDirectChatRuntime({
   perception,
   coupleSpace,
   userName,
+  directChatHistory,
+  chatGroups,
   favorites,
   setFavorites,
   walletData,
@@ -393,6 +399,8 @@ export function useDirectChatRuntime({
             activeMask,
             activeWorldBooks,
             perceptionPrompt,
+            directChatHistory,
+            chatGroups,
           }));
 
           await streamTextWithConfig({
@@ -694,6 +702,8 @@ export function useDirectChatRuntime({
         activeMask,
         activeWorldBooks,
         perceptionPrompt,
+        directChatHistory,
+        chatGroups,
       }));
 
       await streamTextWithConfig({
@@ -726,31 +736,35 @@ export function useDirectChatRuntime({
       setHistory(finalHistory);
       activeAssistantMessageIdRef.current = null;
 
-      const autoMomentResult = await maybeAutoPublishMoment({
-        userText: userMsg.text,
-        assistantText: currentResponseText,
-        finalHistory,
-        recentContext: {
-          recentMessages: finalHistory.slice(-6).map(message => ({
-            role: message.role,
-            text: message.text,
-            timestamp: message.timestamp,
-          })),
-          recentMomentPublishedAt: lastMomentPublishAtRef.current,
-          now: Date.now(),
-        },
-        activeConfig,
-        character,
-        masks,
-        worldBook,
-      });
-
-      if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
-        onPublishMoment?.({
-          authorId: character.id,
-          content: autoMomentResult.momentContent,
+      try {
+        const autoMomentResult = await maybeAutoPublishMoment({
+          userText: userMsg.text,
+          assistantText: currentResponseText,
+          finalHistory,
+          recentContext: {
+            recentMessages: finalHistory.slice(-6).map(message => ({
+              role: message.role,
+              text: message.text,
+              timestamp: message.timestamp,
+            })),
+            recentMomentPublishedAt: lastMomentPublishAtRef.current,
+            now: Date.now(),
+          },
+          activeConfig,
+          character,
+          masks,
+          worldBook,
         });
-        lastMomentPublishAtRef.current = Date.now();
+
+        if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
+          onPublishMoment?.({
+            authorId: character.id,
+            content: autoMomentResult.momentContent,
+          });
+          lastMomentPublishAtRef.current = Date.now();
+        }
+      } catch (autoMomentError) {
+        console.error('Auto moment publish failed:', autoMomentError);
       }
 
       const finalHistoryLength = finalHistory.length;

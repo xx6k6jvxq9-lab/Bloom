@@ -187,9 +187,10 @@ function isContaminatedChatReaction(text: string) {
 async function generateSingleText(options: {
   activeConfig: ApiConfig;
   prompt: string;
+  requestText: string;
   fallback: string;
 }) {
-  const { activeConfig, prompt, fallback } = options;
+  const { activeConfig, prompt, requestText, fallback } = options;
   const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
 
   if (apiKey) {
@@ -200,7 +201,10 @@ async function generateSingleText(options: {
         apiKey,
       },
       temperature: activeConfig.temperature ?? 0.7,
-      messages: [{ role: 'system', content: prompt }],
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: requestText.trim() || '请按上面的规则直接生成最终内容。' },
+      ],
       onTextChunk: (chunkText) => {
         responseText += chunkText;
       },
@@ -249,7 +253,7 @@ export async function generateMomentPostContent(options: {
   worldBook: WorldBookEntry[];
   requestText: string;
 }) {
-  const { activeConfig, character, masks, worldBook } = options;
+  const { activeConfig, character, masks, worldBook, requestText } = options;
   const fallback = getCleanMomentFallback();
 
   const firstPrompt = buildMomentPostPrompt({
@@ -262,6 +266,7 @@ export async function generateMomentPostContent(options: {
   const firstPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: firstPrompt,
+    requestText: `请直接生成一条可发布的动态正文。触发来源：${requestText}`,
     fallback,
   }));
 
@@ -284,6 +289,7 @@ export async function generateMomentPostContent(options: {
   const secondPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: retryPrompt,
+    requestText: `请重新生成一条可发布的动态正文。触发来源：${requestText}`,
     fallback,
   }));
 
@@ -325,6 +331,7 @@ export async function generateMomentChatReaction(options: {
   const reaction = normalizeChatReaction(await generateSingleText({
     activeConfig,
     prompt: reactionPrompt,
+    requestText: `请按规则先在聊天里自然回应这次发动态请求：${requestText}`,
     fallback: getCleanChatReactionFallback(),
   }));
 
@@ -445,6 +452,7 @@ export async function generateMomentCommentReply(options: {
     const response = await generateSingleText({
       activeConfig,
       prompt,
+      requestText: `请以评论区回复的方式，自然回复这条用户评论：${userComment}`,
       fallback: buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies),
     });
 
@@ -526,6 +534,7 @@ export async function generateMomentAutoComment(options: {
     const response = await generateSingleText({
       activeConfig,
       prompt,
+      requestText: `请作为路过看到动态的人，留下一句自然评论。动态内容：${moment.content}`,
       fallback: buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies),
     });
 

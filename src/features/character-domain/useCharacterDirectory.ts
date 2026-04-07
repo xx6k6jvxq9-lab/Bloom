@@ -7,10 +7,19 @@ type UseCharacterDirectoryArgs = {
 export function createCharacterDirectory({ characters }: UseCharacterDirectoryArgs) {
   const characterById = new Map<string, Character>();
   const characterByName = new Map<string, Character>();
+  const characterByAlias = new Map<string, Character>();
+
+  const registerAlias = (alias: string | null | undefined, character: Character) => {
+    const normalized = alias?.trim().toLowerCase();
+    if (!normalized || characterByAlias.has(normalized)) return;
+    characterByAlias.set(normalized, character);
+  };
 
   characters.forEach((character) => {
     characterById.set(character.id, character);
     characterByName.set(character.name, character);
+    registerAlias(character.name, character);
+    registerAlias(character.remarkName, character);
   });
 
   const getCharacterById = (id: string | null | undefined) => {
@@ -31,7 +40,7 @@ export function createCharacterDirectory({ characters }: UseCharacterDirectoryAr
 
   const getCharacterByName = (name: string | null | undefined) => {
     if (!name) return null;
-    return characterByName.get(name) || null;
+    return characterByName.get(name) || characterByAlias.get(name.trim().toLowerCase()) || null;
   };
 
   const getMomentAuthor = (authorId: string) => {

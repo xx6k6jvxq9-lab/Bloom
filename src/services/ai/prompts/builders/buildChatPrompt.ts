@@ -16,6 +16,7 @@ export type BuildChatPromptOptions = {
   recentContext?: {
     shortTermSummary?: string;
     recentCoupleSpaceSummary?: string;
+    sharedRecentRelationshipSummary?: string;
   };
   includeProtocolRules?: boolean;
   sections?: string[];
@@ -34,9 +35,11 @@ const buildUserContextSection = (userContext?: BuildChatPromptOptions['userConte
 const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recentContext']): string => {
   const shortTermSummary = recentContext?.shortTermSummary?.trim();
   const recentCoupleSpaceSummary = recentContext?.recentCoupleSpaceSummary?.trim();
+  const sharedRecentRelationshipSummary = recentContext?.sharedRecentRelationshipSummary?.trim();
 
   const lines = [
     shortTermSummary ? `[近期关系余波] ${shortTermSummary}` : '',
+    sharedRecentRelationshipSummary ? `[跨场景共享关系余波] ${sharedRecentRelationshipSummary}` : '',
     recentCoupleSpaceSummary ? `[最近情侣空间关系事件摘要] ${recentCoupleSpaceSummary}` : '',
   ].filter(Boolean);
 

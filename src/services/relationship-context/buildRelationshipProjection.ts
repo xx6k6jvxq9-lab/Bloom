@@ -1,12 +1,17 @@
-import type { Character, CoupleSpaceData } from '../../types';
+import type { Character, ChatMessage, ChatGroup, CoupleSpaceData } from '../../types';
 import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
+import { buildSharedRelationshipMemory } from './buildSharedRelationshipMemory';
 import type { RelationshipProjection } from './types';
 
 type BuildRelationshipProjectionInput = {
   character: Character;
   coupleSpace?: CoupleSpaceData;
   userName: string;
+  directMessages?: ChatMessage[];
+  groupMessages?: ChatMessage[];
+  groupRelationshipWaves?: ChatGroup['relationshipWaves'];
+  factTraces?: import('./factTypes').FactTraceRecord[];
 };
 
 function shouldUseCoupleSpaceForCharacter(
@@ -31,6 +36,14 @@ export function buildRelationshipProjection(
         partner: input.character,
       }).recentCoupleSpaceSummary
     : undefined;
+  const sharedRecentRelationshipSummary = buildSharedRelationshipMemory({
+    characterId: input.character.id,
+    characterName: input.character.name,
+    directMessages: input.directMessages,
+    groupMessages: input.groupMessages,
+    relationshipWaves: input.groupRelationshipWaves,
+    factTraces: input.factTraces,
+  });
 
   return {
     characterScopedMemory: {
@@ -39,6 +52,7 @@ export function buildRelationshipProjection(
     },
     sceneScopedSignals: {
       recentCoupleSpaceSummary,
+      sharedRecentRelationshipSummary,
     },
   };
 }

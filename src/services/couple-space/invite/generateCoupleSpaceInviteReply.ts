@@ -1,5 +1,5 @@
 import type { ApiConfig } from '../../../types';
-import { generateTextWithConfig } from '../../ai/runtimeClient';
+import { streamTextWithConfig } from '../../ai/runtimeClient';
 import type { CoupleSpaceInviteContext } from './coupleSpaceInviteTypes';
 import { buildCoupleSpaceInviteReplyPrompt } from './buildCoupleSpaceInviteReplyPrompt';
 
@@ -20,10 +20,14 @@ export async function generateCoupleSpaceInviteReply(params: {
 
   try {
     const prompt = buildCoupleSpaceInviteReplyPrompt(params.context);
-    const reply = await generateTextWithConfig({
+    let reply = '';
+    await streamTextWithConfig({
       activeConfig: params.activeConfig,
-      prompt,
+      messages: [{ role: 'system', content: prompt }],
       temperature: 0.8,
+      onTextChunk: (chunk) => {
+        reply += chunk;
+      },
     });
 
     return normalizeInviteReply(reply);

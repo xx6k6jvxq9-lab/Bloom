@@ -1,4 +1,5 @@
-import type { AppSettings, Character, ChatGroup } from '../../types';
+import type { Dispatch, SetStateAction } from 'react';
+import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { GroupChatSessionScreen } from './GroupChatSessionScreen';
 
@@ -6,7 +7,10 @@ type GroupChatSessionContainerProps = {
   group: ChatGroup;
   characters: Character[];
   chatGroups: ChatGroup[];
-  setChatGroups: (chatGroups: ChatGroup[]) => void;
+  setChatGroups: Dispatch<SetStateAction<ChatGroup[]>>;
+  directChatHistory: ChatHistory;
+  favorites: FavoriteMessage[];
+  setFavorites: (favorites: FavoriteMessage[]) => void;
   settings: AppSettings;
   onBack: () => void;
   userAvatar: string;
@@ -18,6 +22,9 @@ export function GroupChatSessionContainer({
   characters,
   chatGroups,
   setChatGroups,
+  directChatHistory,
+  favorites,
+  setFavorites,
   settings,
   onBack,
   userAvatar,
@@ -26,28 +33,70 @@ export function GroupChatSessionContainer({
   const { getGroupMembers } = createCharacterDirectory({ characters });
   const history = group.history || [];
   const members = getGroupMembers(group);
+  const inviteableCharacters = characters.filter((character) => !group.memberIds.includes(character.id));
+  const availableCustomStickers = Array.from(
+    new Set(
+      characters.flatMap((character) => character.stickers || []).filter((sticker): sticker is string => !!sticker),
+    ),
+  );
 
   return (
     <GroupChatSessionScreen
       group={group}
       members={members}
+      availableCustomStickers={availableCustomStickers}
       history={history}
+      favorites={favorites}
+      setFavorites={setFavorites}
       setHistory={(newHistory) => {
-        setChatGroups(
-          chatGroups.map(item => item.id === group.id
+        setChatGroups((prevGroups) =>
+          prevGroups.map((item) => {
+            if (item.id !== group.id) {
+              return item;
+            }
+
+            const resolvedHistory = typeof newHistory === 'function'
+              ? newHistory(item.history || [])
+              : newHistory;
+
+            return {
+              ...item,
+              history: resolvedHistory,
+              lastMessage: resolvedHistory[resolvedHistory.length - 1]?.text || '',
+              lastTime: resolvedHistory.length > 0
+                ? resolvedHistory[resolvedHistory.length - 1].timestamp
+                : (item.lastTime || Date.now()),
+            };
+          }),
+        );
+      }}
+      onUpdateGroup={(patch) => {
+        setChatGroups((prevGroups) =>
+          prevGroups.map((item) => (item.id === group.id ? { ...item, ...patch } : item)),
+        );
+      }}
+      onClearHistory={() => {
+        setChatGroups((prevGroups) =>
+          prevGroups.map(item => (item.id === group.id
             ? {
                 ...item,
-                history: newHistory,
-                lastMessage: newHistory[newHistory.length - 1]?.text,
-                lastTime: Date.now(),
+                history: [],
+                lastMessage: '',
+                lastTime: item.lastTime || Date.now(),
               }
-            : item)
+            : item)),
         );
+      }}
+      onLeaveGroup={() => {
+        setChatGroups((prevGroups) => prevGroups.filter((item) => item.id !== group.id));
+        onBack();
       }}
       onBack={onBack}
       userAvatar={userAvatar}
       userName={userName}
       settings={settings}
+      directChatHistory={directChatHistory}
+      inviteableCharacters={inviteableCharacters}
     />
   );
 }

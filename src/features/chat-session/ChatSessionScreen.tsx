@@ -5,6 +5,7 @@ import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
   Character, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, CoupleSpaceData, DateSession, WalletData,
+  ChatGroup, ChatHistory,
 } from '../../types';
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
@@ -150,6 +151,8 @@ export function ChatSessionScreen({
   visualSettings,
   onUpdateVisualSettings,
   groups,
+  chatGroups,
+  directChatHistory,
   worldBook = [],
   perception,
   coupleSpace,
@@ -182,6 +185,8 @@ export function ChatSessionScreen({
   visualSettings: VisualSettings;
   onUpdateVisualSettings: (settings: VisualSettings) => void;
   groups: string[];
+  chatGroups?: ChatGroup[];
+  directChatHistory?: ChatHistory;
   worldBook?: WorldBookEntry[];
   key?: string;
   perception?: PerceptionSettings;
@@ -299,6 +304,8 @@ export function ChatSessionScreen({
     perception,
     coupleSpace,
     userName,
+    directChatHistory,
+    chatGroups,
     favorites,
     setFavorites,
     walletData,

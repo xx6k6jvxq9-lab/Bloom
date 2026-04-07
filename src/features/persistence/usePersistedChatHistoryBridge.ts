@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { ChatGroup, ChatHistory } from '../../types';
 import {
-  extractGroupHistories,
-  loadChatHistoryRecords,
-  mergeGroupHistoriesIntoChatGroups,
+  extractDirectFactTraces,
+  extractDirectRelationshipWaves,
+  extractGroupSessions,
   saveChatHistoryRecords,
   type PersistedChatHistoryData,
 } from './chatHistoryStore';
@@ -23,7 +23,9 @@ export function usePersistedChatHistoryBridge(
   const hasHydratedRef = useRef(false);
   const initialDataRef = useRef<PersistedChatHistoryData>({
     directHistory,
-    groupHistories: extractGroupHistories(chatGroups),
+    directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
+    directFactTraces: extractDirectFactTraces(directHistory),
+    groupSessions: extractGroupSessions(chatGroups),
   });
   const lastPersistedRef = useRef<string | null>(null);
 
@@ -32,33 +34,18 @@ export function usePersistedChatHistoryBridge(
   }, [setChatData]);
 
   useEffect(() => {
-    const hydrated = loadChatHistoryRecords(initialDataRef.current);
     const currentSerialized = serializeChatHistoryRecords(initialDataRef.current);
-    const mergedData = {
-      directHistory: hydrated.directHistory,
-      chatGroups: mergeGroupHistoriesIntoChatGroups(chatGroups, hydrated.groupHistories),
-    };
-    const mergedSerialized = serializeChatHistoryRecords({
-      directHistory: mergedData.directHistory,
-      groupHistories: extractGroupHistories(mergedData.chatGroups),
-    });
-
-    hydrationTargetRef.current = mergedSerialized;
+    hydrationTargetRef.current = currentSerialized;
     lastPersistedRef.current = currentSerialized;
-
-    if (currentSerialized !== mergedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setChatDataRef.current(mergedData);
-      return;
-    }
-
     hasHydratedRef.current = true;
   }, []);
 
   useEffect(() => {
     const currentData = {
       directHistory,
-      groupHistories: extractGroupHistories(chatGroups),
+      directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
+      directFactTraces: extractDirectFactTraces(directHistory),
+      groupSessions: extractGroupSessions(chatGroups),
     };
     const serialized = serializeChatHistoryRecords(currentData);
 

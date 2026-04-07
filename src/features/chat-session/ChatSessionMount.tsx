@@ -13,6 +13,7 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
+import type { Dispatch, SetStateAction } from 'react';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
@@ -25,7 +26,7 @@ type ChatSessionMountProps = {
   selectedGroupId?: string | null;
   characters: Character[];
   chatGroups: ChatGroup[];
-  setChatGroups: (chatGroups: ChatGroup[]) => void;
+  setChatGroups: Dispatch<SetStateAction<ChatGroup[]>>;
   chatHistory: ChatHistory;
   setChatHistory: (chatHistory: ChatHistory) => void;
   settings: AppSettings;
@@ -112,6 +113,7 @@ export function ChatSessionMount({
           character={selectedCharacter}
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
+          chatGroups={chatGroups}
           updateCharacter={updateCharacter}
           patchCharacter={patchCharacter}
           worldBook={worldBook}
@@ -144,14 +146,18 @@ export function ChatSessionMount({
 
       {activeApp === 'group-chat-session' && selectedGroup && (
         <GroupChatSessionContainer
+          key={selectedGroup.id}
           group={selectedGroup}
           characters={characters}
           chatGroups={chatGroups}
           setChatGroups={setChatGroups}
+          favorites={favorites}
+          setFavorites={setFavorites}
           onBack={onBackToChat}
           userAvatar={userAvatar}
           userName={userName}
           settings={settings}
+          directChatHistory={chatHistory}
         />
       )}
     </>
