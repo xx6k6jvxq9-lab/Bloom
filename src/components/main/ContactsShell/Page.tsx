@@ -5,6 +5,8 @@ import { AppData, Character, ChatGroup, FriendRequest } from '../../../types';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR } from '../../../utils';
+import { patchChatHistoryRecords } from '../../../features/persistence/chatHistoryStore';
+import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 function ResolvedContactsAvatar({
@@ -141,19 +143,49 @@ export function ContactsApp({
         groups={appData.chatGroups || []}
         characters={appData.characters}
         onCreateGroup={(name, memberIds) => {
+          const normalizedName = name.trim();
+          const normalizedMemberIds = Array.from(new Set(memberIds));
+          const memberRelationSeeds = normalizedMemberIds.flatMap((sourceMemberId, sourceIndex) =>
+            normalizedMemberIds
+              .filter((_, targetIndex) => targetIndex !== sourceIndex)
+              .map((targetMemberId) => ({
+                sourceMemberId,
+                targetMemberId,
+                familiarity: 'strangers' as const,
+              })),
+          );
+
           const newGroup: ChatGroup = {
             id: Date.now().toString(),
-            name,
-            memberIds,
+            name: normalizedName,
+            memberIds: normalizedMemberIds,
+            groupStage: 'new',
+            allowDirectMemoryInterop: false,
+            memberRelationSeeds,
             creatorId: 'user',
             createdAt: Date.now()
           };
           setAppData(prev => ({
             ...prev,
-            chatGroups: [newGroup, ...(prev.chatGroups || [])]
+            chatGroups: [newGroup, ...(prev.chatGroups || [])],
           }));
         }}
         onDeleteGroup={(id) => {
+          const nextChatGroups = (appData.chatGroups || []).filter((group) => group.id !== id);
+
+          persistChatOrganization({
+            groups: appData.groups,
+            chatGroups: nextChatGroups,
+          });
+          patchChatHistoryRecords((current) => {
+            const nextGroupSessions = { ...current.groupSessions };
+            delete nextGroupSessions[id];
+
+            return {
+              ...current,
+              groupSessions: nextGroupSessions,
+            };
+          });
           setAppData(prev => ({
             ...prev,
             chatGroups: prev.chatGroups?.filter(g => g.id !== id)

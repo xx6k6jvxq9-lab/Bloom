@@ -498,6 +498,9 @@ export type Character = {
   showTime?: boolean;
 };
 
+import type { FactTraceRecord } from './services/relationship-context/factTypes';
+import type { RelationshipWaveRecord } from './services/relationship-context/types';
+
 export type SharedPostSnapshot = {
   id: string;
   title: string;
@@ -512,6 +515,8 @@ export type ChatMessage = {
   text: string;
   translation?: string;
   timestamp: number;
+  senderCharacterId?: string;
+  isPending?: boolean;
   isRecalled?: boolean;
   isFavorited?: boolean;
   transferStatus?: 'pending' | 'received' | 'rejected';
@@ -696,11 +701,30 @@ export type ChatGroup = {
   name: string;
   avatar?: string;
   memberIds: string[]; // Character IDs
+  groupNickname?: string;
+  groupNotice?: string;
+  groupRemark?: string;
+  backgroundSummary?: string;
+  memberRelationshipState?: 'close' | 'semi' | 'distant' | 'mixed';
+  memberRelationshipNote?: string;
+  currentScene?: string;
+  publicFacts?: string;
+  allowDirectMemoryInterop?: boolean;
+  muteNotifications?: boolean;
+  pinChat?: boolean;
+  groupStage?: 'new' | 'warming' | 'familiar';
+  memberRelationSeeds?: Array<{
+    sourceMemberId: string;
+    targetMemberId: string;
+    familiarity: 'strangers' | 'aware' | 'familiar';
+  }>;
   creatorId: string; // User ID
   createdAt: number;
   lastMessage?: string;
   lastTime?: number;
   history?: ChatMessage[];
+  relationshipWaves?: RelationshipWaveRecord[];
+  factTraces?: FactTraceRecord[];
 };
 
 export type CallRecord = {

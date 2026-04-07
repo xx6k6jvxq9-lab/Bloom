@@ -1,4 +1,4 @@
-import type { Character, CoupleSpaceData, Mask, WorldBookEntry } from '../../types';
+import type { Character, ChatGroup, ChatHistory, CoupleSpaceData, Mask, WorldBookEntry } from '../../types';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
@@ -14,7 +14,20 @@ type BuildChatSceneInputParams = {
   perceptionPrompt?: string;
   mode?: BuildChatPromptOptions['mode'];
   includeProtocolRules?: boolean;
+  directChatHistory?: ChatHistory;
+  chatGroups?: ChatGroup[];
 };
+
+function getDirectMemoryReadableGroups(
+  chatGroups: ChatGroup[] | undefined,
+  characterId: string,
+): ChatGroup[] {
+  return (chatGroups || []).filter((group) => (
+    !!group.allowDirectMemoryInterop
+    && Array.isArray(group.memberIds)
+    && group.memberIds.includes(characterId)
+  ));
+}
 
 function buildExtraSections(input: {
   expressionStyle?: string;
@@ -43,6 +56,10 @@ function buildExtraSections(input: {
 export function buildChatSceneInput(
   params: BuildChatSceneInputParams,
 ): BuildChatPromptOptions {
+  const directMemoryReadableGroups = getDirectMemoryReadableGroups(
+    params.chatGroups,
+    params.character.id,
+  );
   const characterContext = buildCharacterContext({
     character: params.character,
     activeMask: params.activeMask,
@@ -52,6 +69,16 @@ export function buildChatSceneInput(
     character: params.character,
     coupleSpace: params.coupleSpace,
     userName: params.userName,
+    directMessages: params.directChatHistory?.[params.character.id] || [],
+    groupMessages: directMemoryReadableGroups
+      .flatMap((group) => group.history || [])
+      .filter((message) => message.role === 'user' || message.senderCharacterId === params.character.id),
+    groupRelationshipWaves: directMemoryReadableGroups
+      .flatMap((group) => group.relationshipWaves || [])
+      .filter((wave) => wave.scope === 'cross_scene_readable'),
+    factTraces: directMemoryReadableGroups
+      .flatMap((group) => group.factTraces || [])
+      .filter((factTrace) => factTrace.visibility === 'cross_scene_readable'),
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
   const userContext: UserGlobalContext = {
@@ -60,6 +87,7 @@ export function buildChatSceneInput(
   const recentContext: ChatRecentContext = {
     shortTermSummary: characterScopedMemory.shortTermSummary,
     recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
+    sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
   };
   const budgetedContext = applyChatPromptBudget({
     recentContext,

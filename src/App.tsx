@@ -3,7 +3,7 @@ import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   AppData, Mask, FavoriteMessage, MomentComment, MomentItem, VisualSettings, UserProfileExtended, WorldBookEntry,
-  Character, ChatMessage, PerceptionSettings,
+  Character, ChatGroup, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
 import { WorldBookManager } from './components/main/MePage';
@@ -55,13 +55,14 @@ import {
   type ShareActionResult,
   toggleFavoriteMessage,
 } from './services/chat/messageActions';
-import { APP_DIALOG_EVENT, DEFAULT_WHITE_AVATAR, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
+import { APP_DIALOG_EVENT, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
-import { resetCharacters } from './features/persistence/charactersStore';
+import { loadCharacters, resetCharacters } from './features/persistence/charactersStore';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
+import { loadChatHistoryRecords, mergeGroupSessionsIntoChatGroups } from './features/persistence/chatHistoryStore';
 import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
@@ -129,7 +130,7 @@ const DEFAULT_CHARACTERS: Character[] = [
     id: 'char-2',
     name: '林策',
     gender: 'male',
-    avatar: DEFAULT_WHITE_AVATAR,
+    avatar: '',
     setting: '你叫林策，是“冷静清晰型测试角色”。你表达克制、结构清楚、信息完整，擅长把复杂内容分点说明，也能自然给出较长回复。你适合拿来测试翻译、总结、长消息拆分、说明型回复、转账卡片、GAME_CARD 等功能。回复时优先准确、清楚、稳定，必要时可以先概括再展开，但仍然保持像真实聊天，不要写成生硬公文。',
     signature: '把需求说清楚，我会给你一个清楚的结果。',
     openingRemark: '收到。你可以直接给我测试任务，我会尽量用清晰、可验证的方式回应。',
@@ -278,12 +279,70 @@ function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
     appData.coupleSpaceState,
     appData.coupleSpace,
   );
+  const chatGroups = (persistableAppData.chatGroups || []).map((group) => {
+    const { history: _history, lastMessage: _lastMessage, lastTime: _lastTime, ...organization } = group;
+    return organization;
+  });
 
   return {
     ...persistableAppData,
+    chatGroups,
     coupleSpace,
     coupleSpaceState,
   };
+}
+
+function sanitizeChatGroupsWithCharacters(
+  chatGroups: ChatGroup[] | null | undefined,
+  characters: Character[],
+): ChatGroup[] {
+  if (!Array.isArray(chatGroups)) return [];
+
+  const validCharacterIds = new Set(characters.map((character) => character.id));
+    return chatGroups.map((group) => ({
+      ...group,
+      name: typeof group.name === 'string' ? group.name.trim() : '',
+      groupNickname: typeof group.groupNickname === 'string' ? group.groupNickname.trim() : undefined,
+      groupNotice: typeof group.groupNotice === 'string' ? group.groupNotice.trim() : undefined,
+      groupRemark: typeof group.groupRemark === 'string' ? group.groupRemark.trim() : undefined,
+      backgroundSummary: typeof group.backgroundSummary === 'string' ? group.backgroundSummary.trim() : undefined,
+      memberRelationshipState:
+        group.memberRelationshipState === 'close'
+        || group.memberRelationshipState === 'semi'
+        || group.memberRelationshipState === 'distant'
+      || group.memberRelationshipState === 'mixed'
+        ? group.memberRelationshipState
+        : undefined,
+      memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
+      currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
+      publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
+      allowDirectMemoryInterop: !!group.allowDirectMemoryInterop,
+      muteNotifications: !!group.muteNotifications,
+      pinChat: !!group.pinChat,
+      groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',
+    memberIds: Array.from(
+      new Set(
+        (Array.isArray(group.memberIds) ? group.memberIds : []).filter((memberId): memberId is string => (
+          typeof memberId === 'string' && validCharacterIds.has(memberId)
+        )),
+      ),
+    ),
+    memberRelationSeeds: Array.isArray(group.memberRelationSeeds)
+      ? group.memberRelationSeeds.filter((seed) => (
+          !!seed
+          && typeof seed.sourceMemberId === 'string'
+          && typeof seed.targetMemberId === 'string'
+          && validCharacterIds.has(seed.sourceMemberId)
+          && validCharacterIds.has(seed.targetMemberId)
+          && seed.sourceMemberId !== seed.targetMemberId
+          && (
+            seed.familiarity === 'strangers'
+            || seed.familiarity === 'aware'
+            || seed.familiarity === 'familiar'
+          )
+        ))
+      : [],
+  }));
 }
 
 function hydratePersistedCharacters(
@@ -1185,12 +1244,18 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
+        const characters = sanitizePersistedCharacters(loadCharacters(parsed.characters || DEFAULT_CHARACTERS));
+        const persistedChatHistory = loadChatHistoryRecords();
         const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
           parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
         );
+        const chatGroups = mergeGroupSessionsIntoChatGroups(
+          sanitizeChatGroupsWithCharacters(parsed.chatGroups || [], characters),
+          persistedChatHistory.groupSessions,
+        );
         setAppData({
           ...parsed,
-          characters: sanitizePersistedCharacters(parsed.characters),
+          characters,
           chatHistory: parsed.chatHistory || {},
           userProfile: parsed.userProfile
             ? {
@@ -1201,7 +1266,7 @@ export default function App() {
           worldBooks: parsed.worldBooks || [],
           moments: parsed.moments || DEFAULT_MOMENTS,
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
-          chatGroups: parsed.chatGroups || [],
+          chatGroups,
           savedDates: parsed.savedDates || [],
           collectedDates: parsed.collectedDates || [],
           coupleSpaceState,
@@ -1423,7 +1488,17 @@ export default function App() {
             selectedGroupId={selectedGroupId}
             characters={appData.characters}
             chatGroups={appData.chatGroups || []}
-            setChatGroups={(chatGroups) => setAppData(prev => ({ ...prev, chatGroups }))}
+            setChatGroups={(chatGroupsOrUpdater) => setAppData((prev) => {
+              const resolvedChatGroups =
+                typeof chatGroupsOrUpdater === 'function'
+                  ? chatGroupsOrUpdater(prev.chatGroups || [])
+                  : chatGroupsOrUpdater;
+
+              return {
+                ...prev,
+                chatGroups: sanitizeChatGroupsWithCharacters(resolvedChatGroups, prev.characters),
+              };
+            })}
             chatHistory={appData.chatHistory}
             setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
             settings={settings}
@@ -1729,7 +1804,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
         name: data.name,
         remarkName: data.remarkName || undefined,
         gender: data.gender || 'other',
-        avatar: data.avatar || DEFAULT_WHITE_AVATAR,
+        avatar: typeof data.avatar === 'string' ? data.avatar.trim() : '',
         setting: data.setting || '',
         signature: data.signature || undefined,
         openingRemark: data.openingRemark || '',
