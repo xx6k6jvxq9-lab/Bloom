@@ -47,6 +47,7 @@ import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsS
 import {
   buildGroupSettingsSystemMessages,
   createInviteMemberSystemMessage,
+  createLeaveGroupSystemMessage,
   createRemoveMemberSystemMessage,
 } from '../group-settings/groupSystemMessages';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
@@ -279,6 +280,7 @@ export function GroupChatSessionScreen({
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
     timestamp: number;
     text: string;
@@ -888,6 +890,22 @@ export function GroupChatSessionScreen({
     ]);
 
     setIsRemovingMember(false);
+  };
+
+  const handleLeaveCurrentGroup = () => {
+    if (isLeavingGroup) {
+      return;
+    }
+
+    setIsLeavingGroup(true);
+    setHistory((prev) => [
+      ...prev,
+      createLeaveGroupSystemMessage(Date.now()),
+    ]);
+
+    window.setTimeout(() => {
+      onLeaveGroup();
+    }, 280);
   };
 
   const renderTextWithMentions = (text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
@@ -1550,7 +1568,7 @@ export function GroupChatSessionScreen({
               onLeaveGroup={() => {
                 if (!window.confirm('确认退出当前群聊吗？')) return;
                 setShowGroupSettings(false);
-                onLeaveGroup();
+                handleLeaveCurrentGroup();
               }}
             />
           </>

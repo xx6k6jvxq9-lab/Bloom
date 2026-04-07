@@ -18,6 +18,10 @@ export function createRemoveMemberSystemMessage(removedName: string, timestamp: 
   return createGroupNoticeMessage(`你将${removedName}移出了群聊`, timestamp);
 }
 
+export function createLeaveGroupSystemMessage(timestamp: number): ChatMessage {
+  return createGroupNoticeMessage('你退出了群聊', timestamp);
+}
+
 export function buildGroupSettingsSystemMessages(
   group: ChatGroup,
   state: GroupSettingsFormState,
