@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import type { ApiConfig, Character, ChatMessage } from '../../types';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { ApiConfig, Character, ChatGroup, ChatMessage } from '../../types';
+import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
+import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
+import { resolveGroupReplyIntent, type GroupReplyIntent } from './groupIntentResolver';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 
 type UseGroupChatRuntimeArgs = {
@@ -11,6 +14,13 @@ type UseGroupChatRuntimeArgs = {
   groupMeta?: {
     lastMessage?: string;
     lastTime?: number;
+    groupStage?: ChatGroup['groupStage'];
+    memberRelationSeeds?: ChatGroup['memberRelationSeeds'];
+    backgroundSummary?: ChatGroup['backgroundSummary'];
+    memberRelationshipState?: ChatGroup['memberRelationshipState'];
+    memberRelationshipNote?: ChatGroup['memberRelationshipNote'];
+    currentScene?: ChatGroup['currentScene'];
+    publicFacts?: ChatGroup['publicFacts'];
   };
   history: ChatMessage[];
   setHistory: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -19,16 +29,28 @@ type UseGroupChatRuntimeArgs = {
   replyingTo: ChatMessage['replyTo'] | null;
   setReplyingTo: (value: ChatMessage['replyTo'] | null) => void;
   userName: string;
+  directChatHistory: ChatHistory;
   activeConfig?: ApiConfig;
 };
 
 type UseGroupChatRuntimeResult = {
   isLoading: boolean;
   error: string | null;
+  pendingMessage: {
+    speakerId: string;
+    speakerName: string;
+    speakerAvatar?: string;
+    timestamp: number;
+    text: string;
+  } | null;
   sendText: () => Promise<void>;
   sendImageMessage: (base64String: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   maybeOpenScene: () => Promise<void>;
+  reactToNoticeUpdate: (params: {
+    noticeText: string;
+    currentHistory: ChatMessage[];
+  }) => Promise<void>;
 };
 
 const EXTRA_SPEAKER_KEYWORDS = [
@@ -73,7 +95,12 @@ function resolveCharacterByPublicName(name: string, members: Character[]): Chara
     return null;
   }
 
-  return members.find((member) => member.name.trim().toLowerCase() === normalized) || null;
+  return members.find((member) => {
+    const aliases = [member.name, member.remarkName]
+      .map((value) => value?.trim().toLowerCase())
+      .filter((value): value is string => !!value);
+    return aliases.includes(normalized);
+  }) || null;
 }
 
 function sanitizeUserMentionText(text: string, members: Character[]): string {
@@ -90,6 +117,23 @@ function sanitizeUserMentionText(text: string, members: Character[]): string {
   });
 
   return sanitized;
+}
+
+function matchesExplicitTargetAlias(text: string, alias: string): boolean {
+  const trimmedAlias = alias.trim();
+  if (!trimmedAlias) {
+    return false;
+  }
+
+  const escapedAlias = escapeRegExp(trimmedAlias);
+  const patterns = [
+    new RegExp(`(?:^|[\\s,，。！？!?])@${escapedAlias}(?=$|[\\s,，。！？!?])`, 'i'),
+    new RegExp(`(?:^|[\\s,，。！？!?])${escapedAlias}(?:你|你们|来|来说|先来|先说|说下|说说|回|回答|回下|接|接一下)(?=$|[\\s,，。！？!?])`, 'i'),
+    new RegExp(`(?:^|[\\s,，。！？!?])(?:让|叫)${escapedAlias}(?:来|先来|回答|说|说下|回)(?=$|[\\s,，。！？!?])`, 'i'),
+    new RegExp(`(?:^|[\\s,，。！？!?])${escapedAlias}(?=[\\s,，。！？!?]|$)`, 'i'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(text));
 }
 
 function inferGroupSpeakerWeight(character: Character, userText: string): number {
@@ -144,6 +188,7 @@ function buildRuntimeMessages(params: {
   systemPrompt: string;
   history: ChatMessage[];
   mode: 'reply' | 'invited' | 'opening';
+  replyTarget?: ChatMessage['replyTo'] | null;
 }): RuntimeChatMessage[] {
   const historyMessages = params.history
     .filter((message) => !message.isSystem)
@@ -152,16 +197,27 @@ function buildRuntimeMessages(params: {
       content: message.text,
     }));
 
+  const latestVisibleMessage = [...params.history]
+    .reverse()
+    .find((message) => !message.isSystem) || null;
+  const latestMessageFromUser = latestVisibleMessage?.role === 'user';
+
   const instructionByMode: Record<'reply' | 'invited' | 'opening', string> = {
-    reply: 'Reply as the current speaker using short live group-chat beats. One short bubble is often enough, but 2 to 3 short bubbles are allowed when the rhythm needs them. Prefer short bubbles over one complete paragraph.',
-    invited: 'Reply as the current speaker using short live group-chat beats. You were just invited or @mentioned to speak, so you may answer briefly, selectively, and in 1 to 3 short bubbles instead of one full answer.',
+    reply: latestMessageFromUser
+      ? 'Reply as the current speaker using short live group-chat beats. Do not answer the whole topic too completely. Prefer 1 to 3 short bubbles that leave a natural hook, angle, tease, doubt, or small opening that other people in the group could naturally pick up.'
+      : 'Reply as the current speaker using short live group-chat beats. Prefer 1 to 3 short bubbles and keep the exchange open enough that someone else in the group could naturally continue it.',
+    invited: 'Reply as the current speaker using short live group-chat beats. You were just invited or @mentioned to speak, so you may answer briefly, selectively, and in 1 to 3 short bubbles instead of one full answer. Avoid wrapping up the whole topic by yourself.',
     opening: 'Send a brief opening as the current speaker using short live group-chat beats. Keep it natural, brief, and closer to short bubbles than one complete paragraph.',
   };
+
+  const replyTargetInstruction = params.replyTarget
+    ? `You are replying to ${params.replyTarget.authorLabel}: "${params.replyTarget.preview}". Keep your message aligned with that target, and do not drift to a different person or topic while keeping the reply marker.${params.replyTarget.role === 'model' ? ' Treat this like live back-and-forth with that person in the group, not a fresh answer to the user.' : ''}`
+    : '';
 
   return [
     { role: 'system', content: params.systemPrompt },
     ...historyMessages,
-    { role: 'user', content: instructionByMode[params.mode] },
+    { role: 'user', content: [instructionByMode[params.mode], replyTargetInstruction].filter(Boolean).join('\n') },
   ];
 }
 
@@ -203,13 +259,46 @@ function buildReplyPreviewPayload(message: ChatMessage, fallbackAuthor: string):
   };
 }
 
+function isSameReplyTarget(
+  left: ChatMessage['replyTo'] | null | undefined,
+  right: ChatMessage['replyTo'] | null | undefined,
+): boolean {
+  if (!left || !right) {
+    return false;
+  }
+
+  return left.timestamp === right.timestamp
+    && left.role === right.role
+    && left.preview === right.preview
+    && left.authorLabel === right.authorLabel;
+}
+
+function buildReplyTargetKey(replyTo: ChatMessage['replyTo'] | null | undefined): string | null {
+  if (!replyTo) {
+    return null;
+  }
+
+  return [replyTo.timestamp, replyTo.role, replyTo.authorLabel, replyTo.preview].join('::');
+}
+
+function getGroupStageMultiplier(stage: ChatGroup['groupStage'] | undefined): number {
+  if (stage === 'familiar') return 1.2;
+  if (stage === 'warming') return 1;
+  return 0.8;
+}
+
+function hasSenderCharacterId(message: ChatMessage): message is ChatMessage & { senderCharacterId: string } {
+  return typeof message.senderCharacterId === 'string' && message.senderCharacterId.trim().length > 0;
+}
+
 function parseActionCue(segment: string): {
   kind: 'normal' | 'reply' | 'notice' | 'sticker';
   content: string;
   replyTargetName?: string;
 } {
   const trimmed = segment.trim();
-  const replyMatch = trimmed.match(/^\[(?:reply|reply to)\s*:\s*([^\]]+)\]\s*(.*)$/i);
+  const normalized = trimmed.replace(/^[\s"'`“”‘’?!？！,，。.…·:：;；]+/, '');
+  const replyMatch = normalized.match(/^\[(?:quote|reply|reply to)\s*:\s*([^\]]+)\]\s*(.*)$/i);
   if (replyMatch) {
     return {
       kind: 'reply',
@@ -218,7 +307,7 @@ function parseActionCue(segment: string): {
     };
   }
 
-  const noticeMatch = trimmed.match(/^\[(?:notice|system)\]\s*(.*)$/i);
+  const noticeMatch = normalized.match(/^\[(?:notice|system)\]\s*(.*)$/i);
   if (noticeMatch) {
     return {
       kind: 'notice',
@@ -226,7 +315,7 @@ function parseActionCue(segment: string): {
     };
   }
 
-  const stickerMatch = trimmed.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
+  const stickerMatch = normalized.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
   if (stickerMatch) {
     return {
       kind: 'sticker',
@@ -734,10 +823,12 @@ export function useGroupChatRuntime({
   replyingTo,
   setReplyingTo,
   userName,
+  directChatHistory,
   activeConfig,
 }: UseGroupChatRuntimeArgs): UseGroupChatRuntimeResult {
   const { isLoading, error, setError, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const hasActiveConfig = !!activeConfig?.apiKey?.trim();
+  const [pendingMessage, setPendingMessage] = useState<UseGroupChatRuntimeResult['pendingMessage']>(null);
   const delayedSpeakerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const activeInteractionIdRef = useRef(0);
@@ -765,11 +856,31 @@ export function useGroupChatRuntime({
     };
   }, [clearDelayedSpeakerTimer]);
 
+  const pickWeightedMember = useCallback((
+    weightedMembers: Array<{ member: Character; weight: number }>,
+  ): Character | null => {
+    const totalWeight = weightedMembers.reduce((sum, item) => sum + item.weight, 0);
+    if (totalWeight <= 0) {
+      return weightedMembers[0]?.member ?? null;
+    }
+
+    let cursor = Math.random() * totalWeight;
+    for (const item of weightedMembers) {
+      cursor -= item.weight;
+      if (cursor <= 0) {
+        return item.member;
+      }
+    }
+
+    return weightedMembers[weightedMembers.length - 1]?.member ?? null;
+  }, []);
+
   const generateMessageForSpeaker = useCallback(async (params: {
     speaker: Character;
     currentHistory: ChatMessage[];
     mode: 'reply' | 'invited' | 'opening';
-  }) => {
+    replyTarget?: ChatMessage['replyTo'] | null;
+  }): Promise<{ text: string; timestamp: number }> => {
     if (!activeConfig) {
       throw new Error('Missing active API config.');
     }
@@ -778,9 +889,26 @@ export function useGroupChatRuntime({
       sceneInput: buildGroupChatSceneInput({
         speaker: params.speaker,
         members,
+        group: groupMeta
+          ? {
+              id: 'runtime-group-meta',
+              name: '',
+              memberIds: members.map((member) => member.id),
+              creatorId: 'user',
+              createdAt: 0,
+              groupStage: groupMeta.groupStage,
+              memberRelationSeeds: groupMeta.memberRelationSeeds,
+              backgroundSummary: groupMeta.backgroundSummary,
+              memberRelationshipState: groupMeta.memberRelationshipState,
+              memberRelationshipNote: groupMeta.memberRelationshipNote,
+              currentScene: groupMeta.currentScene,
+              publicFacts: groupMeta.publicFacts,
+            }
+          : undefined,
         userName,
         history: params.currentHistory,
         mode: params.mode,
+        directChatHistory,
       }),
     });
     console.info('[group-chat] generating message', {
@@ -792,16 +920,33 @@ export function useGroupChatRuntime({
     });
 
     let responseText = '';
+    const pendingTimestamp = Date.now();
+    setPendingMessage({
+      speakerId: params.speaker.id,
+      speakerName: params.speaker.name,
+      speakerAvatar: params.speaker.avatar,
+      timestamp: pendingTimestamp,
+      text: '',
+    });
     await streamTextWithConfig({
       activeConfig,
       messages: buildRuntimeMessages({
         systemPrompt,
         history: params.currentHistory,
         mode: params.mode,
+        replyTarget: params.replyTarget,
       }),
       temperature: 0.7,
       onTextChunk: (chunkText) => {
         responseText += chunkText;
+        setPendingMessage((previous) => (
+          previous && previous.speakerId === params.speaker.id
+            ? {
+                ...previous,
+                text: responseText,
+              }
+            : previous
+        ));
       },
     });
 
@@ -830,8 +975,22 @@ export function useGroupChatRuntime({
       normalizedLength: normalizedResponse.length,
       preview: normalizedResponse.slice(0, 80),
     });
-    return normalizedResponse;
-  }, [activeConfig, members, userName]);
+    return {
+      text: normalizedResponse,
+      timestamp: pendingTimestamp,
+    };
+  }, [
+    activeConfig,
+    groupMeta?.backgroundSummary,
+    groupMeta?.currentScene,
+    groupMeta?.groupStage,
+    groupMeta?.memberRelationSeeds,
+    groupMeta?.memberRelationshipNote,
+    groupMeta?.memberRelationshipState,
+    groupMeta?.publicFacts,
+    members,
+    userName,
+  ]);
 
   const appendSystemFailure = useCallback((detail: string) => {
     setError(detail);
@@ -853,7 +1012,11 @@ export function useGroupChatRuntime({
     }
 
     for (let index = currentHistory.length - 1; index >= 0; index -= 1) {
-      const message = currentHistory[index];
+      const message: ChatMessage | undefined = currentHistory[index];
+      if (!message) {
+        continue;
+      }
+
       if (message.isSystem) {
         continue;
       }
@@ -862,7 +1025,7 @@ export function useGroupChatRuntime({
         return buildReplyPreviewPayload(message, userName);
       }
 
-      if (message.senderCharacterId) {
+      if (hasSenderCharacterId(message)) {
         const sender = members.find((member) => member.id === message.senderCharacterId);
         const aliases = [sender?.name].filter((value): value is string => !!value?.trim());
         if (aliases.some((alias) => alias.trim().toLowerCase() === normalizedTarget)) {
@@ -880,13 +1043,24 @@ export function useGroupChatRuntime({
     timestamp = Date.now(),
     currentHistory: ChatMessage[] = historyRef.current,
     forcedReplyTo?: ChatMessage['replyTo'] | null,
+    allowReplyOnFirstMessageOnly = false,
   ): ChatMessage[] => {
     const messages = splitGroupReplyIntoMessages(text, speaker, timestamp);
     if (messages.length === 0) {
       return [];
     }
 
-    const structuredMessages = messages.map((message) => {
+    const previousMessageBySpeaker = [...currentHistory]
+      .reverse()
+      .find((message) => message.role === 'model' && message.senderCharacterId === speaker.id) || null;
+    const quotedReplyKeysBySpeaker = new Set(
+      currentHistory
+        .filter((message) => message.role === 'model' && message.senderCharacterId === speaker.id)
+        .map((message) => buildReplyTargetKey(message.replyTo))
+        .filter((key): key is string => !!key),
+    );
+
+    const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
       const cue = parseActionCue(rawContent);
       const cleanedText = cue.kind === 'sticker'
@@ -895,8 +1069,17 @@ export function useGroupChatRuntime({
           ? cue.content || rawContent
           : cue.content || rawContent;
 
-      const replyPayload = forcedReplyTo
+      const candidateReplyPayload = forcedReplyTo
         || (cue.replyTargetName ? resolveReplyTarget(cue.replyTargetName, currentHistory) : null);
+      const candidateReplyKey = buildReplyTargetKey(candidateReplyPayload);
+      const shouldDropRepeatedReply =
+        (allowReplyOnFirstMessageOnly && index > 0)
+        ||
+        (index === 0
+          && previousMessageBySpeaker
+          && isSameReplyTarget(previousMessageBySpeaker.replyTo, candidateReplyPayload))
+        || (!!candidateReplyKey && quotedReplyKeysBySpeaker.has(candidateReplyKey));
+      const replyPayload = shouldDropRepeatedReply ? null : candidateReplyPayload;
 
       return {
         ...message,
@@ -925,27 +1108,34 @@ export function useGroupChatRuntime({
     currentHistory: ChatMessage[],
     interactionId: number,
     forcedReplyTo?: ChatMessage['replyTo'] | null,
-  ) => {
-    const requestId = secondarySpeakerRequestIdRef.current + 1;
-    secondarySpeakerRequestIdRef.current = requestId;
-
+  ): Promise<ChatMessage[]> => {
     try {
-      const responseText = await generateMessageForSpeaker({
+      const response = await generateMessageForSpeaker({
         speaker,
         currentHistory,
         mode: 'invited',
+        replyTarget: forcedReplyTo,
       });
 
       if (
-        responseText
+        response.text
         && isMountedRef.current
         && activeInteractionIdRef.current === interactionId
-        && secondarySpeakerRequestIdRef.current === requestId
       ) {
-        appendSpeakerMessage(speaker, responseText, Date.now(), currentHistory, forcedReplyTo);
+        const appendedMessages = appendSpeakerMessage(
+          speaker,
+          response.text,
+          response.timestamp,
+          currentHistory,
+          forcedReplyTo,
+          true,
+        );
+        setPendingMessage(null);
+        return appendedMessages;
       }
     } catch (runtimeError) {
       console.error('Triggered speaker error:', runtimeError);
+      setPendingMessage(null);
       if (isMountedRef.current && activeInteractionIdRef.current === interactionId) {
         setHistory((prevHistory) => [...prevHistory, {
           role: 'model',
@@ -955,6 +1145,7 @@ export function useGroupChatRuntime({
         }]);
       }
     }
+    return [];
   }, [appendSpeakerMessage, generateMessageForSpeaker, setHistory]);
 
   const maybeOpenScene = useCallback(async () => {
@@ -994,34 +1185,31 @@ export function useGroupChatRuntime({
     });
 
     try {
-      const responseText = await generateMessageForSpeaker({
+      const response = await generateMessageForSpeaker({
         speaker: opener,
         currentHistory: history,
         mode: 'opening',
       });
 
       if (
-        responseText
+        response.text
         && isMountedRef.current
         && activeInteractionIdRef.current === interactionId
-        && openingRequestIdRef.current === requestId
       ) {
         console.info('[group-chat] opening scene append message', {
           speakerId: opener.id,
           speakerName: opener.name,
           requestId,
         });
-        const openingMessages = splitGroupReplyIntoMessages(responseText, opener);
-        setHistory((prevHistory) => (
-          prevHistory.length > 0 ? prevHistory : [...prevHistory, ...openingMessages]
-        ));
+        appendSpeakerMessage(opener, response.text, response.timestamp, historyRef.current);
+        setPendingMessage(null);
       }
     } catch (runtimeError) {
       console.error('Opening speaker error:', runtimeError);
+      setPendingMessage(null);
       if (
         isMountedRef.current
         && activeInteractionIdRef.current === interactionId
-        && openingRequestIdRef.current === requestId
       ) {
         setHistory((prevHistory) => [...prevHistory, {
           role: 'model',
@@ -1031,7 +1219,104 @@ export function useGroupChatRuntime({
         }]);
       }
     }
-  }, [generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, members, setHistory]);
+  }, [appendSpeakerMessage, generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, members, setHistory]);
+
+  const reactToNoticeUpdate = useCallback(async (params: {
+    noticeText: string;
+    currentHistory: ChatMessage[];
+  }) => {
+    const trimmedNotice = params.noticeText.trim();
+    if (!trimmedNotice || !hasActiveConfig || members.length === 0) {
+      return;
+    }
+
+    const reactionPrompt = `群公告刚更新为：${trimmedNotice}\n请你像在真实群聊里看到新公告后那样，自然接一句短反应。不要总结，不要长篇解释，不要像客服通知。`;
+    const weightedMembers = members.map((member) => ({
+      member,
+      weight: Math.max(
+        0.2,
+        inferReadableSpeakerWeight(member, reactionPrompt) * getGroupStageMultiplier(groupMeta?.groupStage),
+      ),
+    }));
+
+    const selectedMembers: Character[] = [];
+    const primarySpeaker = pickWeightedMember(weightedMembers);
+    if (!primarySpeaker) {
+      return;
+    }
+    selectedMembers.push(primarySpeaker);
+
+    if (members.length >= 2) {
+      const secondaryPool = weightedMembers
+        .filter((item) => item.member.id !== primarySpeaker.id)
+        .map((item) => ({
+          member: item.member,
+          weight: Math.max(0.1, item.weight - 0.15),
+        }));
+      const secondaryChance = Math.min(0.72, members.length >= 5 ? 0.62 : 0.46);
+      if (secondaryPool.length > 0 && Math.random() < secondaryChance) {
+        const secondarySpeaker = pickWeightedMember(secondaryPool);
+        if (secondarySpeaker) {
+          selectedMembers.push(secondarySpeaker);
+        }
+      }
+    }
+
+    clearDelayedSpeakerTimer();
+    const interactionId = activeInteractionIdRef.current + 1;
+    activeInteractionIdRef.current = interactionId;
+
+    let workingHistory = params.currentHistory;
+    for (const speaker of selectedMembers) {
+      const generationHistory = [
+        ...workingHistory,
+        {
+          role: 'user' as const,
+          text: reactionPrompt,
+          timestamp: Date.now(),
+        },
+      ];
+
+      try {
+        const response = await generateMessageForSpeaker({
+          speaker,
+          currentHistory: generationHistory,
+          mode: 'invited',
+        });
+
+        if (
+          response.text
+          && isMountedRef.current
+          && activeInteractionIdRef.current === interactionId
+        ) {
+          const appendedMessages = appendSpeakerMessage(
+            speaker,
+            response.text,
+            response.timestamp,
+            workingHistory,
+            null,
+            true,
+          );
+          setPendingMessage(null);
+          if (appendedMessages.length > 0) {
+            workingHistory = [...workingHistory, ...appendedMessages];
+          }
+        }
+      } catch (runtimeError) {
+        console.error('Notice reaction error:', runtimeError);
+        setPendingMessage(null);
+        break;
+      }
+    }
+  }, [
+    appendSpeakerMessage,
+    clearDelayedSpeakerTimer,
+    generateMessageForSpeaker,
+    groupMeta?.groupStage,
+    hasActiveConfig,
+    members,
+    pickWeightedMember,
+  ]);
 
   const submitUserMessage = useCallback(async (params: {
     message: ChatMessage;
@@ -1046,39 +1331,147 @@ export function useGroupChatRuntime({
     const getMemberAliases = (member: Character) =>
       Array.from(
         new Set(
-          [member.name]
+          [member.name, member.remarkName]
             .map((value) => value?.trim())
             .filter((value): value is string => !!value),
         ),
       );
 
-    const extractMentionedMember = (text: string, excludedIds: string[] = []) => {
-      const normalized = text.trim();
-      if (!normalized) return null;
+    const hasExplicitAliasCallout = (text: string, alias: string) => {
+      if (!alias.trim()) return false;
 
+      const escapedAlias = escapeRegExp(alias.trim());
+      const patterns = [
+        new RegExp(`(?:^|[\\s，。！？,.!?])@${escapedAlias}(?=$|[\\s，。！？,.!?])`, 'i'),
+        new RegExp(`(?:^|[\\s，。！？,.!?])${escapedAlias}(?:你|你们|先|来说|说下|回答|回下|回一句|接一下|来一下|出来|出列|先说)(?=$|[\\s，。！？,.!?])`, 'i'),
+        new RegExp(`(?:^|[\\s，。！？,.!?])让${escapedAlias}(?:来|先来|回答|说|回)(?=$|[\\s，。！？,.!?])`, 'i'),
+      ];
+
+      return patterns.some((pattern) => pattern.test(text));
+    };
+
+    const getExplicitMentionedMembers = (text: string, excludedIds: string[] = []) => {
+      const normalized = text.trim();
+      if (!normalized) return [];
+
+      const results: Character[] = [];
+      const seenIds = new Set(excludedIds);
       const atMatches = Array.from(normalized.matchAll(MENTION_REGEX));
+
       for (const match of atMatches) {
         const candidate = resolveCharacterByPublicName(match[1], members);
-        if (candidate && !excludedIds.includes(candidate.id)) {
-          return candidate;
+        if (candidate && !seenIds.has(candidate.id)) {
+          seenIds.add(candidate.id);
+          results.push(candidate);
         }
       }
 
       for (const member of members) {
-        if (excludedIds.includes(member.id)) continue;
+        if (seenIds.has(member.id)) continue;
         const aliases = getMemberAliases(member);
-        if (aliases.some((alias) => normalized.includes(alias))) {
-          return member;
+        if (aliases.some((alias) => matchesExplicitTargetAlias(normalized, alias))) {
+          seenIds.add(member.id);
+          results.push(member);
         }
       }
 
-      return null;
+      return results;
     };
 
-    const pickPrimaryResponder = (userText: string) => {
-      const mentionedMember = extractMentionedMember(userText);
-      if (mentionedMember) {
-        return mentionedMember;
+    const extractMentionedMember = (text: string, excludedIds: string[] = []) => {
+      return getExplicitMentionedMembers(text, excludedIds)[0] || null;
+    };
+
+    const extractMentionedMembers = (text: string, excludedIds: string[] = []) => {
+      return getExplicitMentionedMembers(text, excludedIds);
+    };
+
+    const isDirectedInterruption = (text: string) => /(?:^|[\s，。！？,.!?])(?:你(?:先|先别|别|不要)?(?:说话|别说话|闭嘴|停|先停|别接|别回|别说)|别复读了|先停一下|先别接)/.test(text.trim());
+
+    const resolveReplyTargetMember = () => {
+      if (!replyingTo || replyingTo.role !== 'model') {
+        return null;
+      }
+
+      return resolveCharacterByPublicName(replyingTo.authorLabel, members);
+    };
+
+    const getRecentDominantSpeaker = () => {
+      const recentModelMessages = [...historyRef.current]
+        .filter((message) => message.role === 'model' && !message.isSystem && !!message.senderCharacterId)
+        .slice(-3);
+
+      if (recentModelMessages.length === 0) {
+        return null;
+      }
+
+      const latestSpeakerId = recentModelMessages[recentModelMessages.length - 1]?.senderCharacterId;
+      if (!latestSpeakerId) {
+        return null;
+      }
+
+      const latestSpeakerCount = recentModelMessages.filter((message) => message.senderCharacterId === latestSpeakerId).length;
+      if (latestSpeakerCount < 2 && recentModelMessages.length < 2) {
+        return null;
+      }
+
+      return members.find((member) => member.id === latestSpeakerId) || null;
+    };
+
+    const resolveUserTargetCandidates = (
+      userText: string,
+      excludedIds: string[] = [],
+    ) => {
+      const targets: Character[] = [];
+      const seenIds = new Set(excludedIds);
+      const pushTarget = (member: Character | null) => {
+        if (!member || seenIds.has(member.id)) return;
+        seenIds.add(member.id);
+        targets.push(member);
+      };
+
+      if (replyingTo?.role === 'model') {
+        pushTarget(resolveCharacterByPublicName(replyingTo.authorLabel, members));
+      }
+
+      extractMentionedMembers(userText, Array.from(seenIds)).forEach((member) => {
+        pushTarget(member);
+      });
+
+      if (targets.length === 0 && isDirectedInterruption(userText)) {
+        pushTarget(resolveReplyTargetMember());
+        pushTarget(getRecentDominantSpeaker());
+      }
+
+      return targets;
+    };
+
+    const pickPrimaryResponder = (
+      userText: string,
+      intent: GroupReplyIntent,
+      preferredSpeakerIds: string[],
+    ) => {
+      const preferredSet = new Set(preferredSpeakerIds);
+      const explicitTargets = resolveUserTargetCandidates(userText);
+      if (explicitTargets.length > 0) {
+        const explicitPrimary = explicitTargets.find((member) => (
+          intent.kind !== 'force_targets' || preferredSet.has(member.id)
+        )) || explicitTargets[0];
+        if (explicitPrimary) {
+          return explicitPrimary;
+        }
+      }
+
+      if (isDirectedInterruption(userText)) {
+        const replyTargetMember = resolveReplyTargetMember();
+        if (replyTargetMember) {
+          return replyTargetMember;
+        }
+
+        const recentDominantSpeaker = getRecentDominantSpeaker();
+        if (recentDominantSpeaker) {
+          return recentDominantSpeaker;
+        }
       }
 
       const latestModelSpeakerId = [...historyRef.current]
@@ -1087,20 +1480,50 @@ export function useGroupChatRuntime({
         ?.senderCharacterId;
 
       const weightedMembers = members.map((member) => {
-        let weight = inferReadableSpeakerWeight(member, userText);
+        let weight = inferReadableSpeakerWeight(member, userText) * getGroupStageMultiplier(groupMeta?.groupStage);
         const aliases = getMemberAliases(member);
         const mentionHit = aliases.some((alias) => userText.includes(alias));
+        const evidence = buildCharacterEvidence(member);
+        const recentCount = countRecentMessagesBySpeaker(member.id);
+        const isReplyTarget = !!replyingTo
+          && replyingTo.role === 'model'
+          && replyingTo.authorLabel.trim().toLowerCase() === member.name.trim().toLowerCase();
+
+        weight += computeGroupParticipationBonus({
+          character: member,
+          userText,
+          characterEvidence: evidence,
+          aliases,
+          intentKind: intent.kind,
+          isExplicitTarget: preferredSet.has(member.id) || mentionHit,
+          isReplyTarget,
+          recentCount,
+          latestModelSpeakerId,
+        });
 
         if (mentionHit) {
           weight += 3;
+        }
+
+        if (intent.kind === 'force_all_members') {
+          weight += 1.8;
+        }
+
+        if (preferredSet.has(member.id)) {
+          weight += 2.6;
+        } else if (intent.kind === 'force_targets') {
+          weight -= 1.25;
         }
 
         if (member.id === latestModelSpeakerId) {
           weight -= wantsAnotherSpeaker(userText) ? 1.2 : 0.6;
         }
 
-        const recentCount = countRecentMessagesBySpeaker(member.id);
         weight -= recentCount * 0.45;
+
+        if (intent.kind === 'force_all_members' && recentCount === 0) {
+          weight += 1.4;
+        }
 
         if (wantsAnotherSpeaker(userText) && member.id !== latestModelSpeakerId) {
           weight += 0.8;
@@ -1125,7 +1548,7 @@ export function useGroupChatRuntime({
     };
 
     const resolveSecondarySpeaker = (userText: string, primarySpeaker: Character, primaryResponse: string) => {
-      const explicitSecondary = extractMentionedMember(userText, [primarySpeaker.id]);
+      const explicitSecondary = resolveUserTargetCandidates(userText, [primarySpeaker.id])[0] || null;
       if (explicitSecondary) {
         return explicitSecondary;
       }
@@ -1143,15 +1566,30 @@ export function useGroupChatRuntime({
       const vibeAllowsFollowUp = wantsAnotherSpeaker(userText)
         || primaryResponse.includes('?')
         || primaryResponse.includes('？')
-        || primaryResponse.length <= 10;
+        || primaryResponse.includes('!')
+        || primaryResponse.includes('！')
+        || primaryResponse.length <= 18;
 
       if (!vibeAllowsFollowUp) {
         return null;
       }
 
       const weightedCandidates = candidateMembers.map((member) => {
-        let weight = inferReadableSpeakerWeight(member, `${userText}\n${primaryResponse}`);
+        let weight = inferReadableSpeakerWeight(member, `${userText}\n${primaryResponse}`) * getGroupStageMultiplier(groupMeta?.groupStage);
+        const aliases = getMemberAliases(member);
+        const evidence = buildCharacterEvidence(member);
         const recentCount = countRecentMessagesBySpeaker(member.id);
+        weight += computeGroupParticipationBonus({
+          character: member,
+          userText: `${userText}\n${primaryResponse}`,
+          characterEvidence: evidence,
+          aliases,
+          intentKind: 'open_floor',
+          isExplicitTarget: false,
+          isReplyTarget: false,
+          recentCount,
+          latestModelSpeakerId: primarySpeaker.id,
+        });
         weight -= recentCount * 0.4;
 
         if (includesAny(buildCharacterEvidence(member), ['话少', '冷淡', '克制', '沉默']) && !wantsAnotherSpeaker(userText)) {
@@ -1169,7 +1607,17 @@ export function useGroupChatRuntime({
         return null;
       }
 
-      if (Math.random() > 0.42 && !explicitSecondary && !responseMention) {
+      const followUpChance = explicitSecondary || responseMention
+        ? 1
+        : Math.min(
+            0.82,
+            0.46
+              + (wantsAnotherSpeaker(userText) ? 0.18 : 0)
+              + (/[?!？！]/.test(primaryResponse) ? 0.14 : 0)
+              + (primaryResponse.length <= 18 ? 0.12 : 0),
+          );
+
+      if (Math.random() > followUpChance) {
         return null;
       }
 
@@ -1184,6 +1632,378 @@ export function useGroupChatRuntime({
       return weightedCandidates[weightedCandidates.length - 1]?.member ?? null;
     };
 
+    const shouldContinueFollowUp = (
+      intent: GroupReplyIntent,
+      contextText: string,
+      latestResponse: string,
+      usedSpeakerCount: number,
+      chainDepth: number,
+      conversationHeat: number,
+      conversationMomentum: number,
+    ) => {
+      const isTopicClosing = /(?:差不多得了|行了|够了|别说了|别提了|先停|停一下|打住|收一收|没有\d+|没有[^\s，。！？,.!?]+|不是这个|别聊这个|换个话题)/.test(contextText.trim());
+      const memberCount = members.length;
+      const isFirstFollowUp = usedSpeakerCount <= 1;
+      const isSecondFollowUp = usedSpeakerCount === 2;
+      const hotFloorTarget = conversationHeat >= 1.8
+        ? (memberCount >= 7 ? 4 : memberCount >= 4 ? 3 : 2)
+        : conversationHeat >= 1.2
+          ? (memberCount >= 5 ? 3 : 2)
+          : 1;
+      const baseChance = isFirstFollowUp
+        ? (memberCount >= 5 ? 0.84 : memberCount >= 3 ? 0.76 : 0.58)
+        : isSecondFollowUp
+          ? (memberCount >= 8 ? 0.62 : memberCount >= 5 ? 0.5 : 0.34)
+          : (memberCount >= 8 ? 0.32 : 0.2);
+      const followUpEnergy =
+        (wantsAnotherSpeaker(contextText) ? 0.24 : 0)
+        + (/[?!\uFF1F\uFF01]/.test(latestResponse) ? 0.16 : 0)
+        + (latestResponse.length <= 18 ? 0.12 : 0)
+        + (memberCount >= 4 ? 0.08 : 0)
+        + (memberCount >= 6 ? 0.06 : 0)
+        + (usedSpeakerCount <= 2 ? 0.08 : -0.18)
+        + (usedSpeakerCount < hotFloorTarget ? 0.24 : 0)
+        + (chainDepth <= 1 ? 0.06 : 0)
+        + conversationHeat * 0.18
+        + conversationMomentum * 0.14
+        + (intent.kind === 'group_topic' ? 0.16 : 0);
+
+      const followUpChance = Math.max(0.08, Math.min(0.9, baseChance + followUpEnergy - (isTopicClosing ? 0.38 : 0)));
+      if (Math.random() <= followUpChance) {
+        return true;
+      }
+
+      return shouldUseActivityFloor({
+        memberCount,
+        conversationHeat,
+        conversationMomentum,
+        chainDepth,
+        usedSpeakerCount,
+        latestResponse,
+        contextText,
+      });
+    };
+
+    const computeConversationHeat = (intent: GroupReplyIntent, contextText: string, latestResponse: string) => {
+      const isTopicClosing = /(?:差不多得了|行了|够了|别说了|别提了|先停|停一下|打住|收一收|没有\d+|没有[^\s，。！？,.!?]+|不是这个|别聊这个|换个话题)/.test(contextText.trim());
+      let heat = 0;
+
+      if (wantsAnotherSpeaker(contextText)) {
+        heat += 1;
+      }
+
+      if (/(?:继续|还有谁|都说|一起说|别停|接着聊|热闹点|怎么就你们几个|怎么只有你们)/.test(contextText)) {
+        heat += 1;
+      }
+
+      if (/[?!\uFF1F\uFF01]/.test(latestResponse)) {
+        heat += 0.5;
+      }
+
+      if (latestResponse.length <= 18) {
+        heat += 0.4;
+      }
+
+      if (members.length >= 6) {
+        heat += 0.3;
+      }
+
+      if (intent.kind === 'group_topic') {
+        heat += members.length >= 8 ? 0.6 : members.length >= 5 ? 0.8 : 0.95;
+      }
+
+      return Math.max(0, Math.min(2.2, heat - (isTopicClosing ? 1.1 : 0)));
+    };
+
+    const resolveFollowUpSpeaker = (followUpParams: {
+      intent: GroupReplyIntent;
+      contextText: string;
+      previousSpeaker: Character;
+      latestResponse: string;
+      usedSpeakerIds: string[];
+    }) => {
+      const explicitMention = followUpParams.intent.kind === 'stop_followups'
+        ? null
+        : resolveUserTargetCandidates(followUpParams.contextText, followUpParams.usedSpeakerIds)[0] || null;
+      if (explicitMention) {
+        return explicitMention;
+      }
+
+      const responseMention = followUpParams.intent.kind === 'stop_followups'
+        ? null
+        : extractMentionedMember(followUpParams.latestResponse, []);
+      if (responseMention) {
+        return responseMention;
+      }
+
+      const unusedCandidates = members.filter((member) => !followUpParams.usedSpeakerIds.includes(member.id));
+      const candidateMembers = unusedCandidates.length > 0 ? members : members;
+      if (candidateMembers.length === 0) {
+        return null;
+      }
+
+      const weightedCandidates = candidateMembers.map((member) => {
+        let weight =
+          inferReadableSpeakerWeight(member, `${followUpParams.contextText}\n${followUpParams.latestResponse}`)
+          * getGroupStageMultiplier(groupMeta?.groupStage);
+        const aliases = getMemberAliases(member);
+        const evidence = buildCharacterEvidence(member);
+        const recentCount = countRecentMessagesBySpeaker(member.id);
+        weight += computeGroupParticipationBonus({
+          character: member,
+          userText: `${followUpParams.contextText}\n${followUpParams.latestResponse}`,
+          characterEvidence: evidence,
+          aliases,
+          intentKind: followUpParams.intent.kind,
+          isExplicitTarget: false,
+          isReplyTarget: false,
+          recentCount,
+          latestModelSpeakerId: followUpParams.previousSpeaker.id,
+        });
+        weight -= recentCount * 0.42;
+
+        if (member.id === followUpParams.previousSpeaker.id) {
+          weight -= 1.8;
+        }
+
+        if (followUpParams.intent.kind === 'stop_followups' && member.id !== followUpParams.previousSpeaker.id) {
+          weight += 0.55;
+        }
+
+        if (!followUpParams.usedSpeakerIds.includes(member.id)) {
+          weight += 1.15;
+        } else if (unusedCandidates.length > 0) {
+          weight -= 0.35;
+        }
+
+        if (followUpParams.intent.kind === 'force_all_members') {
+          if (!followUpParams.usedSpeakerIds.includes(member.id)) {
+            weight += 1.45;
+          } else {
+            weight -= 0.55;
+          }
+
+          if (recentCount === 0) {
+            weight += 0.75;
+          }
+        }
+
+        if (followUpParams.latestResponse.length <= 20 && member.id !== followUpParams.previousSpeaker.id) {
+          weight += 0.2;
+        }
+
+        if (
+          includesAny(buildCharacterEvidence(member), ['\u8bdd\u5c11', '\u51b7\u6de1', '\u514b\u5236', '\u6c89\u9ed8'])
+          && !wantsAnotherSpeaker(followUpParams.contextText)
+        ) {
+          weight -= 0.7;
+        }
+
+        if (followUpParams.latestResponse.length <= 16) {
+          weight += 0.18;
+        }
+
+        return {
+          member,
+          weight: Math.max(weight, 0.1),
+        };
+      });
+
+      const totalWeight = weightedCandidates.reduce((sum, item) => sum + item.weight, 0);
+      if (totalWeight <= 0) {
+        return null;
+      }
+
+      let cursor = Math.random() * totalWeight;
+      for (const item of weightedCandidates) {
+        cursor -= item.weight;
+        if (cursor <= 0) {
+          return item.member;
+        }
+      }
+
+      return weightedCandidates[weightedCandidates.length - 1]?.member ?? null;
+    };
+
+    const buildFollowUpReplyPayload = (
+      intent: GroupReplyIntent,
+      sourceMessage: ChatMessage | undefined,
+      fallbackAuthor: string,
+      contextText: string,
+      latestResponse: string,
+      previousSpeaker: Character,
+    ) => {
+      if (intent.kind === 'stop_followups') {
+        return null;
+      }
+
+      if (!sourceMessage) {
+        return null;
+      }
+
+      const isTopicClosing = /(?:差不多得了|行了|够了|别说了|别提了|先停|停一下|打住|收一收|没有\d+|没有[^\s，。！？,.!?]+|不是这个|别聊这个|换个话题)/.test(contextText.trim());
+      const explicitReply = resolveUserTargetCandidates(contextText, [previousSpeaker.id])[0] || null;
+      const responseReply = extractMentionedMember(latestResponse, []);
+      const referencesPreviousSpeaker =
+        latestResponse.includes(previousSpeaker.name)
+        || contextText.includes(previousSpeaker.name);
+      const shouldAttachReply =
+        !!explicitReply
+        || !!responseReply
+        || referencesPreviousSpeaker
+        || (!isTopicClosing && Math.random() < 0.24);
+      if (!shouldAttachReply) {
+        return null;
+      }
+
+      return buildReplyPreviewPayload(sourceMessage, fallbackAuthor);
+    };
+
+    const computeConversationMomentum = (currentHistory: ChatMessage[]) => {
+      const recentModelMessages = currentHistory
+        .filter((message) => message.role === 'model' && !message.isSystem)
+        .slice(-4);
+
+      if (recentModelMessages.length <= 1) {
+        return 0;
+      }
+
+      const distinctSpeakers = new Set(
+        recentModelMessages
+          .map((message) => message.senderCharacterId)
+          .filter((value): value is string => !!value),
+      );
+      const replyToModelCount = recentModelMessages.filter((message) => message.replyTo?.role === 'model').length;
+
+      let momentum = 0;
+      if (distinctSpeakers.size >= 2) {
+        momentum += 0.8;
+      }
+      if (distinctSpeakers.size >= 3) {
+        momentum += 0.45;
+      }
+      if (replyToModelCount >= 1) {
+        momentum += 0.5;
+      }
+      if (replyToModelCount >= 2) {
+        momentum += 0.25;
+      }
+
+      return Math.max(0, Math.min(1.8, momentum));
+    };
+
+    const scheduleFollowUpSpeakers = (followUpParams: {
+      intent: GroupReplyIntent;
+      contextText: string;
+      latestHistory: ChatMessage[];
+      previousSpeaker: Character;
+      latestResponse: string;
+      interactionId: number;
+      chainDepth: number;
+      maxFollowUpDepth: number;
+      usedSpeakerIds: string[];
+      conversationHeat: number;
+      forcedSpeakerIds?: string[];
+    }) => {
+      if (followUpParams.chainDepth >= followUpParams.maxFollowUpDepth) {
+        return;
+      }
+
+      const pendingForcedSpeakerIds = (followUpParams.forcedSpeakerIds || []).filter(
+        (speakerId) => !followUpParams.usedSpeakerIds.includes(speakerId),
+      );
+
+      if (
+        pendingForcedSpeakerIds.length === 0
+        &&
+        (
+          followUpParams.intent.kind === 'stop_followups'
+            ? followUpParams.chainDepth > 0
+            : !shouldContinueFollowUp(
+                followUpParams.intent,
+                followUpParams.contextText,
+                followUpParams.latestResponse,
+                followUpParams.usedSpeakerIds.length,
+                followUpParams.chainDepth,
+                followUpParams.conversationHeat,
+                computeConversationMomentum(followUpParams.latestHistory),
+              )
+        )
+      ) {
+        return;
+      }
+
+      const forcedSpeakerId = pendingForcedSpeakerIds[0];
+      const nextSpeaker = forcedSpeakerId
+        ? members.find((member) => member.id === forcedSpeakerId) || null
+        : resolveFollowUpSpeaker({
+            intent: followUpParams.intent,
+            contextText: followUpParams.contextText,
+            previousSpeaker: followUpParams.previousSpeaker,
+            latestResponse: followUpParams.latestResponse,
+            usedSpeakerIds: followUpParams.usedSpeakerIds,
+          });
+      if (!nextSpeaker) {
+        return;
+      }
+
+      console.info('[group-chat] follow-up responder scheduled', {
+        responderId: nextSpeaker.id,
+        responderName: nextSpeaker.name,
+        interactionId: followUpParams.interactionId,
+        chainDepth: followUpParams.chainDepth,
+        maxFollowUpDepth: followUpParams.maxFollowUpDepth,
+      });
+
+      delayedSpeakerTimerRef.current = setTimeout(() => {
+        if (!isMountedRef.current || activeInteractionIdRef.current !== followUpParams.interactionId) {
+          return;
+        }
+
+        const latestReplySource = followUpParams.latestHistory[followUpParams.latestHistory.length - 1];
+        const replyPayload = buildFollowUpReplyPayload(
+          followUpParams.intent,
+          latestReplySource,
+          followUpParams.previousSpeaker.name,
+          followUpParams.contextText,
+          followUpParams.latestResponse,
+          followUpParams.previousSpeaker,
+        );
+
+        void triggerAISpeaker(nextSpeaker, followUpParams.latestHistory, followUpParams.interactionId, replyPayload)
+          .then((appendedMessages) => {
+            if (
+              appendedMessages.length === 0
+              || !isMountedRef.current
+              || activeInteractionIdRef.current !== followUpParams.interactionId
+            ) {
+              return;
+            }
+
+            const updatedHistory = [...followUpParams.latestHistory, ...appendedMessages];
+            const latestMessage = appendedMessages[appendedMessages.length - 1];
+            const latestMainText = latestMessage ? getMessageMainText(latestMessage) : followUpParams.latestResponse;
+
+            scheduleFollowUpSpeakers({
+              intent: followUpParams.intent,
+              contextText: `${followUpParams.contextText}\n${latestMainText}`,
+              latestHistory: updatedHistory,
+              previousSpeaker: nextSpeaker,
+              latestResponse: latestMainText,
+              interactionId: followUpParams.interactionId,
+              chainDepth: followUpParams.chainDepth + 1,
+              maxFollowUpDepth: followUpParams.maxFollowUpDepth,
+              usedSpeakerIds: [...followUpParams.usedSpeakerIds, nextSpeaker.id],
+              conversationHeat: Math.max(
+                followUpParams.conversationHeat,
+                computeConversationHeat(followUpParams.intent, `${followUpParams.contextText}\n${latestMainText}`, latestMainText),
+              ),
+              forcedSpeakerIds: followUpParams.forcedSpeakerIds,
+            });
+          });
+      }, 720 + Math.floor(Math.random() * 260));
+    };
+
     clearDelayedSpeakerTimer();
     const interactionId = activeInteractionIdRef.current + 1;
     activeInteractionIdRef.current = interactionId;
@@ -1192,6 +2012,18 @@ export function useGroupChatRuntime({
 
     const sanitizedMessageText = sanitizeUserMentionText(params.message.text, members);
     const sanitizedPromptText = sanitizeUserMentionText(params.promptText, members);
+    const mentionedMembers = extractMentionedMembers(sanitizedPromptText);
+    const intent = resolveGroupReplyIntent({
+      text: sanitizedPromptText,
+      mentionedMemberIds: mentionedMembers.map((member) => member.id),
+      memberIds: members.map((member) => member.id),
+    });
+    const preferredSpeakerIds =
+      intent.kind === 'force_all_members'
+        ? members.map((member) => member.id)
+        : intent.kind === 'force_targets'
+          ? intent.targetIds
+          : mentionedMembers.map((member) => member.id);
 
     const newHistory = [...historyRef.current, {
       ...params.message,
@@ -1204,11 +2036,12 @@ export function useGroupChatRuntime({
       text: sanitizedMessageText,
       historyLength: newHistory.length,
       memberCount: members.length,
+      intent: intent.kind,
     });
 
     try {
       await runGeneration(async ({ generationId }) => {
-        const responder = pickPrimaryResponder(sanitizedPromptText);
+        const responder = pickPrimaryResponder(sanitizedPromptText, intent, preferredSpeakerIds);
 
         if (!responder) {
           throw new Error('\u7fa4\u804a\u4e2d\u6ca1\u6709\u53ef\u7528\u7684\u56de\u590d\u89d2\u8272');
@@ -1221,10 +2054,11 @@ export function useGroupChatRuntime({
         });
 
         try {
-          const responseText = await generateMessageForSpeaker({
+          const response = await generateMessageForSpeaker({
             speaker: responder,
             currentHistory: newHistory,
             mode: 'reply',
+            replyTarget: replyingTo,
           });
 
           if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
@@ -1237,29 +2071,61 @@ export function useGroupChatRuntime({
             return;
           }
 
-          const resolvedMessages = appendSpeakerMessage(responder, responseText, Date.now(), newHistory);
+          const resolvedMessages = appendSpeakerMessage(responder, response.text, response.timestamp, newHistory);
+          setPendingMessage(null);
           const latestHistory = [...newHistory, ...resolvedMessages];
 
-          const nextSpeaker = resolveSecondarySpeaker(sanitizedPromptText, responder, responseText);
-          if (nextSpeaker && nextSpeaker.id !== responder.id) {
-            console.info('[group-chat] secondary responder scheduled', {
-              responderId: nextSpeaker.id,
-              responderName: nextSpeaker.name,
-              interactionId,
-            });
-            delayedSpeakerTimerRef.current = setTimeout(() => {
-              if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId) {
-                return;
-              }
-              const latestReplySource = resolvedMessages[resolvedMessages.length - 1];
-              const replyPayload = latestReplySource
-                ? buildReplyPreviewPayload(latestReplySource, responder.name)
-                : null;
-              void triggerAISpeaker(nextSpeaker, latestHistory, interactionId, replyPayload);
-            }, 1200);
-          }
+          const conversationHeat = computeConversationHeat(intent, sanitizedPromptText, response.text);
+          const forcedSpeakerIds = preferredSpeakerIds.filter((speakerId) => speakerId !== responder.id);
+          const maxFollowUpDepth = intent.kind === 'force_all_members'
+            ? Math.max(members.length + 1, forcedSpeakerIds.length + 2)
+            : intent.kind === 'force_targets'
+              ? Math.max(forcedSpeakerIds.length, 1)
+              : intent.kind === 'stop_followups'
+                ? 1
+              : intent.kind === 'group_topic'
+                ? Math.max(
+                    2,
+                    Math.min(
+                      members.length >= 9 ? 4 : members.length >= 6 ? 3 : 2,
+                      Math.ceil(members.length / 3) + 1,
+                    ),
+                  )
+              : intent.kind === 'open_floor'
+                ? Math.max(
+                    2,
+                    Math.min(
+                      5,
+                      conversationHeat >= 1.8
+                        ? Math.ceil(members.length / 2) + 1
+                        : Math.ceil(members.length / 3) + 1,
+                    ),
+                  )
+                : Math.max(
+                    1,
+                    Math.min(
+                      4,
+                      conversationHeat >= 1.8
+                        ? Math.ceil(members.length / 2)
+                        : Math.ceil(members.length / 3),
+                    ),
+                  );
+          scheduleFollowUpSpeakers({
+            intent,
+            contextText: sanitizedPromptText,
+            latestHistory,
+            previousSpeaker: responder,
+            latestResponse: response.text,
+            interactionId,
+            chainDepth: 0,
+            maxFollowUpDepth,
+            usedSpeakerIds: [responder.id],
+            conversationHeat,
+            forcedSpeakerIds,
+          });
         } catch (runtimeError) {
           console.error('Group chat error:', runtimeError);
+          setPendingMessage(null);
           if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
             return;
           }
@@ -1270,6 +2136,7 @@ export function useGroupChatRuntime({
       });
     } catch (runtimeError) {
       console.error('Group chat fatal error:', runtimeError);
+      setPendingMessage(null);
       appendSystemFailure(runtimeError instanceof Error ? runtimeError.message : '\u672a\u77e5\u9519\u8bef');
     }
   }, [
@@ -1278,11 +2145,13 @@ export function useGroupChatRuntime({
     appendSpeakerMessage,
     appendSystemFailure,
     generateMessageForSpeaker,
+    groupMeta?.groupStage,
     members,
     runGeneration,
     setError,
     setHistory,
     setInput,
+    setPendingMessage,
     setReplyingTo,
     triggerAISpeaker,
   ]);
@@ -1338,9 +2207,11 @@ export function useGroupChatRuntime({
   return {
     isLoading,
     error,
+    pendingMessage,
     sendText: handleSend,
     sendImageMessage,
     sendLocationMessage,
     maybeOpenScene,
+    reactToNoticeUpdate,
   };
 }

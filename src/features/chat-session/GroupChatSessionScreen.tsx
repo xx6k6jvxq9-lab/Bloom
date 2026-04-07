@@ -335,6 +335,7 @@ export function GroupChatSessionScreen({
     sendImageMessage,
     sendLocationMessage,
     maybeOpenScene,
+    reactToNoticeUpdate,
   } = useGroupChatRuntime({
     members,
     groupMeta: {
@@ -731,10 +732,18 @@ export function GroupChatSessionScreen({
     const trimmedName = groupSettingsForm.name.trim();
     if (!trimmedName) return;
 
+    const nextNotice = groupSettingsForm.groupNotice.trim();
+    const previousNotice = group.groupNotice?.trim() || '';
     const systemMessages = buildGroupSettingsSystemMessages(group, groupSettingsForm, Date.now());
     onUpdateGroup(buildGroupSettingsPatch(groupSettingsForm));
     if (systemMessages.length > 0) {
       setHistory((prev) => [...prev, ...systemMessages]);
+    }
+    if (nextNotice && nextNotice !== previousNotice) {
+      void reactToNoticeUpdate({
+        noticeText: nextNotice,
+        currentHistory: [...history, ...systemMessages],
+      });
     }
   };
 
