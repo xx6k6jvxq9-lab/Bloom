@@ -709,7 +709,6 @@ export type ChatGroup = {
   memberRelationshipNote?: string;
   currentScene?: string;
   publicFacts?: string;
-  allowDirectMemoryInterop?: boolean;
   muteNotifications?: boolean;
   pinChat?: boolean;
   groupStage?: 'new' | 'warming' | 'familiar';
