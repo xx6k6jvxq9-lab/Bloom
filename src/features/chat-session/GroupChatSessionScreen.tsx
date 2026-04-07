@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
+﻿import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Camera,
@@ -22,7 +22,9 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatMessage, FavoriteMessage } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage } from '../../types';
+import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import {
   copyTextContent,
   copyMessageText,
@@ -36,18 +38,105 @@ import {
   toggleFavoriteMessage,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
+import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
+import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 
-const BASIC_EMOJIS = ['😀', '😂', '🥹', '😎', '🥳', '🤔', '😭', '❤️', '👍', '🙏', '🎉', '🌟'];
+const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
 const DEFAULT_LOCATIONS = [
   { name: '我的当前位置', address: '成都市 锦江区 春熙路', isVirtual: false },
   { name: '公司', address: '高新区 天府大道', isVirtual: true },
   { name: '家', address: '武侯区', isVirtual: true },
 ];
+
+const AUTO_OPENING_DEDUPE_WINDOW_MS = 1500;
+const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
+
+function buildGroupNoticeDismissKey(groupId: string, notice: string): string {
+  return `group_notice_dismissed:${groupId}:${notice.trim()}`;
+}
+
+function resolveGroupMessageSenderLabel(
+  message: ChatMessage,
+  params: {
+    userName: string;
+    getCharacterById: (id: string) => Character | null;
+  },
+): string {
+  if (message.isSystem) {
+    return '系统消息';
+  }
+
+  if (message.role === 'user') {
+    return params.userName;
+  }
+
+  if (message.senderCharacterId) {
+    const speaker = params.getCharacterById(message.senderCharacterId);
+    return speaker?.remarkName?.trim() || speaker?.name || '角色';
+  }
+
+  return '角色';
+}
+
+function buildInviteRuntimeMessages(params: {
+  systemPrompt: string;
+  history: ChatMessage[];
+}): RuntimeChatMessage[] {
+  const historyMessages = params.history
+    .filter((message) => !message.isSystem)
+    .map<RuntimeChatMessage>((message) => ({
+      role: message.role === 'user' ? 'user' : 'assistant',
+      content: message.text,
+    }));
+
+  return [
+    { role: 'system', content: params.systemPrompt },
+    ...historyMessages,
+    {
+      role: 'user',
+      content:
+        'You were just invited into this group chat. Send your first natural in-group reaction in 1 to 2 short bubbles. Do not write narration, do not act overly formal, and do not summarize the whole group dynamic.',
+    },
+  ];
+}
+
+function buildInviteGenerationHistory(history: ChatMessage[], invitedName: string, timestamp: number): ChatMessage[] {
+  const recentVisibleMessages = history
+    .filter((message) => !message.isSystem)
+    .slice(-6)
+    .map((message) => ({
+      ...message,
+      text: formatMessagePreview(message.text),
+    }));
+
+  return [
+    ...recentVisibleMessages,
+    {
+      role: 'model',
+      text: `[notice] 你邀请了${invitedName}进群`,
+      timestamp,
+      isSystem: true,
+    },
+  ];
+}
+
+function normalizeInvitedReply(text: string, speaker: Character): string {
+  let normalized = text.trim();
+  const aliases = [speaker.name, speaker.remarkName?.trim()].filter((value): value is string => !!value);
+
+  for (const alias of aliases) {
+    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    normalized = normalized.replace(new RegExp(`^${escapedAlias}\\s*[:：]\\s*`), '').trim();
+  }
+
+  return normalized.replace(/^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/g, '').trim();
+}
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
@@ -63,27 +152,67 @@ const formatMessagePreview = (text: string | undefined): string => {
   return text;
 };
 
+function formatPendingGroupText(text: string): string {
+  return text
+    .replace(/^[\s"'`!?，。？！,]+/, '')
+    .replace(/^\[(?:reply|reply to)\s*:\s*[^\]]+\]\s*/i, '')
+    .replace(/^\[(?:notice|system|sticker|image)\]\s*/i, '')
+    .trim();
+}
+
+function stripSenderPrefix(text: string, aliases: string[]): string {
+  return aliases.reduce((currentText, alias) => {
+    if (currentText !== text) return currentText;
+    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return currentText.replace(new RegExp(`^${escapedAlias}\\s*[:：]\\s*`), '');
+  }, text);
+}
+
+function parseSenderLabel(text: string): { senderLabel: string; content: string } | null {
+  const match = text.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
+  if (!match) return null;
+
+  return {
+    senderLabel: match[1].trim(),
+    content: match[2],
+  };
+}
+
 function GroupMessageAvatar({
   value,
   fallbackValue,
   alt,
+  fit = 'cover',
 }: {
   value?: string | null;
   fallbackValue?: string | null;
   alt: string;
+  fit?: 'cover' | 'contain';
 }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
+  const [hasError, setHasError] = useState(false);
   const src =
     getDisplayableAssetValue(value, resolvedUrl)
     || getDisplayableAssetValue(fallbackValue, resolvedFallbackUrl)
     || null;
 
-  if (!src) {
+  useEffect(() => {
+    setHasError(false);
+  }, [src, value, fallbackValue]);
+
+  if (!src || hasError) {
     return <div className="h-10 w-10 shrink-0 rounded-full bg-zinc-200" aria-label={alt} />;
   }
 
-  return <img src={src} alt={alt} className="h-10 w-10 shrink-0 rounded-full bg-zinc-200 object-cover" />;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={`h-10 w-10 shrink-0 rounded-full border border-zinc-200 shadow-[0_2px_6px_rgba(15,23,42,0.05)] ${fit === 'contain' ? 'bg-white p-0.5 object-contain' : 'bg-zinc-200 object-cover'}`}
+      onError={() => setHasError(true)}
+    />
+  );
 }
 
 function GroupStickerPreview({
@@ -114,6 +243,8 @@ export function GroupChatSessionScreen({
   userAvatar,
   userName,
   settings,
+  directChatHistory,
+  inviteableCharacters,
 }: {
   group: ChatGroup;
   members: Character[];
@@ -129,6 +260,8 @@ export function GroupChatSessionScreen({
   userAvatar: string;
   userName: string;
   settings: AppSettings;
+  directChatHistory: ChatHistory;
+  inviteableCharacters: Character[];
 }) {
   const [input, setInput] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -138,9 +271,9 @@ export function GroupChatSessionScreen({
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [showGroupInfo, setShowGroupInfo] = useState(false);
-  const [groupNameDraft, setGroupNameDraft] = useState(group.name);
-  const [groupAvatarDraft, setGroupAvatarDraft] = useState(group.avatar || '');
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [isInvitingMember, setIsInvitingMember] = useState(false);
+  const [groupSettingsForm, setGroupSettingsForm] = useState(() => createGroupSettingsFormState(group));
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -150,19 +283,39 @@ export function GroupChatSessionScreen({
     messageText: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const preservedScrollTopRef = useRef<number | null>(null);
   const didTryOpeningRef = useRef(false);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { getCharacterById } = createCharacterDirectory({ characters: members });
+  const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = settings.configs.find((config) => config.id === settings.activeConfigId) || settings.configs[0];
   const hasUsableConfig = !!activeConfig?.apiKey?.trim();
   const layoutConfig = getChatLayoutConfig();
   const inputContainerClass = layoutConfig.inputContainerClass.replace('border-t', '').trim();
   const participantCount = members.length + 1;
-  const hasGroupInfoChanges =
-    groupNameDraft.trim() !== group.name || groupAvatarDraft !== (group.avatar || '');
+  const openingSessionKey = `${group.id}:${group.lastTime || 0}`;
+  const hasGroupInfoChanges = hasGroupSettingsChanges(group, groupSettingsForm);
+  const groupDisplayName = group.groupRemark?.trim() || group.name;
+  const groupUserDisplayName = group.groupNickname?.trim() || userName;
+  const groupNotice = group.groupNotice?.trim() || '';
+  const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
+  const groupSettingsMembers = [
+    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined },
+    ...members.map((member) => ({
+      id: member.id,
+      name: member.name,
+      remarkName: member.remarkName,
+      avatar: member.avatar,
+    })),
+  ];
+  const groupSettingsInviteCandidates = inviteableCharacters.map((character) => ({
+    id: character.id,
+    name: character.name,
+    remarkName: character.remarkName,
+    avatar: character.avatar,
+  }));
   const mentionMatch = input.match(/(?:^|\s)@([^\s@]*)$/);
   const mentionQuery = mentionMatch?.[1] ?? '';
   const mentionCandidates = mentionMatch
@@ -176,6 +329,7 @@ export function GroupChatSessionScreen({
   const {
     isLoading,
     error,
+    pendingMessage,
     sendText,
     sendImageMessage,
     sendLocationMessage,
@@ -185,6 +339,13 @@ export function GroupChatSessionScreen({
     groupMeta: {
       lastMessage: group.lastMessage,
       lastTime: group.lastTime,
+      groupStage: group.groupStage,
+      memberRelationSeeds: group.memberRelationSeeds,
+      backgroundSummary: group.backgroundSummary,
+      memberRelationshipState: group.memberRelationshipState,
+      memberRelationshipNote: group.memberRelationshipNote,
+      currentScene: group.currentScene,
+      publicFacts: group.publicFacts,
     },
     history,
     setHistory,
@@ -192,35 +353,108 @@ export function GroupChatSessionScreen({
     setInput,
     replyingTo,
     setReplyingTo,
-    userName,
+    userName: groupUserDisplayName,
+    directChatHistory,
     activeConfig,
   });
+  const renderedHistory = pendingMessage
+    ? [...history, {
+        role: 'model' as const,
+        text: `${pendingMessage.speakerName}: ${formatPendingGroupText(pendingMessage.text)}`,
+        timestamp: pendingMessage.timestamp,
+        senderCharacterId: pendingMessage.speakerId,
+        isPending: true,
+      }]
+    : history;
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!scrollRef.current) {
+      return;
     }
+
+    if (preservedScrollTopRef.current !== null) {
+      const nextTop = Math.min(
+        preservedScrollTopRef.current,
+        Math.max(0, scrollRef.current.scrollHeight - scrollRef.current.clientHeight)
+      );
+      scrollRef.current.scrollTop = nextTop;
+      preservedScrollTopRef.current = null;
+      return;
+    }
+
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [history]);
 
   useEffect(() => {
     didTryOpeningRef.current = false;
-  }, [group.id]);
+  }, [openingSessionKey]);
 
   useEffect(() => {
     if (didTryOpeningRef.current || !hasUsableConfig || members.length === 0) return;
+
+    const lastAttemptAt = autoOpeningAttemptAtBySessionKey.get(openingSessionKey) || 0;
+    const now = Date.now();
+    if (now - lastAttemptAt < AUTO_OPENING_DEDUPE_WINDOW_MS) {
+      didTryOpeningRef.current = true;
+      return;
+    }
+
+    autoOpeningAttemptAtBySessionKey.set(openingSessionKey, now);
     didTryOpeningRef.current = true;
     void maybeOpenScene();
-  }, [hasUsableConfig, maybeOpenScene, members.length]);
+  }, [hasUsableConfig, maybeOpenScene, members.length, openingSessionKey]);
 
   useEffect(() => {
-    setGroupNameDraft(group.name);
-    setGroupAvatarDraft(group.avatar || '');
-  }, [group.name, group.avatar, showGroupInfo]);
+    setGroupSettingsForm(createGroupSettingsFormState(group));
+  }, [group, showGroupSettings]);
+
+  useEffect(() => {
+    if (!groupNotice) {
+      setIsNoticeVisible(false);
+      return;
+    }
+
+    try {
+      const dismissed = localStorage.getItem(buildGroupNoticeDismissKey(group.id, groupNotice)) === '1';
+      setIsNoticeVisible(!dismissed);
+    } catch {
+      setIsNoticeVisible(true);
+    }
+  }, [group.id, groupNotice]);
+
+  useEffect(() => {
+    const repairedHistory = history.map((message) => {
+      if (message.role !== 'model' || message.isSystem || message.senderCharacterId) {
+        return message;
+      }
+
+      const parsedSender = parseSenderLabel(message.text);
+      if (!parsedSender) {
+        return message;
+      }
+
+      const character = getCharacterByName(parsedSender.senderLabel);
+      if (!character) {
+        return message;
+      }
+
+      return {
+        ...message,
+        senderCharacterId: character.id,
+      };
+    });
+
+    const needsRepair = repairedHistory.some((message, index) => message !== history[index]);
+    if (needsRepair) {
+      setHistory(repairedHistory);
+    }
+  }, [getCharacterByName, history, setHistory]);
 
   const resolveSender = (message: ChatMessage) => {
     if (message.role === 'user') {
       return {
-        senderName: userName,
+        senderId: 'user',
+        senderName: groupUserDisplayName,
         avatar: userAvatar,
         content: formatMessagePreview(message.text),
       };
@@ -229,25 +463,72 @@ export function GroupChatSessionScreen({
     const sender = message.senderCharacterId ? getCharacterById(message.senderCharacterId) : null;
     if (sender) {
       const senderName = sender.remarkName?.trim() || sender.name;
-      const prefix = `${sender.name}: `;
+      const senderAliases = [sender.name, sender.remarkName?.trim()].filter((value): value is string => !!value);
+      const contentWithoutPrefix = senderAliases.reduce((currentText, alias) => {
+        if (currentText !== message.text) return currentText;
+        const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return currentText.replace(new RegExp(`^${escapedAlias}\\s*[:：]\\s*`), '');
+      }, message.text);
       return {
         senderName,
         avatar: sender.avatar,
-        content: formatMessagePreview(message.text.startsWith(prefix) ? message.text.slice(prefix.length) : message.text),
+        content: formatMessagePreview(contentWithoutPrefix),
       };
     }
 
-    const match = message.text.match(/^([^:]+): (.*)/);
+    const match = message.text.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
     if (match) {
-      const character = members.find((member) => member.name === match[1]);
+      const senderLabel = match[1].trim();
+      const character = getCharacterByName(senderLabel);
       return {
-        senderName: match[1],
+        senderName: character?.remarkName?.trim() || character?.name || senderLabel,
         avatar: character?.avatar || '',
         content: formatMessagePreview(match[2]),
       };
     }
 
     return {
+      senderName: '群成员',
+      avatar: '',
+      content: formatMessagePreview(message.text),
+    };
+  };
+
+  const resolveSenderInfo = (message: ChatMessage) => {
+    if (message.role === 'user') {
+      return {
+        senderId: 'user',
+        senderName: groupUserDisplayName,
+        avatar: userAvatar,
+        content: formatMessagePreview(message.text),
+      };
+    }
+
+    const sender = message.senderCharacterId ? getCharacterById(message.senderCharacterId) : null;
+    if (sender) {
+      const senderName = sender.remarkName?.trim() || sender.name;
+      const senderAliases = [sender.name, sender.remarkName?.trim()].filter((value): value is string => !!value);
+      return {
+        senderId: sender.id,
+        senderName,
+        avatar: sender.avatar,
+        content: formatMessagePreview(stripSenderPrefix(message.text, senderAliases)),
+      };
+    }
+
+    const parsedSender = parseSenderLabel(message.text);
+    if (parsedSender) {
+      const character = getCharacterByName(parsedSender.senderLabel);
+      return {
+        senderId: character?.id || `parsed:${parsedSender.senderLabel}`,
+        senderName: character?.remarkName?.trim() || character?.name || parsedSender.senderLabel,
+        avatar: character?.avatar || '',
+        content: formatMessagePreview(parsedSender.content),
+      };
+    }
+
+    return {
+      senderId: `unknown:${message.timestamp}:${message.text}`,
       senderName: '群成员',
       avatar: '',
       content: formatMessagePreview(message.text),
@@ -293,6 +574,11 @@ export function GroupChatSessionScreen({
     });
   };
 
+  const handleMessageClick = (event: React.MouseEvent, index: number) => {
+    event.preventDefault();
+    openContextMenu(event, index);
+  };
+
   const closeContextMenu = () => setContextMenu(null);
 
   const handleCopy = async () => {
@@ -315,10 +601,10 @@ export function GroupChatSessionScreen({
     }
 
     const authorLabel = contextMenuMessage.role === 'user'
-      ? userName
+      ? groupUserDisplayName
       : resolveSender(contextMenuMessage).senderName;
     setReplyingTo(createQuoteReplyPayload(contextMenuMessage, {
-      userLabel: userName,
+      userLabel: groupUserDisplayName,
       modelLabel: authorLabel,
     }));
     closeContextMenu();
@@ -332,7 +618,7 @@ export function GroupChatSessionScreen({
 
     const result = toggleFavoriteMessage(contextMenuMessage, favorites, {
       id: group.id,
-      name: group.name,
+      name: groupDisplayName,
     });
 
     setFavorites(result.favorites);
@@ -361,6 +647,18 @@ export function GroupChatSessionScreen({
 
     setHistory(deleteMessageAtIndex(history, contextMenuMessageIndex));
     closeContextMenu();
+  };
+
+  const deleteMessageByIndex = (messageIndex: number) => {
+    if (messageIndex < 0) {
+      return;
+    }
+
+    preservedScrollTopRef.current = scrollRef.current?.scrollTop ?? null;
+    setHistory((prev) => deleteMessageAtIndex(prev, messageIndex));
+    if (contextMenuMessageIndex === messageIndex) {
+      closeContextMenu();
+    }
   };
 
   const handleForward = () => {
@@ -403,7 +701,10 @@ export function GroupChatSessionScreen({
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setGroupAvatarDraft((reader.result as string) || '');
+      setGroupSettingsForm((prev) => ({
+        ...prev,
+        avatar: (reader.result as string) || '',
+      }));
     };
     reader.readAsDataURL(file);
 
@@ -426,17 +727,96 @@ export function GroupChatSessionScreen({
   };
 
   const handleSaveGroupInfo = () => {
-    const trimmedName = groupNameDraft.trim();
+    const trimmedName = groupSettingsForm.name.trim();
     if (!trimmedName) return;
 
-    onUpdateGroup({
-      name: trimmedName,
-      avatar: groupAvatarDraft || undefined,
-    });
-    setShowGroupInfo(false);
+    onUpdateGroup(buildGroupSettingsPatch(groupSettingsForm));
   };
 
-  const renderTextWithMentions = (text: string) => {
+  const handleCloseGroupSettings = () => {
+    if (hasGroupInfoChanges && groupSettingsForm.name.trim()) {
+      handleSaveGroupInfo();
+    }
+    setShowGroupSettings(false);
+  };
+
+  const handleInviteMember = async (memberId: string) => {
+    const invitedCharacter = inviteableCharacters.find((character) => character.id === memberId);
+    if (!invitedCharacter || group.memberIds.includes(memberId) || isInvitingMember) {
+      return;
+    }
+
+    setIsInvitingMember(true);
+
+    onUpdateGroup({
+      memberIds: [...group.memberIds, memberId],
+    });
+
+    const invitedName = invitedCharacter.remarkName?.trim() || invitedCharacter.name;
+    const timestamp = Date.now();
+    const noticeMessage: ChatMessage = {
+      role: 'model',
+      text: `[notice] 你邀请了${invitedName}进群`,
+      timestamp,
+      isSystem: true,
+    };
+    const inviteGenerationHistory = buildInviteGenerationHistory(history, invitedName, timestamp);
+
+    setHistory((prev) => [
+      ...prev,
+      noticeMessage,
+    ]);
+
+    if (!activeConfig) {
+      setIsInvitingMember(false);
+      return;
+    }
+
+    try {
+      const responseText = await generateTextFromMessagesWithConfig({
+        activeConfig,
+        messages: buildInviteRuntimeMessages({
+          systemPrompt: buildGroupChatPrompt({
+            sceneInput: buildGroupChatSceneInput({
+              speaker: invitedCharacter,
+              members: [...members, invitedCharacter],
+              group: {
+                ...group,
+                memberIds: [...group.memberIds, invitedCharacter.id],
+              },
+              userName: groupUserDisplayName,
+              history: inviteGenerationHistory,
+              mode: 'invited',
+              directChatHistory,
+            }),
+          }),
+          history: inviteGenerationHistory,
+        }),
+        temperature: 0.7,
+      });
+
+      const normalizedReply = normalizeInvitedReply(responseText, invitedCharacter);
+      if (!normalizedReply) {
+        return;
+      }
+
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: 'model',
+          text: `${invitedCharacter.name}: ${normalizedReply}`,
+          timestamp: timestamp + 1,
+          senderCharacterId: invitedCharacter.id,
+        },
+      ]);
+    } catch (error) {
+      console.error('Failed to generate invited member reply:', error);
+    } finally {
+      setIsInvitingMember(false);
+    }
+  };
+
+  const renderTextWithMentions = (text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
     const parts = text.split(/(@[^\s@]+)/g);
     return parts.map((part, index) => {
       if (!part.startsWith('@')) {
@@ -446,7 +826,7 @@ export function GroupChatSessionScreen({
       return (
         <span
           key={`${part}-${index}`}
-          className="rounded-md bg-blue-50 px-1.5 py-0.5 font-medium text-blue-600"
+          className={variant === 'outgoing' ? 'font-semibold text-white/95' : 'font-medium text-blue-600'}
         >
           {part}
         </span>
@@ -525,20 +905,19 @@ export function GroupChatSessionScreen({
     const currentLength = currentBody.replace(/\s/g, '').length;
     const previousLooksReactive = previousLength > 0 && previousLength <= 8;
     const currentLooksReactive = currentLength > 0 && currentLength <= 8;
-    const currentLooksIndependent = currentLength >= 13 || /[，,；;：:]/.test(currentBody);
+    const currentLooksIndependent = currentLength >= 13 || /[!?？！。]/.test(currentBody);
     const previousWasReply = !!previousMessage.replyTo;
     const currentWasReply = !!currentMessage.replyTo;
     const previousLooksLikeToneLine =
-      /^(啧|啊|哟|得了|不是吧|行啊|诶|欸|喂)(?:\s|$)/.test(previousBody)
-      || /^(这一口|你这|我在看|毕竟|顺便确认|在等)/.test(previousBody);
+      /^(是吗|不是吧|好啊|行啊|这句|我在看|顺便确认|在等)(?:\s|$)/.test(previousBody);
     const previousLooksLikeStandaloneStatement =
       previousLength >= 9
-      && /^(怎么|刚才|还没|老实|既然|那搭档|眼里|现在|这一口|你这|我在看|毕竟)/.test(previousBody);
+      && /^(怎么|刚才|还没|老实说|既然|现在|这句|我在看)/.test(previousBody);
     const currentIsQuestionLike =
-      /(?:吗|没|没有|是不是|要不要|行不行)$/.test(currentBody)
-      || /[\?？]$/.test(currentBody);
-    const currentStartsFreshThought = /^(那|这个|我们|我先|我看|我觉得|她|他|你|行|还有|刚才|不过|反正|其实|顺便|毕竟|在等)/.test(currentBody);
-    const currentIsStandaloneShortBeat = currentLooksReactive && /^(行|好啊|知道了|行吧|收到|可以|也行|对啊|在呢|来了|没事|别急)/.test(currentBody);
+      /(?:有没有|是不是|要不要|行不行)$/.test(currentBody)
+      || /[?？]$/.test(currentBody);
+    const currentStartsFreshThought = /^(那个|这个|我们|我先|我看|我觉得|你们|还有|刚才|不过|反正|其实|顺便|毕竟|在等)/.test(currentBody);
+    const currentIsStandaloneShortBeat = currentLooksReactive && /^(好啊|知道了|行吧|收到|可以|也行|对啊|在呢|来了|没事|别急)/.test(currentBody);
 
     if (previousLooksReactive && currentLooksIndependent) {
       return true;
@@ -583,14 +962,43 @@ export function GroupChatSessionScreen({
             <ChevronLeft size={24} />
           </button>
           <div className="flex flex-col">
-            <h1 className="text-[16px] font-bold text-zinc-900">{group.name}</h1>
+            <h1 className="text-[16px] font-bold text-zinc-900">{groupDisplayName}</h1>
             <span className="text-[11px] text-zinc-500">{participantCount} 人</span>
           </div>
         </div>
-        <button onClick={() => setShowGroupInfo(true)} className="p-2 text-zinc-400">
+        <button onClick={() => setShowGroupSettings(true)} className="p-2 text-zinc-400">
           <MoreVertical size={20} />
         </button>
       </div>
+
+      {groupNotice && isNoticeVisible && (
+        <div className="border-b border-amber-200 bg-amber-50/95 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">群公告</div>
+              <div className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-5 text-amber-900">
+                {groupNotice}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsNoticeVisible(false);
+                try {
+                  localStorage.setItem(buildGroupNoticeDismissKey(group.id, groupNotice), '1');
+                } catch {
+                  // Ignore storage access issues for this lightweight UI state.
+                }
+              }}
+              className="rounded-full p-1 text-amber-700/70 transition-colors hover:bg-amber-100 hover:text-amber-900"
+              aria-label="关闭群公告"
+              title="关闭群公告"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={layoutConfig.messageListClass} ref={scrollRef}>
         {error && (
@@ -598,22 +1006,22 @@ export function GroupChatSessionScreen({
             {error}
           </div>
         )}
-        {history.map((msg, idx) => {
+        {renderedHistory.map((msg, idx) => {
           const isUser = msg.role === 'user';
-          const { senderName, avatar, content } = resolveSender(msg);
+          const { senderId, senderName, avatar, content } = resolveSenderInfo(msg);
           const visualKind = getMessageVisualKind(msg, content);
-          const previousMessage = history[idx - 1];
-          const previousResolved = previousMessage ? resolveSender(previousMessage) : null;
+          const previousMessage = renderedHistory[idx - 1];
+          const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
           const previousVisualKind = previousMessage
             ? getMessageVisualKind(previousMessage, previousResolved?.content || '')
             : null;
           let sameSenderStreak = 0;
           for (let reverseIndex = idx - 1; reverseIndex >= 0; reverseIndex -= 1) {
-            const streakMessage = history[reverseIndex];
+            const streakMessage = renderedHistory[reverseIndex];
             if (
               streakMessage.isSystem
               || streakMessage.role !== msg.role
-              || streakMessage.senderCharacterId !== msg.senderCharacterId
+              || resolveSenderInfo(streakMessage).senderId !== senderId
             ) {
               break;
             }
@@ -633,13 +1041,24 @@ export function GroupChatSessionScreen({
             && !msg.isSystem
             && !previousMessage.isSystem
             && previousMessage.role === msg.role
-            && previousMessage.senderCharacterId === msg.senderCharacterId
+            && previousResolved?.senderId === senderId
             && !shouldShowIndependentBlock;
+
+          const messageKey = `${msg.timestamp}-${msg.role}-${msg.senderCharacterId || senderId}-${idx}`;
 
           if (visualKind === 'notice') {
             return (
-              <div key={idx} className="flex justify-center py-1">
-                <div className="max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
+              <div key={messageKey} className="flex justify-center py-1">
+                <div className="relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
+                  <button
+                    type="button"
+                    onClick={() => deleteMessageByIndex(idx)}
+                    className="absolute right-2 top-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+                    aria-label="删除通知"
+                    title="删除通知"
+                  >
+                    <X size={14} />
+                  </button>
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">NOTICE</div>
                   <div className="text-[14px] leading-6 text-zinc-700">{content.replace(/^\[notice\]\s*/i, '')}</div>
                 </div>
@@ -647,31 +1066,37 @@ export function GroupChatSessionScreen({
             );
           }
 
+          const isPendingMessage = !!msg.isPending;
+
           return (
-            <div key={idx} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'}`}>
+            <div key={messageKey} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'}`}>
               {isGroupedWithPrevious ? (
                 <div className="h-10 w-10 shrink-0" />
               ) : (
                 <GroupMessageAvatar
                   value={isUser ? userAvatar : avatar}
-                  fallbackValue={isUser ? null : 'https://picsum.photos/seed/unknown/200'}
-                  alt={isUser ? userName : senderName}
+                  fallbackValue={undefined}
+                  alt={isUser ? groupUserDisplayName : senderName}
+                  fit={isUser ? 'contain' : 'cover'}
                 />
               )}
               <div className={`flex max-w-[88%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                 {!isUser && !isGroupedWithPrevious && <span className="mb-1 ml-1 text-[11px] text-zinc-400">{senderName}</span>}
                 {msg.replyTo && (
-                  <div className="mb-1 inline-flex max-w-[min(74%,28rem)] items-start gap-1.5 rounded-lg border-l-2 border-zinc-300 bg-zinc-50/80 px-2.5 py-1.5 text-zinc-600">
-                    <Reply size={12} className="mt-0.5 shrink-0 text-zinc-400" />
+                  <div className="mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm">
+                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                     <div className="min-w-0">
-                      <div className="text-[11px] font-medium text-zinc-500">回复 {msg.replyTo.authorLabel}</div>
-                      <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-zinc-500 break-words">
-                        {msg.replyTo.preview || getReplyPreviewText(msg)}
+                      <div className="text-[11px] font-medium text-zinc-500">
+                        回复 {msg.replyTo.authorLabel}
+                      </div>
+                      <div className="mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words">
+                        {getReplyPreviewText(msg)}
                       </div>
                     </div>
                   </div>
                 )}
                 <div
+                  onClick={(event) => handleMessageClick(event, idx)}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     openContextMenu(event, idx);
@@ -688,7 +1113,7 @@ export function GroupChatSessionScreen({
                   className={`relative cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
                       ? `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`
-                      : `${visualKind === 'sticker' ? 'border border-pink-100 bg-pink-50/80 text-zinc-800' : 'border border-zinc-100 bg-white text-zinc-800'} ${isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'}`
+                      : `${visualKind === 'sticker' ? 'border border-pink-100 bg-pink-50/80 text-zinc-800' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : 'border border-zinc-100 bg-white text-zinc-800'} ${isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                   }`}
                 >
                   {msg.imageUrl && (
@@ -709,16 +1134,24 @@ export function GroupChatSessionScreen({
                       {msg.location.address && <div className="mt-0.5">{msg.location.address}</div>}
                     </div>
                   )}
-                  <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
-                    {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''))}
-                  </span>
+                  {msg.isPending && !content ? (
+                    <div className="flex gap-1">
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+                      <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+                      <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+                    </div>
+                  ) : (
+                    <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
+                      {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
-        {isLoading && (
-          <div className="flex gap-3">
+        {isLoading && !pendingMessage && (
+          <div className="mt-3 flex gap-3">
             <div className="h-10 w-10 animate-pulse rounded-full bg-zinc-100" />
             <div className="rounded-2xl rounded-tl-sm border border-zinc-100 bg-white px-4 py-3 shadow-sm">
               <div className="flex gap-1">
@@ -934,7 +1367,7 @@ export function GroupChatSessionScreen({
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-900 transition-transform active:scale-95">
                       <MapPin size={28} />
                     </div>
-                    <span className="text-[12px] text-zinc-600">发定位</span>
+                    <span className="text-[12px] text-zinc-600">发位置</span>
                   </button>
 
                   <button
@@ -993,116 +1426,43 @@ export function GroupChatSessionScreen({
       </AnimatePresence>
 
       <AnimatePresence>
-        {showGroupInfo && (
-          <div className="absolute inset-0 z-[110] flex items-end justify-center bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="flex max-h-[88vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-[18px] font-bold text-zinc-900">群信息</h3>
-                  <p className="mt-1 text-[13px] text-zinc-500">{participantCount} 人</p>
-                </div>
-                <button onClick={() => setShowGroupInfo(false)} className="p-2 text-zinc-400">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="mb-4 rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <GroupMessageAvatar value={groupAvatarDraft} fallbackValue={group.avatar} alt={group.name} />
-                    <button
-                      onClick={() => groupAvatarInputRef.current?.click()}
-                      className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900 text-white shadow-md"
-                    >
-                      <Camera size={14} />
-                    </button>
-                    <input
-                      ref={groupAvatarInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleGroupAvatarUpload}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 text-[13px] text-zinc-500">群名称</div>
-                    <input
-                      value={groupNameDraft}
-                      onChange={(event) => setGroupNameDraft(event.target.value)}
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-[15px] text-zinc-900 outline-none focus:border-zinc-400"
-                      placeholder="请输入群名称"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
-                <div className="text-[15px] font-semibold text-zinc-900">{group.name}</div>
-                <div className="mt-3 flex items-center gap-2 text-[13px] text-zinc-500">
-                  <Users size={16} />
-                  当前成员
-                </div>
-                <div className="mt-3 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <GroupMessageAvatar value={userAvatar} alt={userName} />
-                    <div className="font-medium text-zinc-900">{userName}</div>
-                  </div>
-                  {members.map((member) => (
-                    <div key={member.id} className="flex items-center gap-3">
-                      <GroupMessageAvatar value={member.avatar} alt={member.name} />
-                      <div className="font-medium text-zinc-900">{member.remarkName?.trim() || member.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    if (!window.confirm('确认清空当前群聊记录吗？')) return;
-                    onClearHistory();
-                    setShowGroupInfo(false);
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-700"
-                >
-                  <Trash2 size={16} />
-                  清空聊天记录
-                </button>
-                <button
-                  onClick={() => {
-                    if (!window.confirm('确认退出当前群聊吗？')) return;
-                    setShowGroupInfo(false);
-                    onLeaveGroup();
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-500"
-                >
-                  <LogOut size={16} />
-                  退出群聊
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setShowGroupInfo(false)}
-                  className="rounded-2xl bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSaveGroupInfo}
-                  disabled={!hasGroupInfoChanges || !groupNameDraft.trim()}
-                  className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  保存修改
-                </button>
-              </div>
-            </motion.div>
-          </div>
+        {showGroupSettings && (
+          <>
+            <input
+              ref={groupAvatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleGroupAvatarUpload}
+            />
+              <GroupSettingsScreen
+                groupName={groupDisplayName}
+                formState={groupSettingsForm}
+                memberCount={participantCount}
+                members={groupSettingsMembers}
+                inviteCandidates={groupSettingsInviteCandidates}
+                messages={history}
+                onChange={(patch) => setGroupSettingsForm((prev) => ({ ...prev, ...patch }))}
+                onAvatarPick={() => groupAvatarInputRef.current?.click()}
+                onBack={handleCloseGroupSettings}
+                onInviteMember={handleInviteMember}
+                resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
+                  userName: groupUserDisplayName,
+                  getCharacterById,
+                })}
+                isInvitingMember={isInvitingMember}
+                onClearHistory={() => {
+                  if (!window.confirm('确认清空当前群聊记录吗？')) return;
+                  onClearHistory();
+                setShowGroupSettings(false);
+              }}
+              onLeaveGroup={() => {
+                if (!window.confirm('确认退出当前群聊吗？')) return;
+                setShowGroupSettings(false);
+                onLeaveGroup();
+              }}
+            />
+          </>
         )}
       </AnimatePresence>
 
@@ -1202,3 +1562,4 @@ export function GroupChatSessionScreen({
     </div>
   );
 }
+
