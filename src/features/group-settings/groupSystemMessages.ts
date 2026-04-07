@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatGroup } from '../../types';
+import type { ChatGroup, ChatMessage } from '../../types';
 import type { GroupSettingsFormState } from './types';
 
 function createGroupNoticeMessage(text: string, timestamp: number): ChatMessage {
@@ -11,11 +11,19 @@ function createGroupNoticeMessage(text: string, timestamp: number): ChatMessage 
 }
 
 export function createInviteMemberSystemMessage(invitedName: string, timestamp: number): ChatMessage {
-  return createGroupNoticeMessage(`你邀请了${invitedName}进群`, timestamp);
+  return createGroupNoticeMessage(`你邀请了 ${invitedName} 进群`, timestamp);
 }
 
 export function createRemoveMemberSystemMessage(removedName: string, timestamp: number): ChatMessage {
-  return createGroupNoticeMessage(`你将${removedName}移出了群聊`, timestamp);
+  return createGroupNoticeMessage(`你将 ${removedName} 移出了群聊`, timestamp);
+}
+
+export function createSetAdminSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你将 ${memberName} 设为了管理员`, timestamp);
+}
+
+export function createCancelAdminSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你取消了 ${memberName} 的管理员身份`, timestamp);
 }
 
 export function createLeaveGroupSystemMessage(timestamp: number): ChatMessage {

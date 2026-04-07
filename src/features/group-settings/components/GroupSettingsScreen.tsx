@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import type { ChatMessage } from '../../../types';
+import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
@@ -10,6 +11,7 @@ import { GroupSettingsPage } from './GroupSettingsPage';
 type GroupSettingsScreenProps = {
   groupName: string;
   formState: GroupSettingsFormState;
+  actingRole: GroupMemberRole;
   memberCount: number;
   members: GroupSettingsMemberSummary[];
   inviteCandidates: GroupSettingsMemberSummary[];
@@ -20,9 +22,11 @@ type GroupSettingsScreenProps = {
   onJumpToMessage: (target: { timestamp: number; text: string }) => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
+  onToggleAdmin: (memberId: string) => Promise<void> | void;
   resolveSenderLabel: (message: ChatMessage) => string;
   isInvitingMember?: boolean;
   isRemovingMember?: boolean;
+  isUpdatingAdmin?: boolean;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
 };
@@ -30,6 +34,7 @@ type GroupSettingsScreenProps = {
 export function GroupSettingsScreen({
   groupName,
   formState,
+  actingRole,
   memberCount,
   members,
   inviteCandidates,
@@ -40,9 +45,11 @@ export function GroupSettingsScreen({
   onJumpToMessage,
   onInviteMember,
   onRemoveMember,
+  onToggleAdmin,
   resolveSenderLabel,
   isInvitingMember = false,
   isRemovingMember = false,
+  isUpdatingAdmin = false,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
@@ -95,7 +102,11 @@ export function GroupSettingsScreen({
           members={members.filter((member) => member.id !== 'user')}
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
+          onToggleAdmin={onToggleAdmin}
+          canManageAdmins={actingRole === 'owner'}
+          canRemoveMembers={actingRole === 'owner' || actingRole === 'admin'}
           isRemovingMember={isRemovingMember}
+          isUpdatingAdmin={isUpdatingAdmin}
         />
       ) : null}
 

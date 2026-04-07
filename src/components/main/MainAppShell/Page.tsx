@@ -450,6 +450,7 @@ export function MainApp({
                 memberIds: normalizedMemberIds,
                 groupStage: 'new',
                 allowDirectMemoryInterop: true,
+                adminIds: [],
                 memberRelationSeeds,
                 creatorId: 'user',
                 createdAt: Date.now(),

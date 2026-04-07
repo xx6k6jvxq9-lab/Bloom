@@ -1,4 +1,5 @@
 import type { ChatGroup, Character } from '../../types';
+import type { GroupMemberRole } from './groupRoles';
 
 export type GroupRelationshipOption = NonNullable<ChatGroup['memberRelationshipState']>;
 
@@ -36,4 +37,6 @@ export type GroupSettingsPatch = Pick<
   | 'pinChat'
 >;
 
-export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remarkName' | 'avatar'>;
+export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remarkName' | 'avatar'> & {
+  role: GroupMemberRole;
+};

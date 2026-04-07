@@ -46,10 +46,18 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
 import {
   buildGroupSettingsSystemMessages,
+  createCancelAdminSystemMessage,
   createInviteMemberSystemMessage,
   createLeaveGroupSystemMessage,
   createRemoveMemberSystemMessage,
+  createSetAdminSystemMessage,
 } from '../group-settings/groupSystemMessages';
+import {
+  canManageGroupAdmins,
+  canManageGroupMembers,
+  isProtectedGroupMember,
+  resolveGroupMemberRole,
+} from '../group-settings/groupRoles';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
@@ -280,6 +288,7 @@ export function GroupChatSessionScreen({
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
     timestamp: number;
@@ -307,6 +316,7 @@ export function GroupChatSessionScreen({
   const layoutConfig = getChatLayoutConfig();
   const inputContainerClass = layoutConfig.inputContainerClass.replace('border-t', '').trim();
   const participantCount = members.length + 1;
+  const actingRole = resolveGroupMemberRole(group, 'user');
   const openingSessionKey = `${group.id}:${group.lastTime || 0}`;
   const hasGroupInfoChanges = hasGroupSettingsChanges(group, groupSettingsForm);
   const groupDisplayName = group.groupRemark?.trim() || group.name;
@@ -314,12 +324,13 @@ export function GroupChatSessionScreen({
   const groupNotice = group.groupNotice?.trim() || '';
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
   const groupSettingsMembers = [
-    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined },
+    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
     ...members.map((member) => ({
       id: member.id,
       name: member.name,
       remarkName: member.remarkName,
       avatar: member.avatar,
+      role: resolveGroupMemberRole(group, member.id),
     })),
   ];
   const groupSettingsInviteCandidates = inviteableCharacters.map((character) => ({
@@ -327,6 +338,7 @@ export function GroupChatSessionScreen({
     name: character.name,
     remarkName: character.remarkName,
     avatar: character.avatar,
+    role: 'member' as const,
   }));
   const mentionMatch = input.match(/(?:^|\s)@([^\s@]*)$/);
   const mentionQuery = mentionMatch?.[1] ?? '';
@@ -869,7 +881,7 @@ export function GroupChatSessionScreen({
 
   const handleRemoveMember = async (memberId: string) => {
     const member = members.find((item) => item.id === memberId);
-    if (!member || isRemovingMember) {
+    if (!member || isRemovingMember || !canManageGroupMembers(group, 'user') || isProtectedGroupMember(group, memberId)) {
       return;
     }
 
@@ -882,6 +894,7 @@ export function GroupChatSessionScreen({
 
     onUpdateGroup({
       memberIds: group.memberIds.filter((id) => id !== memberId),
+      adminIds: (group.adminIds || []).filter((id) => id !== memberId),
     });
 
     setHistory((prev) => [
@@ -890,6 +903,32 @@ export function GroupChatSessionScreen({
     ]);
 
     setIsRemovingMember(false);
+  };
+
+  const handleToggleAdmin = async (memberId: string) => {
+    const member = members.find((item) => item.id === memberId);
+    if (!member || isUpdatingAdmin || !canManageGroupAdmins(group, 'user') || isProtectedGroupMember(group, memberId)) {
+      return;
+    }
+
+    const memberName = member.remarkName?.trim() || member.name;
+    const isAdmin = (group.adminIds || []).includes(memberId);
+    setIsUpdatingAdmin(true);
+
+    onUpdateGroup({
+      adminIds: isAdmin
+        ? (group.adminIds || []).filter((id) => id !== memberId)
+        : [...new Set([...(group.adminIds || []), memberId])],
+    });
+
+    setHistory((prev) => [
+      ...prev,
+      isAdmin
+        ? createCancelAdminSystemMessage(memberName, Date.now())
+        : createSetAdminSystemMessage(memberName, Date.now()),
+    ]);
+
+    setIsUpdatingAdmin(false);
   };
 
   const handleLeaveCurrentGroup = () => {
@@ -1541,6 +1580,7 @@ export function GroupChatSessionScreen({
               <GroupSettingsScreen
                 groupName={groupDisplayName}
                 formState={groupSettingsForm}
+                actingRole={actingRole}
                 memberCount={participantCount}
                 members={groupSettingsMembers}
                 inviteCandidates={groupSettingsInviteCandidates}
@@ -1554,23 +1594,25 @@ export function GroupChatSessionScreen({
                 }}
                 onInviteMember={handleInviteMember}
                 onRemoveMember={handleRemoveMember}
+                onToggleAdmin={handleToggleAdmin}
                 resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
                   userName: groupUserDisplayName,
                   getCharacterById,
                 })}
                 isInvitingMember={isInvitingMember}
                 isRemovingMember={isRemovingMember}
+                isUpdatingAdmin={isUpdatingAdmin}
                 onClearHistory={() => {
                   if (!window.confirm('确认清空当前群聊记录吗？')) return;
                   onClearHistory();
-                setShowGroupSettings(false);
-              }}
-              onLeaveGroup={() => {
-                if (!window.confirm('确认退出当前群聊吗？')) return;
-                setShowGroupSettings(false);
-                handleLeaveCurrentGroup();
-              }}
-            />
+                  setShowGroupSettings(false);
+                }}
+                onLeaveGroup={() => {
+                  if (!window.confirm('确认退出当前群聊吗？')) return;
+                  setShowGroupSettings(false);
+                  handleLeaveCurrentGroup();
+                }}
+              />
           </>
         )}
       </AnimatePresence>

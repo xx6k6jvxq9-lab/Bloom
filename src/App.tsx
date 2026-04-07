@@ -321,6 +321,15 @@ function sanitizeChatGroupsWithCharacters(
           ? group.allowDirectMemoryInterop !== false
           : true,
       allowDirectMemoryInteropConfigured: group.allowDirectMemoryInteropConfigured === true,
+      adminIds: Array.from(
+        new Set(
+          (Array.isArray(group.adminIds) ? group.adminIds : []).filter((memberId): memberId is string => (
+            typeof memberId === 'string'
+            && memberId !== group.creatorId
+            && (Array.isArray(group.memberIds) ? group.memberIds : []).includes(memberId)
+          )),
+        ),
+      ),
       muteNotifications: !!group.muteNotifications,
       pinChat: !!group.pinChat,
       groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',

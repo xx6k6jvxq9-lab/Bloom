@@ -1,13 +1,18 @@
 import { ChevronLeft, Users, X } from 'lucide-react';
 import { getDisplayableAssetValue } from '../../persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../persistence/useResolvedPersistentValue';
+import { getGroupRoleLabel } from '../groupRoles';
 import type { GroupSettingsMemberSummary } from '../types';
 
 type GroupMemberManagementPageProps = {
   members: GroupSettingsMemberSummary[];
   onBack: () => void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
+  onToggleAdmin: (memberId: string) => Promise<void> | void;
+  canManageAdmins: boolean;
+  canRemoveMembers: boolean;
   isRemovingMember?: boolean;
+  isUpdatingAdmin?: boolean;
 };
 
 function ResolvedMemberAvatar({
@@ -39,7 +44,11 @@ export function GroupMemberManagementPage({
   members,
   onBack,
   onRemoveMember,
+  onToggleAdmin,
+  canManageAdmins,
+  canRemoveMembers,
   isRemovingMember = false,
+  isUpdatingAdmin = false,
 }: GroupMemberManagementPageProps) {
   return (
     <div className="absolute inset-0 z-[121] flex flex-col bg-zinc-50">
@@ -49,7 +58,7 @@ export function GroupMemberManagementPage({
         </button>
         <div className="flex flex-col">
           <h2 className="text-[16px] font-bold text-zinc-900">管理成员</h2>
-          <span className="text-[11px] text-zinc-500">仅支持移出成员</span>
+          <span className="text-[11px] text-zinc-500">支持设置管理员和移出成员</span>
         </div>
       </div>
 
@@ -66,17 +75,36 @@ export function GroupMemberManagementPage({
                   {member.remarkName?.trim() || member.name}
                 </div>
                 <div className="truncate text-[12px] text-zinc-500">{member.name}</div>
+                <div className="mt-1 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">
+                  {getGroupRoleLabel(member.role)}
+                </div>
               </div>
-              <button
-                type="button"
-                disabled={isRemovingMember}
-                onClick={() => void onRemoveMember(member.id)}
-                className="rounded-full bg-red-50 p-2 text-red-500 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label={`移出${member.remarkName?.trim() || member.name}`}
-                title="移出成员"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                {member.role !== 'owner' ? (
+                  <button
+                    type="button"
+                    disabled={!canManageAdmins || isUpdatingAdmin}
+                    onClick={() => void onToggleAdmin(member.id)}
+                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+                      canManageAdmins && !isUpdatingAdmin
+                        ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                        : 'cursor-not-allowed bg-zinc-100 text-zinc-400'
+                    }`}
+                  >
+                    {member.role === 'admin' ? '取消管理员' : '设为管理员'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!canRemoveMembers || isRemovingMember || member.role === 'owner'}
+                  onClick={() => void onRemoveMember(member.id)}
+                  className="rounded-full bg-red-50 p-2 text-red-500 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={`移出${member.remarkName?.trim() || member.name}`}
+                  title="移出成员"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
