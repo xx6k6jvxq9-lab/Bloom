@@ -16,6 +16,7 @@ type GroupSettingsScreenProps = {
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
   onAvatarPick: () => void;
   onBack: () => void;
+  onJumpToMessage: (target: { timestamp: number; text: string }) => void;
   onInviteMember: (memberId: string) => Promise<void> | void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   resolveSenderLabel: (message: ChatMessage) => string;
@@ -35,6 +36,7 @@ export function GroupSettingsScreen({
   onChange,
   onAvatarPick,
   onBack,
+  onJumpToMessage,
   onInviteMember,
   onRemoveMember,
   resolveSenderLabel,
@@ -79,6 +81,9 @@ export function GroupSettingsScreen({
           groupName={groupName}
           messages={messages}
           onBack={() => setPage('settings')}
+          onSelectResult={(target) => {
+            onJumpToMessage(target);
+          }}
           resolveSenderLabel={resolveSenderLabel}
         />
       ) : null}

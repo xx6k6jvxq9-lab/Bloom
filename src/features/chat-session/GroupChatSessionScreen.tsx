@@ -279,6 +279,10 @@ export function GroupChatSessionScreen({
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
+    timestamp: number;
+    text: string;
+  } | null>(null);
   const [groupSettingsForm, setGroupSettingsForm] = useState(() => createGroupSettingsFormState(group));
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -391,6 +395,37 @@ export function GroupChatSessionScreen({
 
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [history]);
+
+  useEffect(() => {
+    if (!highlightedMessageTarget || !scrollRef.current) {
+      return;
+    }
+
+    const selector = `[data-message-timestamp="${highlightedMessageTarget.timestamp}"]`;
+    const candidates = Array.from(
+      scrollRef.current.querySelectorAll<HTMLElement>(selector),
+    );
+    const targetNode = candidates.find(
+      (node) => node.dataset.messageText === highlightedMessageTarget.text,
+    ) || candidates[0];
+
+    if (!targetNode) {
+      return;
+    }
+
+    targetNode.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const timeoutId = window.setTimeout(() => {
+      setHighlightedMessageTarget((current) => (
+        current
+        && current.timestamp === highlightedMessageTarget.timestamp
+        && current.text === highlightedMessageTarget.text
+          ? null
+          : current
+      ));
+    }, 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedMessageTarget, history]);
 
   useEffect(() => {
     didTryOpeningRef.current = false;
@@ -1108,7 +1143,18 @@ export function GroupChatSessionScreen({
           const isPendingMessage = !!msg.isPending;
 
           return (
-            <div key={messageKey} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'}`}>
+            <div
+              key={messageKey}
+              data-message-timestamp={msg.timestamp}
+              data-message-text={msg.text}
+              className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'} ${
+                highlightedMessageTarget
+                && highlightedMessageTarget.timestamp === msg.timestamp
+                && highlightedMessageTarget.text === msg.text
+                  ? 'rounded-[28px] bg-amber-50/70 px-2 py-2 ring-1 ring-amber-200 transition-all'
+                  : ''
+              }`}
+            >
               {isGroupedWithPrevious ? (
                 <div className="h-10 w-10 shrink-0" />
               ) : (
@@ -1484,6 +1530,10 @@ export function GroupChatSessionScreen({
                 onChange={(patch) => setGroupSettingsForm((prev) => ({ ...prev, ...patch }))}
                 onAvatarPick={() => groupAvatarInputRef.current?.click()}
                 onBack={handleCloseGroupSettings}
+                onJumpToMessage={(target) => {
+                  setShowGroupSettings(false);
+                  setHighlightedMessageTarget(target);
+                }}
                 onInviteMember={handleInviteMember}
                 onRemoveMember={handleRemoveMember}
                 resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
