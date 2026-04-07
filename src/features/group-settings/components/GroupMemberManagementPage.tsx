@@ -1,7 +1,9 @@
-import { ChevronLeft, Users, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronLeft, PencilLine, Users, X } from 'lucide-react';
 import { getDisplayableAssetValue } from '../../persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../persistence/useResolvedPersistentValue';
 import { getGroupRoleLabel } from '../groupRoles';
+import { GroupMemberBadgeEditorSheet } from './GroupMemberBadgeEditorSheet';
 import type { GroupSettingsMemberSummary } from '../types';
 
 type GroupMemberManagementPageProps = {
@@ -9,10 +11,13 @@ type GroupMemberManagementPageProps = {
   onBack: () => void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
+  onUpdateBadge: (memberId: string, payload: { label: string; color: string }) => Promise<void> | void;
   canManageAdmins: boolean;
   canRemoveMembers: boolean;
+  canEditBadges: boolean;
   isRemovingMember?: boolean;
   isUpdatingAdmin?: boolean;
+  isUpdatingBadge?: boolean;
 };
 
 function ResolvedMemberAvatar({
@@ -45,11 +50,17 @@ export function GroupMemberManagementPage({
   onBack,
   onRemoveMember,
   onToggleAdmin,
+  onUpdateBadge,
   canManageAdmins,
   canRemoveMembers,
+  canEditBadges,
   isRemovingMember = false,
   isUpdatingAdmin = false,
+  isUpdatingBadge = false,
 }: GroupMemberManagementPageProps) {
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const editingMember = members.find((member) => member.id === editingMemberId) || null;
+
   return (
     <div className="absolute inset-0 z-[121] flex flex-col bg-zinc-50">
       <div className="flex min-h-[64px] items-center gap-2 border-b border-zinc-100 bg-white px-4 pb-3 pt-12 shadow-sm">
@@ -58,7 +69,7 @@ export function GroupMemberManagementPage({
         </button>
         <div className="flex flex-col">
           <h2 className="text-[16px] font-bold text-zinc-900">管理成员</h2>
-          <span className="text-[11px] text-zinc-500">支持设置管理员和移出成员</span>
+          <span className="text-[11px] text-zinc-500">支持设置头衔、管理员和移出成员</span>
         </div>
       </div>
 
@@ -67,19 +78,45 @@ export function GroupMemberManagementPage({
           {members.map((member) => (
             <div
               key={member.id}
-              className="flex items-center gap-3 rounded-[28px] bg-white px-4 py-4 shadow-[0_8px_32px_rgba(15,23,42,0.06)]"
+              className="rounded-[28px] bg-white px-4 py-4 shadow-[0_8px_32px_rgba(15,23,42,0.06)]"
             >
-              <ResolvedMemberAvatar member={member} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-medium text-zinc-900">
-                  {member.remarkName?.trim() || member.name}
-                </div>
-                <div className="truncate text-[12px] text-zinc-500">{member.name}</div>
-                <div className="mt-1 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">
-                  {getGroupRoleLabel(member.role)}
+              <div className="flex items-center gap-3">
+                <ResolvedMemberAvatar member={member} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14px] font-medium text-zinc-900">
+                    {member.remarkName?.trim() || member.name}
+                  </div>
+                  <div className="truncate text-[12px] text-zinc-500">{member.name}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">
+                      {getGroupRoleLabel(member.role)}
+                    </span>
+                    {member.badgeLabel?.trim() ? (
+                      <span
+                        className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                        style={{ backgroundColor: member.badgeColor || '#22c55e' }}
+                      >
+                        {member.badgeLabel.trim()}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!canEditBadges || isUpdatingBadge}
+                  onClick={() => setEditingMemberId(member.id)}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+                    canEditBadges && !isUpdatingBadge
+                      ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                      : 'cursor-not-allowed bg-zinc-100 text-zinc-400'
+                  }`}
+                >
+                  <PencilLine size={13} />
+                  设置头衔
+                </button>
                 {member.role !== 'owner' ? (
                   <button
                     type="button"
@@ -109,6 +146,19 @@ export function GroupMemberManagementPage({
           ))}
         </div>
       </div>
+
+      {editingMember ? (
+        <GroupMemberBadgeEditorSheet
+          memberName={editingMember.remarkName?.trim() || editingMember.name}
+          initialLabel={editingMember.badgeLabel || ''}
+          initialColor={editingMember.badgeColor || '#22c55e'}
+          onClose={() => setEditingMemberId(null)}
+          onSave={async (payload) => {
+            await onUpdateBadge(editingMember.id, payload);
+            setEditingMemberId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

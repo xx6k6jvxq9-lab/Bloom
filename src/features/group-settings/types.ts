@@ -39,4 +39,6 @@ export type GroupSettingsPatch = Pick<
 
 export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remarkName' | 'avatar'> & {
   role: GroupMemberRole;
+  badgeLabel?: string;
+  badgeColor?: string;
 };

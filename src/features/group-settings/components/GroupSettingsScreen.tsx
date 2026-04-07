@@ -23,10 +23,12 @@ type GroupSettingsScreenProps = {
   onInviteMember: (memberId: string) => Promise<void> | void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
+  onUpdateBadge: (memberId: string, payload: { label: string; color: string }) => Promise<void> | void;
   resolveSenderLabel: (message: ChatMessage) => string;
   isInvitingMember?: boolean;
   isRemovingMember?: boolean;
   isUpdatingAdmin?: boolean;
+  isUpdatingBadge?: boolean;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
 };
@@ -46,10 +48,12 @@ export function GroupSettingsScreen({
   onInviteMember,
   onRemoveMember,
   onToggleAdmin,
+  onUpdateBadge,
   resolveSenderLabel,
   isInvitingMember = false,
   isRemovingMember = false,
   isUpdatingAdmin = false,
+  isUpdatingBadge = false,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
@@ -103,10 +107,13 @@ export function GroupSettingsScreen({
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
           onToggleAdmin={onToggleAdmin}
+          onUpdateBadge={onUpdateBadge}
           canManageAdmins={actingRole === 'owner'}
           canRemoveMembers={actingRole === 'owner' || actingRole === 'admin'}
+          canEditBadges={actingRole === 'owner' || actingRole === 'admin'}
           isRemovingMember={isRemovingMember}
           isUpdatingAdmin={isUpdatingAdmin}
+          isUpdatingBadge={isUpdatingBadge}
         />
       ) : null}
 

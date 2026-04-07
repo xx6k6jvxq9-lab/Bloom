@@ -451,6 +451,7 @@ export function MainApp({
                 groupStage: 'new',
                 allowDirectMemoryInterop: true,
                 adminIds: [],
+                memberBadges: [],
                 memberRelationSeeds,
                 creatorId: 'user',
                 createdAt: Date.now(),

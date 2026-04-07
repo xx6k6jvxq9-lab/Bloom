@@ -26,6 +26,14 @@ export function createCancelAdminSystemMessage(memberName: string, timestamp: nu
   return createGroupNoticeMessage(`你取消了 ${memberName} 的管理员身份`, timestamp);
 }
 
+export function createSetMemberBadgeSystemMessage(memberName: string, badgeLabel: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你给 ${memberName} 设置了头衔 ${badgeLabel}`, timestamp);
+}
+
+export function createClearMemberBadgeSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你清除了 ${memberName} 的群内头衔`, timestamp);
+}
+
 export function createLeaveGroupSystemMessage(timestamp: number): ChatMessage {
   return createGroupNoticeMessage('你退出了群聊', timestamp);
 }

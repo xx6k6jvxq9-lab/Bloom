@@ -67,6 +67,7 @@ import { migrateCharacterShapes } from './features/persistence/migrateCharacterS
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import { sanitizeGroupMemberBadges } from './features/group-settings/memberBadges';
 import {
   acceptCoupleSpaceInviteState,
   buildPersistableCoupleSpacePayload,
@@ -330,6 +331,11 @@ function sanitizeChatGroupsWithCharacters(
           )),
         ),
       ),
+      memberBadges: sanitizeGroupMemberBadges({
+        memberBadges: group.memberBadges,
+        memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+        creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
+      }),
       muteNotifications: !!group.muteNotifications,
       pinChat: !!group.pinChat,
       groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',

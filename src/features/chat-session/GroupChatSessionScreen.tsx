@@ -47,17 +47,21 @@ import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsS
 import {
   buildGroupSettingsSystemMessages,
   createCancelAdminSystemMessage,
+  createClearMemberBadgeSystemMessage,
   createInviteMemberSystemMessage,
   createLeaveGroupSystemMessage,
   createRemoveMemberSystemMessage,
+  createSetMemberBadgeSystemMessage,
   createSetAdminSystemMessage,
 } from '../group-settings/groupSystemMessages';
 import {
   canManageGroupAdmins,
   canManageGroupMembers,
+  getGroupRoleLabel,
   isProtectedGroupMember,
   resolveGroupMemberRole,
 } from '../group-settings/groupRoles';
+import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
@@ -289,6 +293,7 @@ export function GroupChatSessionScreen({
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false);
+  const [isUpdatingBadge, setIsUpdatingBadge] = useState(false);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const [highlightedMessageTarget, setHighlightedMessageTarget] = useState<{
     timestamp: number;
@@ -331,6 +336,8 @@ export function GroupChatSessionScreen({
       remarkName: member.remarkName,
       avatar: member.avatar,
       role: resolveGroupMemberRole(group, member.id),
+      badgeLabel: getGroupMemberBadge(group, member.id)?.label,
+      badgeColor: getGroupMemberBadge(group, member.id)?.color,
     })),
   ];
   const groupSettingsInviteCandidates = inviteableCharacters.map((character) => ({
@@ -339,6 +346,8 @@ export function GroupChatSessionScreen({
     remarkName: character.remarkName,
     avatar: character.avatar,
     role: 'member' as const,
+    badgeLabel: undefined,
+    badgeColor: undefined,
   }));
   const mentionMatch = input.match(/(?:^|\s)@([^\s@]*)$/);
   const mentionQuery = mentionMatch?.[1] ?? '';
@@ -513,6 +522,8 @@ export function GroupChatSessionScreen({
         senderName: groupUserDisplayName,
         avatar: userAvatar,
         content: formatMessagePreview(message.text),
+        badge: null,
+        roleLabel: getGroupRoleLabel(actingRole),
       };
     }
 
@@ -526,9 +537,12 @@ export function GroupChatSessionScreen({
         return currentText.replace(new RegExp(`^${escapedAlias}\\s*[:：]\\s*`), '');
       }, message.text);
       return {
+        senderId: sender.id,
         senderName,
         avatar: sender.avatar,
         content: formatMessagePreview(contentWithoutPrefix),
+        badge: getGroupMemberBadge(group, sender.id),
+        roleLabel: getGroupRoleLabel(resolveGroupMemberRole(group, sender.id)),
       };
     }
 
@@ -537,16 +551,22 @@ export function GroupChatSessionScreen({
       const senderLabel = match[1].trim();
       const character = getCharacterByName(senderLabel);
       return {
+        senderId: character?.id || `parsed:${senderLabel}`,
         senderName: character?.remarkName?.trim() || character?.name || senderLabel,
         avatar: character?.avatar || '',
         content: formatMessagePreview(match[2]),
+        badge: character ? getGroupMemberBadge(group, character.id) : null,
+        roleLabel: character ? getGroupRoleLabel(resolveGroupMemberRole(group, character.id)) : undefined,
       };
     }
 
     return {
+      senderId: `unknown:${message.timestamp}:${message.text}`,
       senderName: '群成员',
       avatar: '',
       content: formatMessagePreview(message.text),
+      badge: null,
+      roleLabel: undefined,
     };
   };
 
@@ -557,6 +577,8 @@ export function GroupChatSessionScreen({
         senderName: groupUserDisplayName,
         avatar: userAvatar,
         content: formatMessagePreview(message.text),
+        badge: null,
+        roleLabel: getGroupRoleLabel(actingRole),
       };
     }
 
@@ -569,6 +591,8 @@ export function GroupChatSessionScreen({
         senderName,
         avatar: sender.avatar,
         content: formatMessagePreview(stripSenderPrefix(message.text, senderAliases)),
+        badge: getGroupMemberBadge(group, sender.id),
+        roleLabel: getGroupRoleLabel(resolveGroupMemberRole(group, sender.id)),
       };
     }
 
@@ -580,6 +604,8 @@ export function GroupChatSessionScreen({
         senderName: character?.remarkName?.trim() || character?.name || parsedSender.senderLabel,
         avatar: character?.avatar || '',
         content: formatMessagePreview(parsedSender.content),
+        badge: character ? getGroupMemberBadge(group, character.id) : null,
+        roleLabel: character ? getGroupRoleLabel(resolveGroupMemberRole(group, character.id)) : undefined,
       };
     }
 
@@ -588,6 +614,8 @@ export function GroupChatSessionScreen({
       senderName: '群成员',
       avatar: '',
       content: formatMessagePreview(message.text),
+      badge: null,
+      roleLabel: undefined,
     };
   };
 
@@ -931,6 +959,34 @@ export function GroupChatSessionScreen({
     setIsUpdatingAdmin(false);
   };
 
+  const handleUpdateBadge = async (memberId: string, payload: { label: string; color: string }) => {
+    const member = members.find((item) => item.id === memberId);
+    if (!member || isUpdatingBadge || !canManageGroupMembers(group, 'user')) {
+      return;
+    }
+
+    const memberName = member.remarkName?.trim() || member.name;
+    const nextLabel = payload.label.trim();
+    const nextColor = payload.color.trim() || '#22c55e';
+    const currentBadges = group.memberBadges || [];
+    const nextBadges = nextLabel
+      ? [
+          ...currentBadges.filter((badge) => badge.memberId !== memberId),
+          { memberId, label: nextLabel, color: nextColor },
+        ]
+      : currentBadges.filter((badge) => badge.memberId !== memberId);
+
+    setIsUpdatingBadge(true);
+    onUpdateGroup({ memberBadges: nextBadges });
+    setHistory((prev) => [
+      ...prev,
+      nextLabel
+        ? createSetMemberBadgeSystemMessage(memberName, nextLabel, Date.now())
+        : createClearMemberBadgeSystemMessage(memberName, Date.now()),
+    ]);
+    setIsUpdatingBadge(false);
+  };
+
   const handleLeaveCurrentGroup = () => {
     if (isLeavingGroup) {
       return;
@@ -1139,7 +1195,7 @@ export function GroupChatSessionScreen({
         )}
         {renderedHistory.map((msg, idx) => {
           const isUser = msg.role === 'user';
-          const { senderId, senderName, avatar, content } = resolveSenderInfo(msg);
+          const { senderId, senderName, avatar, content, badge, roleLabel } = resolveSenderInfo(msg);
           const visualKind = getMessageVisualKind(msg, content);
           const previousMessage = renderedHistory[idx - 1];
           const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
@@ -1223,7 +1279,24 @@ export function GroupChatSessionScreen({
                 />
               )}
               <div className={`flex max-w-[88%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                {!isUser && !isGroupedWithPrevious && <span className="mb-1 ml-1 text-[11px] text-zinc-400">{senderName}</span>}
+                {!isGroupedWithPrevious && (
+                  <div className={`mb-1 flex flex-wrap items-center gap-2 ${isUser ? 'justify-end mr-1' : 'ml-1'}`}>
+                    {badge ? (
+                      <span
+                        className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                        style={{ backgroundColor: badge.color }}
+                      >
+                        {badge.label}
+                      </span>
+                    ) : null}
+                    <span className="text-[11px] text-zinc-400">{senderName}</span>
+                    {roleLabel ? (
+                      <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        {roleLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
                 {msg.replyTo && (
                   <div className="mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm">
                     <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
@@ -1595,6 +1668,7 @@ export function GroupChatSessionScreen({
                 onInviteMember={handleInviteMember}
                 onRemoveMember={handleRemoveMember}
                 onToggleAdmin={handleToggleAdmin}
+                onUpdateBadge={handleUpdateBadge}
                 resolveSenderLabel={(message) => resolveGroupMessageSenderLabel(message, {
                   userName: groupUserDisplayName,
                   getCharacterById,
@@ -1602,6 +1676,7 @@ export function GroupChatSessionScreen({
                 isInvitingMember={isInvitingMember}
                 isRemovingMember={isRemovingMember}
                 isUpdatingAdmin={isUpdatingAdmin}
+                isUpdatingBadge={isUpdatingBadge}
                 onClearHistory={() => {
                   if (!window.confirm('确认清空当前群聊记录吗？')) return;
                   onClearHistory();

@@ -712,6 +712,11 @@ export type ChatGroup = {
   allowDirectMemoryInterop?: boolean;
   allowDirectMemoryInteropConfigured?: boolean;
   adminIds?: string[];
+  memberBadges?: Array<{
+    memberId: string;
+    label: string;
+    color: string;
+  }>;
   muteNotifications?: boolean;
   pinChat?: boolean;
   groupStage?: 'new' | 'warming' | 'familiar';
