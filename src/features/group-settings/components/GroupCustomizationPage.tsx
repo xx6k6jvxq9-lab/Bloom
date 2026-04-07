@@ -2,8 +2,20 @@ import { ChevronLeft, ChevronRight, MessageCircleMore, Image as ImageIcon, Badge
 
 type GroupCustomizationPageProps = {
   onBack: () => void;
+  onOpenBackground: () => void;
   onOpenTitleBadges: () => void;
 };
+
+const TEXT = {
+  title: '\u7fa4\u81ea\u5b9a\u4e49',
+  subtitle: '\u7edf\u4e00\u653e\u7fa4\u91cc\u548c\u89c6\u89c9\u4e2a\u6027\u5316\u76f8\u5173\u7684\u80fd\u529b',
+  backgroundTitle: '\u7fa4\u804a\u5929\u80cc\u666f',
+  backgroundDesc: '\u7ed9\u8fd9\u4e2a\u7fa4\u5355\u72ec\u8bbe\u7f6e\u80cc\u666f\u56fe\uff0c\u652f\u6301\u94fe\u63a5\u3001\u4e0a\u4f20\u548c\u9884\u89c8\u3002',
+  bubbleTitle: '\u7fa4\u6c14\u6ce1\u989c\u8272\u8bbe\u7f6e',
+  bubbleDesc: '\u540e\u9762\u5728\u8fd9\u91cc\u6309\u7528\u6237\u533a\u5206\u7fa4\u6d88\u606f\u6c14\u6ce1\u989c\u8272\uff0c\u4e0d\u76f4\u63a5\u590d\u7528\u5355\u804a\u914d\u7f6e\u3002',
+  badgeTitle: '\u7fa4\u5934\u8854\u8bbe\u7f6e',
+  badgeDesc: '\u5728\u8fd9\u91cc\u7ba1\u7406\u7fa4\u6210\u5458\u5934\u8854\u3001\u989c\u8272\uff0c\u4ee5\u53ca\u540e\u7eed\u6309\u6d3b\u8dc3\u5ea6\u8bbe\u8ba1\u7684\u5934\u8854\u4f53\u7cfb\u3002',
+} as const;
 
 function CustomEntry({
   icon,
@@ -36,6 +48,7 @@ function CustomEntry({
 
 export function GroupCustomizationPage({
   onBack,
+  onOpenBackground,
   onOpenTitleBadges,
 }: GroupCustomizationPageProps) {
   return (
@@ -45,8 +58,8 @@ export function GroupCustomizationPage({
           <ChevronLeft size={24} />
         </button>
         <div className="flex flex-col">
-          <h2 className="text-[16px] font-bold text-zinc-900">群自定义</h2>
-          <span className="text-[11px] text-zinc-500">统一放群个性化相关能力</span>
+          <h2 className="text-[16px] font-bold text-zinc-900">{TEXT.title}</h2>
+          <span className="text-[11px] text-zinc-500">{TEXT.subtitle}</span>
         </div>
       </div>
 
@@ -54,18 +67,19 @@ export function GroupCustomizationPage({
         <div className="space-y-3">
           <CustomEntry
             icon={<ImageIcon size={18} />}
-            title="群聊天背景"
-            description="后续在这里设置群聊专属背景，不和单聊背景混在一起。"
+            title={TEXT.backgroundTitle}
+            description={TEXT.backgroundDesc}
+            onClick={onOpenBackground}
           />
           <CustomEntry
             icon={<MessageCircleMore size={18} />}
-            title="群气泡颜色设置"
-            description="后续在这里按用户区分群气泡颜色，不直接复用单聊气泡配置。"
+            title={TEXT.bubbleTitle}
+            description={TEXT.bubbleDesc}
           />
           <CustomEntry
             icon={<Badge size={18} />}
-            title="群头衔设置"
-            description="在这里管理群成员头衔、颜色和后续按活跃度设计的头衔体系。"
+            title={TEXT.badgeTitle}
+            description={TEXT.badgeDesc}
             onClick={onOpenTitleBadges}
           />
         </div>

@@ -22,6 +22,11 @@ type GroupSettingsPageProps = {
   onLeaveGroup: () => void;
 };
 
+const TEXT = {
+  clearHistory: '\u6e05\u7a7a\u804a\u5929\u8bb0\u5f55',
+  leaveGroup: '\u9000\u51fa\u7fa4\u804a',
+} as const;
+
 export function GroupSettingsPage({
   formState,
   memberCount,
@@ -82,13 +87,13 @@ export function GroupSettingsPage({
               onClick={onClearHistory}
               className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-700"
             >
-              清空聊天记录
+              {TEXT.clearHistory}
             </button>
             <button
               onClick={onLeaveGroup}
               className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-500"
             >
-              退出群聊
+              {TEXT.leaveGroup}
             </button>
           </div>
         </section>

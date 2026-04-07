@@ -700,6 +700,7 @@ export type ChatGroup = {
   id: string;
   name: string;
   avatar?: string;
+  groupBackground?: string;
   memberIds: string[]; // Character IDs
   groupNickname?: string;
   groupNotice?: string;

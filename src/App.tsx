@@ -303,6 +303,7 @@ function sanitizeChatGroupsWithCharacters(
     return chatGroups.map((group) => ({
       ...group,
       name: typeof group.name === 'string' ? group.name.trim() : '',
+      groupBackground: typeof group.groupBackground === 'string' ? group.groupBackground.trim() : undefined,
       groupNickname: typeof group.groupNickname === 'string' ? group.groupNickname.trim() : undefined,
       groupNotice: typeof group.groupNotice === 'string' ? group.groupNotice.trim() : undefined,
       groupRemark: typeof group.groupRemark === 'string' ? group.groupRemark.trim() : undefined,

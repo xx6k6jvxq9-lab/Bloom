@@ -6,6 +6,7 @@ export type GroupRelationshipOption = NonNullable<ChatGroup['memberRelationshipS
 export type GroupSettingsFormState = {
   name: string;
   avatar?: string;
+  groupBackground: string;
   groupNickname: string;
   groupNotice: string;
   groupRemark: string;
@@ -23,6 +24,7 @@ export type GroupSettingsPatch = Pick<
   ChatGroup,
   | 'name'
   | 'avatar'
+  | 'groupBackground'
   | 'groupNickname'
   | 'groupNotice'
   | 'groupRemark'

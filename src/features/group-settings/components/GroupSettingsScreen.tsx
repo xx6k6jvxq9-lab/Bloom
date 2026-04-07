@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import type { ChatMessage } from '../../../types';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
+import { GroupChatBackgroundPage } from './GroupChatBackgroundPage';
 import { GroupCustomizationPage } from './GroupCustomizationPage';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
@@ -35,6 +36,11 @@ type GroupSettingsScreenProps = {
   onLeaveGroup: () => void;
 };
 
+const TEXT = {
+  title: '\u7fa4\u8bbe\u7f6e',
+  peopleSuffix: ' \u4eba',
+} as const;
+
 export function GroupSettingsScreen({
   groupName,
   formState,
@@ -59,7 +65,9 @@ export function GroupSettingsScreen({
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
-  const [page, setPage] = useState<'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'title-badges'>('settings');
+  const [page, setPage] = useState<
+    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'title-badges'
+  >('settings');
 
   return (
     <div className="absolute inset-0 z-[120] flex flex-col bg-zinc-50">
@@ -68,8 +76,8 @@ export function GroupSettingsScreen({
           <ChevronLeft size={24} />
         </button>
         <div className="flex flex-col">
-          <h2 className="text-[16px] font-bold text-zinc-900">群设置</h2>
-          <span className="text-[11px] text-zinc-500">{memberCount} 人</span>
+          <h2 className="text-[16px] font-bold text-zinc-900">{TEXT.title}</h2>
+          <span className="text-[11px] text-zinc-500">{`${memberCount}${TEXT.peopleSuffix}`}</span>
         </div>
       </div>
 
@@ -128,7 +136,16 @@ export function GroupSettingsScreen({
       {page === 'customization' ? (
         <GroupCustomizationPage
           onBack={() => setPage('settings')}
+          onOpenBackground={() => setPage('background')}
           onOpenTitleBadges={() => setPage('title-badges')}
+        />
+      ) : null}
+
+      {page === 'background' ? (
+        <GroupChatBackgroundPage
+          value={formState.groupBackground}
+          onChange={(value) => onChange({ groupBackground: value })}
+          onBack={() => setPage('customization')}
         />
       ) : null}
 

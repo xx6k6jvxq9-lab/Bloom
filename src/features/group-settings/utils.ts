@@ -11,6 +11,7 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
   return {
     name: group.name,
     avatar: group.avatar,
+    groupBackground: group.groupBackground || '',
     groupNickname: group.groupNickname || '',
     groupNotice: group.groupNotice || '',
     groupRemark: group.groupRemark || '',
@@ -29,6 +30,7 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
   return {
     name: state.name.trim(),
     avatar: state.avatar || undefined,
+    groupBackground: toOptionalTrimmedValue(state.groupBackground),
     groupNickname: toOptionalTrimmedValue(state.groupNickname),
     groupNotice: toOptionalTrimmedValue(state.groupNotice),
     groupRemark: toOptionalTrimmedValue(state.groupRemark),
@@ -48,6 +50,7 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
   const patch = buildGroupSettingsPatch(state);
   return patch.name !== group.name
     || (patch.avatar || '') !== (group.avatar || '')
+    || (patch.groupBackground || '') !== (group.groupBackground || '')
     || (patch.groupNickname || '') !== (group.groupNickname || '')
     || (patch.groupNotice || '') !== (group.groupNotice || '')
     || (patch.groupRemark || '') !== (group.groupRemark || '')

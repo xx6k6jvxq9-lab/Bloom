@@ -327,6 +327,8 @@ export function GroupChatSessionScreen({
   const groupDisplayName = group.groupRemark?.trim() || group.name;
   const groupUserDisplayName = group.groupNickname?.trim() || userName;
   const groupNotice = group.groupNotice?.trim() || '';
+  const { resolvedUrl: resolvedGroupBackgroundUrl } = useResolvedPersistentValue(group.groupBackground);
+  const groupBackgroundUrl = getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl);
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
@@ -1187,7 +1189,18 @@ export function GroupChatSessionScreen({
         </div>
       )}
 
-      <div className={layoutConfig.messageListClass} ref={scrollRef}>
+      <div className={`${layoutConfig.messageListClass} relative isolate overflow-hidden`} ref={scrollRef}>
+        {groupBackgroundUrl ? (
+          <>
+            <img
+              src={groupBackgroundUrl}
+              alt="群聊天背景"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-white/60" />
+          </>
+        ) : null}
+        <div className="relative z-10">
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
             {error}
@@ -1377,6 +1390,7 @@ export function GroupChatSessionScreen({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       <div className={inputContainerClass} style={layoutConfig.inputContainerStyle}>
