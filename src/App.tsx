@@ -316,7 +316,11 @@ function sanitizeChatGroupsWithCharacters(
       memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
       currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
       publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
-      allowDirectMemoryInterop: group.allowDirectMemoryInterop !== false,
+      allowDirectMemoryInterop:
+        group.allowDirectMemoryInteropConfigured === true
+          ? group.allowDirectMemoryInterop !== false
+          : true,
+      allowDirectMemoryInteropConfigured: group.allowDirectMemoryInteropConfigured === true,
       muteNotifications: !!group.muteNotifications,
       pinChat: !!group.pinChat,
       groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',

@@ -1,6 +1,12 @@
 import type { ChatGroup } from '../../types';
 import type { GroupSettingsFormState, GroupSettingsPatch } from './types';
 
+function getEffectiveAllowDirectMemoryInterop(group: ChatGroup): boolean {
+  return group.allowDirectMemoryInteropConfigured === true
+    ? group.allowDirectMemoryInterop !== false
+    : true;
+}
+
 export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFormState {
   return {
     name: group.name,
@@ -13,7 +19,7 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     memberRelationshipNote: group.memberRelationshipNote || '',
     currentScene: group.currentScene || '',
     publicFacts: group.publicFacts || '',
-    allowDirectMemoryInterop: group.allowDirectMemoryInterop !== false,
+    allowDirectMemoryInterop: getEffectiveAllowDirectMemoryInterop(group),
     muteNotifications: !!group.muteNotifications,
     pinChat: !!group.pinChat,
   };
@@ -32,6 +38,7 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     currentScene: toOptionalTrimmedValue(state.currentScene),
     publicFacts: toOptionalTrimmedValue(state.publicFacts),
     allowDirectMemoryInterop: state.allowDirectMemoryInterop,
+    allowDirectMemoryInteropConfigured: true,
     muteNotifications: state.muteNotifications,
     pinChat: state.pinChat,
   };
@@ -49,7 +56,7 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
     || (patch.memberRelationshipNote || '') !== (group.memberRelationshipNote || '')
     || (patch.currentScene || '') !== (group.currentScene || '')
     || (patch.publicFacts || '') !== (group.publicFacts || '')
-    || patch.allowDirectMemoryInterop !== (group.allowDirectMemoryInterop !== false)
+    || patch.allowDirectMemoryInterop !== getEffectiveAllowDirectMemoryInterop(group)
     || patch.muteNotifications !== !!group.muteNotifications
     || patch.pinChat !== !!group.pinChat;
 }

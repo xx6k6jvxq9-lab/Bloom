@@ -710,6 +710,7 @@ export type ChatGroup = {
   currentScene?: string;
   publicFacts?: string;
   allowDirectMemoryInterop?: boolean;
+  allowDirectMemoryInteropConfigured?: boolean;
   muteNotifications?: boolean;
   pinChat?: boolean;
   groupStage?: 'new' | 'warming' | 'familiar';

@@ -31,6 +31,7 @@ export type GroupSettingsPatch = Pick<
   | 'currentScene'
   | 'publicFacts'
   | 'allowDirectMemoryInterop'
+  | 'allowDirectMemoryInteropConfigured'
   | 'muteNotifications'
   | 'pinChat'
 >;
