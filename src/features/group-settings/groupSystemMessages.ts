@@ -25,11 +25,17 @@ export function buildGroupSettingsSystemMessages(
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const nextName = state.name.trim();
+  const nextAvatar = state.avatar || '';
+  const previousAvatar = group.avatar || '';
   const nextNotice = state.groupNotice.trim();
   const previousNotice = group.groupNotice?.trim() || '';
 
   if (nextName && nextName !== group.name) {
     messages.push(createGroupNoticeMessage(`你将群名改为“${nextName}”`, timestamp + messages.length));
+  }
+
+  if (nextAvatar !== previousAvatar) {
+    messages.push(createGroupNoticeMessage('你更新了群头像', timestamp + messages.length));
   }
 
   if (nextNotice !== previousNotice) {
