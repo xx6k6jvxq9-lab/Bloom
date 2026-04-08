@@ -496,7 +496,7 @@ export function CharacterProfile({
           </button>
           <button 
             onClick={onChat}
-            className="w-full bg-zinc-900 text-white py-3.5 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-[0.98]"
           >
             <MessageSquare size={18} />
             主动加你
@@ -504,7 +504,7 @@ export function CharacterProfile({
           {false && (
             <button 
               onClick={onAddFriend}
-              className="w-full bg-zinc-900 text-white py-4 rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-transform shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 py-4 text-[16px] font-bold text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-[0.98]"
             >
               <UserPlus size={20} />
               添加好友
@@ -683,7 +683,7 @@ export function AddFriendModal({
               setQuery('');
             }
           }}
-          className="w-full bg-zinc-900 text-white py-3.5 rounded-xl font-bold text-[15px] active:opacity-80 transition-opacity shadow-lg shadow-black/10"
+          className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-200 active:opacity-80"
         >
           添加
         </button>
@@ -735,7 +735,7 @@ export function GroupManagementModal({
                 setNewGroup('');
               }
             }}
-            className="bg-zinc-900 text-white px-4 py-2 rounded-xl font-bold text-[14px] active:opacity-80 shadow-lg shadow-black/10"
+            className="rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-[14px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-200 active:opacity-80"
           >
             添加
           </button>

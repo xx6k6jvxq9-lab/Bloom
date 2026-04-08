@@ -62,6 +62,8 @@ import { usePersistedCharactersBridge } from './features/persistence/usePersiste
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
+import { buildThemeScopedCss } from './features/theme/themeScopedCss';
+import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { loadChatHistoryRecords, mergeGroupSessionsIntoChatGroups } from './features/persistence/chatHistoryStore';
 import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
@@ -1109,6 +1111,13 @@ export default function App() {
     visualSettings: {
       globalBackground: DEFAULT_DESKTOP_WALLPAPER,
       chatOpacity: 1,
+      themeTypography: {
+        importedFonts: [],
+        selectedFontId: '',
+        fontPriority: 'css-only',
+        textColor: '#18181b',
+        previewText: '晚风轻轻吹过，气泡、标题和正文都应该有自己的气质。',
+      },
       desktopIcons: DEFAULT_HOME_ICONS,
       widgets: DEFAULT_HOME_WIDGETS,
       navBar: {
@@ -1142,7 +1151,8 @@ export default function App() {
         cardBorderRadius: 24,
         cardOpacity: 1
       },
-      globalCss: ''
+      globalCss: '',
+      themeScopedCss: {},
     },
     groups: ['家人', '朋友', '同事', '星标'],
     moments: DEFAULT_MOMENTS,
@@ -1419,6 +1429,7 @@ export default function App() {
       setActiveTab('chat');
     }
   };
+  const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
 
   return (
     <div
@@ -1426,7 +1437,9 @@ export default function App() {
         useDesktopStageLayout ? 'md:flex md:min-h-screen md:items-center md:justify-center md:bg-zinc-950 md:p-4' : ''
       }`}
     >
-      <GlobalStyles customCss={appData.visualSettings?.globalCss || ''} />
+      <GlobalStyles
+        customCss={`${themeTypographyCss}\n${appData.visualSettings?.globalCss || ''}\n${buildThemeScopedCss(appData.visualSettings?.themeScopedCss)}`}
+      />
       {/* Phone Container */}
       <div
         id="phone-container"

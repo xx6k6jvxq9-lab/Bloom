@@ -79,7 +79,7 @@ export function GroupBackgroundSection({
                 type="button"
                 onClick={() => onChange({ memberRelationshipState: undefined })}
                 className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
-                  !formState.memberRelationshipState ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'
+                  !formState.memberRelationshipState ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                 }`}
               >
                 不设置
@@ -91,8 +91,8 @@ export function GroupBackgroundSection({
                   onClick={() => onChange({ memberRelationshipState: option.value })}
                   className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
                     formState.memberRelationshipState === option.value
-                      ? 'bg-zinc-900 text-white'
-                      : 'bg-zinc-100 text-zinc-600'
+                      ? 'bg-zinc-100 text-zinc-900 shadow-sm'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                   }`}
                 >
                   {option.label}

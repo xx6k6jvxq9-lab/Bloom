@@ -12,6 +12,16 @@ export function hydrateVisualSettings(
     globalBackground: source?.globalBackground || fallbackGlobalBackground,
     chatOpacity: source?.chatOpacity ?? 1,
     momentsBackground: source?.momentsBackground || '',
+    themeScopedCss: source?.themeScopedCss || {},
+    themeTypography: {
+      importedFonts: source?.themeTypography?.importedFonts || [],
+      selectedFontId: source?.themeTypography?.selectedFontId || '',
+      fontPriority: source?.themeTypography?.fontPriority || 'css-only',
+      textColor: source?.themeTypography?.textColor || '#18181b',
+      previewText:
+        source?.themeTypography?.previewText
+        || '晚风轻轻吹过，气泡、标题和正文都应该有自己的气质。',
+    },
     desktopIcons: source?.desktopIcons || [],
     widgets: source?.widgets || [],
     navBar: {

@@ -230,7 +230,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
           </div>
           <button 
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-2xl text-sm font-bold shadow-lg shadow-zinc-900/20 hover:bg-zinc-800 transition-all active:scale-95"
+            className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
           >
             <Plus size={18} />
             添加对象
@@ -244,10 +244,10 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                className={`px-5 py-2 rounded-full border text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${
                   selectedCategory === cat 
-                    ? 'bg-zinc-900 text-white shadow-lg' 
-                    : 'bg-white text-zinc-400 border border-zinc-100 hover:border-zinc-300'
+                    ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' 
+                    : 'border-zinc-100 bg-white text-zinc-400 hover:border-zinc-300 hover:bg-zinc-50'
                 }`}
               >
                 {cat}
@@ -361,7 +361,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                               <p className="text-[10px] text-zinc-400 line-clamp-1">{char.setting}</p>
                             </div>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shadow-sm ${
-                              charToAdd?.id === char.id ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-300'
+                              charToAdd?.id === char.id ? 'bg-zinc-100 text-zinc-900' : 'bg-white text-zinc-300'
                             }`}>
                               <Shield size={10} />
                             </div>
@@ -378,7 +378,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                               onClick={() => setCategoryToAdd(cat)}
                               className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all ${
                                 categoryToAdd === cat 
-                                  ? 'bg-zinc-900 text-white shadow-lg' 
+                                  ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' 
                                   : 'bg-zinc-50 text-zinc-400 border border-zinc-100 hover:border-zinc-300'
                               }`}
                             >
@@ -391,7 +391,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                       <button 
                         onClick={handleAddExistingChar}
                         disabled={!charToAdd}
-                        className="w-full py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-zinc-900/20 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none"
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95 disabled:opacity-50 disabled:shadow-none"
                       >
                         确认添加
                       </button>
@@ -840,7 +840,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
               <div className="p-4 bg-zinc-50/50">
                 <button 
                   onClick={() => setSelectedDiaryEntry(null)}
-                  className="w-full py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-zinc-900/20 active:scale-95 transition-all"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
                 >
                   确认并关闭
                 </button>
@@ -900,7 +900,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
               <div className="p-4 bg-zinc-50/50">
                 <button 
                   onClick={() => setSelectedScheduleItem(null)}
-                  className="w-full py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-zinc-900/20 active:scale-95 transition-all"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
                 >
                   关闭
                 </button>
@@ -960,7 +960,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
               <div className="p-4 bg-zinc-50/50">
                 <button 
                   onClick={() => setSelectedDynamicsItem(null)}
-                  className="w-full py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-zinc-900/20 active:scale-95 transition-all"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
                 >
                   关闭
                 </button>
@@ -1084,7 +1084,7 @@ function SideNavButton({ active, onClick, icon, label }: { active: boolean; onCl
       onClick={onClick}
       className={`flex flex-col items-center gap-1 transition-all relative group w-full py-1`}
     >
-      <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/30 scale-110' : 'bg-transparent text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'}`}>
+      <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-zinc-100 text-zinc-900 shadow-sm scale-110' : 'bg-transparent text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'}`}>
         {React.cloneElement(icon as React.ReactElement<{ size?: number; strokeWidth?: number }>, { size: 16, strokeWidth: active ? 2.5 : 2 })}
       </div>
       <span className={`text-[8px] font-black transition-colors duration-300 ${active ? 'text-zinc-900' : 'text-zinc-300'} uppercase tracking-tighter whitespace-nowrap`}>

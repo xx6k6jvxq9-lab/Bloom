@@ -90,6 +90,19 @@ export function hasBubbleThemeCss(styleText?: string): boolean {
   return !!trimmed && trimmed.includes('{') && !trimmed.startsWith('{');
 }
 
+function wrapDeclarationsAsCss(styleText: string, selector: string): string {
+  const declarationBody = extractDeclarationBody(styleText);
+  if (!declarationBody) {
+    return '';
+  }
+
+  if (declarationBody.startsWith('{') && declarationBody.endsWith('}')) {
+    return `${selector} ${declarationBody}`;
+  }
+
+  return `${selector} {\n${declarationBody}\n}`;
+}
+
 function scopeSelectorList(selectorList: string, scopeClass: string): string {
   return selectorList
     .split(',')
@@ -106,6 +119,33 @@ export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeCl
 
   return styleText.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
     const scopedSelectors = scopeSelectorList(selectors, scopeClass);
+    return `${prefix} ${scopedSelectors}{`;
+  });
+}
+
+export function buildScopedBubbleVariantCss(
+  styleText: string | undefined,
+  scopeClass: string,
+  variantSelector: string,
+): string {
+  const trimmed = styleText?.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const scopedVariantSelector = `${scopeClass} ${variantSelector}`;
+
+  if (!trimmed.includes('{') || trimmed.startsWith('{')) {
+    return wrapDeclarationsAsCss(trimmed, scopedVariantSelector);
+  }
+
+  return trimmed.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+    const scopedSelectors = selectors
+      .split(',')
+      .map((selector) => selector.trim())
+      .filter(Boolean)
+      .map((selector) => `${scopeClass} ${variantSelector}${selector.startsWith('&') ? selector.slice(1) : ` ${selector}`}`)
+      .join(', ');
     return `${prefix} ${scopedSelectors}{`;
   });
 }

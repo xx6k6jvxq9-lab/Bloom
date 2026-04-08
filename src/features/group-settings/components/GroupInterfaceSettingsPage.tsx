@@ -49,8 +49,8 @@ function OptionGrid({
           onClick={() => onChange(option.value)}
           className={`rounded-xl border px-3 py-2 text-[12px] font-medium transition-colors ${
             value === option.value
-              ? 'border-zinc-900 bg-zinc-900 text-white'
-              : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+              ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
+              : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
           }`}
         >
           {option.label}

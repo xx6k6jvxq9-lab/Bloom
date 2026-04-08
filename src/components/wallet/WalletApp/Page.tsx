@@ -484,25 +484,25 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <div className="grid grid-cols-4 gap-2">
             <button onClick={() => toggleSection('yuebao')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'yuebao' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'yuebao' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
                 <Coins size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">余额宝</span>
             </button>
             <button onClick={() => toggleSection('family')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'family' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'family' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
                 <Users size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">亲属卡</span>
             </button>
             <button onClick={() => toggleSection('bank')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'bank' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'bank' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
                 <CreditCard size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">银行卡</span>
             </button>
             <button onClick={() => toggleSection('password')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'password' ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'password' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
                 <Lock size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">支付密码</span>
@@ -655,7 +655,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button 
                       onClick={handleAddFamilyCard}
                       disabled={!familyCardCharacter || !familyCardLimit}
-                      className="w-full bg-zinc-900 text-white font-medium text-[14px] py-2.5 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50"
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2.5 text-[14px] font-medium text-zinc-900 transition-transform active:scale-[0.98] hover:bg-zinc-200 disabled:opacity-50"
                     >
                       确认赠送
                     </button>
@@ -731,7 +731,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                         <button onClick={() => setIsAddingBankCard(false)} className="flex-1 bg-zinc-100 text-zinc-900 font-medium py-2 rounded-lg">
                           取消
                         </button>
-                        <button onClick={handleAddBankCard} disabled={!newBankName || !newCardNumber} className="flex-1 bg-zinc-900 text-white font-medium py-2 rounded-lg disabled:opacity-50">
+                        <button onClick={handleAddBankCard} disabled={!newBankName || !newCardNumber} className="flex-1 rounded-lg border border-zinc-200 bg-zinc-100 py-2 font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-50">
                           确认添加
                         </button>
                       </div>
@@ -759,7 +759,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                           {paymentPassword ? '已设置支付密码' : '尚未设置支付密码'}
                         </p>
                       </div>
-                      <button onClick={() => setIsSettingPassword(true)} className="w-full text-center px-3 py-3 bg-zinc-900 hover:bg-black rounded-lg text-sm font-medium text-white transition-colors">
+                      <button onClick={() => setIsSettingPassword(true)} className="w-full rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-3 text-center text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
                         {paymentPassword ? '修改支付密码' : '设置支付密码'}
                       </button>
                       {paymentPassword && (
@@ -781,7 +781,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                         <button onClick={() => setIsSettingPassword(false)} className="flex-1 bg-zinc-100 text-zinc-900 font-medium py-2 rounded-lg">
                           取消
                         </button>
-                        <button onClick={handleSetPassword} disabled={!newPassword || newPassword.length < 6} className="flex-1 bg-zinc-900 text-white font-medium py-2 rounded-lg disabled:opacity-50">
+                        <button onClick={handleSetPassword} disabled={!newPassword || newPassword.length < 6} className="flex-1 rounded-lg border border-zinc-200 bg-zinc-100 py-2 font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-50">
                           确认
                         </button>
                       </div>
@@ -875,7 +875,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button 
                       onClick={handleRecharge}
                       disabled={!rechargeAmount}
-                      className="w-full bg-zinc-900 text-white font-medium text-[14px] py-2.5 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:scale-100"
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2.5 text-[14px] font-medium text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 disabled:scale-100"
                     >
                       确认充值
                     </button>
@@ -942,7 +942,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button 
                       onClick={handleWithdraw}
                       disabled={!withdrawAmount || !selectedCardForWithdraw}
-                      className="w-full bg-zinc-900 text-white font-medium text-[14px] py-2.5 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:scale-100"
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2.5 text-[14px] font-medium text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 disabled:scale-100"
                     >
                       确认提现
                     </button>
@@ -1008,7 +1008,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button 
                       onClick={handleYuebaoTransferIn}
                       disabled={!yuebaoAmount}
-                      className="w-full bg-zinc-900 text-white font-medium text-[14px] py-2.5 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:scale-100"
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2.5 text-[14px] font-medium text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 disabled:scale-100"
                     >
                       确认转入
                     </button>
@@ -1075,7 +1075,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button 
                       onClick={handleYuebaoTransferOut}
                       disabled={!yuebaoAmount}
-                      className="w-full bg-zinc-900 text-white font-medium text-[14px] py-2.5 rounded-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:scale-100"
+                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2.5 text-[14px] font-medium text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 disabled:scale-100"
                     >
                       确认转出
                     </button>

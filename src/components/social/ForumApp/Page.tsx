@@ -326,7 +326,7 @@ const ForumCommentItem: React.FC<ForumCommentItemProps> = ({
                   }
                 }}
                 disabled={!replyText.trim()}
-                className={`px-4 py-1.5 rounded-full font-bold text-[14px] transition-all ${replyText.trim() ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
+                className={`px-4 py-1.5 rounded-full font-bold text-[14px] transition-all ${replyText.trim() ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
               >
                 回复
               </button>
@@ -1248,7 +1248,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
               }
             }}
             disabled={!mainReplyText.trim()}
-            className={`px-3 py-1.5 rounded-full font-bold text-[12px] transition-all shrink-0 whitespace-nowrap ${mainReplyText.trim() ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
+            className={`px-3 py-1.5 rounded-full font-bold text-[12px] transition-all shrink-0 whitespace-nowrap ${mainReplyText.trim() ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
           >
             回复
           </button>
@@ -1270,7 +1270,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
           <button className="text-zinc-900 font-bold text-[14px]">草稿</button>
           <button 
             onClick={handlePublish}
-            className={`bg-zinc-900 text-white px-4 py-1.5 rounded-full text-[14px] font-bold ${(!editorTitle.trim() || !editorContent.trim()) ? 'opacity-50' : ''}`}
+            className={`rounded-full border border-zinc-200 bg-zinc-100 px-4 py-1.5 text-[14px] font-bold text-zinc-900 hover:bg-zinc-200 ${(!editorTitle.trim() || !editorContent.trim()) ? 'opacity-50' : ''}`}
           >
             发布
           </button>
@@ -1364,7 +1364,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                     setShowUrlInput(false);
                   }
                 }}
-                className="w-full mt-2 bg-zinc-900 text-white py-1.5 rounded-lg text-xs font-bold"
+                className="mt-2 w-full rounded-lg border border-zinc-200 bg-zinc-100 py-1.5 text-xs font-bold text-zinc-900 hover:bg-zinc-200"
               >
                 添加这些链接
               </button>
@@ -1550,7 +1550,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                   className={`px-5 py-1.5 rounded-full font-bold text-[13px] transition-colors ${
                     isFollowed 
                       ? 'border border-zinc-200 text-zinc-900 hover:bg-zinc-50' 
-                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                      : 'border border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
                   }`}
                 >
                   {isFollowed ? '已关注' : '关注'}
@@ -1753,7 +1753,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
             </div>
             <button 
               onClick={handleUpdateProfile} 
-              className="bg-zinc-900 text-white px-4 py-1.5 rounded-full text-[14px] font-bold"
+              className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-1.5 text-[14px] font-bold text-zinc-900 hover:bg-zinc-200"
             >
               保存
             </button>
@@ -2076,7 +2076,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
             setEditorImages([]);
             setCurrentView('editor');
           }}
-          className="forum-app-fab absolute bottom-20 right-4 w-14 h-14 bg-zinc-900 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-zinc-800 transition-colors z-20"
+          className="forum-app-fab absolute bottom-20 right-4 flex h-14 w-14 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm transition-colors hover:bg-zinc-200 z-20"
         >
           <Plus size={28} strokeWidth={2.5} />
         </button>

@@ -66,7 +66,7 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
-import { buildScopedBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -351,6 +351,16 @@ export function GroupChatSessionScreen({
   const groupRoleBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
   const groupUserBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss);
   const groupBubbleThemeCss = buildScopedBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss, '.chat-bubble-theme-scope');
+  const groupModelBubbleThemeCss = buildScopedBubbleVariantCss(
+    settings.visualSettings?.chat?.modelBubbleStyleCss,
+    '.chat-bubble-theme-scope',
+    '.bot-bubble',
+  );
+  const groupUserBubbleThemeCss = buildScopedBubbleVariantCss(
+    settings.visualSettings?.chat?.userBubbleStyleCss,
+    '.chat-bubble-theme-scope',
+    '.user-bubble',
+  );
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
     ...members.map((member) => ({
@@ -1273,7 +1283,9 @@ export function GroupChatSessionScreen({
 
   return (
     <div className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope">
-      {groupBubbleThemeCss && <style>{groupBubbleThemeCss}</style>}
+      {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss) && (
+        <style>{[groupBubbleThemeCss, groupModelBubbleThemeCss, groupUserBubbleThemeCss].filter(Boolean).join('\n\n')}</style>
+      )}
       {groupBackgroundUrl ? (
         <>
           <img
@@ -1284,7 +1296,7 @@ export function GroupChatSessionScreen({
         </>
       ) : null}
 
-      <div className={groupHeaderClassName} style={groupHeaderStyle}>
+      <div className={`chat-session-header ${groupHeaderClassName}`} style={groupHeaderStyle}>
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
@@ -1378,7 +1390,7 @@ export function GroupChatSessionScreen({
           if (visualKind === 'notice') {
             return (
               <div key={messageKey} className="flex justify-center py-1">
-                <div className="relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
+                <div className="chat-notice-card relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
                   <button
                     type="button"
                     onClick={() => deleteMessageByIndex(idx)}
@@ -1456,7 +1468,7 @@ export function GroupChatSessionScreen({
                   </div>
                 )}
                 {msg.replyTo && (
-                  <div className="mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm">
+                  <div className="chat-reply-preview mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm">
                     <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                     <div className="min-w-0">
                       <div className="text-[11px] font-medium text-zinc-500">
@@ -1483,7 +1495,7 @@ export function GroupChatSessionScreen({
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
-                  className={`${visualKind === 'sticker' ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
+                  className={`${visualKind === 'sticker' ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
                       ? `${visualKind === 'sticker' ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
                       : `${visualKind === 'sticker' ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
@@ -1501,7 +1513,7 @@ export function GroupChatSessionScreen({
                     <img
                       src={msg.imageUrl}
                       alt="群聊图片"
-                      className={`${visualKind === 'sticker' ? 'max-h-36 max-w-[11rem]' : 'max-h-48'} ${visualKind === 'sticker' ? '' : 'mb-2'} rounded-xl object-cover`}
+                      className={`chat-message-image ${visualKind === 'sticker' ? 'max-h-36 max-w-[11rem]' : 'max-h-48'} ${visualKind === 'sticker' ? '' : 'mb-2'} rounded-xl object-cover`}
                     />
                   )}
                   {!msg.imageUrl && visualKind === 'sticker' && (
@@ -1510,7 +1522,7 @@ export function GroupChatSessionScreen({
                     </div>
                   )}
                   {msg.location && (
-                    <div className="mb-2 rounded-xl bg-zinc-100/80 px-3 py-2 text-[12px] text-zinc-600">
+                    <div className="chat-location-inline-card mb-2 rounded-xl bg-zinc-100/80 px-3 py-2 text-[12px] text-zinc-600">
                       <div className="font-medium text-zinc-700">{msg.location.name}</div>
                       {msg.location.address && <div className="mt-0.5">{msg.location.address}</div>}
                     </div>
@@ -1534,7 +1546,7 @@ export function GroupChatSessionScreen({
         {isLoading && !pendingMessage && (
           <div className="mt-3 flex gap-3">
             <div className="h-10 w-10 animate-pulse rounded-full bg-zinc-100" />
-            <div className="rounded-2xl rounded-tl-sm border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+            <div className="chat-loading-bubble rounded-2xl rounded-tl-sm border border-zinc-100 bg-white px-4 py-3 shadow-sm">
               <div className="flex gap-1">
                 <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                 <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
@@ -1546,7 +1558,7 @@ export function GroupChatSessionScreen({
         </div>
       </div>
 
-      <div className={groupFooterClassName} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
+      <div className={`chat-session-footer ${groupFooterClassName}`} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
         {replyingTo && (
           <div className="flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="flex items-center gap-2 truncate">
@@ -1608,7 +1620,7 @@ export function GroupChatSessionScreen({
           {!isVoiceMode && input.trim() ? (
             <button
               onClick={() => void sendText()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-all active:scale-90"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
               disabled={isLoading}
             >
               <Send size={18} />

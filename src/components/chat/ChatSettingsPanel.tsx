@@ -634,7 +634,7 @@ export function ChatSettingsPanel({
                         setShowAvatarInput(false);
                         setTempAvatar('');
                       }}
-                      className="flex-1 bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                      className="flex-1 rounded-lg border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200"
                     >
                       确认
                     </button>
@@ -759,7 +759,7 @@ export function ChatSettingsPanel({
                           onUpdate({ ...character, remarkName: pendingRemarkName });
                           setShowRemarkEditor(false);
                         }}
-                        className="w-full bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                        className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200"
                       >
                         确认
                       </button>
@@ -791,7 +791,7 @@ export function ChatSettingsPanel({
                           onUpdate({ ...character, signature: pendingSignature });
                           setShowSignatureEditor(false);
                         }}
-                        className="w-full bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                        className="w-full rounded-lg border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200"
                       >
                         确认
                       </button>
@@ -987,7 +987,7 @@ export function ChatSettingsPanel({
                         setShowBgInput(false);
                         setTempBg('');
                       }}
-                      className="flex-1 bg-zinc-900 text-white text-[12px] py-2 rounded-lg font-medium"
+                      className="flex-1 rounded-lg border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200"
                     >
                       确认链接
                     </button>
@@ -1056,7 +1056,7 @@ export function ChatSettingsPanel({
                     <div className="text-[14px] text-zinc-700 font-medium">角色气泡 CSS 美化</div>
                     <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖当前角色发出的气泡，不影响全局默认和别的角色。</div>
                   </div>
-                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
+                  <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
                     导入样式
                     <input
                       type="file"
@@ -1134,7 +1134,7 @@ export function ChatSettingsPanel({
                     <div className="text-[14px] text-zinc-700 font-medium">用户气泡 CSS 美化</div>
                     <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖你在当前单聊里发出的气泡，不影响全局默认。</div>
                   </div>
-                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
+                  <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
                     导入样式
                     <input
                       type="file"
@@ -1296,7 +1296,7 @@ export function ChatSettingsPanel({
                           <button
                             onClick={handleSummarizeShortTerm}
                             disabled={isShortTermSummarizing}
-                            className="px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
+                            className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
                           >
                             {isShortTermSummarizing ? '总结中...' : '刷新近期总结'}
                           </button>
@@ -1328,7 +1328,7 @@ export function ChatSettingsPanel({
                           <button
                             onClick={handleSummarizeLongTerm}
                             disabled={isLongTermSummarizing}
-                            className="px-3 py-1.5 bg-zinc-900 text-white text-[12px] rounded-lg active:bg-black disabled:opacity-50"
+                            className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
                           >
                             {isLongTermSummarizing ? '总结中...' : '生成长期画像'}
                           </button>
@@ -1588,7 +1588,7 @@ export function ChatSettingsPanel({
                     type="button"
                     onClick={handleImportSharedStickerLinks}
                     disabled={!sharedStickerLinksDraft.trim()}
-                    className="mt-3 w-full rounded-xl bg-zinc-900 px-3 py-3 text-[14px] font-medium text-white transition disabled:cursor-not-allowed disabled:bg-zinc-300"
+                    className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                   >
                     导入这些共享链接
                   </button>
@@ -1666,7 +1666,7 @@ export function ChatSettingsPanel({
                   type="button"
                   onClick={handleImportCharacterStickerLinks}
                   disabled={!characterStickerLinksDraft.trim()}
-                  className="mt-3 w-full rounded-xl bg-zinc-900 px-3 py-3 text-[14px] font-medium text-white transition disabled:cursor-not-allowed disabled:bg-zinc-300"
+                  className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                 >
                   导入这些角色链接
                 </button>

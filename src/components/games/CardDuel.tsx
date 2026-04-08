@@ -209,7 +209,7 @@ export const CardDuel: React.FC<CardDuelProps> = ({ character, onClose, onSendTo
             <div className="flex flex-col gap-2 w-full">
               <button
                 onClick={initGame}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors shadow-lg shadow-zinc-900/20"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-100 py-3 font-bold text-zinc-900 transition-colors hover:bg-zinc-200 shadow-sm"
               >
                 <RotateCcw size={18} />
                 再来一局

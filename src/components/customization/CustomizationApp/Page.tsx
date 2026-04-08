@@ -6,7 +6,8 @@ import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
-import { buildScopedBubbleThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from '../../../features/chat-session/bubbleStyleCss';
+import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
+import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
 type CustomizationAppProps = {
   visualSettings: VisualSettings;
@@ -101,7 +102,7 @@ export function CustomizationApp({
             />
           )}
           {activeTab === 'theme' && (
-            <ThemeSettings settings={visualSettings} setSettings={setVisualSettings} />
+            <ThemeCustomizationSection settings={visualSettings} setSettings={setVisualSettings} />
           )}
           {activeTab === 'data' && (
             <DataSettings 
@@ -194,7 +195,7 @@ function ImageUploadControl({
         </label>
         <button 
           onClick={handleConfirm}
-          className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-medium transition-colors whitespace-nowrap"
+          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
         >
           确认
         </button>
@@ -276,7 +277,7 @@ function PersistentImageUploadControl({
           onClick={() => {
             void handleConfirm();
           }}
-          className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-medium transition-colors whitespace-nowrap"
+          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
         >
           确认
         </button>
@@ -476,7 +477,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             key={tab}
             onClick={() => setSubTab(tab)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-              subTab === tab ? 'bg-zinc-100 text-zinc-900' : 'bg-white border border-zinc-200 text-zinc-500'
+              subTab === tab ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-white border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
             }`}
           >
             {tab === 'wallpaper' && '壁纸'}
@@ -615,7 +616,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <h3 className="text-sm font-bold text-zinc-800">小卡片组件</h3>
             <button 
               onClick={() => setShowWidgetPicker(prev => !prev)}
-              className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-colors hover:bg-zinc-200"
             >
               <Plus size={16} />
             </button>
@@ -835,7 +836,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
 
                       <button
                         onClick={() => setEditingWidgetId(null)}
-                        className="w-full py-2.5 bg-zinc-900 text-white rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all mt-2"
+                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-zinc-100 py-2.5 text-xs font-bold text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
                       >
                         确认添加 / 保存修改
                       </button>
@@ -1031,7 +1032,6 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(settings.chat?.avatarFrameUrl || '');
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
-  const [bubbleCssTab, setBubbleCssTab] = useState<'theme' | 'model' | 'user'>('theme');
   const headerStyles = [
     { value: 'default', label: '默认' },
     { value: 'glass', label: '毛玻璃' },
@@ -1044,18 +1044,6 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
     { value: 'solid', label: '纯色' },
     { value: 'transparent', label: '透明' }
   ];
-  const previewBubbleThemeCss = buildScopedBubbleThemeCss(settings.chat?.bubbleStyleCss, '.bubble-theme-preview');
-  const previewHasThemeCss = hasBubbleThemeCss(settings.chat?.bubbleStyleCss);
-  const previewCommonBubbleStyle = parseBubbleStyleCss(settings.chat?.bubbleStyleCss);
-  const previewModelBubbleStyle = {
-    ...previewCommonBubbleStyle,
-    ...parseBubbleStyleCss(settings.chat?.modelBubbleStyleCss),
-  };
-  const previewUserBubbleStyle = {
-    ...previewCommonBubbleStyle,
-    ...parseBubbleStyleCss(settings.chat?.userBubbleStyleCss),
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -1064,7 +1052,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
             key={tab}
             onClick={() => setSubTab(tab)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-              subTab === tab ? 'bg-zinc-100 text-zinc-900' : 'bg-white border border-zinc-200 text-zinc-500'
+              subTab === tab ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-white border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
             }`}
           >
             {tab === 'avatar' && '头像微调'}
@@ -1128,149 +1116,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
       )}
 
       {subTab === 'bubble' && (
-        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
-          <h3 className="text-sm font-bold text-zinc-800">消息气泡设置</h3>
-          <div className="bubble-theme-preview space-y-2 rounded-xl bg-zinc-50 p-4">
-            {previewBubbleThemeCss && <style>{previewBubbleThemeCss}</style>}
-            <div className="flex justify-end">
-              <div
-                style={{
-                  ...(previewHasThemeCss ? {} : {
-                    borderRadius: settings.chat.messageBorderRadius,
-                    backgroundColor: settings.chat.messageBackgroundColorUser,
-                  }),
-                  ...previewUserBubbleStyle,
-                }}
-                className="chat-bubble message-bubble user-bubble right px-4 py-2 text-sm text-white"
-              >
-                <span aria-hidden="true" className="corner bubble-corner pointer-events-none absolute inset-0" />
-                你好！
-              </div>
-            </div>
-            <div className="flex justify-start" style={{ marginTop: settings.chat.messageSpacing }}>
-              <div 
-                style={{ 
-                  ...(previewHasThemeCss ? {} : {
-                    borderRadius: settings.chat.messageBorderRadius,
-                    backgroundColor: settings.chat.messageBackgroundColorModel,
-                    backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                  }),
-                  ...previewModelBubbleStyle,
-                }} 
-                className="chat-bubble message-bubble bot-bubble left border border-zinc-200 px-4 py-2 text-sm text-zinc-800"
-              >
-                <span aria-hidden="true" className="corner bubble-corner pointer-events-none absolute inset-0" />
-                你好，有什么可以帮你的？
-              </div>
-            </div>
-          </div>
-
-          <PersistentImageUploadControl 
-            label="气泡背景图片" 
-            value={settings.chat.messageBackgroundImageUrl || ''} 
-            onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, messageBackgroundImageUrl: val } })} 
-          />
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500 flex justify-between">
-              <span>圆角</span>
-              <span>{settings.chat.messageBorderRadius}px</span>
-            </label>
-            <input type="range" min="0" max="32" value={settings.chat.messageBorderRadius} onChange={e => setSettings({...settings, chat: {...settings.chat, messageBorderRadius: Number(e.target.value)}})} className="w-full accent-zinc-900" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-500 flex justify-between">
-              <span>间距</span>
-              <span>{settings.chat.messageSpacing}px</span>
-            </label>
-            <input type="range" min="4" max="32" value={settings.chat.messageSpacing} onChange={e => setSettings({...settings, chat: {...settings.chat, messageSpacing: Number(e.target.value)}})} className="w-full accent-zinc-900" />
-          </div>
-          <div className="space-y-3">
-            <div className="inline-flex rounded-2xl bg-zinc-100 p-1">
-              {[
-                { key: 'theme', label: '主题代码' },
-                { key: 'model', label: '对方气泡' },
-                { key: 'user', label: '用户气泡' },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => setBubbleCssTab(item.key as 'theme' | 'model' | 'user')}
-                  className={`rounded-2xl px-4 py-2 text-[13px] font-medium transition-colors ${
-                    bubbleCssTab === item.key ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-600'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {bubbleCssTab === 'theme' && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-500">气泡主题 CSS</label>
-                    <p className="mt-1 text-xs text-zinc-500">支持整套主题代码，能同时识别用户气泡、对方气泡、伪元素和 `.corner` 装饰锚点。</p>
-                  </div>
-                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
-                    导入主题
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".css,.txt"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: String(reader.result || '') } });
-                          e.target.value = '';
-                        };
-                        reader.readAsText(file, 'utf-8');
-                      }}
-                    />
-                  </label>
-                </div>
-                <textarea
-                  value={settings.chat.bubbleStyleCss || ''}
-                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: e.target.value } })}
-                  placeholder={'/* 支持 .chat-bubble / .message-bubble / .user-bubble / .bot-bubble */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  border-radius: 22px;\n}'}
-                  className="h-56 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                  spellCheck="false"
-                />
-              </div>
-            )}
-
-            {bubbleCssTab === 'model' && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500">角色气泡 CSS</label>
-                <p className="text-xs text-zinc-500">给对方或群成员的气泡额外覆盖样式。</p>
-                <textarea
-                  value={settings.chat.modelBubbleStyleCss || ''}
-                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, modelBubbleStyleCss: e.target.value } })}
-                  placeholder={'box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);\nborder-radius: 22px;'}
-                  className="h-40 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                  spellCheck="false"
-                />
-              </div>
-            )}
-
-            {bubbleCssTab === 'user' && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500">用户气泡 CSS</label>
-                <p className="text-xs text-zinc-500">给自己发送的气泡额外覆盖样式。</p>
-                <textarea
-                  value={settings.chat.userBubbleStyleCss || ''}
-                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, userBubbleStyleCss: e.target.value } })}
-                  placeholder={'box-shadow: 0 12px 28px rgba(59, 130, 246, 0.18);\nborder-radius: 22px;'}
-                  className="h-40 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                  spellCheck="false"
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        <ChatBubbleThemeCustomizationSection settings={settings} setSettings={setSettings} />
       )}
 
       {subTab === 'background' && (
@@ -1345,7 +1191,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 </div>
                 <div className="flex gap-2 flex-row-reverse">
                    <div 
-                     className="bg-zinc-900 text-white p-2 rounded-2xl rounded-tr-none shadow-sm"
+                     className="rounded-2xl rounded-tr-none border border-zinc-200 bg-zinc-100 p-2 text-zinc-900 shadow-sm"
                      style={{ fontSize: settings.chat?.fontSize ?? 14 }}
                    >
                      界面缩放预览
@@ -1386,7 +1232,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   })}
                   className={`py-2 px-3 rounded-xl text-xs font-medium border transition-colors ${
                     (settings.chat?.headerStyle || 'default') === style.value 
-                      ? 'border-zinc-900 bg-zinc-900 text-white' 
+                      ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' 
                       : 'border-zinc-200 bg-zinc-50 text-zinc-600'
                   }`}
                 >
@@ -1408,7 +1254,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   })}
                   className={`py-2 px-3 rounded-xl text-xs font-medium border transition-colors ${
                     (settings.chat?.footerStyle || 'default') === style.value
-                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
                       : 'border-zinc-200 bg-zinc-50 text-zinc-600'
                   }`}
                 >
@@ -1544,40 +1390,6 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
   );
 }
 
-// --- Theme Settings ---
-function ThemeSettings({ settings, setSettings }: any) {
-  return (
-    <div className="space-y-6">
-      <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
-        <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2">
-          <Type size={16} className="text-zinc-900" />
-          CSS 实时写入
-        </h3>
-        <p className="text-xs text-zinc-500">支持代码注入、语法高亮、全局 CSS 变量定义。</p>
-        <textarea
-          value={settings.globalCss}
-          onChange={e => setSettings({ ...settings, globalCss: e.target.value })}
-          placeholder=":root {&#10;  --primary-color: #3b82f6;&#10;}"
-          className="w-full h-48 px-4 py-3 bg-zinc-900 text-green-400 font-mono text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-500"
-          spellCheck="false"
-        />
-      </div>
-
-      <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
-        <h3 className="text-sm font-bold text-zinc-800">主题导入/导出</h3>
-        <div className="flex gap-3">
-          <button className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-100 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-200 transition-colors">
-            <Upload size={16} /> 导入 .theme
-          </button>
-          <button className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-colors">
-            <Download size={16} /> 导出主题
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --- Data Settings ---
 function DataSettings({ onReset, appData, setAppData, settings, setSettings }: any) {
   const [activeTab, setActiveTab] = useState<'chat' | 'profile' | 'world' | 'apps'>('chat');
@@ -1697,7 +1509,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             onClick={() => toggleModule(mod.id)}
             className={`p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all relative ${
               selectedModules.includes(mod.id)
-                ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg scale-[1.02]'
+                ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-md scale-[1.02]'
                 : 'bg-white border-zinc-100 text-zinc-600 hover:bg-zinc-50'
             }`}
           >
@@ -1760,7 +1572,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               input.onchange = (e: any) => handleImport(e);
               input.click();
             }}
-            className="flex flex-col items-center gap-2 p-4 bg-zinc-900 text-white rounded-3xl shadow-lg active:scale-95 transition-transform"
+            className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
           >
             <RefreshCw size={24} className={isImporting ? 'animate-spin' : ''} />
             <span className="text-[14px] font-bold">导入恢复</span>
@@ -1807,7 +1619,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all whitespace-nowrap ${
                   activeTab === tab.id 
-                    ? 'bg-zinc-900 text-white shadow-md' 
+                    ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' 
                     : 'bg-white border border-zinc-200 text-zinc-500'
                 }`}
               >

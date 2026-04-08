@@ -113,10 +113,27 @@ export type DesktopCustomization = {
   fontWeight?: string;
 };
 
+export type ThemeFontAsset = {
+  id: string;
+  name: string;
+  source: string;
+  format?: string;
+};
+
+export type ThemeTypographySettings = {
+  importedFonts?: ThemeFontAsset[];
+  selectedFontId?: string;
+  fontPriority?: 'css-only' | 'imported-first' | 'lock-imported';
+  textColor?: string;
+  previewText?: string;
+};
+
 export type VisualSettings = {
   globalBackground: string;
   chatOpacity: number;
   momentsBackground?: string;
+  themeScopedCss?: Record<string, string>;
+  themeTypography?: ThemeTypographySettings;
   // New settings
   desktopIcons: DesktopIconConfig[];
   widgets: WidgetConfig[];

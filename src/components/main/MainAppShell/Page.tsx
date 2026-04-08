@@ -216,7 +216,7 @@ export function MainApp({
           {activeTab === 'chat' && (
             <button 
               onClick={() => setShowChatQuickActions((prev) => !prev)}
-              className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-white active:scale-90 transition-transform"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
             >
               <Plus size={20} />
             </button>
@@ -224,7 +224,7 @@ export function MainApp({
           {activeTab === 'contacts' && (
             <button 
               onClick={() => setShowAddFriend(true)}
-              className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-white active:scale-90 transition-transform"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
             >
               <UserPlus2 size={18} />
             </button>

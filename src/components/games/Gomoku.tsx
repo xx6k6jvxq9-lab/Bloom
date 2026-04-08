@@ -269,7 +269,7 @@ export const Gomoku: React.FC<GomokuProps> = ({ character, onClose, onSendToChat
             </button>
             <button
               onClick={shareResult}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors shadow-lg shadow-zinc-900/20"
+               className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-100 py-3 font-bold text-zinc-900 transition-colors hover:bg-zinc-200 shadow-sm"
             >
               <MessageSquare size={18} />
               分享战报

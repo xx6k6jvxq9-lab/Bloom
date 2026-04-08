@@ -93,7 +93,7 @@ export function MePage({
                   </div>
                   <button 
                     onClick={() => setEditingProfile(true)}
-                    className="absolute bottom-0 right-0 w-7 h-7 bg-zinc-900 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm active:scale-90 transition-transform"
+                    className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-zinc-100 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-90"
                   >
                     <Pencil size={12} />
                   </button>
@@ -281,7 +281,7 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
             setIsBatchMode(!isBatchMode);
             setSelectedIds([]);
           }} 
-          className={`px-3 py-1.5 rounded-xl text-[13px] font-medium transition-colors ${isBatchMode ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'}`}
+          className={`px-3 py-1.5 rounded-xl border text-[13px] font-medium transition-colors ${isBatchMode ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-transparent bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
         >
           {isBatchMode ? '取消批量' : '批量操作'}
         </button>
@@ -419,7 +419,7 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
                   }
                   setTempUrl(''); 
                 }}
-                className="bg-zinc-900 text-white px-3 py-2 rounded-xl text-[12px]"
+                className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
               >
                 确认
               </button>
@@ -475,7 +475,7 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
             </button>
             <button 
               onClick={() => { setUserProfile(tempProfile); onClose(); }}
-              className="flex-1 py-3.5 rounded-2xl bg-zinc-900 text-white font-bold text-[15px]"
+              className="flex-1 rounded-2xl border border-zinc-200 bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-900 hover:bg-zinc-200"
             >
               保存
             </button>
@@ -567,7 +567,7 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
               setIsBatchMode(!isBatchMode);
               setSelectedMaskIds([]);
             }} 
-            className={`px-3 py-1.5 rounded-xl text-[13px] font-medium transition-colors ${isBatchMode ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'}`}
+            className={`px-3 py-1.5 rounded-xl border text-[13px] font-medium transition-colors ${isBatchMode ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-transparent bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
           >
             {isBatchMode ? '取消批量' : '批量操作'}
           </button>
@@ -1068,8 +1068,8 @@ function FavoritesManager({ favorites, moments, collectedDates, characters, onBa
             onClick={() => setActiveCategory(c)}
             className={`px-4 py-1.5 rounded-full text-[12px] font-medium whitespace-nowrap transition-all duration-200 ${
               activeCategory === c 
-                ? 'bg-zinc-900 text-white shadow-md scale-105' 
-                : 'bg-white text-zinc-500 border border-zinc-200 hover:border-zinc-400'
+                ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm scale-105' 
+                : 'bg-white text-zinc-500 border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50'
             }`}
           >
             {c}
@@ -1378,7 +1378,11 @@ export function WorldBookManager({
               <button 
                 key={c}
                 onClick={() => setActiveCategory(c)}
-                className={`px-4 py-1.5 rounded-full text-[12px] font-medium whitespace-nowrap transition-colors ${activeCategory === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-500'}`}
+                className={`px-4 py-1.5 rounded-full border text-[12px] font-medium whitespace-nowrap transition-colors ${
+                  activeCategory === c
+                    ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
+                    : 'border-transparent bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+                }`}
               >
                 {c}
               </button>

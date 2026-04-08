@@ -322,7 +322,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                           onClick={() => setLocation(option)}
                           className={`rounded-[15px] border px-3 py-3 text-center text-[14px] transition-all ${
                             location === option
-                              ? 'border-zinc-900 bg-zinc-900 text-white'
+                              ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
                               : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                           }`}
                         >
@@ -351,7 +351,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                           onClick={() => setScenario(option)}
                           className={`rounded-[14px] border px-4 py-2.5 text-[14px] transition-all ${
                             scenario === option
-                              ? 'border-zinc-900 bg-zinc-900 text-white'
+                              ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
                               : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                           }`}
                         >
@@ -380,7 +380,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                           onClick={() => setMood(option)}
                           className={`rounded-[14px] px-4 py-2.5 text-[14px] transition-all ${
                             mood === option
-                              ? 'bg-zinc-900 text-white'
+                              ? 'bg-zinc-100 text-zinc-900 shadow-sm'
                               : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                           }`}
                         >
@@ -420,7 +420,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[14px] bg-zinc-900 px-3.5 text-[13px] font-medium text-white"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[14px] border border-zinc-200 bg-zinc-100 px-3.5 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
                     >
                       <ImagePlus size={14} />
                       上传本地图片
@@ -465,7 +465,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                 disabled={!location.trim() || !scenario.trim()}
                 className={`h-12 w-full rounded-[16px] text-[15px] font-semibold transition-all ${
                   location.trim() && scenario.trim()
-                    ? 'bg-zinc-900 text-white shadow-[0_10px_22px_rgba(24,24,27,0.14)]'
+                    ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-200'
                     : 'bg-zinc-200 text-zinc-400'
                 }`}
               >

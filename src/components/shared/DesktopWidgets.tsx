@@ -549,7 +549,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
                 <SkipBack size={18 * scale} className={`${subTextColor} hover:text-zinc-900 transition-colors cursor-pointer active:scale-90`} />
                 <button 
                   onClick={() => setIsPlaying(!isPlaying)}
-                  className={`rounded-full bg-zinc-900 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-zinc-500/20`}
+                  className={`flex items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm transition-all hover:scale-105 hover:bg-zinc-200 active:scale-95`}
                   style={{ width: `${36 * scale}px`, height: `${36 * scale}px` }}
                 >
                   {isPlaying ? <Pause size={16 * scale} className="fill-current" /> : <Play size={16 * scale} className="fill-current ml-0.5" />}

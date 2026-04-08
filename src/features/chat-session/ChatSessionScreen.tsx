@@ -28,14 +28,14 @@ import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
-import { buildScopedBubbleThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
 
 function getDirectReplyPreviewClass() {
-  return 'mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm';
+  return 'chat-reply-preview mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm';
 }
 
 function getDirectReplyPreviewTextClass() {
@@ -887,6 +887,16 @@ export function ChatSessionScreen({
     || resolvedChatBackgroundUrl
     || '';
   const directBubbleThemeCss = buildScopedBubbleThemeCss(visualSettings?.chat?.bubbleStyleCss, '.chat-bubble-theme-scope');
+  const directModelBubbleThemeCss = buildScopedBubbleVariantCss(
+    visualSettings?.chat?.modelBubbleStyleCss,
+    '.chat-bubble-theme-scope',
+    '.bot-bubble',
+  );
+  const directUserBubbleThemeCss = buildScopedBubbleVariantCss(
+    visualSettings?.chat?.userBubbleStyleCss,
+    '.chat-bubble-theme-scope',
+    '.user-bubble',
+  );
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
@@ -981,7 +991,9 @@ export function ChatSessionScreen({
         zoom: visualSettings?.chat?.uiScale ?? 1
       }}
     >
-      {directBubbleThemeCss && <style>{directBubbleThemeCss}</style>}
+      {(directBubbleThemeCss || directModelBubbleThemeCss || directUserBubbleThemeCss) && (
+        <style>{[directBubbleThemeCss, directModelBubbleThemeCss, directUserBubbleThemeCss].filter(Boolean).join('\n\n')}</style>
+      )}
       {/* Header */}
       {multiSelectMode ? (
         <div 
@@ -1358,7 +1370,7 @@ export function ChatSessionScreen({
                                   <PersistentImage
                                     value={msg.imageUrl}
                                     alt={isStickerMessage(msg) ? '表情包' : '聊天图片'}
-                                    className={`rounded-xl object-contain ${
+                                    className={`chat-message-image rounded-xl object-contain ${
                                       isStickerMessage(msg)
                                         ? 'max-h-36 max-w-[11rem]'
                                         : 'max-h-60 max-w-[18rem]'
@@ -1527,37 +1539,37 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className="w-56 bg-white rounded-xl overflow-hidden shadow-sm border border-zinc-200 cursor-pointer hover:bg-zinc-50 transition-colors"
+                                  className="chat-location-card w-56 bg-white rounded-xl overflow-hidden shadow-sm border border-zinc-200 cursor-pointer hover:bg-zinc-50 transition-colors"
                                 >
-                                  <div className="p-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
+                                  <div className="chat-location-card-body p-3">
+                                    <div className="chat-location-card-header flex items-center gap-2 mb-2">
+                                      <div className="chat-location-card-icon w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
                                         <MapPin size={18} />
                                       </div>
-                                      <div className="flex flex-col min-w-0">
+                                      <div className="chat-location-card-meta flex flex-col min-w-0">
                                         <span className="text-sm font-bold text-zinc-900 truncate">{msg.location.name}</span>
                                         {msg.location.address && <span className="text-[10px] text-zinc-500 truncate">{msg.location.address}</span>}
                                       </div>
                                     </div>
-                                    <div className="aspect-video rounded-lg overflow-hidden bg-zinc-100 relative">
+                                    <div className="chat-location-card-map aspect-video rounded-lg overflow-hidden bg-zinc-100 relative">
                                       <img 
                                         src={`https://picsum.photos/seed/${msg.location.name}/400/225`} 
-                                        className="w-full h-full object-cover" 
+                                        className="chat-message-image w-full h-full object-cover" 
                                         referrerPolicy="no-referrer"
                                       />
                                       <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                                        <div className="chat-location-card-pin w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg">
                                           <MapPin size={16} />
                                         </div>
                                       </div>
                                       {msg.location.isVirtual && (
-                                        <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full">
+                                        <div className="chat-location-card-badge absolute top-2 right-2 bg-black/50 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full">
                                           虚定位
                                         </div>
                                       )}
                                     </div>
                                   </div>
-                                  <div className="px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                  <div className="chat-location-card-footer px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
                                     <span className="text-[10px] text-zinc-400">位置分享</span>
                                     <ChevronRight size={12} className="text-zinc-400" />
                                   </div>
@@ -1582,7 +1594,7 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`inline-block max-w-[min(84%,36rem)] rounded-2xl overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
+                                  className={`chat-inner-voice-card inline-block max-w-[min(84%,36rem)] rounded-2xl overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
                                     msg.role === 'user' 
                                       ? 'bg-white border-zinc-200' 
                                       : 'bg-rose-50/95 border-rose-100'
@@ -1666,18 +1678,18 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className="w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity"
+                                  className="chat-transfer-card w-60 rounded-xl overflow-hidden shadow-sm cursor-pointer active:opacity-90 transition-opacity"
                                 >
-                                  <div className={`${cardBgClass} p-3.5 flex items-center gap-3`}>
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${cardIconClass}`}>
+                                  <div className={`${cardBgClass} chat-transfer-card-header p-3.5 flex items-center gap-3`}>
+                                    <div className={`chat-transfer-card-icon w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${cardIconClass}`}>
                                       {isReceived ? <Check size={24} /> : isRejected ? <X size={24} /> : <Banknote size={24} />}
                                     </div>
-                                    <div className="flex flex-col min-w-0">
+                                    <div className="chat-transfer-card-content flex flex-col min-w-0">
                                       <span className={`text-[16px] font-bold ${amountClass}`}>￥{amount}</span>
                                       <span className={`text-[12px] truncate ${labelClass}`}>{cardLabel}</span>
                                     </div>
                                   </div>
-                                  <div className={`p-2 border border-t-0 ${cardBodyClass}`}>
+                                  <div className={`chat-transfer-card-footer p-2 border border-t-0 ${cardBodyClass}`}>
                                     <div className="flex items-center justify-between gap-3 px-1">
                                       <span className={`text-[10px] ${footerTextClass}`}>{`转账给 ${transferTargetName}`}</span>
                                       {canManualReceive && (
@@ -1710,7 +1722,7 @@ export function ChatSessionScreen({
             <div className="flex gap-2.5">
               <PersistentImage value={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
               <div 
-                className="chat-bubble message-bubble bot-bubble left border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                className="chat-bubble message-bubble bot-bubble left chat-loading-bubble border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                 style={{
                   ...getDirectTextBubbleStyle({
                     role: 'model',
@@ -1739,7 +1751,7 @@ export function ChatSessionScreen({
 
       {/* Input */}
       <div 
-        className={footerClassName}
+        className={`chat-session-footer ${footerClassName}`}
         style={{ 
           ...layoutConfig.inputContainerStyle,
           ...footerStyleObj
