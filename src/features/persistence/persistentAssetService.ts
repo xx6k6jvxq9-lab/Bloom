@@ -102,13 +102,81 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function dataUrlToBlob(dataUrl: string): Blob {
+  const match = dataUrl.match(/^data:([^;,]+)(?:;[^,]+)?,(.+)$/i);
+  if (!match?.[1] || !match?.[2]) {
+    throw new Error('无效的 data URL');
+  }
+
+  const mimeType = match[1];
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function blobToImage(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('图片解码失败'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+async function convertBlobToPngDataUrl(blob: Blob): Promise<string> {
+  const image = await blobToImage(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('无法创建画布上下文');
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}
+
+function isGeminiFriendlyImageMimeType(mimeType: string): boolean {
+  return mimeType === 'image/png' || mimeType === 'image/jpeg';
+}
+
+async function normalizeModelImageDataUrl(dataUrl: string): Promise<string> {
+  const blob = dataUrlToBlob(dataUrl);
+  if (isGeminiFriendlyImageMimeType(blob.type)) {
+    return dataUrl;
+  }
+
+  return convertBlobToPngDataUrl(blob);
+}
+
 export async function resolveValueToModelInput(value: string | null | undefined): Promise<string | null> {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
 
   if (isDirectDisplayValue(trimmed)) {
-    return trimmed;
+    if (/^data:/i.test(trimmed)) {
+      return normalizeModelImageDataUrl(trimmed);
+    }
+
+    const response = await fetch(trimmed);
+    const blob = await response.blob();
+    if (isGeminiFriendlyImageMimeType(blob.type)) {
+      return blobToDataUrl(blob);
+    }
+
+    return convertBlobToPngDataUrl(blob);
   }
 
   const parsedRef = parseUploadedAssetRef(trimmed);
@@ -121,7 +189,11 @@ export async function resolveValueToModelInput(value: string | null | undefined)
     return null;
   }
 
-  return blobToDataUrl(record.blob);
+  if (isGeminiFriendlyImageMimeType(record.blob.type)) {
+    return blobToDataUrl(record.blob);
+  }
+
+  return convertBlobToPngDataUrl(record.blob);
 }
 
 export async function removeAssetByRef(ref: string): Promise<void> {
