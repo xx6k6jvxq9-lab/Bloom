@@ -35,9 +35,11 @@ export function GroupChatSessionContainer({
   const members = getGroupMembers(group);
   const inviteableCharacters = characters.filter((character) => !group.memberIds.includes(character.id));
   const availableCustomStickers = Array.from(
-    new Set(
-      characters.flatMap((character) => character.stickers || []).filter((sticker): sticker is string => !!sticker),
-    ),
+    new Set([
+      ...(settings.sharedStickers || []),
+      ...characters.flatMap((character) => character.stickers || []),
+    ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
+      .map((sticker) => sticker.trim())),
   );
 
   return (
