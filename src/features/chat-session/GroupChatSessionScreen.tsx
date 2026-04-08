@@ -248,7 +248,18 @@ function GroupMessageImage({
 }
 
 function isStickerMessage(message: ChatMessage, content: string) {
-  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test(content.trim());
+  if (!message.imageUrl) {
+    return false;
+  }
+
+  if (typeof message.stickerLabel === 'string' && message.stickerLabel.trim().length > 0) {
+    return true;
+  }
+
+  const normalizedText = message.text.trim();
+  const normalizedContent = content.trim();
+  return /(?:^|[:：]\s*)\[(?:sticker|表情包)\]/i.test(normalizedText)
+    || /^\[(?:sticker|表情包)\]/i.test(normalizedContent);
 }
 
 function getReadableTextColor(backgroundColor: string): string {
