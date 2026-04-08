@@ -168,6 +168,10 @@ const formatMessagePreview = (text: string | undefined): string => {
   return text;
 };
 
+const stripVisualMessageMarker = (text: string) => (
+  text.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim()
+);
+
 function formatPendingGroupText(text: string): string {
   return stripAssistantSpeakerPrefix(text, []);
 }
@@ -1542,15 +1546,26 @@ export function GroupChatSessionScreen({
                 >
                   {visualKind !== 'sticker' && <BubbleThemeAnchors />}
                   {msg.imageUrl && (
-                    <GroupMessageImage
-                      value={msg.imageUrl}
-                      alt={visualKind === 'sticker' ? '表情包' : '群聊图片'}
-                      className={`chat-message-image rounded-xl object-contain ${
-                        visualKind === 'sticker'
-                          ? 'max-h-36 max-w-[11rem]'
-                          : 'mb-2 max-h-60 max-w-[18rem]'
-                      }`}
-                    />
+                    <>
+                      <GroupMessageImage
+                        value={msg.imageUrl}
+                        alt={visualKind === 'sticker' ? '表情包' : '群聊图片'}
+                        className={`chat-message-image rounded-xl object-contain ${
+                          visualKind === 'sticker'
+                            ? 'max-h-36 max-w-[11rem]'
+                            : 'mb-2 max-h-60 max-w-[18rem]'
+                        }`}
+                      />
+                      {(() => {
+                        const visualText = stripVisualMessageMarker(content);
+                        if (!visualText) return null;
+                        return (
+                          <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
+                            {renderTextWithMentions(visualText, isUser ? 'outgoing' : 'incoming')}
+                          </span>
+                        );
+                      })()}
+                    </>
                   )}
                   {!msg.imageUrl && visualKind === 'sticker' && (
                     <div className="mb-2 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[11px] font-medium text-pink-500">
@@ -1563,17 +1578,18 @@ export function GroupChatSessionScreen({
                       {msg.location.address && <div className="mt-0.5">{msg.location.address}</div>}
                     </div>
                   )}
-                  {msg.isPending && !content ? (
+                  {!msg.imageUrl && msg.isPending && !content ? (
                     <div className="flex gap-1">
                       <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                     </div>
-                  ) : (
+                  ) : !msg.imageUrl ? (
                     <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
                       {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
                     </span>
-                  )}
+                  ) : null
+                  }
                 </div>
               </div>
             </div>
