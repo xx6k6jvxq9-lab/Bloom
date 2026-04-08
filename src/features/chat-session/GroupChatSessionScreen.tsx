@@ -230,6 +230,27 @@ function GroupStickerPreview({
   return <img src={src} alt={alt} className="h-full w-full object-cover" />;
 }
 
+function GroupMessageImage({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+
+  if (!src) return null;
+
+  return <img src={src} alt={alt} className={className} />;
+}
+
+function isStickerMessage(message: ChatMessage, content: string) {
+  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test(content.trim());
+}
+
 function getReadableTextColor(backgroundColor: string): string {
   const normalized = backgroundColor.trim().replace('#', '');
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
@@ -1166,7 +1187,7 @@ export function GroupChatSessionScreen({
       return 'notice' as const;
     }
 
-    if (message.imageUrl || content.startsWith('[sticker]')) {
+    if (isStickerMessage(message, content) || content.startsWith('[sticker]')) {
       return 'sticker' as const;
     }
 
@@ -1510,10 +1531,14 @@ export function GroupChatSessionScreen({
                 >
                   {visualKind !== 'sticker' && <BubbleThemeAnchors />}
                   {msg.imageUrl && (
-                    <img
-                      src={msg.imageUrl}
-                      alt="群聊图片"
-                      className={`chat-message-image ${visualKind === 'sticker' ? 'max-h-36 max-w-[11rem]' : 'max-h-48'} ${visualKind === 'sticker' ? '' : 'mb-2'} rounded-xl object-cover`}
+                    <GroupMessageImage
+                      value={msg.imageUrl}
+                      alt={visualKind === 'sticker' ? '表情包' : '群聊图片'}
+                      className={`chat-message-image rounded-xl object-contain ${
+                        visualKind === 'sticker'
+                          ? 'max-h-36 max-w-[11rem]'
+                          : 'mb-2 max-h-60 max-w-[18rem]'
+                      }`}
                     />
                   )}
                   {!msg.imageUrl && visualKind === 'sticker' && (
