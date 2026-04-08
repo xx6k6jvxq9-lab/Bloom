@@ -17,7 +17,24 @@ const STICKER_LABEL_PATTERNS: Array<{ label: string; patterns: RegExp[] }> = [
   { label: '可爱卖萌', patterns: [/可爱/u, /呆呆/u, /卖萌/u, /萌/u, /cute/i, /adorable/i] },
   { label: '喜欢', patterns: [/喜欢/u, /爱你/u, /爱心/u, /kiss/i, /love/i, /heart/i] },
   { label: '吃醋', patterns: [/吃醋/u, /酸/u, /醋/u, /jealous/i] },
+  { label: '亲亲', patterns: [/亲亲/u, /么么/u, /啵啵/u, /kisskiss/i, /smooch/i] },
+  { label: '求安慰', patterns: [/安慰/u, /哄我/u, /抱紧/u, /求抱抱/u, /comfort/i] },
+  { label: '求关注', patterns: [/理我/u, /看看我/u, /在吗/u, /attention/i, /notice me/i] },
+  { label: '期待', patterns: [/期待/u, /等你/u, /想见/u, /looking[\s-]?forward/i, /cant wait/i] },
+  { label: '得意', patterns: [/得意/u, /骄傲/u, /神气/u, /proud/i, /showoff/i] },
+  { label: '认错', patterns: [/认错/u, /道歉/u, /对不起/u, /sorry/i, /apolog/i] },
+  { label: '安慰', patterns: [/安慰你/u, /摸摸/u, /别难过/u, /there there/i, /patpat/i] },
+  { label: '鼓励', patterns: [/加油/u, /鼓励/u, /你可以/u, /fighting/i, /cheer up/i] },
+  { label: '犯困', patterns: [/晚安/u, /困困/u, /睡觉/u, /good night/i, /sleepy/i] },
+  { label: '懵', patterns: [/懵/u, /呆住/u, /傻眼/u, /blank/i, /stunned/i] },
+  { label: '冷漠', patterns: [/冷漠/u, /冷淡/u, /哦/u, /ok then/i, /whatever/i] },
+  { label: '耍赖', patterns: [/耍赖/u, /不管/u, /就要/u, /赖着/u] },
+  { label: '阴阳怪气', patterns: [/阴阳怪气/u, /呵呵/u, /哟/u, /sarcas/i] },
+  { label: '害怕', patterns: [/害怕/u, /怕怕/u, /吓死/u, /scared/i, /afraid/i] },
+  { label: '庆祝', patterns: [/庆祝/u, /撒花/u, /过年/u, /celebrat/i, /hooray/i] },
 ];
+
+const STICKER_SOURCE_TOKEN_SPLIT = /[^a-z0-9\u4e00-\u9fa5]+/iu;
 
 function normalizeStickerSource(source: string): string {
   const trimmed = source.trim();
@@ -30,15 +47,25 @@ function normalizeStickerSource(source: string): string {
   }
 }
 
-function inferFromSource(source?: string): string | undefined {
-  if (!source) return undefined;
-  if (source.startsWith('data:')) return undefined;
+function extractSourceTokens(source?: string): string[] {
+  if (!source || source.startsWith('data:')) return [];
 
   const normalized = normalizeStickerSource(source);
-  if (!normalized) return undefined;
+  if (!normalized) return [];
+
+  return normalized
+    .split(STICKER_SOURCE_TOKEN_SPLIT)
+    .map(token => token.trim())
+    .filter(Boolean);
+}
+
+function inferFromSource(source?: string): string | undefined {
+  const normalized = source ? normalizeStickerSource(source) : '';
+  const tokens = extractSourceTokens(source);
+  if (!normalized && tokens.length === 0) return undefined;
 
   for (const entry of STICKER_LABEL_PATTERNS) {
-    if (entry.patterns.some((pattern) => pattern.test(normalized))) {
+    if (entry.patterns.some((pattern) => pattern.test(normalized) || tokens.some(token => pattern.test(token)))) {
       return entry.label;
     }
   }
