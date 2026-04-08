@@ -67,6 +67,7 @@ import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { useSpeechRecognitionInput } from './useSpeechRecognitionInput';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -492,6 +493,7 @@ export function GroupChatSessionScreen({
     error,
     pendingMessage,
     sendText,
+    sendSpeechTranscript,
     sendImageMessage,
     sendStickerMessage,
     sendLocationMessage,
@@ -519,6 +521,11 @@ export function GroupChatSessionScreen({
     userName: groupUserDisplayName,
     directChatHistory,
     activeConfig,
+  });
+  const { isRecording, startRecording, stopRecording } = useSpeechRecognitionInput({
+    onTranscript: async (transcript) => {
+      await sendSpeechTranscript(transcript);
+    },
   });
   const renderedHistory = pendingMessage
     ? [...history, {
@@ -1636,9 +1643,23 @@ export function GroupChatSessionScreen({
 
           <div className={`flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
             {isVoiceMode ? (
-              <div className={`flex h-10 w-full items-center justify-center rounded-xl text-[14px] ${groupFooterControlTone.voiceButton}`}>
-                按住说话
-              </div>
+              <button
+                onPointerDown={startRecording}
+                onPointerUp={stopRecording}
+                onPointerCancel={stopRecording}
+                onPointerLeave={() => {
+                  if (isRecording) {
+                    stopRecording();
+                  }
+                }}
+                className={`flex h-10 w-full items-center justify-center rounded-xl text-[14px] transition-all active:scale-[0.98] select-none ${
+                  isRecording
+                    ? 'bg-zinc-200 text-zinc-800'
+                    : groupFooterControlTone.voiceButton
+                }`}
+              >
+                {isRecording ? '松开 发送' : '按住 说话'}
+              </button>
             ) : (
               <>
 	                <textarea

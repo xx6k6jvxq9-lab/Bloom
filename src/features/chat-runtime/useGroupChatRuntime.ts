@@ -47,6 +47,7 @@ type UseGroupChatRuntimeResult = {
     text: string;
   } | null;
   sendText: () => Promise<void>;
+  sendSpeechTranscript: (transcript: string) => Promise<void>;
   sendImageMessage: (base64String: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
@@ -2198,6 +2199,26 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, input, isLoading, replyingTo, setError, submitUserMessage]);
 
+  const sendSpeechTranscript = useCallback(async (transcript: string) => {
+    const trimmedTranscript = transcript.trim();
+    if (!trimmedTranscript || isLoading) return;
+    if (!hasActiveConfig) {
+      setError('\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u53ef\u7528\u7684 API');
+      return;
+    }
+
+    setInput('');
+    await submitUserMessage({
+      message: {
+        role: 'user',
+        text: trimmedTranscript,
+        timestamp: Date.now(),
+        ...(replyingTo ? { replyTo: replyingTo } : {}),
+      },
+      promptText: trimmedTranscript,
+    });
+  }, [hasActiveConfig, isLoading, replyingTo, setError, setInput, submitUserMessage]);
+
   const sendImageMessage = useCallback(async (base64String: string) => {
     if (isLoading || !hasActiveConfig) return;
 
@@ -2255,6 +2276,7 @@ export function useGroupChatRuntime({
     error,
     pendingMessage,
     sendText: handleSend,
+    sendSpeechTranscript,
     sendImageMessage,
     sendStickerMessage,
     sendLocationMessage,
