@@ -99,7 +99,7 @@ function extractStickerEntriesFromText(raw: string): string[] {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const urlRegex = /https?:\/\/[^\s,]+/gi;
+  const urlRegex = /https?:\/\/[^\s,)\]"'<>]+/gi;
   const entries: string[] = [];
 
   for (const line of lines) {
@@ -110,12 +110,12 @@ function extractStickerEntriesFromText(raw: string): string[] {
     }
 
     const csvParts = line
-      .split(',')
+      .split(/[,\t|]/)
       .map((part) => part.trim())
       .filter(Boolean);
 
     if (csvParts.length > 0) {
-      entries.push(...csvParts.filter((part) => /^https?:\/\//i.test(part)));
+      entries.push(...csvParts.flatMap((part) => part.match(urlRegex) || []));
     }
   }
 
