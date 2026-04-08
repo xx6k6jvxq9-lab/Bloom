@@ -84,6 +84,7 @@ export type ChatCustomization = {
   messageSpacing: number;
   bubbleStyleCss?: string;
   headerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
+  footerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
   uiScale?: number;
   fontSize?: number;
 };
@@ -701,6 +702,10 @@ export type ChatGroup = {
   name: string;
   avatar?: string;
   groupBackground?: string;
+  headerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
+  headerOpacity?: number;
+  footerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
+  footerOpacity?: number;
   memberIds: string[]; // Character IDs
   groupNickname?: string;
   groupNotice?: string;
@@ -813,6 +818,7 @@ export type ApiConfig = {
 export type AppSettings = {
   activeConfigId: string;
   configs: ApiConfig[];
+  sharedStickers?: string[];
 };
 
 export type WalletCard = {

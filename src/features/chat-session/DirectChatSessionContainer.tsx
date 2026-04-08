@@ -26,6 +26,7 @@ type DirectChatSessionContainerProps = {
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   settings: AppSettings;
+  setSettings: (settings: AppSettings) => void;
   onBack: () => void;
   userAvatar: string;
   userName: string;
@@ -60,6 +61,7 @@ export function DirectChatSessionContainer({
   updateCharacter,
   patchCharacter,
   settings,
+  setSettings,
   onBack,
   userAvatar,
   userName,
@@ -112,6 +114,7 @@ export function DirectChatSessionContainer({
       perception={perception}
       coupleSpace={coupleSpace}
       settings={settings}
+      onUpdateSettings={setSettings}
       onBack={onBack}
       userAvatar={userAvatar}
       userName={userName}

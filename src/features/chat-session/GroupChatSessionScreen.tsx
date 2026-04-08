@@ -65,14 +65,9 @@ import {
 import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
+import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
-
-const DEFAULT_LOCATIONS = [
-  { name: '我的当前位置', address: '成都市 锦江区 春熙路', isVirtual: false },
-  { name: '公司', address: '高新区 天府大道', isVirtual: true },
-  { name: '家', address: '武侯区', isVirtual: true },
-];
 
 const AUTO_OPENING_DEDUPE_WINDOW_MS = 1500;
 const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
@@ -334,6 +329,10 @@ export function GroupChatSessionScreen({
   const groupNotice = group.groupNotice?.trim() || '';
   const { resolvedUrl: resolvedGroupBackgroundUrl } = useResolvedPersistentValue(group.groupBackground);
   const groupBackgroundUrl = getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl);
+  const headerStyleType = group.headerStyle || 'default';
+  const headerOpacity = group.headerOpacity ?? 0.92;
+  const footerStyleType = group.footerStyle || 'default';
+  const footerOpacity = group.footerOpacity ?? 0.92;
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
@@ -367,6 +366,63 @@ export function GroupChatSessionScreen({
       })
     : [];
   const showMentionPicker = mentionMatch !== null && mentionCandidates.length > 0;
+  let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 pt-12 shadow-sm';
+  const groupHeaderStyle: React.CSSProperties = {};
+
+  if (headerStyleType === 'default') {
+    groupHeaderClassName += ' border-zinc-100 backdrop-blur-md';
+    groupHeaderStyle.backgroundColor = `rgba(255, 255, 255, ${headerOpacity})`;
+  } else if (headerStyleType === 'glass') {
+    groupHeaderClassName += ' border-white/40 backdrop-blur-xl';
+    groupHeaderStyle.backgroundColor = `rgba(255, 255, 255, ${headerOpacity})`;
+  } else if (headerStyleType === 'solid') {
+    groupHeaderClassName += ' border-zinc-200';
+    groupHeaderStyle.backgroundColor = `rgba(244, 244, 245, ${headerOpacity})`;
+  } else {
+    groupHeaderClassName += ' border-transparent bg-transparent';
+    groupHeaderStyle.backgroundColor = `rgba(255, 255, 255, ${Math.max(0, headerOpacity - 0.2)})`;
+    groupHeaderStyle.boxShadow = 'none';
+  }
+
+  let groupFooterClassName = `${inputContainerClass} relative z-10`;
+  const groupFooterStyle: React.CSSProperties = {};
+  let groupFooterControlTone = {
+    iconButton: 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
+    inputShell: 'bg-zinc-50 border-zinc-100',
+    voiceButton: 'bg-zinc-100 text-zinc-500',
+  };
+
+  if (footerStyleType === 'default') {
+    groupFooterStyle.backgroundColor = `rgba(255, 255, 255, ${footerOpacity})`;
+    groupFooterStyle.borderColor = '#e4e4e7';
+  } else if (footerStyleType === 'glass') {
+    groupFooterClassName = groupFooterClassName.replace('backdrop-blur-md', 'backdrop-blur-xl');
+    groupFooterStyle.backgroundColor = `rgba(255, 255, 255, ${footerOpacity})`;
+    groupFooterStyle.borderColor = 'rgba(255, 255, 255, 0.36)';
+    groupFooterControlTone = {
+      iconButton: 'bg-white/75 text-zinc-700 hover:bg-white/90',
+      inputShell: 'bg-white/72 border-white/50',
+      voiceButton: 'bg-white/72 text-zinc-700',
+    };
+  } else if (footerStyleType === 'solid') {
+    groupFooterClassName = groupFooterClassName.replace('backdrop-blur-md', '');
+    groupFooterStyle.backgroundColor = `rgba(244, 244, 245, ${footerOpacity})`;
+    groupFooterStyle.borderColor = '#e4e4e7';
+    groupFooterControlTone = {
+      iconButton: 'bg-white text-zinc-600 hover:bg-zinc-100',
+      inputShell: 'bg-white border-zinc-200',
+      voiceButton: 'bg-white text-zinc-600',
+    };
+  } else {
+    groupFooterClassName = groupFooterClassName.replace('backdrop-blur-md', '');
+    groupFooterStyle.backgroundColor = `rgba(255, 255, 255, ${Math.max(0, footerOpacity - 0.2)})`;
+    groupFooterStyle.borderColor = 'transparent';
+    groupFooterControlTone = {
+      iconButton: 'bg-white/78 text-zinc-700 hover:bg-white/90',
+      inputShell: 'bg-white/78 border-white/55',
+      voiceButton: 'bg-white/78 text-zinc-700',
+    };
+  }
 
   const {
     isLoading,
@@ -374,6 +430,7 @@ export function GroupChatSessionScreen({
     pendingMessage,
     sendText,
     sendImageMessage,
+    sendStickerMessage,
     sendLocationMessage,
     maybeOpenScene,
     reactToNoticeUpdate,
@@ -823,7 +880,7 @@ export function GroupChatSessionScreen({
   };
 
   const handleCustomStickerSend = (sticker: string) => {
-    void sendImageMessage(sticker);
+    void sendStickerMessage(sticker);
     setShowEmojiPanel(false);
     setStickerTab('basic');
   };
@@ -1198,8 +1255,18 @@ export function GroupChatSessionScreen({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-zinc-50">
-      <div className="flex min-h-[64px] items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 pt-12 shadow-sm">
+    <div className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50">
+      {groupBackgroundUrl ? (
+        <>
+          <img
+            src={groupBackgroundUrl}
+            alt="群聊天背景"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          />
+        </>
+      ) : null}
+
+      <div className={groupHeaderClassName} style={groupHeaderStyle}>
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
@@ -1215,7 +1282,7 @@ export function GroupChatSessionScreen({
       </div>
 
       {groupNotice && isNoticeVisible && (
-        <div className="border-b border-amber-200 bg-amber-50/95 px-4 py-3">
+        <div className="relative z-10 border-b border-amber-200 bg-amber-50/95 px-4 py-3">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">群公告</div>
@@ -1243,18 +1310,8 @@ export function GroupChatSessionScreen({
         </div>
       )}
 
-      <div className={`${layoutConfig.messageListClass} relative isolate overflow-hidden`} ref={scrollRef}>
-        {groupBackgroundUrl ? (
-          <>
-            <img
-              src={groupBackgroundUrl}
-              alt="群聊天背景"
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-white/60" />
-          </>
-        ) : null}
-        <div className="relative z-10">
+      <div className={`${layoutConfig.messageListClass} relative z-10`} ref={scrollRef}>
+        <div>
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
             {error}
@@ -1410,8 +1467,8 @@ export function GroupChatSessionScreen({
                   onPointerCancel={clearLongPressTimer}
                   className={`relative cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
-                      ? `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`
-                      : `${visualKind === 'sticker' ? 'border border-pink-100 bg-pink-50/80 text-zinc-800' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
+                      ? `${visualKind === 'sticker' ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
+                      : `${visualKind === 'sticker' ? 'border-none bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                   }`}
                   style={memberBubbleStyle}
                 >
@@ -1464,7 +1521,7 @@ export function GroupChatSessionScreen({
         </div>
       </div>
 
-      <div className={inputContainerClass} style={layoutConfig.inputContainerStyle}>
+      <div className={groupFooterClassName} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
         {replyingTo && (
           <div className="flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="flex items-center gap-2 truncate">
@@ -1482,15 +1539,15 @@ export function GroupChatSessionScreen({
           <button
             onClick={() => setIsVoiceMode((prev) => !prev)}
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
-              isVoiceMode ? 'bg-zinc-100 text-zinc-800' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
+              isVoiceMode ? 'bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
             }`}
           >
             {isVoiceMode ? <Keyboard size={22} /> : <Mic size={22} />}
           </button>
 
-          <div className="flex flex-1 items-end gap-2 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-2.5 focus-within:border-blue-500">
+          <div className={`flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
             {isVoiceMode ? (
-              <div className="flex h-10 w-full items-center justify-center rounded-xl bg-zinc-100 text-[14px] text-zinc-500">
+              <div className={`flex h-10 w-full items-center justify-center rounded-xl text-[14px] ${groupFooterControlTone.voiceButton}`}>
                 按住说话
               </div>
             ) : (
@@ -1515,7 +1572,7 @@ export function GroupChatSessionScreen({
 	                setStickerTab('basic');
 	                if (showFunPanel) setShowFunPanel(false);
 	              }}
-              className={`shrink-0 p-1 transition-colors ${showEmojiPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+              className={`shrink-0 p-1 transition-colors ${showEmojiPanel ? 'text-zinc-900' : footerStyleType === 'transparent' || footerStyleType === 'glass' ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-400 hover:text-zinc-600'}`}
             >
               <Smile size={20} />
                 </button>
@@ -1538,7 +1595,7 @@ export function GroupChatSessionScreen({
                 if (showEmojiPanel) setShowEmojiPanel(false);
               }}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
-                showFunPanel ? 'rotate-45 bg-zinc-100 text-zinc-800' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
+                showFunPanel ? 'rotate-45 bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
               }`}
             >
               <Plus size={24} />
@@ -1689,41 +1746,11 @@ export function GroupChatSessionScreen({
         </div>
       </div>
 
-      <AnimatePresence>
-        {showLocationPicker && (
-          <div className="absolute inset-0 z-[110] flex items-end justify-center bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="flex max-h-[88vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <h3 className="text-[18px] font-bold text-zinc-900">发送位置</h3>
-                <button onClick={() => setShowLocationPicker(false)} className="p-2 text-zinc-400">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {DEFAULT_LOCATIONS.map((location) => (
-                  <button
-                    key={location.name}
-                    onClick={() => {
-                      void sendLocationMessage(location);
-                      setShowLocationPicker(false);
-                    }}
-                    className="w-full rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-left"
-                  >
-                    <div className="font-medium text-zinc-900">{location.name}</div>
-                    {location.address && <div className="mt-1 text-[13px] text-zinc-500">{location.address}</div>}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <GroupLocationPickerSheet
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSend={sendLocationMessage}
+      />
 
       <AnimatePresence>
         {showGroupSettings && (

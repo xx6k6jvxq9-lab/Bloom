@@ -81,10 +81,13 @@ export const getMessageActionText = (message: ChatMessage): string => {
   const normalizedMainText = sanitizePipeMarkers(mainText, '\n');
   const normalizedTranslation = sanitizePipeMarkers(message.translation?.trim() || translation, '\n');
   const sharedPostSummary = getSharedPostSummary(message);
+  const isStickerMessage = !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
+  const normalizedVisualText = normalizedMainText.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim();
 
   const content = [
-    normalizedMainText,
-    !normalizedMainText && message.imageUrl ? '[图片]' : '',
+    normalizedVisualText,
+    !normalizedVisualText && isStickerMessage ? '[表情包]' : '',
+    !normalizedVisualText && !isStickerMessage && message.imageUrl ? '[图片]' : '',
     !normalizedMainText && message.location ? `[位置分享] ${message.location.name}` : '',
     !normalizedMainText && message.isVoiceCall ? '[语音通话]' : '',
     !normalizedMainText && sharedPostSummary ? sharedPostSummary : '',

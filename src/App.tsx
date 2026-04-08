@@ -213,6 +213,7 @@ const DEFAULT_CONFIG: ApiConfig = {
 const DEFAULT_SETTINGS: AppSettings = {
   activeConfigId: 'default',
   configs: [DEFAULT_CONFIG],
+  sharedStickers: [],
 };
 
 const DEFAULT_DESKTOP_WALLPAPER = 'https://tse3.mm.bing.net/th/id/OIP.GdwwXxbY6ullokoEq_KO2gHaNK?rs=1&pid=ImgDetMain&o=7&rm=3';
@@ -1260,7 +1261,13 @@ export default function App() {
       try {
         const parsed = JSON.parse(savedSettings);
         if (parsed.configs && Array.isArray(parsed.configs)) {
-          setSettings(parsed);
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            sharedStickers: Array.isArray(parsed.sharedStickers)
+              ? parsed.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
+              : [],
+          });
         } else {
           // Migrate old settings format
           const migrated: AppSettings = {
@@ -1545,6 +1552,7 @@ export default function App() {
             chatHistory={appData.chatHistory}
             setChatHistory={(chatHistory) => setAppData(prev => ({ ...prev, chatHistory }))}
             settings={settings}
+            setSettings={setSettings}
             userAvatar={appData.userProfile.avatar}
             userName={appData.userProfile.name}
             masks={appData.masks}

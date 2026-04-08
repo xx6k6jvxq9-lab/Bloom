@@ -30,6 +30,7 @@ type ChatSessionMountProps = {
   chatHistory: ChatHistory;
   setChatHistory: (chatHistory: ChatHistory) => void;
   settings: AppSettings;
+  setSettings: (settings: AppSettings) => void;
   userAvatar: string;
   userName: string;
   masks: Mask[];
@@ -68,6 +69,7 @@ export function ChatSessionMount({
   chatHistory,
   setChatHistory,
   settings,
+  setSettings,
   userAvatar,
   userName,
   masks,
@@ -120,6 +122,7 @@ export function ChatSessionMount({
           perception={perception}
           coupleSpace={coupleSpace}
           settings={settings}
+          setSettings={setSettings}
           onBack={onBackToChat}
           userAvatar={userAvatar}
           userName={userName}

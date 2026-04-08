@@ -44,6 +44,17 @@ const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
 const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 
+function toPromptHistoryContent(message: ChatMessage): string {
+  if (message.imageUrl) {
+    if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
+      return '[sent a sticker]';
+    }
+    return '[sent an image]';
+  }
+
+  return message.text;
+}
+
 const extractTransferAmount = (text: string) => {
   const bracketMatch = text.match(TRANSFER_BRACKET_REGEX);
   if (bracketMatch?.[1]) {
@@ -235,7 +246,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   handleVoiceCallAIResponse: (userText: string) => Promise<string | null>;
   sendImageMessage: (base64String: string) => void;
-  sendStickerMessage: () => void;
+  sendStickerMessage: (sticker: string) => void;
   sendLocationMessage: (text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => void;
   sendCoupleSpaceInvitation: () => void;
   sendInnerVoiceProbe: () => void;
@@ -260,6 +271,14 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   }) => boolean;
   handleReceiveTransfer: (index: number) => void;
   handleRejectTransfer: (index: number) => void;
+};
+
+type DirectSendOverridePayload = {
+  promptText: string;
+  userText?: string;
+  imageUrl?: string;
+  locationData?: { name: string; address?: string; isVirtual?: boolean };
+  isInnerVoice?: boolean;
 };
 
 function formatChatApiError(error: unknown): string {
@@ -411,7 +430,7 @@ export function useDirectChatRuntime({
               { role: 'system', content: systemPrompt },
               ...historyWindow.map(m => ({
                 role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-                content: m.text,
+                content: toPromptHistoryContent(m),
               })),
             ],
             onTextChunk: (chunkText) => {
@@ -557,8 +576,15 @@ export function useDirectChatRuntime({
   }, [activeConfig, character]);
 
   const handleSend = useCallback(async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
-    const textToSend = typeof overrideText === 'string' ? overrideText : input;
-    if ((!textToSend.trim() && !locationData) || !activeConfig) {
+    const overridePayload: DirectSendOverridePayload | null =
+      typeof overrideText === 'object' && overrideText !== null && !Array.isArray(overrideText)
+        ? overrideText as DirectSendOverridePayload
+        : null;
+    const effectiveLocationData = overridePayload?.locationData ?? locationData;
+    const textToSend = typeof overrideText === 'string'
+      ? overrideText
+      : (overridePayload?.promptText ?? input);
+    if ((!textToSend.trim() && !effectiveLocationData) || !activeConfig) {
       if (!activeConfig) {
         setErrorState('Missing active API config.');
       }
@@ -579,22 +605,23 @@ export function useDirectChatRuntime({
 
     const userMsg: ChatMessage = {
       role: 'user',
-      text: textToSend.trim() || (locationData ? `[位置分享] ${locationData.name}` : ''),
+      text: overridePayload?.userText?.trim() || textToSend.trim() || (effectiveLocationData ? `[位置分享] ${effectiveLocationData.name}` : ''),
       timestamp: Date.now(),
       ...(replyingTo ? { replyTo: replyingTo } : {}),
-      ...(locationData ? { location: locationData } : {}),
-      ...(textToSend.trim() === '[倾听心声]' ? { isInnerVoice: true } : {}),
+      ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
+      ...(overridePayload?.imageUrl ? { imageUrl: overridePayload.imageUrl } : {}),
+      ...((overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]') ? { isInnerVoice: true } : {}),
     };
     const newHistory = [...baseHistory, userMsg];
     setHistory(newHistory);
 
-    if (typeof overrideText !== 'string') {
+    if (typeof overrideText !== 'string' && !overridePayload) {
       setInput('');
     }
 
     setReplyingTo(null);
 
-    const isInnerVoiceRequest = textToSend.trim() === '[倾听心声]';
+    const isInnerVoiceRequest = overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]';
     const assistantMsgId = Date.now() + 1;
     activeAssistantMessageIdRef.current = assistantMsgId;
     let currentResponseText = '';
@@ -715,7 +742,7 @@ export function useDirectChatRuntime({
           { role: 'system', content: systemPrompt },
           ...historyWindow.map(m => ({
             role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-            content: m.text,
+            content: toPromptHistoryContent(m),
           })),
         ],
         onTextChunk: (chunkText) => {
@@ -835,31 +862,20 @@ export function useDirectChatRuntime({
   }, [handleSend]);
 
   const sendImageMessage = useCallback((base64String: string) => {
-    const userMsg: ChatMessage = {
-      role: 'user',
-      text: '[图片]',
+    void handleSendRef.current({
+      promptText: '[sent an image]',
+      userText: '[image]',
       imageUrl: base64String,
-      timestamp: Date.now(),
-    };
-    setHistory([...historyRef.current, userMsg]);
+    });
+  }, []);
 
-    setTimeout(() => {
-      handleSendRef.current('[发送了一张图片]');
-    }, 100);
-  }, [setHistory]);
-
-  const sendStickerMessage = useCallback(() => {
-    const userMsg: ChatMessage = {
-      role: 'user',
-      text: '[表情包]',
-      timestamp: Date.now(),
-    };
-    setHistory([...historyRef.current, userMsg]);
-
-    setTimeout(() => {
-      handleSendRef.current('[发送了一个表情包]');
-    }, 100);
-  }, [setHistory]);
+  const sendStickerMessage = useCallback((sticker: string) => {
+    void handleSendRef.current({
+      promptText: '[sent a sticker]',
+      userText: '[sticker]',
+      imageUrl: sticker,
+    });
+  }, []);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
     handleSendRef.current(text, locationData);

@@ -53,6 +53,14 @@ function getDirectReplyPreviewTextClass() {
   return 'mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words';
 }
 
+function isStickerMessage(message: ChatMessage) {
+  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test(message.text.trim());
+}
+
+function stripVisualMessageMarker(text: string) {
+  return text.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim();
+}
+
 function getDirectTextBubbleClass(role: ChatMessage['role'], maxWidthClass: string) {
   if (role === 'model') {
     return `inline-block ${maxWidthClass} px-4 py-3 rounded-2xl`;
@@ -234,6 +242,7 @@ export function ChatSessionScreen({
   onUpdateCharacter,
   onPatchCharacter,
   settings, 
+  onUpdateSettings,
   onBack,
   userAvatar,
   userName,
@@ -268,6 +277,7 @@ export function ChatSessionScreen({
   onUpdateCharacter: (c: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
   settings: AppSettings;
+  onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
   userAvatar: string;
   userName: string;
@@ -810,7 +820,7 @@ export function ChatSessionScreen({
     }
   };
 
-  const basicEmojis = ['??', '??', '??', '??', '??', '??', '??', '??', '??', '??', '??', '??'];
+  const basicEmojis = ['😀', '😺', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -825,10 +835,15 @@ export function ChatSessionScreen({
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.background);
   const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(visualSettings?.chat?.avatarFrameUrl);
   const { resolvedUrl: resolvedChatMessageBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.messageBackgroundImageUrl);
+  const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userAvatar);
   const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(character.bubbleImage);
   const { resolvedUrl: resolvedUserBubbleImageUrl } = useResolvedPersistentValue(character.userBubbleImage);
+  const availableCustomStickers = Array.from(new Set([
+    ...(settings.sharedStickers || []),
+    ...(character.stickers || []),
+  ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)));
 
   if (showSettings) {
     return (
@@ -846,19 +861,32 @@ export function ChatSessionScreen({
         favorites={favorites}
         setFavorites={setFavorites}
         onDeleteCallRecord={onDeleteCallRecord}
+        settings={settings}
+        onUpdateSettings={onUpdateSettings}
         visualSettings={visualSettings}
         onUpdateVisualSettings={onUpdateVisualSettings}
       />
     );
   }
-  const activeBackground = character.background || resolvedChatBackgroundUrl;
+  const activeBackground =
+    getDisplayableAssetValue(character.background, resolvedCharacterBackgroundUrl)
+    || resolvedChatBackgroundUrl
+    || '';
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
+  const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
   let headerClasses = `relative z-10 ${layoutConfig.headerPaddingClass} flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
+  let footerStyleObj: React.CSSProperties = {};
+  let footerClassName = layoutConfig.inputContainerClass;
+  let footerControlTone = {
+    iconButton: character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
+    inputShell: character.background ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100',
+    voiceButton: character.background ? 'bg-white/50 text-zinc-800 border border-white/30 active:bg-white/70' : 'bg-zinc-50 text-zinc-800 border border-zinc-100 active:bg-zinc-100',
+  };
   
   if (headerStyleType === 'default') {
     headerClasses += "backdrop-blur-md border-b";
@@ -882,6 +910,47 @@ export function ChatSessionScreen({
     headerStyleObj = {
       backgroundColor: 'transparent',
       borderColor: 'transparent'
+    };
+  }
+
+  if (footerStyleType === 'default') {
+    footerClassName = layoutConfig.inputContainerClass;
+    footerStyleObj = {
+      backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
+      borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
+    };
+  } else if (footerStyleType === 'glass') {
+    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', 'backdrop-blur-xl');
+    footerStyleObj = {
+      backgroundColor: 'rgba(255, 255, 255, 0.42)',
+      borderColor: 'rgba(255, 255, 255, 0.34)'
+    };
+    footerControlTone = {
+      iconButton: 'bg-white/70 text-zinc-700 hover:bg-white/85',
+      inputShell: 'bg-white/72 border-white/50',
+      voiceButton: 'bg-white/72 text-zinc-800 border border-white/45 active:bg-white/85',
+    };
+  } else if (footerStyleType === 'solid') {
+    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', '');
+    footerStyleObj = {
+      backgroundColor: '#f4f4f5',
+      borderColor: '#e4e4e7'
+    };
+    footerControlTone = {
+      iconButton: 'bg-white text-zinc-600 hover:bg-zinc-100',
+      inputShell: 'bg-white border-zinc-200',
+      voiceButton: 'bg-white text-zinc-800 border border-zinc-200 active:bg-zinc-100',
+    };
+  } else if (footerStyleType === 'transparent') {
+    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', '');
+    footerStyleObj = {
+      backgroundColor: 'transparent',
+      borderColor: 'transparent'
+    };
+    footerControlTone = {
+      iconButton: 'bg-white/72 text-zinc-700 hover:bg-white/88',
+      inputShell: 'bg-white/78 border-white/55',
+      voiceButton: 'bg-white/78 text-zinc-800 border border-white/55 active:bg-white/9',
     };
   }
 
@@ -1234,11 +1303,70 @@ export function ChatSessionScreen({
                           .replace(/\[transfer\]\s*[\d.]+\s*\[\/transfer\]/gi, '')
                           .replace(/TRANSFER\|[\d.]+\|[\s\S]*/gi, '')
                           .trim();
+                        const visualText = stripVisualMessageMarker(cleanText);
                         const amount = transferMatch ? transferMatch[1] : '0.00';
 
                         return (
                           <>
-                            {cleanText && !msg.isInnerVoice && (() => {
+                            {msg.imageUrl && !msg.isInnerVoice && (
+                              <>
+                                {msg.replyTo && (
+                                  <div
+                                    className={getDirectReplyPreviewClass()}
+                                  >
+                                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                                    <div className="min-w-0">
+                                      <div className="text-[11px] font-medium text-zinc-500">
+                                        鍥炲 {msg.replyTo.authorLabel}
+                                      </div>
+                                      <div className={getDirectReplyPreviewTextClass()}>
+                                        {getReplyPreviewText(msg)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div
+                                  onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className={`inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 transition-all active:scale-[0.98] ${
+                                    isStickerMessage(msg)
+                                      ? 'border-none bg-transparent p-0 shadow-none'
+                                      : 'rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm'
+                                  }`}
+                                >
+                                  <PersistentImage
+                                    value={msg.imageUrl}
+                                    alt={isStickerMessage(msg) ? '表情包' : '聊天图片'}
+                                    className={`rounded-xl object-contain ${
+                                      isStickerMessage(msg)
+                                        ? 'max-h-36 max-w-[11rem]'
+                                        : 'max-h-60 max-w-[18rem]'
+                                    }`}
+                                  />
+                                  {visualText ? (
+                                    <span className="whitespace-pre-wrap break-words px-1 text-[14px] leading-6 text-zinc-800">
+                                      {visualText}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {(character.showTime || msg.role === 'user') && (
+                                  <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                                    {character.showTime && (
+                                      <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    )}
+                                    {msg.role === 'user' && (
+                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {!msg.imageUrl && cleanText && !msg.isInnerVoice && (() => {
                               const legacyTranslationParts = getLegacyTranslationParts(cleanText);
                               const translationText = msg.translation?.trim() || legacyTranslationParts.translation;
 
@@ -1592,11 +1720,10 @@ export function ChatSessionScreen({
 
       {/* Input */}
       <div 
-        className={layoutConfig.inputContainerClass}
+        className={footerClassName}
         style={{ 
           ...layoutConfig.inputContainerStyle,
-          backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
-          borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
+          ...footerStyleObj
         }}
       >
         {replyingTo && (
@@ -1614,7 +1741,7 @@ export function ChatSessionScreen({
         <div className="flex items-end gap-2">
           <button 
             onClick={() => setIsVoiceMode(!isVoiceMode)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : (character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100')}`}
+            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
           >
             {isVoiceMode ? <Keyboard size={24} /> : <Mic size={24} />}
           </button>
@@ -1632,14 +1759,14 @@ export function ChatSessionScreen({
               className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isRecording 
                   ? 'bg-zinc-200 text-zinc-800' 
-                  : (character.background ? 'bg-white/50 text-zinc-800 border border-white/30 active:bg-white/70' : 'bg-zinc-50 text-zinc-800 border border-zinc-100 active:bg-zinc-100')
+                  : footerControlTone.voiceButton
               }`}
             >
               {isRecording ? '松开 发送' : '按住 说话'}
             </button>
           ) : (
             <div className={`flex-1 border rounded-2xl px-4 py-2.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
-              character.background ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100'
+              footerControlTone.inputShell
             }`}>
               <textarea 
                 value={input}
@@ -1679,7 +1806,7 @@ export function ChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : (character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100')}`}
+              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
             >
               <Plus size={24} />
             </button>
@@ -1729,13 +1856,13 @@ export function ChatSessionScreen({
                       </div>
                     ) : (
                       <div>
-                        {character.stickers && character.stickers.length > 0 ? (
+                        {availableCustomStickers.length > 0 ? (
                           <div className="grid grid-cols-5 gap-2">
-                            {character.stickers.map((sticker, idx) => (
+                            {availableCustomStickers.map((sticker, idx) => (
                               <button 
                                 key={idx}
                                 onClick={() => {
-                                  sendStickerMessage();
+                                  sendStickerMessage(sticker);
                                   setShowStickerPanel(false);
                                 }}
                                 className="aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"

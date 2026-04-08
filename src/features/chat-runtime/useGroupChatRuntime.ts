@@ -46,6 +46,7 @@ type UseGroupChatRuntimeResult = {
   } | null;
   sendText: () => Promise<void>;
   sendImageMessage: (base64String: string) => Promise<void>;
+  sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   maybeOpenScene: () => Promise<void>;
   reactToNoticeUpdate: (params: {
@@ -195,7 +196,7 @@ function buildRuntimeMessages(params: {
     .filter((message) => !message.isSystem)
     .map<RuntimeChatMessage>((message) => ({
       role: message.role === 'user' ? 'user' : 'assistant',
-      content: message.text,
+      content: getPromptTextForMessage(message),
     }));
 
   const latestVisibleMessage = [...params.history]
@@ -240,6 +241,17 @@ function getMessageMainText(message: ChatMessage): string {
     return text.replace(senderPrefix, '').trim();
   }
   return text.trim();
+}
+
+function getPromptTextForMessage(message: ChatMessage): string {
+  if (message.imageUrl) {
+    if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
+      return '[sent a sticker]';
+    }
+    return '[sent an image]';
+  }
+
+  return getMessageMainText(message);
 }
 
 function buildReplyPreviewPayload(message: ChatMessage, fallbackAuthor: string): NonNullable<ChatMessage['replyTo']> {
@@ -2183,6 +2195,21 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
 
+  const sendStickerMessage = useCallback(async (sticker: string) => {
+    if (isLoading || !hasActiveConfig) return;
+
+    await submitUserMessage({
+      message: {
+        role: 'user',
+        text: '[sticker]',
+        imageUrl: sticker,
+        timestamp: Date.now(),
+        ...(replyingTo ? { replyTo: replyingTo } : {}),
+      },
+      promptText: '[sent a sticker]',
+    });
+  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
     if (isLoading || !hasActiveConfig) return;
 
@@ -2204,6 +2231,7 @@ export function useGroupChatRuntime({
     pendingMessage,
     sendText: handleSend,
     sendImageMessage,
+    sendStickerMessage,
     sendLocationMessage,
     maybeOpenScene,
     reactToNoticeUpdate,

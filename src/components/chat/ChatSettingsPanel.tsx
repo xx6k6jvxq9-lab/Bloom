@@ -1,10 +1,10 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings } from '../../types';
+import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
-import { streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -78,6 +78,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
+  if (files.length === 0) return;
+
+  let newStickers: string[] = [];
+  let loaded = 0;
+
+  files.forEach((file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (file.type === 'application/json' || file.name.endsWith('.json')) {
+        const data = parseJsonFileContent(reader.result as string);
+        if (Array.isArray(data)) {
+          newStickers = [...newStickers, ...data.filter((item): item is string => typeof item === 'string')];
+        } else if (isRecord(data)) {
+          if (Array.isArray(data.stickers)) {
+            newStickers = [...newStickers, ...data.stickers.filter((item): item is string => typeof item === 'string')];
+          } else {
+            const arrayProp = Object.values(data).find((val) => Array.isArray(val));
+            if (arrayProp) {
+              newStickers = [...newStickers, ...arrayProp.filter((item): item is string => typeof item === 'string')];
+            }
+          }
+        }
+      } else {
+        newStickers.push(reader.result as string);
+      }
+
+      loaded += 1;
+      if (loaded === files.length) {
+        onComplete(newStickers);
+      }
+    };
+
+    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
 export function ChatSettingsPanel({ 
   character, 
   onUpdate, 
@@ -92,6 +133,8 @@ export function ChatSettingsPanel({
   favorites,
   setFavorites,
   onDeleteCallRecord,
+  settings,
+  onUpdateSettings,
   visualSettings,
   onUpdateVisualSettings
 }: { 
@@ -108,6 +151,8 @@ export function ChatSettingsPanel({
   favorites: FavoriteMessage[];
   setFavorites: (f: FavoriteMessage[]) => void;
   onDeleteCallRecord?: (recordId: string) => void;
+  settings: AppSettings;
+  onUpdateSettings: (settings: AppSettings) => void;
   visualSettings: VisualSettings;
   onUpdateVisualSettings: (settings: VisualSettings) => void;
 }) {
@@ -150,8 +195,8 @@ export function ChatSettingsPanel({
   const remarkName = character.remarkName?.trim() || '';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
-  const expressionStyle = character.expressionStyle?.trim() || '';
-  const boundaryPack = character.boundaryPack?.trim() || '';
+  const expressionStyle = character.expressionStyle ?? '';
+  const boundaryPack = character.boundaryPack ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const settingSummary = resolvedCorePersona
@@ -227,6 +272,7 @@ export function ChatSettingsPanel({
               characterSetting: resolvedCorePersona,
             },
             memoryContext: {
+              shortTermSummary,
               longTermMemoryProfile,
             },
             sections: [summaryHistoryWindowText],
@@ -251,11 +297,13 @@ export function ChatSettingsPanel({
 
   const handleGenerateSummary = async ({
     mode,
+    shortTermSummary,
     longTermMemoryProfile,
     onComplete,
     setLoading,
   }: {
     mode: 'small' | 'large';
+    shortTermSummary: string;
     longTermMemoryProfile: string;
     onComplete: (responseText: string) => void;
     setLoading: (value: boolean) => void;
@@ -279,19 +327,16 @@ export function ChatSettingsPanel({
           characterSetting: resolvedCorePersona,
         },
         memoryContext: {
+          shortTermSummary,
           longTermMemoryProfile,
         },
         sections: [
           summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
         ],
       });
-      let responseText = '';
-      await streamTextWithConfig({
+      const responseText = await generateTextWithConfig({
         activeConfig,
-        messages: [{ role: 'system', content: prompt }],
-        onTextChunk: (chunkText) => {
-          responseText += chunkText;
-        },
+        prompt,
       });
 
       if (responseText) {
@@ -310,6 +355,7 @@ export function ChatSettingsPanel({
   const handleSummarizeShortTerm = async () => {
     await handleGenerateSummary({
       mode: 'small',
+      shortTermSummary,
       longTermMemoryProfile,
       onComplete: (responseText) => onUpdate({ ...character, shortTermSummary: responseText }),
       setLoading: setIsShortTermSummarizing,
@@ -319,6 +365,7 @@ export function ChatSettingsPanel({
   const handleSummarizeLongTerm = async () => {
     await handleGenerateSummary({
       mode: 'large',
+      shortTermSummary,
       longTermMemoryProfile,
       onComplete: (responseText) => onUpdate({ ...character, longTermMemoryProfile: responseText }),
       setLoading: setIsLongTermSummarizing,
@@ -797,6 +844,28 @@ export function ChatSettingsPanel({
               </div>
               {showBgInput && (
                 <div className="space-y-2 pt-1">
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-white/70 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-white">
+                      上传图片
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const nextValue = await setUploadedFile(file);
+                          onUpdate({ ...character, background: nextValue });
+                          setShowBgInput(false);
+                          setTempBg('');
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <div className="flex items-center text-[11px] text-zinc-400">
+                      这里只修改当前单聊背景，不会改动自定义功能里的全局聊天背景。
+                    </div>
+                  </div>
                   <input 
                     type="text" 
                     placeholder="支持链接、Markdown或HTML图片"
@@ -1032,7 +1101,7 @@ export function ChatSettingsPanel({
                       <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
                         <div className="flex flex-col gap-1 min-w-0">
                           <span className="text-[14px] text-zinc-700 font-medium">近期记忆 / 短期总结</span>
-                          <span className="text-[11px] text-zinc-500">这里放最近几轮互动的状态、余波和当前气氛，适合被自动总结频繁刷新。</span>
+                          <span className="text-[11px] text-zinc-500">这里放最近几轮互动的状态、余波、未完事项和当前气氛，适合被自动总结频繁刷新，不应写成长期画像。</span>
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <button
@@ -1054,7 +1123,7 @@ export function ChatSettingsPanel({
                       <textarea
                         value={shortTermSummary}
                         onChange={e => onUpdate({ ...character, shortTermSummary: e.target.value })}
-                        placeholder="最近几轮互动的状态与余波会出现在这里..."
+                        placeholder="最近几轮互动的状态、余波、未完事项会出现在这里..."
                         className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[132px] resize-none"
                       />
                     </div>
@@ -1064,7 +1133,7 @@ export function ChatSettingsPanel({
                       <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
                         <div className="flex flex-col gap-1 min-w-0 pr-2">
                           <span className="text-[14px] text-zinc-700 font-medium">长期记忆 / 长期画像</span>
-                          <span className="text-[11px] text-zinc-500">手动整理会把这段关系里更稳定的印象、偏好和边界沉淀到这里。</span>
+                          <span className="text-[11px] text-zinc-500">手动整理会把这段关系里更稳定的印象、偏好、边界和长期相处模式沉淀到这里，不应写成最近聊天压缩版。</span>
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <button
@@ -1087,7 +1156,7 @@ export function ChatSettingsPanel({
                         <textarea
                           value={longTermMemoryProfile}
                           onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}
-                          placeholder="长期沉淀下来的稳定印象、偏好、边界会保存在这里..."
+                          placeholder="长期沉淀下来的稳定印象、偏好、边界和相处模式会保存在这里..."
                           className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
                         />
                       </div>
@@ -1261,6 +1330,76 @@ export function ChatSettingsPanel({
             </div>
             
             <div className="flex-1 overflow-y-auto p-4">
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-zinc-800">共享表情包</h2>
+                    <p className="mt-1 text-[12px] text-zinc-500">这里导入一次，其他单聊也能直接读取。</p>
+                  </div>
+                  <span className="text-[12px] text-zinc-400">{settings.sharedStickers?.length || 0} 个</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
+                    <Plus size={28} className="mb-2" />
+                    <span className="text-[13px] font-medium">导入共享</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,application/json,.json"
+                      className="hidden"
+                      onChange={e => {
+                        const files = Array.from(e.target.files || []);
+                        importStickerFiles(files, (newStickers) => {
+                          onUpdateSettings({
+                            ...settings,
+                            sharedStickers: [...(settings.sharedStickers || []), ...newStickers],
+                          });
+                        });
+                      }}
+                    />
+                  </label>
+                  {(settings.sharedStickers || []).map((sticker, idx) => (
+                    <div key={`shared-${idx}`} className="relative group aspect-square bg-white/40 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden shadow-sm">
+                      <ResolvedSettingsImage value={sticker} className="w-full h-full object-cover" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextSharedStickers = [...(settings.sharedStickers || [])];
+                          nextSharedStickers.splice(idx, 1);
+                          onUpdateSettings({ ...settings, sharedStickers: nextSharedStickers });
+                        }}
+                        className="absolute top-2 right-2 w-7 h-7 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {(settings.sharedStickers || []).length > 0 && (
+                  <div className="mt-4">
+                    <button
+                      onClick={async () => {
+                        if (await showInAppConfirm('确定要清空所有共享表情包吗？')) {
+                          onUpdateSettings({ ...settings, sharedStickers: [] });
+                        }
+                      }}
+                      className="w-full py-3 text-[14px] text-red-500 bg-white/80 backdrop-blur-md border border-red-100/50 rounded-2xl font-semibold active:bg-red-50 transition-colors shadow-sm"
+                    >
+                      清空共享表情包
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-8">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-zinc-800">当前角色表情包</h2>
+                    <p className="mt-1 text-[12px] text-zinc-500">只在这个角色的单聊里追加显示。</p>
+                  </div>
+                  <span className="text-[12px] text-zinc-400">{character.stickers?.length || 0} 个</span>
+                </div>
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
                   <Plus size={28} className="mb-2" />
@@ -1272,41 +1411,9 @@ export function ChatSettingsPanel({
                     className="hidden" 
                     onChange={e => {
                       const files = Array.from(e.target.files || []);
-                      if (files.length > 0) {
-                        let newStickers: string[] = [];
-                        let loaded = 0;
-                        files.forEach((file: File) => {
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            if (file.type === 'application/json' || file.name.endsWith('.json')) {
-                              const data = parseJsonFileContent(reader.result as string);
-                              if (Array.isArray(data)) {
-                                newStickers = [...newStickers, ...data.filter(item => typeof item === 'string')];
-                              } else if (isRecord(data)) {
-                                if (Array.isArray(data.stickers)) {
-                                  newStickers = [...newStickers, ...data.stickers.filter(item => typeof item === 'string')];
-                                } else {
-                                  const arrayProp = Object.values(data).find(val => Array.isArray(val));
-                                  if (arrayProp) {
-                                    newStickers = [...newStickers, ...arrayProp.filter(item => typeof item === 'string')];
-                                  }
-                                }
-                              }
-                            } else {
-                              newStickers.push(reader.result as string);
-                            }
-                            loaded++;
-                            if (loaded === files.length) {
-                              onUpdate({ ...character, stickers: [...(character.stickers || []), ...newStickers] });
-                            }
-                          };
-                          if (file.type === 'application/json' || file.name.endsWith('.json')) {
-                            reader.readAsText(file);
-                          } else {
-                            reader.readAsDataURL(file);
-                          }
-                        });
-                      }
+                      importStickerFiles(files, (newStickers) => {
+                        onUpdate({ ...character, stickers: [...(character.stickers || []), ...newStickers] });
+                      });
                     }}
                   />
                 </label>
