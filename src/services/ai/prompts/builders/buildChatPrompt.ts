@@ -2,7 +2,7 @@ import { EXISTENCE_PROMPT } from '../base/existence';
 import { CHAT_OUTPUT_RULES, COMMON_OUTPUT_RULES } from '../base/outputRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
-import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
+import { buildLongTermMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
 import { AUTO_REPLY_SCENARIO_PROMPT } from '../scenarios/autoReply';
 import { CHAT_SCENARIO_PROMPT } from '../scenarios/chat';
 
@@ -73,8 +73,8 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
     buildUserContextSection(options.userContext),
-    buildMemoryContextSection(options.memoryContext ?? {}),
     buildRecentContextSection(options.recentContext),
+    buildLongTermMemoryContextSection(options.memoryContext ?? {}),
     scenario,
     DIRECT_CHAT_RHYTHM_PROMPT,
     COMMON_OUTPUT_RULES,

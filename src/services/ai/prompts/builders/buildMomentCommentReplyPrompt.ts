@@ -1,7 +1,7 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
-import { buildMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
+import { buildLongTermMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
 import { MOMENT_COMMENT_REPLY_SCENARIO_PROMPT } from '../scenarios/momentCommentReply';
 
 export type BuildMomentCommentReplyPromptOptions = {
@@ -46,7 +46,7 @@ export function buildMomentCommentReplyPrompt(options: BuildMomentCommentReplyPr
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
-    buildMemoryContextSection(options.memoryContext ?? {}),
+    buildLongTermMemoryContextSection(options.memoryContext ?? {}),
     MOMENT_COMMENT_REPLY_SCENARIO_PROMPT,
     buildMomentContextSection(options.momentContext),
     OUTPUT_RULES_PROMPT,
