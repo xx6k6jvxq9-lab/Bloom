@@ -4,6 +4,7 @@ import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
@@ -893,32 +894,39 @@ export function useGroupChatRuntime({
       throw new Error('Missing active API config.');
     }
 
-    const systemPrompt = buildGroupChatPrompt({
-      sceneInput: buildGroupChatSceneInput({
-        speaker: params.speaker,
-        members,
-        group: groupMeta
-          ? {
-              id: 'runtime-group-meta',
-              name: '',
-              memberIds: members.map((member) => member.id),
-              creatorId: 'user',
-              createdAt: 0,
-              groupStage: groupMeta.groupStage,
-              memberRelationSeeds: groupMeta.memberRelationSeeds,
-              backgroundSummary: groupMeta.backgroundSummary,
-              memberRelationshipState: groupMeta.memberRelationshipState,
-              memberRelationshipNote: groupMeta.memberRelationshipNote,
-              currentScene: groupMeta.currentScene,
-              publicFacts: groupMeta.publicFacts,
-            }
-          : undefined,
-        userName,
-        history: params.currentHistory,
-        mode: params.mode,
-        directChatHistory,
+    const systemPrompt = [
+      buildGroupChatPrompt({
+        sceneInput: buildGroupChatSceneInput({
+          speaker: params.speaker,
+          members,
+          group: groupMeta
+            ? {
+                id: 'runtime-group-meta',
+                name: '',
+                memberIds: members.map((member) => member.id),
+                creatorId: 'user',
+                createdAt: 0,
+                groupStage: groupMeta.groupStage,
+                memberRelationSeeds: groupMeta.memberRelationSeeds,
+                backgroundSummary: groupMeta.backgroundSummary,
+                memberRelationshipState: groupMeta.memberRelationshipState,
+                memberRelationshipNote: groupMeta.memberRelationshipNote,
+                currentScene: groupMeta.currentScene,
+                publicFacts: groupMeta.publicFacts,
+              }
+            : undefined,
+          userName,
+          history: params.currentHistory,
+          mode: params.mode,
+          directChatHistory,
+        }),
       }),
-    });
+      buildAssistantStickerPromptSection([
+        ...(params.speaker.stickers || []),
+      ]),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     console.info('[group-chat] generating message', {
       mode: params.mode,
       speakerId: params.speaker.id,
@@ -1071,6 +1079,11 @@ export function useGroupChatRuntime({
     const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
       const cue = parseActionCue(rawContent);
+      const pickedSticker = cue.kind === 'sticker'
+        ? pickAssistantSticker(cue.content, [
+            ...(speaker.stickers || []),
+          ])
+        : null;
       const cleanedText = cue.kind === 'sticker'
         ? `[sticker] ${cue.content || '...'}`
         : cue.kind === 'reply'
@@ -1091,7 +1104,10 @@ export function useGroupChatRuntime({
 
       return {
         ...message,
-        text: cue.kind === 'notice' ? `[notice] ${cue.content || rawContent}` : `${speaker.name}: ${cleanedText}`,
+        text: cue.kind === 'notice'
+          ? `[notice] ${cue.content || rawContent}`
+          : `${speaker.name}: ${cue.kind === 'sticker' && pickedSticker ? '[sticker]' : cleanedText}`,
+        ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
         isSystem: cue.kind === 'notice' ? true : undefined,
         replyTo: replyPayload || undefined,
       };

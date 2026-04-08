@@ -32,6 +32,7 @@ import {
   type ShareActionResult,
 } from '../../services/chat/messageActions';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
@@ -44,6 +45,25 @@ import type { BaseSessionRuntimeState } from './types';
 const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
 const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
+
+function parseDirectActionCue(segment: string): {
+  kind: 'normal' | 'sticker';
+  content: string;
+} {
+  const trimmed = segment.trim();
+  const stickerMatch = trimmed.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
+  if (stickerMatch) {
+    return {
+      kind: 'sticker',
+      content: stickerMatch[1].trim(),
+    };
+  }
+
+  return {
+    kind: 'normal',
+    content: trimmed,
+  };
+}
 
 function toPromptHistoryContent(message: ChatMessage): string {
   if (message.imageUrl) {
@@ -139,7 +159,7 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
-  options: { isInnerVoice?: boolean; transferTargetLabel?: string; assistantAliases?: string[] } = {}
+  options: { isInnerVoice?: boolean; transferTargetLabel?: string; assistantAliases?: string[]; availableStickers?: string[] } = {}
 ): ChatMessage[] => {
   if (options.isInnerVoice) {
     return [{
@@ -181,12 +201,20 @@ const splitStreamingModelResponseIntoMessages = (
   );
   const parts = splitDirectAssistantReplyText(mainText);
 
-  return parts.map((part, index) => ({
-    role: 'model' as const,
-    text: part,
-    ...(index === parts.length - 1 && legacyTranslationParts.translation ? { translation: legacyTranslationParts.translation } : {}),
-    timestamp: baseTimestamp + index,
-  }));
+  return parts.map((part, index) => {
+    const cue = parseDirectActionCue(part);
+    const pickedSticker = cue.kind === 'sticker'
+      ? pickAssistantSticker(cue.content, options.availableStickers || [])
+      : null;
+
+    return {
+      role: 'model' as const,
+      text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : cue.content || part,
+      ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
+      ...(index === parts.length - 1 && legacyTranslationParts.translation ? { translation: legacyTranslationParts.translation } : {}),
+      timestamp: baseTimestamp + index,
+    };
+  });
 };
 
 function parseGameCardData(text: string) {
@@ -364,6 +392,7 @@ export function useDirectChatRuntime({
           const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId, {
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
+            availableStickers: character.stickers || [],
           });
           const nextMessages = messages.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
@@ -413,7 +442,7 @@ export function useDirectChatRuntime({
             }
           }
 
-          const systemPrompt = buildChatPrompt(buildChatSceneInput({
+          const chatSceneInput = buildChatSceneInput({
             mode: 'autoReply',
             includeProtocolRules: false,
             character,
@@ -424,7 +453,14 @@ export function useDirectChatRuntime({
             perceptionPrompt,
             directChatHistory,
             chatGroups,
-          }));
+          });
+          const systemPrompt = buildChatPrompt({
+            ...chatSceneInput,
+            sections: [
+              ...(chatSceneInput.sections || []),
+              buildAssistantStickerPromptSection(character.stickers || []),
+            ].filter(Boolean),
+          });
 
           await streamTextWithConfig({
             activeConfig,
@@ -640,6 +676,7 @@ export function useDirectChatRuntime({
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
+        availableStickers: character.stickers || [],
       });
       const nextMessages = messages.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
@@ -728,7 +765,7 @@ export function useDirectChatRuntime({
         }
       }
 
-      const systemPrompt = buildChatPrompt(buildChatSceneInput({
+      const chatSceneInput = buildChatSceneInput({
         mode: 'chat',
         character,
         userName,
@@ -738,7 +775,14 @@ export function useDirectChatRuntime({
         perceptionPrompt,
         directChatHistory,
         chatGroups,
-      }));
+      });
+      const systemPrompt = buildChatPrompt({
+        ...chatSceneInput,
+        sections: [
+          ...(chatSceneInput.sections || []),
+          buildAssistantStickerPromptSection(character.stickers || []),
+        ].filter(Boolean),
+      });
 
       await streamTextWithConfig({
         activeConfig,
