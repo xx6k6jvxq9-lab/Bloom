@@ -70,6 +70,7 @@ import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
+import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -527,7 +528,7 @@ export function GroupChatSessionScreen({
     directChatHistory,
     activeConfig,
   });
-  const { isRecording, startRecording, stopRecording } = useAudioMessageRecorder({
+  const { isRecording, startRecording, stopRecording, cancelRecording } = useAudioMessageRecorder({
     onRecorded: async ({ blob, durationMs }) => {
       const audioRef = await saveUploadedBlob(blob, {
         fileName: `group-voice-message-${Date.now()}.wav`,
@@ -536,6 +537,12 @@ export function GroupChatSessionScreen({
       await sendAudioMessage(audioRef, 'audio/wav', Math.max(1, Math.round(durationMs / 1000)));
       setShowFunPanel(false);
     },
+  });
+  const audioRecordInteraction = usePressToRecordInteraction({
+    isRecording,
+    startRecording,
+    stopRecording,
+    cancelRecording,
   });
   const renderedHistory = pendingMessage
     ? [...history, {
@@ -1669,21 +1676,17 @@ export function GroupChatSessionScreen({
           <div className={`flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
             {isVoiceMode ? (
               <button
-                onPointerDown={startRecording}
-                onPointerUp={stopRecording}
-                onPointerCancel={stopRecording}
-                onPointerLeave={() => {
-                  if (isRecording) {
-                    stopRecording();
-                  }
-                }}
+                onPointerDown={audioRecordInteraction.onPointerDown}
+                onPointerUp={audioRecordInteraction.onPointerUp}
+                onPointerCancel={audioRecordInteraction.onPointerCancel}
+                onPointerLeave={audioRecordInteraction.onPointerLeave}
                 className={`flex h-10 w-full items-center justify-center rounded-xl text-[14px] transition-all active:scale-[0.98] select-none ${
                   isRecording
                     ? 'bg-zinc-200 text-zinc-800'
                     : groupFooterControlTone.voiceButton
                 }`}
               >
-                {isRecording ? '松开 发送' : '按住 说话'}
+                {audioRecordInteraction.buttonLabel}
               </button>
             ) : (
               <>

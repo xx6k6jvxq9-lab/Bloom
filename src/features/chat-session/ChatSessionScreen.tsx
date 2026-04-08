@@ -30,7 +30,9 @@ import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
+import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -252,19 +254,6 @@ function InlineResolvedImage({
   return <img src={src} className={className} style={style} alt={alt} />;
 }
 
-function PersistentAudio({
-  value,
-  className,
-}: {
-  value?: string | null;
-  className?: string;
-}) {
-  const { resolvedUrl } = useResolvedPersistentValue(value);
-  const src = getDisplayableAssetValue(value, resolvedUrl);
-  if (!src) return null;
-  return <audio controls src={src} className={className} preload="metadata" />;
-}
-
 function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
   return <Star size={size} className={className} />;
 }
@@ -402,7 +391,12 @@ export function ChatSessionScreen({
       fileInputRef.current.value = '';
     }
   };
-  const { isRecording: isAudioRecording, startRecording: startAudioRecording, stopRecording: stopAudioRecording } = useAudioMessageRecorder({
+  const {
+    isRecording: isAudioRecording,
+    startRecording: startAudioRecording,
+    stopRecording: stopAudioRecording,
+    cancelRecording: cancelAudioRecording,
+  } = useAudioMessageRecorder({
     onRecorded: async ({ blob, durationMs }) => {
       const audioRef = await saveUploadedBlob(blob, {
         fileName: `voice-message-${Date.now()}.wav`,
@@ -415,6 +409,12 @@ export function ChatSessionScreen({
   useEffect(() => {
     setIsRecording(isAudioRecording);
   }, [isAudioRecording]);
+  const audioRecordInteraction = usePressToRecordInteraction({
+    isRecording: isAudioRecording,
+    startRecording: startAudioRecording,
+    stopRecording: stopAudioRecording,
+    cancelRecording: cancelAudioRecording,
+  });
 
   const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId);
   const activeSavedDate = savedDates?.find(session => session.characterId === character.id) || null;
@@ -1385,26 +1385,17 @@ export function ChatSessionScreen({
                                   </div>
                                 )}
 
-                                <div
+                                <AudioMessageCard
+                                  value={msg.audioUrl}
+                                  durationSeconds={msg.duration}
+                                  caption={stripMediaMessageMarker(cleanText) || null}
+                                  isUser={msg.role === 'user'}
                                   onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                                   onContextMenu={(e) => {
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 rounded-2xl border px-3 py-3 transition-all active:scale-[0.98] ${
-                                    msg.role === 'user'
-                                      ? 'chat-bubble message-bubble user-bubble right border-blue-400 bg-blue-500 text-white'
-                                      : 'chat-bubble message-bubble bot-bubble left border-zinc-200 bg-white/95 text-zinc-800'
-                                  }`}
-                                >
-                                  <BubbleThemeAnchors />
-                                  <PersistentAudio value={msg.audioUrl} className="w-[18rem] max-w-full" />
-                                  {stripMediaMessageMarker(cleanText) ? (
-                                    <span className="whitespace-pre-wrap break-words px-1 text-[14px] leading-6">
-                                      {stripMediaMessageMarker(cleanText)}
-                                    </span>
-                                  ) : null}
-                                </div>
+                                />
                                 {(character.showTime || msg.role === 'user') && (
                                   <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
                                     {character.showTime && (
@@ -1861,14 +1852,10 @@ export function ChatSessionScreen({
 
           {isVoiceMode ? (
             <button
-              onPointerDown={startAudioRecording}
-              onPointerUp={stopAudioRecording}
-              onPointerCancel={stopAudioRecording}
-              onPointerLeave={() => {
-                if (isAudioRecording) {
-                  stopAudioRecording();
-                }
-              }}
+              onPointerDown={audioRecordInteraction.onPointerDown}
+              onPointerUp={audioRecordInteraction.onPointerUp}
+              onPointerCancel={audioRecordInteraction.onPointerCancel}
+              onPointerLeave={audioRecordInteraction.onPointerLeave}
               className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isAudioRecording 
                   ? 'bg-zinc-200 text-zinc-800' 

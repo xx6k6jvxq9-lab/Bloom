@@ -87,6 +87,10 @@ type UseAudioMessageRecorderArgs = {
   onRecorded: (payload: { blob: Blob; durationMs: number }) => void | Promise<void>;
 };
 
+type FinishRecordingOptions = {
+  discard?: boolean;
+};
+
 export function useAudioMessageRecorder({
   onRecorded,
 }: UseAudioMessageRecorderArgs) {
@@ -94,6 +98,9 @@ export function useAudioMessageRecorder({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef<number | null>(null);
+  const isStartingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const discardRequestedRef = useRef(false);
   const [isRecording, setIsRecording] = useState(false);
 
   const stopStream = useCallback(() => {
@@ -101,12 +108,30 @@ export function useAudioMessageRecorder({
     streamRef.current = null;
   }, []);
 
-  const stopRecording = useCallback(() => {
-    mediaRecorderRef.current?.stop();
+  const finishRecording = useCallback((options?: FinishRecordingOptions) => {
+    const shouldDiscard = Boolean(options?.discard);
+    discardRequestedRef.current = discardRequestedRef.current || shouldDiscard;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      return;
+    }
+
+    if (isStartingRef.current) {
+      stopRequestedRef.current = true;
+    }
   }, []);
 
+  const stopRecording = useCallback(() => {
+    finishRecording();
+  }, [finishRecording]);
+
+  const cancelRecording = useCallback(() => {
+    finishRecording({ discard: true });
+  }, [finishRecording]);
+
   const startRecording = useCallback(async () => {
-    if (isRecording) {
+    if (isRecording || isStartingRef.current) {
       return;
     }
 
@@ -114,6 +139,10 @@ export function useAudioMessageRecorder({
       window.alert('当前浏览器不支持录音');
       return;
     }
+
+    isStartingRef.current = true;
+    stopRequestedRef.current = false;
+    discardRequestedRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -126,7 +155,12 @@ export function useAudioMessageRecorder({
       startedAtRef.current = Date.now();
 
       mediaRecorder.onstart = () => {
+        isStartingRef.current = false;
         setIsRecording(true);
+
+        if (stopRequestedRef.current) {
+          mediaRecorder.stop();
+        }
       };
 
       mediaRecorder.ondataavailable = (event) => {
@@ -137,37 +171,64 @@ export function useAudioMessageRecorder({
 
       mediaRecorder.onerror = (event) => {
         console.error('Audio recording error', event);
+        isStartingRef.current = false;
+        stopRequestedRef.current = false;
+        discardRequestedRef.current = false;
         setIsRecording(false);
         stopStream();
       };
 
       mediaRecorder.onstop = async () => {
         setIsRecording(false);
+        isStartingRef.current = false;
+        stopRequestedRef.current = false;
+
         const durationMs = startedAtRef.current ? Math.max(Date.now() - startedAtRef.current, 0) : 0;
         startedAtRef.current = null;
+
         const rawBlob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         chunksRef.current = [];
         stopStream();
+        mediaRecorderRef.current = null;
+
+        if (discardRequestedRef.current) {
+          discardRequestedRef.current = false;
+          return;
+        }
 
         if (rawBlob.size === 0) {
           return;
         }
 
-        const wavBlob = await normalizeRecordedAudioToWav(rawBlob);
-        await onRecorded({ blob: wavBlob, durationMs });
+        try {
+          const wavBlob = await normalizeRecordedAudioToWav(rawBlob);
+          await onRecorded({ blob: wavBlob, durationMs });
+        } finally {
+          discardRequestedRef.current = false;
+        }
       };
 
       mediaRecorder.start();
+
+      if (stopRequestedRef.current) {
+        mediaRecorder.stop();
+      }
     } catch (error) {
       console.error('Unable to start audio recording', error);
       window.alert('无法开始录音，请检查麦克风权限');
+      isStartingRef.current = false;
+      stopRequestedRef.current = false;
+      discardRequestedRef.current = false;
       setIsRecording(false);
       stopStream();
     }
   }, [isRecording, onRecorded, stopStream]);
 
   useEffect(() => () => {
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      discardRequestedRef.current = true;
+      mediaRecorderRef.current.stop();
+    }
     stopStream();
   }, [stopStream]);
 
@@ -175,5 +236,6 @@ export function useAudioMessageRecorder({
     isRecording,
     startRecording,
     stopRecording,
+    cancelRecording,
   };
 }
