@@ -95,5 +95,7 @@ export function describeStickerMessageForPrompt(message: Pick<ChatMessage, 'imag
     || inferStickerSemanticLabel(message.imageUrl, message.text)
     || '';
 
-  return label ? `[sent a sticker: ${label}]` : '[sent a sticker]';
+  return label
+    ? `[sent a sticker; read any visible text on it and its mood; hint: ${label}]`
+    : '[sent a sticker; read any visible text on it and its mood]';
 }
