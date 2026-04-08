@@ -10,6 +10,9 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.shortTermSummary
       ? `近期关系余波：${sceneInput.recentContext.shortTermSummary}`
       : '',
+    sceneInput.recentContext?.publicAcquaintanceSummary
+      ? `公开认识与群内连续性：${sceneInput.recentContext.publicAcquaintanceSummary}`
+      : '',
     sceneInput.recentContext?.sharedRecentRelationshipSummary
       ? `跨场景共享关系余波：${sceneInput.recentContext.sharedRecentRelationshipSummary}`
       : '',

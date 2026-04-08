@@ -86,6 +86,7 @@ export function buildChatSceneInput(
     shortTermSummary: characterScopedMemory.shortTermSummary,
     recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
     sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
+    publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
   };
   const budgetedContext = applyChatPromptBudget({
     recentContext,

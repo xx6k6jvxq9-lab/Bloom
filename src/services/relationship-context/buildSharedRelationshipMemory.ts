@@ -101,6 +101,50 @@ function collectFactLines(
     .filter((line): line is string => !!line);
 }
 
+function collectPublicAcquaintanceWaveLines(
+  characterId: string | undefined,
+  waves: RelationshipWaveRecord[],
+): string[] {
+  return waves
+    .filter((wave) => wave.scope !== 'private')
+    .filter((wave) => {
+      if (!characterId) {
+        return wave.targetUser === true || wave.relationType === 'public_group_event';
+      }
+
+      return (
+        wave.relationType === 'public_group_event'
+        || wave.sourceCharacterId === characterId
+        || wave.targetCharacterId === characterId
+      );
+    })
+    .slice(-4)
+    .map((wave) => normalizeLine(`公开关系：${wave.summary}`))
+    .filter((line): line is string => !!line);
+}
+
+function collectPublicAcquaintanceFactLines(
+  characterId: string | undefined,
+  factTraces: FactTraceRecord[],
+): string[] {
+  return factTraces
+    .filter((factTrace) => factTrace.visibility !== 'private')
+    .filter((factTrace) => {
+      if (!characterId) {
+        return factTrace.subjectType === 'group';
+      }
+
+      return (
+        factTrace.subjectType === 'group'
+        || factTrace.subjectId === characterId
+        || factTrace.relatedCharacterIds?.includes(characterId)
+      );
+    })
+    .slice(-4)
+    .map((factTrace) => normalizeLine(`公开事实：${factTrace.summary}`))
+    .filter((line): line is string => !!line);
+}
+
 export function buildSharedRelationshipMemory(
   input: BuildSharedRelationshipMemoryInput,
 ): string | undefined {
@@ -114,6 +158,23 @@ export function buildSharedRelationshipMemory(
     ...groupLines.slice(-2),
     ...directLines.slice(-2),
   ].slice(-5);
+
+  if (combined.length === 0) {
+    return undefined;
+  }
+
+  return combined.join('\n');
+}
+
+export function buildPublicAcquaintanceSummary(
+  input: BuildSharedRelationshipMemoryInput,
+): string | undefined {
+  const factLines = collectPublicAcquaintanceFactLines(input.characterId, input.factTraces || []);
+  const waveLines = collectPublicAcquaintanceWaveLines(input.characterId, input.relationshipWaves || []);
+  const combined = [
+    ...factLines.slice(-2),
+    ...waveLines.slice(-2),
+  ].slice(-4);
 
   if (combined.length === 0) {
     return undefined;

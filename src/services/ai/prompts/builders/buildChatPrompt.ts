@@ -17,6 +17,7 @@ export type BuildChatPromptOptions = {
     shortTermSummary?: string;
     recentCoupleSpaceSummary?: string;
     sharedRecentRelationshipSummary?: string;
+    publicAcquaintanceSummary?: string;
   };
   includeProtocolRules?: boolean;
   sections?: string[];
@@ -24,10 +25,11 @@ export type BuildChatPromptOptions = {
 
 const DIRECT_CHAT_RHYTHM_PROMPT = [
   '## 单聊节奏',
-  '普通单聊允许更像真人发消息，可以在合适时自然地连续发 2 到 4 条短消息。',
-  '优先按聊天节拍来表达：先结论，再补一句，再追问一句，或再落一记收尾，不要总是写成一整段完整书面回复。',
-  '短消息之间要像同一个人顺手连发，保持语气连贯，不要机械拆句，不要为了分条而分条。',
-  '有些中间短泡可以不带句号，但最后一句、反问句、强调句可以保留标点，让语气像真人聊天。',
+  '普通单聊默认优先像真人连续发消息，而不是一次性写成一整段。',
+  '只要当前回复天然可以拆成 2 到 4 个短气泡，就优先拆开：先接一句，再补一句，再压一句情绪，最后再追一句或落一句。',
+  '这些短消息应该像同一个人顺手连发，语气连续、长度不齐、轻重有变化，不要机械平均拆句。',
+  '如果一句里同时包含接话、补充、提醒、转折、停顿、追问或命令节奏，优先拆成多个短气泡，不要一次性打包。',
+  '有些中间短泡可以不带句号，但最后一句、反问句、强调句可以保留标点，让语气更像真人聊天。',
 ].join('\n');
 
 const buildUserContextSection = (userContext?: BuildChatPromptOptions['userContext']): string => {
@@ -44,9 +46,11 @@ const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recen
   const shortTermSummary = recentContext?.shortTermSummary?.trim();
   const recentCoupleSpaceSummary = recentContext?.recentCoupleSpaceSummary?.trim();
   const sharedRecentRelationshipSummary = recentContext?.sharedRecentRelationshipSummary?.trim();
+  const publicAcquaintanceSummary = recentContext?.publicAcquaintanceSummary?.trim();
 
   const lines = [
     shortTermSummary ? `[近期关系余波] ${shortTermSummary}` : '',
+    publicAcquaintanceSummary ? `[公开认识与群内连续性] ${publicAcquaintanceSummary}` : '',
     sharedRecentRelationshipSummary ? `[跨场景共享关系余波] ${sharedRecentRelationshipSummary}` : '',
     recentCoupleSpaceSummary ? `[最近情侣空间关系事件摘要] ${recentCoupleSpaceSummary}` : '',
   ].filter(Boolean);

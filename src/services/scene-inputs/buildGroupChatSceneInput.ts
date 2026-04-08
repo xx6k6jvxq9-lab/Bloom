@@ -26,6 +26,7 @@ export type GroupChatSceneInput = {
     publicFacts?: string;
     expressionStyle?: string;
     boundaryPack?: string;
+    publicAcquaintanceSummary?: string;
     sharedRecentRelationshipSummary?: string;
   };
   historyTranscript: string;
@@ -194,6 +195,7 @@ export function buildGroupChatSceneInput(
       publicFacts: options.group?.publicFacts?.trim() || undefined,
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
+      publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),

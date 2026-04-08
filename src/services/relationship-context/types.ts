@@ -63,6 +63,7 @@ export type RelationshipWaveRecord = {
 export type SceneScopedSignals = {
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
+  publicAcquaintanceSummary?: string;
 };
 
 export type UserGlobalContext = {
@@ -73,6 +74,7 @@ export type ChatRecentContext = {
   shortTermSummary?: string;
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
+  publicAcquaintanceSummary?: string;
 };
 
 export type RelationshipProjection = {

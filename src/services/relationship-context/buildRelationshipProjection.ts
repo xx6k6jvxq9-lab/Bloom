@@ -1,7 +1,7 @@
 import type { Character, ChatMessage, ChatGroup, CoupleSpaceData } from '../../types';
 import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
-import { buildSharedRelationshipMemory } from './buildSharedRelationshipMemory';
+import { buildPublicAcquaintanceSummary, buildSharedRelationshipMemory } from './buildSharedRelationshipMemory';
 import type { RelationshipProjection } from './types';
 
 type BuildRelationshipProjectionInput = {
@@ -44,6 +44,12 @@ export function buildRelationshipProjection(
     relationshipWaves: input.groupRelationshipWaves,
     factTraces: input.factTraces,
   });
+  const publicAcquaintanceSummary = buildPublicAcquaintanceSummary({
+    characterId: input.character.id,
+    characterName: input.character.name,
+    relationshipWaves: input.groupRelationshipWaves,
+    factTraces: input.factTraces,
+  });
 
   return {
     characterScopedMemory: {
@@ -53,6 +59,7 @@ export function buildRelationshipProjection(
     sceneScopedSignals: {
       recentCoupleSpaceSummary,
       sharedRecentRelationshipSummary,
+      publicAcquaintanceSummary,
     },
   };
 }
