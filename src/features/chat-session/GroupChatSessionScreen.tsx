@@ -68,6 +68,7 @@ import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
@@ -254,19 +255,6 @@ function GroupMessageImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} />;
-}
-
-function GroupMessageAudio({
-  value,
-  className,
-}: {
-  value?: string | null;
-  className?: string;
-}) {
-  const { resolvedUrl } = useResolvedPersistentValue(value);
-  const src = getDisplayableAssetValue(value, resolvedUrl);
-  if (!src) return null;
-  return <audio controls src={src} className={className} preload="metadata" />;
 }
 
 function isStickerMessage(message: ChatMessage, content: string) {
@@ -1545,6 +1533,10 @@ export function GroupChatSessionScreen({
                     </div>
                   </div>
                 )}
+                {(() => {
+                  const isStandaloneMedia = visualKind === 'sticker' || Boolean(msg.audioUrl);
+
+                  return (
                 <div
                   onClick={(event) => handleMessageClick(event, idx)}
                   onContextMenu={(event) => {
@@ -1560,12 +1552,12 @@ export function GroupChatSessionScreen({
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
-                  className={`${visualKind === 'sticker' ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
+                  className={`${isStandaloneMedia ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
-                      ? `${visualKind === 'sticker' ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
-                      : `${visualKind === 'sticker' ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
+                      ? `${isStandaloneMedia ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
+                      : `${isStandaloneMedia ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isStandaloneMedia ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                   }`}
-                  style={visualKind === 'sticker'
+                  style={isStandaloneMedia
                     ? undefined
                     : {
                         ...memberBubbleStyle,
@@ -1573,20 +1565,15 @@ export function GroupChatSessionScreen({
                         ...(isUser ? groupUserBubbleStyle : groupRoleBubbleStyle),
                       }}
                 >
-                  {visualKind !== 'sticker' && <BubbleThemeAnchors />}
+                  {!isStandaloneMedia && <BubbleThemeAnchors />}
                   {msg.audioUrl && (
-                    <>
-                      <GroupMessageAudio value={msg.audioUrl} className="mb-2 w-[18rem] max-w-full" />
-                      {(() => {
-                        const visualText = stripVisualMessageMarker(content);
-                        if (!visualText) return null;
-                        return (
-                          <span className="whitespace-pre-wrap break-words">
-                            {renderTextWithMentions(visualText, isUser ? 'outgoing' : 'incoming')}
-                          </span>
-                        );
-                      })()}
-                    </>
+                    <AudioMessageCard
+                      value={msg.audioUrl}
+                      durationSeconds={msg.duration}
+                      caption={stripVisualMessageMarker(content) || null}
+                      isUser={isUser}
+                      className="shadow-none"
+                    />
                   )}
                   {msg.imageUrl && (
                     <>
@@ -1634,6 +1621,8 @@ export function GroupChatSessionScreen({
                   ) : null
                   }
                 </div>
+                  );
+                })()}
               </div>
             </div>
           );
