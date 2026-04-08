@@ -333,6 +333,10 @@ export function ChatSessionScreen({
   const [transferType, setTransferType] = useState<'toUser' | 'toCharacter'>('toCharacter');
   const [transferAmount, setTransferAmount] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const availableCustomStickers = Array.from(new Set([
+    ...(settings.sharedStickers || []),
+    ...(character.stickers || []),
+  ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)));
   const [activeIncomingTransferIndex, setActiveIncomingTransferIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -855,11 +859,6 @@ export function ChatSessionScreen({
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userAvatar);
   const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(character.bubbleImage);
   const { resolvedUrl: resolvedUserBubbleImageUrl } = useResolvedPersistentValue(character.userBubbleImage);
-  const availableCustomStickers = Array.from(new Set([
-    ...(settings.sharedStickers || []),
-    ...(character.stickers || []),
-  ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)));
-
   if (showSettings) {
     return (
       <ChatSettingsPanel 
