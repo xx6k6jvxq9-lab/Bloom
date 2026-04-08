@@ -7,6 +7,10 @@ export type GroupSettingsFormState = {
   name: string;
   avatar?: string;
   groupBackground: string;
+  headerStyle: NonNullable<ChatGroup['headerStyle']>;
+  headerOpacity: number;
+  footerStyle: NonNullable<ChatGroup['footerStyle']>;
+  footerOpacity: number;
   groupNickname: string;
   groupNotice: string;
   groupRemark: string;
@@ -25,6 +29,10 @@ export type GroupSettingsPatch = Pick<
   | 'name'
   | 'avatar'
   | 'groupBackground'
+  | 'headerStyle'
+  | 'headerOpacity'
+  | 'footerStyle'
+  | 'footerOpacity'
   | 'groupNickname'
   | 'groupNotice'
   | 'groupRemark'

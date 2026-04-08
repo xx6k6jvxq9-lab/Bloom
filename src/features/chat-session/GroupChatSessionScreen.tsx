@@ -66,6 +66,7 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
+import { buildScopedBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -243,6 +244,18 @@ function getReadableTextColor(backgroundColor: string): string {
   return luminance > 0.72 ? '#111827' : '#ffffff';
 }
 
+function BubbleThemeAnchors() {
+  return (
+    <>
+      <span aria-hidden="true" className="corner bubble-corner tl pointer-events-none absolute" />
+      <span aria-hidden="true" className="corner bubble-corner tr pointer-events-none absolute" />
+      <span aria-hidden="true" className="corner bubble-corner bl pointer-events-none absolute" />
+      <span aria-hidden="true" className="corner bubble-corner br pointer-events-none absolute" />
+      <span aria-hidden="true" className="sticker-skull bubble-sticker-skull pointer-events-none absolute" />
+    </>
+  );
+}
+
 export function GroupChatSessionScreen({
   group,
   members,
@@ -334,6 +347,10 @@ export function GroupChatSessionScreen({
   const footerStyleType = group.footerStyle || 'default';
   const footerOpacity = group.footerOpacity ?? 0.92;
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
+  const sharedBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss);
+  const groupRoleBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
+  const groupUserBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss);
+  const groupBubbleThemeCss = buildScopedBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss, '.chat-bubble-theme-scope');
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
     ...members.map((member) => ({
@@ -1255,7 +1272,8 @@ export function GroupChatSessionScreen({
   };
 
   return (
-    <div className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50">
+    <div className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope">
+      {groupBubbleThemeCss && <style>{groupBubbleThemeCss}</style>}
       {groupBackgroundUrl ? (
         <>
           <img
@@ -1465,13 +1483,18 @@ export function GroupChatSessionScreen({
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
-                  className={`relative cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
+                  className={`chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} relative cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
                       ? `${visualKind === 'sticker' ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
                       : `${visualKind === 'sticker' ? 'border-none bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                   }`}
-                  style={memberBubbleStyle}
+                  style={{
+                    ...memberBubbleStyle,
+                    ...sharedBubbleStyle,
+                    ...(isUser ? groupUserBubbleStyle : groupRoleBubbleStyle),
+                  }}
                 >
+                  <BubbleThemeAnchors />
                   {msg.imageUrl && (
                     <img
                       src={msg.imageUrl}

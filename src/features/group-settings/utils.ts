@@ -12,6 +12,10 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     name: group.name,
     avatar: group.avatar,
     groupBackground: group.groupBackground || '',
+    headerStyle: group.headerStyle || 'default',
+    headerOpacity: group.headerOpacity ?? 0.92,
+    footerStyle: group.footerStyle || 'default',
+    footerOpacity: group.footerOpacity ?? 0.92,
     groupNickname: group.groupNickname || '',
     groupNotice: group.groupNotice || '',
     groupRemark: group.groupRemark || '',
@@ -31,6 +35,10 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     name: state.name.trim(),
     avatar: state.avatar || undefined,
     groupBackground: toOptionalTrimmedValue(state.groupBackground),
+    headerStyle: state.headerStyle,
+    headerOpacity: clampOpacity(state.headerOpacity),
+    footerStyle: state.footerStyle,
+    footerOpacity: clampOpacity(state.footerOpacity),
     groupNickname: toOptionalTrimmedValue(state.groupNickname),
     groupNotice: toOptionalTrimmedValue(state.groupNotice),
     groupRemark: toOptionalTrimmedValue(state.groupRemark),
@@ -51,6 +59,10 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
   return patch.name !== group.name
     || (patch.avatar || '') !== (group.avatar || '')
     || (patch.groupBackground || '') !== (group.groupBackground || '')
+    || patch.headerStyle !== (group.headerStyle || 'default')
+    || (patch.headerOpacity ?? 0.92) !== (group.headerOpacity ?? 0.92)
+    || patch.footerStyle !== (group.footerStyle || 'default')
+    || (patch.footerOpacity ?? 0.92) !== (group.footerOpacity ?? 0.92)
     || (patch.groupNickname || '') !== (group.groupNickname || '')
     || (patch.groupNotice || '') !== (group.groupNotice || '')
     || (patch.groupRemark || '') !== (group.groupRemark || '')
@@ -67,4 +79,9 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
 function toOptionalTrimmedValue(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function clampOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 0.92;
+  return Math.max(0.1, Math.min(1, Number(value.toFixed(2))));
 }

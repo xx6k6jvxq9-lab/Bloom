@@ -6,6 +6,7 @@ import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { buildScopedBubbleThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from '../../../features/chat-session/bubbleStyleCss';
 
 type CustomizationAppProps = {
   visualSettings: VisualSettings;
@@ -1030,12 +1031,30 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(settings.chat?.avatarFrameUrl || '');
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
+  const [bubbleCssTab, setBubbleCssTab] = useState<'theme' | 'model' | 'user'>('theme');
   const headerStyles = [
     { value: 'default', label: '默认' },
     { value: 'glass', label: '毛玻璃' },
     { value: 'solid', label: '纯色' },
     { value: 'transparent', label: '透明' }
   ];
+  const footerStyles = [
+    { value: 'default', label: '默认' },
+    { value: 'glass', label: '毛玻璃' },
+    { value: 'solid', label: '纯色' },
+    { value: 'transparent', label: '透明' }
+  ];
+  const previewBubbleThemeCss = buildScopedBubbleThemeCss(settings.chat?.bubbleStyleCss, '.bubble-theme-preview');
+  const previewHasThemeCss = hasBubbleThemeCss(settings.chat?.bubbleStyleCss);
+  const previewCommonBubbleStyle = parseBubbleStyleCss(settings.chat?.bubbleStyleCss);
+  const previewModelBubbleStyle = {
+    ...previewCommonBubbleStyle,
+    ...parseBubbleStyleCss(settings.chat?.modelBubbleStyleCss),
+  };
+  const previewUserBubbleStyle = {
+    ...previewCommonBubbleStyle,
+    ...parseBubbleStyleCss(settings.chat?.userBubbleStyleCss),
+  };
 
   return (
     <div className="space-y-6">
@@ -1111,23 +1130,38 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
       {subTab === 'bubble' && (
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">消息气泡设置</h3>
-          <div className="space-y-2 p-4 bg-zinc-50 rounded-xl">
+          <div className="bubble-theme-preview space-y-2 rounded-xl bg-zinc-50 p-4">
+            {previewBubbleThemeCss && <style>{previewBubbleThemeCss}</style>}
             <div className="flex justify-end">
-              <div style={{ borderRadius: settings.chat.messageBorderRadius, backgroundColor: settings.chat.messageBackgroundColorUser }} className="px-4 py-2 text-white text-sm">
+              <div
+                style={{
+                  ...(previewHasThemeCss ? {} : {
+                    borderRadius: settings.chat.messageBorderRadius,
+                    backgroundColor: settings.chat.messageBackgroundColorUser,
+                  }),
+                  ...previewUserBubbleStyle,
+                }}
+                className="chat-bubble message-bubble user-bubble right px-4 py-2 text-sm text-white"
+              >
+                <span aria-hidden="true" className="corner bubble-corner pointer-events-none absolute inset-0" />
                 你好！
               </div>
             </div>
             <div className="flex justify-start" style={{ marginTop: settings.chat.messageSpacing }}>
               <div 
                 style={{ 
-                  borderRadius: settings.chat.messageBorderRadius, 
-                  backgroundColor: settings.chat.messageBackgroundColorModel,
-                  backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
+                  ...(previewHasThemeCss ? {} : {
+                    borderRadius: settings.chat.messageBorderRadius,
+                    backgroundColor: settings.chat.messageBackgroundColorModel,
+                    backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }),
+                  ...previewModelBubbleStyle,
                 }} 
-                className="px-4 py-2 text-zinc-800 text-sm border border-zinc-200"
+                className="chat-bubble message-bubble bot-bubble left border border-zinc-200 px-4 py-2 text-sm text-zinc-800"
               >
+                <span aria-hidden="true" className="corner bubble-corner pointer-events-none absolute inset-0" />
                 你好，有什么可以帮你的？
               </div>
             </div>
@@ -1152,6 +1186,89 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
               <span>{settings.chat.messageSpacing}px</span>
             </label>
             <input type="range" min="4" max="32" value={settings.chat.messageSpacing} onChange={e => setSettings({...settings, chat: {...settings.chat, messageSpacing: Number(e.target.value)}})} className="w-full accent-zinc-900" />
+          </div>
+          <div className="space-y-3">
+            <div className="inline-flex rounded-2xl bg-zinc-100 p-1">
+              {[
+                { key: 'theme', label: '主题代码' },
+                { key: 'model', label: '对方气泡' },
+                { key: 'user', label: '用户气泡' },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setBubbleCssTab(item.key as 'theme' | 'model' | 'user')}
+                  className={`rounded-2xl px-4 py-2 text-[13px] font-medium transition-colors ${
+                    bubbleCssTab === item.key ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-600'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {bubbleCssTab === 'theme' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-500">气泡主题 CSS</label>
+                    <p className="mt-1 text-xs text-zinc-500">支持整套主题代码，能同时识别用户气泡、对方气泡、伪元素和 `.corner` 装饰锚点。</p>
+                  </div>
+                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
+                    导入主题
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".css,.txt"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: String(reader.result || '') } });
+                          e.target.value = '';
+                        };
+                        reader.readAsText(file, 'utf-8');
+                      }}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  value={settings.chat.bubbleStyleCss || ''}
+                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: e.target.value } })}
+                  placeholder={'/* 支持 .chat-bubble / .message-bubble / .user-bubble / .bot-bubble */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  border-radius: 22px;\n}'}
+                  className="h-56 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  spellCheck="false"
+                />
+              </div>
+            )}
+
+            {bubbleCssTab === 'model' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500">角色气泡 CSS</label>
+                <p className="text-xs text-zinc-500">给对方或群成员的气泡额外覆盖样式。</p>
+                <textarea
+                  value={settings.chat.modelBubbleStyleCss || ''}
+                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, modelBubbleStyleCss: e.target.value } })}
+                  placeholder={'box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);\nborder-radius: 22px;'}
+                  className="h-40 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  spellCheck="false"
+                />
+              </div>
+            )}
+
+            {bubbleCssTab === 'user' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500">用户气泡 CSS</label>
+                <p className="text-xs text-zinc-500">给自己发送的气泡额外覆盖样式。</p>
+                <textarea
+                  value={settings.chat.userBubbleStyleCss || ''}
+                  onChange={e => setSettings({ ...settings, chat: { ...settings.chat, userBubbleStyleCss: e.target.value } })}
+                  placeholder={'box-shadow: 0 12px 28px rgba(59, 130, 246, 0.18);\nborder-radius: 22px;'}
+                  className="h-40 w-full rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  spellCheck="false"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1235,6 +1352,25 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                    </div>
                 </div>
               </div>
+
+              <div className={`h-14 flex items-center gap-2 px-3 shrink-0 ${
+                (settings.chat?.footerStyle || 'default') === 'glass' ? 'bg-white/80 backdrop-blur-md border-t border-zinc-100/50' :
+                (settings.chat?.footerStyle || 'default') === 'solid' ? 'bg-zinc-100 border-t border-zinc-200' :
+                (settings.chat?.footerStyle || 'default') === 'transparent' ? 'bg-transparent border-t border-transparent' :
+                'bg-white border-t border-zinc-100'
+              }`}>
+                <div className="w-8 h-8 rounded-full bg-zinc-200 shrink-0" />
+                <div className={`flex-1 h-9 rounded-full border ${
+                  (settings.chat?.footerStyle || 'default') === 'transparent'
+                    ? 'bg-white/70 border-white/40'
+                    : (settings.chat?.footerStyle || 'default') === 'glass'
+                      ? 'bg-white/80 border-white/50'
+                      : (settings.chat?.footerStyle || 'default') === 'solid'
+                        ? 'bg-white border-zinc-200'
+                        : 'bg-zinc-50 border-zinc-100'
+                }`} />
+                <div className="w-8 h-8 rounded-full bg-zinc-200 shrink-0" />
+              </div>
             </div>
           </div>
 
@@ -1251,6 +1387,28 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   className={`py-2 px-3 rounded-xl text-xs font-medium border transition-colors ${
                     (settings.chat?.headerStyle || 'default') === style.value 
                       ? 'border-zinc-900 bg-zinc-900 text-white' 
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                  }`}
+                >
+                  {style.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-zinc-500">底部栏样式</label>
+            <div className="grid grid-cols-2 gap-2">
+              {footerStyles.map(style => (
+                <button
+                  key={style.value}
+                  onClick={() => setSettings({
+                    ...settings,
+                    chat: { ...settings.chat, footerStyle: style.value as any }
+                  })}
+                  className={`py-2 px-3 rounded-xl text-xs font-medium border transition-colors ${
+                    (settings.chat?.footerStyle || 'default') === style.value
+                      ? 'border-zinc-900 bg-zinc-900 text-white'
                       : 'border-zinc-200 bg-zinc-50 text-zinc-600'
                   }`}
                 >

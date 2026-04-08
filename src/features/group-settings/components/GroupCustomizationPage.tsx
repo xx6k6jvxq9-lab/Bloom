@@ -1,8 +1,9 @@
-import { Badge, ChevronLeft, ChevronRight, Image as ImageIcon, MessageCircleMore } from 'lucide-react';
+import { Badge, ChevronLeft, ChevronRight, Image as ImageIcon, MessageCircleMore, PanelsTopLeft } from 'lucide-react';
 
 type GroupCustomizationPageProps = {
   onBack: () => void;
   onOpenBackground: () => void;
+  onOpenInterface: () => void;
   onOpenBubbleColors: () => void;
   onOpenTitleBadges: () => void;
 };
@@ -12,6 +13,8 @@ const TEXT = {
   subtitle: '统一放群里和视觉个性化相关的能力',
   backgroundTitle: '群聊天背景',
   backgroundDesc: '给这个群单独设置背景图，支持链接、上传和预览。',
+  interfaceTitle: '群界面显示',
+  interfaceDesc: '调整这个群聊顶部栏和底部输入栏的视觉样式，只影响当前群聊。',
   bubbleTitle: '群气泡颜色设置',
   bubbleDesc: '按成员分别设置群消息气泡颜色，只影响当前群聊显示。',
   badgeTitle: '群头衔设置',
@@ -50,6 +53,7 @@ function CustomEntry({
 export function GroupCustomizationPage({
   onBack,
   onOpenBackground,
+  onOpenInterface,
   onOpenBubbleColors,
   onOpenTitleBadges,
 }: GroupCustomizationPageProps) {
@@ -72,6 +76,12 @@ export function GroupCustomizationPage({
             title={TEXT.backgroundTitle}
             description={TEXT.backgroundDesc}
             onClick={onOpenBackground}
+          />
+          <CustomEntry
+            icon={<PanelsTopLeft size={18} />}
+            title={TEXT.interfaceTitle}
+            description={TEXT.interfaceDesc}
+            onClick={onOpenInterface}
           />
           <CustomEntry
             icon={<MessageCircleMore size={18} />}

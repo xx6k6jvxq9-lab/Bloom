@@ -6,7 +6,7 @@ function stripLeadingMeta(text: string): string {
   return text
     .replace(/^\[(?:reply|reply to)\s*:\s*[^\]]+\]\s*/i, '')
     .replace(/^\[(?:notice|system|sticker|image)\]\s*/i, '')
-    .replace(/^[\s"'`\u201c\u201d\u2018\u2019!?，。？！,]+/, '')
+    .replace(/^[\s"'`\u201c\u201d\u2018\u2019!?,，。？]+/u, '')
     .trim();
 }
 
@@ -38,7 +38,7 @@ export function stripAssistantSpeakerPrefix(text: string, aliases: string[]): st
 
 export function parseAssistantSpeakerLabel(text: string): { senderLabel: string; content: string } | null {
   const normalized = stripLeadingMeta(text);
-  const wrappedMatch = normalized.match(/^[【\[]([^】\]]+)[】\]]\s*[:：]?\s*(.*)$/);
+  const wrappedMatch = normalized.match(/^[【\[]([^】\]]+)[】\]]\s*[:：]?\s*(.*)$/u);
   if (wrappedMatch) {
     return {
       senderLabel: wrappedMatch[1].trim(),
@@ -46,7 +46,7 @@ export function parseAssistantSpeakerLabel(text: string): { senderLabel: string;
     };
   }
 
-  const plainMatch = normalized.match(/^([^:：\n]{1,24})\s*[:：]\s*(.*)$/);
+  const plainMatch = normalized.match(/^([^:：\n]{1,24})\s*[:：]\s*(.*)$/u);
   if (!plainMatch) {
     return null;
   }
@@ -57,36 +57,11 @@ export function parseAssistantSpeakerLabel(text: string): { senderLabel: string;
   };
 }
 
-const DIRECT_MAX_BUBBLES = 4;
-const DIRECT_ENDING_PUNCTUATION = /[。！？!?]+$/;
-const RHYTHM_PREFIXES = [
-  '还有',
-  '然后',
-  '而且',
-  '那',
-  '那么',
-  '说',
-  '你看',
-  '不是',
-  '听我说',
-  '行',
-  '行吧',
-  '好',
-  '好啦',
-  '好吧',
-  'OK',
-  'ok',
-];
-const KEEP_ENDING_PHRASES = [
-  '听见没',
-  '知道了',
-  '别闹',
-  '记住了',
-  '会感冒',
-  '是不是',
-  '对不对',
-  '行不行',
-];
+const DIRECT_MAX_BUBBLES = 5;
+const DIRECT_ENDING_PUNCTUATION = /[\u3002\uFF01\uFF1F!?]+$/u;
+const DIRECT_SENTENCE_REGEX = /[^\u3002\uFF01\uFF1F!?\n]+(?:[\u3002\uFF01\uFF1F!?]+)?/gu;
+const DIRECT_SHORT_REACTION = /^(?:嗯|哦|喔|行|行吧|行啊|好|好吧|知道了|在呢|来了|收到|别闹|别急|没事|可以)$/u;
+const DIRECT_BREAK_STARTERS = /^(?:然后|而且|不过|所以|那|那就|还有|顺便|提前|另外|其实|反正|我先|我再|我就|你先|你就|要么|不然|别|过来|现在)/u;
 
 function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
   const normalized = text.trim();
@@ -95,60 +70,135 @@ function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
   }
 
   const plainText = normalized.replace(DIRECT_ENDING_PUNCTUATION, '').trim();
-  if (plainText.length <= 3) {
-    return plainText;
+  if (!plainText) {
+    return normalized;
   }
 
-  if (KEEP_ENDING_PHRASES.some((phrase) => plainText.endsWith(phrase))) {
-    return normalized;
+  if (plainText.length <= 3 || DIRECT_SHORT_REACTION.test(plainText)) {
+    return plainText;
   }
 
   return normalized.replace(DIRECT_ENDING_PUNCTUATION, '').trim();
 }
 
 function splitBySentenceChunks(text: string): string[] {
-  return (
-    text.match(/[^。！？!?]+[。！？!?]?/g)
-      ?.map((part) => part.trim())
-      .filter(Boolean)
-      ?? []
-  );
+  return text.match(DIRECT_SENTENCE_REGEX)?.map((part) => part.trim()).filter(Boolean) ?? [];
 }
 
-function splitByRhythmPrefix(text: string): string[] | null {
-  for (const prefix of RHYTHM_PREFIXES) {
-    const index = text.indexOf(prefix);
-    if (index > 0 && index <= 18) {
-      const head = text.slice(0, index).trim();
-      const tail = text.slice(index).trim();
-      if (head.length >= 4 && tail.length >= 2) {
-        return [head, tail];
-      }
+function splitDirectLongClause(text: string): string[] {
+  const normalized = text.trim();
+  if (!normalized) return [];
+  if (normalized.length <= 24) return [normalized];
+
+  const commaParts = normalized
+    .split(/(?<=[，,、；;])/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (commaParts.length <= 1) {
+    return [normalized];
+  }
+
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const part of commaParts) {
+    const compactPart = part.replace(/[，,、；;\s]/gu, '');
+    const compactCurrent = current.replace(/[，,、；;\s]/gu, '');
+    const shouldBreak =
+      !!current
+      && (
+        compactCurrent.length >= 10
+        || compactPart.length >= 12
+        || DIRECT_BREAK_STARTERS.test(part.replace(/^[，,、；;\s]+/u, ''))
+      );
+
+    if (shouldBreak) {
+      chunks.push(current.trim());
+      current = part;
+      continue;
+    }
+
+    const nextValue = current ? `${current}${part}` : part;
+    if (current && nextValue.length > 28) {
+      chunks.push(current.trim());
+      current = part;
+      continue;
+    }
+
+    current = nextValue;
+  }
+
+  if (current) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.length > 1 ? chunks : [normalized];
+}
+
+function splitByNaturalChatBeats(text: string): string[] {
+  const normalized = text.trim();
+  if (!normalized) return [];
+
+  const candidateParts = normalized
+    .split(/(?<=[。！？!?\u2026]+)\s*/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (candidateParts.length <= 1) {
+    return [normalized];
+  }
+
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const part of candidateParts) {
+    const compactPart = part.replace(/\s/gu, '');
+    const compactCurrent = current.replace(/\s/gu, '');
+    const shouldBreak =
+      !!current
+      && (
+        DIRECT_SHORT_REACTION.test(compactPart.replace(DIRECT_ENDING_PUNCTUATION, ''))
+        || compactCurrent.length >= 16
+        || (compactCurrent.length >= 9 && compactPart.length >= 9)
+      );
+
+    if (shouldBreak) {
+      chunks.push(current.trim());
+      current = part;
+      continue;
+    }
+
+    current = current ? `${current}${part}` : part;
+  }
+
+  if (current) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.length > 1 ? chunks : [normalized];
+}
+
+function splitByStarterRhythm(text: string): string[] {
+  const normalized = text.trim();
+  if (!normalized) return [];
+
+  for (const match of normalized.matchAll(/(?:^|[，,。！？!?；;\s])((?:然后|而且|不过|所以|顺便|提前|另外|其实|反正|我先|我再|你先|要么|不然|别|过来|现在))/gu)) {
+    const starter = match[1];
+    const index = match.index ?? -1;
+    if (index <= 0) continue;
+
+    const starterIndex = normalized.indexOf(starter, index);
+    if (starterIndex <= 0) continue;
+
+    const head = normalized.slice(0, starterIndex).trim();
+    const tail = normalized.slice(starterIndex).trim();
+    if (head.length >= 4 && tail.length >= 3) {
+      return [head, tail];
     }
   }
 
-  return null;
-}
-
-function splitByCommaRhythm(text: string): string[] | null {
-  const commaMatch = text.match(/^(.{2,18}?)[，、；;]\s*(.{2,24})$/);
-  if (!commaMatch) {
-    return null;
-  }
-
-  const firstPart = commaMatch[1].trim();
-  const secondPart = commaMatch[2].trim();
-  if (firstPart.length < 2 || secondPart.length < 2) {
-    return null;
-  }
-
-  const firstLooksLead = /^(给你|还有|那|行|先|快|别|去|来|好|纸巾|记得|听我说|说|你看)/.test(firstPart);
-  const secondLooksFollow = /^(别|记得|会|听见没|自己|谁|不|先|再|就|去|来)/.test(secondPart);
-  if (firstLooksLead || secondLooksFollow) {
-    return [firstPart, secondPart];
-  }
-
-  return null;
+  return [normalized];
 }
 
 function mergeRhythmParts(parts: string[]): string[] {
@@ -163,7 +213,8 @@ function mergeRhythmParts(parts: string[]): string[] {
     if (!first || !second) {
       break;
     }
-    merged.unshift(`${first}${DIRECT_ENDING_PUNCTUATION.test(first) ? '' : '，'}${second}`);
+    const separator = DIRECT_ENDING_PUNCTUATION.test(first) ? '' : '，';
+    merged.unshift(`${first}${separator}${second}`.trim());
   }
 
   return merged;
@@ -179,28 +230,24 @@ export function splitDirectAssistantReplyText(text: string): string[] {
     .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
+
   if (explicitLines.length > 1) {
-    return explicitLines.map((part, index) => normalizeBubbleEnding(part, index === explicitLines.length - 1));
+    return explicitLines
+      .slice(0, DIRECT_MAX_BUBBLES)
+      .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1));
   }
 
-  const sentenceParts = splitBySentenceChunks(normalized);
-  let parts: string[] = [normalized];
+  const parts = splitBySentenceChunks(normalized)
+    .flatMap((part) => splitDirectLongClause(part))
+    .flatMap((part) => splitByNaturalChatBeats(part))
+    .flatMap((part) => splitByStarterRhythm(part))
+    .map((part) => part.trim())
+    .filter(Boolean);
 
-  if (sentenceParts.length >= 2 && sentenceParts.length <= DIRECT_MAX_BUBBLES) {
-    parts = sentenceParts;
-  } else {
-    const rhythmPrefixSplit = splitByRhythmPrefix(normalized);
-    if (rhythmPrefixSplit) {
-      parts = rhythmPrefixSplit;
-    } else {
-      const commaSplit = splitByCommaRhythm(normalized);
-      if (commaSplit) {
-        parts = commaSplit;
-      }
-    }
-  }
+  const resolvedParts = parts.length > 0 ? parts : [normalized];
 
-  return mergeRhythmParts(parts)
+  return mergeRhythmParts(resolvedParts)
+    .slice(0, DIRECT_MAX_BUBBLES)
     .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1))
     .filter(Boolean);
 }

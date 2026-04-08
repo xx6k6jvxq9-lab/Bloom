@@ -8,6 +8,7 @@ import { GroupBubbleColorSettingsPage } from './GroupBubbleColorSettingsPage';
 import { GroupCustomizationPage } from './GroupCustomizationPage';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
+import { GroupInterfaceSettingsPage } from './GroupInterfaceSettingsPage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
 import { GroupTitleBadgeSettingsPage } from './GroupTitleBadgeSettingsPage';
@@ -71,7 +72,7 @@ export function GroupSettingsScreen({
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
   const [page, setPage] = useState<
-    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'bubble-colors' | 'title-badges'
+    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges'
   >('settings');
 
   return (
@@ -142,6 +143,7 @@ export function GroupSettingsScreen({
         <GroupCustomizationPage
           onBack={() => setPage('settings')}
           onOpenBackground={() => setPage('background')}
+          onOpenInterface={() => setPage('interface')}
           onOpenBubbleColors={() => setPage('bubble-colors')}
           onOpenTitleBadges={() => setPage('title-badges')}
         />
@@ -151,6 +153,14 @@ export function GroupSettingsScreen({
         <GroupChatBackgroundPage
           value={formState.groupBackground}
           onChange={onUpdateGroupBackground}
+          onBack={() => setPage('customization')}
+        />
+      ) : null}
+
+      {page === 'interface' ? (
+        <GroupInterfaceSettingsPage
+          formState={formState}
+          onChange={onChange}
           onBack={() => setPage('customization')}
         />
       ) : null}
