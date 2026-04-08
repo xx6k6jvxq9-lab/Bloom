@@ -433,6 +433,7 @@ export function useDirectChatRuntime({
               ...historyWindow.map(m => ({
                 role: m.role === 'user' ? 'user' as const : 'assistant' as const,
                 content: toPromptHistoryContent(m),
+                ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
               })),
             ],
             onTextChunk: (chunkText) => {
@@ -746,6 +747,7 @@ export function useDirectChatRuntime({
           ...historyWindow.map(m => ({
             role: m.role === 'user' ? 'user' as const : 'assistant' as const,
             content: toPromptHistoryContent(m),
+            ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
           })),
         ],
         onTextChunk: (chunkText) => {

@@ -198,6 +198,7 @@ function buildRuntimeMessages(params: {
     .map<RuntimeChatMessage>((message) => ({
       role: message.role === 'user' ? 'user' : 'assistant',
       content: getPromptTextForMessage(message),
+      ...(message.imageUrl ? { imageUrl: message.imageUrl } : {}),
     }));
 
   const latestVisibleMessage = [...params.history]

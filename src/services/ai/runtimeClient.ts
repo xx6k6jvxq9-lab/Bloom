@@ -1,10 +1,73 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, createPartFromBase64, createPartFromText, createPartFromUri } from '@google/genai';
 import type { ApiConfig } from '../../types';
+import { resolveValueToModelInput } from '../../features/persistence/persistentAssetService';
 
 export type RuntimeChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'model';
   content: string;
+  imageUrl?: string;
 };
+
+function parseDataUrl(value: string): { mimeType: string; data: string } | null {
+  const match = value.match(/^data:([^;,]+)(?:;[^,]+)?,(.+)$/i);
+  if (!match?.[1] || !match?.[2]) {
+    return null;
+  }
+
+  return {
+    mimeType: match[1],
+    data: match[2],
+  };
+}
+
+function inferMimeTypeFromImageUrl(value: string): string {
+  const lowerValue = value.toLowerCase();
+  if (lowerValue.includes('.png')) return 'image/png';
+  if (lowerValue.includes('.webp')) return 'image/webp';
+  if (lowerValue.includes('.gif')) return 'image/gif';
+  if (lowerValue.includes('.jpg') || lowerValue.includes('.jpeg')) return 'image/jpeg';
+  return 'image/png';
+}
+
+async function resolveRuntimeMessagesForModel(messages: RuntimeChatMessage[]): Promise<RuntimeChatMessage[]> {
+  return Promise.all(messages.map(async (message) => {
+    if (!message.imageUrl) {
+      return message;
+    }
+
+    const resolvedImageUrl = await resolveValueToModelInput(message.imageUrl);
+    return resolvedImageUrl
+      ? { ...message, imageUrl: resolvedImageUrl }
+      : { ...message, imageUrl: undefined };
+  }));
+}
+
+function buildGeminiMessageParts(message: RuntimeChatMessage) {
+  const parts = [createPartFromText(message.content)];
+  if (!message.imageUrl) {
+    return parts;
+  }
+
+  const dataUrl = parseDataUrl(message.imageUrl);
+  if (dataUrl) {
+    parts.push(createPartFromBase64(dataUrl.data, dataUrl.mimeType));
+    return parts;
+  }
+
+  parts.push(createPartFromUri(message.imageUrl, inferMimeTypeFromImageUrl(message.imageUrl)));
+  return parts;
+}
+
+function buildOpenAiCompatibleMessageContent(message: RuntimeChatMessage) {
+  if (!message.imageUrl || message.role !== 'user') {
+    return message.content;
+  }
+
+  return [
+    { type: 'text', text: message.content },
+    { type: 'image_url', image_url: { url: message.imageUrl } },
+  ];
+}
 
 function normalizeErrorDetail(detail: string, maxLength = 160) {
   const normalized = detail.replace(/\s+/g, ' ').trim();
@@ -493,14 +556,15 @@ export async function generateTextFromMessagesWithConfig(options: {
 }) {
   const { activeConfig, messages, temperature, maxOutputTokens } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
+  const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
 
   if (isGeminiConfig(activeConfig)) {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model,
-      contents: messages.map((message) => ({
+      contents: resolvedMessages.map((message) => ({
         role: message.role === 'assistant' ? 'model' : message.role,
-        parts: [{ text: message.content }],
+        parts: buildGeminiMessageParts(message),
       })),
       config: {
         temperature: activeConfig.temperature ?? temperature ?? 1.0,
@@ -519,9 +583,9 @@ export async function generateTextFromMessagesWithConfig(options: {
     },
     body: JSON.stringify({
       model,
-      messages: messages.map((message) => ({
+      messages: resolvedMessages.map((message) => ({
         role: message.role === 'model' ? 'assistant' : message.role,
-        content: message.content,
+        content: buildOpenAiCompatibleMessageContent(message),
       })),
       temperature: activeConfig.temperature ?? temperature ?? 0.7,
       max_tokens: maxOutputTokens,
@@ -545,12 +609,13 @@ export async function streamTextWithConfig(options: {
 }) {
   const { activeConfig, messages, temperature, onTextChunk } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
+  const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
 
   if (isGeminiConfig(activeConfig)) {
     const ai = new GoogleGenAI({ apiKey });
-    const contents = messages.map(message => ({
+    const contents = resolvedMessages.map(message => ({
       role: message.role === 'assistant' ? 'model' : message.role,
-      parts: [{ text: message.content }],
+      parts: buildGeminiMessageParts(message),
     }));
 
     const stream = await ai.models.generateContentStream({
@@ -579,9 +644,9 @@ export async function streamTextWithConfig(options: {
     },
     body: JSON.stringify({
       model,
-      messages: messages.map(message => ({
+      messages: resolvedMessages.map(message => ({
         role: message.role === 'model' ? 'assistant' : message.role,
-        content: message.content,
+        content: buildOpenAiCompatibleMessageContent(message),
       })),
       temperature: activeConfig.temperature ?? temperature ?? 0.7,
       stream: true,

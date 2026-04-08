@@ -87,6 +87,43 @@ export async function resolveValueToDisplayUrl(value: string | null | undefined)
   return getOrCreate(parsedRef.id, record.blob);
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('无法把资源转换成 data URL'));
+    };
+    reader.onerror = () => reject(reader.error || new Error('读取资源失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function resolveValueToModelInput(value: string | null | undefined): Promise<string | null> {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (isDirectDisplayValue(trimmed)) {
+    return trimmed;
+  }
+
+  const parsedRef = parseUploadedAssetRef(trimmed);
+  if (!parsedRef) {
+    return null;
+  }
+
+  const record = await getAsset(parsedRef.id);
+  if (!record) {
+    return null;
+  }
+
+  return blobToDataUrl(record.blob);
+}
+
 export async function removeAssetByRef(ref: string): Promise<void> {
   if (!isUploadedAssetRef(ref)) return;
 
