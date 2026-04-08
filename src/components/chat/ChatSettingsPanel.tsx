@@ -101,7 +101,7 @@ export function ChatSettingsPanel({
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
   groups: string[];
-  activeConfig: ApiConfig;
+  activeConfig?: ApiConfig;
   worldBooks: WorldBookEntry[];
   masks: Mask[];
   callHistory?: CallRecord[];

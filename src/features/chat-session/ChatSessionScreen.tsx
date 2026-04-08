@@ -45,6 +45,98 @@ function parseBubbleStyleCss(styleText?: string) {
   }
 }
 
+function getDirectReplyPreviewClass() {
+  return 'mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm';
+}
+
+function getDirectReplyPreviewTextClass() {
+  return 'mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words';
+}
+
+function getDirectTextBubbleClass(role: ChatMessage['role'], maxWidthClass: string) {
+  if (role === 'model') {
+    return `inline-block ${maxWidthClass} px-4 py-3 rounded-2xl`;
+  }
+
+  return `w-fit ${maxWidthClass} px-4 py-3 rounded-2xl`;
+}
+
+function getDirectTextBubbleStyle({
+  role,
+  visualSettings,
+  activeBackground,
+  resolvedChatMessageBackgroundUrl,
+  resolvedCharacterBubbleImageUrl,
+  resolvedUserBubbleImageUrl,
+  character,
+}: {
+  role: ChatMessage['role'];
+  visualSettings: VisualSettings;
+  activeBackground: string | undefined;
+  resolvedChatMessageBackgroundUrl?: string;
+  resolvedCharacterBubbleImageUrl?: string;
+  resolvedUserBubbleImageUrl?: string;
+  character: Character;
+}): React.CSSProperties {
+  return {
+    borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
+    borderTopRightRadius:
+      role === 'user'
+        ? 6
+        : visualSettings?.chat?.messageBorderRadius ?? 16,
+    borderTopLeftRadius:
+      role === 'model'
+        ? 6
+        : visualSettings?.chat?.messageBorderRadius ?? 16,
+    boxShadow:
+      role === 'user'
+        ? '0 10px 24px rgba(59, 130, 246, 0.18)'
+        : '0 10px 24px rgba(15, 23, 42, 0.08)',
+    backgroundColor:
+      role === 'user'
+        ? (visualSettings?.chat?.messageBackgroundColorUser ||
+            `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
+        : (visualSettings?.chat?.messageBackgroundColorModel ||
+            `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`),
+    borderColor:
+      role === 'user'
+        ? (visualSettings?.chat?.messageBackgroundColorUser ||
+            `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
+        : `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
+    ...(resolvedChatMessageBackgroundUrl
+      ? {
+          backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          border: 'none',
+        }
+      : {}),
+    ...(role === 'model' && resolvedCharacterBubbleImageUrl
+      ? {
+          backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          border: 'none',
+        }
+      : role === 'model' && character.bubbleColor
+      ? { backgroundColor: character.bubbleColor }
+      : {}),
+    ...(role === 'user' && resolvedUserBubbleImageUrl
+      ? {
+          backgroundImage: `url(${resolvedUserBubbleImageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          border: 'none',
+        }
+      : role === 'user' && character.userBubbleColor
+      ? {
+          backgroundColor: character.userBubbleColor,
+          borderColor: character.userBubbleColor,
+        }
+      : {}),
+  };
+}
+
 function parseGameCardPayload(message: ChatMessage) {
   const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
   const gameCardMatch = message.text.match(gameCardRegex);
@@ -1154,14 +1246,14 @@ export function ChatSessionScreen({
                                 <>
                                   {msg.replyTo && (
                                     <div
-                                      className="mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm"
+                                      className={getDirectReplyPreviewClass()}
                                     >
                                       <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                                       <div className="min-w-0">
                                         <div className="text-[11px] font-medium text-zinc-500">
                                           回复 {msg.replyTo.authorLabel}
                                         </div>
-                                        <div className="mt-0.5 line-clamp-3 text-[12px] leading-5 text-zinc-600 break-words">
+                                        <div className={getDirectReplyPreviewTextClass()}>
                                           {getReplyPreviewText(msg)}
                                         </div>
                                       </div>
@@ -1170,66 +1262,18 @@ export function ChatSessionScreen({
 
                                   <div
                                     onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
-                                    className={`${
-                                      msg.role === 'model'
-                                        ? `inline-block ${layoutConfig.textBubbleMaxWidthClass} px-4 py-2.5 rounded-2xl`
-                                        : `w-fit ${layoutConfig.textBubbleMaxWidthClass} px-4 py-2.5`
-                                    } shadow-sm relative cursor-pointer active:scale-[0.98] transition-all border ${
+                                    className={`${getDirectTextBubbleClass(msg.role, layoutConfig.textBubbleMaxWidthClass)} relative cursor-pointer active:scale-[0.98] transition-all border ${
                                       msg.role === 'user' ? 'text-white' : 'text-zinc-800'
                                     }`}
-                                    style={{
-                                      borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
-                                      borderTopRightRadius:
-                                        msg.role === 'user'
-                                          ? 4
-                                          : visualSettings?.chat?.messageBorderRadius ?? 16,
-                                      borderTopLeftRadius:
-                                        msg.role === 'model'
-                                          ? 4
-                                          : visualSettings?.chat?.messageBorderRadius ?? 16,
-                                      backgroundColor:
-                                        msg.role === 'user'
-                                          ? (visualSettings?.chat?.messageBackgroundColorUser ||
-                                              `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
-                                          : (visualSettings?.chat?.messageBackgroundColorModel ||
-                                              `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`),
-                                      borderColor:
-                                        msg.role === 'user'
-                                          ? (visualSettings?.chat?.messageBackgroundColorUser ||
-                                              `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
-                                          : `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                                      ...(resolvedChatMessageBackgroundUrl
-                                        ? {
-                                            backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`,
-                                            backgroundSize: 'cover',
-                                            backgroundPosition: 'center',
-                                            border: 'none'
-                                          }
-                                        : {}),
-                                      ...(msg.role === 'model' && resolvedCharacterBubbleImageUrl
-                                        ? {
-                                            backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`,
-                                            backgroundSize: 'cover',
-                                            backgroundPosition: 'center',
-                                            border: 'none'
-                                          }
-                                        : msg.role === 'model' && character.bubbleColor
-                                        ? { backgroundColor: character.bubbleColor }
-                                        : {}),
-                                      ...(msg.role === 'user' && resolvedUserBubbleImageUrl
-                                        ? {
-                                            backgroundImage: `url(${resolvedUserBubbleImageUrl})`,
-                                            backgroundSize: 'cover',
-                                            backgroundPosition: 'center',
-                                            border: 'none'
-                                          }
-                                        : msg.role === 'user' && character.userBubbleColor
-                                        ? {
-                                            backgroundColor: character.userBubbleColor,
-                                            borderColor: character.userBubbleColor
-                                          }
-                                        : {})
-                                    }}
+                                    style={getDirectTextBubbleStyle({
+                                      role: msg.role,
+                                      visualSettings,
+                                      activeBackground: activeBackground || undefined,
+                                      resolvedChatMessageBackgroundUrl: resolvedChatMessageBackgroundUrl || undefined,
+                                      resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
+                                      resolvedUserBubbleImageUrl: resolvedUserBubbleImageUrl || undefined,
+                                      character,
+                                    })}
                                   >
                                     {(() => {
                                       const legacyTranslationParts = getLegacyTranslationParts(cleanText);
@@ -1520,11 +1564,18 @@ export function ChatSessionScreen({
             <div className="flex gap-2.5">
               <PersistentImage value={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
               <div 
-                className="border rounded-2xl rounded-tl-none px-4 py-2.5 shadow-sm"
+                className="border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                 style={{
-                  backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                  borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                  ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor } : {})
+                  ...getDirectTextBubbleStyle({
+                    role: 'model',
+                    visualSettings,
+                    activeBackground: activeBackground || undefined,
+                    resolvedChatMessageBackgroundUrl: undefined,
+                    resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
+                    resolvedUserBubbleImageUrl: undefined,
+                    character,
+                  }),
+                  borderTopLeftRadius: 6,
                 }}
               >
                 <div className="flex gap-1">

@@ -12,25 +12,25 @@ type GroupChatBackgroundPageProps = {
 };
 
 const TEXT = {
-  title: '\u7fa4\u804a\u5929\u80cc\u666f',
-  subtitle: '\u652f\u6301\u56fe\u7247\u94fe\u63a5\u3001\u4e0a\u4f20\u548c\u5b9e\u65f6\u9884\u89c8',
-  previewTitle: '\u7fa4\u804a\u80cc\u666f\u9884\u89c8',
-  previewSummary: '\u4fdd\u5b58\u540e\u4f1a\u5e94\u7528\u5230\u5f53\u524d\u7fa4\u804a\u6d88\u606f\u533a',
-  previewIncoming: '\u4eca\u5929\u8fd9\u4e2a\u7fa4\u7684\u80cc\u666f\u7ec8\u4e8e\u5355\u72ec\u914d\u597d\u4e86\u3002',
-  previewOutgoing: '\u94fe\u63a5\u3001\u4e0a\u4f20\u548c\u9884\u89c8\u90fd\u4f1a\u8d70\u8fd9\u91cc\u3002',
-  sourceTitle: '\u80cc\u666f\u6765\u6e90',
+  title: '群聊天背景',
+  subtitle: '支持图片链接、上传和实时预览',
+  previewTitle: '群聊背景预览',
+  previewSummary: '保存后会应用到当前群聊消息区',
+  previewIncoming: '今天这个群的背景终于单独配好了。',
+  previewOutgoing: '链接、上传和预览都会走这里。',
+  sourceTitle: '背景来源',
   sourceSummary:
-    '\u652f\u6301\u76f4\u63a5\u7c98\u8d34\u56fe\u7247\u94fe\u63a5\u3001Markdown \u56fe\u7247\u3001HTML \u56fe\u7247\u6807\u7b7e\uff0c\u4e5f\u652f\u6301\u672c\u5730\u4e0a\u4f20\u3002',
-  urlLabel: '\u56fe\u7247\u94fe\u63a5',
-  urlPlaceholder: '\u652f\u6301 https \u94fe\u63a5\u3001Markdown \u56fe\u7247\u6216 HTML \u56fe\u7247\u6807\u7b7e',
-  apply: '\u5e94\u7528',
-  upload: '\u76f4\u63a5\u4e0a\u4f20',
-  clear: '\u6e05\u7a7a\u80cc\u666f',
-  guideTitle: '\u4f7f\u7528\u8bf4\u660e',
-  guide1: '\u80cc\u666f\u56fe\u53ea\u5f71\u54cd\u5f53\u524d\u7fa4\u804a\uff0c\u4e0d\u4f1a\u8986\u76d6\u5355\u804a\u80cc\u666f\u3002',
-  guide2: '\u4e0a\u4f20\u540e\u4f1a\u4fdd\u5b58\u4e3a\u6301\u4e45\u8d44\u6e90\uff0c\u5bfc\u5165\u5bfc\u51fa\u65f6\u80fd\u8ddf\u7740\u7fa4\u6570\u636e\u4e00\u8d77\u8d70\u3002',
-  guide3: '\u5efa\u8bae\u4f7f\u7528\u6e05\u6670\u4f46\u4e0d\u8fc7\u4eae\u7684\u80cc\u666f\uff0c\u907f\u514d\u5f71\u54cd\u6d88\u606f\u53ef\u8bfb\u6027\u3002',
-  previewAlt: '\u7fa4\u804a\u80cc\u666f\u9884\u89c8',
+    '支持直接粘贴图片链接、Markdown 图片、HTML 图片标签，也支持本地上传。',
+  urlLabel: '图片链接',
+  urlPlaceholder: '支持 https 链接、Markdown 图片或 HTML 图片标签',
+  apply: '应用',
+  upload: '直接上传',
+  clear: '清空背景',
+  guideTitle: '使用说明',
+  guide1: '背景图只影响当前群聊，不会覆盖单聊背景。',
+  guide2: '上传后会保存为持久资源，导入导出时能跟着群数据一起走。',
+  guide3: '建议使用清晰但不过亮的背景，避免影响消息可读性。',
+  previewAlt: '群聊背景预览',
 } as const;
 
 function PreviewPhone({ src }: { src: string | null }) {
@@ -86,7 +86,11 @@ export function GroupChatBackgroundPage({
   const previewSrc = getDisplayableAssetValue(previewCandidate, resolvedUrl);
 
   const handleApplyLink = async () => {
-    const normalized = draftInput.trim() ? await setRemoteUrl(draftInput) : await clearValue();
+    if (!draftInput.trim()) {
+      return;
+    }
+
+    const normalized = await setRemoteUrl(draftInput);
     setDraftInput(normalized);
     onChange(normalized);
   };
@@ -143,7 +147,12 @@ export function GroupChatBackgroundPage({
                   onClick={() => {
                     void handleApplyLink();
                   }}
-                  className="rounded-2xl bg-zinc-900 px-4 py-3 text-[13px] font-medium text-white transition-colors hover:bg-zinc-800"
+                  disabled={!draftInput.trim()}
+                  className={`rounded-2xl px-4 py-3 text-[13px] font-medium text-white transition-colors ${
+                    draftInput.trim()
+                      ? 'bg-zinc-900 hover:bg-zinc-800'
+                      : 'cursor-not-allowed bg-zinc-300'
+                  }`}
                 >
                   {TEXT.apply}
                 </button>

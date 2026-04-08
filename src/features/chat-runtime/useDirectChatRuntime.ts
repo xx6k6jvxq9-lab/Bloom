@@ -31,6 +31,7 @@ import {
   toggleFavoriteMessage,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
@@ -126,7 +127,7 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
-  options: { isInnerVoice?: boolean; transferTargetLabel?: string } = {}
+  options: { isInnerVoice?: boolean; transferTargetLabel?: string; assistantAliases?: string[] } = {}
 ): ChatMessage[] => {
   if (options.isInnerVoice) {
     return [{
@@ -162,11 +163,11 @@ const splitStreamingModelResponseIntoMessages = (
   }
 
   const legacyTranslationParts = getLegacyTranslationParts(text);
-  const mainText = sanitizePipeMarkers(legacyTranslationParts.mainText, '\n');
-  const explicitParts = mainText.split('\n').map(part => part.trim()).filter(Boolean);
-  const parts = explicitParts.length > 1
-    ? explicitParts
-    : (mainText.match(/[^。！？?\n]+[。！？?]?/g)?.map(part => part.trim()).filter(Boolean) ?? [mainText]);
+  const mainText = stripAssistantSpeakerPrefix(
+    sanitizePipeMarkers(legacyTranslationParts.mainText, '\n'),
+    options.assistantAliases || [],
+  );
+  const parts = splitDirectAssistantReplyText(mainText);
 
   return parts.map((part, index) => ({
     role: 'model' as const,
@@ -341,6 +342,7 @@ export function useDirectChatRuntime({
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
           const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId, {
             transferTargetLabel: userName,
+            assistantAliases: [character.name, character.remarkName?.trim() || ''],
           });
           const nextMessages = messages.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
@@ -606,6 +608,7 @@ export function useDirectChatRuntime({
       const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
+        assistantAliases: [character.name, character.remarkName?.trim() || ''],
       });
       const nextMessages = messages.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)

@@ -4,6 +4,7 @@ import type { ChatMessage } from '../../../types';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatBackgroundPage } from './GroupChatBackgroundPage';
+import { GroupBubbleColorSettingsPage } from './GroupBubbleColorSettingsPage';
 import { GroupCustomizationPage } from './GroupCustomizationPage';
 import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
@@ -27,6 +28,8 @@ type GroupSettingsScreenProps = {
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
   onUpdateBadge: (memberId: string, payload: { label: string; color: string }) => Promise<void> | void;
+  onUpdateBubbleColor: (memberId: string, color: string | null) => Promise<void> | void;
+  onUpdateGroupBackground: (value: string) => void;
   resolveSenderLabel: (message: ChatMessage) => string;
   isInvitingMember?: boolean;
   isRemovingMember?: boolean;
@@ -57,6 +60,8 @@ export function GroupSettingsScreen({
   onRemoveMember,
   onToggleAdmin,
   onUpdateBadge,
+  onUpdateBubbleColor,
+  onUpdateGroupBackground,
   resolveSenderLabel,
   isInvitingMember = false,
   isRemovingMember = false,
@@ -66,7 +71,7 @@ export function GroupSettingsScreen({
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
   const [page, setPage] = useState<
-    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'title-badges'
+    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'bubble-colors' | 'title-badges'
   >('settings');
 
   return (
@@ -137,6 +142,7 @@ export function GroupSettingsScreen({
         <GroupCustomizationPage
           onBack={() => setPage('settings')}
           onOpenBackground={() => setPage('background')}
+          onOpenBubbleColors={() => setPage('bubble-colors')}
           onOpenTitleBadges={() => setPage('title-badges')}
         />
       ) : null}
@@ -144,7 +150,7 @@ export function GroupSettingsScreen({
       {page === 'background' ? (
         <GroupChatBackgroundPage
           value={formState.groupBackground}
-          onChange={(value) => onChange({ groupBackground: value })}
+          onChange={onUpdateGroupBackground}
           onBack={() => setPage('customization')}
         />
       ) : null}
@@ -156,6 +162,14 @@ export function GroupSettingsScreen({
           onUpdateBadge={onUpdateBadge}
           canEditBadges={actingRole === 'owner' || actingRole === 'admin'}
           isUpdatingBadge={isUpdatingBadge}
+        />
+      ) : null}
+
+      {page === 'bubble-colors' ? (
+        <GroupBubbleColorSettingsPage
+          members={members.filter((member) => member.id !== 'user')}
+          onBack={() => setPage('customization')}
+          onUpdateBubbleColor={onUpdateBubbleColor}
         />
       ) : null}
     </div>

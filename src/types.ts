@@ -718,6 +718,10 @@ export type ChatGroup = {
     label: string;
     color: string;
   }>;
+  memberBubbleColors?: Array<{
+    memberId: string;
+    color: string;
+  }>;
   muteNotifications?: boolean;
   pinChat?: boolean;
   groupStage?: 'new' | 'warming' | 'familiar';

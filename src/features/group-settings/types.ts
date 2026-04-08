@@ -43,4 +43,5 @@ export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remark
   role: GroupMemberRole;
   badgeLabel?: string;
   badgeColor?: string;
+  bubbleColor?: string;
 };

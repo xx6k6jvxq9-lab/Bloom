@@ -178,8 +178,8 @@ export function buildGroupChatSceneInput(
       mode === 'opening'
         ? 'Please send a natural opening message for this group chat.'
         : mode === 'invited'
-        ? 'You were just @mentioned or invited to speak. Please reply to the conversation.'
-        : 'Please reply to the conversation in the group chat context.',
+          ? 'You were just @mentioned or invited to speak. Please reply to the conversation.'
+          : 'Please reply to the conversation in the group chat context.',
     mentionInstruction:
       mode === 'reply'
         ? 'If you want to invite another character to speak, you can @mention them (e.g., "@Name").'

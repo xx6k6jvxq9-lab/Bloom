@@ -10,7 +10,11 @@ function createAssetId(): string {
 }
 
 function isDirectDisplayValue(value: string): boolean {
-  return /^(https?:|data:)/i.test(value);
+  if (/^data:/i.test(value)) {
+    return /^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,.+$/i.test(value);
+  }
+
+  return /^(https?:)/i.test(value);
 }
 
 export async function saveUploadedBlob(

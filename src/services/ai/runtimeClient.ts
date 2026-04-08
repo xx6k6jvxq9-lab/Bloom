@@ -66,6 +66,22 @@ function sanitizeModelOutput(text: string) {
   // If the model starts a think block but never closes it, drop that tail entirely.
   cleaned = cleaned.replace(/<think\b[^>]*>[\s\S]*$/gi, '').trim();
 
+  // Strip common agent/tool leakage from upstream orchestration layers.
+  cleaned = cleaned
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (/^call:[^\s]+/i.test(line)) return false;
+      if (/^\[system\].*recovered by/i.test(line)) return false;
+      if (/^recovered by\b/i.test(line)) return false;
+      if (/^antigravity here\.?$/i.test(line)) return false;
+      if (/^upstream model interrupted after thinking\.?$/i.test(line)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+
   return cleaned;
 }
 

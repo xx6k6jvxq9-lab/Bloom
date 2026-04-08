@@ -11,10 +11,19 @@ export function getMessageMainText(message: ChatMessage): string {
 
 export function extractImageUrls(text: string): string[] {
   if (!text) return [];
-  
+
+  const trimmedText = text.trim();
+  if (!trimmedText) return [];
+
+  // `data:` URLs often contain many commas and whitespace-free payload chunks.
+  // Splitting them like regular text will truncate the payload into invalid URLs.
+  if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(trimmedText)) {
+    return [trimmedText];
+  }
+
   const urls: string[] = [];
-  const lines = text.split(/[\n,]+/);
-  
+  const lines = trimmedText.split(/\n+/);
+
   for (let line of lines) {
     line = line.trim();
     if (!line) continue;

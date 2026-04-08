@@ -3,6 +3,7 @@ import type { ApiConfig, Character, ChatGroup, ChatMessage } from '../../types';
 import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
+import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
@@ -222,17 +223,10 @@ function buildRuntimeMessages(params: {
 }
 
 function normalizeGeneratedReply(text: string, speaker: Character): string {
-  const aliases = [speaker.name];
-
-  let normalized = text.trim();
-
-  for (const alias of aliases) {
-    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    normalized = normalized.replace(new RegExp(`^${escapedAlias}\\s*[:\\uFF1A]\\s*`), '').trim();
-  }
-
-  normalized = normalized.replace(/^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/g, '').trim();
-  return normalized;
+  return stripAssistantSpeakerPrefix(text, [
+    speaker.name,
+    speaker.remarkName?.trim() || '',
+  ]);
 }
 
 function buildFailureText(detail: string): string {
@@ -254,7 +248,7 @@ function buildReplyPreviewPayload(message: ChatMessage, fallbackAuthor: string):
     text: mainText || message.text,
     role: message.role,
     timestamp: message.timestamp,
-    authorLabel: message.role === 'user' ? fallbackAuthor : fallbackAuthor,
+    authorLabel: fallbackAuthor,
     preview: mainText.replace(/\r?\n+/g, ' ').trim().slice(0, 120) || '[消息]',
   };
 }

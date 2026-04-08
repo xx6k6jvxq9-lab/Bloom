@@ -1,20 +1,21 @@
-import { ChevronLeft, ChevronRight, MessageCircleMore, Image as ImageIcon, Badge } from 'lucide-react';
+import { Badge, ChevronLeft, ChevronRight, Image as ImageIcon, MessageCircleMore } from 'lucide-react';
 
 type GroupCustomizationPageProps = {
   onBack: () => void;
   onOpenBackground: () => void;
+  onOpenBubbleColors: () => void;
   onOpenTitleBadges: () => void;
 };
 
 const TEXT = {
-  title: '\u7fa4\u81ea\u5b9a\u4e49',
-  subtitle: '\u7edf\u4e00\u653e\u7fa4\u91cc\u548c\u89c6\u89c9\u4e2a\u6027\u5316\u76f8\u5173\u7684\u80fd\u529b',
-  backgroundTitle: '\u7fa4\u804a\u5929\u80cc\u666f',
-  backgroundDesc: '\u7ed9\u8fd9\u4e2a\u7fa4\u5355\u72ec\u8bbe\u7f6e\u80cc\u666f\u56fe\uff0c\u652f\u6301\u94fe\u63a5\u3001\u4e0a\u4f20\u548c\u9884\u89c8\u3002',
-  bubbleTitle: '\u7fa4\u6c14\u6ce1\u989c\u8272\u8bbe\u7f6e',
-  bubbleDesc: '\u540e\u9762\u5728\u8fd9\u91cc\u6309\u7528\u6237\u533a\u5206\u7fa4\u6d88\u606f\u6c14\u6ce1\u989c\u8272\uff0c\u4e0d\u76f4\u63a5\u590d\u7528\u5355\u804a\u914d\u7f6e\u3002',
-  badgeTitle: '\u7fa4\u5934\u8854\u8bbe\u7f6e',
-  badgeDesc: '\u5728\u8fd9\u91cc\u7ba1\u7406\u7fa4\u6210\u5458\u5934\u8854\u3001\u989c\u8272\uff0c\u4ee5\u53ca\u540e\u7eed\u6309\u6d3b\u8dc3\u5ea6\u8bbe\u8ba1\u7684\u5934\u8854\u4f53\u7cfb\u3002',
+  title: '群自定义',
+  subtitle: '统一放群里和视觉个性化相关的能力',
+  backgroundTitle: '群聊天背景',
+  backgroundDesc: '给这个群单独设置背景图，支持链接、上传和预览。',
+  bubbleTitle: '群气泡颜色设置',
+  bubbleDesc: '按成员分别设置群消息气泡颜色，只影响当前群聊显示。',
+  badgeTitle: '群头衔设置',
+  badgeDesc: '在这里管理群成员头衔、颜色，以及后续按活跃度设计的头衔体系。',
 } as const;
 
 function CustomEntry({
@@ -49,6 +50,7 @@ function CustomEntry({
 export function GroupCustomizationPage({
   onBack,
   onOpenBackground,
+  onOpenBubbleColors,
   onOpenTitleBadges,
 }: GroupCustomizationPageProps) {
   return (
@@ -75,6 +77,7 @@ export function GroupCustomizationPage({
             icon={<MessageCircleMore size={18} />}
             title={TEXT.bubbleTitle}
             description={TEXT.bubbleDesc}
+            onClick={onOpenBubbleColors}
           />
           <CustomEntry
             icon={<Badge size={18} />}

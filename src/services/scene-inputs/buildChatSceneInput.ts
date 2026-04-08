@@ -35,7 +35,7 @@ function buildExtraSections(input: {
   extendedLore?: string;
   chatSceneHint?: string;
 }): string[] {
-  const sections = [
+  return [
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
       : '',
@@ -49,8 +49,6 @@ function buildExtraSections(input: {
       ? ['## 当前聊天场景补充', input.chatSceneHint].join('\n')
       : '',
   ].filter(Boolean);
-
-  return sections;
 }
 
 export function buildChatSceneInput(

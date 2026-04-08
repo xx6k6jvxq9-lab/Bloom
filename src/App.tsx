@@ -68,6 +68,7 @@ import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTran
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { sanitizeGroupMemberBadges } from './features/group-settings/memberBadges';
+import { sanitizeGroupMemberBubbleColors } from './features/group-settings/groupBubbleColors';
 import {
   acceptCoupleSpaceInviteState,
   buildPersistableCoupleSpacePayload,
@@ -300,10 +301,27 @@ function sanitizeChatGroupsWithCharacters(
   if (!Array.isArray(chatGroups)) return [];
 
   const validCharacterIds = new Set(characters.map((character) => character.id));
+  const sanitizeGroupBackgroundValue = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    if (/^data:/i.test(trimmed) && !/^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,.+$/i.test(trimmed)) {
+      return undefined;
+    }
+
+    return trimmed;
+  };
+
     return chatGroups.map((group) => ({
       ...group,
       name: typeof group.name === 'string' ? group.name.trim() : '',
-      groupBackground: typeof group.groupBackground === 'string' ? group.groupBackground.trim() : undefined,
+      groupBackground: sanitizeGroupBackgroundValue(group.groupBackground),
       groupNickname: typeof group.groupNickname === 'string' ? group.groupNickname.trim() : undefined,
       groupNotice: typeof group.groupNotice === 'string' ? group.groupNotice.trim() : undefined,
       groupRemark: typeof group.groupRemark === 'string' ? group.groupRemark.trim() : undefined,
@@ -334,6 +352,11 @@ function sanitizeChatGroupsWithCharacters(
       ),
       memberBadges: sanitizeGroupMemberBadges({
         memberBadges: group.memberBadges,
+        memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+        creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
+      }),
+      memberBubbleColors: sanitizeGroupMemberBubbleColors({
+        memberBubbleColors: group.memberBubbleColors,
         memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
         creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
       }),
