@@ -96,6 +96,6 @@ export function describeStickerMessageForPrompt(message: Pick<ChatMessage, 'imag
     || '';
 
   return label
-    ? `[sent a sticker; read any visible text on it and its mood; hint: ${label}]`
-    : '[sent a sticker; read any visible text on it and its mood]';
+    ? `[sent a sticker; read any visible text on it; infer the emotional intent mainly from expression, pose, exaggeration, and visual mood; hint: ${label}]`
+    : '[sent a sticker; read any visible text on it; infer the emotional intent mainly from expression, pose, exaggeration, and visual mood]';
 }
