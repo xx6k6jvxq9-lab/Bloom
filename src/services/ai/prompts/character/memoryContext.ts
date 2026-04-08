@@ -8,6 +8,7 @@
  */
 
 export type MemoryContextInput = {
+  shortTermSummary?: string;
   longTermMemoryProfile?: string;
   perceptionPrompt?: string;
 };
@@ -27,8 +28,8 @@ export const LONG_TERM_MEMORY_CONTEXT_HEADER = [
 export function buildShortTermMemoryContextSection(input: MemoryContextInput): string {
   const sections = [
     SHORT_TERM_MEMORY_CONTEXT_HEADER,
-    input.longTermMemoryProfile?.trim()
-      ? ['[近期记忆 / 最近几轮仍会影响后续互动的状态与余波]', input.longTermMemoryProfile.trim()].join('\n')
+    input.shortTermSummary?.trim()
+      ? ['[近期记忆 / 最近几轮仍会影响后续互动的状态与余波]', input.shortTermSummary.trim()].join('\n')
       : '',
     input.perceptionPrompt?.trim()
       ? ['[当前感知 / 此刻的状态与处境]', input.perceptionPrompt.trim()].join('\n')
