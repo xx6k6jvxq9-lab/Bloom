@@ -1483,23 +1483,25 @@ export function GroupChatSessionScreen({
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
-                  className={`chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} relative cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
+                  className={`${visualKind === 'sticker' ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
                     isUser
                       ? `${visualKind === 'sticker' ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
-                      : `${visualKind === 'sticker' ? 'border-none bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
+                      : `${visualKind === 'sticker' ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${visualKind === 'sticker' ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                   }`}
-                  style={{
-                    ...memberBubbleStyle,
-                    ...sharedBubbleStyle,
-                    ...(isUser ? groupUserBubbleStyle : groupRoleBubbleStyle),
-                  }}
+                  style={visualKind === 'sticker'
+                    ? undefined
+                    : {
+                        ...memberBubbleStyle,
+                        ...sharedBubbleStyle,
+                        ...(isUser ? groupUserBubbleStyle : groupRoleBubbleStyle),
+                      }}
                 >
-                  <BubbleThemeAnchors />
+                  {visualKind !== 'sticker' && <BubbleThemeAnchors />}
                   {msg.imageUrl && (
                     <img
                       src={msg.imageUrl}
                       alt="群聊图片"
-                      className={`${visualKind === 'sticker' ? 'max-h-36 max-w-[11rem]' : 'max-h-48'} mb-2 rounded-xl object-cover`}
+                      className={`${visualKind === 'sticker' ? 'max-h-36 max-w-[11rem]' : 'max-h-48'} ${visualKind === 'sticker' ? '' : 'mb-2'} rounded-xl object-cover`}
                     />
                   )}
                   {!msg.imageUrl && visualKind === 'sticker' && (

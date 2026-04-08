@@ -1349,13 +1349,13 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right' : 'bot-bubble left'} inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 transition-all active:scale-[0.98] ${
+                                  className={`inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 transition-all active:scale-[0.98] ${
                                     isStickerMessage(msg)
-                                      ? 'border-none bg-transparent p-0 shadow-none'
-                                      : 'rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm'
+                                      ? 'p-0'
+                                      : `chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right' : 'bot-bubble left'} rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm`
                                   }`}
                                 >
-                                  <BubbleThemeAnchors />
+                                  {!isStickerMessage(msg) && <BubbleThemeAnchors />}
                                   <PersistentImage
                                     value={msg.imageUrl}
                                     alt={isStickerMessage(msg) ? '表情包' : '聊天图片'}
