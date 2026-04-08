@@ -78,6 +78,74 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizeStickerEntries(values: string[]) {
+  const seen = new Set<string>();
+  const nextValues: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    nextValues.push(normalized);
+  }
+
+  return nextValues;
+}
+
+function extractStickerEntriesFromText(raw: string): string[] {
+  const normalized = raw.replace(/\r/g, '\n');
+  const lines = normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const urlRegex = /https?:\/\/[^\s,]+/gi;
+  const entries: string[] = [];
+
+  for (const line of lines) {
+    const urlMatches = line.match(urlRegex);
+    if (urlMatches && urlMatches.length > 0) {
+      entries.push(...urlMatches);
+      continue;
+    }
+
+    const csvParts = line
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (csvParts.length > 0) {
+      entries.push(...csvParts.filter((part) => /^https?:\/\//i.test(part)));
+    }
+  }
+
+  return normalizeStickerEntries(entries);
+}
+
+function extractStickerEntriesFromJson(data: unknown): string[] {
+  if (Array.isArray(data)) {
+    return normalizeStickerEntries(data.filter((item): item is string => typeof item === 'string'));
+  }
+
+  if (isRecord(data)) {
+    if (Array.isArray(data.stickers)) {
+      return normalizeStickerEntries(data.stickers.filter((item): item is string => typeof item === 'string'));
+    }
+
+    const stringValues = Object.values(data).filter((item): item is string => typeof item === 'string');
+    const arrayValues = Object.values(data)
+      .filter(Array.isArray)
+      .flatMap((item) => item.filter((entry): entry is string => typeof entry === 'string'));
+
+    return normalizeStickerEntries([
+      ...stringValues.filter((item) => /^https?:\/\//i.test(item)),
+      ...arrayValues,
+    ]);
+  }
+
+  return [];
+}
+
 function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
   if (files.length === 0) return;
 
@@ -89,29 +157,32 @@ function importStickerFiles(files: File[], onComplete: (stickers: string[]) => v
     reader.onload = () => {
       if (file.type === 'application/json' || file.name.endsWith('.json')) {
         const data = parseJsonFileContent(reader.result as string);
-        if (Array.isArray(data)) {
-          newStickers = [...newStickers, ...data.filter((item): item is string => typeof item === 'string')];
-        } else if (isRecord(data)) {
-          if (Array.isArray(data.stickers)) {
-            newStickers = [...newStickers, ...data.stickers.filter((item): item is string => typeof item === 'string')];
-          } else {
-            const arrayProp = Object.values(data).find((val) => Array.isArray(val));
-            if (arrayProp) {
-              newStickers = [...newStickers, ...arrayProp.filter((item): item is string => typeof item === 'string')];
-            }
-          }
-        }
+        newStickers = [...newStickers, ...extractStickerEntriesFromJson(data)];
+      } else if (
+        file.type === 'text/plain'
+        || file.type === 'text/csv'
+        || file.name.endsWith('.txt')
+        || file.name.endsWith('.csv')
+      ) {
+        newStickers = [...newStickers, ...extractStickerEntriesFromText(reader.result as string)];
       } else {
         newStickers.push(reader.result as string);
       }
 
       loaded += 1;
       if (loaded === files.length) {
-        onComplete(newStickers);
+        onComplete(normalizeStickerEntries(newStickers));
       }
     };
 
-    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+    if (
+      file.type === 'application/json'
+      || file.type === 'text/plain'
+      || file.type === 'text/csv'
+      || file.name.endsWith('.json')
+      || file.name.endsWith('.txt')
+      || file.name.endsWith('.csv')
+    ) {
       reader.readAsText(file);
     } else {
       reader.readAsDataURL(file);
@@ -185,6 +256,8 @@ export function ChatSettingsPanel({
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
+  const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
+  const [characterStickerLinksDraft, setCharacterStickerLinksDraft] = useState('');
 
   if (!character) return null;
 
@@ -210,6 +283,39 @@ export function ChatSettingsPanel({
   useEffect(() => {
     setPendingSignature(character.signature ?? '');
   }, [character.signature]);
+
+  const appendSharedStickers = (stickers: string[]) => {
+    const nextStickers = normalizeStickerEntries([
+      ...(settings.sharedStickers || []),
+      ...stickers,
+    ]);
+    onUpdateSettings({
+      ...settings,
+      sharedStickers: nextStickers,
+    });
+  };
+
+  const appendCharacterStickers = (stickers: string[]) => {
+    const nextStickers = normalizeStickerEntries([
+      ...(character.stickers || []),
+      ...stickers,
+    ]);
+    onUpdate({ ...character, stickers: nextStickers });
+  };
+
+  const handleImportSharedStickerLinks = () => {
+    const entries = extractStickerEntriesFromText(sharedStickerLinksDraft);
+    if (entries.length === 0) return;
+    appendSharedStickers(entries);
+    setSharedStickerLinksDraft('');
+  };
+
+  const handleImportCharacterStickerLinks = () => {
+    const entries = extractStickerEntriesFromText(characterStickerLinksDraft);
+    if (entries.length === 0) return;
+    appendCharacterStickers(entries);
+    setCharacterStickerLinksDraft('');
+  };
 
   const calculateTokens = () => {
       const estimateTextTokens = (text: string) => {
@@ -944,6 +1050,48 @@ export function ChatSettingsPanel({
                 </div>
               </div>
 
+              <div className="bg-white/40 p-3 rounded-xl space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[14px] text-zinc-700 font-medium">角色气泡 CSS 美化</div>
+                    <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖当前角色发出的气泡，不影响全局默认和别的角色。</div>
+                  </div>
+                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
+                    导入样式
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".css,.txt,.json"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          onUpdate({ ...character, bubbleStyleCss: String(reader.result || '') });
+                          e.target.value = '';
+                        };
+                        reader.readAsText(file, 'utf-8');
+                      }}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  value={character.bubbleStyleCss || ''}
+                  onChange={e => onUpdate({ ...character, bubbleStyleCss: e.target.value })}
+                  placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);\nborder: 1px solid rgba(255, 255, 255, 0.65);'}
+                  className="h-28 w-full rounded-2xl border border-white/40 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  spellCheck="false"
+                />
+                {character.bubbleStyleCss && (
+                  <button
+                    onClick={() => onUpdate({ ...character, bubbleStyleCss: '' })}
+                    className="text-[12px] font-medium text-rose-500"
+                  >
+                    清除角色气泡 CSS
+                  </button>
+                )}
+              </div>
+
               {/* User Bubble */}
               <div className="flex items-center justify-between bg-white/40 p-3 rounded-xl">
                 <span className="text-[14px] text-zinc-600">用户气泡</span>
@@ -979,6 +1127,47 @@ export function ChatSettingsPanel({
                     className="w-6 h-6 rounded overflow-hidden border-none p-0 bg-transparent cursor-pointer"
                   />
                 </div>
+              </div>
+              <div className="bg-white/40 p-3 rounded-xl space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[14px] text-zinc-700 font-medium">用户气泡 CSS 美化</div>
+                    <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖你在当前单聊里发出的气泡，不影响全局默认。</div>
+                  </div>
+                  <label className="shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white cursor-pointer">
+                    导入样式
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".css,.txt,.json"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          onUpdate({ ...character, userBubbleStyleCss: String(reader.result || '') });
+                          e.target.value = '';
+                        };
+                        reader.readAsText(file, 'utf-8');
+                      }}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  value={character.userBubbleStyleCss || ''}
+                  onChange={e => onUpdate({ ...character, userBubbleStyleCss: e.target.value })}
+                  placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);\nborder: 1px solid rgba(255, 255, 255, 0.35);'}
+                  className="h-28 w-full rounded-2xl border border-white/40 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  spellCheck="false"
+                />
+                {character.userBubbleStyleCss && (
+                  <button
+                    onClick={() => onUpdate({ ...character, userBubbleStyleCss: '' })}
+                    className="text-[12px] font-medium text-rose-500"
+                  >
+                    清除用户气泡 CSS
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1345,15 +1534,12 @@ export function ChatSettingsPanel({
                     <input
                       type="file"
                       multiple
-                      accept="image/*,application/json,.json"
+                      accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv"
                       className="hidden"
                       onChange={e => {
                         const files = Array.from(e.target.files || []);
                         importStickerFiles(files, (newStickers) => {
-                          onUpdateSettings({
-                            ...settings,
-                            sharedStickers: [...(settings.sharedStickers || []), ...newStickers],
-                          });
+                          appendSharedStickers(newStickers);
                         });
                       }}
                     />
@@ -1389,6 +1575,24 @@ export function ChatSettingsPanel({
                     </button>
                   </div>
                 )}
+                <div className="mt-4 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
+                  <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
+                  <p className="mt-1 text-[11px] text-zinc-500">支持多行链接，或一行里粘贴多个链接；也兼容 `csv/txt` 里只有链接的内容。</p>
+                  <textarea
+                    value={sharedStickerLinksDraft}
+                    onChange={(e) => setSharedStickerLinksDraft(e.target.value)}
+                    placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/a.gif\nhttps://example.com/b.png'}
+                    className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleImportSharedStickerLinks}
+                    disabled={!sharedStickerLinksDraft.trim()}
+                    className="mt-3 w-full rounded-xl bg-zinc-900 px-3 py-3 text-[14px] font-medium text-white transition disabled:cursor-not-allowed disabled:bg-zinc-300"
+                  >
+                    导入这些共享链接
+                  </button>
+                </div>
               </div>
 
               <div className="mt-8">
@@ -1407,12 +1611,12 @@ export function ChatSettingsPanel({
                   <input 
                     type="file" 
                     multiple 
-                    accept="image/*,application/json,.json" 
+                    accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv" 
                     className="hidden" 
                     onChange={e => {
                       const files = Array.from(e.target.files || []);
                       importStickerFiles(files, (newStickers) => {
-                        onUpdate({ ...character, stickers: [...(character.stickers || []), ...newStickers] });
+                        appendCharacterStickers(newStickers);
                       });
                     }}
                   />
@@ -1449,6 +1653,24 @@ export function ChatSettingsPanel({
                   </button>
                 </div>
               )}
+              <div className="mt-4 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
+                <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
+                <p className="mt-1 text-[11px] text-zinc-500">这里导入的是当前角色私有表情包，不会同步给别的单聊。</p>
+                <textarea
+                  value={characterStickerLinksDraft}
+                  onChange={(e) => setCharacterStickerLinksDraft(e.target.value)}
+                  placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/c.gif\nhttps://example.com/d.png'}
+                  className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
+                />
+                <button
+                  type="button"
+                  onClick={handleImportCharacterStickerLinks}
+                  disabled={!characterStickerLinksDraft.trim()}
+                  className="mt-3 w-full rounded-xl bg-zinc-900 px-3 py-3 text-[14px] font-medium text-white transition disabled:cursor-not-allowed disabled:bg-zinc-300"
+                >
+                  导入这些角色链接
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

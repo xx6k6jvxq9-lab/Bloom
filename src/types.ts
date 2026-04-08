@@ -823,6 +823,7 @@ export type AppSettings = {
   activeConfigId: string;
   configs: ApiConfig[];
   sharedStickers?: string[];
+  visualSettings?: VisualSettings;
 };
 
 export type WalletCard = {
