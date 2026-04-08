@@ -27,8 +27,10 @@ import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/c
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
+import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -60,6 +62,10 @@ function isStickerMessage(message: ChatMessage) {
 
 function stripVisualMessageMarker(text: string) {
   return text.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim();
+}
+
+function stripMediaMessageMarker(text: string) {
+  return text.replace(/^\[(?:sticker|image|audio|表情包|图片|语音)\]\s*/i, '').trim();
 }
 
 function getDirectTextBubbleClass(role: ChatMessage['role'], maxWidthClass: string) {
@@ -246,6 +252,19 @@ function InlineResolvedImage({
   return <img src={src} className={className} style={style} alt={alt} />;
 }
 
+function PersistentAudio({
+  value,
+  className,
+}: {
+  value?: string | null;
+  className?: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+  if (!src) return null;
+  return <audio controls src={src} className={className} preload="metadata" />;
+}
+
 function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
   return <Star size={size} className={className} />;
 }
@@ -383,6 +402,19 @@ export function ChatSessionScreen({
       fileInputRef.current.value = '';
     }
   };
+  const { isRecording: isAudioRecording, startRecording: startAudioRecording, stopRecording: stopAudioRecording } = useAudioMessageRecorder({
+    onRecorded: async ({ blob, durationMs }) => {
+      const audioRef = await saveUploadedBlob(blob, {
+        fileName: `voice-message-${Date.now()}.wav`,
+        mimeType: 'audio/wav',
+      });
+      sendAudioMessage(audioRef, 'audio/wav', Math.max(1, Math.round(durationMs / 1000)));
+      setShowFunPanel(false);
+    },
+  });
+  useEffect(() => {
+    setIsRecording(isAudioRecording);
+  }, [isAudioRecording]);
 
   const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId);
   const activeSavedDate = savedDates?.find(session => session.characterId === character.id) || null;
@@ -394,6 +426,7 @@ export function ChatSessionScreen({
     handleSend,
     handleVoiceCallAIResponse,
     sendImageMessage,
+    sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
     sendCoupleSpaceInvitation,
@@ -1336,6 +1369,55 @@ export function ChatSessionScreen({
 
                         return (
                           <>
+                            {msg.audioUrl && !msg.isInnerVoice && (
+                              <>
+                                {msg.replyTo && (
+                                  <div className={getDirectReplyPreviewClass()}>
+                                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                                    <div className="min-w-0">
+                                      <div className="text-[11px] font-medium text-zinc-500">
+                                        回复 {msg.replyTo.authorLabel}
+                                      </div>
+                                      <div className={getDirectReplyPreviewTextClass()}>
+                                        {getReplyPreviewText(msg)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div
+                                  onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleMessageClick(e, i);
+                                  }}
+                                  className={`inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 rounded-2xl border px-3 py-3 transition-all active:scale-[0.98] ${
+                                    msg.role === 'user'
+                                      ? 'chat-bubble message-bubble user-bubble right border-blue-400 bg-blue-500 text-white'
+                                      : 'chat-bubble message-bubble bot-bubble left border-zinc-200 bg-white/95 text-zinc-800'
+                                  }`}
+                                >
+                                  <BubbleThemeAnchors />
+                                  <PersistentAudio value={msg.audioUrl} className="w-[18rem] max-w-full" />
+                                  {stripMediaMessageMarker(cleanText) ? (
+                                    <span className="whitespace-pre-wrap break-words px-1 text-[14px] leading-6">
+                                      {stripMediaMessageMarker(cleanText)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {(character.showTime || msg.role === 'user') && (
+                                  <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                                    {character.showTime && (
+                                      <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    )}
+                                    {msg.role === 'user' && (
+                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
                             {msg.imageUrl && !msg.isInnerVoice && (
                               <>
                                 {msg.replyTo && (
@@ -1395,7 +1477,7 @@ export function ChatSessionScreen({
                               </>
                             )}
 
-                            {!msg.imageUrl && cleanText && !msg.isInnerVoice && (() => {
+                            {!msg.imageUrl && !msg.audioUrl && cleanText && !msg.isInnerVoice && (() => {
                               const legacyTranslationParts = getLegacyTranslationParts(cleanText);
                               const translationText = msg.translation?.trim() || legacyTranslationParts.translation;
 
@@ -1779,16 +1861,16 @@ export function ChatSessionScreen({
 
           {isVoiceMode ? (
             <button
-              onPointerDown={startRecording}
-              onPointerUp={stopRecording}
-              onPointerCancel={stopRecording}
+              onPointerDown={startAudioRecording}
+              onPointerUp={stopAudioRecording}
+              onPointerCancel={stopAudioRecording}
               onPointerLeave={() => {
-                if (isRecording) {
-                  stopRecording();
+                if (isAudioRecording) {
+                  stopAudioRecording();
                 }
               }}
               className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
-                isRecording 
+                isAudioRecording 
                   ? 'bg-zinc-200 text-zinc-800' 
                   : footerControlTone.voiceButton
               }`}

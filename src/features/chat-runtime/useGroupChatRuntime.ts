@@ -49,6 +49,7 @@ type UseGroupChatRuntimeResult = {
   sendText: () => Promise<void>;
   sendSpeechTranscript: (transcript: string) => Promise<void>;
   sendImageMessage: (base64String: string) => Promise<void>;
+  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   maybeOpenScene: () => Promise<void>;
@@ -201,6 +202,7 @@ function buildRuntimeMessages(params: {
       role: message.role === 'user' ? 'user' : 'assistant',
       content: getPromptTextForMessage(message),
       ...(message.imageUrl ? { imageUrl: message.imageUrl } : {}),
+      ...(message.audioUrl ? { audioUrl: message.audioUrl, audioMimeType: message.audioMimeType } : {}),
     }));
 
   const latestVisibleMessage = [...params.history]
@@ -248,6 +250,10 @@ function getMessageMainText(message: ChatMessage): string {
 }
 
 function getPromptTextForMessage(message: ChatMessage): string {
+  if (message.audioUrl) {
+    return '[sent a voice message]';
+  }
+
   if (message.imageUrl) {
     if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
       return describeStickerMessageForPrompt(message);
@@ -2234,6 +2240,23 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
 
+  const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number) => {
+    if (isLoading || !hasActiveConfig) return;
+
+    await submitUserMessage({
+      message: {
+        role: 'user',
+        text: '[audio]',
+        audioUrl,
+        audioMimeType,
+        ...(typeof durationSeconds === 'number' ? { duration: durationSeconds } : {}),
+        timestamp: Date.now(),
+        ...(replyingTo ? { replyTo: replyingTo } : {}),
+      },
+      promptText: '[sent a voice message]',
+    });
+  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+
   const sendStickerMessage = useCallback(async (sticker: string) => {
     if (isLoading || !hasActiveConfig) return;
 
@@ -2278,6 +2301,7 @@ export function useGroupChatRuntime({
     sendText: handleSend,
     sendSpeechTranscript,
     sendImageMessage,
+    sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
     maybeOpenScene,

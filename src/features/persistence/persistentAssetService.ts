@@ -11,7 +11,7 @@ function createAssetId(): string {
 
 function isDirectDisplayValue(value: string): boolean {
   if (/^data:/i.test(value)) {
-    return /^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,.+$/i.test(value);
+    return /^data:(?:image|audio)\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,.+$/i.test(value);
   }
 
   return /^(https?:)/i.test(value);
@@ -160,12 +160,28 @@ async function normalizeModelImageDataUrl(dataUrl: string): Promise<string> {
   return convertBlobToPngDataUrl(blob);
 }
 
-export async function resolveValueToModelInput(value: string | null | undefined): Promise<string | null> {
+export async function resolveValueToModelInput(
+  value: string | null | undefined,
+  options?: {
+    assetType?: 'image' | 'audio';
+  },
+): Promise<string | null> {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
+  const assetType = options?.assetType || 'image';
 
   if (isDirectDisplayValue(trimmed)) {
+    if (assetType === 'audio') {
+      if (/^data:/i.test(trimmed)) {
+        return trimmed;
+      }
+
+      const response = await fetch(trimmed);
+      const blob = await response.blob();
+      return blobToDataUrl(blob);
+    }
+
     if (/^data:/i.test(trimmed)) {
       return normalizeModelImageDataUrl(trimmed);
     }
@@ -187,6 +203,10 @@ export async function resolveValueToModelInput(value: string | null | undefined)
   const record = await getAsset(parsedRef.id);
   if (!record) {
     return null;
+  }
+
+  if (assetType === 'audio') {
+    return blobToDataUrl(record.blob);
   }
 
   if (isGeminiFriendlyImageMimeType(record.blob.type)) {

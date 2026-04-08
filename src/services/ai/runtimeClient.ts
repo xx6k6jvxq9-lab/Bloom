@@ -6,6 +6,8 @@ export type RuntimeChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'model';
   content: string;
   imageUrl?: string;
+  audioUrl?: string;
+  audioMimeType?: string;
 };
 
 function parseDataUrl(value: string): { mimeType: string; data: string } | null {
@@ -31,42 +33,77 @@ function inferMimeTypeFromImageUrl(value: string): string {
 
 async function resolveRuntimeMessagesForModel(messages: RuntimeChatMessage[]): Promise<RuntimeChatMessage[]> {
   return Promise.all(messages.map(async (message) => {
-    if (!message.imageUrl) {
-      return message;
-    }
+    const [resolvedImageUrl, resolvedAudioUrl] = await Promise.all([
+      message.imageUrl ? resolveValueToModelInput(message.imageUrl, { assetType: 'image' }) : Promise.resolve(null),
+      message.audioUrl ? resolveValueToModelInput(message.audioUrl, { assetType: 'audio' }) : Promise.resolve(null),
+    ]);
 
-    const resolvedImageUrl = await resolveValueToModelInput(message.imageUrl);
-    return resolvedImageUrl
-      ? { ...message, imageUrl: resolvedImageUrl }
-      : { ...message, imageUrl: undefined };
+    return {
+      ...message,
+      imageUrl: resolvedImageUrl || undefined,
+      audioUrl: resolvedAudioUrl || undefined,
+    };
   }));
 }
 
 function buildGeminiMessageParts(message: RuntimeChatMessage) {
   const parts = [createPartFromText(message.content)];
-  if (!message.imageUrl) {
-    return parts;
+  if (message.imageUrl) {
+    const dataUrl = parseDataUrl(message.imageUrl);
+    if (dataUrl) {
+      parts.push(createPartFromBase64(dataUrl.data, dataUrl.mimeType));
+    } else {
+      parts.push(createPartFromUri(message.imageUrl, inferMimeTypeFromImageUrl(message.imageUrl)));
+    }
   }
 
-  const dataUrl = parseDataUrl(message.imageUrl);
-  if (dataUrl) {
-    parts.push(createPartFromBase64(dataUrl.data, dataUrl.mimeType));
-    return parts;
+  if (message.audioUrl) {
+    const dataUrl = parseDataUrl(message.audioUrl);
+    if (dataUrl) {
+      parts.push(createPartFromBase64(dataUrl.data, message.audioMimeType || dataUrl.mimeType));
+    } else {
+      parts.push(createPartFromUri(message.audioUrl, message.audioMimeType || 'audio/wav'));
+    }
   }
 
-  parts.push(createPartFromUri(message.imageUrl, inferMimeTypeFromImageUrl(message.imageUrl)));
   return parts;
 }
 
 function buildOpenAiCompatibleMessageContent(message: RuntimeChatMessage) {
-  if (!message.imageUrl || message.role !== 'user') {
+  if ((!message.imageUrl && !message.audioUrl) || message.role !== 'user') {
     return message.content;
   }
 
-  return [
+  const content: Array<Record<string, unknown>> = [
     { type: 'text', text: message.content },
-    { type: 'image_url', image_url: { url: message.imageUrl } },
   ];
+
+  if (message.imageUrl) {
+    content.push({ type: 'image_url', image_url: { url: message.imageUrl } });
+  }
+
+  if (message.audioUrl) {
+    const dataUrl = parseDataUrl(message.audioUrl);
+    if (!dataUrl) {
+      throw new Error('Audio input for OpenAI-compatible chat requires a data URL.');
+    }
+
+    const format = (message.audioMimeType || dataUrl.mimeType || 'audio/wav')
+      .replace(/^audio\//i, '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+
+    content.push({
+      type: 'input_audio',
+      input_audio: {
+        data: dataUrl.data,
+        format,
+      },
+    });
+  }
+
+  return content;
 }
 
 function normalizeErrorDetail(detail: string, maxLength = 160) {

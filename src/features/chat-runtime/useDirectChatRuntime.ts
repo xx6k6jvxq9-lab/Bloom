@@ -66,6 +66,10 @@ function parseDirectActionCue(segment: string): {
 }
 
 function toPromptHistoryContent(message: ChatMessage): string {
+  if (message.audioUrl) {
+    return '[sent a voice message]';
+  }
+
   if (message.imageUrl) {
     if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
       return describeStickerMessageForPrompt(message);
@@ -275,6 +279,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   handleVoiceCallAIResponse: (userText: string) => Promise<string | null>;
   sendImageMessage: (base64String: string) => void;
+  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number) => void;
   sendStickerMessage: (sticker: string) => void;
   sendLocationMessage: (text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => void;
   sendCoupleSpaceInvitation: () => void;
@@ -306,6 +311,9 @@ type DirectSendOverridePayload = {
   promptText: string;
   userText?: string;
   imageUrl?: string;
+  audioUrl?: string;
+  audioMimeType?: string;
+  duration?: number;
   stickerLabel?: string;
   locationData?: { name: string; address?: string; isVirtual?: boolean };
   isInnerVoice?: boolean;
@@ -470,6 +478,7 @@ export function useDirectChatRuntime({
                 role: m.role === 'user' ? 'user' as const : 'assistant' as const,
                 content: toPromptHistoryContent(m),
                 ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+                ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
               })),
             ],
             onTextChunk: (chunkText) => {
@@ -649,6 +658,8 @@ export function useDirectChatRuntime({
       ...(replyingTo ? { replyTo: replyingTo } : {}),
       ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
       ...(overridePayload?.imageUrl ? { imageUrl: overridePayload.imageUrl } : {}),
+      ...(overridePayload?.audioUrl ? { audioUrl: overridePayload.audioUrl, audioMimeType: overridePayload.audioMimeType } : {}),
+      ...(typeof overridePayload?.duration === 'number' ? { duration: overridePayload.duration } : {}),
       ...(overridePayload?.stickerLabel ? { stickerLabel: overridePayload.stickerLabel } : {}),
       ...((overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]') ? { isInnerVoice: true } : {}),
     };
@@ -792,6 +803,7 @@ export function useDirectChatRuntime({
             role: m.role === 'user' ? 'user' as const : 'assistant' as const,
             content: toPromptHistoryContent(m),
             ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+            ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
           })),
         ],
         onTextChunk: (chunkText) => {
@@ -915,6 +927,16 @@ export function useDirectChatRuntime({
       promptText: '[sent an image]',
       userText: '[image]',
       imageUrl: base64String,
+    });
+  }, []);
+
+  const sendAudioMessage = useCallback((audioUrl: string, audioMimeType: string, durationSeconds?: number) => {
+    void handleSendRef.current({
+      promptText: '[sent a voice message]',
+      userText: '[audio]',
+      audioUrl,
+      audioMimeType,
+      ...(typeof durationSeconds === 'number' ? { duration: durationSeconds } : {}),
     });
   }, []);
 
@@ -1406,6 +1428,7 @@ export function useDirectChatRuntime({
     handleSendRef,
     handleVoiceCallAIResponse,
     sendImageMessage,
+    sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
     sendCoupleSpaceInvitation,

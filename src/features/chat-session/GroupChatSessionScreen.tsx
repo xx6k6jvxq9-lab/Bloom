@@ -43,6 +43,7 @@ import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroup
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
+import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
 import {
@@ -67,7 +68,7 @@ import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
-import { useSpeechRecognitionInput } from './useSpeechRecognitionInput';
+import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -160,6 +161,9 @@ const formatMessagePreview = (text: string | undefined): string => {
   if (text.startsWith('[notice]')) {
     return text.replace(/^\[notice\]\s*/i, '').trim();
   }
+  if (text.startsWith('[audio]')) {
+    return '[语音]';
+  }
   if (text.startsWith('[sticker]')) {
     return text.replace(/^\[sticker\]\s*/i, '').trim();
   }
@@ -170,7 +174,7 @@ const formatMessagePreview = (text: string | undefined): string => {
 };
 
 const stripVisualMessageMarker = (text: string) => (
-  text.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim()
+  text.replace(/^\[(?:sticker|image|audio|表情包|图片|语音)\]\s*/i, '').trim()
 );
 
 function formatPendingGroupText(text: string): string {
@@ -250,6 +254,19 @@ function GroupMessageImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} />;
+}
+
+function GroupMessageAudio({
+  value,
+  className,
+}: {
+  value?: string | null;
+  className?: string;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+  if (!src) return null;
+  return <audio controls src={src} className={className} preload="metadata" />;
 }
 
 function isStickerMessage(message: ChatMessage, content: string) {
@@ -493,8 +510,8 @@ export function GroupChatSessionScreen({
     error,
     pendingMessage,
     sendText,
-    sendSpeechTranscript,
     sendImageMessage,
+    sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
     maybeOpenScene,
@@ -522,9 +539,14 @@ export function GroupChatSessionScreen({
     directChatHistory,
     activeConfig,
   });
-  const { isRecording, startRecording, stopRecording } = useSpeechRecognitionInput({
-    onTranscript: async (transcript) => {
-      await sendSpeechTranscript(transcript);
+  const { isRecording, startRecording, stopRecording } = useAudioMessageRecorder({
+    onRecorded: async ({ blob, durationMs }) => {
+      const audioRef = await saveUploadedBlob(blob, {
+        fileName: `group-voice-message-${Date.now()}.wav`,
+        mimeType: 'audio/wav',
+      });
+      await sendAudioMessage(audioRef, 'audio/wav', Math.max(1, Math.round(durationMs / 1000)));
+      setShowFunPanel(false);
     },
   });
   const renderedHistory = pendingMessage
@@ -1221,7 +1243,7 @@ export function GroupChatSessionScreen({
   };
 
   const getReadableMessageBody = (message: ChatMessage, content: string) => {
-    if (message.imageUrl) {
+    if (message.imageUrl || message.audioUrl) {
       return '';
     }
 
@@ -1261,7 +1283,7 @@ export function GroupChatSessionScreen({
       return true;
     }
 
-    if (currentMessage.imageUrl || previousMessage.imageUrl) {
+    if (currentMessage.imageUrl || previousMessage.imageUrl || currentMessage.audioUrl || previousMessage.audioUrl) {
       return true;
     }
 
@@ -1552,6 +1574,20 @@ export function GroupChatSessionScreen({
                       }}
                 >
                   {visualKind !== 'sticker' && <BubbleThemeAnchors />}
+                  {msg.audioUrl && (
+                    <>
+                      <GroupMessageAudio value={msg.audioUrl} className="mb-2 w-[18rem] max-w-full" />
+                      {(() => {
+                        const visualText = stripVisualMessageMarker(content);
+                        if (!visualText) return null;
+                        return (
+                          <span className="whitespace-pre-wrap break-words">
+                            {renderTextWithMentions(visualText, isUser ? 'outgoing' : 'incoming')}
+                          </span>
+                        );
+                      })()}
+                    </>
+                  )}
                   {msg.imageUrl && (
                     <>
                       <GroupMessageImage
@@ -1585,13 +1621,13 @@ export function GroupChatSessionScreen({
                       {msg.location.address && <div className="mt-0.5">{msg.location.address}</div>}
                     </div>
                   )}
-                  {!msg.imageUrl && msg.isPending && !content ? (
+                  {!msg.imageUrl && !msg.audioUrl && msg.isPending && !content ? (
                     <div className="flex gap-1">
                       <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                     </div>
-                  ) : !msg.imageUrl ? (
+                  ) : !msg.imageUrl && !msg.audioUrl ? (
                     <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
                       {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
                     </span>
