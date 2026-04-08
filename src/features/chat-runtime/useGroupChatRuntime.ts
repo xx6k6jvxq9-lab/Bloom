@@ -4,6 +4,7 @@ import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
@@ -246,7 +247,7 @@ function getMessageMainText(message: ChatMessage): string {
 function getPromptTextForMessage(message: ChatMessage): string {
   if (message.imageUrl) {
     if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
-      return '[sent a sticker]';
+      return describeStickerMessageForPrompt(message);
     }
     return '[sent an image]';
   }
@@ -2198,15 +2199,22 @@ export function useGroupChatRuntime({
   const sendStickerMessage = useCallback(async (sticker: string) => {
     if (isLoading || !hasActiveConfig) return;
 
+    const stickerLabel = inferStickerSemanticLabel(sticker);
+
     await submitUserMessage({
       message: {
         role: 'user',
         text: '[sticker]',
         imageUrl: sticker,
+        ...(stickerLabel ? { stickerLabel } : {}),
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
-      promptText: '[sent a sticker]',
+      promptText: describeStickerMessageForPrompt({
+        imageUrl: sticker,
+        text: '[sticker]',
+        stickerLabel,
+      }),
     });
   }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
 

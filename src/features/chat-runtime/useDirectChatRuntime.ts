@@ -32,6 +32,7 @@ import {
   type ShareActionResult,
 } from '../../services/chat/messageActions';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
@@ -47,7 +48,7 @@ const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 function toPromptHistoryContent(message: ChatMessage): string {
   if (message.imageUrl) {
     if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
-      return '[sent a sticker]';
+      return describeStickerMessageForPrompt(message);
     }
     return '[sent an image]';
   }
@@ -277,6 +278,7 @@ type DirectSendOverridePayload = {
   promptText: string;
   userText?: string;
   imageUrl?: string;
+  stickerLabel?: string;
   locationData?: { name: string; address?: string; isVirtual?: boolean };
   isInnerVoice?: boolean;
 };
@@ -610,6 +612,7 @@ export function useDirectChatRuntime({
       ...(replyingTo ? { replyTo: replyingTo } : {}),
       ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
       ...(overridePayload?.imageUrl ? { imageUrl: overridePayload.imageUrl } : {}),
+      ...(overridePayload?.stickerLabel ? { stickerLabel: overridePayload.stickerLabel } : {}),
       ...((overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]') ? { isInnerVoice: true } : {}),
     };
     const newHistory = [...baseHistory, userMsg];
@@ -871,9 +874,14 @@ export function useDirectChatRuntime({
 
   const sendStickerMessage = useCallback((sticker: string) => {
     void handleSendRef.current({
-      promptText: '[sent a sticker]',
+      promptText: describeStickerMessageForPrompt({
+        imageUrl: sticker,
+        text: '[sticker]',
+        stickerLabel: inferStickerSemanticLabel(sticker),
+      }),
       userText: '[sticker]',
       imageUrl: sticker,
+      stickerLabel: inferStickerSemanticLabel(sticker),
     });
   }, []);
 

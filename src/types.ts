@@ -83,6 +83,8 @@ export type ChatCustomization = {
   messageBackgroundImageUrl?: string;
   messageSpacing: number;
   bubbleStyleCss?: string;
+  modelBubbleStyleCss?: string;
+  userBubbleStyleCss?: string;
   headerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
   footerStyle?: 'default' | 'glass' | 'solid' | 'transparent';
   uiScale?: number;
@@ -491,6 +493,7 @@ export type Character = {
   groupId?: string; // Group ID for contacts
   motto?: string;
   bubbleStyleCss?: string;
+  userBubbleStyleCss?: string;
   showTokenCount?: boolean;
   minReplies?: number;
   maxReplies?: number;
@@ -536,6 +539,7 @@ export type ChatMessage = {
     preview: string;
   };
   imageUrl?: string;
+  stickerLabel?: string;
   isVoiceCall?: boolean;
   duration?: number; // For voice call duration
   location?: { name: string; address?: string; isVirtual?: boolean };
