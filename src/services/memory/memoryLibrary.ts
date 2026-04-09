@@ -17,6 +17,16 @@ type MemoryLibraryStats = {
   manualEntries: number;
 };
 
+export type MemoryLibraryMonthGroup = {
+  key: string;
+  year: number;
+  month: number;
+  label: string;
+  entries: MemoryLibraryEntry[];
+  totalChars: number;
+  latestCreatedAt: number;
+};
+
 function toPositiveInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
 }
@@ -153,4 +163,37 @@ export function getMemoryLibraryStats(
     autoEntries: 0,
     manualEntries: 0,
   });
+}
+
+export function groupMemoryLibraryEntriesByMonth(entries: MemoryLibraryEntry[]): MemoryLibraryMonthGroup[] {
+  const groups = new Map<string, MemoryLibraryMonthGroup>();
+
+  for (const entry of entries) {
+    const key = `${entry.year}-${String(entry.month).padStart(2, '0')}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.entries.push(entry);
+      existing.totalChars += entry.charCount;
+      existing.latestCreatedAt = Math.max(existing.latestCreatedAt, entry.createdAt);
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      year: entry.year,
+      month: entry.month,
+      label: `${entry.year} 年 ${String(entry.month).padStart(2, '0')} 月`,
+      entries: [entry],
+      totalChars: entry.charCount,
+      latestCreatedAt: entry.createdAt,
+    });
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.latestCreatedAt - a.latestCreatedAt)
+    .map((group) => ({
+      ...group,
+      entries: [...group.entries].sort((a, b) => b.createdAt - a.createdAt),
+    }));
 }

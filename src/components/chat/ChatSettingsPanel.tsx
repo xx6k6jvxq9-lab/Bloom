@@ -2,12 +2,12 @@
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
-import { ChatMemoryDetailView } from './ChatMemoryDetailView';
+import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
-import { buildMemoryLibraryPatch } from '../../services/memory/memoryLibrary';
+import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByMonth } from '../../services/memory/memoryLibrary';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -148,6 +148,21 @@ function extractStickerEntriesFromJson(data: unknown): string[] {
   return [];
 }
 
+function formatMemoryStatDate(timestamp: number | null): string {
+  if (timestamp == null) {
+    return '暂无';
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(timestamp);
+}
+
 function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
   if (files.length === 0) return;
 
@@ -275,10 +290,43 @@ export function ChatSettingsPanel({
   const boundaryPack = character.boundaryPack ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
-  const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
-  const summaryHistoryPreviewLines = summaryHistoryWindow
-    .slice(-8)
-    .map((msg) => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`);
+  const shortTermMemoryEntries = getMemoryLibraryEntries(character, 'short-term');
+  const longTermMemoryEntries = getMemoryLibraryEntries(character, 'long-term');
+  const activeMemoryEntries = activeMemoryDetail === 'long-term' ? longTermMemoryEntries : shortTermMemoryEntries;
+  const activeMemoryStats = getMemoryLibraryStats(activeMemoryEntries);
+  const activeMemoryMonthGroups = groupMemoryLibraryEntriesByMonth(activeMemoryEntries);
+  const activeMemoryStatCards = [
+    {
+      label: '总记忆条数',
+      value: `${activeMemoryStats.totalEntries}`,
+      helper: activeMemoryDetail === 'long-term' ? '长期沉淀下来的稳定记录数量' : '近期状态和余波记录数量',
+    },
+    {
+      label: '总字数',
+      value: `${activeMemoryStats.totalChars}`,
+      helper: '当前这个记忆库累计沉淀下来的正文总字数',
+    },
+    {
+      label: '最近更新时间',
+      value: formatMemoryStatDate(activeMemoryStats.latestCreatedAt),
+      helper: '最后一次写入这类记忆的真实时间',
+    },
+    {
+      label: '最早记录时间',
+      value: formatMemoryStatDate(activeMemoryStats.earliestCreatedAt),
+      helper: '这类记忆第一次被收进记忆库的时间',
+    },
+    {
+      label: '本月新增',
+      value: `${activeMemoryStats.currentMonthEntries}`,
+      helper: '按当前自然月统计的新增记录数',
+    },
+    {
+      label: '自动 / 手动',
+      value: `${activeMemoryStats.autoEntries} / ${activeMemoryStats.manualEntries}`,
+      helper: '自动总结和手动触发的记录数量',
+    },
+  ];
   const settingSummary = resolvedCorePersona
     ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
@@ -554,29 +602,23 @@ export function ChatSettingsPanel({
       }}
     >
       {activeMemoryDetail === 'short-term' && (
-        <ChatMemoryDetailView
+        <ChatMemoryLibraryHome
+          kind="short-term"
           title="近期记忆 / 短期总结"
-          description="查看当前生效的短期总结，以及它依赖的最近对话窗口。"
-          currentValue={shortTermSummary}
-          emptyPlaceholder="当前还没有短期总结内容。"
-          helperTitle="这一层是什么意思"
-          helperText="这里记录最近几轮互动的状态、余波、未完事项和当前气氛。它适合被频繁刷新，服务接下来几轮聊天，不应该写成长期关系档案。"
-          historyPreviewTitle="当前总结窗口"
-          historyPreviewLines={summaryHistoryPreviewLines}
+          description="按真实时间查看这位角色积累下来的短期总结记录。"
+          statsCards={activeMemoryStatCards}
+          monthGroups={activeMemoryMonthGroups}
           onBack={() => setActiveMemoryDetail(null)}
         />
       )}
 
       {activeMemoryDetail === 'long-term' && (
-        <ChatMemoryDetailView
+        <ChatMemoryLibraryHome
+          kind="long-term"
           title="长期记忆 / 长期画像"
-          description="查看当前生效的长期画像，以及当前整理时会参考的最近对话窗口。"
-          currentValue={longTermMemoryProfile}
-          emptyPlaceholder="当前还没有长期画像内容。"
-          helperTitle="这一层是什么意思"
-          helperText="这里沉淀更稳定的印象、偏好、边界和长期相处模式。它不该只是最近聊天的压缩版，而应该更像一份关系档案。"
-          historyPreviewTitle="当前整理参考窗口"
-          historyPreviewLines={summaryHistoryPreviewLines}
+          description="按真实时间查看这位角色积累下来的长期画像记录。"
+          statsCards={activeMemoryStatCards}
+          monthGroups={activeMemoryMonthGroups}
           onBack={() => setActiveMemoryDetail(null)}
         />
       )}
