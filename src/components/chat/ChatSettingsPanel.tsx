@@ -1391,7 +1391,7 @@ export function ChatSettingsPanel({
                   value={character.bubbleStyleCss || ''}
                   onChange={e => onUpdate({ ...character, bubbleStyleCss: e.target.value })}
                   placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);\nborder: 1px solid rgba(255, 255, 255, 0.65);'}
-                  className="h-28 w-full rounded-2xl border border-white/40 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  className="min-h-[132px] w-full resize-y rounded-2xl border border-zinc-200 bg-white px-4 py-3 font-mono text-[12px] leading-6 text-zinc-800 outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200/70"
                   spellCheck="false"
                 />
                 {character.bubbleStyleCss && (
@@ -1469,7 +1469,7 @@ export function ChatSettingsPanel({
                   value={character.userBubbleStyleCss || ''}
                   onChange={e => onUpdate({ ...character, userBubbleStyleCss: e.target.value })}
                   placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);\nborder: 1px solid rgba(255, 255, 255, 0.35);'}
-                  className="h-28 w-full rounded-2xl border border-white/40 bg-zinc-950 px-4 py-3 font-mono text-xs text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  className="min-h-[132px] w-full resize-y rounded-2xl border border-zinc-200 bg-white px-4 py-3 font-mono text-[12px] leading-6 text-zinc-800 outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200/70"
                   spellCheck="false"
                 />
                 {character.userBubbleStyleCss && (

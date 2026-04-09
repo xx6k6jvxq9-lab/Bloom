@@ -1052,13 +1052,13 @@ export default function MusicApp({
             <div className="flex items-center gap-8">
               <button
                 onClick={skipBack}
-                className="text-zinc-900 active:scale-90 transition-transform"
+                className="text-zinc-400 active:scale-90 transition-transform"
               >
                 <SkipBack size={28} fill="currentColor" />
               </button>
               <button
                 onClick={togglePlay}
-                className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-white shadow-xl active:scale-95 transition-transform"
+                className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 shadow-xl shadow-zinc-200/40 active:scale-95 transition-transform"
               >
                 {currentMusicData.isPlaying ? (
                   <Pause size={30} fill="currentColor" />
@@ -1068,7 +1068,7 @@ export default function MusicApp({
               </button>
               <button
                 onClick={skipForward}
-                className="text-zinc-900 active:scale-90 transition-transform"
+                className="text-zinc-400 active:scale-90 transition-transform"
               >
                 <SkipForward size={28} fill="currentColor" />
               </button>
