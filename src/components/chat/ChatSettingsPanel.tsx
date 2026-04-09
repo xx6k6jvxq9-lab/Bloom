@@ -3,13 +3,12 @@ import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRi
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
-import { ChatMemoryLibraryMonth } from './ChatMemoryLibraryMonth';
 import { ChatMemoryLibraryYear } from './ChatMemoryLibraryYear';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
-import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryMonthGroup, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
+import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -276,7 +275,6 @@ export function ChatSettingsPanel({
   const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
   const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
   const [activeMemoryYear, setActiveMemoryYear] = useState<MemoryLibraryYearGroup | null>(null);
-  const [activeMemoryMonth, setActiveMemoryMonth] = useState<MemoryLibraryMonthGroup | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
   const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
@@ -618,7 +616,6 @@ export function ChatSettingsPanel({
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
             setActiveMemoryYear(null);
-            setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
           }}
         />
@@ -636,26 +633,16 @@ export function ChatSettingsPanel({
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
             setActiveMemoryYear(null);
-            setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
           }}
         />
       )}
 
-      {activeMemoryDetail && activeMemoryYear && !activeMemoryMonth && (
+      {activeMemoryDetail && activeMemoryYear && (
         <ChatMemoryLibraryYear
           kind={activeMemoryDetail}
           group={activeMemoryYear}
           onBack={() => setActiveMemoryYear(null)}
-          onOpenMonth={setActiveMemoryMonth}
-        />
-      )}
-
-      {activeMemoryDetail && activeMemoryMonth && (
-        <ChatMemoryLibraryMonth
-          kind={activeMemoryDetail}
-          group={activeMemoryMonth}
-          onBack={() => setActiveMemoryMonth(null)}
           onSelectEntry={() => undefined}
         />
       )}
@@ -1431,12 +1418,11 @@ export function ChatSettingsPanel({
                             {isShortTermSummarizing ? '总结中...' : '刷新近期总结'}
                           </button>
                           <button
-                            onClick={() => {
-                              setActiveMemoryHomeTab('library');
-                              setActiveMemoryYear(null);
-                              setActiveMemoryMonth(null);
-                              setActiveMemoryDetail('short-term');
-                            }}
+                              onClick={() => {
+                                setActiveMemoryHomeTab('library');
+                                setActiveMemoryYear(null);
+                                setActiveMemoryDetail('short-term');
+                              }}
                             className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
                           >
                             查看详情
@@ -1468,12 +1454,11 @@ export function ChatSettingsPanel({
                             {isLongTermSummarizing ? '总结中...' : '生成长期画像'}
                           </button>
                           <button
-                            onClick={() => {
-                              setActiveMemoryHomeTab('library');
-                              setActiveMemoryYear(null);
-                              setActiveMemoryMonth(null);
-                              setActiveMemoryDetail('long-term');
-                            }}
+                              onClick={() => {
+                                setActiveMemoryHomeTab('library');
+                                setActiveMemoryYear(null);
+                                setActiveMemoryDetail('long-term');
+                              }}
                             className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
                           >
                             查看详情
