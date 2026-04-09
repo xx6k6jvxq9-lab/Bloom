@@ -18,6 +18,7 @@ import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPro
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import { buildMemoryLibraryPatch } from '../../services/memory/memoryLibrary';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
@@ -894,10 +895,22 @@ export function useDirectChatRuntime({
           });
 
           if (summaryText) {
+            const memoryLibraryPatch = buildMemoryLibraryPatch(character, {
+              kind: 'short-term',
+              source: 'auto',
+              content: summaryText,
+            });
             if (onPatchCharacter) {
-              onPatchCharacter({ shortTermSummary: summaryText });
+              onPatchCharacter({
+                shortTermSummary: summaryText,
+                ...memoryLibraryPatch,
+              });
             } else {
-              onUpdateCharacter({ ...character, shortTermSummary: summaryText });
+              onUpdateCharacter({
+                ...character,
+                shortTermSummary: summaryText,
+                ...memoryLibraryPatch,
+              });
             }
           }
         } catch (summaryError) {

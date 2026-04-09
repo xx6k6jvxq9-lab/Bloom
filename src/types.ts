@@ -472,6 +472,24 @@ export type CoupleSpaceInitiativeCandidate = {
   evidenceSummary?: string;
 };
 
+export type MemoryLibraryKind = 'short-term' | 'long-term';
+
+export type MemoryLibrarySource = 'auto' | 'manual';
+
+export type MemoryLibraryEntry = {
+  id: string;
+  kind: MemoryLibraryKind;
+  source: MemoryLibrarySource;
+  content: string;
+  createdAt: number;
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  charCount: number;
+};
+
 export type Character = {
   id: string;
   name: string;
@@ -505,6 +523,7 @@ export type Character = {
   memorySummary?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  memoryLibraryEntries?: MemoryLibraryEntry[];
   stickers?: string[];
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts

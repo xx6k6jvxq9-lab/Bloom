@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { normalizeMemoryLibraryEntries } from '../../services/memory/memoryLibrary';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
 
 function normalizeOptionalText(value: unknown): string | undefined {
@@ -27,6 +28,7 @@ export function migrateCharacterShape(character: Character): Character {
     ?? normalizeOptionalText(character.memorySummary);
   const shortTermSummary = normalizeOptionalText(character.shortTermSummary);
   const sceneHints = normalizeSceneHints(character.sceneHints);
+  const memoryLibraryEntries = normalizeMemoryLibraryEntries(character.memoryLibraryEntries);
 
   return {
     ...character,
@@ -37,6 +39,7 @@ export function migrateCharacterShape(character: Character): Character {
     sceneHints,
     shortTermSummary,
     longTermMemoryProfile,
+    memoryLibraryEntries,
   };
 }
 

@@ -7,6 +7,7 @@ import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPro
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import { buildMemoryLibraryPatch } from '../../services/memory/memoryLibrary';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -469,7 +470,15 @@ export function ChatSettingsPanel({
       mode: 'small',
       shortTermSummary,
       longTermMemoryProfile,
-      onComplete: (responseText) => onUpdate({ ...character, shortTermSummary: responseText }),
+      onComplete: (responseText) => onUpdate({
+        ...character,
+        shortTermSummary: responseText,
+        ...buildMemoryLibraryPatch(character, {
+          kind: 'short-term',
+          source: 'manual',
+          content: responseText,
+        }),
+      }),
       setLoading: setIsShortTermSummarizing,
     });
   };
@@ -479,7 +488,15 @@ export function ChatSettingsPanel({
       mode: 'large',
       shortTermSummary,
       longTermMemoryProfile,
-      onComplete: (responseText) => onUpdate({ ...character, longTermMemoryProfile: responseText }),
+      onComplete: (responseText) => onUpdate({
+        ...character,
+        longTermMemoryProfile: responseText,
+        ...buildMemoryLibraryPatch(character, {
+          kind: 'long-term',
+          source: 'manual',
+          content: responseText,
+        }),
+      }),
       setLoading: setIsLongTermSummarizing,
     });
   };
