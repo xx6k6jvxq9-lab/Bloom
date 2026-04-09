@@ -1,6 +1,6 @@
-import { BarChart3, ChevronLeft, ChevronRight, Clock3, FileText, Hash, LibraryBig } from 'lucide-react';
+import { BarChart3, ChevronLeft, ChevronRight, Clock3, FileText, FolderOpen, Hash, LibraryBig } from 'lucide-react';
 import type { MemoryLibraryKind } from '../../types';
-import type { MemoryLibraryMonthGroup } from '../../services/memory/memoryLibrary';
+import type { MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 
 export type MemoryLibraryStatsCard = {
   label: string;
@@ -14,9 +14,9 @@ type ChatMemoryLibraryHomeProps = {
   description: string;
   activeTab: 'library' | 'stats';
   statsCards: MemoryLibraryStatsCard[];
-  monthGroups: MemoryLibraryMonthGroup[];
+  yearGroups: MemoryLibraryYearGroup[];
   onBack: () => void;
-  onOpenMonth: (group: MemoryLibraryMonthGroup) => void;
+  onOpenYear: (group: MemoryLibraryYearGroup) => void;
   onTabChange: (tab: 'library' | 'stats') => void;
 };
 
@@ -52,9 +52,9 @@ export function ChatMemoryLibraryHome({
   description,
   activeTab,
   statsCards,
-  monthGroups,
+  yearGroups,
   onBack,
-  onOpenMonth,
+  onOpenYear,
   onTabChange,
 }: ChatMemoryLibraryHomeProps) {
   return (
@@ -77,13 +77,13 @@ export function ChatMemoryLibraryHome({
         </div>
 
         <div className="mx-auto mt-4 w-full max-w-[44rem]">
-          <div className="inline-flex rounded-full border border-white/85 bg-white/70 p-1 shadow-[0_8px_22px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+          <div className="inline-flex rounded-full border border-zinc-200/80 bg-white/72 p-1 shadow-[0_8px_22px_rgba(17,24,39,0.05)] backdrop-blur-xl">
             <button
               onClick={() => onTabChange('library')}
               className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium transition-all ${
                 activeTab === 'library'
-                  ? 'bg-zinc-900 text-white shadow-sm'
-                  : 'text-zinc-600 active:bg-white/70'
+                  ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
+                  : 'text-zinc-600 active:bg-zinc-100/80'
               }`}
             >
               <LibraryBig size={14} />
@@ -93,8 +93,8 @@ export function ChatMemoryLibraryHome({
               onClick={() => onTabChange('stats')}
               className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium transition-all ${
                 activeTab === 'stats'
-                  ? 'bg-zinc-900 text-white shadow-sm'
-                  : 'text-zinc-600 active:bg-white/70'
+                  ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm'
+                  : 'text-zinc-600 active:bg-zinc-100/80'
               }`}
             >
               <BarChart3 size={14} />
@@ -107,72 +107,71 @@ export function ChatMemoryLibraryHome({
       <div className="flex-1 overflow-y-auto px-4 py-5">
         <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-4">
           {activeTab === 'library' ? (
-            <>
-              <section className="rounded-[28px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/75 text-zinc-700 shadow-sm">
-                    <Clock3 size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[16px] font-semibold tracking-[-0.02em] text-zinc-950">按年月查看</div>
-                    <div className="mt-1 text-[12px] leading-5 text-zinc-500">
-                      点击某个月后，进入该月页面查看从上到下排列的每条记忆。
-                    </div>
+            <section className="rounded-[28px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/75 text-zinc-700 shadow-sm">
+                  <FolderOpen size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[16px] font-semibold tracking-[-0.02em] text-zinc-950">按年份查看</div>
+                  <div className="mt-1 text-[12px] leading-5 text-zinc-500">
+                    先进入某一年，再查看该年份下的月份和每条记忆。
                   </div>
                 </div>
+              </div>
 
-                <div className="mt-4 overflow-hidden rounded-[24px] border border-white/85 bg-white/68 shadow-[0_10px_30px_rgba(17,24,39,0.05)] backdrop-blur-xl">
-                  {monthGroups.length > 0 ? (
-                    monthGroups.map((group, index) => (
-                      <button
-                        key={group.key}
-                        onClick={() => onOpenMonth(group)}
-                        className={`block w-full px-4 py-4 text-left transition-colors active:bg-white/75 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-100/80 text-zinc-700">
-                            <Clock3 size={17} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">{group.label}</div>
-                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
-                              <span className="inline-flex items-center gap-1">
-                                <FileText size={12} />
-                                {group.entries.length} 条
-                              </span>
-                              <span className="inline-flex items-center gap-1">
-                                <Hash size={12} />
-                                {group.totalChars} 字
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-zinc-400 shadow-sm">
-                            <ChevronRight size={16} />
+              <div className="mt-4 overflow-hidden rounded-[24px] border border-white/85 bg-white/68 shadow-[0_10px_30px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+                {yearGroups.length > 0 ? (
+                  yearGroups.map((group, index) => (
+                    <button
+                      key={group.key}
+                      onClick={() => onOpenYear(group)}
+                      className={`block w-full px-4 py-4 text-left transition-colors active:bg-white/75 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-100/80 text-zinc-700">
+                          <FolderOpen size={17} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">{group.label}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                            <span className="inline-flex items-center gap-1">
+                              <FileText size={12} />
+                              {group.totalEntries} 条
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Hash size={12} />
+                              {group.totalChars} 字
+                            </span>
+                            <span>{group.months.length} 个月份</span>
                           </div>
                         </div>
-                        <div className="mt-3 text-[12px] leading-6 text-zinc-500">
-                          最近更新：{formatDateTime(group.latestCreatedAt)}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-zinc-400 shadow-sm">
+                          <ChevronRight size={16} />
                         </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="p-4">
-                      {renderLibraryEmptyState()}
-                    </div>
-                  )}
-                </div>
-              </section>
-            </>
+                      </div>
+                      <div className="mt-3 text-[12px] leading-6 text-zinc-500">
+                        最近更新：{formatDateTime(group.latestCreatedAt)}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-4">
+                    {renderLibraryEmptyState()}
+                  </div>
+                )}
+              </div>
+            </section>
           ) : (
             <section className="rounded-[28px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
               <div className="grid grid-cols-2 gap-3">
                 {statsCards.map((card) => (
                   <div
                     key={card.label}
-                    className="rounded-[22px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_8px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl"
+                    className="rounded-[20px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_8px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl"
                   >
                     <div className="text-[11px] text-zinc-500">{card.label}</div>
-                    <div className="mt-1 text-[21px] font-semibold tracking-[-0.03em] text-zinc-950">{card.value}</div>
+                    <div className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-zinc-950">{card.value}</div>
                     <div className="mt-1 text-[11px] leading-5 text-zinc-400">{card.helper}</div>
                   </div>
                 ))}

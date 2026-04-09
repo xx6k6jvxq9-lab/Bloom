@@ -4,11 +4,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
 import { ChatMemoryLibraryMonth } from './ChatMemoryLibraryMonth';
+import { ChatMemoryLibraryYear } from './ChatMemoryLibraryYear';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
-import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByMonth, type MemoryLibraryMonthGroup } from '../../services/memory/memoryLibrary';
+import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryMonthGroup, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -274,6 +275,7 @@ export function ChatSettingsPanel({
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
   const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
+  const [activeMemoryYear, setActiveMemoryYear] = useState<MemoryLibraryYearGroup | null>(null);
   const [activeMemoryMonth, setActiveMemoryMonth] = useState<MemoryLibraryMonthGroup | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
@@ -297,7 +299,7 @@ export function ChatSettingsPanel({
   const longTermMemoryEntries = getMemoryLibraryEntries(character, 'long-term');
   const activeMemoryEntries = activeMemoryDetail === 'long-term' ? longTermMemoryEntries : shortTermMemoryEntries;
   const activeMemoryStats = getMemoryLibraryStats(activeMemoryEntries);
-  const activeMemoryMonthGroups = groupMemoryLibraryEntriesByMonth(activeMemoryEntries);
+  const activeMemoryYearGroups = groupMemoryLibraryEntriesByYear(activeMemoryEntries);
   const activeMemoryStatCards = [
     {
       label: '总记忆条数',
@@ -611,10 +613,11 @@ export function ChatSettingsPanel({
           description="按真实时间查看这位角色积累下来的短期总结记录。"
           activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
-          monthGroups={activeMemoryMonthGroups}
-          onOpenMonth={setActiveMemoryMonth}
+          yearGroups={activeMemoryYearGroups}
+          onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
+            setActiveMemoryYear(null);
             setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
           }}
@@ -628,13 +631,23 @@ export function ChatSettingsPanel({
           description="按真实时间查看这位角色积累下来的长期画像记录。"
           activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
-          monthGroups={activeMemoryMonthGroups}
-          onOpenMonth={setActiveMemoryMonth}
+          yearGroups={activeMemoryYearGroups}
+          onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
+            setActiveMemoryYear(null);
             setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
           }}
+        />
+      )}
+
+      {activeMemoryDetail && activeMemoryYear && !activeMemoryMonth && (
+        <ChatMemoryLibraryYear
+          kind={activeMemoryDetail}
+          group={activeMemoryYear}
+          onBack={() => setActiveMemoryYear(null)}
+          onOpenMonth={setActiveMemoryMonth}
         />
       )}
 
@@ -1420,6 +1433,7 @@ export function ChatSettingsPanel({
                           <button
                             onClick={() => {
                               setActiveMemoryHomeTab('library');
+                              setActiveMemoryYear(null);
                               setActiveMemoryMonth(null);
                               setActiveMemoryDetail('short-term');
                             }}
@@ -1456,6 +1470,7 @@ export function ChatSettingsPanel({
                           <button
                             onClick={() => {
                               setActiveMemoryHomeTab('library');
+                              setActiveMemoryYear(null);
                               setActiveMemoryMonth(null);
                               setActiveMemoryDetail('long-term');
                             }}
