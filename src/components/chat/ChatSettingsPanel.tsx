@@ -273,6 +273,7 @@ export function ChatSettingsPanel({
   const [showRemarkEditor, setShowRemarkEditor] = useState(false);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
+  const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
   const [activeMemoryMonth, setActiveMemoryMonth] = useState<MemoryLibraryMonthGroup | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
@@ -608,9 +609,11 @@ export function ChatSettingsPanel({
           kind="short-term"
           title="近期记忆 / 短期总结"
           description="按真实时间查看这位角色积累下来的短期总结记录。"
+          activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
           monthGroups={activeMemoryMonthGroups}
           onOpenMonth={setActiveMemoryMonth}
+          onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
             setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
@@ -623,9 +626,11 @@ export function ChatSettingsPanel({
           kind="long-term"
           title="长期记忆 / 长期画像"
           description="按真实时间查看这位角色积累下来的长期画像记录。"
+          activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
           monthGroups={activeMemoryMonthGroups}
           onOpenMonth={setActiveMemoryMonth}
+          onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
             setActiveMemoryMonth(null);
             setActiveMemoryDetail(null);
@@ -1414,6 +1419,7 @@ export function ChatSettingsPanel({
                           </button>
                           <button
                             onClick={() => {
+                              setActiveMemoryHomeTab('library');
                               setActiveMemoryMonth(null);
                               setActiveMemoryDetail('short-term');
                             }}
@@ -1449,6 +1455,7 @@ export function ChatSettingsPanel({
                           </button>
                           <button
                             onClick={() => {
+                              setActiveMemoryHomeTab('library');
                               setActiveMemoryMonth(null);
                               setActiveMemoryDetail('long-term');
                             }}
