@@ -4,8 +4,20 @@ function toCamelCase(value: string): string {
   return value.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase());
 }
 
+function normalizeBubbleStyleText(styleText?: string): string {
+  if (!styleText) {
+    return '';
+  }
+
+  return styleText
+    .replace(/^\uFEFF/, '')
+    .replace(/@charset\s+["'][^"']+["'];?/gi, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
+}
+
 function extractDeclarationBody(styleText: string): string {
-  const trimmed = styleText.trim();
+  const trimmed = normalizeBubbleStyleText(styleText);
   if (!trimmed) {
     return '';
   }
@@ -23,11 +35,10 @@ function extractDeclarationBody(styleText: string): string {
 }
 
 export function parseBubbleStyleCss(styleText?: string): React.CSSProperties {
-  if (!styleText?.trim()) {
+  const trimmed = normalizeBubbleStyleText(styleText);
+  if (!trimmed) {
     return {};
   }
-
-  const trimmed = styleText.trim();
 
   try {
     const parsed = JSON.parse(trimmed);
@@ -86,7 +97,7 @@ export function parseBubbleStyleCss(styleText?: string): React.CSSProperties {
 }
 
 export function hasBubbleThemeCss(styleText?: string): boolean {
-  const trimmed = styleText?.trim();
+  const trimmed = normalizeBubbleStyleText(styleText);
   return !!trimmed && trimmed.includes('{') && !trimmed.startsWith('{');
 }
 
@@ -112,12 +123,75 @@ function scopeSelectorList(selectorList: string, scopeClass: string): string {
     .join(', ');
 }
 
-export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeClass: string): string {
-  if (!styleText?.trim() || !styleText.includes('{')) {
+function canAttachSelectorToScope(selector: string): boolean {
+  return selector.startsWith('.') && !/[ >+~]/.test(selector) && !selector.startsWith('..');
+}
+
+function getVariantAliasSelectors(variantSelector: string): string[] {
+  if (variantSelector === '.bot-bubble') {
+    return [
+      '.bot-bubble',
+      '.left',
+      '.chat-bubble-left',
+      '.user-left-bubble',
+      '.model-left-bubble',
+      '.character-left-bubble',
+      '.assistant-left-bubble',
+      '.left-bubble',
+    ];
+  }
+
+  if (variantSelector === '.user-bubble') {
+    return [
+      '.user-bubble',
+      '.right',
+      '.chat-bubble-right',
+      '.user-right-bubble',
+      '.self-right-bubble',
+      '.me-right-bubble',
+      '.right-bubble',
+    ];
+  }
+
+  return [variantSelector];
+}
+
+function buildScopedVariantSelector(
+  selector: string,
+  scopeClass: string,
+  variantSelector: string,
+): string {
+  if (!selector) {
     return '';
   }
 
-  return styleText.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+  if (selector.startsWith(scopeClass)) {
+    return selector;
+  }
+
+  if (selector.startsWith('&')) {
+    return `${scopeClass} ${variantSelector}${selector.slice(1)}`;
+  }
+
+  const variantAliases = getVariantAliasSelectors(variantSelector);
+  if (variantAliases.some((alias) => selector.includes(alias))) {
+    return `${scopeClass} ${selector}`;
+  }
+
+  if (selector.startsWith('.') && !/[ >+~]/.test(selector)) {
+    return `${scopeClass} ${variantSelector}${selector}, ${scopeClass} ${variantSelector} ${selector}`;
+  }
+
+  return `${scopeClass} ${variantSelector} ${selector}`;
+}
+
+export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeClass: string): string {
+  const normalized = normalizeBubbleStyleText(styleText);
+  if (!normalized || !normalized.includes('{')) {
+    return '';
+  }
+
+  return normalized.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
     const scopedSelectors = scopeSelectorList(selectors, scopeClass);
     return `${prefix} ${scopedSelectors}{`;
   });
@@ -128,7 +202,7 @@ export function buildScopedBubbleVariantCss(
   scopeClass: string,
   variantSelector: string,
 ): string {
-  const trimmed = styleText?.trim();
+  const trimmed = normalizeBubbleStyleText(styleText);
   if (!trimmed) {
     return '';
   }
@@ -144,8 +218,49 @@ export function buildScopedBubbleVariantCss(
       .split(',')
       .map((selector) => selector.trim())
       .filter(Boolean)
-      .map((selector) => `${scopeClass} ${variantSelector}${selector.startsWith('&') ? selector.slice(1) : ` ${selector}`}`)
+      .map((selector) => buildScopedVariantSelector(selector, scopeClass, variantSelector))
       .join(', ');
+    return `${prefix} ${scopedSelectors}{`;
+  });
+}
+
+export function buildScopedElementThemeCss(
+  styleText: string | undefined,
+  scopeSelector: string,
+  selfAliases: string[] = [],
+): string {
+  const trimmed = normalizeBubbleStyleText(styleText);
+  if (!trimmed) {
+    return '';
+  }
+
+  if (!trimmed.includes('{') || trimmed.startsWith('{')) {
+    return wrapDeclarationsAsCss(trimmed, scopeSelector);
+  }
+
+  return trimmed.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+    const scopedSelectors = selectors
+      .split(',')
+      .map((selector) => selector.trim())
+      .filter(Boolean)
+      .map((selector) => {
+        if (selector.startsWith(scopeSelector)) {
+          return selector;
+        }
+
+        if (selector.startsWith('&')) {
+          return `${scopeSelector}${selector.slice(1)}`;
+        }
+
+        const matchesSelfAlias = selfAliases.some((alias) => selector.includes(alias));
+        if (matchesSelfAlias && canAttachSelectorToScope(selector)) {
+          return `${scopeSelector}${selector}, ${scopeSelector} ${selector}`;
+        }
+
+        return `${scopeSelector} ${selector}`;
+      })
+      .join(', ');
+
     return `${prefix} ${scopedSelectors}{`;
   });
 }
