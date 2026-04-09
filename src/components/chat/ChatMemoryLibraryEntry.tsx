@@ -56,17 +56,17 @@ export function ChatMemoryLibraryEntry({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-4">
-          <section className="rounded-[28px] border border-white/80 bg-white/58 p-5 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-3">
+          <section className="rounded-[24px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
             <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-white/75 text-zinc-700 shadow-sm">
-                <FileText size={20} />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-white/75 text-zinc-700 shadow-sm">
+                <FileText size={18} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[18px] font-semibold leading-7 tracking-[-0.03em] text-zinc-950">
+                <div className="text-[17px] font-semibold leading-7 tracking-[-0.03em] text-zinc-950">
                   {getEntryTitle(entry.content)}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-zinc-500">
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-zinc-500">
                   <span>{formatDateTime(entry)}</span>
                   <span>{getSourceLabel(entry.source)}</span>
                   <span>{getKindLabel(kind)}</span>
@@ -75,51 +75,51 @@ export function ChatMemoryLibraryEntry({
             </div>
           </section>
 
-          <section className="grid grid-cols-2 gap-3">
-            <div className="rounded-[22px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+          <section className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-[18px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
               <div className="inline-flex items-center gap-2 text-[11px] text-zinc-500">
                 <Clock3 size={12} />
                 记录时间
               </div>
-              <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
+              <div className="mt-1.5 text-[14px] font-semibold tracking-[-0.02em] text-zinc-950">
                 {formatDateTime(entry)}
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+            <div className="rounded-[18px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
               <div className="inline-flex items-center gap-2 text-[11px] text-zinc-500">
                 <Hash size={12} />
                 字数
               </div>
-              <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
+              <div className="mt-1.5 text-[14px] font-semibold tracking-[-0.02em] text-zinc-950">
                 {entry.charCount} 字
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+            <div className="rounded-[18px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
               <div className="inline-flex items-center gap-2 text-[11px] text-zinc-500">
                 <Layers3 size={12} />
                 所属年月
               </div>
-              <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
+              <div className="mt-1.5 text-[14px] font-semibold tracking-[-0.02em] text-zinc-950">
                 {entry.year} 年 {String(entry.month).padStart(2, '0')} 月
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+            <div className="rounded-[18px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
               <div className="inline-flex items-center gap-2 text-[11px] text-zinc-500">
                 <FileText size={12} />
                 来源
               </div>
-              <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
+              <div className="mt-1.5 text-[14px] font-semibold tracking-[-0.02em] text-zinc-950">
                 {getSourceLabel(entry.source)}
               </div>
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/80 bg-white/58 p-5 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+          <section className="rounded-[24px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
             <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">完整内容</div>
-            <div className="mt-4 rounded-[22px] border border-white/85 bg-white/72 px-4 py-4 text-[14px] leading-7 text-zinc-700 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl whitespace-pre-wrap break-words">
+            <div className="mt-3 rounded-[18px] border border-white/85 bg-white/72 px-4 py-4 text-[14px] leading-7 text-zinc-700 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl whitespace-pre-wrap break-words">
               {entry.content}
             </div>
           </section>

@@ -80,21 +80,21 @@ export function ChatMemoryLibraryYear({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-4">
-          <section className="rounded-[28px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-3">
+          <section className="rounded-[24px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/75 text-zinc-700 shadow-sm">
-                <Clock3 size={18} />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/75 text-zinc-700 shadow-sm">
+                <Clock3 size={17} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[16px] font-semibold tracking-[-0.02em] text-zinc-950">{group.year} 年概览</div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-zinc-500">
+                <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">{group.year} 年概览</div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
                   <span className="inline-flex items-center gap-1">
-                    <FileText size={12} />
+                    <FileText size={11} />
                     {group.totalEntries} 条
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <Hash size={12} />
+                    <Hash size={11} />
                     {group.totalChars} 字
                   </span>
                   <span>{group.months.length} 个月</span>
@@ -135,8 +135,8 @@ export function ChatMemoryLibraryYear({
                 transition={{ duration: 0.22, ease: 'easeOut' }}
                 className="overflow-hidden"
               >
-                <div className="flex flex-col gap-4">
-                  <section className="rounded-[24px] border border-white/85 bg-white/64 px-4 py-3 shadow-[0_12px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+                <div className="flex flex-col gap-3">
+                  <section className="rounded-[22px] border border-white/85 bg-white/64 px-4 py-3 shadow-[0_12px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl">
                     <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
                       {buildMonthHeading(expandedMonth.year, expandedMonth.month)}
                     </div>
@@ -145,29 +145,29 @@ export function ChatMemoryLibraryYear({
                     </div>
                   </section>
 
-                  <section className="overflow-hidden rounded-[28px] border border-white/80 bg-white/58 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+                  <section className="overflow-hidden rounded-[24px] border border-white/80 bg-white/58 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
                     {expandedMonth.entries.map((entry, index) => (
                       <button
                         key={entry.id}
                         onClick={() => onSelectEntry(entry)}
-                        className={`block w-full px-4 py-4 text-left transition-colors active:bg-white/75 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
+                        className={`block w-full px-4 py-3.5 text-left transition-colors active:bg-white/75 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-100/80 text-zinc-700">
-                            <FileText size={17} />
+                          <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-zinc-100/80 text-zinc-700">
+                            <FileText size={16} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="line-clamp-2 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-zinc-950">
                               {buildPreviewText(entry.content)}
                             </div>
-                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
                               <span>{formatDateTime(entry)}</span>
                               <span>{getSourceLabel(entry.source)}</span>
                               <span>{entry.charCount} 字</span>
                             </div>
                           </div>
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-zinc-400 shadow-sm">
-                            <ChevronRight size={16} />
+                            <ChevronRight size={15} />
                           </div>
                         </div>
                       </button>
@@ -181,12 +181,10 @@ export function ChatMemoryLibraryYear({
                 initial={{ opacity: 0.8 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="rounded-[24px] border border-white/85 bg-white/72 px-5 py-7 text-center shadow-[0_10px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl"
+                className="rounded-[22px] border border-white/85 bg-white/72 px-5 py-6 text-center shadow-[0_10px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl"
               >
                 <div className="text-[14px] font-medium text-zinc-700">先点一个月份标签</div>
-                <div className="mt-2 text-[12px] text-zinc-400">
-                  选中后会展开这个月的记忆记录。
-                </div>
+                <div className="mt-1 text-[12px] text-zinc-400">选中后会展开这个月的记忆记录。</div>
               </motion.section>
             )}
           </AnimatePresence>

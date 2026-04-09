@@ -25,16 +25,14 @@ function getKindBadge(kind: MemoryLibraryKind): string {
 }
 
 function buildYearSubtitle(group: MemoryLibraryYearGroup): string {
-  return `${group.totalEntries} 条 · ${group.totalChars} 字 · ${group.months.length} 个月`;
+  return `${group.totalEntries} 条 · ${group.totalChars} 字`;
 }
 
 function renderLibraryEmptyState() {
   return (
-    <div className="rounded-[24px] border border-white/85 bg-white/72 px-5 py-7 text-center shadow-[0_10px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+    <div className="rounded-[22px] border border-white/85 bg-white/72 px-5 py-6 text-center shadow-[0_10px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl">
       <div className="text-[14px] font-medium text-zinc-700">还没有记忆记录</div>
-      <div className="mt-2 text-[12px] text-zinc-400">
-        触发一次总结后，这里就会按真实时间收进记忆库。
-      </div>
+      <div className="mt-1 text-[12px] text-zinc-400">触发一次总结后，这里就会出现对应年份。</div>
     </div>
   );
 }
@@ -106,14 +104,14 @@ export function ChatMemoryLibraryHome({
                   <button
                     key={group.key}
                     onClick={() => onOpenYear(group)}
-                    className="aspect-square rounded-[28px] border border-white/85 bg-white/64 p-4 text-left shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl transition-transform active:scale-[0.98]"
+                    className="aspect-square rounded-[26px] border border-white/85 bg-white/64 p-4 text-left shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl transition-transform active:scale-[0.98]"
                   >
                     <div className="flex h-full flex-col">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-zinc-100/85 text-zinc-700 shadow-sm">
-                        <FolderOpen size={20} />
+                      <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-zinc-100/85 text-zinc-700 shadow-sm">
+                        <FolderOpen size={18} />
                       </div>
-                      <div className="mt-4 text-[22px] font-semibold tracking-[-0.03em] text-zinc-950">{group.year}</div>
-                      <div className="mt-2 text-[12px] leading-5 text-zinc-500">{buildYearSubtitle(group)}</div>
+                      <div className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-zinc-950">{group.year}</div>
+                      <div className="mt-1 text-[12px] leading-5 text-zinc-500">{buildYearSubtitle(group)}</div>
                       <div className="mt-auto flex items-center justify-between text-[11px] text-zinc-400">
                         <span>{group.months.length} 个月</span>
                         <span className="inline-flex items-center gap-1">
@@ -129,16 +127,16 @@ export function ChatMemoryLibraryHome({
               renderLibraryEmptyState()
             )
           ) : (
-            <section className="rounded-[28px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
-              <div className="grid grid-cols-2 gap-3">
+            <section className="rounded-[24px] border border-white/80 bg-white/58 p-3 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
+              <div className="grid grid-cols-2 gap-2.5">
                 {statsCards.map((card) => (
                   <div
                     key={card.label}
-                    className="rounded-[20px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_8px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl"
+                    className="rounded-[18px] border border-white/85 bg-white/72 px-4 py-3 shadow-[0_8px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl"
                   >
                     <div className="text-[11px] text-zinc-500">{card.label}</div>
-                    <div className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-zinc-950">{card.value}</div>
-                    <div className="mt-1 text-[11px] leading-5 text-zinc-400">{card.helper}</div>
+                    <div className="mt-1 text-[19px] font-semibold tracking-[-0.03em] text-zinc-950">{card.value}</div>
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-5 text-zinc-400">{card.helper}</div>
                   </div>
                 ))}
               </div>
