@@ -1,20 +1,11 @@
 import { ChevronLeft, ChevronRight, Clock3, FileText, Hash, Layers3, Sparkles } from 'lucide-react';
 import type { MemoryLibraryEntry, MemoryLibraryKind } from '../../types';
+import type { MemoryLibraryMonthGroup } from '../../services/memory/memoryLibrary';
 
-type MemoryLibraryStatsCard = {
+export type MemoryLibraryStatsCard = {
   label: string;
   value: string;
   helper: string;
-};
-
-type MemoryLibraryMonthGroup = {
-  key: string;
-  year: number;
-  month: number;
-  label: string;
-  entries: MemoryLibraryEntry[];
-  totalChars: number;
-  latestCreatedAt: number;
 };
 
 type ChatMemoryLibraryHomeProps = {
@@ -24,6 +15,7 @@ type ChatMemoryLibraryHomeProps = {
   statsCards: MemoryLibraryStatsCard[];
   monthGroups: MemoryLibraryMonthGroup[];
   onBack: () => void;
+  onOpenMonth: (group: MemoryLibraryMonthGroup) => void;
 };
 
 function formatDateTime(timestamp: number): string {
@@ -48,6 +40,7 @@ export function ChatMemoryLibraryHome({
   statsCards,
   monthGroups,
   onBack,
+  onOpenMonth,
 }: ChatMemoryLibraryHomeProps) {
   return (
     <div className="absolute inset-0 z-[80] flex flex-col bg-[linear-gradient(180deg,rgba(248,248,250,0.96),rgba(242,242,245,0.98))]">
@@ -106,7 +99,7 @@ export function ChatMemoryLibraryHome({
               <div className="min-w-0 flex-1">
                 <div className="text-[16px] font-semibold tracking-[-0.02em] text-zinc-950">按年月查看</div>
                 <div className="mt-1 text-[12px] leading-5 text-zinc-500">
-                  记忆会按真实时间分组。下一步会接入月份页和单条详情页。
+                  记忆会按真实时间分组。点进某个月后，可以看到该月从上到下的每条记忆。
                 </div>
               </div>
             </div>
@@ -114,9 +107,10 @@ export function ChatMemoryLibraryHome({
             <div className="mt-4 overflow-hidden rounded-[24px] border border-white/85 bg-white/68 shadow-[0_10px_30px_rgba(17,24,39,0.05)] backdrop-blur-xl">
               {monthGroups.length > 0 ? (
                 monthGroups.map((group, index) => (
-                  <div
+                  <button
                     key={group.key}
-                    className={`px-4 py-4 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
+                    onClick={() => onOpenMonth(group)}
+                    className={`block w-full px-4 py-4 text-left transition-colors active:bg-white/75 ${index === 0 ? '' : 'border-t border-zinc-200/60'}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-100/80 text-zinc-700">
@@ -142,7 +136,7 @@ export function ChatMemoryLibraryHome({
                     <div className="mt-3 rounded-[20px] border border-white/90 bg-white/78 px-4 py-3 text-[12px] leading-6 text-zinc-600">
                       最近更新：{formatDateTime(group.latestCreatedAt)}
                     </div>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <div className="px-4 py-8 text-center text-[13px] leading-6 text-zinc-400">
