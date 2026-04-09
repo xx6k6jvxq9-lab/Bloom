@@ -2,6 +2,7 @@
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
+import { ChatMemoryDetailView } from './ChatMemoryDetailView';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
@@ -254,6 +255,7 @@ export function ChatSettingsPanel({
   const [showSettingEditor, setShowSettingEditor] = useState(false);
   const [showRemarkEditor, setShowRemarkEditor] = useState(false);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
+  const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
   const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
@@ -272,6 +274,10 @@ export function ChatSettingsPanel({
   const boundaryPack = character.boundaryPack ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
+  const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
+  const summaryHistoryPreviewLines = summaryHistoryWindow
+    .slice(-8)
+    .map((msg) => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`);
   const settingSummary = resolvedCorePersona
     ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
@@ -530,6 +536,34 @@ export function ChatSettingsPanel({
         backgroundPosition: 'center',
       }}
     >
+      {activeMemoryDetail === 'short-term' && (
+        <ChatMemoryDetailView
+          title="近期记忆 / 短期总结"
+          description="查看当前生效的短期总结，以及它依赖的最近对话窗口。"
+          currentValue={shortTermSummary}
+          emptyPlaceholder="当前还没有短期总结内容。"
+          helperTitle="这一层是什么意思"
+          helperText="这里记录最近几轮互动的状态、余波、未完事项和当前气氛。它适合被频繁刷新，服务接下来几轮聊天，不应该写成长期关系档案。"
+          historyPreviewTitle="当前总结窗口"
+          historyPreviewLines={summaryHistoryPreviewLines}
+          onBack={() => setActiveMemoryDetail(null)}
+        />
+      )}
+
+      {activeMemoryDetail === 'long-term' && (
+        <ChatMemoryDetailView
+          title="长期记忆 / 长期画像"
+          description="查看当前生效的长期画像，以及当前整理时会参考的最近对话窗口。"
+          currentValue={longTermMemoryProfile}
+          emptyPlaceholder="当前还没有长期画像内容。"
+          helperTitle="这一层是什么意思"
+          helperText="这里沉淀更稳定的印象、偏好、边界和长期相处模式。它不该只是最近聊天的压缩版，而应该更像一份关系档案。"
+          historyPreviewTitle="当前整理参考窗口"
+          historyPreviewLines={summaryHistoryPreviewLines}
+          onBack={() => setActiveMemoryDetail(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
         <button
@@ -1301,7 +1335,7 @@ export function ChatSettingsPanel({
                             {isShortTermSummarizing ? '总结中...' : '刷新近期总结'}
                           </button>
                           <button
-                            onClick={() => alert('近期总结详情页稍后接入，这里会进入短期总结记录列表。')}
+                            onClick={() => setActiveMemoryDetail('short-term')}
                             className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
                           >
                             查看详情
@@ -1333,7 +1367,7 @@ export function ChatSettingsPanel({
                             {isLongTermSummarizing ? '总结中...' : '生成长期画像'}
                           </button>
                           <button
-                            onClick={() => alert('长期画像详情页稍后接入，这里会进入长期画像记录列表。')}
+                            onClick={() => setActiveMemoryDetail('long-term')}
                             className="text-[11px] text-zinc-500 hover:text-zinc-900 underline"
                           >
                             查看详情
