@@ -106,11 +106,6 @@ export function ChatMemoryLibraryYear({
               <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
                 {monthOptions.map((monthNumber) => {
                   const monthKey = buildMonthKey(group.year, monthNumber);
-                  const monthGroup = group.months.find((month) => month.key === monthKey);
-                  if (!monthGroup) {
-                    return null;
-                  }
-
                   const isActive = expandedMonthKey === monthKey;
                   return (
                     <button

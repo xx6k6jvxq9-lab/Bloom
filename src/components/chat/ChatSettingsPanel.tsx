@@ -1,8 +1,9 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings } from '../../types';
+import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
+import { ChatMemoryLibraryEntry } from './ChatMemoryLibraryEntry';
 import { ChatMemoryLibraryYear } from './ChatMemoryLibraryYear';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
@@ -275,6 +276,7 @@ export function ChatSettingsPanel({
   const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
   const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
   const [activeMemoryYear, setActiveMemoryYear] = useState<MemoryLibraryYearGroup | null>(null);
+  const [activeMemoryEntry, setActiveMemoryEntry] = useState<MemoryLibraryEntry | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
   const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
@@ -615,6 +617,7 @@ export function ChatSettingsPanel({
           onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
+            setActiveMemoryEntry(null);
             setActiveMemoryYear(null);
             setActiveMemoryDetail(null);
           }}
@@ -632,9 +635,18 @@ export function ChatSettingsPanel({
           onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
+            setActiveMemoryEntry(null);
             setActiveMemoryYear(null);
             setActiveMemoryDetail(null);
           }}
+        />
+      )}
+
+      {activeMemoryDetail && activeMemoryEntry && (
+        <ChatMemoryLibraryEntry
+          kind={activeMemoryDetail}
+          entry={activeMemoryEntry}
+          onBack={() => setActiveMemoryEntry(null)}
         />
       )}
 
@@ -643,7 +655,7 @@ export function ChatSettingsPanel({
           kind={activeMemoryDetail}
           group={activeMemoryYear}
           onBack={() => setActiveMemoryYear(null)}
-          onSelectEntry={() => undefined}
+          onSelectEntry={setActiveMemoryEntry}
         />
       )}
 
@@ -1420,6 +1432,7 @@ export function ChatSettingsPanel({
                           <button
                               onClick={() => {
                                 setActiveMemoryHomeTab('library');
+                                setActiveMemoryEntry(null);
                                 setActiveMemoryYear(null);
                                 setActiveMemoryDetail('short-term');
                               }}
@@ -1456,6 +1469,7 @@ export function ChatSettingsPanel({
                           <button
                               onClick={() => {
                                 setActiveMemoryHomeTab('library');
+                                setActiveMemoryEntry(null);
                                 setActiveMemoryYear(null);
                                 setActiveMemoryDetail('long-term');
                               }}
