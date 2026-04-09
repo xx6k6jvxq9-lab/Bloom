@@ -1,5 +1,6 @@
 import { ChevronLeft, Clock3, FileText, Hash, Layers3 } from 'lucide-react';
 import type { MemoryLibraryEntry, MemoryLibraryKind } from '../../types';
+import { formatMemoryEntryContentForDisplay } from './formatMemoryEntryContent';
 
 type ChatMemoryLibraryEntryProps = {
   kind: MemoryLibraryKind;
@@ -36,6 +37,8 @@ export function ChatMemoryLibraryEntry({
   entry,
   onBack,
 }: ChatMemoryLibraryEntryProps) {
+  const displayContent = formatMemoryEntryContentForDisplay(entry.content, kind);
+
   return (
     <div className="absolute inset-0 z-[82] flex flex-col bg-[linear-gradient(180deg,rgba(248,248,250,0.96),rgba(242,242,245,0.98))]">
       <div className="shrink-0 border-b border-white/60 bg-white/55 px-4 pb-3 pt-12 backdrop-blur-2xl">
@@ -64,7 +67,7 @@ export function ChatMemoryLibraryEntry({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[17px] font-semibold leading-7 tracking-[-0.03em] text-zinc-950">
-                  {getEntryTitle(entry.content)}
+                  {getEntryTitle(displayContent)}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-zinc-500">
                   <span>{formatDateTime(entry)}</span>
@@ -120,7 +123,7 @@ export function ChatMemoryLibraryEntry({
           <section className="rounded-[24px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
             <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">完整内容</div>
             <div className="mt-3 rounded-[18px] border border-white/85 bg-white/72 px-4 py-4 text-[14px] leading-7 text-zinc-700 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl whitespace-pre-wrap break-words">
-              {entry.content}
+              {displayContent}
             </div>
           </section>
         </div>
