@@ -10,9 +10,13 @@ import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSumm
 import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
+import { appendMemoryLibraryEntries, deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
+import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExportFormat, type MemoryExportScope } from '../../services/memory/exportMemory';
+import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
+import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
@@ -277,10 +281,17 @@ export function ChatSettingsPanel({
   const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
   const [activeMemoryYear, setActiveMemoryYear] = useState<MemoryLibraryYearGroup | null>(null);
   const [activeMemoryEntry, setActiveMemoryEntry] = useState<MemoryLibraryEntry | null>(null);
+  const [pendingMemoryImport, setPendingMemoryImport] = useState<(PreparedMemoryImport & { fileName: string }) | null>(null);
+  const [pendingMemoryExport, setPendingMemoryExport] = useState<{
+    scope: MemoryExportScope;
+    label: string;
+    entries: MemoryLibraryEntry[];
+  } | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
   const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
   const [characterStickerLinksDraft, setCharacterStickerLinksDraft] = useState('');
+  const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
 
   if (!character) return null;
 
@@ -565,6 +576,164 @@ export function ChatSettingsPanel({
     setShowExportDialog(false);
   };
 
+  const handleDeleteMemoryEntry = async (entry: MemoryLibraryEntry) => {
+    const confirmed = await showInAppConfirm('确定要删除这条记忆吗？这不会自动改动当前生效层。');
+    if (!confirmed) {
+      return;
+    }
+
+    onUpdate({
+      ...character,
+      memoryLibraryEntries: deleteMemoryLibraryEntry(character, entry.id),
+    });
+    setActiveMemoryEntry(null);
+  };
+
+  const handleOpenMemoryImport = () => {
+    memoryImportInputRef.current?.click();
+  };
+
+  const handleMemoryImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawText = String(reader.result || '');
+      const parsed =
+        file.type === 'application/json' || file.name.endsWith('.json')
+          ? parseJsonFileContent(rawText) ?? rawText
+          : rawText;
+      const prepared = prepareMemoryImportFromUnknown(parsed);
+
+      if (!prepared || prepared.entries.length === 0) {
+        await showInAppAlert('这个文件里没有识别到可导入的记忆内容。');
+        event.target.value = '';
+        return;
+      }
+
+      setPendingMemoryImport({
+        ...prepared,
+        fileName: file.name,
+      });
+      event.target.value = '';
+    };
+
+    if (
+      file.type === 'application/json'
+      || file.type === 'text/plain'
+      || file.name.endsWith('.json')
+      || file.name.endsWith('.txt')
+      || file.name.endsWith('.md')
+    ) {
+      reader.readAsText(file, 'utf-8');
+      return;
+    }
+
+    void showInAppAlert('当前只支持导入 .json / .txt / .md 记忆文件。');
+    event.target.value = '';
+  };
+
+  const applyMemoryImport = (mode: 'library-only' | 'set-short-term' | 'set-long-term') => {
+    if (!pendingMemoryImport) {
+      return;
+    }
+
+    const allImportedText = pendingMemoryImport.entries.map((entry) => entry.content).join('\n\n').trim();
+    const fallbackCurrentText =
+      pendingMemoryImport.longTermCurrentText || pendingMemoryImport.shortTermCurrentText || allImportedText;
+    const nextShortTermSummary =
+      mode === 'set-short-term'
+        ? (pendingMemoryImport.shortTermCurrentText || fallbackCurrentText)
+        : character.shortTermSummary;
+    const nextLongTermMemoryProfile =
+      mode === 'set-long-term'
+        ? (pendingMemoryImport.longTermCurrentText || fallbackCurrentText)
+        : character.longTermMemoryProfile;
+
+    onUpdate({
+      ...character,
+      shortTermSummary: nextShortTermSummary,
+      longTermMemoryProfile: nextLongTermMemoryProfile,
+      memoryLibraryEntries: appendMemoryLibraryEntries(character, pendingMemoryImport.entries),
+    });
+
+    setPendingMemoryImport(null);
+    setActiveMemoryEntry(null);
+    setActiveMemoryYear(null);
+    setActiveMemoryHomeTab('library');
+
+    if (mode === 'set-short-term') {
+      setActiveMemoryDetail('short-term');
+    } else if (mode === 'set-long-term') {
+      setActiveMemoryDetail('long-term');
+    }
+  };
+
+  const downloadMemoryExport = (format: MemoryExportFormat) => {
+    if (!pendingMemoryExport || !activeMemoryDetail) {
+      return;
+    }
+
+    const payload = buildMemoryExportPayload(
+      activeMemoryDetail,
+      pendingMemoryExport.scope,
+      pendingMemoryExport.label,
+      pendingMemoryExport.entries,
+    );
+    const fileStem = `${character.name}_${activeMemoryDetail}_${pendingMemoryExport.scope}_${Date.now()}`;
+    const data =
+      format === 'json'
+        ? JSON.stringify(payload, null, 2)
+        : stringifyMemoryExportAsText(payload);
+    const blob = new Blob([data], {
+      type: format === 'json' ? 'application/json;charset=utf-8' : 'text/plain;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${fileStem}.${format === 'json' ? 'json' : 'txt'}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setPendingMemoryExport(null);
+  };
+
+  const openLibraryMemoryExport = () => {
+    if (!activeMemoryEntries.length || !activeMemoryDetail) {
+      void showInAppAlert('当前记忆库里还没有可导出的记录。');
+      return;
+    }
+
+    setPendingMemoryExport({
+      scope: 'library',
+      label: activeMemoryDetail === 'short-term' ? '当前短期记忆库' : '当前长期记忆库',
+      entries: activeMemoryEntries,
+    });
+  };
+
+  const openYearMemoryExport = (group: MemoryLibraryYearGroup) => {
+    setPendingMemoryExport({
+      scope: 'year',
+      label: `${group.year} 年`,
+      entries: group.months.flatMap((month) => month.entries),
+    });
+  };
+
+  const openMonthMemoryExport = (year: number, month: number) => {
+    const monthGroup = activeMemoryYear?.months.find((item) => item.year === year && item.month === month);
+    if (!monthGroup) {
+      return;
+    }
+
+    setPendingMemoryExport({
+      scope: 'month',
+      label: `${year} 年 ${String(month).padStart(2, '0')} 月`,
+      entries: monthGroup.entries,
+    });
+  };
+
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -614,6 +783,8 @@ export function ChatSettingsPanel({
           activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
           yearGroups={activeMemoryYearGroups}
+          onImport={handleOpenMemoryImport}
+          onExport={openLibraryMemoryExport}
           onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
@@ -632,6 +803,8 @@ export function ChatSettingsPanel({
           activeTab={activeMemoryHomeTab}
           statsCards={activeMemoryStatCards}
           yearGroups={activeMemoryYearGroups}
+          onImport={handleOpenMemoryImport}
+          onExport={openLibraryMemoryExport}
           onOpenYear={setActiveMemoryYear}
           onTabChange={setActiveMemoryHomeTab}
           onBack={() => {
@@ -647,6 +820,7 @@ export function ChatSettingsPanel({
           kind={activeMemoryDetail}
           entry={activeMemoryEntry}
           onBack={() => setActiveMemoryEntry(null)}
+          onDelete={() => handleDeleteMemoryEntry(activeMemoryEntry)}
         />
       )}
 
@@ -656,10 +830,19 @@ export function ChatSettingsPanel({
           group={activeMemoryYear}
           onBack={() => setActiveMemoryYear(null)}
           onSelectEntry={setActiveMemoryEntry}
+          onExportYear={openYearMemoryExport}
+          onExportMonth={(group) => openMonthMemoryExport(group.year, group.month)}
         />
       )}
 
       {/* Header */}
+      <input
+        ref={memoryImportInputRef}
+        type="file"
+        accept=".json,.txt,.md"
+        className="hidden"
+        onChange={handleMemoryImportFileChange}
+      />
       <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
         <button
           onClick={onBack}
@@ -1882,6 +2065,118 @@ export function ChatSettingsPanel({
                   确认导出
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {pendingMemoryImport && (
+          <div className="absolute inset-0 z-[101] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.94, opacity: 0 }}
+              className="w-full max-w-[360px] rounded-3xl border border-white/60 bg-white p-6 shadow-xl"
+            >
+              <div className="text-[18px] font-semibold tracking-[-0.02em] text-zinc-950">导入记忆</div>
+              <div className="mt-2 text-[12px] leading-5 text-zinc-500">
+                已读取 {pendingMemoryImport.fileName}。大文件会先拆分再分类，不会整块塞成一条记忆。
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2.5">
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">拆分后条数</div>
+                  <div className="mt-1 text-[18px] font-semibold text-zinc-950">{pendingMemoryImport.entries.length}</div>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">总字数</div>
+                  <div className="mt-1 text-[18px] font-semibold text-zinc-950">{pendingMemoryImport.totalChars}</div>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">短期块</div>
+                  <div className="mt-1 text-[18px] font-semibold text-zinc-950">{pendingMemoryImport.shortTermCount}</div>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">长期块</div>
+                  <div className="mt-1 text-[18px] font-semibold text-zinc-950">{pendingMemoryImport.longTermCount}</div>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2.5">
+                <button
+                  onClick={() => applyMemoryImport('library-only')}
+                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200"
+                >
+                  仅入库
+                </button>
+                <button
+                  onClick={() => applyMemoryImport('set-short-term')}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-50"
+                >
+                  入库并设为当前短期记忆
+                </button>
+                <button
+                  onClick={() => applyMemoryImport('set-long-term')}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-50"
+                >
+                  入库并设为当前长期记忆
+                </button>
+              </div>
+
+              <button
+                onClick={() => setPendingMemoryImport(null)}
+                className="mt-3 w-full rounded-2xl px-4 py-3 text-[13px] font-medium text-zinc-500 transition hover:bg-zinc-50"
+              >
+                取消
+              </button>
+            </motion.div>
+          </div>
+        )}
+
+        {pendingMemoryExport && (
+          <div className="absolute inset-0 z-[101] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.94, opacity: 0 }}
+              className="w-full max-w-[360px] rounded-3xl border border-white/60 bg-white p-6 shadow-xl"
+            >
+              <div className="text-[18px] font-semibold tracking-[-0.02em] text-zinc-950">导出记忆</div>
+              <div className="mt-2 text-[12px] leading-5 text-zinc-500">
+                将导出 {pendingMemoryExport.label}，共 {pendingMemoryExport.entries.length} 条记录。
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2.5">
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">导出范围</div>
+                  <div className="mt-1 text-[15px] font-semibold text-zinc-950">{pendingMemoryExport.label}</div>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-zinc-50 px-4 py-3">
+                  <div className="text-[11px] text-zinc-500">导出条数</div>
+                  <div className="mt-1 text-[15px] font-semibold text-zinc-950">{pendingMemoryExport.entries.length}</div>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2.5">
+                <button
+                  onClick={() => downloadMemoryExport('json')}
+                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200"
+                >
+                  导出为 JSON
+                </button>
+                <button
+                  onClick={() => downloadMemoryExport('txt')}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-50"
+                >
+                  导出为 TXT
+                </button>
+              </div>
+
+              <button
+                onClick={() => setPendingMemoryExport(null)}
+                className="mt-3 w-full rounded-2xl px-4 py-3 text-[13px] font-medium text-zinc-500 transition hover:bg-zinc-50"
+              >
+                取消
+              </button>
             </motion.div>
           </div>
         )}

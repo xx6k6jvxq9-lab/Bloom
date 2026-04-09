@@ -121,6 +121,13 @@ export function appendMemoryLibraryEntry(
   return [entry, ...(character.memoryLibraryEntries ?? [])].sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export function appendMemoryLibraryEntries(
+  character: Pick<Character, 'memoryLibraryEntries'>,
+  entries: MemoryLibraryEntry[],
+): MemoryLibraryEntry[] {
+  return [...entries, ...(character.memoryLibraryEntries ?? [])].sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export function buildMemoryLibraryPatch(
   character: Pick<Character, 'memoryLibraryEntries'>,
   input: CreateMemoryLibraryEntryInput,
@@ -129,6 +136,13 @@ export function buildMemoryLibraryPatch(
   return {
     memoryLibraryEntries: appendMemoryLibraryEntry(character, entry),
   };
+}
+
+export function deleteMemoryLibraryEntry(
+  character: Pick<Character, 'memoryLibraryEntries'>,
+  entryId: string,
+): MemoryLibraryEntry[] {
+  return (character.memoryLibraryEntries ?? []).filter((entry) => entry.id !== entryId);
 }
 
 export function getMemoryLibraryEntries(

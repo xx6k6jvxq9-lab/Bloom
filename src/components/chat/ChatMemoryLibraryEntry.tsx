@@ -1,11 +1,15 @@
-import { ChevronLeft, Clock3, FileText, Hash, Layers3 } from 'lucide-react';
+import { ChevronLeft, Clock3, FileText, Hash, Layers3, Trash2 } from 'lucide-react';
 import type { MemoryLibraryEntry, MemoryLibraryKind } from '../../types';
-import { formatMemoryEntryContentForDisplay } from './formatMemoryEntryContent';
+import {
+  formatMemoryEntryContentForDisplay,
+  parseLongTermMemorySections,
+} from './formatMemoryEntryContent';
 
 type ChatMemoryLibraryEntryProps = {
   kind: MemoryLibraryKind;
   entry: MemoryLibraryEntry;
   onBack: () => void;
+  onDelete: () => void;
 };
 
 function formatDateTime(entry: MemoryLibraryEntry): string {
@@ -36,8 +40,10 @@ export function ChatMemoryLibraryEntry({
   kind,
   entry,
   onBack,
+  onDelete,
 }: ChatMemoryLibraryEntryProps) {
   const displayContent = formatMemoryEntryContentForDisplay(entry.content, kind);
+  const longTermSections = kind === 'long-term' ? parseLongTermMemorySections(entry.content) : [];
 
   return (
     <div className="absolute inset-0 z-[82] flex flex-col bg-[linear-gradient(180deg,rgba(248,248,250,0.96),rgba(242,242,245,0.98))]">
@@ -55,6 +61,13 @@ export function ChatMemoryLibraryEntry({
               查看这条{getKindLabel(kind)}的完整内容和记录信息。
             </div>
           </div>
+          <button
+            onClick={onDelete}
+            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white/75 px-3 py-1.5 text-[11px] font-medium text-rose-500 shadow-sm backdrop-blur-xl transition-colors active:bg-rose-50"
+          >
+            <Trash2 size={12} />
+            删除
+          </button>
         </div>
       </div>
 
@@ -122,9 +135,30 @@ export function ChatMemoryLibraryEntry({
 
           <section className="rounded-[24px] border border-white/80 bg-white/58 p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)] backdrop-blur-2xl">
             <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">完整内容</div>
-            <div className="mt-3 rounded-[18px] border border-white/85 bg-white/72 px-4 py-4 text-[14px] leading-7 text-zinc-700 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl whitespace-pre-wrap break-words">
-              {displayContent}
-            </div>
+            {kind === 'long-term' && longTermSections.length > 0 ? (
+              <div className="mt-3 rounded-[18px] border border-white/85 bg-white/72 px-4 py-4 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl">
+                <div className="flex flex-col gap-5">
+                  {longTermSections.map((section, index) => (
+                    <section key={`${section.heading || 'section'}-${index}`}>
+                      {section.heading ? (
+                        <div className="text-[15px] font-semibold leading-7 tracking-[-0.02em] text-zinc-950">
+                          {section.heading}
+                        </div>
+                      ) : null}
+                      {section.body ? (
+                        <div className="mt-1.5 whitespace-pre-wrap break-words text-[14px] leading-7 text-zinc-700">
+                          {section.body}
+                        </div>
+                      ) : null}
+                    </section>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-[18px] border border-white/85 bg-white/72 px-4 py-4 text-[14px] leading-7 text-zinc-700 shadow-[0_10px_24px_rgba(17,24,39,0.05)] backdrop-blur-xl whitespace-pre-wrap break-words">
+                {displayContent}
+              </div>
+            )}
           </section>
         </div>
       </div>

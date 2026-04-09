@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock3, FileText, Hash } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, FileText, Hash, Share2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { MemoryLibraryEntry, MemoryLibraryKind } from '../../types';
-import type { MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
+import type { MemoryLibraryMonthGroup, MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 
 type ChatMemoryLibraryYearProps = {
   kind: MemoryLibraryKind;
   group: MemoryLibraryYearGroup;
   onBack: () => void;
   onSelectEntry: (entry: MemoryLibraryEntry) => void;
+  onExportYear: (group: MemoryLibraryYearGroup) => void;
+  onExportMonth: (group: MemoryLibraryMonthGroup) => void;
 };
 
 function formatDateTime(entry: MemoryLibraryEntry): string {
@@ -53,6 +55,8 @@ export function ChatMemoryLibraryYear({
   group,
   onBack,
   onSelectEntry,
+  onExportYear,
+  onExportMonth,
 }: ChatMemoryLibraryYearProps) {
   const [expandedMonthKey, setExpandedMonthKey] = useState<string | null>(null);
   const monthOptions = sortUniqueMonths(group.months.map((month) => month.month));
@@ -76,6 +80,13 @@ export function ChatMemoryLibraryYear({
               用月份筛选查看这一年收进来的每条{getKindLabel(kind)}。
             </div>
           </div>
+          <button
+            onClick={() => onExportYear(group)}
+            className="inline-flex items-center gap-1 rounded-full border border-zinc-200/80 bg-white/78 px-3 py-1.5 text-[11px] font-medium text-zinc-900 shadow-sm backdrop-blur-xl transition-colors active:bg-zinc-100"
+          >
+            <Share2 size={12} />
+            导出本年
+          </button>
         </div>
       </div>
 
@@ -137,11 +148,22 @@ export function ChatMemoryLibraryYear({
               >
                 <div className="flex flex-col gap-3">
                   <section className="rounded-[22px] border border-white/85 bg-white/64 px-4 py-3 shadow-[0_12px_28px_rgba(17,24,39,0.05)] backdrop-blur-xl">
-                    <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
-                      {buildMonthHeading(expandedMonth.year, expandedMonth.month)}
-                    </div>
-                    <div className="mt-1 text-[12px] text-zinc-500">
-                      {expandedMonth.entries.length} 条记录 · {expandedMonth.totalChars} 字
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[15px] font-semibold tracking-[-0.02em] text-zinc-950">
+                          {buildMonthHeading(expandedMonth.year, expandedMonth.month)}
+                        </div>
+                        <div className="mt-1 text-[12px] text-zinc-500">
+                          {expandedMonth.entries.length} 条记录 · {expandedMonth.totalChars} 字
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onExportMonth(expandedMonth)}
+                        className="inline-flex items-center gap-1 rounded-full border border-zinc-200/80 bg-white/78 px-3 py-1.5 text-[11px] font-medium text-zinc-900 shadow-sm backdrop-blur-xl transition-colors active:bg-zinc-100"
+                      >
+                        <Share2 size={12} />
+                        导出本月
+                      </button>
                     </div>
                   </section>
 

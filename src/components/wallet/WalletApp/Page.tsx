@@ -484,25 +484,25 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <div className="grid grid-cols-4 gap-2">
             <button onClick={() => toggleSection('yuebao')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'yuebao' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'yuebao' ? 'bg-zinc-100 text-zinc-400 shadow-sm' : 'bg-zinc-100 text-zinc-400 group-hover:bg-zinc-200'}`}>
                 <Coins size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">余额宝</span>
             </button>
             <button onClick={() => toggleSection('family')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'family' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'family' ? 'bg-zinc-100 text-zinc-400 shadow-sm' : 'bg-zinc-100 text-zinc-400 group-hover:bg-zinc-200'}`}>
                 <Users size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">亲属卡</span>
             </button>
             <button onClick={() => toggleSection('bank')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'bank' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'bank' ? 'bg-zinc-100 text-zinc-400 shadow-sm' : 'bg-zinc-100 text-zinc-400 group-hover:bg-zinc-200'}`}>
                 <CreditCard size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">银行卡</span>
             </button>
             <button onClick={() => toggleSection('password')} className="flex flex-col items-center gap-1.5 group">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'password' ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'bg-zinc-100 text-zinc-800 group-hover:bg-zinc-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${expandedSection === 'password' ? 'bg-zinc-100 text-zinc-400 shadow-sm' : 'bg-zinc-100 text-zinc-400 group-hover:bg-zinc-200'}`}>
                 <Lock size={18} />
               </div>
               <span className="text-[12px] text-zinc-600 font-medium">支付密码</span>

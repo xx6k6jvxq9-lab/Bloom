@@ -1,4 +1,4 @@
-import { BarChart3, ChevronLeft, FolderOpen, Hash, LibraryBig } from 'lucide-react';
+import { BarChart3, ChevronLeft, Download, FolderOpen, Hash, LibraryBig, Share2 } from 'lucide-react';
 import type { MemoryLibraryKind } from '../../types';
 import type { MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 
@@ -16,6 +16,8 @@ type ChatMemoryLibraryHomeProps = {
   statsCards: MemoryLibraryStatsCard[];
   yearGroups: MemoryLibraryYearGroup[];
   onBack: () => void;
+  onImport: () => void;
+  onExport: () => void;
   onOpenYear: (group: MemoryLibraryYearGroup) => void;
   onTabChange: (tab: 'library' | 'stats') => void;
 };
@@ -45,6 +47,8 @@ export function ChatMemoryLibraryHome({
   statsCards,
   yearGroups,
   onBack,
+  onImport,
+  onExport,
   onOpenYear,
   onTabChange,
 }: ChatMemoryLibraryHomeProps) {
@@ -67,7 +71,7 @@ export function ChatMemoryLibraryHome({
           </div>
         </div>
 
-        <div className="mx-auto mt-4 w-full max-w-[44rem]">
+        <div className="mx-auto mt-4 flex w-full max-w-[44rem] items-center justify-between gap-3">
           <div className="inline-flex rounded-full border border-zinc-200/80 bg-white/72 p-1 shadow-[0_8px_22px_rgba(17,24,39,0.05)] backdrop-blur-xl">
             <button
               onClick={() => onTabChange('library')}
@@ -90,6 +94,22 @@ export function ChatMemoryLibraryHome({
             >
               <BarChart3 size={14} />
               统计
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onExport}
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white/78 px-4 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_8px_22px_rgba(17,24,39,0.05)] backdrop-blur-xl transition-colors active:bg-zinc-100"
+            >
+              <Share2 size={14} />
+              导出记忆
+            </button>
+            <button
+              onClick={onImport}
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white/78 px-4 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_8px_22px_rgba(17,24,39,0.05)] backdrop-blur-xl transition-colors active:bg-zinc-100"
+            >
+              <Download size={14} />
+              导入记忆
             </button>
           </div>
         </div>

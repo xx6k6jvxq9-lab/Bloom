@@ -695,14 +695,14 @@ export default function MusicApp({
             {currentMusicData.togetherWith && (
               <button
                 onClick={() => setShowChat(!showChat)}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${showChat ? "bg-pink-500 text-white shadow-lg shadow-pink-200" : "bg-white/80 text-zinc-500 shadow-sm"}`}
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-100 text-zinc-400 shadow-sm transition-all"
               >
                 <MessageCircle size={20} />
               </button>
             )}
             <button
               onClick={() => setShowInviteDialog(true)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${currentMusicData.togetherWith ? "bg-zinc-100/80 text-pink-500" : "bg-zinc-100/80 text-zinc-500"}`}
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-100 text-zinc-400 shadow-sm transition-all"
             >
               <Users size={20} />
             </button>
@@ -1427,11 +1427,11 @@ export default function MusicApp({
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setShowAddMusicDialog(true)}
-                className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white shadow-lg shadow-zinc-200 active:scale-90 transition-transform"
+                className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 shadow-lg shadow-zinc-200/40 active:scale-90 transition-transform"
               >
                 <Plus size={22} />
               </button>
-              <button className="w-10 h-10 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 border border-zinc-100">
+              <button className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 border border-zinc-100">
                 <Share2 size={18} />
               </button>
             </div>
@@ -1456,7 +1456,7 @@ export default function MusicApp({
               }}
               className="bg-white p-4 rounded-[24px] shadow-lg shadow-zinc-200/20 border border-white flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900">
+              <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
                 <Heart size={20} fill="currentColor" />
               </div>
               <div className="text-center">
@@ -1483,7 +1483,7 @@ export default function MusicApp({
               }}
               className="bg-white p-4 rounded-[24px] shadow-lg shadow-zinc-200/20 border border-white flex flex-col items-center gap-2 active:scale-95 transition-transform cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+              <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
                 <Clock size={20} />
               </div>
               <div className="text-center">
