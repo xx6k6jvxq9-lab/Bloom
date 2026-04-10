@@ -31,8 +31,7 @@ function getDirectMemoryReadableGroups(
       && Array.isArray(group.memberIds)
       && group.memberIds.includes(characterId)
     ))
-    .sort((left, right) => (right.lastTime || 0) - (left.lastTime || 0))
-    .slice(0, 1);
+    .sort((left, right) => (right.lastTime || 0) - (left.lastTime || 0));
 }
 
 function buildSharedGroupInteropSections(
