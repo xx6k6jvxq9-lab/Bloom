@@ -181,7 +181,7 @@ export function GroupSettingsScreen({
 
       {page === 'bubble-colors' ? (
         <GroupBubbleColorSettingsPage
-          members={members.filter((member) => member.id !== 'user')}
+          members={members}
           onBack={() => setPage('customization')}
           onUpdateBubbleColor={onUpdateBubbleColor}
         />

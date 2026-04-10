@@ -827,6 +827,7 @@ export function GroupChatSessionScreen({
         avatar: userAvatar,
         content: formatMessagePreview(message.text),
         badge: null,
+        bubbleColor: getGroupMemberBubbleColor(group, 'user'),
         roleLabel: getGroupRoleLabel(actingRole),
       };
     }
@@ -885,7 +886,7 @@ export function GroupChatSessionScreen({
         avatar: userAvatar,
         content: formatMessagePreview(message.text),
         badge: null,
-        bubbleColor: null,
+        bubbleColor: getGroupMemberBubbleColor(group, 'user'),
         roleLabel: getGroupRoleLabel(actingRole),
         character: null as Character | null,
       };
@@ -1353,8 +1354,9 @@ export function GroupChatSessionScreen({
   };
 
   const handleUpdateBubbleColor = async (memberId: string, color: string | null) => {
+    const isUserMember = memberId === 'user';
     const member = members.find((item) => item.id === memberId);
-    if (!member) {
+    if (!isUserMember && !member) {
       return;
     }
 
@@ -1671,13 +1673,12 @@ export function GroupChatSessionScreen({
           const hasSenderBubbleCustomization = !!senderBubbleStyleCss?.trim();
           const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
           const shouldUseCustomMemberBubble =
-            !isUser
-            && !msg.isSystem
+            !msg.isSystem
             && !msg.imageUrl
             && visualKind !== 'sticker'
             && !isPendingMessage
             && !hasSenderBubbleCustomization
-            && !senderCharacter?.bubbleImage
+            && !(isUser ? false : senderCharacter?.bubbleImage)
             && !senderBubbleColor
             && !!bubbleColor;
           const memberBubbleTextColor = shouldUseCustomMemberBubble ? getReadableTextColor(bubbleColor!) : '#111827';
@@ -1769,8 +1770,7 @@ export function GroupChatSessionScreen({
                       const hasSenderBubbleOverride =
                         !!senderBubbleStyleCss?.trim() || hasSenderBubbleSurfaceCustomization;
                       const shouldUseResolvedMemberBubble =
-                        !isUser
-                        && !msg.isSystem
+                        !msg.isSystem
                         && !msg.imageUrl
                         && visualKind !== 'sticker'
                         && !isPendingMessage
