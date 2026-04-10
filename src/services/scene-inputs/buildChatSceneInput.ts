@@ -1,9 +1,10 @@
-import type { Character, ChatGroup, ChatHistory, CoupleSpaceData, Mask, WorldBookEntry } from '../../types';
+import type { Character, ChatGroup, ChatHistory, CoupleSpaceData, Mask, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { selectActiveGroupWorldBooks } from '../../features/group-world-book/selectActiveGroupWorldBooks';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
@@ -14,6 +15,7 @@ type BuildChatSceneInputParams = {
   activeMask?: Mask | null;
   activeWorldBooks?: WorldBookEntry[];
   worldBooks?: WorldBookEntry[];
+  perception?: PerceptionSettings;
   perceptionPrompt?: string;
   mode?: BuildChatPromptOptions['mode'];
   includeProtocolRules?: boolean;
@@ -77,12 +79,14 @@ function buildSharedGroupInteropSections(
 }
 
 function buildExtraSections(input: {
+  temporalStatePrompt?: string;
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
   chatSceneHint?: string;
 }): string[] {
   return [
+    input.temporalStatePrompt || '',
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
       : '',
@@ -96,6 +100,79 @@ function buildExtraSections(input: {
       ? ['## 当前聊天场景补充', input.chatSceneHint].join('\n')
       : '',
   ].filter(Boolean);
+}
+
+function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
+  const timePeriodLabelMap: Record<typeof state.temporalFacts.timePeriod, string> = {
+    late_night: '深夜',
+    early_morning: '清晨',
+    morning: '上午',
+    noon: '中午',
+    afternoon: '下午',
+    evening: '晚上',
+  };
+  const densityLabelMap: Record<typeof state.interactionGapState.recentInteractionDensity, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+  };
+  const topicHeatLabelMap: Record<typeof state.topicHeatState.currentTopicHeat, string> = {
+    hot: '高热',
+    warm: '温热',
+    fading: '降温中',
+    cold: '已冷却',
+  };
+  const topicActionLabelMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
+    continue: '继续承接',
+    soften: '放缓一点',
+    shift: '自然转场',
+    close: '可以收束',
+  };
+  const energyLabelMap: Record<typeof state.energyState, string> = {
+    high: '高',
+    steady: '稳定',
+    low: '偏低',
+    sleepy: '困倦',
+  };
+  const socialLabelMap: Record<typeof state.socialState, string> = {
+    open: '开放',
+    neutral: '中性',
+    reserved: '收着一点',
+    avoidant: '回避',
+  };
+  const attentionLabelMap: Record<typeof state.attentionState, string> = {
+    focused: '集中',
+    split: '分散',
+    drifting: '游离',
+    resting: '休息中',
+  };
+  const pullLabelMap: Record<typeof state.relationshipPull, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+  };
+  const momentumLabelMap: Record<typeof state.sceneMomentum, string> = {
+    continue: '继续',
+    soften: '放缓',
+    shift: '转场',
+    close: '收束',
+  };
+
+  return [
+    '## 角色当前时间状态',
+    `[时间来源] ${state.temporalFacts.timeSource === 'perceived' ? '感知时间' : '现实时间'}`,
+    `[当前时间] ${state.temporalFacts.dateText}`,
+    `[当前时段] ${timePeriodLabelMap[state.temporalFacts.timePeriod]}`,
+    `[互动密度] ${densityLabelMap[state.interactionGapState.recentInteractionDensity]}`,
+    `[话题热度] ${topicHeatLabelMap[state.topicHeatState.currentTopicHeat]}`,
+    `[话题建议] ${topicActionLabelMap[state.topicHeatState.suggestedTopicAction]}`,
+    `[能量状态] ${energyLabelMap[state.energyState]}`,
+    `[社交状态] ${socialLabelMap[state.socialState]}`,
+    `[注意力状态] ${attentionLabelMap[state.attentionState]}`,
+    `[关系牵引] ${pullLabelMap[state.relationshipPull]}`,
+    `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
+    state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 export function buildChatSceneInput(
@@ -126,6 +203,16 @@ export function buildChatSceneInput(
       .filter((factTrace) => factTrace.visibility === 'cross_scene_readable'),
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
+  const directGroupMessages = directMemoryReadableGroups
+    .flatMap((group) => group.history || [])
+    .filter((message) => message.role === 'user' || message.senderCharacterId === params.character.id);
+  const characterTemporalState = buildCharacterTemporalState({
+    characterId: params.character.id,
+    perception: params.perception ?? params.coupleSpace?.perception,
+    directChatHistory: params.directChatHistory,
+    groupMessages: directGroupMessages,
+    coupleSpace: params.coupleSpace,
+  });
   const userContext: UserGlobalContext = {
     userName: params.userName,
   };
@@ -138,6 +225,7 @@ export function buildChatSceneInput(
   const budgetedContext = applyChatPromptBudget({
     recentContext,
     sections: buildExtraSections({
+      temporalStatePrompt: formatTemporalStatePrompt(characterTemporalState),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,
