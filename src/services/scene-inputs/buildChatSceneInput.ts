@@ -1,4 +1,3 @@
-import type { Character, ChatGroup, ChatHistory, CoupleSpaceData, Mask, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { selectActiveGroupWorldBooks } from '../../features/group-world-book/selectActiveGroupWorldBooks';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
@@ -73,7 +72,7 @@ function buildSharedGroupInteropSections(
         return '';
       }
 
-      return [`## 可共享的群聊资料域：${group.name}`, ...lines].join('\n');
+      return [`## 可共享的群聊资料：${group.name}`, ...lines].join('\n');
     })
     .filter(Boolean);
 }
@@ -158,9 +157,9 @@ function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTempor
     close: '收束',
   };
   const topicActionGuideMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
-    continue: '最近的话题还可以自然接着聊，但仍然只推进一个点，不要把一轮说满。',
-    soften: '最近的话题已经偏热，优先收一收力度，接住核心情绪即可，不要继续围着同一个点反复追打。',
-    shift: '最近的话题可以自然转场，优先回到当下时间、角色状态或新的轻一点的话题，不要死咬旧点。',
+    continue: '最近的话题还可以自然接着聊，但仍然只推进一个点，不要把一整轮说满。',
+    soften: '最近的话题已经偏热，优先收一点力度，接住核心情绪即可，不要继续围着同一个点反复追打。',
+    shift: '最近的话题可以自然转场，优先回到当下时间、角色状态或新的更轻一点的话题，不要死咬旧点。',
     close: '最近的话题已经可以收束，允许留白、停顿或以后再说，不要硬续。',
   };
 
