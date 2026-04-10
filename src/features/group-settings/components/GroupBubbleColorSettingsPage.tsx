@@ -40,7 +40,11 @@ function BubbleColorEditorSheet({
   onClose: () => void;
   onSave: (color: string | null) => Promise<void> | void;
 }) {
-  const [color, setColor] = useState(member.bubbleColor || '#ffffff');
+  const normalizeColor = (value?: string | null) => (value?.trim() || '#ffffff').toUpperCase();
+  const [savedColor, setSavedColor] = useState(normalizeColor(member.bubbleColor));
+  const [color, setColor] = useState(normalizeColor(member.bubbleColor));
+  const hasChanges = color !== savedColor;
+  const isDefaultColor = color === '#FFFFFF';
 
   return (
     <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/35 backdrop-blur-[1px]">
@@ -68,7 +72,7 @@ function BubbleColorEditorSheet({
               />
               <div>
                 <div className="text-[13px] font-medium text-zinc-800">选择气泡颜色</div>
-                <div className="text-[12px] text-zinc-500">{color.toUpperCase()}</div>
+                <div className="text-[12px] text-zinc-500">{color}</div>
               </div>
             </div>
             <div className="relative inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
@@ -77,7 +81,7 @@ function BubbleColorEditorSheet({
               <input
                 type="color"
                 value={color}
-                onChange={(event) => setColor(event.target.value)}
+                onChange={(event) => setColor(event.target.value.toUpperCase())}
                 className="absolute inset-0 cursor-pointer opacity-0"
               />
             </div>
@@ -90,7 +94,7 @@ function BubbleColorEditorSheet({
                 className="rounded-2xl rounded-tl-sm border px-4 py-2 text-[14px] text-zinc-800 shadow-sm"
                 style={{
                   backgroundColor: color,
-                  borderColor: color.toLowerCase() === '#ffffff' ? '#e4e4e7' : color,
+                  borderColor: color === '#FFFFFF' ? '#e4e4e7' : color,
                 }}
               >
                 今天群气泡会按这个颜色显示。
@@ -101,22 +105,41 @@ function BubbleColorEditorSheet({
           <div className="grid grid-cols-3 gap-3 pt-2">
             <button
               type="button"
-              onClick={() => undefined}
-              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+              onClick={() => setColor(savedColor)}
+              className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${
+                hasChanges
+                  ? 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                  : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
             >
               取消
             </button>
             <button
               type="button"
-              onClick={() => void onSave(null)}
-              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+              onClick={async () => {
+                await onSave(null);
+                setSavedColor('#FFFFFF');
+                setColor('#FFFFFF');
+              }}
+              className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${
+                isDefaultColor
+                  ? 'border-zinc-300 bg-zinc-200 text-zinc-900'
+                  : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
             >
               恢复默认
             </button>
             <button
               type="button"
-              onClick={() => void onSave(color)}
-              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+              onClick={async () => {
+                await onSave(color);
+                setSavedColor(color);
+              }}
+              className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${
+                hasChanges
+                  ? 'border-zinc-300 bg-zinc-200 text-zinc-900'
+                  : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
             >
               保存
             </button>
