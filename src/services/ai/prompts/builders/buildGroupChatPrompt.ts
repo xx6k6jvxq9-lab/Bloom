@@ -1,4 +1,5 @@
 import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
+import { EXISTENCE_PROMPT } from '../base/existence';
 import { GROUP_CHAT_SCENARIO_PROMPT } from '../scenarios/groupChat';
 
 export type BuildGroupChatPromptOptions = {
@@ -91,6 +92,8 @@ function getGroupStageLabel(stage: GroupChatSceneInput['groupStage']): string {
 
 export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions): string {
   return [
+    EXISTENCE_PROMPT,
+    '',
     GROUP_CHAT_SCENARIO_PROMPT,
     '',
     '当前角色资料：',
