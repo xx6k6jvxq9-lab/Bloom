@@ -25,7 +25,9 @@ import {
   generateCoupleMessageBoardReply,
 } from '../../../services/ai/couple-space/prompt/coupleSpacePromptService';
 import { createCoupleSpacePromptCommonInput } from '../../../services/ai/couple-space/context/createCoupleSpacePromptCommonInput';
+import { evaluateCoupleSpaceInitiativeAutoCheckGate } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import { runCoupleSpaceInitiativeAutoCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
@@ -162,6 +164,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     content: string;
     note?: string;
   } | null>(null);
+  const initiativeAutoCheckGateRef = React.useRef<any>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -295,6 +298,62 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       setInitiativeCheckBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (activeView !== 'main' || !partner || initiativeCheckBusy) {
+      return;
+    }
+
+    const now = Date.now();
+    const gateResult = evaluateCoupleSpaceInitiativeAutoCheckGate({
+      now,
+      partnerId: partner.id,
+      previousState: initiativeAutoCheckGateRef.current,
+    });
+    initiativeAutoCheckGateRef.current = gateResult.nextState;
+
+    if (!gateResult.allowed) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      setInitiativeCheckBusy(true);
+      try {
+        const result = await runCoupleSpaceInitiativeAutoCheck({
+          user,
+          partner,
+          coupleSpace,
+          chatHistory: appData.chatHistory,
+          appSettings: settings,
+          now,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        handleUpdateCoupleSpace(result.nextCoupleSpace);
+        setInitiativeCheckStatus(result.statusText);
+        setInitiativeArtifactPreview(result.artifactPreview);
+      } catch (error) {
+        console.error('Auto initiative check failed:', error);
+        if (!cancelled) {
+          setInitiativeCheckStatus('自动主动内容检查失败，请查看控制台日志。');
+          setInitiativeArtifactPreview(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setInitiativeCheckBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, partner, initiativeCheckBusy, user, coupleSpace, appData.chatHistory, settings]);
 
   if (!partner && activeView === 'main') {
     const selectedPartner = getCharacterById(selectedPartnerId);
