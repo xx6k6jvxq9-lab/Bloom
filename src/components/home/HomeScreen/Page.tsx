@@ -6,6 +6,8 @@ import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
+import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
+import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import { getDisplayableAssetValue } from '../../../features/persistence/persistentAssetRef';
 import {
   buildDesktopIconPlacements,
@@ -29,6 +31,26 @@ type AppDefinition = {
   icon: string;
   onClick: () => void;
 };
+
+function resolveDesktopFontFamily(visualSettings?: VisualSettings): string | undefined {
+  const priority = resolveThemeFontPriority(visualSettings?.themeTypography);
+  const selectedFontId = visualSettings?.themeTypography?.selectedFontId;
+
+  if (selectedFontId && priority !== 'css-only') {
+    return `"${getThemeImportedFontFamily(selectedFontId)}"`;
+  }
+
+  const fontFamily = visualSettings?.desktop?.fontFamily;
+  return fontFamily === 'Mono'
+    ? 'monospace'
+    : fontFamily === 'Serif'
+      ? 'serif'
+      : fontFamily === 'Cursive'
+        ? 'cursive'
+        : fontFamily === 'Inter'
+          ? 'sans-serif'
+          : undefined;
+}
 
 function parseGridSlot(slotId?: string | null) {
   if (!slotId) return null;
@@ -102,8 +124,15 @@ export function HomeScreen({
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
   const pageCount = 1;
+  const { resolvedFonts } = useResolvedThemeTypographyCss(visualSettings?.themeTypography);
+  const desktopFontFaceCss = resolvedFonts
+    .map((font) => `@font-face {
+  font-family: "${font.familyName}";
+  src: url("${font.resolvedUrl}");
+  font-display: swap;
+}`)
+    .join('\n\n');
 
-  const fontFamily = visualSettings?.desktop?.fontFamily;
   const fontSize = visualSettings?.desktop?.fontSize ?? 12;
   const fontColor = visualSettings?.desktop?.fontColor ?? '#ffffff';
   const fontWeight = visualSettings?.desktop?.fontWeight ?? 'normal';
@@ -112,16 +141,7 @@ export function HomeScreen({
   const configuredGap = visualSettings?.desktop?.gridGap;
 
   const fontStyle: React.CSSProperties = {
-    fontFamily:
-      fontFamily === 'Mono'
-        ? 'monospace'
-        : fontFamily === 'Serif'
-          ? 'serif'
-          : fontFamily === 'Cursive'
-            ? 'cursive'
-            : fontFamily === 'Inter'
-              ? 'sans-serif'
-              : undefined,
+    fontFamily: resolveDesktopFontFamily(visualSettings),
     fontSize: `${fontSize}px`,
     color: fontColor,
     fontWeight: fontWeight === 'bold' ? 'bold' : fontWeight === 'lighter' ? 'lighter' : 'normal',
@@ -735,6 +755,7 @@ export function HomeScreen({
         className="homeDesktop__page"
         style={{ width: desktopViewport.width, minWidth: desktopViewport.width }}
       >
+        {desktopFontFaceCss ? <style>{desktopFontFaceCss}</style> : null}
         {visualSettings?.navBar?.show && navBarPage === page && (
           <DraggableTopBar
             placement={navBarPlacement}
@@ -1236,7 +1257,7 @@ export function HomeScreen({
                         <label className="text-[10px] text-zinc-400 ml-1">更换头像</label>
                         <input
                           type="text"
-                          placeholder="绮樿创鍥剧墖閾炬帴..."
+                          placeholder="粘贴图片链接..."
                           value={tempUrl}
                           onChange={e => setTempUrl(e.target.value)}
                           className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
@@ -1694,22 +1715,12 @@ function AppIcon({
   const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || icon || APP_ICON_URL;
   const finalIconSize = iconSize ?? visualSettings?.desktop?.iconSize ?? 56;
 
-  const fontFamily = visualSettings?.desktop?.fontFamily;
   const fontSize = visualSettings?.desktop?.fontSize ?? 12;
   const fontColor = visualSettings?.desktop?.fontColor ?? '#ffffff';
   const fontWeight = visualSettings?.desktop?.fontWeight ?? 'normal';
 
   const fontStyle: React.CSSProperties = {
-    fontFamily:
-      fontFamily === 'Mono'
-        ? 'monospace'
-        : fontFamily === 'Serif'
-          ? 'serif'
-          : fontFamily === 'Cursive'
-            ? 'cursive'
-            : fontFamily === 'Inter'
-              ? 'sans-serif'
-              : undefined,
+    fontFamily: resolveDesktopFontFamily(visualSettings),
     fontSize: `${fontSize}px`,
     color: fontColor,
     fontWeight: fontWeight === 'bold' ? 'bold' : fontWeight === 'lighter' ? 'lighter' : 'normal',

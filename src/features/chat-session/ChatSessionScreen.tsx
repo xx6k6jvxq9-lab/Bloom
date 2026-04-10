@@ -1528,7 +1528,7 @@ export function ChatSessionScreen({
                                     <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                                     <div className="min-w-0">
                                       <div className="text-[11px] font-medium text-zinc-500">
-                                        鍥炲 {msg.replyTo.authorLabel}
+                                        回复 {msg.replyTo.authorLabel}
                                       </div>
                                       <div className={getDirectReplyPreviewTextClass()}>
                                         {getReplyPreviewText(msg)}
