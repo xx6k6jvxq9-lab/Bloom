@@ -1,4 +1,3 @@
-import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { GROUP_CHAT_SCENARIO_PROMPT } from '../scenarios/groupChat';
 
@@ -23,9 +22,7 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.longTermMemoryProfile
       ? `长期记忆印象：${sceneInput.recentContext.longTermMemoryProfile}`
       : '',
-    sceneInput.recentContext?.temporalContext
-      ? sceneInput.recentContext.temporalContext
-      : '',
+    sceneInput.recentContext?.temporalContext || '',
     sceneInput.recentContext?.expressionStyle
       ? `公开场合表达风格：${sceneInput.recentContext.expressionStyle}`
       : '',
@@ -70,7 +67,7 @@ function buildGroupFieldUsageBlock(sceneInput: GroupChatSceneInput): string {
   return [
     '群资料使用要求：',
     sceneInput.groupBehaviorGuide || '',
-    '这些资料的作用是帮你决定这句该怎么说、该亲近还是克制、该不该接这个话题。',
+    '这些资料的作用是帮你判断这句话该怎么说、该亲近还是克制、该不该接这个话题。',
     '不要把“群背景简述 / 成员关系状态 / 当前群场景 / 群公开事实”直接改写成说明书式台词。',
     '只有当聊天内容真的碰到这些信息时，才允许轻量自然地带出其中一小部分。',
   ]

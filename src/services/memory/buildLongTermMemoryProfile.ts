@@ -8,5 +8,6 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
 export function buildLongTermMemoryProfile(
   character: Pick<Character, 'longTermMemoryProfile' | 'memorySummary'>,
 ): string | undefined {
-  return normalizeOptionalText(character.longTermMemoryProfile);
+  return normalizeOptionalText(character.longTermMemoryProfile)
+    ?? normalizeOptionalText(character.memorySummary);
 }
