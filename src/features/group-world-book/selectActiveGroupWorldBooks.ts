@@ -11,15 +11,15 @@ export function selectActiveGroupWorldBooks(
 ): WorldBookEntry[] {
   const activeIds = new Set(params.group?.activeWorldBookIds || []);
 
+  if (activeIds.size === 0) {
+    return [];
+  }
+
   return params.worldBooks.filter((worldBook) => {
     if (!worldBook) {
       return false;
     }
 
-    if (activeIds.has(worldBook.id)) {
-      return true;
-    }
-
-    return !!worldBook.isActive;
+    return activeIds.has(worldBook.id);
   });
 }
