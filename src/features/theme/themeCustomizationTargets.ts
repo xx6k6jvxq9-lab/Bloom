@@ -183,11 +183,6 @@ export const THEME_SCOPE_GROUPS: Array<{
     items: ['chatHeaderBar', 'chatFooterBar'],
   },
   {
-    title: '聊天主题',
-    description: '文本气泡、左右分流和装饰细节。',
-    items: ['chatBubbles', 'sideBubbles', 'bubbleDecorations'],
-  },
-  {
     title: '扩展消息',
     description: '图片、位置、转账、通知、心声等特殊消息块。',
     items: ['replyPreview', 'imageMessage', 'locationCard', 'transferCard', 'noticeAndLoading', 'innerVoiceCard'],
