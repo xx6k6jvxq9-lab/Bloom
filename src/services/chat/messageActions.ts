@@ -176,6 +176,99 @@ const deriveMoodFromRecentText = (recentText: string): string => {
   return '平静';
 };
 
+const HEADER_KAOMOJI_BY_MOOD: Record<string, string[]> = {
+  开心: [
+    '(๑˃ᴗ˂)ﻭ',
+    '(*^ω^*)',
+    '(≧▽≦)',
+    '(๑•̀ㅂ•́)و',
+    '(●\'◡\'●)',
+    '(ﾉ´ヮ`)ﾉ*: ･ﾟ',
+    '(≧∇≦)ﾉ',
+    '(*´▽`*)',
+    '(๑¯◡¯๑)',
+    '(´▽`ʃ♡ƪ)',
+  ],
+  困: [
+    '(_ _).｡o○',
+    '(￣o￣) . z Z',
+    '(∪｡∪)｡｡｡zzz',
+    '(－_－) zzZ',
+    '(つω-`。)',
+    '(￣ρ￣)..zzZZ',
+    '(｡-ω-)zzz',
+    '(-.-)Zzz...',
+    '(￣﹃￣)',
+    '(＊´ω｀＊)',
+  ],
+  烦躁: [
+    '(#｀-_ゝ-)',
+    '( `´ )',
+    '(#￣︿￣)',
+    '(-""-;)',
+    '(；￣Д￣)',
+    '( ` ω ´ )',
+    '(＃＞＜)',
+    '(￣^￣)ゞ',
+    '(╯`□′)╯',
+    '(¬_¬")',
+  ],
+  无语: [
+    '(ー_ー゛)',
+    '(¬_¬)',
+    '(￣_,￣ )',
+    '(・_・;)',
+    '(￢_￢)',
+    '(¬¬")',
+    '(ーー;)',
+    '(゜-゜)',
+    '(・へ・)',
+    '¯\\_(ツ)_/¯',
+  ],
+  低气压: [
+    '(｡•́︿•̀｡)',
+    '(´ . .̫ . `)',
+    '(╥﹏╥)',
+    '(っ- ‸ -ς)',
+    '( ; ω ; )',
+    '(｡•́︿•̀｡)',
+    '(｡•́ - •̀｡)',
+    '(ノ_<。)',
+    '(；へ：)',
+    '(｡•̀ᴖ-)?',
+  ],
+  平静: [
+    '( ˘ω˘ )',
+    '(•‿•)',
+    '( ᵕᴗᵕ )',
+    '(◍•ᴗ•◍)',
+    '(˶ᵔ ᵕ ᵔ˶)',
+    '(•̀ᴗ•́)و ̑̑',
+    '( ´ ▽ ` )',
+    '(ृ´͈ ᵕ `͈ ृ )',
+    '(˵¯͒〰¯͒˵)',
+    '(•ㅅ•)',
+  ],
+};
+
+function getStableIndex(seedText: string, length: number): number {
+  if (length <= 0) {
+    return 0;
+  }
+
+  let hash = 0;
+  for (const char of seedText) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return hash % length;
+}
+
+function getHeaderKaomoji(mood: string, recentText: string): string {
+  const pool = HEADER_KAOMOJI_BY_MOOD[mood] || HEADER_KAOMOJI_BY_MOOD.平静;
+  return pool[getStableIndex(`${mood}:${recentText}`, pool.length)] || HEADER_KAOMOJI_BY_MOOD.平静[0];
+}
+
 export const getChatHeaderState = (
   character: Pick<Character, 'name' | 'remarkName' | 'signature' | 'openingRemark'>,
   history: ChatMessage[],
@@ -190,7 +283,7 @@ export const getChatHeaderState = (
   const displayName = character.remarkName?.trim() || character.name;
   return {
     title: isTyping ? '正在输入...' : displayName,
-    subtitle: `当前心情：${mood}`,
+    subtitle: getHeaderKaomoji(mood, recentModelText),
     mood,
     isTyping,
   };
