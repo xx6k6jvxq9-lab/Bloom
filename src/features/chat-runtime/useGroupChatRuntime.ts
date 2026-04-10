@@ -940,6 +940,7 @@ export function useGroupChatRuntime({
             group: groupMeta,
             worldBooks,
           }),
+          perception,
           temporalContext: buildTemporalContextPrompt({
             perception,
             now: requestTimestamp,

@@ -1,7 +1,8 @@
-import type { Character, ChatGroup, ChatHistory, ChatMessage, WorldBookEntry } from '../../types';
+import type { Character, ChatGroup, ChatHistory, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 
 export type GroupChatSceneInput = {
@@ -45,6 +46,7 @@ type BuildGroupChatSceneInputOptions = {
   directChatHistory?: ChatHistory;
   activeWorldBooks?: WorldBookEntry[];
   temporalContext?: string;
+  perception?: PerceptionSettings;
 };
 
 type GroupMemberFamiliarity = 'strangers' | 'aware' | 'familiar';
@@ -255,6 +257,48 @@ function buildHistoryTranscript(history: ChatMessage[], userName: string): strin
     .join('\n');
 }
 
+function formatGroupTemporalStatePrompt(
+  state: ReturnType<typeof buildCharacterTemporalState>,
+  baseTemporalContext?: string,
+): string {
+  const timePeriodLabelMap: Record<typeof state.temporalFacts.timePeriod, string> = {
+    late_night: '深夜',
+    early_morning: '清晨',
+    morning: '上午',
+    noon: '中午',
+    afternoon: '下午',
+    evening: '晚上',
+  };
+  const topicActionLabelMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
+    continue: '继续承接',
+    soften: '放缓一点',
+    shift: '自然转场',
+    close: '可以收束',
+  };
+  const momentumLabelMap: Record<typeof state.sceneMomentum, string> = {
+    continue: '继续',
+    soften: '放缓',
+    shift: '转场',
+    close: '收束',
+  };
+  const topicActionGuideMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
+    continue: '当前群里这个点还能自然接，但仍然只接最 relevant 的一小步，不要抢着把话说满。',
+    soften: '当前群里这个点已经有点过热了，优先收一收力度，别一直围着同一个点追打。',
+    shift: '当前群里可以自然转去更贴近此刻气氛的新点，不要死咬旧点不放。',
+    close: '当前群里这个点可以先收束，允许停顿、留白，或者把空间让给别人。',
+  };
+
+  return [
+    baseTemporalContext?.trim() || '',
+    '[群聊里的角色时间状态]',
+    `[当前时段] ${timePeriodLabelMap[state.temporalFacts.timePeriod]}`,
+    `[话题建议] ${topicActionLabelMap[state.topicHeatState.suggestedTopicAction]}`,
+    `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
+    state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
+    `[群聊节奏提醒] ${topicActionGuideMap[state.topicHeatState.suggestedTopicAction]}`,
+  ].filter(Boolean).join('\n');
+}
+
 export function buildGroupChatSceneInput(
   options: BuildGroupChatSceneInputOptions,
 ): GroupChatSceneInput {
@@ -279,6 +323,12 @@ export function buildGroupChatSceneInput(
     ],
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
+  const characterTemporalState = buildCharacterTemporalState({
+    characterId: options.speaker.id,
+    perception: options.perception,
+    directChatHistory: options.directChatHistory,
+    groupMessages: options.history,
+  });
   const memberRelationshipState = [
     getMemberRelationshipStateLabel(options.group?.memberRelationshipState),
     options.group?.memberRelationshipNote?.trim() || '',
@@ -308,7 +358,7 @@ export function buildGroupChatSceneInput(
     recentContext: {
       shortTermSummary: characterScopedMemory.shortTermSummary,
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
-      temporalContext: options.temporalContext?.trim() || undefined,
+      temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
       groupSceneHint: characterContext.sceneHints?.groupChat,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,
