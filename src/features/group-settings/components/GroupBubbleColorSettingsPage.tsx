@@ -116,7 +116,7 @@ function BubbleColorEditorSheet({
             <button
               type="button"
               onClick={() => void onSave(color)}
-              className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white"
+              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
             >
               保存
             </button>
