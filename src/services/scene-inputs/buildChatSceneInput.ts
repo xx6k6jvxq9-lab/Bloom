@@ -25,11 +25,14 @@ function getDirectMemoryReadableGroups(
   chatGroups: ChatGroup[] | undefined,
   characterId: string,
 ): ChatGroup[] {
-  return (chatGroups || []).filter((group) => (
-    group.allowDirectMemoryInterop !== false
-    && Array.isArray(group.memberIds)
-    && group.memberIds.includes(characterId)
-  ));
+  return (chatGroups || [])
+    .filter((group) => (
+      group.allowDirectMemoryInterop !== false
+      && Array.isArray(group.memberIds)
+      && group.memberIds.includes(characterId)
+    ))
+    .sort((left, right) => (right.lastTime || 0) - (left.lastTime || 0))
+    .slice(0, 1);
 }
 
 function buildSharedGroupInteropSections(
