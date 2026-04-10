@@ -128,6 +128,24 @@ export function sanitizeBubbleSurfaceStyle(style: React.CSSProperties): React.CS
   return nextStyle;
 }
 
+export function extractBubbleTextStyle(style: React.CSSProperties): React.CSSProperties {
+  if (!style || typeof style !== 'object') {
+    return {};
+  }
+
+  const nextStyle: React.CSSProperties = {};
+
+  Object.entries(style).forEach(([key, value]) => {
+    if (!BUBBLE_TEXT_STYLE_KEYS.has(key)) {
+      return;
+    }
+
+    nextStyle[key as keyof React.CSSProperties] = value as never;
+  });
+
+  return nextStyle;
+}
+
 export function hasBubbleThemeCss(styleText?: string): boolean {
   const trimmed = normalizeBubbleStyleText(styleText);
   return !!trimmed && trimmed.includes('{') && !trimmed.startsWith('{');

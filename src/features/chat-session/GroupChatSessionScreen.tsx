@@ -67,7 +67,7 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
-import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
@@ -434,6 +434,16 @@ export function GroupChatSessionScreen({
     })
     .filter(Boolean)
     .join('\n\n');
+  const getGroupBubbleTextStyle = (params: {
+    isUser: boolean;
+    senderBubbleStyleCss?: string;
+  }): React.CSSProperties => ({
+    ...extractBubbleTextStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss)),
+    ...extractBubbleTextStyle(parseBubbleStyleCss(
+      params.isUser ? settings.visualSettings?.chat?.userBubbleStyleCss : settings.visualSettings?.chat?.modelBubbleStyleCss,
+    )),
+    ...extractBubbleTextStyle(parseBubbleStyleCss(params.senderBubbleStyleCss)),
+  });
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
     ...members.map((member) => ({
@@ -1681,8 +1691,12 @@ export function GroupChatSessionScreen({
                             backgroundColor: bubbleColor!,
                             borderColor: bubbleColor!,
                             color: resolvedMemberBubbleTextColor,
-                          }
+                        }
                         : undefined;
+                      const groupBubbleTextStyle = getGroupBubbleTextStyle({
+                        isUser,
+                        senderBubbleStyleCss,
+                      });
                       const resolvedDefaultBubbleSurface =
                         !isStandaloneMedia
                         && !shouldUseResolvedMemberBubble
@@ -1766,7 +1780,7 @@ export function GroupChatSessionScreen({
                         const visualText = stripVisualMessageMarker(content);
                         if (!visualText) return null;
                         return (
-                          <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={chatTextStyle}>
+                          <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={{ ...chatTextStyle, ...groupBubbleTextStyle }}>
                             {renderTextWithMentions(visualText, isUser ? 'outgoing' : 'incoming')}
                           </span>
                         );
@@ -1791,7 +1805,7 @@ export function GroupChatSessionScreen({
                       <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                     </div>
                   ) : !msg.imageUrl && !msg.audioUrl ? (
-                    <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={chatTextStyle}>
+                    <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={{ ...chatTextStyle, ...groupBubbleTextStyle }}>
                       {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
                     </span>
                   ) : null

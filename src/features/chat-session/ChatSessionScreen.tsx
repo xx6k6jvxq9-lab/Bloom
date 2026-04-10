@@ -29,7 +29,7 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
-import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
@@ -162,6 +162,26 @@ function getDirectTextBubbleStyle({
         }
       : {}),
     ...characterBubbleStyle,
+  };
+}
+
+function getDirectTextContentStyle({
+  role,
+  visualSettings,
+  character,
+}: {
+  role: ChatMessage['role'];
+  visualSettings: VisualSettings;
+  character: Character;
+}): React.CSSProperties {
+  const characterRoleBubbleStyleCss = role === 'model' ? character.bubbleStyleCss : character.userBubbleStyleCss;
+
+  return {
+    ...extractBubbleTextStyle(parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss)),
+    ...extractBubbleTextStyle(parseBubbleStyleCss(
+      role === 'model' ? visualSettings?.chat?.modelBubbleStyleCss : visualSettings?.chat?.userBubbleStyleCss,
+    )),
+    ...extractBubbleTextStyle(parseBubbleStyleCss(characterRoleBubbleStyleCss)),
   };
 }
 
@@ -1559,18 +1579,23 @@ export function ChatSessionScreen({
 
                                       if (translationText) {
                                         const normalizedTranslationText = sanitizePipeMarkers(translationText, '\n');
+                                        const bubbleTextStyle = getDirectTextContentStyle({
+                                          role: msg.role,
+                                          visualSettings,
+                                          character,
+                                        });
                                         return (
                                           <div className="flex flex-col gap-2">
                                             <span
                                               className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
-                                              style={{ ...chatTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                              style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                                             >
                                               {normalizedMainText}
                                             </span>
                                             <div className="h-[1px] bg-black/5 w-full" />
                                             <p
                                               className="text-[13px] leading-6 whitespace-pre-wrap break-words text-zinc-500"
-                                              style={{ ...chatTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                              style={{ ...chatTextStyle, ...bubbleTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                                             >
                                               {normalizedTranslationText}
                                             </p>
@@ -1582,7 +1607,16 @@ export function ChatSessionScreen({
                                         <div className="flex flex-col gap-2">
                                             <span
                                               className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
-                                              style={{ ...chatTextStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                              style={{
+                                                ...chatTextStyle,
+                                                ...getDirectTextContentStyle({
+                                                  role: msg.role,
+                                                  visualSettings,
+                                                  character,
+                                                }),
+                                                overflowWrap: 'anywhere',
+                                                wordBreak: 'break-word',
+                                              }}
                                             >
                                               {normalizedMainText}
                                             </span>
