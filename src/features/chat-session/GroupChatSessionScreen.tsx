@@ -67,7 +67,7 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
-import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
@@ -409,9 +409,9 @@ export function GroupChatSessionScreen({
   const hasSharedBubbleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss);
   const hasGroupRoleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
   const hasGroupUserTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.userBubbleStyleCss);
-  const sharedBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss);
-  const groupRoleBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
-  const groupUserBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss);
+  const sharedBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss));
+  const groupRoleBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss));
+  const groupUserBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss));
   const groupBubbleThemeCss = buildScopedBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss, '.chat-bubble-theme-scope');
   const groupModelBubbleThemeCss = buildScopedBubbleVariantCss(
     settings.visualSettings?.chat?.modelBubbleStyleCss,
@@ -1572,7 +1572,7 @@ export function GroupChatSessionScreen({
 
           const senderBubbleStyleCss = !isUser ? senderCharacter?.bubbleStyleCss : undefined;
           const hasSenderBubbleThemeCss = hasBubbleThemeCss(senderBubbleStyleCss);
-          const senderBubbleStyle = parseBubbleStyleCss(senderBubbleStyleCss);
+          const senderBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(senderBubbleStyleCss));
           const hasSenderBubbleCustomization = !!senderBubbleStyleCss?.trim();
           const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
           const shouldUseCustomMemberBubble =

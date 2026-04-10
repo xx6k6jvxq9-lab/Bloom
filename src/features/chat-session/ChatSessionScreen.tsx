@@ -29,7 +29,7 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
-import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
@@ -103,11 +103,11 @@ function getDirectTextBubbleStyle({
   const characterRoleBubbleStyleCss = role === 'model' ? character.bubbleStyleCss : character.userBubbleStyleCss;
   const hasCharacterRoleTheme = hasBubbleThemeCss(characterRoleBubbleStyleCss);
   const shouldUseDefaultBubbleSurface = !hasGlobalTheme && !hasRoleTheme && !hasCharacterRoleTheme;
-  const globalBubbleStyle = parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss);
-  const globalRoleBubbleStyle = parseBubbleStyleCss(
+  const globalBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss));
+  const globalRoleBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(
     role === 'model' ? visualSettings?.chat?.modelBubbleStyleCss : visualSettings?.chat?.userBubbleStyleCss,
-  );
-  const characterBubbleStyle = parseBubbleStyleCss(characterRoleBubbleStyleCss);
+  ));
+  const characterBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(characterRoleBubbleStyleCss));
   const resolvedRoleBubbleImageUrl = role === 'model' ? resolvedCharacterBubbleImageUrl : resolvedUserBubbleImageUrl;
   const roleBubbleColor = role === 'model' ? character.bubbleColor : character.userBubbleColor;
 
@@ -927,16 +927,12 @@ export function ChatSessionScreen({
     '.chat-bubble-theme-scope',
     '.user-bubble',
   );
-  const directCharacterBubbleThemeCss = buildScopedElementThemeCss(
-    character.bubbleStyleCss,
-    '.chat-bubble-theme-scope [data-direct-character-bubble="model"]',
-    ['.chat-bubble', '.message-bubble', '.bot-bubble', '.left', '.chat-bubble-left'],
-  );
-  const directCharacterUserBubbleThemeCss = buildScopedElementThemeCss(
-    character.userBubbleStyleCss,
-    '.chat-bubble-theme-scope [data-direct-character-bubble="user"]',
-    ['.chat-bubble', '.message-bubble', '.user-bubble', '.right', '.chat-bubble-right'],
-  );
+  const directCharacterBubbleThemeCss = hasBubbleThemeCss(character.bubbleStyleCss)
+    ? buildScopedBubbleThemeCss(character.bubbleStyleCss, '.chat-bubble-theme-scope')
+    : buildScopedBubbleVariantCss(character.bubbleStyleCss, '.chat-bubble-theme-scope', '.chat-bubble-left');
+  const directCharacterUserBubbleThemeCss = hasBubbleThemeCss(character.userBubbleStyleCss)
+    ? buildScopedBubbleThemeCss(character.userBubbleStyleCss, '.chat-bubble-theme-scope')
+    : buildScopedBubbleVariantCss(character.userBubbleStyleCss, '.chat-bubble-theme-scope', '.chat-bubble-right');
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
@@ -1171,7 +1167,6 @@ export function ChatSessionScreen({
             <div className="flex-1 min-w-0 flex flex-col items-start">
               <div 
                 className="chat-bubble message-bubble bot-bubble left chat-bubble-left inline-block max-w-[min(82%,34rem)] border shadow-sm"
-                data-direct-character-bubble="model"
                 style={{
                   ...(chatTextStyle || {}),
                   borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
@@ -1186,9 +1181,9 @@ export function ChatSessionScreen({
                         borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
                       }),
                   ...(resolvedChatMessageBackgroundUrl ? { backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
-                  ...(hasBubbleThemeCss(character.bubbleStyleCss) ? {} : parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss)),
+                  ...(hasBubbleThemeCss(character.bubbleStyleCss) ? {} : sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss))),
                   ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor, borderColor: character.bubbleColor } : {}),
-                  ...parseBubbleStyleCss(character.bubbleStyleCss),
+                  ...sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(character.bubbleStyleCss)),
                 }}
               >
                 <p className="text-[14px] text-zinc-800 leading-relaxed whitespace-pre-wrap" style={chatTextStyle}>{character.openingRemark}</p>
@@ -1483,9 +1478,8 @@ export function ChatSessionScreen({
                                   className={`inline-flex max-w-[min(84%,22rem)] cursor-pointer flex-col gap-2 transition-all active:scale-[0.98] ${
                                     isStickerMessage(msg)
                                       ? 'p-0'
-                                      : `chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm`
+                                      : `chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm`
                                   }`}
-                                  data-direct-character-bubble={msg.role === 'user' ? 'user' : 'model'}
                                   style={chatTextStyle}
                                 >
                                   {!isStickerMessage(msg) && <BubbleThemeAnchors />}
@@ -1544,7 +1538,6 @@ export function ChatSessionScreen({
                                     className={`chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} ${getDirectTextBubbleClass(msg.role, layoutConfig.textBubbleMaxWidthClass)} relative cursor-pointer active:scale-[0.98] transition-all border ${
                                       msg.role === 'user' ? 'text-white' : 'text-zinc-800'
                                     }`}
-                                    data-direct-character-bubble={msg.role === 'user' ? 'user' : 'model'}
                                     style={{
                                       ...getDirectTextBubbleStyle({
                                         role: msg.role,
@@ -1849,7 +1842,6 @@ export function ChatSessionScreen({
               <PersistentImage value={character.avatar} className="w-8 h-8 rounded-full object-cover mt-0.5 shrink-0" />
               <div 
                 className="chat-bubble message-bubble bot-bubble left chat-bubble-left chat-loading-bubble border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
-                data-direct-character-bubble="model"
                 style={{
                   ...getDirectTextBubbleStyle({
                     role: 'model',

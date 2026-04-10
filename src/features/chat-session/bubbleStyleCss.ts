@@ -1,5 +1,19 @@
 import type React from 'react';
 
+const BUBBLE_TEXT_STYLE_KEYS = new Set([
+  'color',
+  'caretColor',
+  'textShadow',
+  'WebkitTextFillColor',
+  'font',
+  'fontFamily',
+  'fontSize',
+  'fontStyle',
+  'fontWeight',
+  'lineHeight',
+  'letterSpacing',
+]);
+
 function toCamelCase(value: string): string {
   return value.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase());
 }
@@ -94,6 +108,24 @@ export function parseBubbleStyleCss(styleText?: string): React.CSSProperties {
   }
 
   return style as React.CSSProperties;
+}
+
+export function sanitizeBubbleSurfaceStyle(style: React.CSSProperties): React.CSSProperties {
+  if (!style || typeof style !== 'object') {
+    return {};
+  }
+
+  const nextStyle: React.CSSProperties = {};
+
+  Object.entries(style).forEach(([key, value]) => {
+    if (BUBBLE_TEXT_STYLE_KEYS.has(key)) {
+      return;
+    }
+
+    nextStyle[key as keyof React.CSSProperties] = value as never;
+  });
+
+  return nextStyle;
 }
 
 export function hasBubbleThemeCss(styleText?: string): boolean {
