@@ -11,7 +11,7 @@ import type {
   PerceptionSettings,
   UserProfileExtended,
 } from '../../types';
-import { streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
 import { buildDatingSceneInput } from '../../services/scene-inputs/buildDatingSceneInput';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -356,13 +356,9 @@ export function DatingScene({
         }),
       });
 
-      let rawText = '';
-      await streamTextWithConfig({
+      const rawText = await generateTextFromMessagesWithConfig({
         activeConfig,
-        messages: [{ role: 'system', content: prompt }],
-        onTextChunk: (chunkText) => {
-          rawText += chunkText;
-        },
+        messages: [{ role: 'user', content: prompt }],
       });
       const parsed = parseGeneratedContent(rawText);
       if (!parsed) {
