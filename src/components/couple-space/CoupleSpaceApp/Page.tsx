@@ -1447,12 +1447,13 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
 
   const handleComment = async () => {
     if (!commentText.trim()) return;
+    const operationNow = Date.now();
     const shouldTriggerPartnerReply = post.authorId === partner.id || replyingTo?.authorId === partner.id;
     const newComment = {
-      id: Date.now().toString(),
+      id: operationNow.toString(),
       authorId: 'user',
       content: commentText,
-      timestamp: Date.now(),
+      timestamp: operationNow,
       replyToCommentId: replyingTo?.id,
       replyToAuthorId: replyingTo?.authorId,
       replyToAuthorName: replyingTo
@@ -1484,6 +1485,7 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
             settings: {
               initiativeSettings: coupleSpace.initiativeSettings,
             },
+            now: operationNow,
           },
           scene: {
             mode: 'passive',
@@ -1732,11 +1734,12 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
 
   const handleAdd = async () => {
     if (!text.trim()) return;
+    const operationNow = Date.now();
     const newNote: CoNote = {
-      id: Date.now().toString(),
+      id: operationNow.toString(),
       authorId: 'user',
       content: text,
-      timestamp: Date.now(),
+      timestamp: operationNow,
       isCompleted: false,
     };
     updateSpace({ coNotes: [newNote, ...allNotes] });
@@ -1756,6 +1759,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
             settings: {
               initiativeSettings: coupleSpace.initiativeSettings,
             },
+            now: operationNow,
           },
           scene: {
             mode: 'passive',
@@ -2074,11 +2078,12 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
 
   const handleSend = async () => {
     if (!content.trim()) return;
+    const operationNow = Date.now();
     const newLetter: LoveLetter = {
-      id: Date.now().toString(),
+      id: operationNow.toString(),
       authorId: 'user',
       content,
-      timestamp: Date.now(),
+      timestamp: operationNow,
       comments: []
     };
     const updatedLetters = [newLetter, ...(coupleSpace.loveLetters || [])];
@@ -2100,13 +2105,14 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
           chatHistory,
           masks,
           worldBooks,
-          settings: {
-            initiativeSettings: coupleSpace.initiativeSettings,
+            settings: {
+              initiativeSettings: coupleSpace.initiativeSettings,
+            },
+            now: operationNow,
           },
-        },
-        scene: {
-          mode: 'passive',
-          actionType: 'reply_love_letter',
+          scene: {
+            mode: 'passive',
+            actionType: 'reply_love_letter',
         },
       });
 
@@ -2426,12 +2432,13 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
 
   const handlePost = async () => {
     if (!content.trim() && imgUrls.length === 0) return;
+    const operationNow = Date.now();
     const newPost = {
-      id: Date.now().toString(),
+      id: operationNow.toString(),
       authorId: 'user',
       content,
       images: imgUrls,
-      timestamp: Date.now(),
+      timestamp: operationNow,
       likes: [],
       comments: []
     };
@@ -2458,6 +2465,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
             settings: {
               initiativeSettings: coupleSpace.initiativeSettings,
             },
+            now: operationNow,
           },
           scene: {
             mode: 'passive',
@@ -2658,11 +2666,12 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, use
 
   const handleLeaveMessage = async () => {
     if (!content.trim()) return;
+    const operationNow = Date.now();
     const newMsg = {
-      id: Date.now().toString(),
+      id: operationNow.toString(),
       authorId: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: operationNow
     };
     updateSpace((prev: any) => ({
       messageBoard: [newMsg, ...(prev.messageBoard || [])]
@@ -2684,6 +2693,7 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, use
             settings: {
               initiativeSettings: coupleSpace.initiativeSettings,
             },
+            now: operationNow,
           },
           scene: {
             mode: 'passive',
