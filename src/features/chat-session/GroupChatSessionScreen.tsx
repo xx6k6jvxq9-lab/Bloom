@@ -133,6 +133,31 @@ function shouldShowChatTimeDivider(
   return crossedDay || gapMs >= 30 * 60 * 1000;
 }
 
+function getGroupReadCount(
+  history: ChatMessage[],
+  message: ChatMessage,
+): number {
+  if (message.role !== 'user') {
+    return 0;
+  }
+
+  const readerIds = new Set<string>();
+
+  for (const candidate of history) {
+    if (
+      candidate.timestamp > message.timestamp
+      && candidate.role === 'model'
+      && !candidate.isSystem
+      && typeof candidate.senderCharacterId === 'string'
+      && candidate.senderCharacterId.trim()
+    ) {
+      readerIds.add(candidate.senderCharacterId);
+    }
+  }
+
+  return readerIds.size;
+}
+
 function buildInviteRuntimeMessages(params: {
   systemPrompt: string;
   history: ChatMessage[];
@@ -1588,6 +1613,7 @@ export function GroupChatSessionScreen({
             && previousResolved?.senderId === senderId
             && !shouldShowIndependentBlock;
           const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
+          const groupReadCount = getGroupReadCount(renderedHistory, msg);
 
           const messageKey = `${msg.timestamp}-${msg.role}-${msg.senderCharacterId || senderId}-${idx}`;
 
@@ -1868,6 +1894,9 @@ export function GroupChatSessionScreen({
                 {showChatMessageTime && (
                   <div className={`mt-1 px-1 text-[10px] text-zinc-400 ${isUser ? 'text-right' : 'text-left'}`}>
                     {formatChatMessageTime(msg.timestamp)}
+                    {isUser && groupReadCount > 0 && (
+                      <span className="ml-1">{`${groupReadCount}人已读`}</span>
+                    )}
                   </div>
                 )}
               </div>
