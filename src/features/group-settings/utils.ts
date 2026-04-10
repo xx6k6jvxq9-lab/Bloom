@@ -24,6 +24,7 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     memberRelationshipNote: group.memberRelationshipNote || '',
     currentScene: group.currentScene || '',
     publicFacts: group.publicFacts || '',
+    activeWorldBookIds: group.activeWorldBookIds || [],
     allowDirectMemoryInterop: getEffectiveAllowDirectMemoryInterop(group),
     muteNotifications: !!group.muteNotifications,
     pinChat: !!group.pinChat,
@@ -47,6 +48,7 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     memberRelationshipNote: toOptionalTrimmedValue(state.memberRelationshipNote),
     currentScene: toOptionalTrimmedValue(state.currentScene),
     publicFacts: toOptionalTrimmedValue(state.publicFacts),
+    activeWorldBookIds: state.activeWorldBookIds,
     allowDirectMemoryInterop: state.allowDirectMemoryInterop,
     allowDirectMemoryInteropConfigured: true,
     muteNotifications: state.muteNotifications,
@@ -71,6 +73,7 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
     || (patch.memberRelationshipNote || '') !== (group.memberRelationshipNote || '')
     || (patch.currentScene || '') !== (group.currentScene || '')
     || (patch.publicFacts || '') !== (group.publicFacts || '')
+    || JSON.stringify(patch.activeWorldBookIds || []) !== JSON.stringify(group.activeWorldBookIds || [])
     || patch.allowDirectMemoryInterop !== getEffectiveAllowDirectMemoryInterop(group)
     || patch.muteNotifications !== !!group.muteNotifications
     || patch.pinChat !== !!group.pinChat;

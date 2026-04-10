@@ -19,6 +19,7 @@ export type GroupSettingsFormState = {
   memberRelationshipNote: string;
   currentScene: string;
   publicFacts: string;
+  activeWorldBookIds: string[];
   allowDirectMemoryInterop: boolean;
   muteNotifications: boolean;
   pinChat: boolean;
@@ -41,6 +42,7 @@ export type GroupSettingsPatch = Pick<
   | 'memberRelationshipNote'
   | 'currentScene'
   | 'publicFacts'
+  | 'activeWorldBookIds'
   | 'allowDirectMemoryInterop'
   | 'allowDirectMemoryInteropConfigured'
   | 'muteNotifications'

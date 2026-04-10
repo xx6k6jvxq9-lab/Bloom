@@ -757,6 +757,7 @@ export type ChatGroup = {
   memberRelationshipNote?: string;
   currentScene?: string;
   publicFacts?: string;
+  activeWorldBookIds?: string[];
   allowDirectMemoryInterop?: boolean;
   allowDirectMemoryInteropConfigured?: boolean;
   adminIds?: string[];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import type { ChatMessage } from '../../../types';
+import type { ChatMessage, WorldBookEntry } from '../../../types';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatBackgroundPage } from './GroupChatBackgroundPage';
@@ -12,6 +12,7 @@ import { GroupInterfaceSettingsPage } from './GroupInterfaceSettingsPage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
 import { GroupTitleBadgeSettingsPage } from './GroupTitleBadgeSettingsPage';
+import { GroupWorldBookSettingsPage } from './GroupWorldBookSettingsPage';
 
 type GroupSettingsScreenProps = {
   groupName: string;
@@ -20,6 +21,7 @@ type GroupSettingsScreenProps = {
   memberCount: number;
   members: GroupSettingsMemberSummary[];
   inviteCandidates: GroupSettingsMemberSummary[];
+  worldBooks: WorldBookEntry[];
   messages: ChatMessage[];
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
   onAvatarPick: () => void;
@@ -52,6 +54,7 @@ export function GroupSettingsScreen({
   memberCount,
   members,
   inviteCandidates,
+  worldBooks = [],
   messages,
   onChange,
   onAvatarPick,
@@ -72,7 +75,7 @@ export function GroupSettingsScreen({
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
   const [page, setPage] = useState<
-    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges'
+    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges' | 'world-books'
   >('settings');
 
   return (
@@ -135,6 +138,7 @@ export function GroupSettingsScreen({
         <GroupChatProfilePage
           formState={formState}
           onChange={onChange}
+          onOpenWorldBooks={() => setPage('world-books')}
           onBack={() => setPage('settings')}
         />
       ) : null}
@@ -180,6 +184,21 @@ export function GroupSettingsScreen({
           members={members.filter((member) => member.id !== 'user')}
           onBack={() => setPage('customization')}
           onUpdateBubbleColor={onUpdateBubbleColor}
+        />
+      ) : null}
+
+      {page === 'world-books' ? (
+        <GroupWorldBookSettingsPage
+          worldBooks={worldBooks}
+          activeWorldBookIds={formState.activeWorldBookIds}
+          onBack={() => setPage('profile')}
+          onToggleWorldBook={(worldBookId) => {
+            const currentIds = formState.activeWorldBookIds || [];
+            const nextIds = currentIds.includes(worldBookId)
+              ? currentIds.filter((id) => id !== worldBookId)
+              : [...currentIds, worldBookId];
+            onChange({ activeWorldBookIds: nextIds });
+          }}
         />
       ) : null}
     </div>

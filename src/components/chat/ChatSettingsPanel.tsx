@@ -421,6 +421,7 @@ export function ChatSettingsPanel({
         userName: '用户',
         activeMask,
         activeWorldBooks,
+        worldBooks,
         perceptionPrompt: '',
       }));
 
@@ -431,6 +432,7 @@ export function ChatSettingsPanel({
         userName: '用户',
         activeMask,
         activeWorldBooks,
+        worldBooks,
         perceptionPrompt: '',
       }));
 

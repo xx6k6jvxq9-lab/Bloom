@@ -1,4 +1,6 @@
 import type { Character, ChatGroup, ChatHistory, CoupleSpaceData, Mask, WorldBookEntry } from '../../types';
+import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
+import { selectActiveGroupWorldBooks } from '../../features/group-world-book/selectActiveGroupWorldBooks';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
@@ -11,6 +13,7 @@ type BuildChatSceneInputParams = {
   coupleSpace?: CoupleSpaceData;
   activeMask?: Mask | null;
   activeWorldBooks?: WorldBookEntry[];
+  worldBooks?: WorldBookEntry[];
   perceptionPrompt?: string;
   mode?: BuildChatPromptOptions['mode'];
   includeProtocolRules?: boolean;
@@ -27,6 +30,48 @@ function getDirectMemoryReadableGroups(
     && Array.isArray(group.memberIds)
     && group.memberIds.includes(characterId)
   ));
+}
+
+function buildSharedGroupInteropSections(
+  groups: ChatGroup[],
+  character: Character,
+  worldBooks: WorldBookEntry[] | undefined,
+): string[] {
+  return groups
+    .map((group) => {
+      const groupWorldBookPrompt = buildGroupWorldBookPrompt(
+        selectActiveGroupWorldBooks({
+          speaker: character,
+          group,
+          worldBooks: worldBooks || [],
+        }),
+      );
+
+      const lines = [
+        group.backgroundSummary?.trim()
+          ? `[\u7fa4\u80cc\u666f\u7b80\u8ff0] ${group.backgroundSummary.trim()}`
+          : '',
+        group.memberRelationshipNote?.trim()
+          ? `[\u6210\u5458\u5173\u7cfb\u8865\u5145] ${group.memberRelationshipNote.trim()}`
+          : '',
+        group.currentScene?.trim()
+          ? `[\u7fa4\u5f53\u524d\u573a\u666f] ${group.currentScene.trim()}`
+          : '',
+        group.publicFacts?.trim()
+          ? `[\u7fa4\u516c\u5f00\u4e8b\u5b9e] ${group.publicFacts.trim()}`
+          : '',
+        groupWorldBookPrompt
+          ? `[\u7fa4\u4e16\u754c\u4e66]\n${groupWorldBookPrompt}`
+          : '',
+      ].filter(Boolean);
+
+      if (lines.length === 0) {
+        return '';
+      }
+
+      return [`## \u53ef\u5171\u4eab\u7684\u7fa4\u804a\u8d44\u6599\u57df\uff1a${group.name}`, ...lines].join('\n');
+    })
+    .filter(Boolean);
 }
 
 function buildExtraSections(input: {
@@ -95,7 +140,13 @@ export function buildChatSceneInput(
       boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
-    }),
+    }).concat(
+      buildSharedGroupInteropSections(
+        directMemoryReadableGroups,
+        params.character,
+        params.worldBooks,
+      ),
+    ),
   });
 
   return {

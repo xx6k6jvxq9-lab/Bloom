@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import {
@@ -67,10 +67,12 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
-import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, hasBubbleThemeCss, parseBubbleStyleCss } from './bubbleStyleCss';
+import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
+import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
@@ -258,6 +260,18 @@ function GroupMessageImage({
   return <img src={src} alt={alt} className={className} />;
 }
 
+function GroupBubbleResolvedImageStyle({
+  value,
+  children,
+}: {
+  value?: string | null;
+  children: (resolvedImageUrl?: string) => React.ReactNode;
+}) {
+  const { resolvedUrl } = useResolvedPersistentValue(value);
+  const resolvedImageUrl = getDisplayableAssetValue(value, resolvedUrl) || undefined;
+  return <>{children(resolvedImageUrl)}</>;
+}
+
 function isStickerMessage(message: ChatMessage, content: string) {
   if (!message.imageUrl) {
     return false;
@@ -314,6 +328,7 @@ export function GroupChatSessionScreen({
   userAvatar,
   userName,
   settings,
+  worldBooks = [],
   directChatHistory,
   inviteableCharacters,
 }: {
@@ -331,6 +346,7 @@ export function GroupChatSessionScreen({
   userAvatar: string;
   userName: string;
   settings: AppSettings;
+  worldBooks: WorldBookEntry[];
   directChatHistory: ChatHistory;
   inviteableCharacters: Character[];
 }) {
@@ -390,6 +406,9 @@ export function GroupChatSessionScreen({
   const footerStyleType = group.footerStyle || 'default';
   const footerOpacity = group.footerOpacity ?? 0.92;
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
+  const hasSharedBubbleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss);
+  const hasGroupRoleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
+  const hasGroupUserTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.userBubbleStyleCss);
   const sharedBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss);
   const groupRoleBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
   const groupUserBubbleStyle = parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss);
@@ -404,6 +423,17 @@ export function GroupChatSessionScreen({
     '.chat-bubble-theme-scope',
     '.user-bubble',
   );
+  const buildGroupCharacterBubbleThemeCss = (characters: Character[]) => characters
+    .map((member) => {
+      const scopedSelector = `.chat-bubble-theme-scope [data-character-bubble-scope="${member.id}"]`;
+      return buildScopedElementThemeCss(
+        member.bubbleStyleCss,
+        scopedSelector,
+        ['.chat-bubble', '.message-bubble', '.bot-bubble', '.left', '.chat-bubble-left'],
+      );
+    })
+    .filter(Boolean)
+    .join('\n\n');
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
     ...members.map((member) => ({
@@ -436,8 +466,51 @@ export function GroupChatSessionScreen({
       })
     : [];
   const showMentionPicker = mentionMatch !== null && mentionCandidates.length > 0;
+  const chatFontFamily = getThemeSelectedFontStack(settings.visualSettings?.themeTypography);
+  const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
+  const groupChatFontCss = chatFontFamily
+    ? `.chat-bubble-theme-scope .chat-bubble,
+.chat-bubble-theme-scope .chat-bubble *,
+.chat-bubble-theme-scope .chat-loading-bubble,
+.chat-bubble-theme-scope .chat-loading-bubble *,
+.chat-bubble-theme-scope .chat-session-header,
+.chat-bubble-theme-scope .chat-session-header *,
+.chat-bubble-theme-scope .chat-session-footer,
+.chat-bubble-theme-scope .chat-session-footer * {
+  font-family: ${chatFontFamily} !important;
+}`
+    : '';
   let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 pt-12 shadow-sm';
   const groupHeaderStyle: React.CSSProperties = {};
+  const getDefaultGroupBubbleSurfaceStyle = (params: {
+    isUser: boolean;
+    shouldUseDefaultSurface: boolean;
+  }): React.CSSProperties => {
+    if (!params.shouldUseDefaultSurface) {
+      return {};
+    }
+
+    const chatOpacity = settings.visualSettings?.chatOpacity ?? 0.9;
+    const hasBackground = Boolean(groupBackgroundUrl);
+
+    return {
+      borderRadius: 16,
+      borderTopRightRadius: params.isUser ? 6 : 16,
+      borderTopLeftRadius: params.isUser ? 16 : 6,
+      boxShadow: params.isUser
+        ? '0 10px 24px rgba(59, 130, 246, 0.18)'
+        : '0 10px 24px rgba(15, 23, 42, 0.08)',
+      backgroundColor: params.isUser
+        ? (settings.visualSettings?.chat?.messageBackgroundColorUser
+            || `rgba(59, 130, 246, ${hasBackground ? chatOpacity : 1})`)
+        : (settings.visualSettings?.chat?.messageBackgroundColorModel
+            || `rgba(255, 255, 255, ${hasBackground ? chatOpacity : 1})`),
+      borderColor: params.isUser
+        ? (settings.visualSettings?.chat?.messageBackgroundColorUser
+            || `rgba(59, 130, 246, ${hasBackground ? chatOpacity : 1})`)
+        : `rgba(228, 228, 231, ${hasBackground ? chatOpacity : 1})`,
+    };
+  };
 
   if (headerStyleType === 'default') {
     groupHeaderClassName += ' border-zinc-100 backdrop-blur-md';
@@ -507,10 +580,12 @@ export function GroupChatSessionScreen({
     reactToNoticeUpdate,
   } = useGroupChatRuntime({
     members,
+    worldBooks,
     groupMeta: {
       lastMessage: group.lastMessage,
       lastTime: group.lastTime,
       groupStage: group.groupStage,
+      activeWorldBookIds: group.activeWorldBookIds,
       memberRelationSeeds: group.memberRelationSeeds,
       backgroundSummary: group.backgroundSummary,
       memberRelationshipState: group.memberRelationshipState,
@@ -745,6 +820,7 @@ export function GroupChatSessionScreen({
         badge: null,
         bubbleColor: null,
         roleLabel: getGroupRoleLabel(actingRole),
+        character: null as Character | null,
       };
     }
 
@@ -760,6 +836,7 @@ export function GroupChatSessionScreen({
         badge: getGroupMemberBadge(group, sender.id),
         bubbleColor: getGroupMemberBubbleColor(group, sender.id),
         roleLabel: getGroupRoleLabel(resolveGroupMemberRole(group, sender.id)),
+        character: sender,
       };
     }
 
@@ -774,6 +851,7 @@ export function GroupChatSessionScreen({
         badge: character ? getGroupMemberBadge(group, character.id) : null,
         bubbleColor: character ? getGroupMemberBubbleColor(group, character.id) : null,
         roleLabel: character ? getGroupRoleLabel(resolveGroupMemberRole(group, character.id)) : undefined,
+        character: character || null,
       };
     }
 
@@ -785,8 +863,21 @@ export function GroupChatSessionScreen({
       badge: null,
       bubbleColor: null,
       roleLabel: undefined,
+      character: null as Character | null,
     };
   };
+
+  const themeCharacterById = new Map<string, Character>();
+  members.forEach((member) => {
+    themeCharacterById.set(member.id, member);
+  });
+  renderedHistory.forEach((message) => {
+    const resolved = resolveSenderInfo(message);
+    if (resolved.character?.id) {
+      themeCharacterById.set(resolved.character.id, resolved.character);
+    }
+  });
+  const groupCharacterBubbleThemeCss = buildGroupCharacterBubbleThemeCss(Array.from(themeCharacterById.values()));
 
   const getContextMenuMessageIndex = () => {
     if (!contextMenu) {
@@ -1061,6 +1152,13 @@ export function GroupChatSessionScreen({
               userName: groupUserDisplayName,
               history: inviteGenerationHistory,
               mode: 'invited',
+              activeWorldBooks: selectActiveGroupWorldBooks({
+                speaker: invitedCharacter,
+                group: {
+                  activeWorldBookIds: group.activeWorldBookIds,
+                },
+                worldBooks,
+              }),
               directChatHistory,
             }),
           }),
@@ -1342,9 +1440,12 @@ export function GroupChatSessionScreen({
   };
 
   return (
-    <div className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope">
-      {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss) && (
-        <style>{[groupBubbleThemeCss, groupModelBubbleThemeCss, groupUserBubbleThemeCss].filter(Boolean).join('\n\n')}</style>
+    <div
+      className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope"
+      style={chatFontFamily ? { fontFamily: chatFontFamily } : undefined}
+    >
+      {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss || groupCharacterBubbleThemeCss || groupChatFontCss) && (
+        <style>{[groupBubbleThemeCss, groupModelBubbleThemeCss, groupUserBubbleThemeCss, groupCharacterBubbleThemeCss, groupChatFontCss].filter(Boolean).join('\n\n')}</style>
       )}
       {groupBackgroundUrl ? (
         <>
@@ -1409,7 +1510,7 @@ export function GroupChatSessionScreen({
         )}
         {renderedHistory.map((msg, idx) => {
           const isUser = msg.role === 'user';
-          const { senderId, senderName, avatar, content, badge, bubbleColor, roleLabel } = resolveSenderInfo(msg);
+          const { senderId, senderName, avatar, content, badge, bubbleColor, roleLabel, character: senderCharacter } = resolveSenderInfo(msg);
           const visualKind = getMessageVisualKind(msg, content);
           const previousMessage = renderedHistory[idx - 1];
           const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
@@ -1469,12 +1570,20 @@ export function GroupChatSessionScreen({
 
           const isPendingMessage = !!msg.isPending;
 
+          const senderBubbleStyleCss = !isUser ? senderCharacter?.bubbleStyleCss : undefined;
+          const hasSenderBubbleThemeCss = hasBubbleThemeCss(senderBubbleStyleCss);
+          const senderBubbleStyle = parseBubbleStyleCss(senderBubbleStyleCss);
+          const hasSenderBubbleCustomization = !!senderBubbleStyleCss?.trim();
+          const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
           const shouldUseCustomMemberBubble =
             !isUser
             && !msg.isSystem
             && !msg.imageUrl
             && visualKind !== 'sticker'
             && !isPendingMessage
+            && !hasSenderBubbleCustomization
+            && !senderCharacter?.bubbleImage
+            && !senderBubbleColor
             && !!bubbleColor;
           const memberBubbleTextColor = shouldUseCustomMemberBubble ? getReadableTextColor(bubbleColor!) : '#111827';
           const memberBubbleStyle = shouldUseCustomMemberBubble
@@ -1508,7 +1617,9 @@ export function GroupChatSessionScreen({
                   fit={isUser ? 'contain' : 'cover'}
                 />
               )}
-              <div className={`flex max-w-[88%] flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+              <div
+                className={`flex max-w-[88%] flex-col ${isUser ? 'items-end' : 'items-start'}`}
+              >
                 {!isGroupedWithPrevious && (
                   <div className={`mb-1 flex flex-wrap items-center gap-2 ${isUser ? 'justify-end mr-1' : 'ml-1'}`}>
                     {badge ? (
@@ -1542,36 +1653,94 @@ export function GroupChatSessionScreen({
                 )}
                 {(() => {
                   const isStandaloneMedia = visualKind === 'sticker' || Boolean(msg.audioUrl);
+                  const shouldUseDefaultBubbleSurface =
+                    !isStandaloneMedia
+                    && !shouldUseCustomMemberBubble
+                    && !hasSenderBubbleThemeCss
+                    && !hasSharedBubbleTheme
+                    && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme);
 
                   return (
-                <div
-                  onClick={(event) => handleMessageClick(event, idx)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openContextMenu(event, idx);
-                  }}
-                  onPointerDown={(event) => {
-                    clearLongPressTimer();
-                    longPressTimerRef.current = window.setTimeout(() => {
-                      openContextMenu(event, idx);
-                    }, 420);
-                  }}
-                  onPointerUp={clearLongPressTimer}
-                  onPointerLeave={clearLongPressTimer}
-                  onPointerCancel={clearLongPressTimer}
-                  className={`${isStandaloneMedia ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right' : 'bot-bubble left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
-                    isUser
-                      ? `${isStandaloneMedia ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
-                      : `${isStandaloneMedia ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseCustomMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isStandaloneMedia ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
-                  }`}
-                  style={isStandaloneMedia
-                    ? undefined
-                    : {
-                        ...memberBubbleStyle,
-                        ...sharedBubbleStyle,
-                        ...(isUser ? groupUserBubbleStyle : groupRoleBubbleStyle),
-                      }}
-                >
+                  <GroupBubbleResolvedImageStyle value={!isUser ? senderCharacter?.bubbleImage : undefined}>
+                    {(senderBubbleImageUrl) => {
+                      const hasSenderBubbleSurfaceCustomization = !!senderBubbleImageUrl || !!senderBubbleColor;
+                      const hasSenderBubbleOverride =
+                        !!senderBubbleStyleCss?.trim() || hasSenderBubbleSurfaceCustomization;
+                      const shouldUseResolvedMemberBubble =
+                        !isUser
+                        && !msg.isSystem
+                        && !msg.imageUrl
+                        && visualKind !== 'sticker'
+                        && !isPendingMessage
+                        && !hasSenderBubbleOverride
+                        && !hasSenderBubbleSurfaceCustomization
+                        && !!bubbleColor;
+                      const resolvedMemberBubbleTextColor = shouldUseResolvedMemberBubble ? getReadableTextColor(bubbleColor!) : '#111827';
+                      const resolvedMemberBubbleStyle = shouldUseResolvedMemberBubble
+                        ? {
+                            backgroundColor: bubbleColor!,
+                            borderColor: bubbleColor!,
+                            color: resolvedMemberBubbleTextColor,
+                          }
+                        : undefined;
+                      const resolvedDefaultBubbleSurface =
+                        !isStandaloneMedia
+                        && !shouldUseResolvedMemberBubble
+                        && !hasSenderBubbleOverride
+                        && !hasSharedBubbleTheme
+                        && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme);
+
+                      return (
+                        <div
+                          onClick={(event) => handleMessageClick(event, idx)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            openContextMenu(event, idx);
+                          }}
+                          onPointerDown={(event) => {
+                            clearLongPressTimer();
+                            longPressTimerRef.current = window.setTimeout(() => {
+                              openContextMenu(event, idx);
+                            }, 420);
+                          }}
+                          onPointerUp={clearLongPressTimer}
+                          onPointerLeave={clearLongPressTimer}
+                          onPointerCancel={clearLongPressTimer}
+                          className={`${isStandaloneMedia ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
+                            isUser
+                              ? `${isStandaloneMedia ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
+                              : `${isStandaloneMedia ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseResolvedMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isStandaloneMedia ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
+                          }`}
+                          data-character-bubble-scope={!isUser && senderCharacter?.id ? senderCharacter.id : undefined}
+                          style={isStandaloneMedia
+                            ? undefined
+                            : {
+                                ...getDefaultGroupBubbleSurfaceStyle({
+                                  isUser,
+                                  shouldUseDefaultSurface: resolvedDefaultBubbleSurface,
+                                }),
+                                ...(hasSenderBubbleOverride ? {} : resolvedMemberBubbleStyle),
+                                ...(!hasSenderBubbleCustomization && !isUser && senderBubbleImageUrl
+                                  ? {
+                                      backgroundImage: `url(${senderBubbleImageUrl})`,
+                                      backgroundSize: 'cover',
+                                      backgroundPosition: 'center',
+                                      border: 'none',
+                                    }
+                                  : !hasSenderBubbleCustomization && !isUser && senderBubbleColor
+                                    ? {
+                                        backgroundColor: senderBubbleColor,
+                                        borderColor: senderBubbleColor,
+                                      }
+                                    : {}),
+                                ...(hasSenderBubbleOverride || hasSharedBubbleTheme ? {} : sharedBubbleStyle),
+                                ...(hasSenderBubbleOverride || (isUser ? hasGroupUserTheme : hasGroupRoleTheme)
+                                  ? {}
+                                  : (isUser ? groupUserBubbleStyle : groupRoleBubbleStyle)),
+                                ...senderBubbleStyle,
+                                ...(chatTextStyle || {}),
+                              }}
+                        >
                   {!isStandaloneMedia && <BubbleThemeAnchors />}
                   {msg.audioUrl && (
                     <AudioMessageCard
@@ -1597,7 +1766,7 @@ export function GroupChatSessionScreen({
                         const visualText = stripVisualMessageMarker(content);
                         if (!visualText) return null;
                         return (
-                          <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
+                          <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={chatTextStyle}>
                             {renderTextWithMentions(visualText, isUser ? 'outgoing' : 'incoming')}
                           </span>
                         );
@@ -1622,12 +1791,15 @@ export function GroupChatSessionScreen({
                       <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                     </div>
                   ) : !msg.imageUrl && !msg.audioUrl ? (
-                    <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`}>
+                    <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={chatTextStyle}>
                       {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
                     </span>
                   ) : null
                   }
-                </div>
+                        </div>
+                      );
+                    }}
+                  </GroupBubbleResolvedImageStyle>
                   );
                 })()}
               </div>
@@ -1907,6 +2079,7 @@ export function GroupChatSessionScreen({
                 memberCount={participantCount}
                 members={groupSettingsMembers}
                 inviteCandidates={groupSettingsInviteCandidates}
+                worldBooks={worldBooks}
                 messages={history}
                 onChange={(patch) => setGroupSettingsForm((prev) => ({ ...prev, ...patch }))}
                 onUpdateGroupBackground={handleUpdateGroupBackground}

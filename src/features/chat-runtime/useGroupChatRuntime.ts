@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ApiConfig, Character, ChatGroup, ChatMessage } from '../../types';
+import type { ApiConfig, Character, ChatGroup, ChatMessage, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
@@ -8,6 +8,7 @@ import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
+import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
 import { resolveGroupReplyIntent, type GroupReplyIntent } from './groupIntentResolver';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
@@ -18,6 +19,7 @@ type UseGroupChatRuntimeArgs = {
     lastMessage?: string;
     lastTime?: number;
     groupStage?: ChatGroup['groupStage'];
+    activeWorldBookIds?: ChatGroup['activeWorldBookIds'];
     memberRelationSeeds?: ChatGroup['memberRelationSeeds'];
     backgroundSummary?: ChatGroup['backgroundSummary'];
     memberRelationshipState?: ChatGroup['memberRelationshipState'];
@@ -33,6 +35,7 @@ type UseGroupChatRuntimeArgs = {
   setReplyingTo: (value: ChatMessage['replyTo'] | null) => void;
   userName: string;
   directChatHistory: ChatHistory;
+  worldBooks?: WorldBookEntry[];
   activeConfig?: ApiConfig;
 };
 
@@ -840,6 +843,7 @@ export function useGroupChatRuntime({
   setReplyingTo,
   userName,
   directChatHistory,
+  worldBooks = [],
   activeConfig,
 }: UseGroupChatRuntimeArgs): UseGroupChatRuntimeResult {
   const { isLoading, error, setError, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
@@ -914,6 +918,7 @@ export function useGroupChatRuntime({
                 creatorId: 'user',
                 createdAt: 0,
                 groupStage: groupMeta.groupStage,
+                activeWorldBookIds: groupMeta.activeWorldBookIds,
                 memberRelationSeeds: groupMeta.memberRelationSeeds,
                 backgroundSummary: groupMeta.backgroundSummary,
                 memberRelationshipState: groupMeta.memberRelationshipState,
@@ -926,6 +931,11 @@ export function useGroupChatRuntime({
           history: params.currentHistory,
           mode: params.mode,
           directChatHistory,
+          activeWorldBooks: selectActiveGroupWorldBooks({
+            speaker: params.speaker,
+            group: groupMeta,
+            worldBooks,
+          }),
         }),
       }),
       buildAssistantStickerPromptSection([
@@ -1013,6 +1023,7 @@ export function useGroupChatRuntime({
     groupMeta?.publicFacts,
     members,
     userName,
+    worldBooks,
   ]);
 
   const appendSystemFailure = useCallback((detail: string) => {

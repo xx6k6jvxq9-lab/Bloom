@@ -1,7 +1,8 @@
-import type { Character, ChatGroup, ChatHistory, ChatMessage } from '../../types';
+import type { Character, ChatGroup, ChatHistory, ChatMessage, WorldBookEntry } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 
 export type GroupChatSceneInput = {
   speakerName: string;
@@ -24,6 +25,7 @@ export type GroupChatSceneInput = {
     memberRelationshipState?: string;
     currentScene?: string;
     publicFacts?: string;
+    worldBookPrompt?: string;
     expressionStyle?: string;
     boundaryPack?: string;
     publicAcquaintanceSummary?: string;
@@ -40,6 +42,7 @@ type BuildGroupChatSceneInputOptions = {
   history: ChatMessage[];
   mode?: 'reply' | 'invited' | 'opening';
   directChatHistory?: ChatHistory;
+  activeWorldBooks?: WorldBookEntry[];
 };
 
 function getGroupStageLabel(stage: GroupChatSceneInput['groupStage']): string {
@@ -143,6 +146,7 @@ export function buildGroupChatSceneInput(
   const groupStage = options.group?.groupStage ?? 'new';
   const characterContext = buildCharacterContext({
     character: options.speaker,
+    activeWorldBooks: options.activeWorldBooks,
   });
   const relationshipProjection = buildRelationshipProjection({
     character: options.speaker,
@@ -193,6 +197,7 @@ export function buildGroupChatSceneInput(
       memberRelationshipState,
       currentScene: options.group?.currentScene?.trim() || undefined,
       publicFacts: options.group?.publicFacts?.trim() || undefined,
+      worldBookPrompt: buildGroupWorldBookPrompt(options.activeWorldBooks),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,

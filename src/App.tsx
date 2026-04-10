@@ -64,6 +64,7 @@ import { useResolvedPersistentValue } from './features/persistence/useResolvedPe
 import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
+import { getThemeSelectedFontStack } from './features/theme/themeTypography';
 import { loadChatHistoryRecords, mergeGroupSessionsIntoChatGroups } from './features/persistence/chatHistoryStore';
 import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
@@ -339,6 +340,9 @@ function sanitizeChatGroupsWithCharacters(
       memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
       currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
       publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
+      activeWorldBookIds: Array.isArray(group.activeWorldBookIds)
+        ? group.activeWorldBookIds.filter((worldBookId): worldBookId is string => typeof worldBookId === 'string')
+        : [],
       allowDirectMemoryInterop:
         group.allowDirectMemoryInteropConfigured === true
           ? group.allowDirectMemoryInterop !== false
@@ -946,11 +950,11 @@ function MomentsApp({
                         initial={{ opacity: 0, scale: 0.95, x: 10 }}
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.95, x: 10 }}
-                        className="absolute right-8 top-0 bg-zinc-800/90 backdrop-blur-md rounded-lg shadow-xl flex items-center overflow-hidden z-20 py-1 px-1"
+                        className="absolute right-8 top-0 flex items-center overflow-hidden rounded-lg border border-zinc-200 bg-white/95 px-1 py-1 shadow-lg backdrop-blur-md z-20"
                       >
                         <button 
                           onClick={() => handleLike(moment.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <Heart size={14} className={(moment.likedBy?.includes('user') || moment.isLiked) ? 'fill-red-500 text-red-500' : ''} />
                           {(moment.likedBy?.includes('user') || moment.isLiked) ? '取消' : '赞'}
@@ -961,14 +965,14 @@ function MomentsApp({
                             setReplyTarget(null);
                             setActiveMenuId(null);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <MessageCircle size={14} />
                           评论
                         </button>
                         <button 
                           onClick={() => handleCollect(moment.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <Star size={14} className={moment.isCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
                           {moment.isCollected ? '已收藏' : '收藏'}
@@ -976,7 +980,7 @@ function MomentsApp({
                         {moment.authorId === 'user' && (
                           <button 
                             onClick={() => handleDelete(moment.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-white hover:bg-white/10 rounded-md transition-colors text-[12px] whitespace-nowrap"
+                            className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                           >
                             <Trash2 size={14} />
                             删除
@@ -1114,7 +1118,7 @@ export default function App() {
       themeTypography: {
         importedFonts: [],
         selectedFontId: '',
-        fontPriority: 'css-only',
+        fontPriority: 'lock-imported',
         textColor: '#18181b',
         previewText: '晚风轻轻吹过，气泡、标题和正文都应该有自己的气质。',
       },
@@ -1430,15 +1434,17 @@ export default function App() {
     }
   };
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
+  const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
 
   return (
     <div
       className={`app-shell relative bg-black font-sans selection:bg-blue-500/30 ${
         useDesktopStageLayout ? 'md:flex md:min-h-screen md:items-center md:justify-center md:bg-zinc-950 md:p-4' : ''
       }`}
+      style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
     >
       <GlobalStyles
-        customCss={`${themeTypographyCss}\n${appData.visualSettings?.globalCss || ''}\n${buildThemeScopedCss(appData.visualSettings?.themeScopedCss)}`}
+        customCss={`${appData.visualSettings?.globalCss || ''}\n${buildThemeScopedCss(appData.visualSettings?.themeScopedCss)}\n${themeTypographyCss}`}
       />
       {/* Phone Container */}
       <div
@@ -1448,6 +1454,7 @@ export default function App() {
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
         }`}
+        style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
       >
         
         {/* Status Bar */}
