@@ -1,19 +1,14 @@
 import type { CoupleSpaceInitiativeExecutionRequest } from './coupleSpaceInitiativeExecutionRequest';
+import type {
+  SharedExecutionCapability,
+  SharedExecutionCapabilityKey,
+} from '../../../execution/capabilityTypes';
 
-export type CoupleSpaceInitiativeExecutorCapabilityKey =
-  | 'prompt_generation_auto_write'
-  | 'prompt_generation_draft'
-  | 'prompt_generation_reply'
-  | 'recording_confirmation'
-  | 'unsupported';
+export type CoupleSpaceInitiativeExecutorCapabilityKey = SharedExecutionCapabilityKey;
 
-export type CoupleSpaceInitiativeExecutorCapability = {
-  actionType: CoupleSpaceInitiativeExecutionRequest['envelope']['actionType'];
-  capabilityKey: CoupleSpaceInitiativeExecutorCapabilityKey;
-  executorName: string;
-  summary: string;
-  supportsExecution: boolean;
-};
+export type CoupleSpaceInitiativeExecutorCapability = SharedExecutionCapability<
+  CoupleSpaceInitiativeExecutionRequest['envelope']['actionType']
+>;
 
 export function getCoupleSpaceInitiativeExecutorCapability(
   request: CoupleSpaceInitiativeExecutionRequest | null,
