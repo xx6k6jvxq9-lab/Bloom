@@ -1672,6 +1672,7 @@ export function GroupChatSessionScreen({
           const senderBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(senderBubbleStyleCss));
           const hasSenderBubbleCustomization = !!senderBubbleStyleCss?.trim();
           const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
+          const effectiveBubbleColor = bubbleColor || senderBubbleColor;
           const shouldUseCustomMemberBubble =
             !msg.isSystem
             && !msg.imageUrl
@@ -1679,13 +1680,12 @@ export function GroupChatSessionScreen({
             && !isPendingMessage
             && !hasSenderBubbleCustomization
             && !(isUser ? false : senderCharacter?.bubbleImage)
-            && !senderBubbleColor
-            && !!bubbleColor;
-          const memberBubbleTextColor = shouldUseCustomMemberBubble ? getReadableTextColor(bubbleColor!) : '#111827';
+            && !!effectiveBubbleColor;
+          const memberBubbleTextColor = shouldUseCustomMemberBubble ? getReadableTextColor(effectiveBubbleColor!) : '#111827';
           const memberBubbleStyle = shouldUseCustomMemberBubble
             ? {
-                backgroundColor: bubbleColor!,
-                borderColor: bubbleColor!,
+                backgroundColor: effectiveBubbleColor!,
+                borderColor: effectiveBubbleColor!,
                 color: memberBubbleTextColor,
               }
             : undefined;
@@ -1766,7 +1766,7 @@ export function GroupChatSessionScreen({
                   return (
                   <GroupBubbleResolvedImageStyle value={!isUser ? senderCharacter?.bubbleImage : undefined}>
                     {(senderBubbleImageUrl) => {
-                      const hasSenderBubbleSurfaceCustomization = !!senderBubbleImageUrl || !!senderBubbleColor;
+                      const hasSenderBubbleSurfaceCustomization = !!senderBubbleImageUrl || (!!senderBubbleColor && !bubbleColor);
                       const hasSenderBubbleOverride =
                         !!senderBubbleStyleCss?.trim() || hasSenderBubbleSurfaceCustomization;
                       const shouldUseResolvedMemberBubble =
@@ -1776,12 +1776,12 @@ export function GroupChatSessionScreen({
                         && !isPendingMessage
                         && !hasSenderBubbleOverride
                         && !hasSenderBubbleSurfaceCustomization
-                        && !!bubbleColor;
-                      const resolvedMemberBubbleTextColor = shouldUseResolvedMemberBubble ? getReadableTextColor(bubbleColor!) : '#111827';
+                        && !!effectiveBubbleColor;
+                      const resolvedMemberBubbleTextColor = shouldUseResolvedMemberBubble ? getReadableTextColor(effectiveBubbleColor!) : '#111827';
                       const resolvedMemberBubbleStyle = shouldUseResolvedMemberBubble
                         ? {
-                            backgroundColor: bubbleColor!,
-                            borderColor: bubbleColor!,
+                            backgroundColor: effectiveBubbleColor!,
+                            borderColor: effectiveBubbleColor!,
                             color: resolvedMemberBubbleTextColor,
                         }
                         : undefined;

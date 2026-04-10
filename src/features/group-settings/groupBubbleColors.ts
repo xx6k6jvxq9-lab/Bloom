@@ -15,7 +15,7 @@ function normalizeBubbleColor(color?: string): string {
 export function sanitizeGroupMemberBubbleColors(
   group: Pick<ChatGroup, 'memberIds' | 'creatorId'> & { memberBubbleColors?: ChatGroup['memberBubbleColors'] },
 ): GroupMemberBubbleColor[] {
-  const allowedIds = new Set([group.creatorId, ...(group.memberIds || [])]);
+  const allowedIds = new Set(['user', group.creatorId, ...(group.memberIds || [])]);
 
   return (group.memberBubbleColors || [])
     .filter((item): item is NonNullable<ChatGroup['memberBubbleColors']>[number] => !!item)

@@ -63,7 +63,7 @@ function BubbleColorEditorSheet({
           <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="flex items-center gap-3">
               <span
-                className="h-8 w-8 rounded-full border border-black/10 shadow-sm"
+                className="h-8 w-8 rounded-full border border-zinc-300 bg-zinc-100 shadow-sm"
                 style={{ backgroundColor: color }}
               />
               <div>
@@ -167,7 +167,7 @@ export function GroupBubbleColorSettingsPage({
                   <div className="truncate text-[12px] text-zinc-500">{member.name}</div>
                   <div className="mt-2 flex items-center gap-2">
                     <span
-                      className="h-5 w-5 rounded-full border border-black/10"
+                      className="h-5 w-5 rounded-full border border-zinc-300 bg-zinc-100"
                       style={{ backgroundColor: member.bubbleColor || '#ffffff' }}
                     />
                     <span className="text-[12px] text-zinc-500">
@@ -178,7 +178,9 @@ export function GroupBubbleColorSettingsPage({
                 <button
                   type="button"
                   onClick={() => setEditingMemberId(member.id)}
-                  className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-700 transition-colors hover:bg-zinc-200"
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] text-zinc-700 transition-colors ${
+                    editingMemberId === member.id ? 'bg-zinc-200' : 'bg-zinc-100 hover:bg-zinc-200'
+                  }`}
                 >
                   <Pipette size={13} />
                   设置
