@@ -2211,7 +2211,7 @@ export function useGroupChatRuntime({
   ]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim()) return;
     if (!hasActiveConfig) {
       setError('\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u53ef\u7528\u7684 API');
       return;
@@ -2226,11 +2226,11 @@ export function useGroupChatRuntime({
       },
       promptText: input.trim(),
     });
-  }, [hasActiveConfig, input, isLoading, replyingTo, setError, submitUserMessage]);
+  }, [hasActiveConfig, input, replyingTo, setError, submitUserMessage]);
 
   const sendSpeechTranscript = useCallback(async (transcript: string) => {
     const trimmedTranscript = transcript.trim();
-    if (!trimmedTranscript || isLoading) return;
+    if (!trimmedTranscript) return;
     if (!hasActiveConfig) {
       setError('\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u53ef\u7528\u7684 API');
       return;
@@ -2246,10 +2246,10 @@ export function useGroupChatRuntime({
       },
       promptText: trimmedTranscript,
     });
-  }, [hasActiveConfig, isLoading, replyingTo, setError, setInput, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, setError, setInput, submitUserMessage]);
 
   const sendImageMessage = useCallback(async (base64String: string) => {
-    if (isLoading || !hasActiveConfig) return;
+    if (!hasActiveConfig) return;
 
     await submitUserMessage({
       message: {
@@ -2261,10 +2261,10 @@ export function useGroupChatRuntime({
       },
       promptText: '[sent an image]',
     });
-  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, submitUserMessage]);
 
   const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number) => {
-    if (isLoading || !hasActiveConfig) return;
+    if (!hasActiveConfig) return;
 
     await submitUserMessage({
       message: {
@@ -2278,10 +2278,10 @@ export function useGroupChatRuntime({
       },
       promptText: '[sent a voice message]',
     });
-  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, submitUserMessage]);
 
   const sendStickerMessage = useCallback(async (sticker: string) => {
-    if (isLoading || !hasActiveConfig) return;
+    if (!hasActiveConfig) return;
 
     const stickerLabel = inferStickerSemanticLabel(sticker);
 
@@ -2300,10 +2300,10 @@ export function useGroupChatRuntime({
         stickerLabel,
       }),
     });
-  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, submitUserMessage]);
 
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
-    if (isLoading || !hasActiveConfig) return;
+    if (!hasActiveConfig) return;
 
     await submitUserMessage({
       message: {
@@ -2315,7 +2315,7 @@ export function useGroupChatRuntime({
       },
       promptText: `[sent location] ${location.name}${location.address ? `, ${location.address}` : ''}`,
     });
-  }, [hasActiveConfig, isLoading, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, submitUserMessage]);
 
   return {
     isLoading,

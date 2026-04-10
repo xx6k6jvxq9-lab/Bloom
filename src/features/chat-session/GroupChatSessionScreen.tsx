@@ -1992,7 +1992,6 @@ export function GroupChatSessionScreen({
             <button
               onClick={() => void sendText()}
               className="chat-footer-send-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
-              disabled={isLoading}
             >
               <Send size={18} className="chat-footer-send-icon" />
             </button>
