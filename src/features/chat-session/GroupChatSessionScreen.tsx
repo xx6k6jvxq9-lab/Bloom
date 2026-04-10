@@ -106,6 +106,33 @@ function resolveGroupMessageSenderLabel(
   return '角色';
 }
 
+function formatChatMessageTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatChatDividerTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function shouldShowChatTimeDivider(
+  currentTimestamp: number,
+  previousTimestamp?: number,
+): boolean {
+  if (!previousTimestamp) {
+    return true;
+  }
+
+  const gapMs = currentTimestamp - previousTimestamp;
+  const crossedDay = new Date(currentTimestamp).toDateString() !== new Date(previousTimestamp).toDateString();
+  return crossedDay || gapMs >= 30 * 60 * 1000;
+}
+
 function buildInviteRuntimeMessages(params: {
   systemPrompt: string;
   history: ChatMessage[];
@@ -478,6 +505,8 @@ export function GroupChatSessionScreen({
       })
     : [];
   const showMentionPicker = mentionMatch !== null && mentionCandidates.length > 0;
+  const showChatTimeDividers = settings.showChatTimeDividers ?? true;
+  const showChatMessageTime = settings.showChatMessageTime ?? true;
   const chatFontFamily = getThemeSelectedFontStack(settings.visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
   const groupChatFontCss = chatFontFamily
@@ -1558,24 +1587,34 @@ export function GroupChatSessionScreen({
             && previousMessage.role === msg.role
             && previousResolved?.senderId === senderId
             && !shouldShowIndependentBlock;
+          const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
 
           const messageKey = `${msg.timestamp}-${msg.role}-${msg.senderCharacterId || senderId}-${idx}`;
 
           if (visualKind === 'notice') {
             return (
-              <div key={messageKey} className="flex justify-center py-1">
-                <div className="chat-notice-card relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
-                  <button
-                    type="button"
-                    onClick={() => deleteMessageByIndex(idx)}
-                    className="absolute right-2 top-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
-                    aria-label="删除通知"
-                    title="删除通知"
-                  >
-                    <X size={14} />
-                  </button>
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">NOTICE</div>
-                  <div className="text-[14px] leading-6 text-zinc-700">{content.replace(/^\[notice\]\s*/i, '')}</div>
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="chat-notice-card relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
+                    <button
+                      type="button"
+                      onClick={() => deleteMessageByIndex(idx)}
+                      className="absolute right-2 top-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+                      aria-label="删除通知"
+                      title="删除通知"
+                    >
+                      <X size={14} />
+                    </button>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">NOTICE</div>
+                    <div className="text-[14px] leading-6 text-zinc-700">{content.replace(/^\[notice\]\s*/i, '')}</div>
+                  </div>
                 </div>
               </div>
             );
@@ -1608,8 +1647,15 @@ export function GroupChatSessionScreen({
             : undefined;
 
           return (
+            <div key={messageKey}>
+              {shouldRenderTimeDivider && (
+                <div className="mb-3 flex justify-center">
+                  <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                    {formatChatDividerTime(msg.timestamp)}
+                  </div>
+                </div>
+              )}
             <div
-              key={messageKey}
               data-message-timestamp={msg.timestamp}
               data-message-text={msg.text}
               className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isGroupedWithPrevious ? 'mt-1.5' : 'mt-3'} ${
@@ -1819,7 +1865,13 @@ export function GroupChatSessionScreen({
                   </GroupBubbleResolvedImageStyle>
                   );
                 })()}
+                {showChatMessageTime && (
+                  <div className={`mt-1 px-1 text-[10px] text-zinc-400 ${isUser ? 'text-right' : 'text-left'}`}>
+                    {formatChatMessageTime(msg.timestamp)}
+                  </div>
+                )}
               </div>
+            </div>
             </div>
           );
         })}

@@ -863,6 +863,8 @@ export type AppSettings = {
   configs: ApiConfig[];
   sharedStickers?: string[];
   visualSettings?: VisualSettings;
+  showChatTimeDividers?: boolean;
+  showChatMessageTime?: boolean;
 };
 
 export type WalletCard = {

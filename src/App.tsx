@@ -217,6 +217,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   activeConfigId: 'default',
   configs: [DEFAULT_CONFIG],
   sharedStickers: [],
+  showChatTimeDividers: true,
+  showChatMessageTime: true,
 };
 
 const DEFAULT_DESKTOP_WALLPAPER = 'https://tse3.mm.bing.net/th/id/OIP.GdwwXxbY6ullokoEq_KO2gHaNK?rs=1&pid=ImgDetMain&o=7&rm=3';

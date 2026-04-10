@@ -1185,13 +1185,34 @@ export function ChatSettingsPanel({
                   <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
                     <Clock size={18} />
                   </div>
-                  <span className="text-[14px] text-zinc-700">显示发送时间</span>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">显示消息下方时间</span>
+                    <span className="text-[10px] text-zinc-400">消息底部显示时分，自己消息会和已读一起显示</span>
+                  </div>
                 </div>
                 <div 
-                  onClick={() => onUpdate({ ...character, showTime: !character.showTime })}
-                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.showTime ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  onClick={() => onUpdateSettings({ ...settings, showChatMessageTime: !(settings.showChatMessageTime ?? character.showTime ?? true) })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${(settings.showChatMessageTime ?? character.showTime ?? true) ? 'bg-zinc-900' : 'bg-zinc-200'}`}
                 >
-                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.showTime ? 'translate-x-4.5' : ''}`} />
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${(settings.showChatMessageTime ?? character.showTime ?? true) ? 'translate-x-4.5' : ''}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Clock size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">显示中间时间</span>
+                    <span className="text-[10px] text-zinc-400">第一条、跨较久或跨天时在聊天中间显示时间条</span>
+                  </div>
+                </div>
+                <div 
+                  onClick={() => onUpdateSettings({ ...settings, showChatTimeDividers: !(settings.showChatTimeDividers ?? true) })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${(settings.showChatTimeDividers ?? true) ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${(settings.showChatTimeDividers ?? true) ? 'translate-x-4.5' : ''}`} />
                 </div>
               </div>
 

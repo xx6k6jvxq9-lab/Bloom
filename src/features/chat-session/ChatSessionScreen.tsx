@@ -47,6 +47,33 @@ function getDirectReplyPreviewTextClass() {
   return 'mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words';
 }
 
+function formatChatMessageTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatChatDividerTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function shouldShowChatTimeDivider(
+  currentTimestamp: number,
+  previousTimestamp?: number,
+): boolean {
+  if (!previousTimestamp) {
+    return true;
+  }
+
+  const gapMs = currentTimestamp - previousTimestamp;
+  const crossedDay = new Date(currentTimestamp).toDateString() !== new Date(previousTimestamp).toDateString();
+  return crossedDay || gapMs >= 30 * 60 * 1000;
+}
+
 function BubbleThemeAnchors() {
   return (
     <>
@@ -956,6 +983,8 @@ export function ChatSessionScreen({
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
+  const showChatTimeDividers = settings.showChatTimeDividers ?? true;
+  const showChatMessageTime = settings.showChatMessageTime ?? character.showTime ?? true;
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
   const directChatFontCss = chatFontFamily
@@ -1214,18 +1243,37 @@ export function ChatSessionScreen({
 
         {history.map((msg, i) => {
           const messageSelectionKey = getMessageSelectionKey(msg);
+          const previousMessage = i > 0 ? history[i - 1] : undefined;
+          const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
           if (msg.isSystem) {
             return (
-              <div key={i} className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
-                <div className="bg-zinc-200/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] text-zinc-500 font-medium">
-                  {msg.text}
+              <div key={i}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+                  <div className="bg-zinc-200/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] text-zinc-500 font-medium">
+                    {msg.text}
+                  </div>
                 </div>
               </div>
             );
           }
 
           return (
-            <div key={i} className={`w-full flex items-end gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-4`} style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+            <div key={i}>
+              {shouldRenderTimeDivider && (
+                <div className="mb-3 flex justify-center">
+                  <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                    {formatChatDividerTime(msg.timestamp)}
+                  </div>
+                </div>
+              )}
+            <div className={`w-full flex items-end gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-4`} style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
                {multiSelectMode && (
                  <div className={`flex items-center px-2 ${msg.role === 'user' ? 'order-first mr-2' : 'order-first mr-2'}`}>
                    <button 
@@ -1338,9 +1386,9 @@ export function ChatSessionScreen({
                                   </div>
                                 </div>
                               </div>
-                              {character.showTime && (
+                              {showChatMessageTime && (
                                 <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatChatMessageTime(msg.timestamp)}
                                 </span>
                               )}
                             </div>
@@ -1377,9 +1425,9 @@ export function ChatSessionScreen({
                                   </div>
                                 </div>
                               </div>
-                              {character.showTime && (
+                              {showChatMessageTime && (
                                 <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatChatMessageTime(msg.timestamp)}
                                 </span>
                               )}
                             </div>
@@ -1405,9 +1453,9 @@ export function ChatSessionScreen({
                                     translation={gameCardPayload.translation}
                                   />
                                 </div>
-                                {character.showTime && (
+                                {showChatMessageTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatChatMessageTime(msg.timestamp)}
                                   </span>
                                 )}
                               </div>
@@ -1458,10 +1506,10 @@ export function ChatSessionScreen({
                                     handleMessageClick(e, i);
                                   }}
                                 />
-                                {(character.showTime || msg.role === 'user') && (
+                                {(showChatMessageTime || msg.role === 'user') && (
                                   <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                                    {character.showTime && (
-                                      <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    {showChatMessageTime && (
+                                      <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.role === 'user' && (
                                       <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
@@ -1518,10 +1566,10 @@ export function ChatSessionScreen({
                                     </span>
                                   ) : null}
                                 </div>
-                                {(character.showTime || msg.role === 'user') && (
+                                {(showChatMessageTime || msg.role === 'user') && (
                                   <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                                    {character.showTime && (
-                                      <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    {showChatMessageTime && (
+                                      <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.role === 'user' && (
                                       <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
@@ -1624,10 +1672,10 @@ export function ChatSessionScreen({
                                       );
                                     })()}
                                   </div>
-                                  {(character.showTime || msg.role === 'user') && (
+                                  {(showChatMessageTime || msg.role === 'user') && (
                                     <div className={`text-[10px] text-zinc-400 shrink-0 mt-0.5 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                                      {character.showTime && (
-                                        <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                      {showChatMessageTime && (
+                                        <span>{formatChatMessageTime(msg.timestamp)}</span>
                                       )}
                                       {msg.role === 'user' && (
                                         <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
@@ -1672,9 +1720,9 @@ export function ChatSessionScreen({
                                     <ChevronRight size={12} className="text-zinc-400" />
                                   </div>
                                 </div>
-                                {character.showTime && (
+                                {showChatMessageTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatChatMessageTime(msg.timestamp)}
                                   </span>
                                 )}
                               </div>
@@ -1727,9 +1775,9 @@ export function ChatSessionScreen({
                                     <ChevronRight size={12} className="text-zinc-400" />
                                   </div>
                                 </div>
-                                {character.showTime && (
+                                {showChatMessageTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatChatMessageTime(msg.timestamp)}
                                   </span>
                                 )}
                               </div>
@@ -1781,9 +1829,9 @@ export function ChatSessionScreen({
                                     </div>
                                   )}
                                 </div>
-                                {character.showTime && (
+                                {showChatMessageTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatChatMessageTime(msg.timestamp)}
                                   </span>
                                 )}
                               </div>
@@ -1853,9 +1901,9 @@ export function ChatSessionScreen({
                                 </div>
                                   );
                                 })()}
-                                {character.showTime && (
+                                {showChatMessageTime && (
                                   <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatChatMessageTime(msg.timestamp)}
                                   </span>
                                 )}
                               </div>
@@ -1867,6 +1915,7 @@ export function ChatSessionScreen({
                   )}
                 </div>
               </div>
+            </div>
             </div>
           );
         })}
