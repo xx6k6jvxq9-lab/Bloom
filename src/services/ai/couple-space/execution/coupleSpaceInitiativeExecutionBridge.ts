@@ -3,6 +3,7 @@ import type {
   CoupleSpaceInitiativeExecutionPayloadField,
   CoupleSpaceInitiativeExecutionPlan,
 } from './coupleSpaceInitiativeExecutionPlan';
+import type { SharedExecutionRequestKind } from '../../../execution/commitRouteTypes';
 
 export type CoupleSpaceInitiativeBridgeInputField = {
   key: string;
@@ -18,7 +19,7 @@ export type CoupleSpaceInitiativeBridgeMissingInput = {
 };
 
 export type CoupleSpaceInitiativeBridgeOutputShape = {
-  kind: 'direct-write-request' | 'draft-creation-request' | 'confirmation-request';
+  kind: SharedExecutionRequestKind;
   fields: Array<{
     key: string;
     required: boolean;

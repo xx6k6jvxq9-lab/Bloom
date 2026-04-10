@@ -1,7 +1,11 @@
 import type { CoupleSpaceCommitMode } from '../../../../types';
 import type { CoupleSpaceInitiativeExecutionPlan } from '../execution/coupleSpaceInitiativeExecutionPlan';
+import type {
+  SharedCommitArtifactKind,
+  SharedCommitChannel,
+} from '../../../execution/commitRouteTypes';
 
-export type CoupleSpaceInitiativeCommitChannel = 'direct_write' | 'draft_buffer' | 'confirmation_queue';
+export type CoupleSpaceInitiativeCommitChannel = SharedCommitChannel;
 
 export type CoupleSpaceInitiativeCommitSink = {
   name: string;
@@ -17,7 +21,7 @@ export type CoupleSpaceInitiativeCommitArtifactField = {
 };
 
 export type CoupleSpaceInitiativeCommitArtifactShape = {
-  kind: 'direct-write-artifact' | 'draft-artifact' | 'confirmation-request-artifact';
+  kind: SharedCommitArtifactKind;
   fields: CoupleSpaceInitiativeCommitArtifactField[];
 };
 
