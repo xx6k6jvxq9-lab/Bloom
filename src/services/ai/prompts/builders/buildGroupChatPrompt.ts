@@ -16,6 +16,12 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.sharedRecentRelationshipSummary
       ? `跨场景共享关系余波：${sceneInput.recentContext.sharedRecentRelationshipSummary}`
       : '',
+    sceneInput.recentContext?.relationshipAwareness
+      ? `群内关系意识：\n${sceneInput.recentContext.relationshipAwareness}`
+      : '',
+    sceneInput.recentContext?.groupRoleAwareness
+      ? `你在这个群里的位置感：${sceneInput.recentContext.groupRoleAwareness}`
+      : '',
     sceneInput.recentContext?.longTermMemoryProfile
       ? `长期记忆印象：${sceneInput.recentContext.longTermMemoryProfile}`
       : '',

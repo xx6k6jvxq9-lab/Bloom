@@ -32,6 +32,8 @@ export type GroupChatSceneInput = {
     boundaryPack?: string;
     publicAcquaintanceSummary?: string;
     sharedRecentRelationshipSummary?: string;
+    relationshipAwareness?: string;
+    groupRoleAwareness?: string;
   };
   historyTranscript: string;
 };
@@ -203,6 +205,85 @@ function buildPeerAwareness(
       const familiarity = seedMap.get(`${speaker.id}::${member.id}`) || 'strangers';
       return `${member.name}：${getFamiliarityLabel(familiarity)}`;
     });
+}
+
+function getAwarenessSourceLabel(params: {
+  seeded: GroupMemberFamiliarity | undefined;
+  effective: GroupMemberFamiliarity;
+}): string {
+  if (params.seeded && params.seeded !== 'strangers') {
+    return '这段认识在进群前就已经存在';
+  }
+
+  if (params.effective !== 'strangers') {
+    return '这段熟悉感更多是进群后慢慢形成的';
+  }
+
+  return '目前还没有明显熟悉基础';
+}
+
+function buildRelationshipAwareness(
+  speaker: Character,
+  members: Character[],
+  group?: ChatGroup,
+  history: ChatMessage[] = [],
+): string | undefined {
+  const rawSeedMap = getSeedMap(group);
+  const effectiveSeedMap = getEffectiveSeedMap(speaker, members, group, history);
+  const lines = members
+    .filter((member) => member.id !== speaker.id)
+    .map((member) => {
+      const key = `${speaker.id}::${member.id}`;
+      const effective = effectiveSeedMap.get(key) || 'strangers';
+      const seeded = rawSeedMap.get(key);
+      return `${member.name}：${getFamiliarityLabel(effective)}；${getAwarenessSourceLabel({
+        seeded,
+        effective,
+      })}`;
+    });
+
+  return lines.length > 0
+    ? [
+        '你进群时会自然带着对成员关系的判断，但这只是关系意识，不是硬规则。',
+        ...lines,
+      ].join('\n')
+    : undefined;
+}
+
+function buildGroupRoleAwareness(
+  speaker: Character,
+  members: Character[],
+  group?: ChatGroup,
+  history: ChatMessage[] = [],
+): string | undefined {
+  const effectiveSeedMap = getEffectiveSeedMap(speaker, members, group, history);
+  const recentMessages = history
+    .filter((message) => !message.isSystem)
+    .filter((message) => message.role === 'model' && !!message.senderCharacterId)
+    .slice(-24);
+  const speakerRecentCount = recentMessages.filter((message) => message.senderCharacterId === speaker.id).length;
+  const familiarCount = members
+    .filter((member) => member.id !== speaker.id)
+    .filter((member) => (effectiveSeedMap.get(`${speaker.id}::${member.id}`) || 'strangers') === 'familiar')
+    .length;
+  const awareCount = members
+    .filter((member) => member.id !== speaker.id)
+    .filter((member) => {
+      const familiarity = effectiveSeedMap.get(`${speaker.id}::${member.id}`) || 'strangers';
+      return familiarity === 'aware';
+    })
+    .length;
+
+  let position = '在这个群里你更像还在观察气氛的人';
+  if (group?.groupStage === 'familiar' && familiarCount >= 2) {
+    position = '在这个群里你更像已经融进去的熟人局成员';
+  } else if (speakerRecentCount >= 4 && (familiarCount >= 1 || awareCount >= 2)) {
+    position = '在这个群里你更像会自然接话、已经有存在感的人';
+  } else if (group?.groupStage === 'warming' || awareCount >= 1) {
+    position = '在这个群里你更像半熟状态下会看人和气氛开口的人';
+  }
+
+  return `${position}。这只是在场位置感，不是强制要求；最后仍然按你自己的人设和当下气氛说话。`;
 }
 
 function buildRelationshipSummary(
@@ -396,6 +477,8 @@ export function buildGroupChatSceneInput(
       boundaryPack: characterContext.boundaryPack,
       publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
+      relationshipAwareness: buildRelationshipAwareness(options.speaker, options.members, options.group, options.history),
+      groupRoleAwareness: buildGroupRoleAwareness(options.speaker, options.members, options.group, options.history),
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),
   };
