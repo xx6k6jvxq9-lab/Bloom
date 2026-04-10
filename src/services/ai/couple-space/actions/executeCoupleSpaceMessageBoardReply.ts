@@ -1,5 +1,9 @@
 import type { CoupleSpaceData } from '../../../../types';
 import { applyCoupleSpaceDirectWriteArtifact } from '../execution/coupleSpaceInitiativeDirectWriteSink';
+import {
+  createDirectWriteExecutionBoundary,
+  type CoupleSpaceInitiativeExecutionBoundary,
+} from '../execution/coupleSpaceInitiativeExecutionBoundary';
 import type { CoupleSpaceInitiativeExecutionContext } from '../execution/coupleSpaceInitiativeExecutor';
 import type { CoupleSpaceInitiativeExecutionRequest } from '../execution/coupleSpaceInitiativeExecutionRequest';
 import { createCoupleSpacePromptGenerationReplyExecutor } from '../prompt/coupleSpacePromptGenerationReplyExecutor';
@@ -18,6 +22,7 @@ export type ExecuteCoupleSpaceMessageBoardReplyResult = {
   reason: string;
   nextCoupleSpace: CoupleSpaceData;
   artifactContent?: string;
+  executionBoundary: CoupleSpaceInitiativeExecutionBoundary;
 };
 
 /**
@@ -31,6 +36,7 @@ export type ExecuteCoupleSpaceMessageBoardReplyResult = {
 export async function executeCoupleSpaceMessageBoardReply(
   input: ExecuteCoupleSpaceMessageBoardReplyInput,
 ): Promise<ExecuteCoupleSpaceMessageBoardReplyResult> {
+  const executionBoundary = createDirectWriteExecutionBoundary('couple-space-direct-write-sink');
   const executor = createCoupleSpacePromptGenerationReplyExecutor();
   const executorResult = await executor.execute(input.request, input.context);
 
@@ -39,6 +45,7 @@ export async function executeCoupleSpaceMessageBoardReply(
       executorStatus: executorResult.status,
       reason: executorResult.reason,
       nextCoupleSpace: input.coupleSpace,
+      executionBoundary,
     };
   }
 
@@ -61,5 +68,6 @@ export async function executeCoupleSpaceMessageBoardReply(
       executorResult.artifact.kind === 'generated_text'
         ? executorResult.artifact.content
         : undefined,
+    executionBoundary,
   };
 }

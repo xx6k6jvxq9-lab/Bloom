@@ -1,4 +1,8 @@
 import type { CoupleSpaceInitiativeExecutionContext } from '../execution/coupleSpaceInitiativeExecutor';
+import {
+  createDraftExecutionBoundary,
+  type CoupleSpaceInitiativeExecutionBoundary,
+} from '../execution/coupleSpaceInitiativeExecutionBoundary';
 import type { CoupleSpaceInitiativeExecutionRequest } from '../execution/coupleSpaceInitiativeExecutionRequest';
 import { createCoupleSpaceDraftArtifact } from '../execution/coupleSpaceInitiativeDraftSink';
 import { createCoupleSpacePromptGenerationDraftExecutor } from '../prompt/coupleSpacePromptGenerationDraftExecutor';
@@ -14,6 +18,7 @@ export type ExecuteCoupleSpaceCoNoteDraftResult = {
   sinkStatus?: 'created' | 'rejected' | 'unsupported';
   reason: string;
   draftContent?: string;
+  executionBoundary: CoupleSpaceInitiativeExecutionBoundary;
 };
 
 /**
@@ -27,6 +32,7 @@ export type ExecuteCoupleSpaceCoNoteDraftResult = {
 export async function executeCoupleSpaceCoNoteDraft(
   input: ExecuteCoupleSpaceCoNoteDraftInput,
 ): Promise<ExecuteCoupleSpaceCoNoteDraftResult> {
+  const executionBoundary = createDraftExecutionBoundary('couple-space-draft-sink');
   const executor = createCoupleSpacePromptGenerationDraftExecutor();
   const executorResult = await executor.execute(input.request, input.context);
 
@@ -34,6 +40,7 @@ export async function executeCoupleSpaceCoNoteDraft(
     return {
       executorStatus: executorResult.status,
       reason: executorResult.reason,
+      executionBoundary,
     };
   }
 
@@ -50,5 +57,6 @@ export async function executeCoupleSpaceCoNoteDraft(
         ? 'Generated and converted one proactive co-note into a draft artifact.'
         : sinkResult.reason,
     draftContent: sinkResult.draftArtifact?.content,
+    executionBoundary,
   };
 }

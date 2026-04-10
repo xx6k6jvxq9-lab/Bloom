@@ -1,4 +1,8 @@
 import type { CoupleSpaceInitiativeExecutionContext } from '../execution/coupleSpaceInitiativeExecutor';
+import {
+  createConfirmationExecutionBoundary,
+  type CoupleSpaceInitiativeExecutionBoundary,
+} from '../execution/coupleSpaceInitiativeExecutionBoundary';
 import type { CoupleSpaceInitiativeExecutionRequest } from '../execution/coupleSpaceInitiativeExecutionRequest';
 import { createCoupleSpaceConfirmationArtifact } from '../execution/coupleSpaceInitiativeConfirmationSink';
 import { createCoupleSpaceRecordingConfirmationExecutor } from '../prompt/coupleSpaceRecordingConfirmationExecutor';
@@ -14,6 +18,7 @@ export type ExecuteCoupleSpaceLedgerConfirmationResult = {
   sinkStatus?: 'created' | 'rejected' | 'unsupported';
   reason: string;
   confirmationSummary?: string;
+  executionBoundary: CoupleSpaceInitiativeExecutionBoundary;
 };
 
 /**
@@ -27,6 +32,9 @@ export type ExecuteCoupleSpaceLedgerConfirmationResult = {
 export async function executeCoupleSpaceLedgerConfirmation(
   input: ExecuteCoupleSpaceLedgerConfirmationInput,
 ): Promise<ExecuteCoupleSpaceLedgerConfirmationResult> {
+  const executionBoundary = createConfirmationExecutionBoundary(
+    'couple-space-confirmation-request-sink',
+  );
   const executor = createCoupleSpaceRecordingConfirmationExecutor();
   const executorResult = await executor.execute(input.request, input.context);
 
@@ -34,6 +42,7 @@ export async function executeCoupleSpaceLedgerConfirmation(
     return {
       executorStatus: executorResult.status,
       reason: executorResult.reason,
+      executionBoundary,
     };
   }
 
@@ -50,5 +59,6 @@ export async function executeCoupleSpaceLedgerConfirmation(
         ? 'Prepared one ledger confirmation request artifact without committing business data.'
         : sinkResult.reason,
     confirmationSummary: sinkResult.confirmationArtifact?.payloadSummary,
+    executionBoundary,
   };
 }
