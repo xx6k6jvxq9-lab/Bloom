@@ -177,6 +177,96 @@ function canAttachSelectorToScope(selector: string): boolean {
   return selector.startsWith('.') && !/[ >+~]/.test(selector) && !selector.startsWith('..');
 }
 
+const GLOBAL_BUBBLE_ROOT_SELECTOR = '.chat-bubble';
+const BUBBLE_ROOT_ALIASES = [
+  '.chat-bubble',
+  '.message-bubble',
+  '.user-bubble',
+  '.bot-bubble',
+  '.chat-bubble-left',
+  '.chat-bubble-right',
+  '.left',
+  '.right',
+  '.chat-loading-bubble',
+];
+const BUBBLE_CHILD_ALIASES = [
+  '.corner',
+  '.bubble-corner',
+  '.sticker-skull',
+  '.bubble-sticker-skull',
+];
+const BUBBLE_DESCENDANT_ALIASES = [
+  '.chat-message-image',
+  '.chat-transfer-card',
+  '.chat-transfer-card-header',
+  '.chat-transfer-card-icon',
+  '.chat-transfer-card-content',
+  '.chat-transfer-card-footer',
+];
+
+function escapeSelectorFragment(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function selectorStartsWithAlias(selector: string, alias: string): boolean {
+  return new RegExp(`^${escapeSelectorFragment(alias)}(?=$|[\\s>+~:#.\\[])`).test(selector);
+}
+
+function selectorIncludesAlias(selector: string, aliases: string[]): boolean {
+  return aliases.some((alias) => selector.includes(alias));
+}
+
+function getBubbleScopeRoot(scopeClass: string, variantSelector?: string): string {
+  return variantSelector ? `${scopeClass} ${variantSelector}` : `${scopeClass} ${GLOBAL_BUBBLE_ROOT_SELECTOR}`;
+}
+
+function buildScopedBubbleSelector(
+  selector: string,
+  scopeClass: string,
+  variantSelector?: string,
+): string {
+  const bubbleScopeRoot = getBubbleScopeRoot(scopeClass, variantSelector);
+  const variantAliases = variantSelector ? getVariantAliasSelectors(variantSelector) : [];
+
+  if (!selector) {
+    return '';
+  }
+
+  if (selector.startsWith(scopeClass)) {
+    return selector;
+  }
+
+  if (selector.startsWith('&')) {
+    return `${bubbleScopeRoot}${selector.slice(1)}`;
+  }
+
+  if (selector.startsWith(':') || selector.startsWith('::')) {
+    return `${bubbleScopeRoot}${selector}`;
+  }
+
+  if (variantAliases.some((alias) => selectorIncludesAlias(selector, [alias]))) {
+    return `${scopeClass} ${selector}`;
+  }
+
+  if (BUBBLE_ROOT_ALIASES.some((alias) => selectorStartsWithAlias(selector, alias))) {
+    return variantSelector ? `${bubbleScopeRoot} ${selector}` : `${scopeClass} ${selector}`;
+  }
+
+  if (BUBBLE_CHILD_ALIASES.some((alias) => selectorStartsWithAlias(selector, alias))) {
+    return `${bubbleScopeRoot} ${selector}`;
+  }
+
+  if (selectorIncludesAlias(selector, [...BUBBLE_ROOT_ALIASES, ...BUBBLE_CHILD_ALIASES, ...BUBBLE_DESCENDANT_ALIASES])) {
+    return `${scopeClass} ${selector}`;
+  }
+
+  if (selector.startsWith('.') && canAttachSelectorToScope(selector)) {
+    return `${bubbleScopeRoot} ${selector}`;
+  }
+
+  return `${bubbleScopeRoot} ${selector}`;
+}
+
 function getVariantAliasSelectors(variantSelector: string): string[] {
   if (variantSelector === '.bot-bubble') {
     return [
@@ -211,28 +301,7 @@ function buildScopedVariantSelector(
   scopeClass: string,
   variantSelector: string,
 ): string {
-  if (!selector) {
-    return '';
-  }
-
-  if (selector.startsWith(scopeClass)) {
-    return selector;
-  }
-
-  if (selector.startsWith('&')) {
-    return `${scopeClass} ${variantSelector}${selector.slice(1)}`;
-  }
-
-  const variantAliases = getVariantAliasSelectors(variantSelector);
-  if (variantAliases.some((alias) => selector.includes(alias))) {
-    return `${scopeClass} ${selector}`;
-  }
-
-  if (selector.startsWith('.') && !/[ >+~]/.test(selector)) {
-    return `${scopeClass} ${variantSelector}${selector}, ${scopeClass} ${variantSelector} ${selector}`;
-  }
-
-  return `${scopeClass} ${variantSelector} ${selector}`;
+  return buildScopedBubbleSelector(selector, scopeClass, variantSelector);
 }
 
 export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeClass: string): string {
@@ -242,7 +311,12 @@ export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeCl
   }
 
   return normalized.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
-    const scopedSelectors = scopeSelectorList(selectors, scopeClass);
+    const scopedSelectors = selectors
+      .split(',')
+      .map((selector) => selector.trim())
+      .filter(Boolean)
+      .map((selector) => buildScopedBubbleSelector(selector, scopeClass))
+      .join(', ');
     return `${prefix} ${scopedSelectors}{`;
   });
 }
