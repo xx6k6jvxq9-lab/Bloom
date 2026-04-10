@@ -37,7 +37,7 @@ import {
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
-import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
@@ -78,6 +78,10 @@ function toPromptHistoryContent(message: ChatMessage): string {
       return describeStickerMessageForPrompt(message);
     }
     return '[sent an image]';
+  }
+
+  if (message.role === 'user') {
+    return normalizeBracketActionTextForPrompt(message.text || '');
   }
 
   return message.text;
