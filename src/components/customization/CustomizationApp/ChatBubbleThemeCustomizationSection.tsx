@@ -44,7 +44,7 @@ function CodeEditor({
       autoCapitalize="off"
       autoCorrect="off"
       autoComplete="off"
-      className={`${heightClass} w-full resize-y rounded-2xl border border-zinc-800 bg-[#111214] px-4 py-3 font-mono text-[13px] leading-6 text-zinc-50 caret-white outline-none transition-colors placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-700`}
+      className={`${heightClass} w-full resize-y rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[13px] leading-6 text-zinc-800 caret-zinc-900 outline-none transition-colors placeholder:text-zinc-400 shadow-inner shadow-white/60 focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-200`}
     />
   );
 }
@@ -165,6 +165,8 @@ export function ChatBubbleThemeCustomizationSection({
   const previewModelBubbleThemeCss = buildScopedBubbleVariantCss(settings.chat?.modelBubbleStyleCss, '.bubble-theme-preview', '.bot-bubble');
   const previewUserBubbleThemeCss = buildScopedBubbleVariantCss(settings.chat?.userBubbleStyleCss, '.bubble-theme-preview', '.user-bubble');
   const previewHasThemeCss = hasBubbleThemeCss(settings.chat?.bubbleStyleCss);
+  const previewHasModelThemeCss = hasBubbleThemeCss(settings.chat?.modelBubbleStyleCss);
+  const previewHasUserThemeCss = hasBubbleThemeCss(settings.chat?.userBubbleStyleCss);
   const previewCommonBubbleStyle = parseBubbleStyleCss(settings.chat?.bubbleStyleCss);
   const previewModelBubbleStyle = {
     ...previewCommonBubbleStyle,
@@ -190,11 +192,11 @@ export function ChatBubbleThemeCustomizationSection({
                 ? {}
                 : {
                     borderRadius: settings.chat.messageBorderRadius,
-                    backgroundColor: settings.chat.messageBackgroundColorUser,
+                    ...(previewHasUserThemeCss ? {} : { backgroundColor: settings.chat.messageBackgroundColorUser }),
                   }),
               ...previewUserBubbleStyle,
             }}
-            className="chat-bubble message-bubble user-bubble right relative px-4 py-2 text-sm text-white"
+            className="chat-bubble message-bubble user-bubble right chat-bubble-right relative px-4 py-2 text-sm text-white"
           >
             <PreviewAnchors />
             你好！
@@ -207,14 +209,18 @@ export function ChatBubbleThemeCustomizationSection({
                 ? {}
                 : {
                     borderRadius: settings.chat.messageBorderRadius,
-                    backgroundColor: settings.chat.messageBackgroundColorModel,
-                    backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
+                    ...(previewHasModelThemeCss
+                      ? {}
+                      : {
+                          backgroundColor: settings.chat.messageBackgroundColorModel,
+                          backgroundImage: resolvedChatBubbleBackgroundUrl ? `url(${resolvedChatBubbleBackgroundUrl})` : undefined,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }),
                   }),
               ...previewModelBubbleStyle,
             }}
-            className="chat-bubble message-bubble bot-bubble left relative border border-zinc-200 px-4 py-2 text-sm text-zinc-800"
+            className="chat-bubble message-bubble bot-bubble left chat-bubble-left relative border border-zinc-200 px-4 py-2 text-sm text-zinc-800"
           >
             <PreviewAnchors />
             你好，有什么可以帮你的吗？
@@ -261,8 +267,8 @@ export function ChatBubbleThemeCustomizationSection({
       <div className="space-y-3">
         <div className="inline-flex rounded-2xl bg-zinc-100 p-1">
           {[
-            { key: 'global', label: '全局主题' },
-            { key: 'local', label: '局部覆盖' },
+            { key: 'global', label: '全局气泡' },
+            { key: 'local', label: '局部气泡' },
             { key: 'targets', label: '识别对象' },
           ].map((item) => (
             <button
@@ -283,18 +289,18 @@ export function ChatBubbleThemeCustomizationSection({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <label className="text-xs font-bold text-zinc-500">气泡主题 CSS</label>
-                <p className="mt-1 text-xs text-zinc-500">支持完整 CSS、伪元素、`.corner`、`.sticker-skull` 和左右气泡选择器。</p>
+                <label className="text-xs font-bold text-zinc-500">全局气泡 CSS</label>
+                <p className="mt-1 text-xs text-zinc-500">只作用于消息气泡及其内部元素，不影响整个聊天主题。支持 `.chat-bubble`、`.message-bubble`、`.corner`、`.sticker-skull` 和左右气泡选择器。</p>
               </div>
               <ImportStyleButton
-                label="导入主题"
+                label="导入气泡"
                 onImport={(content) => setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: content } })}
               />
             </div>
             <CodeEditor
               value={settings.chat.bubbleStyleCss || ''}
               onChange={(nextValue) => setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: nextValue } })}
-              placeholder={'/* 支持 .chat-bubble / .message-bubble / .user-bubble / .bot-bubble */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  position: relative;\n  border-radius: 22px;\n}\n\n.corner {\n  opacity: 1;\n}'}
+              placeholder={'/* 只作用于气泡及气泡内容 */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  position: relative;\n  border-radius: 22px;\n}\n\n.corner {\n  opacity: 1;\n}'}
               heightClass="h-64"
             />
           </div>
