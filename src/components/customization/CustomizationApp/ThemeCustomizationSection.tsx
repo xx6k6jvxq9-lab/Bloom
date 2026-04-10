@@ -3,7 +3,9 @@ import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'rea
 import type { VisualSettings } from '../../../types';
 import { showInAppConfirm } from '../../../utils';
 import { buildThemeScopedCss } from '../../../features/theme/themeScopedCss';
+import { buildThemePreviewCss } from '../../../features/theme/themeTypography';
 import {
+  DISABLED_THEME_SCOPE_TARGET_IDS,
   THEME_SCOPE_GROUPS,
   THEME_SCOPE_TARGETS,
   type ThemeScopeTargetId,
@@ -17,13 +19,30 @@ type ImportedThemePayload = {
   >;
 };
 
+const disabledThemeScopeTargetIds = new Set<ThemeScopeTargetId>(DISABLED_THEME_SCOPE_TARGET_IDS);
+
+function sanitizeThemeScopedCss(themeScopedCss?: Record<string, string>) {
+  if (!themeScopedCss) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(themeScopedCss).filter(([targetId, value]) => {
+      if (disabledThemeScopeTargetIds.has(targetId as ThemeScopeTargetId)) {
+        return false;
+      }
+      return typeof value === 'string' && value.trim().length > 0;
+    }),
+  ) as Record<string, string>;
+}
+
 function buildThemeExportPayload(settings: VisualSettings) {
   return {
     version: 5,
     exportedAt: new Date().toISOString(),
     theme: {
       globalCss: settings.globalCss || '',
-      themeScopedCss: settings.themeScopedCss || {},
+      themeScopedCss: sanitizeThemeScopedCss(settings.themeScopedCss),
       themeTypography: settings.themeTypography || {},
       chat: settings.chat,
       desktop: settings.desktop,
@@ -31,6 +50,14 @@ function buildThemeExportPayload(settings: VisualSettings) {
       dynamics: settings.dynamics,
     },
   };
+}
+
+function buildThemeWorkbenchPreviewCss(rawCss: string): string {
+  if (!rawCss.trim()) {
+    return '';
+  }
+
+  return buildThemePreviewCss(rawCss).replace(/\.chat-bubble-theme-scope\b/g, '.theme-preview-scope');
 }
 
 function PreviewAnchors() {
@@ -123,14 +150,14 @@ function CodeEditor({
       autoCapitalize="off"
       autoCorrect="off"
       autoComplete="off"
-      className={`${heightClass} w-full resize-y rounded-[22px] border border-zinc-800 bg-[#111214] px-4 py-4 font-mono text-[13px] leading-6 text-zinc-50 caret-white outline-none transition-colors placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-700`}
+      className={`${heightClass} w-full resize-y rounded-[22px] border border-zinc-200 bg-zinc-50 px-4 py-4 font-mono text-[13px] leading-6 text-zinc-800 caret-zinc-900 outline-none transition-colors placeholder:text-zinc-400 shadow-inner shadow-white/60 focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-200`}
     />
   );
 }
 
 function ThemeWorkbenchPreview({ previewCss }: { previewCss: string }) {
   return (
-    <div className="theme-live-preview chat-bubble-theme-scope relative overflow-hidden rounded-[24px] border border-zinc-100 bg-zinc-50 shadow-sm">
+    <div className="theme-live-preview theme-preview-scope relative overflow-hidden rounded-[24px] border border-zinc-100 bg-zinc-50 shadow-sm">
       {previewCss ? <style>{previewCss}</style> : null}
       <div
         className="pointer-events-none absolute inset-0 opacity-80"
@@ -202,7 +229,7 @@ function ScopePreview({
   }
 
   return (
-    <div className="theme-live-preview chat-bubble-theme-scope relative overflow-hidden rounded-[24px] border border-zinc-100 bg-zinc-50 p-4 shadow-sm">
+    <div className="theme-live-preview theme-preview-scope relative overflow-hidden rounded-[24px] border border-zinc-100 bg-zinc-50 p-4 shadow-sm">
       {previewCss ? <style>{previewCss}</style> : null}
       <div
         className="pointer-events-none absolute inset-0 opacity-85"
@@ -318,6 +345,7 @@ function GlobalThemePanel({
 }) {
   const previewCss = [settings.globalCss || '', buildThemeScopedCss(settings.themeScopedCss)]
     .filter(Boolean)
+    .map((css) => buildThemeWorkbenchPreviewCss(css))
     .join('\n\n');
 
   return (
@@ -338,7 +366,7 @@ function GlobalThemePanel({
         <CodeEditor
           value={settings.globalCss || ''}
           onChange={(nextValue) => setSettings({ ...settings, globalCss: nextValue })}
-          placeholder={':root {\n  --theme-accent: #f7dce6;\n  --theme-radius: 22px;\n}\n\nbody {\n  color: #4e4a4d;\n}\n\n.chat-bubble-theme-scope .chat-session-header {\n  background: rgba(255,255,255,0.78);\n  backdrop-filter: blur(18px);\n}'}
+          placeholder={':root {\n  --theme-accent: #f7dce6;\n  --theme-radius: 22px;\n}\n\nbody {\n  color: #4e4a4d;\n  background: linear-gradient(180deg, #fffafc 0%, #f7f5ff 100%);\n}\n\n.chat-session-header {\n  background: rgba(255,255,255,0.78);\n  backdrop-filter: blur(18px);\n}'}
         />
       </PanelCard>
     </div>
@@ -352,12 +380,23 @@ function ScopePanel({
   settings: VisualSettings;
   setSettings: (settings: VisualSettings) => void;
 }) {
-  const [activeScopeTargetId, setActiveScopeTargetId] = useState<ThemeScopeTargetId>('chatHeaderBar');
-  const activeScopeTarget = THEME_SCOPE_TARGETS[activeScopeTargetId];
-  const activeScopeCss = settings.themeScopedCss?.[activeScopeTargetId] || '';
+  const availableScopeGroups = THEME_SCOPE_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((itemId) => !disabledThemeScopeTargetIds.has(itemId)),
+    }))
+    .filter((group) => group.items.length > 0);
+  const availableScopeTargetIds = availableScopeGroups.flatMap((group) => group.items);
+  const fallbackScopeTargetId = availableScopeTargetIds[0] || 'rootVariables';
+  const [activeScopeTargetId, setActiveScopeTargetId] = useState<ThemeScopeTargetId>(fallbackScopeTargetId);
+  const resolvedActiveScopeTargetId = availableScopeTargetIds.includes(activeScopeTargetId)
+    ? activeScopeTargetId
+    : fallbackScopeTargetId;
+  const activeScopeTarget = THEME_SCOPE_TARGETS[resolvedActiveScopeTargetId];
+  const activeScopeCss = settings.themeScopedCss?.[resolvedActiveScopeTargetId] || '';
 
   const updateScopedCss = (targetId: ThemeScopeTargetId, value: string) => {
-    const nextScopedCss = { ...(settings.themeScopedCss || {}) };
+    const nextScopedCss = { ...sanitizeThemeScopedCss(settings.themeScopedCss) };
     if (value.trim()) {
       nextScopedCss[targetId] = value;
     } else {
@@ -366,8 +405,9 @@ function ScopePanel({
     setSettings({ ...settings, themeScopedCss: nextScopedCss });
   };
 
-  const activePreviewCss = [settings.globalCss || '', buildThemeScopedCss({ [activeScopeTargetId]: activeScopeCss })]
+  const activePreviewCss = [settings.globalCss || '', buildThemeScopedCss({ [resolvedActiveScopeTargetId]: activeScopeCss })]
     .filter(Boolean)
+    .map((css) => buildThemeWorkbenchPreviewCss(css))
     .join('\n\n');
 
   return (
@@ -386,14 +426,14 @@ function ScopePanel({
         icon={<Type size={16} className="text-zinc-900" />}
       >
         <div className="grid gap-4 lg:grid-cols-2">
-          {THEME_SCOPE_GROUPS.map((group) => (
+          {availableScopeGroups.map((group) => (
             <div key={group.title} className="rounded-[22px] border border-zinc-100 bg-zinc-50 p-4">
               <div className="text-sm font-bold text-zinc-900">{group.title}</div>
               <div className="mt-1 text-xs leading-6 text-zinc-500">{group.description}</div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {group.items.map((itemId) => {
                   const target = THEME_SCOPE_TARGETS[itemId];
-                  const isActive = activeScopeTargetId === itemId;
+                  const isActive = resolvedActiveScopeTargetId === itemId;
                   const hasValue = !!settings.themeScopedCss?.[itemId]?.trim();
                   return (
                     <button
@@ -433,7 +473,7 @@ function ScopePanel({
 
         <CodeEditor
           value={activeScopeCss}
-          onChange={(nextValue) => updateScopedCss(activeScopeTargetId, nextValue)}
+          onChange={(nextValue) => updateScopedCss(resolvedActiveScopeTargetId, nextValue)}
           placeholder={activeScopeTarget.placeholder}
         />
       </PanelCard>
@@ -447,7 +487,7 @@ function FilePanel({
   settings: VisualSettings;
 }) {
   const scopeCount = useMemo(
-    () => Object.values(settings.themeScopedCss || {}).filter((value) => value.trim()).length,
+    () => Object.values(sanitizeThemeScopedCss(settings.themeScopedCss)).filter((value) => value.trim()).length,
     [settings.themeScopedCss],
   );
 
@@ -538,7 +578,7 @@ export function ThemeCustomizationSection({
           globalCss: typeof nextTheme.globalCss === 'string' ? nextTheme.globalCss : settings.globalCss,
           themeScopedCss:
             nextTheme.themeScopedCss && typeof nextTheme.themeScopedCss === 'object'
-              ? (nextTheme.themeScopedCss as Record<string, string>)
+              ? sanitizeThemeScopedCss(nextTheme.themeScopedCss as Record<string, string>)
               : settings.themeScopedCss,
           themeTypography: importedThemeTypography,
           chat: { ...settings.chat, ...(nextTheme.chat || {}) },
