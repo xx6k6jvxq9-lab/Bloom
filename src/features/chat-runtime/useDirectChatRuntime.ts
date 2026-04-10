@@ -17,8 +17,9 @@ import { streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
+import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
-import { buildMemoryLibraryPatch } from '../../services/memory/memoryLibrary';
+import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
@@ -905,21 +906,71 @@ export function useDirectChatRuntime({
           });
 
           if (summaryText) {
-            const memoryLibraryPatch = buildMemoryLibraryPatch(character, {
+            const shortTermEntry = createMemoryLibraryEntry({
               kind: 'short-term',
               source: 'auto',
               content: summaryText,
             });
-            if (onPatchCharacter) {
-              onPatchCharacter({
-                shortTermSummary: summaryText,
-                ...memoryLibraryPatch,
+            let nextMemoryLibraryEntries = appendMemoryLibraryEntry(character, shortTermEntry);
+            let nextLongTermMemoryProfile: string | undefined;
+
+            const autoLongTermPlan = buildAutoLongTermRefreshPlan({
+              memoryLibraryEntries: character.memoryLibraryEntries,
+              latestShortTermSummary: summaryText,
+              pendingEntries: nextMemoryLibraryEntries,
+            });
+
+            if (autoLongTermPlan.shouldRefresh) {
+              const longTermPrompt = buildSummaryPrompt({
+                mode: 'large',
+                characterCore: {
+                  characterSetting: characterCorePersona,
+                },
+                memoryContext: {
+                  shortTermSummary: summaryText,
+                  longTermMemoryProfile,
+                },
+                sections: [
+                  summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
+                ],
               });
+
+              let longTermSummaryText = '';
+              await streamTextWithConfig({
+                activeConfig,
+                messages: [{ role: 'system', content: longTermPrompt }],
+                onTextChunk: (chunkText) => {
+                  longTermSummaryText += chunkText;
+                },
+              });
+
+              if (longTermSummaryText.trim()) {
+                nextLongTermMemoryProfile = longTermSummaryText.trim();
+                nextMemoryLibraryEntries = appendMemoryLibraryEntry(
+                  { memoryLibraryEntries: nextMemoryLibraryEntries },
+                  createMemoryLibraryEntry({
+                    kind: 'long-term',
+                    source: 'auto',
+                    content: nextLongTermMemoryProfile,
+                  }),
+                );
+              }
+            }
+
+            const patch: Partial<Character> = {
+              shortTermSummary: summaryText,
+              memoryLibraryEntries: nextMemoryLibraryEntries,
+              ...(nextLongTermMemoryProfile
+                ? { longTermMemoryProfile: nextLongTermMemoryProfile }
+                : {}),
+            };
+
+            if (onPatchCharacter) {
+              onPatchCharacter(patch);
             } else {
               onUpdateCharacter({
                 ...character,
-                shortTermSummary: summaryText,
-                ...memoryLibraryPatch,
+                ...patch,
               });
             }
           }
