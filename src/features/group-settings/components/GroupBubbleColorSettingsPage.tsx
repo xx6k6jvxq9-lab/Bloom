@@ -63,7 +63,7 @@ function BubbleColorEditorSheet({
           <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="flex items-center gap-3">
               <span
-                className="h-8 w-8 rounded-full border border-zinc-300 bg-zinc-100 shadow-sm"
+                className="h-8 w-8 rounded-full border border-zinc-300 bg-zinc-200 shadow-sm"
                 style={{ backgroundColor: color }}
               />
               <div>
