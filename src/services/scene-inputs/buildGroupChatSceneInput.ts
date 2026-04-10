@@ -45,6 +45,14 @@ type BuildGroupChatSceneInputOptions = {
   activeWorldBooks?: WorldBookEntry[];
 };
 
+type GroupMemberFamiliarity = 'strangers' | 'aware' | 'familiar';
+
+const FAMILIARITY_ORDER: Record<GroupMemberFamiliarity, number> = {
+  strangers: 0,
+  aware: 1,
+  familiar: 2,
+};
+
 function getGroupStageLabel(stage: GroupChatSceneInput['groupStage']): string {
   if (stage === 'warming') return '半熟群';
   if (stage === 'familiar') return '已熟群';
@@ -52,17 +60,121 @@ function getGroupStageLabel(stage: GroupChatSceneInput['groupStage']): string {
 }
 
 function getSeedMap(group: ChatGroup | undefined) {
-  const seedMap = new Map<string, 'strangers' | 'aware' | 'familiar'>();
+  const seedMap = new Map<string, GroupMemberFamiliarity>();
   (group?.memberRelationSeeds || []).forEach((seed) => {
     seedMap.set(`${seed.sourceMemberId}::${seed.targetMemberId}`, seed.familiarity);
   });
   return seedMap;
 }
 
-function getFamiliarityLabel(value: 'strangers' | 'aware' | 'familiar'): string {
-  if (value === 'familiar') return '已经比较熟';
-  if (value === 'aware') return '知道对方，但还不算熟';
-  return '基本不熟';
+function getFamiliarityLabel(value: GroupMemberFamiliarity): string {
+  if (value === 'familiar') return '\u5df2\u7ecf\u6bd4\u8f83\u719f';
+  if (value === 'aware') return '\u77e5\u9053\u5bf9\u65b9\uff0c\u4f46\u8fd8\u4e0d\u7b97\u719f';
+  return '\u57fa\u672c\u4e0d\u719f';
+}
+
+function pickHigherFamiliarity(
+  left: GroupMemberFamiliarity,
+  right: GroupMemberFamiliarity,
+): GroupMemberFamiliarity {
+  return FAMILIARITY_ORDER[left] >= FAMILIARITY_ORDER[right] ? left : right;
+}
+
+function hasAuthorAliasMatch(
+  authorLabel: string | undefined,
+  member: Character,
+): boolean {
+  const normalizedAuthor = authorLabel?.trim().toLowerCase();
+  if (!normalizedAuthor) {
+    return false;
+  }
+
+  const aliases = [member.name, member.remarkName]
+    .map((value) => value?.trim().toLowerCase())
+    .filter((value): value is string => !!value);
+
+  return aliases.includes(normalizedAuthor);
+}
+
+function deriveHistoryFamiliarity(
+  speaker: Character,
+  target: Character,
+  history: ChatMessage[],
+): GroupMemberFamiliarity | null {
+  const recentMessages = history
+    .filter((message) => !message.isSystem)
+    .filter((message) => message.role === 'model' && !!message.senderCharacterId)
+    .slice(-24);
+
+  const speakerMessages = recentMessages.filter((message) => message.senderCharacterId === speaker.id);
+  const targetMessages = recentMessages.filter((message) => message.senderCharacterId === target.id);
+
+  if (speakerMessages.length === 0 || targetMessages.length === 0) {
+    return null;
+  }
+
+  let interactionScore = 1;
+  let alternatingTurns = 0;
+
+  for (let index = 1; index < recentMessages.length; index += 1) {
+    const previousSender = recentMessages[index - 1]?.senderCharacterId;
+    const currentSender = recentMessages[index]?.senderCharacterId;
+    const pairMatches = (
+      (previousSender === speaker.id && currentSender === target.id)
+      || (previousSender === target.id && currentSender === speaker.id)
+    );
+
+    if (pairMatches) {
+      alternatingTurns += 1;
+    }
+  }
+
+  if (alternatingTurns >= 1) {
+    interactionScore += 1;
+  }
+
+  const directReplyCount = recentMessages.filter((message) => {
+    if (message.senderCharacterId !== speaker.id && message.senderCharacterId !== target.id) {
+      return false;
+    }
+
+    const counterpart = message.senderCharacterId === speaker.id ? target : speaker;
+    return hasAuthorAliasMatch(message.replyTo?.authorLabel, counterpart);
+  }).length;
+
+  if (directReplyCount >= 1) {
+    interactionScore += 1;
+  }
+
+  if (speakerMessages.length >= 2 && targetMessages.length >= 2) {
+    interactionScore += 1;
+  }
+
+  return interactionScore >= 3 ? 'familiar' : 'aware';
+}
+
+function getEffectiveSeedMap(
+  speaker: Character,
+  members: Character[],
+  group: ChatGroup | undefined,
+  history: ChatMessage[],
+) {
+  const seedMap = getSeedMap(group);
+
+  members
+    .filter((member) => member.id !== speaker.id)
+    .forEach((member) => {
+      const key = `${speaker.id}::${member.id}`;
+      const seededFamiliarity = seedMap.get(key) || 'strangers';
+      const derivedFamiliarity = deriveHistoryFamiliarity(speaker, member, history);
+      if (!derivedFamiliarity) {
+        return;
+      }
+
+      seedMap.set(key, pickHigherFamiliarity(seededFamiliarity, derivedFamiliarity));
+    });
+
+  return seedMap;
 }
 
 function getMemberRelationshipStateLabel(value: ChatGroup['memberRelationshipState'] | undefined): string | undefined {
@@ -77,8 +189,9 @@ function buildPeerAwareness(
   speaker: Character,
   members: Character[],
   group?: ChatGroup,
+  history: ChatMessage[] = [],
 ): string[] {
-  const seedMap = getSeedMap(group);
+  const seedMap = getEffectiveSeedMap(speaker, members, group, history);
 
   return members
     .filter((member) => member.id !== speaker.id)
@@ -93,8 +206,9 @@ function buildRelationshipSummary(
   members: Character[],
   groupStage: GroupChatSceneInput['groupStage'],
   group?: ChatGroup,
+  history: ChatMessage[] = [],
 ): string {
-  const seedMap = getSeedMap(group);
+  const seedMap = getEffectiveSeedMap(speaker, members, group, history);
   const peerLines = members
     .filter((member) => member.id !== speaker.id)
     .map((member) => {
@@ -176,8 +290,8 @@ export function buildGroupChatSceneInput(
     memberNames: options.members.map((member) => member.name),
     mode,
     groupStage,
-    relationshipSummary: buildRelationshipSummary(options.speaker, options.members, groupStage, options.group),
-    peerAwareness: buildPeerAwareness(options.speaker, options.members, options.group),
+    relationshipSummary: buildRelationshipSummary(options.speaker, options.members, groupStage, options.group, options.history),
+    peerAwareness: buildPeerAwareness(options.speaker, options.members, options.group, options.history),
     groupBehaviorGuide: buildGroupBehaviorGuide(options.group),
     roleInstruction:
       mode === 'opening'
