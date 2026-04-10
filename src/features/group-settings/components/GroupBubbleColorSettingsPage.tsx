@@ -101,15 +101,15 @@ function BubbleColorEditorSheet({
           <div className="grid grid-cols-3 gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-700"
+              onClick={() => undefined}
+              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
             >
               取消
             </button>
             <button
               type="button"
               onClick={() => void onSave(null)}
-              className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-700"
+              className="rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
             >
               恢复默认
             </button>
@@ -197,7 +197,6 @@ export function GroupBubbleColorSettingsPage({
           onClose={() => setEditingMemberId(null)}
           onSave={async (color) => {
             await onUpdateBubbleColor(editingMember.id, color);
-            setEditingMemberId(null);
           }}
         />
       ) : null}
