@@ -422,10 +422,14 @@ export function useDirectChatRuntime({
 
           const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
-          const activeWorldBooks = worldBook.filter(wb =>
-            (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
-            character.activeWorldBookIds?.includes(wb.id)
-          );
+          const activeWorldBooks = worldBook.filter((wb) => {
+            const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
+            if (isManuallySelected) {
+              return true;
+            }
+
+            return !!wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id));
+          });
 
           let perceptionPrompt = '';
           if (perception) {
@@ -750,10 +754,14 @@ export function useDirectChatRuntime({
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
-      const activeWorldBooks = worldBook.filter(wb =>
-        (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
-        character.activeWorldBookIds?.includes(wb.id)
-      );
+      const activeWorldBooks = worldBook.filter((wb) => {
+        const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
+        if (isManuallySelected) {
+          return true;
+        }
+
+        return !!wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id));
+      });
 
       let perceptionPrompt = '';
       if (perception) {

@@ -12,10 +12,14 @@ export function selectActiveGroupWorldBooks(
   const activeIds = new Set(params.group?.activeWorldBookIds || []);
 
   return params.worldBooks.filter((worldBook) => {
-    if (!worldBook?.isActive) {
+    if (!worldBook) {
       return false;
     }
 
-    return activeIds.has(worldBook.id);
+    if (activeIds.has(worldBook.id)) {
+      return true;
+    }
+
+    return !!worldBook.isActive;
   });
 }
