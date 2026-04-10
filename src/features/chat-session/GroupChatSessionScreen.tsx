@@ -1467,18 +1467,18 @@ export function GroupChatSessionScreen({
         </>
       ) : null}
 
-      <div className={`chat-session-header ${groupHeaderClassName}`} style={groupHeaderStyle}>
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
-            <ChevronLeft size={24} />
+      <div className={`chat-session-header chat-header ${groupHeaderClassName}`} style={groupHeaderStyle}>
+        <div className="chat-header-leading flex items-center gap-2">
+          <button onClick={onBack} className="chat-header-back-button p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+            <ChevronLeft size={24} className="chat-header-back-icon" />
           </button>
-          <div className="flex flex-col">
-            <h1 className="text-[16px] font-bold text-zinc-900">{groupDisplayName}</h1>
-            <span className="text-[11px] text-zinc-500">{participantCount} 人</span>
+          <div className="chat-header-title-block flex flex-col">
+            <h1 className="chat-header-title text-[16px] font-bold text-zinc-900">{groupDisplayName}</h1>
+            <span className="chat-header-subtitle text-[11px] text-zinc-500">{participantCount} 人</span>
           </div>
         </div>
-        <button onClick={() => setShowGroupSettings(true)} className="p-2 text-zinc-400">
-          <MoreVertical size={20} />
+        <button onClick={() => setShowGroupSettings(true)} className="chat-header-action-button chat-header-settings-button p-2 text-zinc-400">
+          <MoreVertical size={20} className="chat-header-settings-icon" />
         </button>
       </div>
 
@@ -1835,38 +1835,38 @@ export function GroupChatSessionScreen({
         </div>
       </div>
 
-      <div className={`chat-session-footer ${groupFooterClassName}`} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
+      <div className={`chat-session-footer chat-footer ${groupFooterClassName}`} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
         {replyingTo && (
-          <div className="flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
-            <div className="flex items-center gap-2 truncate">
-              <Reply size={14} className="shrink-0" />
+          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
+            <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
+              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" />
               <span className="shrink-0 font-medium">{replyingTo.authorLabel}:</span>
               <span className="truncate">{replyingTo.preview}</span>
             </div>
-            <button onClick={() => setReplyingTo(null)} className="shrink-0 rounded-full p-1 hover:bg-zinc-200">
-              <X size={14} />
+            <button onClick={() => setReplyingTo(null)} className="chat-footer-reply-close-button shrink-0 rounded-full p-1 hover:bg-zinc-200">
+              <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="chat-footer-controls flex items-end gap-2">
           <button
             onClick={() => setIsVoiceMode((prev) => !prev)}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+            className={`chat-footer-voice-toggle-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
               isVoiceMode ? 'bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
             }`}
           >
-            {isVoiceMode ? <Keyboard size={22} /> : <Mic size={22} />}
+            {isVoiceMode ? <Keyboard size={22} className="chat-footer-voice-toggle-icon" /> : <Mic size={22} className="chat-footer-voice-toggle-icon" />}
           </button>
 
-          <div className={`flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
+          <div className={`chat-footer-input-shell flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
             {isVoiceMode ? (
               <button
                 onPointerDown={audioRecordInteraction.onPointerDown}
                 onPointerUp={audioRecordInteraction.onPointerUp}
                 onPointerCancel={audioRecordInteraction.onPointerCancel}
                 onPointerLeave={audioRecordInteraction.onPointerLeave}
-                className={`flex h-10 w-full items-center justify-center rounded-xl text-[14px] transition-all active:scale-[0.98] select-none ${
+                className={`chat-footer-voice-button flex h-10 w-full items-center justify-center rounded-xl text-[14px] transition-all active:scale-[0.98] select-none ${
                   isRecording
                     ? 'bg-zinc-200 text-zinc-800'
                     : groupFooterControlTone.voiceButton
@@ -1887,7 +1887,7 @@ export function GroupChatSessionScreen({
                 }
               }}
               placeholder="发送消息..."
-              className="min-h-[24px] w-full resize-none bg-transparent text-[15px] text-zinc-900 outline-none placeholder:text-zinc-500"
+              className="chat-footer-textarea min-h-[24px] w-full resize-none bg-transparent text-[15px] text-zinc-900 outline-none placeholder:text-zinc-500"
               rows={1}
             />
             <button
@@ -1896,9 +1896,9 @@ export function GroupChatSessionScreen({
 	                setStickerTab('basic');
 	                if (showFunPanel) setShowFunPanel(false);
 	              }}
-              className={`shrink-0 p-1 transition-colors ${showEmojiPanel ? 'text-zinc-900' : footerStyleType === 'transparent' || footerStyleType === 'glass' ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-400 hover:text-zinc-600'}`}
+              className={`chat-footer-emoji-button shrink-0 p-1 transition-colors ${showEmojiPanel ? 'text-zinc-900' : footerStyleType === 'transparent' || footerStyleType === 'glass' ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-400 hover:text-zinc-600'}`}
             >
-              <Smile size={20} />
+              <Smile size={20} className="chat-footer-emoji-icon" />
                 </button>
               </>
             )}
@@ -1907,10 +1907,10 @@ export function GroupChatSessionScreen({
           {!isVoiceMode && input.trim() ? (
             <button
               onClick={() => void sendText()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
+              className="chat-footer-send-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
               disabled={isLoading}
             >
-              <Send size={18} />
+              <Send size={18} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button
@@ -1918,11 +1918,11 @@ export function GroupChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showEmojiPanel) setShowEmojiPanel(false);
               }}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+              className={`chat-footer-plus-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
                 showFunPanel ? 'rotate-45 bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
               }`}
             >
-              <Plus size={24} />
+              <Plus size={24} className="chat-footer-plus-icon" />
             </button>
           )}
         </div>

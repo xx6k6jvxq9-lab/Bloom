@@ -1084,13 +1084,13 @@ export function ChatSessionScreen({
       {/* Header */}
       {multiSelectMode ? (
         <div 
-          className={`chat-session-header ${headerClasses} justify-between`}
+          className={`chat-session-header chat-header chat-header--multiselect ${headerClasses} justify-between`}
           style={headerStyleObj}
         >
           <button onClick={() => {
             setMultiSelectMode(false);
             setSelectedMessages(new Set());
-          }} className="text-zinc-500 font-medium text-[15px]">
+          }} className="chat-header-action-button chat-header-cancel-button text-zinc-500 font-medium text-[15px]">
             取消
           </button>
           <h1 className="text-[16px] font-bold text-zinc-900">已选择 {selectedMessages.size} 条</h1>
@@ -1100,30 +1100,30 @@ export function ChatSessionScreen({
         </div>
       ) : (
         <div 
-          className={`chat-session-header ${headerClasses} justify-between`}
+          className={`chat-session-header chat-header ${headerClasses} justify-between`}
           style={headerStyleObj}
         >
-          <div className="flex items-center gap-1 z-10">
-            <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
-              <ChevronLeft size={24} />
+          <div className="chat-header-leading flex items-center gap-1 z-10">
+            <button onClick={onBack} className="chat-header-back-button p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+              <ChevronLeft size={24} className="chat-header-back-icon" />
             </button>
             <button
               onClick={() => onOpenCharacterMoments?.()}
-              className="ml-1 rounded-full active:scale-95 transition-transform cursor-pointer p-0.5"
+              className="chat-header-avatar-button ml-1 rounded-full active:scale-95 transition-transform cursor-pointer p-0.5"
               aria-label="打开角色主页"
             >
-              <PersistentImage value={character.avatar} alt={character.name} className="w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
+              <PersistentImage value={character.avatar} alt={character.name} className="chat-header-avatar w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
             </button>
           </div>
           
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pt-1.5 pointer-events-none">
-            <h1 className="text-[17px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{headerState.title}</h1>
-            <p className="text-[11px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
+          <div className="chat-header-title-block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pt-1.5 pointer-events-none">
+            <h1 className="chat-header-title text-[17px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{headerState.title}</h1>
+            <p className="chat-header-subtitle text-[11px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
           </div>
 
-          <div className="z-10">
-            <button onClick={() => setShowSettings(true)} className="p-2 text-zinc-400 active:text-zinc-600">
-              <Settings size={20} />
+          <div className="chat-header-actions z-10">
+            <button onClick={() => setShowSettings(true)} className="chat-header-action-button chat-header-settings-button p-2 text-zinc-400 active:text-zinc-600">
+              <Settings size={20} className="chat-header-settings-icon" />
             </button>
           </div>
         </div>
@@ -1905,30 +1905,30 @@ export function ChatSessionScreen({
 
       {/* Input */}
       <div 
-        className={`chat-session-footer ${footerClassName}`}
+        className={`chat-session-footer chat-footer ${footerClassName}`}
         style={{ 
           ...layoutConfig.inputContainerStyle,
           ...footerStyleObj
         }}
       >
         {replyingTo && (
-          <div className="flex items-center justify-between bg-zinc-100/80 backdrop-blur-sm rounded-xl px-3 py-2 text-[13px] text-zinc-600 border border-zinc-200/50">
-            <div className="flex items-center gap-2 truncate">
-              <Reply size={14} className="shrink-0" />
+          <div className="chat-footer-reply-preview flex items-center justify-between bg-zinc-100/80 backdrop-blur-sm rounded-xl px-3 py-2 text-[13px] text-zinc-600 border border-zinc-200/50">
+            <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
+              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" />
               <span className="font-medium shrink-0">{replyingTo.authorLabel}:</span>
               <span className="truncate">{replyingTo.preview}</span>
             </div>
-            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-zinc-200 rounded-full shrink-0">
-              <X size={14} />
+            <button onClick={() => setReplyingTo(null)} className="chat-footer-reply-close-button p-1 hover:bg-zinc-200 rounded-full shrink-0">
+              <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="chat-footer-controls flex items-end gap-2">
           <button 
             onClick={() => setIsVoiceMode(!isVoiceMode)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
+            className={`chat-footer-voice-toggle-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
           >
-            {isVoiceMode ? <Keyboard size={24} /> : <Mic size={24} />}
+            {isVoiceMode ? <Keyboard size={24} className="chat-footer-voice-toggle-icon" /> : <Mic size={24} className="chat-footer-voice-toggle-icon" />}
           </button>
 
           {isVoiceMode ? (
@@ -1937,7 +1937,7 @@ export function ChatSessionScreen({
               onPointerUp={audioRecordInteraction.onPointerUp}
               onPointerCancel={audioRecordInteraction.onPointerCancel}
               onPointerLeave={audioRecordInteraction.onPointerLeave}
-              className={`flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
+              className={`chat-footer-voice-button flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isAudioRecording 
                   ? 'bg-zinc-200 text-zinc-800' 
                   : footerControlTone.voiceButton
@@ -1946,7 +1946,7 @@ export function ChatSessionScreen({
               {isRecording ? '松开 发送' : '按住 说话'}
             </button>
           ) : (
-            <div className={`flex-1 border rounded-2xl px-4 py-2.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
+            <div className={`chat-footer-input-shell flex-1 border rounded-2xl px-4 py-2.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
               footerControlTone.inputShell
             }`}>
               <textarea 
@@ -1959,7 +1959,7 @@ export function ChatSessionScreen({
                   }
                 }}
                 placeholder="发送消息..."
-                className="w-full bg-transparent outline-none text-[15px] text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
+                className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
                 rows={1}
               />
               <button 
@@ -1967,9 +1967,9 @@ export function ChatSessionScreen({
                   setShowStickerPanel(!showStickerPanel);
                   if (showFunPanel) setShowFunPanel(false);
                 }} 
-                className={`p-1 transition-colors shrink-0 ${showStickerPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                className={`chat-footer-emoji-button p-1 transition-colors shrink-0 ${showStickerPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
               >
-                <Smile size={20} />
+                <Smile size={20} className="chat-footer-emoji-icon" />
               </button>
             </div>
           )}
@@ -1977,9 +1977,9 @@ export function ChatSessionScreen({
           {!isVoiceMode && input.trim() ? (
             <button 
               onClick={sendText}
-              className="w-10 h-10 rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
+              className="chat-footer-send-button w-10 h-10 rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
             >
-              <Send size={18} />
+              <Send size={18} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button 
@@ -1987,9 +1987,9 @@ export function ChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
+              className={`chat-footer-plus-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
             >
-              <Plus size={24} />
+              <Plus size={24} className="chat-footer-plus-icon" />
             </button>
           )}
         </div>

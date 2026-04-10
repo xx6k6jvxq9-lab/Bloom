@@ -22,6 +22,8 @@ export type ThemeScopeTarget = {
   placeholder: string;
 };
 
+export const DISABLED_THEME_SCOPE_TARGET_IDS: ThemeScopeTargetId[] = [];
+
 export const THEME_SCOPE_TARGETS: Record<ThemeScopeTargetId, ThemeScopeTarget> = {
   rootVariables: {
     id: 'rootVariables',
@@ -48,15 +50,40 @@ export const THEME_SCOPE_TARGETS: Record<ThemeScopeTargetId, ThemeScopeTarget> =
     id: 'chatHeaderBar',
     label: '聊天顶栏',
     description: '控制聊天页顶部栏，包括标题、返回区和右侧操作位。',
-    selectors: ['.chat-bubble-theme-scope .chat-session-header'],
-    placeholder: 'background: rgba(255,255,255,0.75);\nbackdrop-filter: blur(18px);\nborder-bottom: 1px solid rgba(125, 122, 124, 0.12);',
+    selectors: [
+      '.chat-bubble-theme-scope .chat-session-header',
+      '.chat-bubble-theme-scope .chat-header-title-block',
+      '.chat-bubble-theme-scope .chat-header-title',
+      '.chat-bubble-theme-scope .chat-header-subtitle',
+      '.chat-bubble-theme-scope .chat-header-back-button',
+      '.chat-bubble-theme-scope .chat-header-avatar-button',
+      '.chat-bubble-theme-scope .chat-header-action-button',
+      '.chat-bubble-theme-scope .chat-header-back-icon',
+      '.chat-bubble-theme-scope .chat-header-settings-icon',
+      '.chat-bubble-theme-scope .chat-header-avatar',
+    ],
+    placeholder: '.chat-bubble-theme-scope .chat-session-header {\n  background: rgba(255,255,255,0.75);\n  backdrop-filter: blur(18px);\n  border-bottom: 1px solid rgba(125, 122, 124, 0.12);\n}\n\n.chat-bubble-theme-scope .chat-header-action-button,\n.chat-bubble-theme-scope .chat-header-back-button {\n  color: #6b6570;\n}',
   },
   chatFooterBar: {
     id: 'chatFooterBar',
     label: '聊天底部栏',
     description: '控制输入栏容器、底部操作区和输入托盘外壳。',
-    selectors: ['.chat-bubble-theme-scope .chat-session-footer'],
-    placeholder: 'background: rgba(255,255,255,0.86);\nbackdrop-filter: blur(20px);\nborder-top: 1px solid rgba(125, 122, 124, 0.12);',
+    selectors: [
+      '.chat-bubble-theme-scope .chat-session-footer',
+      '.chat-bubble-theme-scope .chat-footer-input-shell',
+      '.chat-bubble-theme-scope .chat-footer-textarea',
+      '.chat-bubble-theme-scope .chat-footer-voice-toggle-button',
+      '.chat-bubble-theme-scope .chat-footer-voice-button',
+      '.chat-bubble-theme-scope .chat-footer-emoji-button',
+      '.chat-bubble-theme-scope .chat-footer-send-button',
+      '.chat-bubble-theme-scope .chat-footer-plus-button',
+      '.chat-bubble-theme-scope .chat-footer-voice-toggle-icon',
+      '.chat-bubble-theme-scope .chat-footer-emoji-icon',
+      '.chat-bubble-theme-scope .chat-footer-send-icon',
+      '.chat-bubble-theme-scope .chat-footer-plus-icon',
+      '.chat-bubble-theme-scope .chat-footer-reply-preview',
+    ],
+    placeholder: '.chat-bubble-theme-scope .chat-session-footer {\n  background: rgba(255,255,255,0.86);\n  backdrop-filter: blur(20px);\n  border-top: 1px solid rgba(125, 122, 124, 0.12);\n}\n\n.chat-bubble-theme-scope .chat-footer-send-button,\n.chat-bubble-theme-scope .chat-footer-plus-button {\n  border-radius: 999px;\n}',
   },
   chatBubbles: {
     id: 'chatBubbles',
