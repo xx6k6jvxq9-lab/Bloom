@@ -2269,13 +2269,6 @@ export function GroupChatSessionScreen({
 	                <Copy size={20} />
 	              </button>
 	              <button
-	                onClick={handleForward}
-	                className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
-	                title="转发"
-	              >
-	                <Forward size={20} />
-	              </button>
-	              <button
 	                onClick={handleDelete}
 	                className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50"
 	                title="删除"
