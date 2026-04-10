@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { GroupChatSessionScreen } from './GroupChatSessionScreen';
 
@@ -12,6 +12,8 @@ type GroupChatSessionContainerProps = {
   favorites: FavoriteMessage[];
   setFavorites: (favorites: FavoriteMessage[]) => void;
   settings: AppSettings;
+  worldBooks: WorldBookEntry[];
+  perception?: PerceptionSettings;
   onBack: () => void;
   userAvatar: string;
   userName: string;
@@ -26,6 +28,8 @@ export function GroupChatSessionContainer({
   favorites,
   setFavorites,
   settings,
+  worldBooks,
+  perception,
   onBack,
   userAvatar,
   userName,
@@ -97,6 +101,8 @@ export function GroupChatSessionContainer({
       userAvatar={userAvatar}
       userName={userName}
       settings={settings}
+      worldBooks={worldBooks}
+      perception={perception}
       directChatHistory={directChatHistory}
       inviteableCharacters={inviteableCharacters}
     />

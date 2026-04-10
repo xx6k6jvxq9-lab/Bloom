@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ApiConfig, Character, ChatMessage, DateSession, UserProfileExtended } from '../../types';
+import type { ApiConfig, Character, ChatMessage, DateSession, PerceptionSettings, UserProfileExtended } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -27,6 +27,7 @@ interface DatingModalProps {
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
   chatHistory: ChatMessage[];
+  perception?: PerceptionSettings;
   onSaveDate: (session: DateSession) => void;
   onCollectDate: (session: DateSession) => void;
   initialSession?: DateSession | null;
@@ -45,6 +46,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   userProfile,
   activeConfig,
   chatHistory,
+  perception,
   onSaveDate,
   onCollectDate,
   initialSession,
@@ -200,6 +202,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
               userProfile={userProfile}
               activeConfig={activeConfig}
               chatHistory={chatHistory}
+              perception={perception}
               onBackToPlanner={handleDirectExit}
               onClose={handleDirectExit}
               onSaveDate={(session) => {

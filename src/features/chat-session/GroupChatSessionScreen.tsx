@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import {
@@ -329,6 +329,7 @@ export function GroupChatSessionScreen({
   userName,
   settings,
   worldBooks = [],
+  perception,
   directChatHistory,
   inviteableCharacters,
 }: {
@@ -347,6 +348,7 @@ export function GroupChatSessionScreen({
   userName: string;
   settings: AppSettings;
   worldBooks: WorldBookEntry[];
+  perception?: PerceptionSettings;
   directChatHistory: ChatHistory;
   inviteableCharacters: Character[];
 }) {
@@ -611,6 +613,7 @@ export function GroupChatSessionScreen({
     setReplyingTo,
     userName: groupUserDisplayName,
     directChatHistory,
+    perception,
     activeConfig,
   });
   const { isRecording, startRecording, stopRecording, cancelRecording } = useAudioMessageRecorder({

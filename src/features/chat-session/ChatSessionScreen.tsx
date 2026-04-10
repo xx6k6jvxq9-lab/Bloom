@@ -2277,6 +2277,7 @@ export function ChatSessionScreen({
           userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
           activeConfig={activeConfig}
           chatHistory={history}
+          perception={perception}
           onSaveDate={onSaveDate || (() => {})}
           onCollectDate={onCollectDate || (() => {})}
           initialSession={savedDates?.find(s => s.characterId === character.id) || null}

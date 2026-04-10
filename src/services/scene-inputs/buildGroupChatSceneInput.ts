@@ -20,6 +20,7 @@ export type GroupChatSceneInput = {
   recentContext?: {
     shortTermSummary?: string;
     longTermMemoryProfile?: string;
+    temporalContext?: string;
     groupSceneHint?: string;
     backgroundSummary?: string;
     memberRelationshipState?: string;
@@ -43,6 +44,7 @@ type BuildGroupChatSceneInputOptions = {
   mode?: 'reply' | 'invited' | 'opening';
   directChatHistory?: ChatHistory;
   activeWorldBooks?: WorldBookEntry[];
+  temporalContext?: string;
 };
 
 type GroupMemberFamiliarity = 'strangers' | 'aware' | 'familiar';
@@ -306,6 +308,7 @@ export function buildGroupChatSceneInput(
     recentContext: {
       shortTermSummary: characterScopedMemory.shortTermSummary,
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
+      temporalContext: options.temporalContext?.trim() || undefined,
       groupSceneHint: characterContext.sceneHints?.groupChat,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,

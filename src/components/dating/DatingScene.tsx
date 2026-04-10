@@ -8,6 +8,7 @@ import type {
   DateMessage,
   DateSession,
   DatingGeneratedContent,
+  PerceptionSettings,
   UserProfileExtended,
 } from '../../types';
 import { streamTextWithConfig } from '../../services/ai/runtimeClient';
@@ -31,6 +32,7 @@ type DatingSceneProps = {
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
   chatHistory: ChatMessage[];
+  perception?: PerceptionSettings;
   onBackToPlanner: () => void;
   onClose: () => void;
   onSaveDate: (session: DateSession) => void;
@@ -197,6 +199,7 @@ export function DatingScene({
   userProfile,
   activeConfig,
   chatHistory,
+  perception,
   onBackToPlanner,
   onClose,
   onSaveDate,
@@ -348,6 +351,7 @@ export function DatingScene({
             generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
           },
           chatHistory,
+          perception,
           latestUserInput,
         }),
       });

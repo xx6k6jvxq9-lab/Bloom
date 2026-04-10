@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ApiConfig, Character, ChatGroup, ChatMessage, WorldBookEntry } from '../../types';
+import type { ApiConfig, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
@@ -7,6 +7,7 @@ import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
+import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
@@ -36,6 +37,7 @@ type UseGroupChatRuntimeArgs = {
   userName: string;
   directChatHistory: ChatHistory;
   worldBooks?: WorldBookEntry[];
+  perception?: PerceptionSettings;
   activeConfig?: ApiConfig;
 };
 
@@ -844,6 +846,7 @@ export function useGroupChatRuntime({
   userName,
   directChatHistory,
   worldBooks = [],
+  perception,
   activeConfig,
 }: UseGroupChatRuntimeArgs): UseGroupChatRuntimeResult {
   const { isLoading, error, setError, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
@@ -905,6 +908,7 @@ export function useGroupChatRuntime({
       throw new Error('Missing active API config.');
     }
 
+    const requestTimestamp = Date.now();
     const systemPrompt = [
       buildGroupChatPrompt({
         sceneInput: buildGroupChatSceneInput({
@@ -936,6 +940,10 @@ export function useGroupChatRuntime({
             group: groupMeta,
             worldBooks,
           }),
+          temporalContext: buildTemporalContextPrompt({
+            perception,
+            now: requestTimestamp,
+          }),
         }),
       }),
       buildAssistantStickerPromptSection([
@@ -953,7 +961,7 @@ export function useGroupChatRuntime({
     });
 
     let responseText = '';
-    const pendingTimestamp = Date.now();
+    const pendingTimestamp = requestTimestamp;
     setPendingMessage({
       speakerId: params.speaker.id,
       speakerName: params.speaker.name,
@@ -1017,13 +1025,16 @@ export function useGroupChatRuntime({
     groupMeta?.backgroundSummary,
     groupMeta?.currentScene,
     groupMeta?.groupStage,
+    groupMeta?.activeWorldBookIds,
     groupMeta?.memberRelationSeeds,
     groupMeta?.memberRelationshipNote,
     groupMeta?.memberRelationshipState,
     groupMeta?.publicFacts,
     members,
     userName,
+    directChatHistory,
     worldBooks,
+    perception,
   ]);
 
   const appendSystemFailure = useCallback((detail: string) => {

@@ -1,5 +1,6 @@
-import type { Character, ChatMessage, DateSession, UserProfileExtended } from '../../types';
+import type { Character, ChatMessage, DateSession, PerceptionSettings, UserProfileExtended } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { buildTemporalContextPrompt } from '../relationship-time/buildTemporalContextPrompt';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 
 export type DatingSceneInput = {
@@ -27,6 +28,7 @@ type BuildDatingSceneInputOptions = {
   userProfile: UserProfileExtended;
   session: DateSession;
   chatHistory: ChatMessage[];
+  perception?: PerceptionSettings;
   latestUserInput?: string;
 };
 
@@ -102,6 +104,7 @@ function buildTask(options: BuildDatingSceneInputOptions): string {
 }
 
 function buildExtraSections(input: {
+  temporalContext?: string;
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
@@ -111,6 +114,7 @@ function buildExtraSections(input: {
   recentCoupleSpaceSummary?: string;
 }): string[] {
   return [
+    input.temporalContext || '',
     input.expressionStyle ? ['## 表达风格与相处方式', input.expressionStyle].join('\n') : '',
     input.boundaryPack ? ['## 边界与禁区', input.boundaryPack].join('\n') : '',
     input.extendedLore ? ['## 扩展背景与长期补充', input.extendedLore].join('\n') : '',
@@ -150,6 +154,10 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     currentGeneratedPlaylist: formatCurrentGeneratedPlaylist(options.session),
     task: buildTask(options),
     sections: buildExtraSections({
+      temporalContext: buildTemporalContextPrompt({
+        perception: options.perception,
+        now: Date.now(),
+      }),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,

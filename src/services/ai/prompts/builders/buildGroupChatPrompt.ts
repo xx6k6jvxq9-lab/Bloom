@@ -19,6 +19,9 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.longTermMemoryProfile
       ? `长期记忆印象：${sceneInput.recentContext.longTermMemoryProfile}`
       : '',
+    sceneInput.recentContext?.temporalContext
+      ? sceneInput.recentContext.temporalContext
+      : '',
     sceneInput.recentContext?.expressionStyle
       ? `公开场合表达风格：${sceneInput.recentContext.expressionStyle}`
       : '',

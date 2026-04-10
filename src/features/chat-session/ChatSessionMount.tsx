@@ -160,6 +160,8 @@ export function ChatSessionMount({
           userAvatar={userAvatar}
           userName={userName}
           settings={settings}
+          worldBooks={worldBook}
+          perception={perception}
           directChatHistory={chatHistory}
         />
       )}

@@ -20,6 +20,7 @@ import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneI
 import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
+import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
@@ -432,12 +433,12 @@ export function useDirectChatRuntime({
             return !!wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id));
           });
 
-          let perceptionPrompt = '';
+          let perceptionPrompt = buildTemporalContextPrompt({
+            perception,
+            now: Date.now(),
+          });
           if (perception) {
-            const parts = [];
-            if (perception.enabled || perception.dateTime?.enabled) {
-              if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
-            }
+            const parts = [perceptionPrompt];
             if (perception.enabled || perception.location?.enabled) {
               if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
             }
@@ -451,9 +452,7 @@ export function useDirectChatRuntime({
               if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
             }
 
-            if (parts.length > 0) {
-              perceptionPrompt = parts.join('\n');
-            }
+            perceptionPrompt = parts.filter(Boolean).join('\n');
           }
 
           const chatSceneInput = buildChatSceneInput({
@@ -764,12 +763,12 @@ export function useDirectChatRuntime({
         return !!wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id));
       });
 
-      let perceptionPrompt = '';
+      let perceptionPrompt = buildTemporalContextPrompt({
+        perception,
+        now: Date.now(),
+      });
       if (perception) {
-        const parts = [];
-        if (perception.enabled || perception.dateTime?.enabled) {
-          if (perception.dateTime?.value) parts.push(`[Virtual Date/Time: ${perception.dateTime.value}]`);
-        }
+        const parts = [perceptionPrompt];
         if (perception.enabled || perception.location?.enabled) {
           if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
         }
@@ -782,9 +781,7 @@ export function useDirectChatRuntime({
         if (perception.enabled || perception.climate?.enabled) {
           if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
         }
-        if (parts.length > 0) {
-          perceptionPrompt = parts.join('\n');
-        }
+        perceptionPrompt = parts.filter(Boolean).join('\n');
       }
 
       const chatSceneInput = buildChatSceneInput({
