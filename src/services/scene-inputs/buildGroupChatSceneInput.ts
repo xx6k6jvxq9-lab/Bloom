@@ -32,6 +32,7 @@ export type GroupChatSceneInput = {
     boundaryPack?: string;
     publicAcquaintanceSummary?: string;
     sharedRecentRelationshipSummary?: string;
+    relationshipTensionSummary?: string;
   };
   historyTranscript: string;
 };
@@ -50,12 +51,54 @@ type BuildGroupChatSceneInputOptions = {
 };
 
 type GroupMemberFamiliarity = 'strangers' | 'aware' | 'familiar';
+type UserRelationshipSignal =
+  | 'romantic'
+  | 'ambiguous_romantic'
+  | 'ex'
+  | 'family'
+  | 'close_friend'
+  | 'rival'
+  | 'protective';
 
 const FAMILIARITY_ORDER: Record<GroupMemberFamiliarity, number> = {
   strangers: 0,
   aware: 1,
   familiar: 2,
 };
+
+const USER_RELATIONSHIP_PATTERNS: Array<{
+  signal: UserRelationshipSignal;
+  patterns: RegExp[];
+}> = [
+  {
+    signal: 'romantic',
+    patterns: [/男朋友/i, /女朋友/i, /恋人/i, /伴侣/i, /老婆/i, /老公/i, /未婚夫/i, /未婚妻/i],
+  },
+  {
+    signal: 'ambiguous_romantic',
+    patterns: [/暧昧/i, /喜欢你/i, /暗恋/i, /心动/i, /crush/i],
+  },
+  {
+    signal: 'ex',
+    patterns: [/前任/i, /前男友/i, /前女友/i, /旧情人/i],
+  },
+  {
+    signal: 'family',
+    patterns: [/家人/i, /亲人/i, /姐姐/i, /妹妹/i, /哥哥/i, /弟弟/i, /妈妈/i, /爸爸/i, /母亲/i, /父亲/i],
+  },
+  {
+    signal: 'close_friend',
+    patterns: [/闺蜜/i, /竹马/i, /青梅/i, /死党/i, /挚友/i, /好友/i, /朋友/i],
+  },
+  {
+    signal: 'rival',
+    patterns: [/情敌/i, /对手/i, /宿敌/i, /竞争者/i],
+  },
+  {
+    signal: 'protective',
+    patterns: [/护着你/i, /照顾你/i, /守着你/i, /监护/i, /保护你/i],
+  },
+];
 
 function getGroupStageLabel(stage: GroupChatSceneInput['groupStage']): string {
   if (stage === 'warming') return '半熟群';
@@ -82,6 +125,51 @@ function pickHigherFamiliarity(
   right: GroupMemberFamiliarity,
 ): GroupMemberFamiliarity {
   return FAMILIARITY_ORDER[left] >= FAMILIARITY_ORDER[right] ? left : right;
+}
+
+function getCharacterRelationshipSourceText(character: Character): string {
+  return [
+    character.corePersona,
+    character.setting,
+    character.expressionStyle,
+    character.signature,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+}
+
+function getUserRelationshipSignals(character: Character): Set<UserRelationshipSignal> {
+  const text = getCharacterRelationshipSourceText(character);
+  const result = new Set<UserRelationshipSignal>();
+
+  USER_RELATIONSHIP_PATTERNS.forEach(({ signal, patterns }) => {
+    if (patterns.some((pattern) => pattern.test(text))) {
+      result.add(signal);
+    }
+  });
+
+  return result;
+}
+
+function getRelationshipLabel(signal: UserRelationshipSignal): string {
+  switch (signal) {
+    case 'romantic':
+      return '明确恋人向关系';
+    case 'ambiguous_romantic':
+      return '暧昧或未说开的在意';
+    case 'ex':
+      return '前任或旧关系';
+    case 'family':
+      return '家人或亲属向关系';
+    case 'close_friend':
+      return '亲近朋友向关系';
+    case 'rival':
+      return '对立或竞争向关系';
+    case 'protective':
+      return '照顾或保护倾向';
+    default:
+      return '特殊关系';
+  }
 }
 
 function hasAuthorAliasMatch(
@@ -221,6 +309,65 @@ function buildRelationshipSummary(
     });
 
   return [`当前群阶段：${getGroupStageLabel(groupStage)}`, ...peerLines].join('\n');
+}
+
+function buildRelationshipTensionSummary(
+  speaker: Character,
+  members: Character[],
+): string | undefined {
+  const speakerSignals = getUserRelationshipSignals(speaker);
+  if (speakerSignals.size === 0) {
+    return undefined;
+  }
+
+  const lines = members
+    .filter((member) => member.id !== speaker.id)
+    .map((member) => {
+      const memberSignals = getUserRelationshipSignals(member);
+      if (memberSignals.size === 0) {
+        return '';
+      }
+
+      const sharedSignals = [...speakerSignals].filter((signal) => memberSignals.has(signal));
+      const speakerHasRomantic = speakerSignals.has('romantic') || speakerSignals.has('ambiguous_romantic') || speakerSignals.has('ex');
+      const memberHasRomantic = memberSignals.has('romantic') || memberSignals.has('ambiguous_romantic') || memberSignals.has('ex');
+
+      if (speakerHasRomantic && memberHasRomantic) {
+        return `${member.name} 也和用户存在恋爱或暧昧向关系，同场时可能自然出现比较、试探、吃味、装作没事或轻微抢位；但只有符合你的人设时才需要表现出来。`;
+      }
+
+      if (sharedSignals.length > 0) {
+        return `${member.name} 和你都与用户共享「${sharedSignals.map(getRelationshipLabel).join(' / ')}」这一侧面，同场时可能更容易出现默契、站位、护短或微妙比较；但不要硬演。`;
+      }
+
+      if (speakerSignals.has('family') && memberHasRomantic) {
+        return `${member.name} 更偏恋爱向关系，而你更偏家人或照顾者视角；同场时你可能会更在意分寸、观察或护着用户，但仍然由你的人设决定。`;
+      }
+
+      if (speakerHasRomantic && memberSignals.has('family')) {
+        return `${member.name} 更偏家人或照顾者视角；如果符合你的人设，你在同场时可能会更在意对方态度、略微收紧或暗自较劲，但不必强行表现。`;
+      }
+
+      if (speakerSignals.has('close_friend') && memberHasRomantic) {
+        return `${member.name} 更偏恋爱向关系，而你更像亲近朋友；同场时可以自然出现调侃、护着用户、帮忙打圆场或观察气氛，但仍以人设为准。`;
+      }
+
+      if (speakerSignals.has('rival') || memberSignals.has('rival')) {
+        return `${member.name} 和你之间可能更容易带出竞争、抬杠、试探或不轻易让步的气氛；但只有当前场面真的需要时才轻轻带出。`;
+      }
+
+      return '';
+    })
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return [
+    '下面是与你同场时可能存在的关系张力提示，只是潜在语境，不是强制规则。',
+    ...lines,
+  ].join('\n');
 }
 
 function buildGroupBehaviorGuide(group?: ChatGroup): string | undefined {
@@ -396,6 +543,7 @@ export function buildGroupChatSceneInput(
       boundaryPack: characterContext.boundaryPack,
       publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
+      relationshipTensionSummary: buildRelationshipTensionSummary(options.speaker, options.members),
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),
   };
