@@ -970,7 +970,7 @@ export function GroupChatSessionScreen({
   const openContextMenu = (event: { clientX: number; clientY: number }, index: number) => {
     const container = document.getElementById('phone-container');
     const targetMessage = history[index];
-    if (!targetMessage) return;
+    if (!targetMessage || targetMessage.isRecalled) return;
 
     setContextMenu({
       ...getContextMenuPosition({
@@ -991,6 +991,23 @@ export function GroupChatSessionScreen({
   };
 
   const closeContextMenu = () => setContextMenu(null);
+
+  const handleRecall = () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || contextMenuMessage.role !== 'user') {
+      closeContextMenu();
+      return;
+    }
+
+    preservedScrollTopRef.current = scrollRef.current?.scrollTop ?? null;
+    setHistory(
+      history.map((message, index) => (
+        index === contextMenuMessageIndex
+          ? { ...message, isRecalled: true }
+          : message
+      )),
+    );
+    closeContextMenu();
+  };
 
   const handleCopy = async () => {
     if (!contextMenuMessage) {
@@ -1796,9 +1813,11 @@ export function GroupChatSessionScreen({
                           onPointerLeave={clearLongPressTimer}
                           onPointerCancel={clearLongPressTimer}
                           className={`${isStandaloneMedia ? '' : `chat-bubble message-bubble ${isUser ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} ${isPendingMessage && !content ? 'chat-loading-bubble' : ''} relative`} cursor-pointer px-4 py-2.5 text-[15px] shadow-sm transition-all active:scale-[0.98] ${
-                            isUser
-                              ? `${isStandaloneMedia ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
-                              : `${isStandaloneMedia ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseResolvedMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isStandaloneMedia ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
+                            msg.isRecalled
+                              ? `border border-zinc-200 bg-zinc-100 text-zinc-400 ${isGroupedWithPrevious ? 'rounded-2xl' : isUser ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm'} shadow-none`
+                              : isUser
+                                ? `${isStandaloneMedia ? 'bg-transparent p-0 text-white shadow-none' : `bg-blue-500 text-white ${isGroupedWithPrevious ? 'rounded-2xl' : 'rounded-2xl rounded-tr-sm'}`}`
+                                : `${isStandaloneMedia ? 'bg-transparent p-0 text-zinc-800 shadow-none' : isPendingMessage ? 'border border-zinc-100 bg-zinc-50/90 text-zinc-700' : shouldUseResolvedMemberBubble ? 'border' : 'border border-zinc-100 bg-white text-zinc-800'} ${isStandaloneMedia ? '' : isGroupedWithPrevious ? 'rounded-2xl shadow-[0_8px_20px_rgba(15,23,42,0.05)]' : 'rounded-2xl rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.08)]'} ${isPendingMessage ? 'animate-pulse' : ''}`
                           }`}
                           data-character-bubble-scope={!isUser && senderCharacter?.id ? senderCharacter.id : undefined}
                           style={isStandaloneMedia
@@ -1830,8 +1849,12 @@ export function GroupChatSessionScreen({
                                 ...(chatTextStyle || {}),
                               }}
                         >
-                  {!isStandaloneMedia && <BubbleThemeAnchors />}
-                  {msg.audioUrl && (
+                  {!isStandaloneMedia && !msg.isRecalled && <BubbleThemeAnchors />}
+                  {msg.isRecalled ? (
+                    <div className="text-xs italic">
+                      {msg.role === 'user' ? '你撤回了一条消息' : '对方撤回了一条消息'}
+                    </div>
+                  ) : msg.audioUrl && (
                     <AudioMessageCard
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
@@ -1840,7 +1863,7 @@ export function GroupChatSessionScreen({
                       className="shadow-none"
                     />
                   )}
-                  {msg.imageUrl && (
+                  {!msg.isRecalled && msg.imageUrl && (
                     <>
                       <GroupMessageImage
                         value={msg.imageUrl}
@@ -1862,24 +1885,24 @@ export function GroupChatSessionScreen({
                       })()}
                     </>
                   )}
-                  {!msg.imageUrl && visualKind === 'sticker' && (
+                  {!msg.isRecalled && !msg.imageUrl && visualKind === 'sticker' && (
                     <div className="mb-2 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[11px] font-medium text-pink-500">
                       STICKER
                     </div>
                   )}
-                  {msg.location && (
+                  {!msg.isRecalled && msg.location && (
                     <div className="chat-location-inline-card mb-2 rounded-xl bg-zinc-100/80 px-3 py-2 text-[12px] text-zinc-600">
                       <div className="font-medium text-zinc-700">{msg.location.name}</div>
                       {msg.location.address && <div className="mt-0.5">{msg.location.address}</div>}
                     </div>
                   )}
-                  {!msg.imageUrl && !msg.audioUrl && msg.isPending && !content ? (
+                  {!msg.isRecalled && !msg.imageUrl && !msg.audioUrl && msg.isPending && !content ? (
                     <div className="flex gap-1">
                       <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                       <div className="delay-150 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                     </div>
-                  ) : !msg.imageUrl && !msg.audioUrl ? (
+                  ) : !msg.isRecalled && !msg.imageUrl && !msg.audioUrl ? (
                     <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={{ ...chatTextStyle, ...groupBubbleTextStyle }}>
                       {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
                     </span>
@@ -2229,6 +2252,15 @@ export function GroupChatSessionScreen({
               >
                 <MessageSquarePlus size={20} />
               </button>
+              {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (
+                <button
+                  onClick={handleRecall}
+                  className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
+                  title="撤回"
+                >
+                  <Reply size={20} />
+                </button>
+              )}
               <button
                 onClick={() => void handleCopy()}
                 className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
