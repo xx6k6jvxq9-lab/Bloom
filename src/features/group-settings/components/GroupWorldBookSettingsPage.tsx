@@ -48,22 +48,22 @@ export function GroupWorldBookSettingsPage({
                   onClick={() => onToggleWorldBook(worldBook.id)}
                   className={`flex w-full items-start justify-between rounded-[28px] border px-4 py-4 text-left shadow-[0_8px_32px_rgba(15,23,42,0.06)] transition-all ${
                     isActive
-                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      ? 'border-zinc-200 bg-zinc-100 text-zinc-900'
                       : 'border-zinc-100 bg-white text-zinc-900'
                   }`}
                 >
                   <div className="min-w-0 pr-3">
                     <div className="truncate text-[15px] font-semibold">{worldBook.title}</div>
-                    <div className={`mt-1 text-[12px] ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                    <div className={`mt-1 text-[12px] ${isActive ? 'text-zinc-600' : 'text-zinc-500'}`}>
                       {worldBook.category}
                     </div>
                     {worldBook.content?.trim() ? (
-                      <div className={`mt-2 line-clamp-2 text-[12px] leading-5 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                      <div className={`mt-2 line-clamp-2 text-[12px] leading-5 ${isActive ? 'text-zinc-600' : 'text-zinc-500'}`}>
                         {worldBook.content.trim()}
                       </div>
                     ) : null}
                   </div>
-                  {isActive ? <Check size={18} className="mt-0.5 shrink-0 text-emerald-400" /> : null}
+                  {isActive ? <Check size={18} className="mt-0.5 shrink-0 text-zinc-700" /> : null}
                 </button>
               );
             })}
