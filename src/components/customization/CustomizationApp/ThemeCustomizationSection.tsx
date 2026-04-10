@@ -60,6 +60,38 @@ function buildThemeWorkbenchPreviewCss(rawCss: string): string {
   return buildThemePreviewCss(rawCss).replace(/\.chat-bubble-theme-scope\b/g, '.theme-preview-scope');
 }
 
+const THEME_PANEL_TEXT = {
+  tabs: {
+    globalTheme: '\u5168\u5c40\u4e3b\u9898',
+    scope: '\u5c40\u90e8\u8303\u56f4',
+    file: '\u4e3b\u9898\u6587\u4ef6',
+  },
+  previewTitle: '\u4e3b\u9898\u5de5\u4f5c\u53f0\u9884\u89c8',
+  previewSubtitle: '\u9876\u680f\u3001\u5361\u7247\u4e0e\u5e95\u90e8\u680f\u4f1a\u4e00\u8d77\u8054\u52a8',
+  previewMainCard: '\u8fd9\u91cc\u4f1a\u5b9e\u65f6\u9884\u89c8\u4f60\u5199\u5165\u7684\u6574\u9875\u4e3b\u9898\u6837\u5f0f\u3002',
+  previewImage: '\u6269\u5c55\u6d88\u606f\u9884\u89c8',
+  previewAccentCard: '\u53f3\u4fa7\u5361\u7247\u4e5f\u4f1a\u8ddf\u7740\u4e3b\u9898\u4e00\u8d77\u53d8\u5316\u3002',
+  previewFooter: '\u5e95\u90e8\u8f93\u5165\u680f\u9884\u89c8',
+  rootVariablesMain: '\u8fd9\u91cc\u9884\u89c8\u5168\u5c40\u53d8\u91cf\u5bf9\u6574\u5957\u4e3b\u9898\u7684\u8054\u52a8\u6548\u679c\u3002',
+  rootVariablesSub: '\u53d8\u91cf\u901a\u5e38\u4f1a\u540c\u65f6\u5f71\u54cd\u5361\u7247\u3001\u8f93\u5165\u6846\u3001\u6309\u94ae\u548c\u8fb9\u89d2\u7ec6\u8282\u3002',
+  pageBackground: '\u9875\u9762\u80cc\u666f\u6c1b\u56f4\u4f1a\u5728\u8fd9\u91cc\u76f4\u63a5\u9884\u89c8\u3002',
+  baseTypographyTitle: '\u57fa\u7840\u6587\u5b57\u9884\u89c8',
+  baseTypographySub: '\u8fd9\u91cc\u4f1a\u8ddf\u968f\u5168\u5c40\u5b57\u4f53\u3001\u6587\u5b57\u989c\u8272\u4ee5\u53ca\u901a\u7528\u8f93\u5165\u63a7\u4ef6\u6837\u5f0f\u53d8\u5316\u3002',
+  inputPreview: '\u8f93\u5165\u6846\u9884\u89c8',
+  globalPreviewTitle: '\u5168\u5c40\u4e3b\u9898\u9884\u89c8',
+  globalPreviewDescription:
+    '\u8fd9\u91cc\u4f1a\u540c\u65f6\u9884\u89c8\u5168\u5c40\u4e3b\u9898\u4ee3\u7801\u548c\u5f53\u524d\u5c40\u90e8\u8303\u56f4\u6837\u5f0f\u53e0\u52a0\u540e\u7684\u6548\u679c\u3002',
+  globalThemeTitle: '\u5168\u5c40\u4e3b\u9898',
+  globalThemeDescription:
+    '\u8fd9\u91cc\u5199\u7684\u662f\u6574\u5957\u4e3b\u9898\u7684\u4e3b\u6837\u5f0f\u5165\u53e3\u3002\u652f\u6301\u5b8c\u6574 CSS\u3001\u4f2a\u5143\u7d20\u3001\u52a8\u753b\u548c\u6574\u6bb5\u9009\u62e9\u5668\uff0c\u4e0d\u53ea\u9650\u4e8e\u804a\u5929\u6c14\u6ce1\u3002',
+  scopePreviewTitle: '\u5c40\u90e8\u8303\u56f4\u9884\u89c8',
+  scopePreviewDescription:
+    '\u70b9\u54ea\u4e00\u4e2a\u5206\u7ec4\u9879\uff0c\u4e0b\u9762\u5c31\u9884\u89c8\u54ea\u4e00\u4e2a\u5c40\u90e8\u76ee\u6807\u3002\u9876\u680f\u548c\u5e95\u90e8\u680f\u90fd\u5df2\u7ecf\u5355\u72ec\u62c6\u51fa\u6765\u4e86\u3002',
+  workbenchTitle: '\u4e3b\u9898\u5de5\u4f5c\u53f0',
+  workbenchDescription:
+    '\u5c40\u90e8\u7f8e\u5316\u6309\u5206\u7ec4\u653e\u5728\u5de5\u4f5c\u53f0\u91cc\uff0c\u4e0d\u518d\u5168\u90e8\u6324\u5728\u4e00\u5757\u3002\u53ef\u4ee5\u5206\u522b\u7f16\u8f91\u9876\u680f\u3001\u5e95\u90e8\u680f\u3001\u5361\u7247\u548c\u7279\u6b8a\u6d88\u606f\u5757\u3002',
+} as const;
+
 function PreviewAnchors() {
   return (
     <>
@@ -83,9 +115,9 @@ function ThemePanelTabs({
   onChange: (panel: ThemePanelKey) => void;
 }) {
   const panels: Array<{ key: ThemePanelKey; label: string }> = [
-    { key: 'globalTheme', label: '全局主题' },
-    { key: 'scope', label: '局部范围' },
-    { key: 'file', label: '主题文件' },
+    { key: 'globalTheme', label: THEME_PANEL_TEXT.tabs.globalTheme },
+    { key: 'scope', label: THEME_PANEL_TEXT.tabs.scope },
+    { key: 'file', label: THEME_PANEL_TEXT.tabs.file },
   ];
 
   return (
@@ -171,8 +203,8 @@ function ThemeWorkbenchPreview({ previewCss }: { previewCss: string }) {
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full bg-zinc-200" />
             <div>
-              <div className="text-sm font-semibold text-zinc-900">主题工作台预览</div>
-              <div className="text-[11px] text-zinc-500">顶栏、气泡和底部栏会一起联动</div>
+              <div className="text-sm font-semibold text-zinc-900">{THEME_PANEL_TEXT.previewTitle}</div>
+              <div className="text-[11px] text-zinc-500">{THEME_PANEL_TEXT.previewSubtitle}</div>
             </div>
           </div>
           <div className="h-8 w-8 rounded-full bg-zinc-100" />
@@ -182,17 +214,17 @@ function ThemeWorkbenchPreview({ previewCss }: { previewCss: string }) {
           <div className="flex justify-start">
             <div className="chat-bubble message-bubble bot-bubble relative max-w-[82%] rounded-[20px] border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-800 shadow-sm">
               <PreviewAnchors />
-              这里会实时预览你写入的主题样式。
+              {THEME_PANEL_TEXT.previewMainCard}
             </div>
           </div>
           <div className="chat-message-image ml-auto w-[72%] overflow-hidden rounded-[20px] border border-zinc-300 bg-white shadow-sm">
             <div className="h-24 bg-[linear-gradient(135deg,#fce7f3_0%,#fff7ed_40%,#dbeafe_100%)]" />
-            <div className="px-3 py-2 text-xs text-zinc-500">图片消息预览</div>
+            <div className="px-3 py-2 text-xs text-zinc-500">{THEME_PANEL_TEXT.previewImage}</div>
           </div>
           <div className="flex justify-end">
             <div className="chat-bubble message-bubble user-bubble relative max-w-[70%] rounded-[20px] border border-zinc-300 bg-[#fdf3f8] px-4 py-3 text-sm text-zinc-800 shadow-sm">
               <PreviewAnchors />
-              右侧用户气泡也会一起受影响。
+              {THEME_PANEL_TEXT.previewAccentCard}
             </div>
           </div>
         </div>
@@ -201,7 +233,7 @@ function ThemeWorkbenchPreview({ previewCss }: { previewCss: string }) {
           <div className="flex items-center gap-2">
             <div className="h-10 w-10 rounded-full bg-zinc-100" />
             <div className="flex-1 rounded-2xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-400 shadow-sm">
-              底部输入栏预览
+              {THEME_PANEL_TEXT.previewFooter}
             </div>
             <div className="h-10 w-10 rounded-full bg-zinc-100" />
           </div>
@@ -241,26 +273,26 @@ function ScopePreview({
       <div className="relative z-10 text-zinc-900">
         {activeTargetId === 'rootVariables' && (
           <div className="space-y-3">
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">这里预览全局变量对整套主题的联动效果。</div>
+            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">{THEME_PANEL_TEXT.rootVariablesMain}</div>
             <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-              变量通常会同时影响卡片、气泡、输入框和边角细节。
+              {THEME_PANEL_TEXT.rootVariablesSub}
             </div>
           </div>
         )}
 
         {activeTargetId === 'pageBackground' && (
           <div className="rounded-[22px] border border-zinc-100 bg-white/80 p-5 shadow-sm">
-            页面背景氛围会在这里直接预览。
+            {THEME_PANEL_TEXT.pageBackground}
           </div>
         )}
 
         {activeTargetId === 'baseTypography' && (
           <div className="space-y-3 rounded-[22px] border border-zinc-100 bg-white p-4 shadow-sm">
-            <div className="text-xl font-semibold">基础文字预览</div>
-            <div className="text-sm leading-7">这里会跟随全局字体、文字颜色以及通用输入控件样式变化。</div>
+            <div className="text-xl font-semibold">{THEME_PANEL_TEXT.baseTypographyTitle}</div>
+            <div className="text-sm leading-7">{THEME_PANEL_TEXT.baseTypographySub}</div>
             <input
               className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm"
-              value="输入框预览"
+              value={THEME_PANEL_TEXT.inputPreview}
               readOnly
             />
           </div>
@@ -360,7 +392,7 @@ function GlobalThemePanel({
 
       <PanelCard
         title="全局主题"
-        description="这里写的是整套主题的主样式入口。支持完整 CSS、伪元素、动画和整段选择器，不局限于气泡。"
+        description="这里写的是整套主题的主样式入口。支持完整 CSS、伪元素、动画和整段选择器，可覆盖页面结构、卡片、输入栏等主题区域。"
         icon={<Type size={16} className="text-zinc-900" />}
       >
         <CodeEditor
@@ -422,7 +454,7 @@ function ScopePanel({
 
       <PanelCard
         title="主题工作台"
-        description="局部美化按分组放在工作台里，不再全部挤在一块。可以分别编辑顶栏、底部栏、气泡和特殊消息块。"
+        description="局部美化按分组放在工作台里，不再全部挤在一块。可以分别编辑顶栏、底部栏、卡片和特殊消息块。"
         icon={<Type size={16} className="text-zinc-900" />}
       >
         <div className="grid gap-4 lg:grid-cols-2">
