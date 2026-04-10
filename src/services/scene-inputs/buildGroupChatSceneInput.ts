@@ -1,9 +1,9 @@
 import type { Character, ChatGroup, ChatHistory, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
+import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
-import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 
 export type GroupChatSceneInput = {
   speakerName: string;
@@ -72,9 +72,9 @@ function getSeedMap(group: ChatGroup | undefined) {
 }
 
 function getFamiliarityLabel(value: GroupMemberFamiliarity): string {
-  if (value === 'familiar') return '\u5df2\u7ecf\u6bd4\u8f83\u719f';
-  if (value === 'aware') return '\u77e5\u9053\u5bf9\u65b9\uff0c\u4f46\u8fd8\u4e0d\u7b97\u719f';
-  return '\u57fa\u672c\u4e0d\u719f';
+  if (value === 'familiar') return '已经比较熟';
+  if (value === 'aware') return '知道对方，但还不算熟';
+  return '基本不熟';
 }
 
 function pickHigherFamiliarity(
@@ -235,7 +235,7 @@ function buildGroupBehaviorGuide(group?: ChatGroup): string | undefined {
   }
 
   if (group?.currentScene?.trim()) {
-    guideLines.push('当前场景只用来决定这句群聊像不像正在那个场景里发生，不要把场景卡片重新讲一遍。');
+    guideLines.push('当前场景只用于决定这句群聊像不像正在那个场景里发生，不要把场景卡片重新讲一遍。');
   }
 
   if (group?.publicFacts?.trim()) {
@@ -281,6 +281,29 @@ function formatGroupTemporalStatePrompt(
     shift: '转场',
     close: '收束',
   };
+  const energyLabelMap: Record<typeof state.energyState, string> = {
+    high: '高',
+    steady: '稳定',
+    low: '偏低',
+    sleepy: '困倦',
+  };
+  const socialLabelMap: Record<typeof state.socialState, string> = {
+    open: '开放',
+    neutral: '中性',
+    reserved: '收着一点',
+    avoidant: '回避',
+  };
+  const attentionLabelMap: Record<typeof state.attentionState, string> = {
+    focused: '集中',
+    split: '分散',
+    drifting: '游离',
+    resting: '休息中',
+  };
+  const pullLabelMap: Record<typeof state.relationshipPull, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+  };
   const topicActionGuideMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
     continue: '当前群里这个点还能自然接，但仍然只接最 relevant 的一小步，不要抢着把话说满。',
     soften: '当前群里这个点已经有点过热了，优先收一收力度，别一直围着同一个点追打。',
@@ -293,6 +316,10 @@ function formatGroupTemporalStatePrompt(
     '[群聊里的角色时间状态]',
     `[当前时段] ${timePeriodLabelMap[state.temporalFacts.timePeriod]}`,
     `[话题建议] ${topicActionLabelMap[state.topicHeatState.suggestedTopicAction]}`,
+    `[能量状态] ${energyLabelMap[state.energyState]}`,
+    `[社交状态] ${socialLabelMap[state.socialState]}`,
+    `[注意力状态] ${attentionLabelMap[state.attentionState]}`,
+    `[关系牵引] ${pullLabelMap[state.relationshipPull]}`,
     `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
     state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
     `[群聊节奏提醒] ${topicActionGuideMap[state.topicHeatState.suggestedTopicAction]}`,
