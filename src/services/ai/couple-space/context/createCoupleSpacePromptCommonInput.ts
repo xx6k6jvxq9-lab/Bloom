@@ -12,6 +12,8 @@ import type {
 import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
 import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
+import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
+import { buildTemporalContextPrompt } from '../../../relationship-time/buildTemporalContextPrompt';
 import type {
   CoupleSpacePromptCommonInputDiagnostics,
   CoupleSpacePromptCommonInputEnvelope,
@@ -78,6 +80,17 @@ export function createCoupleSpacePromptCommonInput(
     recentChatTurns,
     recentCoupleSpaceArtifacts,
   );
+  const temporalState = buildCharacterTemporalState({
+    characterId: source.partner.id,
+    now: source.now,
+    perception: source.coupleSpace.perception,
+    directChatHistory: source.chatHistory ?? undefined,
+    coupleSpace: source.coupleSpace,
+  });
+  const temporalContext = buildTemporalContextPrompt({
+    now: source.now,
+    perception: source.coupleSpace.perception,
+  });
 
   const diagnostics: CoupleSpacePromptCommonInputDiagnostics = {
     usedMaskId: characterCoreResult.usedMaskId,
@@ -130,7 +143,10 @@ export function createCoupleSpacePromptCommonInput(
         recentCoupleSpaceArtifacts,
         crossDomainRelationshipMemory,
       },
-      sections: [],
+      sections: [
+        temporalContext,
+        formatTemporalStatePrompt(temporalState),
+      ].filter(Boolean),
     },
     policy,
     diagnostics,
@@ -390,6 +406,87 @@ function buildRecentChatSummary(turns: CoupleSpaceRecentChatTurn[]): string | un
     .slice(-3)
     .map((turn) => `${turn.authorLabel}提到：${turn.text}`)
     .join('；');
+}
+
+function formatTemporalStatePrompt(
+  state: ReturnType<typeof buildCharacterTemporalState>,
+): string {
+  const timePeriodLabelMap: Record<typeof state.temporalFacts.timePeriod, string> = {
+    late_night: '深夜',
+    early_morning: '清晨',
+    morning: '上午',
+    noon: '中午',
+    afternoon: '下午',
+    evening: '晚上',
+  };
+  const densityLabelMap: Record<typeof state.interactionGapState.recentInteractionDensity, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+  };
+  const topicHeatLabelMap: Record<typeof state.topicHeatState.currentTopicHeat, string> = {
+    hot: '高热',
+    warm: '温热',
+    fading: '降温中',
+    cold: '已冷却',
+  };
+  const topicActionLabelMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
+    continue: '继续承接',
+    soften: '放缓一点',
+    shift: '自然转场',
+    close: '可以收束',
+  };
+  const energyLabelMap: Record<typeof state.energyState, string> = {
+    high: '高',
+    steady: '稳定',
+    low: '偏低',
+    sleepy: '困倦',
+  };
+  const socialLabelMap: Record<typeof state.socialState, string> = {
+    open: '开放',
+    neutral: '中性',
+    reserved: '收着一点',
+    avoidant: '回避',
+  };
+  const attentionLabelMap: Record<typeof state.attentionState, string> = {
+    focused: '集中',
+    split: '分散',
+    drifting: '游离',
+    resting: '休息中',
+  };
+  const pullLabelMap: Record<typeof state.relationshipPull, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+  };
+  const readinessLabelMap: Record<typeof state.initiativeReadiness, string> = {
+    ready: '可以主动',
+    hold: '先收一收',
+    low: '暂时偏低',
+  };
+  const momentumLabelMap: Record<typeof state.sceneMomentum, string> = {
+    continue: '继续',
+    soften: '放缓',
+    shift: '转场',
+    close: '收束',
+  };
+
+  return [
+    '## 角色当前时间状态',
+    `[时间来源] ${state.temporalFacts.timeSource === 'perceived' ? '感知时间' : '现实时间'}`,
+    `[当前时间] ${state.temporalFacts.dateText}`,
+    `[当前时段] ${timePeriodLabelMap[state.temporalFacts.timePeriod]}`,
+    `[互动密度] ${densityLabelMap[state.interactionGapState.recentInteractionDensity]}`,
+    `[话题热度] ${topicHeatLabelMap[state.topicHeatState.currentTopicHeat]}`,
+    `[话题建议] ${topicActionLabelMap[state.topicHeatState.suggestedTopicAction]}`,
+    `[能量状态] ${energyLabelMap[state.energyState]}`,
+    `[社交状态] ${socialLabelMap[state.socialState]}`,
+    `[注意力状态] ${attentionLabelMap[state.attentionState]}`,
+    `[关系牵引] ${pullLabelMap[state.relationshipPull]}`,
+    `[主动意愿] ${readinessLabelMap[state.initiativeReadiness]}`,
+    `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
+    state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 function buildRecentArtifacts(
