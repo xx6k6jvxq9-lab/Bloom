@@ -4,8 +4,8 @@ import { selectActiveGroupWorldBooks } from '../../features/group-world-book/sel
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
-import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
+import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
@@ -53,19 +53,19 @@ function buildSharedGroupInteropSections(
 
       const lines = [
         group.backgroundSummary?.trim()
-          ? `[\u7fa4\u80cc\u666f\u7b80\u8ff0] ${group.backgroundSummary.trim()}`
+          ? `[群背景简述] ${group.backgroundSummary.trim()}`
           : '',
         group.memberRelationshipNote?.trim()
-          ? `[\u6210\u5458\u5173\u7cfb\u8865\u5145] ${group.memberRelationshipNote.trim()}`
+          ? `[成员关系补充] ${group.memberRelationshipNote.trim()}`
           : '',
         group.currentScene?.trim()
-          ? `[\u7fa4\u5f53\u524d\u573a\u666f] ${group.currentScene.trim()}`
+          ? `[群当前场景] ${group.currentScene.trim()}`
           : '',
         group.publicFacts?.trim()
-          ? `[\u7fa4\u516c\u5f00\u4e8b\u5b9e] ${group.publicFacts.trim()}`
+          ? `[群公开事实] ${group.publicFacts.trim()}`
           : '',
         groupWorldBookPrompt
-          ? `[\u7fa4\u4e16\u754c\u4e66]\n${groupWorldBookPrompt}`
+          ? `[群世界书]\n${groupWorldBookPrompt}`
           : '',
       ].filter(Boolean);
 
@@ -73,7 +73,7 @@ function buildSharedGroupInteropSections(
         return '';
       }
 
-      return [`## \u53ef\u5171\u4eab\u7684\u7fa4\u804a\u8d44\u6599\u57df\uff1a${group.name}`, ...lines].join('\n');
+      return [`## 可共享的群聊资料域：${group.name}`, ...lines].join('\n');
     })
     .filter(Boolean);
 }
@@ -157,6 +157,12 @@ function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTempor
     shift: '转场',
     close: '收束',
   };
+  const topicActionGuideMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
+    continue: '最近的话题还可以自然接着聊，但仍然只推进一个点，不要把一轮说满。',
+    soften: '最近的话题已经偏热，优先收一收力度，接住核心情绪即可，不要继续围着同一个点反复追打。',
+    shift: '最近的话题可以自然转场，优先回到当下时间、角色状态或新的轻一点的话题，不要死咬旧点。',
+    close: '最近的话题已经可以收束，允许留白、停顿或以后再说，不要硬续。',
+  };
 
   return [
     '## 角色当前时间状态',
@@ -172,6 +178,7 @@ function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTempor
     `[关系牵引] ${pullLabelMap[state.relationshipPull]}`,
     `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
     state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
+    `[回复节奏提醒] ${topicActionGuideMap[state.topicHeatState.suggestedTopicAction]}`,
   ].filter(Boolean).join('\n');
 }
 

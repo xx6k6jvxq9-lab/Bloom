@@ -33,7 +33,23 @@ function getLastTopicAnchor(messages: ChatMessage[]): string | undefined {
 }
 
 function hasPendingEmotion(messages: ChatMessage[]): boolean {
-  return messages.slice(-6).some((message) => /[?？!！]|想你|难受|哭|别走|不要|生气|委屈|讨厌|喜欢|想见/.test(getMessageBody(message)));
+  return messages
+    .slice(-6)
+    .some((message) => /[?？!！]|想你|难受|哭|别走|不要|生气|委屈|讨厌|喜欢|想见|抱抱|亲亲|想抱|舍不得/.test(getMessageBody(message)));
+}
+
+function countRecentTurns(messages: ChatMessage[]): number {
+  let turns = 0;
+  let previousRole: ChatMessage['role'] | null = null;
+
+  for (const message of messages) {
+    if (message.role !== previousRole) {
+      turns += 1;
+      previousRole = message.role;
+    }
+  }
+
+  return turns;
 }
 
 export function buildTopicHeatState(input: BuildTopicHeatStateInput): TopicHeatState {
@@ -46,7 +62,8 @@ export function buildTopicHeatState(input: BuildTopicHeatStateInput): TopicHeatS
   const recentWindowMessages = latestTimestamp == null
     ? []
     : messages.filter((message) => message.timestamp >= latestTimestamp - (30 * 60 * 1000));
-  const recentTurnCount = recentWindowMessages.length;
+  const recentMessageCount = recentWindowMessages.length;
+  const recentTurnSwitches = countRecentTurns(recentWindowMessages.slice(-10));
   const hasPendingEmotionalThread = hasPendingEmotion(messages);
 
   let currentTopicHeat: TopicHeatState['currentTopicHeat'] = 'cold';
@@ -55,10 +72,13 @@ export function buildTopicHeatState(input: BuildTopicHeatStateInput): TopicHeatS
   let suggestedTopicAction: TopicHeatState['suggestedTopicAction'] = 'close';
 
   if (minutesSinceLatest !== null && minutesSinceLatest <= 10) {
-    currentTopicHeat = recentTurnCount >= 8 ? 'hot' : 'warm';
-    topicDecayStage = recentTurnCount >= 8 ? 'overextended' : 'fresh';
+    const isOverextended = recentMessageCount >= 6 || recentTurnSwitches >= 5;
+    currentTopicHeat = isOverextended ? 'hot' : 'warm';
+    topicDecayStage = isOverextended ? 'overextended' : 'fresh';
     topicFollowPressure = hasPendingEmotionalThread ? 'high' : 'medium';
-    suggestedTopicAction = recentTurnCount >= 8 ? 'soften' : 'continue';
+    suggestedTopicAction = isOverextended
+      ? (hasPendingEmotionalThread ? 'soften' : 'shift')
+      : 'continue';
   } else if (minutesSinceLatest !== null && minutesSinceLatest <= 60) {
     currentTopicHeat = 'fading';
     topicDecayStage = 'continuing';
@@ -67,7 +87,7 @@ export function buildTopicHeatState(input: BuildTopicHeatStateInput): TopicHeatS
   } else if (minutesSinceLatest !== null && minutesSinceLatest <= 12 * 60) {
     currentTopicHeat = 'cold';
     topicDecayStage = 'expired';
-    topicFollowPressure = hasPendingEmotionalThread ? 'low' : 'low';
+    topicFollowPressure = 'low';
     suggestedTopicAction = hasPendingEmotionalThread ? 'shift' : 'close';
   }
 
