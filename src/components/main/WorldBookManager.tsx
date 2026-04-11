@@ -30,6 +30,18 @@ function getWorldBookScopeLabel(worldBook: WorldBookEntry): string {
   return count > 0 ? `角色专属 ${count} 人` : '角色专属';
 }
 
+function getWorldBookScopeNames(worldBook: WorldBookEntry, characters: any[]): string[] {
+  if (worldBook.isGlobal) {
+    return [];
+  }
+
+  const selectedIds = new Set(worldBook.characterIds || []);
+  return characters
+    .filter((character) => selectedIds.has(character.id))
+    .map((character) => character.name)
+    .filter(Boolean);
+}
+
 function ResolvedWorldBookAvatar({
   value,
   alt,
@@ -85,6 +97,20 @@ export function WorldBookManager({
     activeCategory === '全部'
       ? worldBooks
       : worldBooks.filter((worldBook) => normalizeWorldBookCategory(worldBook.category) === activeCategory),
+  );
+
+  const selectedScopeNames = getWorldBookScopeNames(
+    {
+      id: editForm.id || '',
+      title: editForm.title || '',
+      content: editForm.content || '',
+      category: normalizeWorldBookCategory(editForm.category),
+      priorityLevel: normalizeWorldBookPriorityLevel(editForm.priorityLevel),
+      isActive: editForm.isActive ?? true,
+      isGlobal: editForm.isGlobal ?? true,
+      characterIds: editForm.characterIds || [],
+    },
+    characters,
   );
 
   const handleSave = () => {
@@ -283,6 +309,11 @@ export function WorldBookManager({
                     </div>
                   ))}
                 </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-[11px] text-violet-700">
+                  {selectedScopeNames.length > 0
+                    ? `当前会作用于：${selectedScopeNames.join('、')}`
+                    : '当前还没有绑定角色，这条世界书暂时不会被角色专属读取。'}
+                </div>
               </div>
             )}
 
@@ -344,93 +375,110 @@ export function WorldBookManager({
               </div>
             )}
 
-            {filtered.map((worldBook) => (
-              <div
-                key={worldBook.id}
-                className={`rounded-2xl border p-4 shadow-sm backdrop-blur-xl transition-all active:scale-[0.98] ${
-                  globalBackground ? 'border-white/30 bg-white/60 hover:bg-white/70' : 'border-zinc-100 bg-white hover:bg-zinc-50'
-                } ${!worldBook.isActive ? 'opacity-60' : ''}`}
-              >
-                <div className="mb-2 flex items-start justify-between">
-                  <div>
-                    <h4 className="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
-                      {worldBook.title}
-                      {!worldBook.isActive && (
-                        <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500">未启用</span>
-                      )}
-                    </h4>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="rounded border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
-                        {normalizeWorldBookCategory(worldBook.category)}
-                      </span>
-                      <span className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
-                        {getWorldBookPriorityLabel(worldBook.priorityLevel)}优先
-                      </span>
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] ${
-                          worldBook.isGlobal
-                            ? 'border border-blue-100 bg-blue-50 text-blue-600'
-                            : 'border border-violet-100 bg-violet-50 text-violet-600'
-                        }`}
+            {filtered.map((worldBook) => {
+              const scopeNames = getWorldBookScopeNames(worldBook, characters);
+
+              return (
+                <div
+                  key={worldBook.id}
+                  className={`rounded-2xl border p-4 shadow-sm backdrop-blur-xl transition-all active:scale-[0.98] ${
+                    globalBackground ? 'border-white/30 bg-white/60 hover:bg-white/70' : 'border-zinc-100 bg-white hover:bg-zinc-50'
+                  } ${!worldBook.isActive ? 'opacity-60' : ''}`}
+                >
+                  <div className="mb-2 flex items-start justify-between">
+                    <div>
+                      <h4 className="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
+                        {worldBook.title}
+                        {!worldBook.isActive && (
+                          <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500">未启用</span>
+                        )}
+                      </h4>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className="rounded border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
+                          {normalizeWorldBookCategory(worldBook.category)}
+                        </span>
+                        <span className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                          {getWorldBookPriorityLabel(worldBook.priorityLevel)}优先
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            worldBook.isGlobal
+                              ? 'border border-blue-100 bg-blue-50 text-blue-600'
+                              : 'border border-violet-100 bg-violet-50 text-violet-600'
+                          }`}
+                        >
+                          {getWorldBookScopeLabel(worldBook)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setWorldBooks(worldBooks.map((item) => (item.id === worldBook.id ? { ...item, isActive: !item.isActive } : item)))}
+                        className={`rounded-lg p-1.5 transition-colors ${worldBook.isActive ? 'text-zinc-900 hover:bg-zinc-100' : 'text-zinc-400 hover:bg-zinc-100'}`}
+                        title={worldBook.isActive ? '点击停用' : '点击启用'}
                       >
-                        {getWorldBookScopeLabel(worldBook)}
-                      </span>
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditForm({
+                            ...worldBook,
+                            category: normalizeWorldBookCategory(worldBook.category),
+                            priorityLevel: normalizeWorldBookPriorityLevel(worldBook.priorityLevel),
+                          });
+                          setShowAdd(true);
+                        }}
+                        className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(worldBook.id)}
+                        className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <p className="line-clamp-3 text-[13px] leading-relaxed text-zinc-600">{worldBook.content}</p>
+
+                  {!worldBook.isGlobal && scopeNames.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {scopeNames.map((name) => (
+                        <span
+                          key={`${worldBook.id}-${name}`}
+                          className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {normalizeWorldBookCategory(worldBook.category) === '角色设定' && onAddCharacter && (
                     <button
-                      onClick={() => setWorldBooks(worldBooks.map((item) => (item.id === worldBook.id ? { ...item, isActive: !item.isActive } : item)))}
-                      className={`rounded-lg p-1.5 transition-colors ${worldBook.isActive ? 'text-zinc-900 hover:bg-zinc-100' : 'text-zinc-400 hover:bg-zinc-100'}`}
-                      title={worldBook.isActive ? '点击停用' : '点击启用'}
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditForm({
-                          ...worldBook,
-                          category: normalizeWorldBookCategory(worldBook.category),
-                          priorityLevel: normalizeWorldBookPriorityLevel(worldBook.priorityLevel),
-                        });
-                        setShowAdd(true);
+                      onClick={async () => {
+                        if (await showInAppConfirm(`要将 "${worldBook.title}" 添加到聊天列表吗？`)) {
+                          onAddCharacter({
+                            name: worldBook.title,
+                            setting: worldBook.content,
+                            avatar: `https://picsum.photos/seed/${worldBook.id}/200`,
+                            gender: 'other',
+                            openingRemark: '你好。',
+                          });
+                          alert('已添加至通讯录。');
+                        }
                       }}
-                      className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                      className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-bold text-zinc-900 transition-colors hover:bg-zinc-200"
                     >
-                      <Pencil size={16} />
+                      添加为聊天角色
                     </button>
-                    <button
-                      onClick={() => handleDelete(worldBook.id)}
-                      className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  )}
                 </div>
-
-                <p className="line-clamp-3 text-[13px] leading-relaxed text-zinc-600">{worldBook.content}</p>
-
-                {normalizeWorldBookCategory(worldBook.category) === '角色设定' && onAddCharacter && (
-                  <button
-                    onClick={async () => {
-                      if (await showInAppConfirm(`要将 "${worldBook.title}" 添加到聊天列表吗？`)) {
-                        onAddCharacter({
-                          name: worldBook.title,
-                          setting: worldBook.content,
-                          avatar: `https://picsum.photos/seed/${worldBook.id}/200`,
-                          gender: 'other',
-                          openingRemark: '你好。',
-                        });
-                        alert('已添加至通讯录。');
-                      }
-                    }}
-                    className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 py-2 text-[12px] font-bold text-zinc-900 transition-colors hover:bg-zinc-200"
-                  >
-                    添加为聊天角色
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
