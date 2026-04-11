@@ -392,7 +392,10 @@ export function MomentsApp({
   if (showPublish) {
     return (
       <div className="absolute inset-0 z-[100] flex flex-col bg-white/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 py-3 backdrop-blur-md">
+        <div
+          className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+        >
           <button onClick={() => setShowPublish(false)} className="text-zinc-600">取消</button>
           <button
             onClick={handlePublish}
@@ -402,7 +405,10 @@ export function MomentsApp({
             发表
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div
+          className="flex-1 overflow-y-auto px-4 pb-4"
+          style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)' }}
+        >
           <textarea
             value={publishContent}
             onChange={(e) => setPublishContent(e.target.value)}
