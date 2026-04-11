@@ -4,15 +4,12 @@ import type {
   CoupleSpaceInitiativeSource,
 } from '../../../../types';
 import {
+  buildCoupleSpaceInitiativeExecutionFeedback,
   buildPreparedExecutionRequestForCandidate,
   buildCoupleSpaceInitiativeExecutionContext,
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
-import {
-  type CoupleSpaceInitiativeArtifactPreview,
-  buildExecutionBoundaryAwareArtifactPreview,
-  buildExecutionBoundaryAwareStatusText,
-} from './coupleSpaceInitiativeExecutionFeedback';
+import { type CoupleSpaceInitiativeArtifactPreview } from './coupleSpaceInitiativeExecutionFeedback';
 import {
   runCoupleSpaceInitiativeDevCheck,
   type RunCoupleSpaceInitiativeDevCheckResult,
@@ -97,7 +94,6 @@ export async function runCoupleSpaceInitiativeRandomRefresh(
     runResult,
     nextCoupleSpace:
       runResult && 'nextCoupleSpace' in runResult ? runResult.nextCoupleSpace : input.coupleSpace,
-    statusText: buildExecutionBoundaryAwareStatusText(candidate, runResult),
-    artifactPreview: buildExecutionBoundaryAwareArtifactPreview(candidate, runResult),
+    ...buildCoupleSpaceInitiativeExecutionFeedback(candidate, runResult),
   };
 }

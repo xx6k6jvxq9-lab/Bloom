@@ -193,11 +193,22 @@ export function buildNoCandidateStatusText(devCheck: RunCoupleSpaceInitiativeDev
   return '这次没有可触发的主动内容：当前没有新的互动、互记或记录线索。';
 }
 
-export function buildRunStatusText(
+export function buildCoupleSpaceInitiativeExecutionFeedback(
   candidate: CoupleSpaceInitiativeCandidate,
   runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>,
-): string {
-  return buildExecutionBoundaryAwareStatusText(candidate, runResult);
+  options?: {
+    attemptedCount?: number;
+    usedFallbackCandidate?: boolean;
+  },
+): Pick<RunCoupleSpaceInitiativeManualCheckResult, 'statusText' | 'artifactPreview'> {
+  return {
+    statusText: appendFallbackStatusNote(
+      buildExecutionBoundaryAwareStatusText(candidate, runResult),
+      options?.attemptedCount ?? 1,
+      options?.usedFallbackCandidate ?? false,
+    ),
+    artifactPreview: buildExecutionBoundaryAwareArtifactPreview(candidate, runResult),
+  };
 }
 
 /* legacy manual feedback path kept for reference while consumers migrate.
@@ -231,13 +242,6 @@ if (runResult.executorStatus !== 'accepted') {
 }
 
 */
-export function buildArtifactPreview(
-  candidate: CoupleSpaceInitiativeCandidate,
-  runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>,
-): RunCoupleSpaceInitiativeManualCheckResult['artifactPreview'] {
-  return buildExecutionBoundaryAwareArtifactPreview(candidate, runResult);
-}
-
 /* legacy manual artifact preview path kept for reference while consumers migrate.
   if ('draftContent' in runResult && runResult.draftContent) {
     return {
@@ -661,11 +665,9 @@ export async function runCoupleSpaceInitiativeManualCheck(
     devCheck,
     runResult,
     nextCoupleSpace: attemptResult.nextCoupleSpace,
-    statusText: appendFallbackStatusNote(
-      buildRunStatusText(candidate, runResult),
-      attemptResult.attemptedCount,
-      attemptResult.usedFallbackCandidate,
-    ),
-    artifactPreview: buildArtifactPreview(candidate, runResult),
+    ...buildCoupleSpaceInitiativeExecutionFeedback(candidate, runResult, {
+      attemptedCount: attemptResult.attemptedCount,
+      usedFallbackCandidate: attemptResult.usedFallbackCandidate,
+    }),
   };
 }
