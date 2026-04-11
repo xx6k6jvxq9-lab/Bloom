@@ -24,6 +24,10 @@ body {
   isolation: isolate;
 }
 
+.app-phone-container.is-dating-scene {
+  background: #050608 !important;
+}
+
 .phone-screen-root {
   position: relative;
   isolation: isolate;
@@ -33,6 +37,10 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   align-self: stretch;
+}
+
+.phone-screen-root.is-dating-scene {
+  background: #050608 !important;
 }
 
 @media (max-width: 767px) {
@@ -64,11 +72,19 @@ body {
     padding-left: 0;
   }
 
+  .app-phone-container.is-dating-scene {
+    background: #050608 !important;
+  }
+
   .phone-screen-root {
     width: 100%;
     min-width: 0;
     min-height: 0;
     margin-right: 0;
+  }
+
+  .phone-screen-root.is-dating-scene {
+    background: #050608 !important;
   }
 
   .chat-session-header {

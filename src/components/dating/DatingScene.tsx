@@ -279,6 +279,19 @@ export function DatingScene({
     }
   }, [startToken, session]);
 
+  useEffect(() => {
+    const phoneContainer = document.getElementById('phone-container');
+    const phoneScreenRoot = phoneContainer?.querySelector('.phone-screen-root');
+
+    phoneContainer?.classList.add('is-dating-scene');
+    phoneScreenRoot?.classList.add('is-dating-scene');
+
+    return () => {
+      phoneContainer?.classList.remove('is-dating-scene');
+      phoneScreenRoot?.classList.remove('is-dating-scene');
+    };
+  }, []);
+
   const backgroundInfo = resolveDateSessionBackground(currentSession, character.avatar);
   const { resolvedUrl: resolvedBackgroundImageUrl } = useResolvedPersistentValue(backgroundInfo.image);
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
