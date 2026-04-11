@@ -39,7 +39,10 @@ import {
   publishCoupleSpaceInitiativeDraft,
   removeCoupleSpaceInitiativeDraft,
 } from '../../../services/ai/couple-space/initiative/coupleSpaceDraftBuffer';
-import { applyCoupleSpaceInitiativeRunResult } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
+import {
+  applyCoupleSpaceInitiativeRunResult,
+  buildAppliedInitiativeStatusText,
+} from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeAutoCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
@@ -356,11 +359,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       );
 
       handleUpdateCoupleSpace(persistedResult.nextCoupleSpace);
-      setInitiativeCheckStatus(
-        persistedResult.draftSaved
-          ? `${result.statusText} 这条草稿已经存进草稿箱了。`
-          : result.statusText,
-      );
+      setInitiativeCheckStatus(buildAppliedInitiativeStatusText(result.statusText, persistedResult));
       setInitiativeArtifactPreview(result.artifactPreview);
     } catch (error) {
       console.error('Random initiative refresh failed:', error);
@@ -396,9 +395,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
       handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
       setInitiativeCheckStatus(
-        persistedDraftResult.draftSaved
-          ? `${result.statusText} 这条草稿已经存进草稿箱了。`
-          : result.statusText,
+        buildAppliedInitiativeStatusText(result.statusText, {
+          ...persistedDraftResult,
+          updatedModuleLabel: null,
+        }),
       );
       setInitiativeArtifactPreview(result.artifactPreview);
     } catch (error) {
@@ -474,9 +474,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
         handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
         setInitiativeCheckStatus(
-          persistedDraftResult.draftSaved
-            ? `${result.statusText} 这条草稿已经存进草稿箱了。`
-            : result.statusText,
+          buildAppliedInitiativeStatusText(result.statusText, {
+            ...persistedDraftResult,
+            updatedModuleLabel: null,
+          }),
         );
         setInitiativeArtifactPreview(result.artifactPreview);
       } catch (error) {

@@ -14,6 +14,15 @@ export type ApplyCoupleSpaceInitiativeResultOutput = {
   updatedModuleLabel: string | null;
 };
 
+export function buildAppliedInitiativeStatusText(
+  baseStatusText: string,
+  appliedResult: ApplyCoupleSpaceInitiativeResultOutput,
+): string {
+  return appliedResult.draftSaved
+    ? `${baseStatusText} 这条草稿已经存进草稿箱了。`
+    : baseStatusText;
+}
+
 function getModuleLabel(runResult: RunCoupleSpaceInitiativeCandidateResult | null): string | null {
   switch (runResult?.actionType) {
     case 'post_couple_daily':
