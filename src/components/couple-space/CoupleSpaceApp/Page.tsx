@@ -166,6 +166,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     note?: string;
   } | null>(null);
   const initiativeAutoCheckGateRef = React.useRef<any>(null);
+  const initiativeRequestVersionRef = React.useRef(0);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -275,8 +276,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   };
 
   const handleManualInitiativeCheck = async () => {
-    if (!partner || initiativeCheckBusy || initiativeAutoCheckBusy) return;
+    if (!partner || initiativeCheckBusy) return;
 
+    initiativeRequestVersionRef.current += 1;
     setInitiativeCheckBusy(true);
     try {
       const result = await runCoupleSpaceInitiativeManualCheck({
@@ -318,6 +320,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     }
 
     let cancelled = false;
+    const requestVersion = initiativeRequestVersionRef.current;
 
     void (async () => {
       setInitiativeAutoCheckBusy(true);
@@ -332,6 +335,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         });
 
         if (cancelled) {
+          return;
+        }
+
+        if (requestVersion !== initiativeRequestVersionRef.current) {
           return;
         }
 
