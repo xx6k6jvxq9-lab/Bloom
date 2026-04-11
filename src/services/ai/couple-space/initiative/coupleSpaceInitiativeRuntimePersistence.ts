@@ -4,6 +4,7 @@ import type {
   CoupleSpaceInitiativeRuntimeRecord,
 } from '../../../../types';
 import type { RunCoupleSpaceInitiativeCandidateResult } from './runCoupleSpaceInitiativeCandidate';
+import { matchesExecutionBoundaryOutcome } from './coupleSpaceInitiativeExecutionOutcome';
 
 function mergeRuntimeRecord(
   previous: CoupleSpaceInitiativeRuntimeRecord | undefined,
@@ -27,11 +28,7 @@ function getRuntimePatch(
     return null;
   }
 
-  if (!('executionBoundary' in runResult)) {
-    return null;
-  }
-
-  if (runResult.executionBoundary.channel === 'direct_write' && 'sinkStatus' in runResult && runResult.sinkStatus === 'applied') {
+  if (matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'applied')) {
     return {
       actionType: runResult.actionType,
       patch: {
@@ -41,7 +38,7 @@ function getRuntimePatch(
     };
   }
 
-  if (runResult.executionBoundary.channel === 'draft_buffer' && 'sinkStatus' in runResult && runResult.sinkStatus === 'created') {
+  if (matchesExecutionBoundaryOutcome(runResult, 'draft_buffer', 'created')) {
     return {
       actionType: runResult.actionType,
       patch: {
@@ -51,11 +48,7 @@ function getRuntimePatch(
     };
   }
 
-  if (
-    runResult.executionBoundary.channel === 'confirmation_queue' &&
-    'sinkStatus' in runResult &&
-    runResult.sinkStatus === 'created'
-  ) {
+  if (matchesExecutionBoundaryOutcome(runResult, 'confirmation_queue', 'created')) {
     return {
       actionType: runResult.actionType,
       patch: {

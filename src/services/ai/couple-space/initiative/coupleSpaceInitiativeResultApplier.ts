@@ -4,6 +4,7 @@ import type {
 } from '../../../../types';
 import { applyCoupleSpaceInitiativeRuntimeResult } from './coupleSpaceInitiativeRuntimePersistence';
 import { appendCoupleSpaceInitiativeDraft, createCoupleSpaceInitiativeDraftEntry } from './coupleSpaceDraftBuffer';
+import { matchesExecutionBoundaryOutcome } from './coupleSpaceInitiativeExecutionOutcome';
 import type { RunCoupleSpaceInitiativeCandidateResult } from './runCoupleSpaceInitiativeCandidate';
 
 export type CoupleSpaceInitiativeResultApplySource = CoupleSpaceInitiativeDraftEntry['source'];
@@ -69,10 +70,7 @@ export function applyCoupleSpaceInitiativeRunResult(
       nextCoupleSpace: runtimeAppliedSpace,
       draftSaved: false,
       updatedModuleLabel:
-        runResult &&
-        'executionBoundary' in runResult &&
-        runResult.executorStatus === 'accepted' &&
-        runResult.executionBoundary.channel === 'direct_write'
+        matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'applied')
           ? getModuleLabel(runResult)
           : null,
     };
