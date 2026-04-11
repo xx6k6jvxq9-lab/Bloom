@@ -301,18 +301,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     baseCoupleSpace: CoupleSpaceData,
     runResult: RunCoupleSpaceInitiativeCandidateResult | null,
     source: CoupleSpaceInitiativeDraftEntry['source'],
-  ): { nextCoupleSpace: CoupleSpaceData; draftSaved: boolean } => {
-    const result = applyCoupleSpaceInitiativeRunResult(
+  ): ReturnType<typeof applyCoupleSpaceInitiativeRunResult> => {
+    return applyCoupleSpaceInitiativeRunResult(
       baseCoupleSpace,
       runResult,
       source,
       Date.now(),
     );
-
-    return {
-      nextCoupleSpace: result.nextCoupleSpace,
-      draftSaved: result.draftSaved,
-    };
   };
 
   const handlePublishInitiativeDraft = (draftId: string) => {
@@ -394,12 +389,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       );
 
       handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
-      setInitiativeCheckStatus(
-        buildAppliedInitiativeStatusText(result.statusText, {
-          ...persistedDraftResult,
-          updatedModuleLabel: null,
-        }),
-      );
+      setInitiativeCheckStatus(buildAppliedInitiativeStatusText(result.statusText, persistedDraftResult));
       setInitiativeArtifactPreview(result.artifactPreview);
     } catch (error) {
       console.error('Manual initiative check failed:', error);
@@ -473,12 +463,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         );
 
         handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
-        setInitiativeCheckStatus(
-          buildAppliedInitiativeStatusText(result.statusText, {
-            ...persistedDraftResult,
-            updatedModuleLabel: null,
-          }),
-        );
+        setInitiativeCheckStatus(buildAppliedInitiativeStatusText(result.statusText, persistedDraftResult));
         setInitiativeArtifactPreview(result.artifactPreview);
       } catch (error) {
         console.error('Auto initiative check failed:', error);

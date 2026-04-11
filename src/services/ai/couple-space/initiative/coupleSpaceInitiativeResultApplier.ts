@@ -16,7 +16,7 @@ export type ApplyCoupleSpaceInitiativeResultOutput = {
 
 export function buildAppliedInitiativeStatusText(
   baseStatusText: string,
-  appliedResult: ApplyCoupleSpaceInitiativeResultOutput,
+  appliedResult: Pick<ApplyCoupleSpaceInitiativeResultOutput, 'draftSaved'>,
 ): string {
   return appliedResult.draftSaved
     ? `${baseStatusText} 这条草稿已经存进草稿箱了。`
