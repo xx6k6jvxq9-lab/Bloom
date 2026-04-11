@@ -118,6 +118,7 @@ function buildExtraSections(input: {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
   recentCoupleSpaceSummary?: string;
+  sharedRecentRelationshipSummary?: string;
 }): string[] {
   return [
     input.temporalContext || '',
@@ -128,6 +129,9 @@ function buildExtraSections(input: {
     input.shortTermSummary ? ['## 近期关系余波', input.shortTermSummary].join('\n') : '',
     input.longTermMemoryProfile ? ['## 长期关系印象', input.longTermMemoryProfile].join('\n') : '',
     input.recentCoupleSpaceSummary ? ['## 最近情侣空间相关痕迹', input.recentCoupleSpaceSummary].join('\n') : '',
+    input.sharedRecentRelationshipSummary
+      ? ['## 最近关系连续性', input.sharedRecentRelationshipSummary].join('\n')
+      : '',
   ].filter(Boolean);
 }
 
@@ -171,6 +175,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
       shortTermSummary: characterScopedMemory.shortTermSummary,
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
       recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
+      sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
     }),
   };
 }
