@@ -515,7 +515,7 @@ function shouldTryNextCandidate(
   }
 }
 
-function buildPreparedExecutionRequestForCandidate(
+export function buildPreparedExecutionRequestForCandidate(
   candidate: CoupleSpaceInitiativeCandidate,
 ): CoupleSpaceInitiativeExecutionRequest | null {
   const plan = buildCoupleSpaceInitiativeExecutionPlan(candidate);

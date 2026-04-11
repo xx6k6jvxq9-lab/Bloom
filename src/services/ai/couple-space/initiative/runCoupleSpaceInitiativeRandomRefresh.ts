@@ -1,19 +1,10 @@
 import type {
-  AppSettings,
-  Character,
-  ChatHistory,
   CoupleSpaceData,
   CoupleSpaceInitiativeCandidate,
   CoupleSpaceInitiativeSource,
-  UserProfileExtended,
 } from '../../../../types';
-import { buildCoupleSpaceInitiativeExecutionBridge } from '../execution/coupleSpaceInitiativeExecutionBridge';
-import { buildCoupleSpaceInitiativeExecutionPlan } from '../execution/coupleSpaceInitiativeExecutionPlan';
-import { buildCoupleSpaceInitiativeExecutionRequest } from '../execution/coupleSpaceInitiativeExecutionRequest';
-import type { CoupleSpaceInitiativeExecutionReadinessStatus } from '../execution/coupleSpaceInitiativeExecutionReadiness';
-import { evaluateCoupleSpaceInitiativeExecutionReadiness } from '../execution/coupleSpaceInitiativeExecutionReadiness';
-import { buildCoupleSpaceInitiativeCommitRoute } from './coupleSpaceInitiativeCommitRoute';
 import {
+  buildPreparedExecutionRequestForCandidate,
   buildCoupleSpaceInitiativeExecutionContext,
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
@@ -43,33 +34,6 @@ export type RunCoupleSpaceInitiativeRandomRefreshResult = {
   statusText: string;
   artifactPreview: CoupleSpaceInitiativeArtifactPreview;
 };
-
-function buildPreparedRequest(candidate: CoupleSpaceInitiativeCandidate) {
-  const plan = buildCoupleSpaceInitiativeExecutionPlan(candidate);
-  const route = buildCoupleSpaceInitiativeCommitRoute(plan);
-  const bridge = buildCoupleSpaceInitiativeExecutionBridge(plan, route);
-  const readiness = evaluateCoupleSpaceInitiativeExecutionReadiness(bridge);
-  const request = buildCoupleSpaceInitiativeExecutionRequest(bridge, readiness);
-
-  if (!request) {
-    return null;
-  }
-
-  return {
-    ...request,
-    envelope: {
-      ...request.envelope,
-      readinessStatus:
-        (request.envelope.commitMode === 'confirm' ? 'partial' : 'ready') as CoupleSpaceInitiativeExecutionReadinessStatus,
-    },
-    unresolvedInputs: [],
-    readinessSummary:
-      request.envelope.commitMode === 'confirm'
-        ? 'Random refresh assembled the required execution context; this action can continue into a confirmation path.'
-        : 'Random refresh assembled the required execution context and this request is ready for execution.',
-    readyForExecutionBridge: true,
-  };
-}
 
 function pickRandomCandidate(candidates: CoupleSpaceInitiativeCandidate[]) {
   if (!candidates.length) {
@@ -106,7 +70,7 @@ export async function runCoupleSpaceInitiativeRandomRefresh(
     };
   }
 
-  const request = buildPreparedRequest(candidate);
+  const request = buildPreparedExecutionRequestForCandidate(candidate);
   if (!request) {
     return {
       devCheck,
