@@ -3,13 +3,12 @@ import type {
   CoupleSpaceInitiativeSource,
 } from '../../../../types';
 import {
-  appendFallbackStatusNote,
-  buildCoupleSpaceInitiativeExecutionFeedback,
   buildNoCandidateStatusText,
   runPreparedCoupleSpaceInitiativeCandidates,
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
 import {
+  buildCoupleSpaceInitiativeExecutionFeedback,
   type CoupleSpaceInitiativeArtifactPreview,
 } from './coupleSpaceInitiativeExecutionFeedback';
 import { hasEnabledCoupleSpaceInitiatives } from './coupleSpaceTriggerPolicy';

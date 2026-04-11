@@ -36,6 +36,8 @@ import { runCoupleSpaceInitiativeCandidate } from './runCoupleSpaceInitiativeCan
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import {
   type CoupleSpaceInitiativeArtifactPreview,
+  appendFallbackStatusNote,
+  buildCoupleSpaceInitiativeExecutionFeedback,
   buildExecutionBoundaryAwareArtifactPreview,
   buildExecutionBoundaryAwareStatusText,
 } from './coupleSpaceInitiativeExecutionFeedback';
@@ -121,18 +123,6 @@ function humanizeRunReason(reason: string | null | undefined): string {
   return reason;
 }
 
-export function appendFallbackStatusNote(
-  baseText: string,
-  attemptedCount: number,
-  usedFallbackCandidate: boolean,
-): string {
-  if (!usedFallbackCandidate || attemptedCount <= 1) {
-    return baseText;
-  }
-
-  return `${baseText} 系统已自动跳过前面的失败候选，并在第 ${attemptedCount} 个候选上继续尝试成功。`;
-}
-
 function getActionLabel(actionType: CoupleSpaceInitiativeCandidate['actionType'] | null | undefined): string {
   switch (actionType) {
     case 'post_couple_daily':
@@ -191,24 +181,6 @@ export function buildNoCandidateStatusText(devCheck: RunCoupleSpaceInitiativeDev
   }
 
   return '这次没有可触发的主动内容：当前没有新的互动、互记或记录线索。';
-}
-
-export function buildCoupleSpaceInitiativeExecutionFeedback(
-  candidate: CoupleSpaceInitiativeCandidate,
-  runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>,
-  options?: {
-    attemptedCount?: number;
-    usedFallbackCandidate?: boolean;
-  },
-): Pick<RunCoupleSpaceInitiativeManualCheckResult, 'statusText' | 'artifactPreview'> {
-  return {
-    statusText: appendFallbackStatusNote(
-      buildExecutionBoundaryAwareStatusText(candidate, runResult),
-      options?.attemptedCount ?? 1,
-      options?.usedFallbackCandidate ?? false,
-    ),
-    artifactPreview: buildExecutionBoundaryAwareArtifactPreview(candidate, runResult),
-  };
 }
 
 /* legacy manual feedback path kept for reference while consumers migrate.

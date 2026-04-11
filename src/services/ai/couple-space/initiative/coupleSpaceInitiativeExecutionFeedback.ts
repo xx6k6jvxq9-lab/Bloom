@@ -14,6 +14,18 @@ export type CoupleSpaceInitiativeArtifactPreview = {
   note?: string;
 } | null;
 
+export function appendFallbackStatusNote(
+  baseText: string,
+  attemptedCount: number,
+  usedFallbackCandidate: boolean,
+): string {
+  if (!usedFallbackCandidate || attemptedCount <= 1) {
+    return baseText;
+  }
+
+  return `${baseText} 系统已自动跳过前面的失败候选，并在第 ${attemptedCount} 个候选上继续尝试成功。`;
+}
+
 function getActionLabel(actionType: CoupleSpaceInitiativeCandidate['actionType'] | null | undefined): string {
   switch (actionType) {
     case 'post_couple_daily':
@@ -124,4 +136,25 @@ export function buildExecutionBoundaryAwareArtifactPreview(
   }
 
   return null;
+}
+
+export function buildCoupleSpaceInitiativeExecutionFeedback(
+  candidate: CoupleSpaceInitiativeCandidate,
+  runResult: CoupleSpaceInitiativeRunResult,
+  options?: {
+    attemptedCount?: number;
+    usedFallbackCandidate?: boolean;
+  },
+): {
+  statusText: string;
+  artifactPreview: CoupleSpaceInitiativeArtifactPreview;
+} {
+  return {
+    statusText: appendFallbackStatusNote(
+      buildExecutionBoundaryAwareStatusText(candidate, runResult),
+      options?.attemptedCount ?? 1,
+      options?.usedFallbackCandidate ?? false,
+    ),
+    artifactPreview: buildExecutionBoundaryAwareArtifactPreview(candidate, runResult),
+  };
 }

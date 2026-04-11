@@ -4,12 +4,14 @@ import type {
   CoupleSpaceInitiativeSource,
 } from '../../../../types';
 import {
-  buildCoupleSpaceInitiativeExecutionFeedback,
   buildPreparedExecutionRequestForCandidate,
   buildCoupleSpaceInitiativeExecutionContext,
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
-import { type CoupleSpaceInitiativeArtifactPreview } from './coupleSpaceInitiativeExecutionFeedback';
+import {
+  buildCoupleSpaceInitiativeExecutionFeedback,
+  type CoupleSpaceInitiativeArtifactPreview,
+} from './coupleSpaceInitiativeExecutionFeedback';
 import {
   runCoupleSpaceInitiativeDevCheck,
   type RunCoupleSpaceInitiativeDevCheckResult,
