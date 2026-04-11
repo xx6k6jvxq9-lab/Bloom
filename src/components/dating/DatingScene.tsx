@@ -337,6 +337,7 @@ export function DatingScene({
       endedAt: Date.now(),
     });
     setMenuOpen(false);
+    alert('本轮约会已结束，并已保存到约会记录。');
     onClose();
   };
 
