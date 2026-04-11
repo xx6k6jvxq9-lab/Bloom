@@ -1,5 +1,9 @@
 import type { CoupleSpaceInitiativeCandidate } from '../../../../types';
 import type { runCoupleSpaceInitiativeCandidate } from './runCoupleSpaceInitiativeCandidate';
+import {
+  hasExecutionBoundaryChannel,
+  matchesExecutionBoundaryOutcome,
+} from './coupleSpaceInitiativeExecutionOutcome';
 
 type CoupleSpaceInitiativeRunResult = Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>;
 
@@ -40,39 +44,46 @@ export function buildExecutionBoundaryAwareStatusText(
   runResult: CoupleSpaceInitiativeRunResult,
 ): string {
   const label = getActionLabel(candidate.actionType);
-  const boundaryChannel = 'executionBoundary' in runResult ? runResult.executionBoundary.channel : null;
-  const sinkStatus = 'sinkStatus' in runResult ? runResult.sinkStatus : undefined;
 
   if (runResult.executorStatus !== 'accepted') {
     return `这次选中了${label}，但没有继续执行：${runResult.reason}`;
   }
 
-  if (boundaryChannel === 'direct_write') {
-    if (sinkStatus === 'applied') {
+  if (hasExecutionBoundaryChannel(runResult, 'direct_write')) {
+    if (matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'applied')) {
       return `这次已经成功生成并写入${label}。`;
     }
 
-    if (sinkStatus === 'rejected' || sinkStatus === 'unsupported') {
+    if (
+      matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'rejected') ||
+      matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'unsupported')
+    ) {
       return `这次选中了${label}，但直写通路还没有成功接住：${runResult.reason}`;
     }
   }
 
-  if (boundaryChannel === 'draft_buffer') {
+  if (hasExecutionBoundaryChannel(runResult, 'draft_buffer')) {
     if ('draftContent' in runResult && runResult.draftContent) {
       return `这次已经生成${label}，当前先作为草稿保留，还没有直接写入。`;
     }
 
-    if (sinkStatus === 'rejected' || sinkStatus === 'unsupported') {
+    if (
+      matchesExecutionBoundaryOutcome(runResult, 'draft_buffer', 'rejected') ||
+      matchesExecutionBoundaryOutcome(runResult, 'draft_buffer', 'unsupported')
+    ) {
       return `这次选中了${label}，但草稿通路还没有成功接住：${runResult.reason}`;
     }
   }
 
-  if (boundaryChannel === 'confirmation_queue') {
+  if (hasExecutionBoundaryChannel(runResult, 'confirmation_queue')) {
     if ('confirmationSummary' in runResult && runResult.confirmationSummary) {
       return `这次已经生成${label}，当前进入待确认状态，还没有直接写入正式记录。`;
     }
 
-    if (sinkStatus === 'rejected' || sinkStatus === 'unsupported') {
+    if (
+      matchesExecutionBoundaryOutcome(runResult, 'confirmation_queue', 'rejected') ||
+      matchesExecutionBoundaryOutcome(runResult, 'confirmation_queue', 'unsupported')
+    ) {
       return `这次选中了${label}，但确认通路还没有成功接住：${runResult.reason}`;
     }
   }
@@ -85,9 +96,12 @@ export function buildExecutionBoundaryAwareArtifactPreview(
   runResult: CoupleSpaceInitiativeRunResult,
 ): CoupleSpaceInitiativeArtifactPreview {
   const label = getActionLabel(candidate.actionType);
-  const boundaryChannel = 'executionBoundary' in runResult ? runResult.executionBoundary.channel : null;
 
-  if (boundaryChannel === 'draft_buffer' && 'draftContent' in runResult && runResult.draftContent) {
+  if (
+    hasExecutionBoundaryChannel(runResult, 'draft_buffer') &&
+    'draftContent' in runResult &&
+    runResult.draftContent
+  ) {
     return {
       kind: 'draft',
       title: `${label}已生成草稿`,
@@ -97,7 +111,7 @@ export function buildExecutionBoundaryAwareArtifactPreview(
   }
 
   if (
-    boundaryChannel === 'confirmation_queue' &&
+    hasExecutionBoundaryChannel(runResult, 'confirmation_queue') &&
     'confirmationSummary' in runResult &&
     runResult.confirmationSummary
   ) {
