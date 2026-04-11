@@ -1706,8 +1706,8 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
             userComment: newComment.content,
             contentAuthor: post.authorId === partner.id ? 'character' : 'user',
             replyIntent: replyingTo
-              ? '顺着这条评论线程继续接一句，像楼中楼自然回话'
-              : '接住用户在情侣动态下的评论，像顺手回一句',
+              ? '顺着这条评论线程回一句，像评论区里自然接话'
+              : '回一句贴合这个角色本人、短而自然的评论回复',
           },
         });
         if (responseText) {
@@ -2700,7 +2700,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
           dailyCommentContext: {
             coupleDailyContent: newPost.content,
             contentAuthor: 'user',
-            commentIntent: '接住 user 刚发出的情侣动态，像空间里顺手留下一句自然评论',
+            commentIntent: '留一句贴合这个角色本人、短而自然的动态评论',
             maxLength: 30,
           },
         });
