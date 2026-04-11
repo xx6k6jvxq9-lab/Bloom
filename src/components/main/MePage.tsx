@@ -40,7 +40,7 @@ type MePageProps = {
   onDeleteCharacter?: (id: string) => void;
   onUpdateCharacter?: (char: any) => void;
   appData?: any;
-  setAppData?: any;
+  setAppData?: React.Dispatch<React.SetStateAction<any>>;
   settings?: any;
   setSettings?: (s: any) => void;
   onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters') => void;
@@ -217,11 +217,12 @@ export function MePage({
         )}
 
         {activeSection === 'date-records' && (
-          <DateRecordsPageV2
+          <DateRecordsPageV3
             savedDates={endedDateRecords}
             characters={characters}
             onBack={() => setActiveSection('main')}
             globalBackground={globalBackground}
+            setAppData={setAppData}
           />
         )}
 
@@ -1570,6 +1571,228 @@ function DateRecordsPageV2({
                     </div>
                     <div className="whitespace-pre-wrap text-[14px] leading-7">
                       {message.text || '这条内容已保存。'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function DateRecordsPageV3({
+  savedDates,
+  characters,
+  onBack,
+  globalBackground,
+  setAppData,
+}: {
+  savedDates: DateSession[];
+  characters?: any[];
+  onBack: () => void;
+  globalBackground?: string;
+  setAppData?: React.Dispatch<React.SetStateAction<any>>;
+}) {
+  const records = [...savedDates].sort((a, b) => (b.endedAt || b.timestamp) - (a.endedAt || a.timestamp));
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [manageMode, setManageMode] = useState(false);
+  const selectedRecord = records.find(record => record.id === selectedRecordId) || null;
+
+  const handleDeleteRecord = async (recordId: string) => {
+    if (!setAppData) return;
+    if (!(await showInAppConfirm('确定要删除这条约会记录吗？'))) return;
+
+    setAppData((prev: any) => ({
+      ...prev,
+      savedDates: (prev.savedDates || []).filter((record: DateSession) => record.id !== recordId),
+    }));
+
+    if (selectedRecordId === recordId) {
+      setSelectedRecordId(null);
+    }
+  };
+
+  return (
+    <div className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
+      <div
+        className={`flex items-center gap-3 border-b px-4 pt-12 pb-4 backdrop-blur-md ${
+          globalBackground ? 'border-white/20 bg-white/30' : 'border-zinc-100 bg-white'
+        }`}
+      >
+        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+          <X size={24} />
+        </button>
+        <div className="flex-1">
+          <h3 className="text-[17px] font-bold">约会记录</h3>
+          <p className="mt-0.5 text-[12px] text-zinc-500">这里会保存你主动结束并归档的约会。</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setManageMode(prev => !prev)}
+          className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+            manageMode
+              ? 'border-zinc-900 bg-zinc-900 text-white'
+              : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+          }`}
+        >
+          {manageMode ? '完成' : '管理'}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {records.length === 0 ? (
+          <div className="py-20 text-center text-zinc-300">
+            <Calendar size={48} className="mx-auto mb-4 opacity-20" />
+            <p className="text-[14px]">还没有已结束的约会记录</p>
+          </div>
+        ) : null}
+
+        {records.map((date) => {
+          const character = characters?.find((item) => item.id === date.characterId) || { name: '未知角色' };
+          const previewText =
+            date.generatedContent?.narrative?.segments?.slice(-1)?.[0]?.text ||
+            date.messages[date.messages.length - 1]?.text ||
+            '这一轮约会已经保存。';
+
+          return (
+            <div
+              key={date.id}
+              className={`w-full rounded-2xl border p-4 shadow-sm backdrop-blur-sm ${
+                globalBackground ? 'border-white/30 bg-white/50' : 'border-zinc-100 bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <button type="button" onClick={() => setSelectedRecordId(date.id)} className="min-w-0 flex-1 text-left">
+                  <span className="rounded bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-900">
+                    约会记录 · {character.name}
+                  </span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] italic text-zinc-500">
+                    {date.location ? <span>地点：{date.location}</span> : null}
+                    {date.scenario ? <span>场景：{date.scenario}</span> : null}
+                  </div>
+                  <p className="mt-2 line-clamp-3 text-[14px] leading-relaxed text-zinc-700">{previewText}</p>
+                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="text-[10px] text-zinc-400">
+                    {new Date(date.endedAt || date.timestamp).toLocaleDateString()}
+                  </span>
+                  {manageMode ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteRecord(date.id)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {selectedRecord ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
+              <button onClick={() => setSelectedRecordId(null)} className="p-2 -ml-2 text-zinc-400">
+                <X size={24} />
+              </button>
+              <div className="flex-1">
+                <h4 className="text-[17px] font-bold">约会详情</h4>
+                <p className="mt-0.5 text-[12px] text-zinc-500">
+                  {characters?.find((item) => item.id === selectedRecord.characterId)?.name || '未知角色'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleDeleteRecord(selectedRecord.id)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
+                  {selectedRecord.location ? <span>地点：{selectedRecord.location}</span> : null}
+                  {selectedRecord.scenario ? <span>场景：{selectedRecord.scenario}</span> : null}
+                  {selectedRecord.mood ? <span>氛围：{selectedRecord.mood}</span> : null}
+                </div>
+              </div>
+
+              {selectedRecord.generatedContent ? (
+                <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm space-y-3">
+                  <div className="text-[15px] font-semibold text-zinc-900">
+                    {selectedRecord.generatedContent.narrative.title || '这一轮约会'}
+                  </div>
+                  {selectedRecord.generatedContent.narrative.subtitle ? (
+                    <div className="text-[13px] text-zinc-500">
+                      {selectedRecord.generatedContent.narrative.subtitle}
+                    </div>
+                  ) : null}
+                  <div className="space-y-3">
+                    {selectedRecord.generatedContent.narrative.segments.map((segment, index) => (
+                      <p
+                        key={`${selectedRecord.id}-segment-${index}`}
+                        className="whitespace-pre-wrap text-[14px] leading-7 text-zinc-700"
+                      >
+                        {segment.text}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-3 text-[13px] text-zinc-600">
+                    <div className="mb-2 text-[12px] font-semibold text-zinc-900">状态</div>
+                    <div className="space-y-1">
+                      <div>地点：{selectedRecord.generatedContent.status.location || selectedRecord.location || '未记录'}</div>
+                      <div>时间：{selectedRecord.generatedContent.status.time || '未记录'}</div>
+                      <div>心情：{selectedRecord.generatedContent.status.mood || selectedRecord.mood || '未记录'}</div>
+                      <div>内心 OS：{selectedRecord.generatedContent.status.innerThought || '未记录'}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-3 text-[13px] text-zinc-600">
+                    <div className="mb-2 text-[12px] font-semibold text-zinc-900">歌单</div>
+                    {selectedRecord.generatedContent.playlist.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedRecord.generatedContent.playlist.map((song, songIndex) => (
+                          <div key={`${selectedRecord.id}-song-${songIndex}`}>
+                            <div className="font-medium text-zinc-900">{song.title} · {song.artist}</div>
+                            {song.note ? <div className="text-[12px] text-zinc-500">{song.note}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>未记录</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-3">
+                {selectedRecord.messages.map((message, index) => (
+                  <div
+                    key={`${selectedRecord.id}-${message.id}-${index}`}
+                    className={`rounded-2xl p-4 shadow-sm ${
+                      message.role === 'user'
+                        ? 'ml-8 bg-zinc-900 text-white'
+                        : 'mr-8 border border-zinc-100 bg-white text-zinc-800'
+                    }`}
+                  >
+                    <div className="mb-2 text-[12px] opacity-60">
+                      {message.role === 'user' ? '我' : '约会内容'}
+                    </div>
+                    <div className="whitespace-pre-wrap text-[14px] leading-7">
+                      {message.text || '这条内容已经保存。'}
                     </div>
                   </div>
                 ))}

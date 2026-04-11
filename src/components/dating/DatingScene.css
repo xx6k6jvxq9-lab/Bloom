@@ -382,10 +382,10 @@
   z-index: 2;
   padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px);
   background:
-    linear-gradient(180deg, rgba(6, 7, 10, 0.08) 0%, rgba(10, 12, 18, 0.78) 22%, rgba(10, 12, 18, 0.94) 52%, rgba(10, 12, 18, 0.98) 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(18px) saturate(1.08);
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.22);
+    linear-gradient(180deg, rgba(16, 18, 24, 0.04) 0%, rgba(24, 27, 36, 0.34) 24%, rgba(34, 38, 50, 0.58) 58%, rgba(42, 46, 58, 0.72) 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(22px) saturate(1.05);
+  box-shadow: 0 -12px 32px rgba(8, 10, 16, 0.12);
 }
 
 .dating-scene__composer-wrap::after {
@@ -395,7 +395,7 @@
   right: 0;
   bottom: 0;
   height: calc(env(safe-area-inset-bottom) + 10px);
-  background: #0a0c12;
+  background: rgba(44, 48, 60, 0.86);
   pointer-events: none;
 }
 
@@ -460,9 +460,9 @@
   gap: 10px;
   padding: 0;
   border-radius: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(8, 10, 16, 0.72);
-  backdrop-filter: blur(16px) saturate(1.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(252, 253, 255, 0.16);
+  backdrop-filter: blur(20px) saturate(1.06);
   box-shadow: none;
   overflow: hidden;
 }
@@ -472,8 +472,8 @@
   height: 44px;
   border-radius: 0;
   border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.92);
   display: inline-flex;
   align-items: center;
@@ -482,7 +482,7 @@
 }
 
 .dating-scene__emoji-btn.is-active {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
 
@@ -498,7 +498,7 @@
 }
 
 .dating-scene__input::placeholder {
-  color: rgba(255, 255, 255, 0.52);
+  color: rgba(255, 255, 255, 0.64);
 }
 
 .dating-scene__send {
@@ -506,8 +506,8 @@
   height: 44px;
   border-radius: 0;
   border: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.96);
   display: inline-flex;
   align-items: center;
