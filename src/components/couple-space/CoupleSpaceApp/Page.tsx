@@ -1833,7 +1833,19 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
           }
         >
           {post.images.map((img: string, idx: number) => (
-            <ResolvedImage key={String(post.id) + '-' + String(idx)} value={img} className="w-full h-32 object-cover rounded-xl" alt="" />
+            <div
+              key={String(post.id) + '-' + String(idx)}
+              className={
+                'w-full overflow-hidden rounded-xl bg-zinc-50 flex items-center justify-center ' +
+                (post.images.length === 1
+                  ? 'h-56'
+                  : post.images.length === 2
+                    ? 'h-40'
+                    : 'h-32')
+              }
+            >
+              <ResolvedImage value={img} className="w-full h-full object-contain" alt="" />
+            </div>
           ))}
         </div>
       )}
@@ -2651,6 +2663,10 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
     updateSpace((prev: any) => ({
       posts: [newPost, ...(prev.posts || [])]
     }));
+    const nextCoupleSpaceForPrompt = {
+      ...coupleSpace,
+      posts: [newPost, ...(coupleSpace.posts || [])],
+    };
     setContent('');
     setImgUrls([]);
     setUrlInput('');
@@ -2664,7 +2680,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
           source: {
             user,
             partner,
-            coupleSpace,
+            coupleSpace: nextCoupleSpaceForPrompt,
             chatHistory,
             masks,
             worldBooks,
@@ -2750,11 +2766,12 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
                 accept="image/*"
                 className="hidden"
                 onChange={async (e) => {
+                  const inputElement = e.currentTarget;
                   const files = Array.from(e.target.files || []);
                   if (files.length === 0) return;
                   const persistedValues = await Promise.all(files.slice(0, 9 - imgUrls.length).map((file) => setUploadedFile(file)));
                   setImgUrls((prev) => [...prev, ...persistedValues].slice(0, 9));
-                  e.currentTarget.value = '';
+                  inputElement.value = '';
                 }}
               />
             </label>

@@ -49,12 +49,12 @@ async function generateCoupleSpaceText(options: {
   return generateTextFromMessagesWithConfig({
     activeConfig,
     messages: [
-      { role: 'user', content: options.prompt },
       ...recentImageReferences.map((reference, index) => ({
         role: 'user' as const,
         content: buildRecentImageReferenceMessage(reference, index),
         imageUrl: reference.imageUrl,
       })),
+      { role: 'user', content: options.prompt },
     ],
     temperature: options.temperature,
   });
