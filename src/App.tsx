@@ -70,6 +70,9 @@ import { migrateCharacterShapes } from './features/persistence/migrateCharacterS
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import { runCoupleSpaceInitiativeAutoCheck } from './services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
+import { evaluateCoupleSpaceInitiativeAutoCheckGate } from './services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
+import { applyCoupleSpaceInitiativeRunResult } from './services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
 import { sanitizeGroupMemberBadges } from './features/group-settings/memberBadges';
 import { sanitizeGroupMemberBubbleColors } from './features/group-settings/groupBubbleColors';
 import {
@@ -81,6 +84,8 @@ import {
   hydrateCoupleSpaceState,
   resolveCoupleSpaceState,
   resolveCurrentCoupleSpace,
+  switchCurrentCoupleSpaceState,
+  updatePartnerCoupleSpaceState,
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
 
@@ -101,6 +106,13 @@ const GlobalStyles = ({ customCss }: { customCss?: string }) => (
 type UserProfile = UserProfileExtended;
 type Comment = MomentComment;
 type Moment = MomentItem;
+type CoupleSpaceUpdateToast = {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  partnerAvatar?: string;
+  moduleLabel: string;
+};
 
 function ResolvedAssetImage({
   value,
@@ -1183,10 +1195,12 @@ export default function App() {
   });
   const [appDialog, setAppDialog] = useState<AppDialogRequest | null>(null);
   const [appDialogInput, setAppDialogInput] = useState('');
+  const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)').matches;
   });
+  const coupleSpaceAutoGateRef = React.useRef<Record<string, { lastCheckedAt: number | null; lastPartnerId: string | null }>>({});
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
   const currentCoupleSpace = resolveCurrentCoupleSpace(appData.coupleSpaceState, appData.coupleSpace);
@@ -1395,6 +1409,122 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!coupleSpaceUpdateToast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCoupleSpaceUpdateToast(null);
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [coupleSpaceUpdateToast]);
+
+  useEffect(() => {
+    if (!hasHydratedStorage || activeApp === 'couple-space') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runBackgroundCoupleSpaceChecks = async () => {
+      const resolvedState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
+      const spaces = resolvedState.spacesByPartnerId || {};
+
+      for (const [partnerId, coupleSpace] of Object.entries(spaces)) {
+        const partner = getCharacterById(partnerId);
+        if (!partner) {
+          continue;
+        }
+
+        const now = Date.now();
+        const gateResult = evaluateCoupleSpaceInitiativeAutoCheckGate({
+          now,
+          partnerId,
+          previousState: coupleSpaceAutoGateRef.current[partnerId],
+        });
+        coupleSpaceAutoGateRef.current[partnerId] = gateResult.nextState;
+
+        if (!gateResult.allowed) {
+          continue;
+        }
+
+        try {
+          const result = await runCoupleSpaceInitiativeAutoCheck({
+            user: appData.userProfile,
+            partner,
+            coupleSpace,
+            chatHistory: appData.chatHistory,
+            appSettings: settings,
+            now,
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          const applied = applyCoupleSpaceInitiativeRunResult(
+            result.nextCoupleSpace,
+            result.runResult,
+            'auto_check',
+            now,
+          );
+
+          if (applied.nextCoupleSpace !== coupleSpace) {
+            setAppData((prev) => {
+              const next = updatePartnerCoupleSpaceState(
+                prev.coupleSpaceState,
+                prev.coupleSpace,
+                partnerId,
+                applied.nextCoupleSpace,
+              );
+              return {
+                ...prev,
+                coupleSpaceState: next.coupleSpaceState,
+                coupleSpace: next.coupleSpace,
+              };
+            });
+          }
+
+          if (applied.updatedModuleLabel) {
+            setCoupleSpaceUpdateToast({
+              id: `${partnerId}-${now}`,
+              partnerId,
+              partnerName: partner.name,
+              partnerAvatar: partner.avatar,
+              moduleLabel: applied.updatedModuleLabel,
+            });
+          }
+        } catch (error) {
+          console.error('Background couple-space auto check failed:', error);
+        }
+      }
+    };
+
+    void runBackgroundCoupleSpaceChecks();
+    const intervalId = window.setInterval(() => {
+      void runBackgroundCoupleSpaceChecks();
+    }, 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    activeApp,
+    appData.chatHistory,
+    appData.characters,
+    appData.coupleSpace,
+    appData.coupleSpaceState,
+    appData.userProfile,
+    getCharacterById,
+    hasHydratedStorage,
+    settings,
+  ]);
+
   const closeAppDialog = () => {
     if (appDialog?.kind === 'alert') {
       appDialog.resolve?.();
@@ -1486,6 +1616,53 @@ export default function App() {
         
         {/* Screen Content */}
         <div className="phone-screen-root flex-1 relative bg-zinc-50 overflow-hidden">
+          {coupleSpaceUpdateToast && (
+            <button
+              type="button"
+              onClick={() => {
+                setAppData((prev) => {
+                  const switched = switchCurrentCoupleSpaceState(
+                    prev.coupleSpaceState,
+                    prev.coupleSpace,
+                    coupleSpaceUpdateToast.partnerId,
+                  );
+                  return {
+                    ...prev,
+                    coupleSpaceState: switched.coupleSpaceState,
+                    coupleSpace: switched.coupleSpace,
+                  };
+                });
+                setActiveApp('couple-space');
+                setCoupleSpaceUpdateToast(null);
+              }}
+              className="absolute left-4 right-4 top-4 z-[70] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
+                  {coupleSpaceUpdateToast.partnerAvatar ? (
+                    <ResolvedAssetImage
+                      value={coupleSpaceUpdateToast.partnerAvatar}
+                      alt={coupleSpaceUpdateToast.partnerName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[#d99ab5]">
+                      <Heart size={18} />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-zinc-400">情侣空间</div>
+                  <div className="mt-0.5 text-sm font-bold text-zinc-800">
+                    {coupleSpaceUpdateToast.partnerName} 更新了{coupleSpaceUpdateToast.moduleLabel}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    点开看看这次的新内容
+                  </div>
+                </div>
+              </div>
+            </button>
+          )}
           {activeApp === 'home' && (
             <HomeScreen 
               key="home" 

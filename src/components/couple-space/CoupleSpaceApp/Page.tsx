@@ -36,16 +36,15 @@ import {
 import { createCoupleSpacePromptCommonInput } from '../../../services/ai/couple-space/context/createCoupleSpacePromptCommonInput';
 import { evaluateCoupleSpaceInitiativeAutoCheckGate } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
 import {
-  appendCoupleSpaceInitiativeDraft,
-  createCoupleSpaceInitiativeDraftEntry,
   publishCoupleSpaceInitiativeDraft,
   removeCoupleSpaceInitiativeDraft,
 } from '../../../services/ai/couple-space/initiative/coupleSpaceDraftBuffer';
-import { applyCoupleSpaceInitiativeRuntimeResult } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeRuntimePersistence';
+import { applyCoupleSpaceInitiativeRunResult } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeAutoCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
 import type { RunCoupleSpaceInitiativeCandidateResult } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeCandidate';
+import { runCoupleSpaceInitiativeRandomRefresh } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeRandomRefresh';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
@@ -175,6 +174,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [selectedLoveLetterId, setSelectedLoveLetterId] = useState<string | null>(null);
   const [initiativeCheckBusy, setInitiativeCheckBusy] = useState(false);
   const [initiativeAutoCheckBusy, setInitiativeAutoCheckBusy] = useState(false);
+  const [initiativeRefreshBusy, setInitiativeRefreshBusy] = useState(false);
   const [initiativeCheckStatus, setInitiativeCheckStatus] = useState<string | null>(null);
   const [initiativeArtifactPreview, setInitiativeArtifactPreview] = useState<{
     kind: 'draft' | 'confirmation';
@@ -299,34 +299,16 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     runResult: RunCoupleSpaceInitiativeCandidateResult | null,
     source: CoupleSpaceInitiativeDraftEntry['source'],
   ): { nextCoupleSpace: CoupleSpaceData; draftSaved: boolean } => {
-    const runtimeAppliedSpace = applyCoupleSpaceInitiativeRuntimeResult(
+    const result = applyCoupleSpaceInitiativeRunResult(
       baseCoupleSpace,
       runResult,
+      source,
       Date.now(),
     );
 
-    if (
-      !runResult ||
-      (runResult.actionType !== 'write_love_letter' && runResult.actionType !== 'write_co_note') ||
-      !('draftContent' in runResult) ||
-      !runResult.draftContent
-    ) {
-      return { nextCoupleSpace: runtimeAppliedSpace, draftSaved: false };
-    }
-
-    const nextCoupleSpace = appendCoupleSpaceInitiativeDraft(
-      runtimeAppliedSpace,
-      createCoupleSpaceInitiativeDraftEntry({
-        actionType: runResult.actionType,
-        content: runResult.draftContent,
-        createdAt: Date.now(),
-        source,
-      }),
-    );
-
     return {
-      nextCoupleSpace,
-      draftSaved: nextCoupleSpace !== baseCoupleSpace,
+      nextCoupleSpace: result.nextCoupleSpace,
+      draftSaved: result.draftSaved,
     };
   };
 
@@ -346,6 +328,45 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     );
     setInitiativeCheckStatus('这条草稿已从草稿箱移除。');
     setInitiativeArtifactPreview(null);
+  };
+
+  const handleRefreshInitiativeContent = async () => {
+    if (!partner || initiativeRefreshBusy) return;
+
+    setIsInitiativeSettingsOpen(true);
+    setIsInitiativeCheckOpen(true);
+    setInitiativeRefreshBusy(true);
+    try {
+      const result = await runCoupleSpaceInitiativeRandomRefresh({
+        user,
+        partner,
+        coupleSpace,
+        chatHistory: appData.chatHistory,
+        appSettings: settings,
+        now: Date.now(),
+      });
+
+      const persistedResult = applyCoupleSpaceInitiativeRunResult(
+        result.nextCoupleSpace,
+        result.runResult,
+        'manual_check',
+        Date.now(),
+      );
+
+      handleUpdateCoupleSpace(persistedResult.nextCoupleSpace);
+      setInitiativeCheckStatus(
+        persistedResult.draftSaved
+          ? `${result.statusText} 这条草稿已经存进草稿箱了。`
+          : result.statusText,
+      );
+      setInitiativeArtifactPreview(result.artifactPreview);
+    } catch (error) {
+      console.error('Random initiative refresh failed:', error);
+      setInitiativeCheckStatus('随机刷新主动内容失败，请查看控制台日志。');
+      setInitiativeArtifactPreview(null);
+    } finally {
+      setInitiativeRefreshBusy(false);
+    }
   };
 
   const handleManualInitiativeCheck = async () => {
@@ -925,6 +946,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 onToggle={() => setIsInitiativeSettingsOpen((prev) => !prev)}
                 settings={initiativeSettings}
                 onChange={handleUpdateInitiativeSettings}
+                onRefresh={handleRefreshInitiativeContent}
+                refreshBusy={initiativeRefreshBusy}
               />
 
               <CoupleSpaceInitiativeCheckCard

@@ -1,4 +1,4 @@
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, RefreshCw } from 'lucide-react';
 import type {
   CoupleSpaceInitiativeCadence,
   CoupleSpaceInitiativeSettings,
@@ -10,6 +10,8 @@ type Props = {
   onToggle: () => void;
   settings: CoupleSpaceInitiativeSettings;
   onChange: (next: CoupleSpaceInitiativeSettings) => void;
+  onRefresh: () => void;
+  refreshBusy?: boolean;
 };
 
 const cadenceOptions: Array<{ value: CoupleSpaceInitiativeCadence; label: string }> = [
@@ -66,25 +68,40 @@ export function CoupleSpaceInitiativeSettingsCard({
   onToggle,
   settings,
   onChange,
+  onRefresh,
+  refreshBusy = false,
 }: Props) {
   return (
     <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between p-4 text-left"
-      >
-        <div>
-          <h3 className="font-bold text-zinc-800">主动内容设置</h3>
-          <p className="mt-1 text-sm leading-6 text-zinc-500">
-            默认全部关闭，只有你明确开启后，系统才会考虑对应的主动内容。
-          </p>
-        </div>
-        <ChevronLeft
-          size={18}
-          className={`transition-transform ${isOpen ? '-rotate-90' : 'rotate-180'} text-[#d99ab5]`}
-        />
-      </button>
+      <div className="flex items-center justify-between p-4">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+        >
+          <div className="min-w-0">
+            <h3 className="font-bold text-zinc-800">主动内容设置</h3>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              默认全部关闭，只有你明确开启后，系统才会考虑对应的主动内容。
+            </p>
+          </div>
+          <ChevronLeft
+            size={18}
+            className={`shrink-0 transition-transform ${isOpen ? '-rotate-90' : 'rotate-180'} text-[#d99ab5]`}
+          />
+        </button>
+
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshBusy}
+          className="ml-3 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#f2cddd] bg-[#fff8fb] text-[#d99ab5] shadow-sm transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="随机刷新主动内容"
+          title="随机刷新主动内容"
+        >
+          <RefreshCw size={16} className={refreshBusy ? 'animate-spin' : ''} />
+        </button>
+      </div>
 
       {isOpen && (
         <div className="border-t border-[#f7d7e3]">
