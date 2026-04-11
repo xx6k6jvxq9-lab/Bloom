@@ -64,15 +64,37 @@ const createEmptyGeneratedContent = (session: DateSession, character: Character)
   playlist: [],
 });
 
-function extractJsonObject(text: string): string {
+function extractCandidateJsonObjects(text: string): string[] {
   const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+  if (!trimmed) {
+    return [];
+  }
 
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) return fenced[1].trim();
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (value: string | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
 
-  const start = trimmed.indexOf('{');
-  if (start >= 0) {
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    pushCandidate(trimmed);
+  }
+
+  const fencedBlocks = trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi);
+  for (const block of fencedBlocks) {
+    pushCandidate(block[1]);
+  }
+
+  for (let start = 0; start < trimmed.length; start += 1) {
+    if (trimmed[start] !== '{') {
+      continue;
+    }
+
     let depth = 0;
     let inString = false;
     let isEscaped = false;
@@ -111,18 +133,15 @@ function extractJsonObject(text: string): string {
       if (char === '}') {
         depth -= 1;
         if (depth === 0) {
-          return trimmed.slice(start, i + 1);
+          pushCandidate(trimmed.slice(start, i + 1));
+          break;
         }
       }
     }
-
-    const end = trimmed.lastIndexOf('}');
-    if (end > start) {
-      return trimmed.slice(start, end + 1);
-    }
   }
 
-  return trimmed;
+  pushCandidate(trimmed);
+  return candidates;
 }
 
 function buildRawPreview(text: string, maxLength = 240): string {
@@ -139,19 +158,24 @@ function buildRawPreview(text: string, maxLength = 240): string {
 }
 
 function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | null {
-  const extracted = extractJsonObject(text);
+  const candidates = extractCandidateJsonObjects(text);
 
-  try {
-    const parsed = JSON.parse(extracted);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch (error) {
-    console.warn('[dating-scene] Ignoring invalid generated JSON payload.', {
-      error,
-      rawPreview: buildRawPreview(text),
-      extractedPreview: buildRawPreview(extracted),
-    });
-    return null;
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      continue;
+    }
   }
+
+  console.warn('[dating-scene] Ignoring invalid generated JSON payload.', {
+    rawPreview: buildRawPreview(text),
+    extractedPreview: buildRawPreview(candidates[0] || text),
+  });
+  return null;
 }
 
 function normalizeGeneratedContent(
