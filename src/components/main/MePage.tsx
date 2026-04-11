@@ -11,6 +11,7 @@ import {
 import { DateSession, Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { saveDatingRecords } from '../../features/persistence/datingRecordsStore';
 import {
   getWorldBookPriorityLabel,
   normalizeWorldBookCategory,
@@ -1622,26 +1623,31 @@ function DateRecordsPageV3({
     if (!setAppData) return;
     if (!(await showInAppConfirm('确定要删除这条约会记录吗？'))) return;
 
-    setAppData((prev: any) => ({
-      ...prev,
-      savedDates: (() => {
-        const nextSavedDates = [...(prev.savedDates || [])];
-        const removeIndex = nextSavedDates.findIndex((record: DateSession) => (
-          record.id === targetRecord.id &&
-          record.characterId === targetRecord.characterId &&
-          record.timestamp === targetRecord.timestamp &&
-          (record.endedAt || 0) === (targetRecord.endedAt || 0) &&
-          (record.location || '') === (targetRecord.location || '') &&
-          (record.scenario || '') === (targetRecord.scenario || '')
-        ));
+    setAppData((prev: any) => {
+      const nextSavedDates = [...(prev.savedDates || [])];
+      const removeIndex = nextSavedDates.findIndex((record: DateSession) => (
+        record.id === targetRecord.id &&
+        record.characterId === targetRecord.characterId &&
+        record.timestamp === targetRecord.timestamp &&
+        (record.endedAt || 0) === (targetRecord.endedAt || 0) &&
+        (record.location || '') === (targetRecord.location || '') &&
+        (record.scenario || '') === (targetRecord.scenario || '')
+      ));
 
-        if (removeIndex >= 0) {
-          nextSavedDates.splice(removeIndex, 1);
-        }
+      if (removeIndex >= 0) {
+        nextSavedDates.splice(removeIndex, 1);
+      }
 
-        return nextSavedDates;
-      })(),
-    }));
+      saveDatingRecords({
+        savedDates: nextSavedDates,
+        collectedDates: prev.collectedDates || [],
+      });
+
+      return {
+        ...prev,
+        savedDates: nextSavedDates,
+      };
+    });
 
     if (selectedRecordKey === getRecordKey(targetRecord, targetIndex)) {
       setSelectedRecordKey(null);
