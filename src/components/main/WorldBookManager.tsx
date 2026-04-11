@@ -21,6 +21,15 @@ type WorldBookManagerProps = {
   onAddCharacter?: (char: any) => void;
 };
 
+function getWorldBookScopeLabel(worldBook: WorldBookEntry): string {
+  if (worldBook.isGlobal) {
+    return '全局';
+  }
+
+  const count = worldBook.characterIds?.length || 0;
+  return count > 0 ? `角色专属 ${count} 人` : '角色专属';
+}
+
 function ResolvedWorldBookAvatar({
   value,
   alt,
@@ -357,9 +366,15 @@ export function WorldBookManager({
                       <span className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
                         {getWorldBookPriorityLabel(worldBook.priorityLevel)}优先
                       </span>
-                      {worldBook.isGlobal && (
-                        <span className="rounded border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">全局</span>
-                      )}
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] ${
+                          worldBook.isGlobal
+                            ? 'border border-blue-100 bg-blue-50 text-blue-600'
+                            : 'border border-violet-100 bg-violet-50 text-violet-600'
+                        }`}
+                      >
+                        {getWorldBookScopeLabel(worldBook)}
+                      </span>
                     </div>
                   </div>
 

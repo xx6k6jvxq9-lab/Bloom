@@ -1,5 +1,6 @@
 import { Check, ChevronLeft } from 'lucide-react';
 import type { WorldBookEntry } from '../../../types';
+import { getWorldBookPriorityLabel, normalizeWorldBookCategory, sortWorldBooksByPriority } from '../../../services/world-book/worldBookMeta';
 
 type GroupWorldBookSettingsPageProps = {
   worldBooks: WorldBookEntry[];
@@ -20,6 +21,8 @@ export function GroupWorldBookSettingsPage({
   onBack,
   onToggleWorldBook,
 }: GroupWorldBookSettingsPageProps) {
+  const orderedWorldBooks = sortWorldBooksByPriority(worldBooks);
+
   return (
     <div className="absolute inset-0 z-[121] flex flex-col bg-zinc-50">
       <div className="flex min-h-[64px] items-center gap-2 border-b border-zinc-100 bg-white px-4 pb-3 pt-12 shadow-sm">
@@ -39,7 +42,7 @@ export function GroupWorldBookSettingsPage({
           </div>
         ) : (
           <div className="space-y-3">
-            {worldBooks.map((worldBook) => {
+            {orderedWorldBooks.map((worldBook) => {
               const isActive = activeWorldBookIds.includes(worldBook.id);
               return (
                 <button
@@ -54,8 +57,11 @@ export function GroupWorldBookSettingsPage({
                 >
                   <div className="min-w-0 pr-3">
                     <div className="truncate text-[15px] font-semibold">{worldBook.title}</div>
-                    <div className={`mt-1 text-[12px] ${isActive ? 'text-zinc-600' : 'text-zinc-500'}`}>
-                      {worldBook.category}
+                    <div className={`mt-1 flex flex-wrap gap-1.5 text-[12px] ${isActive ? 'text-zinc-600' : 'text-zinc-500'}`}>
+                      <span>{normalizeWorldBookCategory(worldBook.category)}</span>
+                      <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                        {getWorldBookPriorityLabel(worldBook.priorityLevel)}优先
+                      </span>
                     </div>
                     {worldBook.content?.trim() ? (
                       <div className={`mt-2 line-clamp-2 text-[12px] leading-5 ${isActive ? 'text-zinc-600' : 'text-zinc-500'}`}>
