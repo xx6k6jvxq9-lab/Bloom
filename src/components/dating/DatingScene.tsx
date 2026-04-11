@@ -359,8 +359,6 @@ export function DatingScene({
       const rawText = await generateTextFromMessagesWithConfig({
         activeConfig,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.4,
-        maxOutputTokens: 1800,
       });
       const parsed = parseGeneratedContent(rawText);
       if (!parsed) {
