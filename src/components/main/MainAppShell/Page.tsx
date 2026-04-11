@@ -159,7 +159,7 @@ export function MainApp({
   const [showManageGroups, setShowManageGroups] = useState(false);
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
-  const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');
+  const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => ({
@@ -397,6 +397,7 @@ export function MainApp({
             chatHistory={appData.chatHistory}
             characters={appData.characters}
             moments={appData.moments}
+            savedDates={appData.savedDates || []}
             collectedDates={appData.collectedDates || []}
             worldBooks={appData.worldBooks || []}
             setWorldBooks={(wb) => setAppData(prev => ({ ...prev, worldBooks: wb }))}

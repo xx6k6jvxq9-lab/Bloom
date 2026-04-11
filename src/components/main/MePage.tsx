@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Pencil, Link2, Upload, RefreshCw, ChevronRight, 
@@ -8,7 +8,7 @@ import {
   MessageSquare, Star, Share2, FileJson, Layers, UserRound, Book, Compass,
   UserPlus, Phone, Banknote, Calendar, Mic
 } from 'lucide-react';
-import { Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
+import { DateSession, Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
@@ -32,6 +32,7 @@ type MePageProps = {
   chatHistory: any;
   characters: any[];
   moments?: any[];
+  savedDates?: DateSession[];
   collectedDates?: any[];
   worldBooks?: WorldBookEntry[];
   setWorldBooks?: (wb: WorldBookEntry[]) => void;
@@ -42,7 +43,7 @@ type MePageProps = {
   setAppData?: any;
   settings?: any;
   setSettings?: (s: any) => void;
-  onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters') => void;
+  onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters') => void;
 };
 
 export function MePage({ 
@@ -56,6 +57,7 @@ export function MePage({
   chatHistory,
   characters,
   moments = [],
+  savedDates = [],
   collectedDates = [],
   worldBooks = [],
   setWorldBooks,
@@ -68,7 +70,7 @@ export function MePage({
   setSettings,
   onSectionChange,
 }: MePageProps) {
-  const [activeSection, setActiveSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
   const [editingProfile, setEditingProfile] = useState(false);
 
   const { globalBackground } = visualSettings;
@@ -80,6 +82,11 @@ export function MePage({
   useEffect(() => {
     onSectionChange?.(activeSection);
   }, [activeSection, onSectionChange]);
+
+  const endedDateRecords = useMemo(
+    () => savedDates.filter(session => (session.status || 'active') === 'ended'),
+    [savedDates],
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative" style={containerBgStyle}>
@@ -149,6 +156,12 @@ export function MePage({
                   subLabel={`${favorites.length + moments.filter(m => m.isCollected).length} 条内容`}
                   onClick={() => setActiveSection('favorites')}
                 />
+                <MenuButton 
+                  icon={<Calendar className="text-zinc-900" size={20} />} 
+                  label="约会记录" 
+                  subLabel={`${endedDateRecords.length} 场已结束约会`}
+                  onClick={() => setActiveSection('date-records')}
+                />
               </div>
 
 
@@ -199,6 +212,15 @@ export function MePage({
             collectedDates={collectedDates}
             characters={characters}
             onBack={() => setActiveSection('main')} 
+            globalBackground={globalBackground}
+          />
+        )}
+
+        {activeSection === 'date-records' && (
+          <DateRecordsPage
+            savedDates={endedDateRecords}
+            characters={characters}
+            onBack={() => setActiveSection('main')}
             globalBackground={globalBackground}
           />
         )}
@@ -1165,6 +1187,73 @@ function FavoritesManager({ favorites, moments, collectedDates, characters, onBa
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function DateRecordsPage({
+  savedDates,
+  characters,
+  onBack,
+  globalBackground,
+}: {
+  savedDates: DateSession[];
+  characters?: any[];
+  onBack: () => void;
+  globalBackground?: string;
+}) {
+  const records = [...savedDates].sort((a, b) => (b.endedAt || b.timestamp) - (a.endedAt || a.timestamp));
+
+  return (
+    <div className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
+      <div className={`pt-12 pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
+        globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
+      }`}>
+        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
+        <div>
+          <h3 className="text-[17px] font-bold">约会记录</h3>
+          <p className="mt-0.5 text-[12px] text-zinc-500">这里会保存你主动结束的约会</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {records.length === 0 && (
+          <div className="py-20 text-center text-zinc-300">
+            <Calendar size={48} className="mx-auto mb-4 opacity-20" />
+            <p className="text-[14px]">还没有已结束的约会记录</p>
+          </div>
+        )}
+
+        {records.map(date => {
+          const char = characters?.find(c => c.id === date.characterId) || { name: '未知角色' };
+          const previewText =
+            date.generatedContent?.narrative?.segments?.slice(-1)?.[0]?.text ||
+            date.messages[date.messages.length - 1]?.text ||
+            '这一轮约会已保存。';
+
+          return (
+            <div key={date.id} className={`rounded-2xl p-4 shadow-sm border space-y-2 backdrop-blur-sm ${
+              globalBackground ? 'bg-white/50 border-white/30' : 'bg-white border-zinc-100'
+            }`}>
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded">
+                  约会记录 · {char.name}
+                </span>
+                <span className="text-[10px] text-zinc-400">
+                  {new Date(date.endedAt || date.timestamp).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[13px] text-zinc-500 italic">
+                {date.location ? <span>地点：{date.location}</span> : null}
+                {date.scenario ? <span>场景：{date.scenario}</span> : null}
+              </div>
+              <p className="text-[14px] text-zinc-700 leading-relaxed line-clamp-3">
+                {previewText}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
