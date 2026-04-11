@@ -22,6 +22,7 @@ export function createDefaultCoupleSpaceData(
     posts: [],
     anniversaries: [],
     messageBoard: [],
+    initiativeDrafts: [],
     addedPartnerIds: [],
     loveLetterEnvelopeColor: '#f6d9e4',
     loveLetterPaperTexture: 'default',
@@ -69,6 +70,9 @@ export function hydrateCoupleSpace(
     posts: Array.isArray(source?.posts) ? source.posts : fallback.posts,
     anniversaries: Array.isArray(source?.anniversaries) ? source.anniversaries : fallback.anniversaries,
     messageBoard: Array.isArray(source?.messageBoard) ? source.messageBoard : fallback.messageBoard,
+    initiativeDrafts: Array.isArray(source?.initiativeDrafts)
+      ? source.initiativeDrafts
+      : fallback.initiativeDrafts,
     addedPartnerIds: Array.isArray(source?.addedPartnerIds) ? source.addedPartnerIds : fallback.addedPartnerIds,
     perception: source?.perception ?? fallback.perception,
     initiativeSettings: {
@@ -481,5 +485,11 @@ function looksLikeLegacyCoupleSpace(
   value: Partial<CoupleSpaceState> | Partial<CoupleSpaceData> | null | undefined,
 ): value is Partial<CoupleSpaceData> {
   if (!value) return false;
-  return 'partnerId' in value || 'coNotes' in value || 'loveLetters' in value || 'messageBoard' in value;
+  return (
+    'partnerId' in value ||
+    'coNotes' in value ||
+    'loveLetters' in value ||
+    'messageBoard' in value ||
+    'initiativeDrafts' in value
+  );
 }

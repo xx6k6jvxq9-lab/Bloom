@@ -392,6 +392,19 @@ export type CoupleSpaceInitiativeActionType =
   | 'reply_message_board'
   | 'react_to_existing_post';
 
+export type CoupleSpaceInitiativeDraftActionType = Extract<
+  CoupleSpaceInitiativeActionType,
+  'write_love_letter' | 'write_co_note'
+>;
+
+export type CoupleSpaceInitiativeDraftEntry = {
+  id: string;
+  actionType: CoupleSpaceInitiativeDraftActionType;
+  content: string;
+  createdAt: number;
+  source: 'manual_check' | 'auto_check';
+};
+
 export type CoupleSpacePublishingActionSettings = {
   enabled: boolean;
   cadence: CoupleSpaceInitiativeCadence;
@@ -676,6 +689,7 @@ export type CoupleSpaceData = {
   posts?: CouplePost[];
   anniversaries?: Anniversary[];
   messageBoard?: MessageBoardEntry[];
+  initiativeDrafts?: CoupleSpaceInitiativeDraftEntry[];
   addedPartnerIds?: string[];
   perception?: PerceptionSettings;
   initiativeSettings?: CoupleSpaceInitiativeSettings;

@@ -1,4 +1,6 @@
 import { ChevronLeft } from 'lucide-react';
+import type { CoupleSpaceInitiativeDraftEntry } from '../../../types';
+import { getCoupleSpaceDraftLabel } from '../../../services/ai/couple-space/initiative/coupleSpaceDraftBuffer';
 
 type ArtifactPreview = {
   kind: 'draft' | 'confirmation';
@@ -13,8 +15,15 @@ type Props = {
   busy: boolean;
   statusText: string | null;
   artifactPreview: ArtifactPreview;
+  draftEntries: CoupleSpaceInitiativeDraftEntry[];
   onCheck: () => void;
+  onPublishDraft: (draftId: string) => void;
+  onDeleteDraft: (draftId: string) => void;
 };
+
+function formatDraftSource(source: CoupleSpaceInitiativeDraftEntry['source']) {
+  return source === 'manual_check' ? '手动检查' : '自动检查';
+}
 
 export function CoupleSpaceInitiativeCheckCard({
   isOpen,
@@ -22,7 +31,10 @@ export function CoupleSpaceInitiativeCheckCard({
   busy,
   statusText,
   artifactPreview,
+  draftEntries,
   onCheck,
+  onPublishDraft,
+  onDeleteDraft,
 }: Props) {
   return (
     <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
@@ -73,6 +85,57 @@ export function CoupleSpaceInitiativeCheckCard({
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {draftEntries.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-zinc-800">草稿箱</p>
+                <p className="text-xs text-zinc-400">已保存 {draftEntries.length} 条</p>
+              </div>
+              {draftEntries.map((draft) => (
+                <div
+                  key={draft.id}
+                  className="rounded-2xl border border-zinc-100 bg-white/80 p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-zinc-800">
+                        {getCoupleSpaceDraftLabel(draft.actionType)}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {formatDraftSource(draft.source)} ·{' '}
+                        {new Date(draft.createdAt).toLocaleString([], {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onDeleteDraft(draft.id)}
+                        className="rounded-full px-3 py-1 text-xs font-bold text-zinc-500 transition-colors hover:text-rose-400"
+                      >
+                        删除
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onPublishDraft(draft.id)}
+                        className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-bold text-white shadow-sm transition-transform active:scale-95"
+                      >
+                        发布到空间
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                    {draft.content}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
         </div>

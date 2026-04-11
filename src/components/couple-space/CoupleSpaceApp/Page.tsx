@@ -2,7 +2,16 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Settings, Heart, Calendar, BookOpen, Banknote, Edit3, Trash2, Plus, Send, Image as ImageIcon, X, MessageCircle, Archive, ArchiveRestore, Search, Pin, PinOff, Sparkles } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { AppDataExtended, CoNote, CoupleSpaceData, LedgerEntry, LoveLetter, CalendarEvent, CouplePost } from '../../../types';
+import {
+  AppDataExtended,
+  CoNote,
+  CoupleSpaceData,
+  CoupleSpaceInitiativeDraftEntry,
+  LedgerEntry,
+  LoveLetter,
+  CalendarEvent,
+  CouplePost,
+} from '../../../types';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
@@ -26,9 +35,16 @@ import {
 } from '../../../services/ai/couple-space/prompt/coupleSpacePromptService';
 import { createCoupleSpacePromptCommonInput } from '../../../services/ai/couple-space/context/createCoupleSpacePromptCommonInput';
 import { evaluateCoupleSpaceInitiativeAutoCheckGate } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
+import {
+  appendCoupleSpaceInitiativeDraft,
+  createCoupleSpaceInitiativeDraftEntry,
+  publishCoupleSpaceInitiativeDraft,
+  removeCoupleSpaceInitiativeDraft,
+} from '../../../services/ai/couple-space/initiative/coupleSpaceDraftBuffer';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeAutoCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
+import type { RunCoupleSpaceInitiativeCandidateResult } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeCandidate';
 import { CoupleSpaceInitiativeCheckCard } from '../settings/CoupleSpaceInitiativeCheckCard';
 import { CoupleSpaceInitiativeSettingsCard } from '../settings/CoupleSpaceInitiativeSettingsCard';
 import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
@@ -190,6 +206,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     ? Object.keys(coupleSpaceState.spacesByPartnerId)
     : (coupleSpace.addedPartnerIds || (coupleSpace.partnerId ? [coupleSpace.partnerId] : []));
   const initiativeSettings = normalizeCoupleSpaceInitiativeSettings(coupleSpace.initiativeSettings);
+  const initiativeDraftEntries = coupleSpace.initiativeDrafts || [];
   const { getCharacterById, getCharactersByIds } = createCharacterDirectory({ characters: appData.characters });
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
@@ -275,6 +292,54 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     });
   };
 
+  const persistInitiativeDraftResult = (
+    baseCoupleSpace: CoupleSpaceData,
+    runResult: RunCoupleSpaceInitiativeCandidateResult | null,
+    source: CoupleSpaceInitiativeDraftEntry['source'],
+  ): { nextCoupleSpace: CoupleSpaceData; draftSaved: boolean } => {
+    if (
+      !runResult ||
+      (runResult.actionType !== 'write_love_letter' && runResult.actionType !== 'write_co_note') ||
+      !('draftContent' in runResult) ||
+      !runResult.draftContent
+    ) {
+      return { nextCoupleSpace: baseCoupleSpace, draftSaved: false };
+    }
+
+    const nextCoupleSpace = appendCoupleSpaceInitiativeDraft(
+      baseCoupleSpace,
+      createCoupleSpaceInitiativeDraftEntry({
+        actionType: runResult.actionType,
+        content: runResult.draftContent,
+        createdAt: Date.now(),
+        source,
+      }),
+    );
+
+    return {
+      nextCoupleSpace,
+      draftSaved: nextCoupleSpace !== baseCoupleSpace,
+    };
+  };
+
+  const handlePublishInitiativeDraft = (draftId: string) => {
+    if (!partner) return;
+
+    handleUpdateCoupleSpace((prev: CoupleSpaceData) =>
+      publishCoupleSpaceInitiativeDraft(prev, draftId, partner.id, Date.now()),
+    );
+    setInitiativeCheckStatus('这条草稿已发布到情侣空间。');
+    setInitiativeArtifactPreview(null);
+  };
+
+  const handleDeleteInitiativeDraft = (draftId: string) => {
+    handleUpdateCoupleSpace((prev: CoupleSpaceData) =>
+      removeCoupleSpaceInitiativeDraft(prev, draftId),
+    );
+    setInitiativeCheckStatus('这条草稿已从草稿箱移除。');
+    setInitiativeArtifactPreview(null);
+  };
+
   const handleManualInitiativeCheck = async () => {
     if (!partner || initiativeCheckBusy) return;
 
@@ -290,8 +355,18 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         now: Date.now(),
       });
 
-      handleUpdateCoupleSpace(result.nextCoupleSpace);
-      setInitiativeCheckStatus(result.statusText);
+      const persistedDraftResult = persistInitiativeDraftResult(
+        result.nextCoupleSpace,
+        result.runResult,
+        'manual_check',
+      );
+
+      handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
+      setInitiativeCheckStatus(
+        persistedDraftResult.draftSaved
+          ? `${result.statusText} 这条草稿已经存进草稿箱了。`
+          : result.statusText,
+      );
       setInitiativeArtifactPreview(result.artifactPreview);
     } catch (error) {
       console.error('Manual initiative check failed:', error);
@@ -342,8 +417,18 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           return;
         }
 
-        handleUpdateCoupleSpace(result.nextCoupleSpace);
-        setInitiativeCheckStatus(result.statusText);
+        const persistedDraftResult = persistInitiativeDraftResult(
+          result.nextCoupleSpace,
+          result.runResult,
+          'auto_check',
+        );
+
+        handleUpdateCoupleSpace(persistedDraftResult.nextCoupleSpace);
+        setInitiativeCheckStatus(
+          persistedDraftResult.draftSaved
+            ? `${result.statusText} 这条草稿已经存进草稿箱了。`
+            : result.statusText,
+        );
         setInitiativeArtifactPreview(result.artifactPreview);
       } catch (error) {
         console.error('Auto initiative check failed:', error);
@@ -826,7 +911,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 busy={initiativeCheckBusy}
                 statusText={initiativeCheckStatus}
                 artifactPreview={initiativeArtifactPreview}
+                draftEntries={initiativeDraftEntries}
                 onCheck={handleManualInitiativeCheck}
+                onPublishDraft={handlePublishInitiativeDraft}
+                onDeleteDraft={handleDeleteInitiativeDraft}
               />
 
               <div className="bg-white/80 backdrop-blur-md rounded-2xl overflow-hidden shadow-sm">
