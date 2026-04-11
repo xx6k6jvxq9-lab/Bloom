@@ -1732,7 +1732,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 alert('全量备份导出成功！');
               }, 100);
             }}
-            className="flex flex-col items-center gap-2 rounded-3xl bg-zinc-900 p-4 text-white shadow-lg active:scale-95 transition-transform"
+            className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-800 p-4 text-white shadow-sm active:scale-95 transition-transform"
           >
             <Database size={24} />
             <span className="text-[14px] font-bold">全量备份</span>
