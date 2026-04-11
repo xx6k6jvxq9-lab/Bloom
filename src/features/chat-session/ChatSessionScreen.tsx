@@ -461,7 +461,10 @@ export function ChatSessionScreen({
   });
 
   const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId);
-  const activeSavedDate = savedDates?.find(session => session.characterId === character.id) || null;
+  const activeSavedDate =
+    savedDates?.find(
+      session => session.characterId === character.id && (session.status || 'active') === 'active',
+    ) || null;
   const {
     isLoading,
     error,
@@ -2329,7 +2332,7 @@ export function ChatSessionScreen({
           perception={perception}
           onSaveDate={onSaveDate || (() => {})}
           onCollectDate={onCollectDate || (() => {})}
-          initialSession={savedDates?.find(s => s.characterId === character.id) || null}
+          initialSession={activeSavedDate}
         />
       )}
 

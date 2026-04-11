@@ -876,6 +876,8 @@ export type DateSession = {
   generatedContent?: DatingGeneratedContent;
   messages: DateMessage[];
   timestamp: number;
+  status?: 'active' | 'ended';
+  endedAt?: number;
 };
 
 export type ApiConfig = {

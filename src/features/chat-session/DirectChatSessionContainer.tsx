@@ -135,11 +135,14 @@ export function DirectChatSessionContainer({
         setCallHistory(callHistory.filter(record => record.id !== recordId));
       }}
       onSaveDate={(session) => {
+        const nextSavedDates = [
+          ...savedDates.filter(
+            item => !(item.characterId === session.characterId && (item.status || 'active') === 'active'),
+          ),
+          session,
+        ];
         setDatingRecords({
-          savedDates: [
-            ...savedDates.filter(item => item.characterId !== session.characterId),
-            session,
-          ],
+          savedDates: nextSavedDates,
           collectedDates,
         });
       }}

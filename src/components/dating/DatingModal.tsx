@@ -65,6 +65,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const wasOpenRef = useRef(false);
   const recoverableInitialSession = (initialSession as RecoverableDateSession | null) || null;
   const shouldResumeSavedScene = Boolean(
+    (recoverableInitialSession?.status || 'active') === 'active' &&
     recoverableInitialSession?.isSaved &&
       ((recoverableInitialSession.messages?.length ?? 0) > 0 || recoverableInitialSession.generatedContent),
   );
@@ -127,6 +128,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     generatedContent: initialSession?.generatedContent,
     messages: initialSession?.messages || [],
     timestamp: Date.now(),
+    status: recoverableInitialSession?.status || 'active',
+    endedAt: recoverableInitialSession?.endedAt,
     isSaved: recoverableInitialSession?.isSaved || false,
   });
 
@@ -153,6 +156,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     const savedSession: RecoverableDateSession = {
       ...buildSession(),
       isSaved: true,
+      status: 'active',
+      endedAt: undefined,
     };
     onSaveDate(savedSession);
     setShowMenu(false);
@@ -172,6 +177,8 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     const nextSession: RecoverableDateSession = {
       ...buildSession(),
       isSaved: false,
+      status: 'active',
+      endedAt: undefined,
     };
     setShowMenu(false);
     setActiveSceneSession(nextSession);

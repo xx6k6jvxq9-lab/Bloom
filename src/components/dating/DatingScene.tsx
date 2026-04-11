@@ -231,6 +231,8 @@ export function DatingScene({
 }: DatingSceneProps) {
   const [currentSession, setCurrentSession] = useState<SceneSessionState>(() => ({
     ...session,
+    status: session.status || 'active',
+    endedAt: session.endedAt,
     messages: normalizeDateSessionMessages(session),
     isCollected: (session as SceneSessionState).isCollected || false,
   }));
@@ -251,6 +253,8 @@ export function DatingScene({
     const normalizedMessages = normalizeDateSessionMessages(session);
     setCurrentSession({
       ...session,
+      status: session.status || 'active',
+      endedAt: session.endedAt,
       messages: normalizedMessages,
       generatedContent: getLatestGeneratedContent(normalizedMessages, session.generatedContent),
       isCollected: (session as SceneSessionState).isCollected || false,
@@ -317,11 +321,23 @@ export function DatingScene({
     const merged = {
       ...nextSession,
       isSaved: true,
+      status: nextSession.status || 'active',
+      endedAt: nextSession.status === 'ended' ? nextSession.endedAt : undefined,
       messages: normalizedMessages,
       generatedContent: getLatestGeneratedContent(normalizedMessages, nextSession.generatedContent),
     };
     setCurrentSession(merged);
     onSaveDate(merged);
+  };
+
+  const handleEndDate = () => {
+    persistSession({
+      ...currentSession,
+      status: 'ended',
+      endedAt: Date.now(),
+    });
+    setMenuOpen(false);
+    onClose();
   };
 
   const replaceMessage = (messages: DateMessage[], messageId: string, updater: (message: DateMessage) => DateMessage) =>
@@ -582,9 +598,9 @@ export function DatingScene({
                       <Undo2 size={15} />
                       {rollbackMode ? '取消回溯' : '回溯'}
                     </button>
-                    <button type="button" className="dating-scene__menu-item dating-scene__menu-item--danger" onClick={onClose}>
+                    <button type="button" className="dating-scene__menu-item dating-scene__menu-item--danger" onClick={handleEndDate}>
                       <X size={15} />
-                      退出
+                      结束约会
                     </button>
                   </motion.div>
                 </>
