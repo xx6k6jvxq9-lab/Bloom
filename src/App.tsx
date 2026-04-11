@@ -1115,11 +1115,12 @@ export default function App() {
               setSelectedForumPostId(postId);
               setActiveApp('forum');
             }}
-            onPublishMoment={({ authorId, content, images }) => {
+            onPublishMoment={({ authorId, content, images, imageCard }) => {
               console.info('[moment-special] onPublishMoment called', {
                 authorId,
                 content,
                 imagesCount: images?.length || 0,
+                hasImageCard: !!imageCard,
               });
               setAppData(prev => ({
                 ...(console.info('[moment-special] moments latest', {
@@ -1131,6 +1132,7 @@ export default function App() {
                   authorId,
                   content,
                   images,
+                  imageCard,
                   timestamp: Date.now(),
                   likes: 0,
                   comments: []

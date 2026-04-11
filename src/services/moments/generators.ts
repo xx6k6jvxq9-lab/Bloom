@@ -1,4 +1,4 @@
-import { Character, Mask, ApiConfig, WorldBookEntry } from '../../types';
+import { Character, Mask, ApiConfig, MomentImageCard, WorldBookEntry } from '../../types';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
@@ -25,6 +25,11 @@ type MomentLike = {
   timestamp: number;
   images?: string[];
   comments: MomentCommentLike[];
+};
+
+type GeneratedMomentPost = {
+  content: string;
+  imageCard?: MomentImageCard;
 };
 
 const MOMENT_TEMPLATES = [
@@ -145,6 +150,98 @@ function buildMomentCommentToneGuardSection() {
 
 function getCleanMomentFallback() {
   return MOMENT_TEMPLATES[Math.floor(Math.random() * MOMENT_TEMPLATES.length)];
+}
+
+function pickMomentImageTheme(content: string): MomentImageCard['theme'] {
+  if (/雨|夜|窗|路灯|街|晚风|影子/.test(content)) return 'film';
+  if (/咖啡|甜品|冰淇淋|饭|早餐|晚餐|蛋糕/.test(content)) return 'polaroid';
+  if (/备忘|计划|记得|清单|安排/.test(content)) return 'note';
+  return 'poster';
+}
+
+function buildFallbackMomentImageCard(content: string): MomentImageCard {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  const short = normalized.slice(0, 24) || '这一刻';
+  return {
+    title: short,
+    description: normalized || '把这一刻收进一张带画面感的动态卡片里。',
+    theme: pickMomentImageTheme(normalized),
+  };
+}
+
+function shouldAttachMomentImageCard(content: string) {
+  if (/图|照片|拍|风景|雨|夜|晚风|街|阳光|云|海|猫|狗|花|咖啡|甜品|饭|蛋糕|窗/.test(content)) {
+    return true;
+  }
+  return Math.random() < 0.38;
+}
+
+function parseMomentImageCard(rawText: string, fallback: MomentImageCard): MomentImageCard {
+  const trimmed = rawText.trim();
+  if (!trimmed) return fallback;
+
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return fallback;
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<MomentImageCard>;
+    const theme = parsed.theme;
+    const normalizedTheme =
+      theme === 'polaroid' || theme === 'film' || theme === 'note' || theme === 'poster'
+        ? theme
+        : fallback.theme;
+
+    return {
+      title: (parsed.title || fallback.title).trim().slice(0, 24) || fallback.title,
+      description: (parsed.description || fallback.description).trim().slice(0, 120) || fallback.description,
+      theme: normalizedTheme,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function generateMomentImageCard(options: {
+  activeConfig: ApiConfig;
+  character: Character;
+  momentContent: string;
+}): Promise<MomentImageCard | undefined> {
+  const { activeConfig, character, momentContent } = options;
+  if (!shouldAttachMomentImageCard(momentContent)) {
+    return undefined;
+  }
+
+  const fallback = buildFallbackMomentImageCard(momentContent);
+  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return fallback;
+  }
+
+  try {
+    const response = await generateTextFromMessagesWithConfig({
+      activeConfig: {
+        ...activeConfig,
+        apiKey,
+      },
+      temperature: 0.6,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            '请把下面这条角色动态，整理成一张“文字版图片卡片”的结构化描述。',
+            '只输出 JSON，不要解释。',
+            '格式：{"title":"不超过12字","description":"不超过48字，强调画面感","theme":"polaroid|film|note|poster"}',
+            `角色：${character.name}`,
+            `动态正文：${momentContent}`,
+          ].join('\n'),
+        },
+      ],
+    });
+
+    return parseMomentImageCard(response, fallback);
+  } catch {
+    return fallback;
+  }
 }
 
 function getCleanChatReactionFallback() {
@@ -311,7 +408,7 @@ export async function generateMomentPostContent(options: {
   masks: Mask[];
   worldBook: WorldBookEntry[];
   requestText: string;
-}) {
+}): Promise<GeneratedMomentPost> {
   const { activeConfig, character, masks, worldBook, requestText } = options;
   const fallback = getCleanMomentFallback();
 
@@ -330,7 +427,14 @@ export async function generateMomentPostContent(options: {
   }));
 
   if (!isContaminatedMomentContent(firstPass)) {
-    return firstPass;
+    return {
+      content: firstPass,
+      imageCard: await generateMomentImageCard({
+        activeConfig,
+        character,
+        momentContent: firstPass,
+      }),
+    };
   }
 
   const retryPrompt = buildMomentPostPrompt({
@@ -353,10 +457,24 @@ export async function generateMomentPostContent(options: {
   }));
 
   if (!isContaminatedMomentContent(secondPass)) {
-    return secondPass;
+    return {
+      content: secondPass,
+      imageCard: await generateMomentImageCard({
+        activeConfig,
+        character,
+        momentContent: secondPass,
+      }),
+    };
   }
 
-  return fallback;
+  return {
+    content: fallback,
+    imageCard: await generateMomentImageCard({
+      activeConfig,
+      character,
+      momentContent: fallback,
+    }),
+  };
 }
 
 export async function generateMomentChatReaction(options: {

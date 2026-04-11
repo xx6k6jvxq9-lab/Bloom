@@ -9,6 +9,7 @@ import type {
   CoupleSpaceData,
   FavoriteMessage,
   Mask,
+  MomentImageCard,
   PerceptionSettings,
   WalletData,
   WorldBookEntry,
@@ -274,7 +275,7 @@ type UseDirectChatRuntimeArgs = {
   onUpdateWalletData?: (data: WalletData) => void;
   onUpdateCharacter: (character: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: MomentImageCard }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
@@ -749,6 +750,7 @@ export function useDirectChatRuntime({
         onPublishMoment?.({
           authorId: character.id,
           content: commandMomentResult.momentContent,
+          imageCard: commandMomentResult.momentImageCard,
         });
         lastMomentPublishAtRef.current = Date.now();
         return;
@@ -866,6 +868,7 @@ export function useDirectChatRuntime({
           onPublishMoment?.({
             authorId: character.id,
             content: autoMomentResult.momentContent,
+            imageCard: autoMomentResult.momentImageCard,
           });
           lastMomentPublishAtRef.current = Date.now();
         }

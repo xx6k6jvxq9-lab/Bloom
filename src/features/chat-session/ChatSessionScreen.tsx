@@ -369,7 +369,7 @@ export function ChatSessionScreen({
   savedDates?: DateSession[];
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[] }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;

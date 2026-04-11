@@ -34,6 +34,20 @@ function ResolvedMomentsAssetImage({
   return <img src={src} alt={alt} className={className} />;
 }
 
+function getMomentImageCardStyle(theme: 'polaroid' | 'film' | 'note' | 'poster') {
+  switch (theme) {
+    case 'film':
+      return 'bg-[linear-gradient(135deg,#1f2937,#0f172a_55%,#334155)] text-white';
+    case 'note':
+      return 'bg-[linear-gradient(135deg,#fff7d6,#ffe9a8)] text-zinc-900';
+    case 'poster':
+      return 'bg-[linear-gradient(135deg,#111827,#4b5563_45%,#d1d5db)] text-white';
+    case 'polaroid':
+    default:
+      return 'bg-[linear-gradient(135deg,#fdf2f8,#fbcfe8_45%,#ffffff)] text-zinc-900';
+  }
+}
+
 export function MomentsApp({
   appData,
   setAppData,
@@ -527,6 +541,15 @@ export function MomentsApp({
                   </span>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
+
+                {moment.imageCard && (
+                  <div className={`mt-3 overflow-hidden rounded-[22px] border border-zinc-200/70 p-3 shadow-sm ${getMomentImageCardStyle(moment.imageCard.theme)}`}>
+                    <div className="mb-3 rounded-[18px] border border-white/30 bg-white/10 px-4 py-10 text-center backdrop-blur-sm">
+                      <p className="text-[18px] font-semibold tracking-[0.08em]">{moment.imageCard.title}</p>
+                    </div>
+                    <p className="text-[13px] leading-relaxed opacity-90">{moment.imageCard.description}</p>
+                  </div>
+                )}
 
                 {moment.images && moment.images.length > 0 && (
                   <div className={`mt-3 grid gap-1.5 ${moment.images.length === 1 ? 'grid-cols-1 w-2/3' : 'grid-cols-3'}`}>

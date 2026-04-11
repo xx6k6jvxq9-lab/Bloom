@@ -617,11 +617,18 @@ export type MomentComment = {
   replyToAuthorName?: string;
 };
 
+export type MomentImageCard = {
+  title: string;
+  description: string;
+  theme: 'polaroid' | 'film' | 'note' | 'poster';
+};
+
 export type MomentItem = {
   id: string;
   authorId: string;
   content: string;
   images?: string[];
+  imageCard?: MomentImageCard;
   timestamp: number;
   likes: number;
   likedBy?: string[];

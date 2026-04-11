@@ -1,4 +1,4 @@
-import type { ApiConfig, Character, ChatMessage, Mask, WorldBookEntry } from '../../types';
+import type { ApiConfig, Character, ChatMessage, Mask, MomentImageCard, WorldBookEntry } from '../../types';
 import { generateMomentChatReaction, generateMomentPostContent } from './generators';
 import type { RecentMomentContext } from './triggers';
 import { shouldAutoPublishMomentFromChat, shouldTriggerMomentPublishFromChat } from './triggers';
@@ -7,6 +7,7 @@ export type MomentPublishOrchestratorResult = {
   shouldPublish: boolean;
   chatReaction?: string;
   momentContent?: string;
+  momentImageCard?: MomentImageCard;
   triggerType?: 'command' | 'auto';
   reason?: string;
 };
@@ -47,7 +48,7 @@ export async function handleCommandTriggeredMomentPublish(
     requestText: text,
   });
 
-  const momentContent = await generateMomentPostContent({
+  const momentPost = await generateMomentPostContent({
     activeConfig,
     character,
     masks,
@@ -58,7 +59,8 @@ export async function handleCommandTriggeredMomentPublish(
   return {
     shouldPublish: true,
     chatReaction,
-    momentContent,
+    momentContent: momentPost.content,
+    momentImageCard: momentPost.imageCard,
     triggerType: 'command',
     reason: 'command-triggered',
   };
@@ -83,7 +85,7 @@ export async function maybeAutoPublishMoment(
     };
   }
 
-  const momentContent = await generateMomentPostContent({
+  const momentPost = await generateMomentPostContent({
     activeConfig,
     character,
     masks,
@@ -93,7 +95,8 @@ export async function maybeAutoPublishMoment(
 
   return {
     shouldPublish: true,
-    momentContent,
+    momentContent: momentPost.content,
+    momentImageCard: momentPost.imageCard,
     triggerType: 'auto',
     reason: trigger.reason,
   };
