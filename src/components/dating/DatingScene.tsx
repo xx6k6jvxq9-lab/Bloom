@@ -464,7 +464,6 @@ export function DatingScene({
       endedAt: Date.now(),
     };
 
-    persistSession(archivedSession);
     setMenuOpen(false);
     setEndingError('');
     setEndingMonologue('');
@@ -473,16 +472,22 @@ export function DatingScene({
     setEndingRipple(null);
     setEndingState('generating');
 
-    try {
-      const endingPayload = await generateEndingSequence(archivedSession);
-      setEndingMonologue(endingPayload.monologue);
-      setEndingReturnText(endingPayload.chatFollowup);
-      setEndingState('ready');
-    } catch (err) {
-      console.error('[dating-scene] ending sequence failed', err);
-      setEndingError(err instanceof Error ? err.message : '约会收尾内容生成失败，请稍后重试。');
-      setEndingState('ready');
-    }
+    window.setTimeout(() => {
+      persistSession(archivedSession);
+
+      void (async () => {
+        try {
+          const endingPayload = await generateEndingSequence(archivedSession);
+          setEndingMonologue(endingPayload.monologue);
+          setEndingReturnText(endingPayload.chatFollowup);
+          setEndingState('ready');
+        } catch (err) {
+          console.error('[dating-scene] ending sequence failed', err);
+          setEndingError(err instanceof Error ? err.message : '约会收尾内容生成失败，请稍后重试。');
+          setEndingState('ready');
+        }
+      })();
+    }, 0);
   };
 
   const handleEndingScreenClick = (event: React.MouseEvent<HTMLButtonElement>) => {
