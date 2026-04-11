@@ -1597,21 +1597,44 @@ function DateRecordsPageV3({
   setAppData?: React.Dispatch<React.SetStateAction<any>>;
 }) {
   const records = [...savedDates].sort((a, b) => (b.endedAt || b.timestamp) - (a.endedAt || a.timestamp));
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
-  const [manageMode, setManageMode] = useState(false);
-  const selectedRecord = records.find(record => record.id === selectedRecordId) || null;
+  const getRecordKey = (record: DateSession, index = 0) =>
+    [
+      record.id,
+      record.characterId,
+      record.timestamp,
+      record.endedAt || 0,
+      record.location || '',
+      record.scenario || '',
+      index,
+    ].join('::');
 
-  const handleDeleteRecord = async (recordId: string) => {
+  const [selectedRecordKey, setSelectedRecordKey] = useState<string | null>(null);
+  const [manageMode, setManageMode] = useState(false);
+  const selectedRecord =
+    records.find((record, index) => getRecordKey(record, index) === selectedRecordKey) || null;
+
+  const handleDeleteRecord = async (targetRecord: DateSession, targetIndex: number) => {
     if (!setAppData) return;
     if (!(await showInAppConfirm('确定要删除这条约会记录吗？'))) return;
 
     setAppData((prev: any) => ({
       ...prev,
-      savedDates: (prev.savedDates || []).filter((record: DateSession) => record.id !== recordId),
+      savedDates: (prev.savedDates || []).filter((record: DateSession, index: number) => {
+        if (index !== targetIndex) {
+          return true;
+        }
+
+        return !(
+          record.id === targetRecord.id &&
+          record.characterId === targetRecord.characterId &&
+          record.timestamp === targetRecord.timestamp &&
+          (record.endedAt || 0) === (targetRecord.endedAt || 0)
+        );
+      }),
     }));
 
-    if (selectedRecordId === recordId) {
-      setSelectedRecordId(null);
+    if (selectedRecordKey === getRecordKey(targetRecord, targetIndex)) {
+      setSelectedRecordKey(null);
     }
   };
 
@@ -1650,22 +1673,23 @@ function DateRecordsPageV3({
           </div>
         ) : null}
 
-        {records.map((date) => {
+        {records.map((date, index) => {
           const character = characters?.find((item) => item.id === date.characterId) || { name: '未知角色' };
           const previewText =
             date.generatedContent?.narrative?.segments?.slice(-1)?.[0]?.text ||
             date.messages[date.messages.length - 1]?.text ||
             '这一轮约会已经保存。';
+          const recordKey = getRecordKey(date, index);
 
           return (
             <div
-              key={date.id}
+              key={recordKey}
               className={`w-full rounded-2xl border p-4 shadow-sm backdrop-blur-sm ${
                 globalBackground ? 'border-white/30 bg-white/50' : 'border-zinc-100 bg-white'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
-                <button type="button" onClick={() => setSelectedRecordId(date.id)} className="min-w-0 flex-1 text-left">
+                <button type="button" onClick={() => setSelectedRecordKey(recordKey)} className="min-w-0 flex-1 text-left">
                   <span className="rounded bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-900">
                     约会记录 · {character.name}
                   </span>
@@ -1682,7 +1706,7 @@ function DateRecordsPageV3({
                   {manageMode ? (
                     <button
                       type="button"
-                      onClick={() => void handleDeleteRecord(date.id)}
+                      onClick={() => void handleDeleteRecord(date, index)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
                     >
                       <Trash2 size={14} />
@@ -1704,7 +1728,7 @@ function DateRecordsPageV3({
             className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
           >
             <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
-              <button onClick={() => setSelectedRecordId(null)} className="p-2 -ml-2 text-zinc-400">
+              <button onClick={() => setSelectedRecordKey(null)} className="p-2 -ml-2 text-zinc-400">
                 <X size={24} />
               </button>
               <div className="flex-1">
@@ -1715,7 +1739,12 @@ function DateRecordsPageV3({
               </div>
               <button
                 type="button"
-                onClick={() => void handleDeleteRecord(selectedRecord.id)}
+                onClick={() => {
+                  const targetIndex = records.findIndex((record, index) => getRecordKey(record, index) === selectedRecordKey);
+                  if (targetIndex >= 0) {
+                    void handleDeleteRecord(selectedRecord, targetIndex);
+                  }
+                }}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
               >
                 <Trash2 size={16} />
