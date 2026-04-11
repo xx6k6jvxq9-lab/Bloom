@@ -1342,10 +1342,14 @@ export default function App() {
         </AnimatePresence>
 
         {/* Home Indicator */}
-        <div 
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[100px] h-[4px] bg-white/80 rounded-full cursor-pointer z-50 hover:bg-white transition-colors" 
-          onClick={() => setActiveApp('home')} 
-        />
+        <div
+          className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
+        >
+          <div
+            className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
+            onClick={() => setActiveApp('home')}
+          />
+        </div>
       </div>
     </div>
   );
