@@ -1,6 +1,6 @@
 # Bloom 平台化实施蓝图
 
-更新时间：2026-04-03
+更新时间：2026-04-10
 适用范围：Bloom 当前仓库与后续长期迭代
 文档定位：长期主线蓝图、实施顺序、进度台账、架构约束总文档
 
@@ -409,7 +409,7 @@ Execution Layer 在蓝图里应进一步明确分成两件事：第一是场景�
 
 整理员很重要，但只有整理员，不等于仓库已经建好。
 
-Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整“记忆系统”。
+Bloom 当前仓库已经不只是“有总结能力”，而是已经落地了一个最小可运行的双层记忆骨架；但它仍然没有长成完整“记忆系统”。
 
 ### 7.0.1 当前仓库里的真实现状
 
@@ -417,22 +417,36 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 
 - 聊天自动总结
 - 聊天手动总结
+- `shortTermSummary / longTermMemoryProfile` 双层字段已经落地
+- `buildResolvedMemoryLayers` / `buildShortTermSummary` / `buildLongTermMemoryProfile` 已形成统一读取入口
+- memory library 已支持 entry 归档、统计、导入导出与手动/自动来源区分
 - 情侣空间最近事件轻量摘要
-- 若干 recent summary / relationship summary 雏形
+- `buildRelationshipProjection` 已把角色记忆、关系摘要、跨场景轻量痕迹压成统一 projection
+- `buildChatSceneInput` / `buildGroupChatSceneInput` / `buildDatingSceneInput` 已开始统一消费关系上下文与记忆层
+- 若干 recent summary / relationship summary 已进入真实场景主链
 
 但当前还缺少：
 
-- 短期记忆与长期记忆的正式分层
 - 统一 memory write schema
 - 结构化记忆抽取
 - 正式 recall layer
-- 跨场景统一消费协议
+- 跨场景统一消费协议的彻底收口
+- 长期记忆的自动沉淀与稳定回流链
+- 数据层从本地轻量存储进一步升级为更正式的 memory infrastructure
 
 ### 7.0.2 当前最真实的问题
 
-当前项目中的 `memorySummary` 更像是“混合记忆字段”。
+当前项目里的核心问题，已经从“完全没有分层”变成了“新旧路径并行，最小双层已落地但正式 memory layer 还没补齐”。
 
-它一边被当作：
+更具体地说：
+
+- `shortTermSummary` 与 `longTermMemoryProfile` 已经存在，且已经进入 chat / group / dating / couple-space 的读取链
+- 但 `memorySummary` 旧字段仍在类型和兼容路径里保留，过渡期还没有完全结束
+- 短期总结已经能自动生成并写回
+- 长期记忆目前仍以字段承载为主，还没有完整的自动抽取、归档、更新、回流流水线
+- memory library 已经像“记忆档案柜”，但 recall、structured memory、write contract 仍未闭环
+
+旧问题并没有完全消失。`memorySummary` 仍然代表一种过渡时代的混合语义：
 
 - 长期记忆沉淀
 
@@ -440,19 +454,20 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 
 - 自动总结逻辑持续刷新
 
-这意味着短期余波和长期关系印象，现在住在同一个抽屉里。
+这意味着仓库已经在往新骨架迁移，但抽屉还没有彻底分家。
 
-这在功能还不多时勉强能用，但随着群聊、约会、论坛、生活模块接入，会越来越混乱。
+如果后面群聊、约会、论坛、生活模块继续接入，而不继续收口 schema、write path 和 recall path，复杂度仍会持续上升。
 
 ### 7.0.3 所以现在该怎么做
 
-现在不应该等到“终极记忆系统”再动手。
+现在不应该再把“最小双层”当成未来计划，因为这一步已经完成。
 
-应该立刻做一个**最小可承重版本**：
+现在真正要做的是，把已经落地的最小骨架继续推进成正式 memory layer：
 
-1. 先把记忆总结和记忆系统概念分开
-2. 先把 `memorySummary` 拆成最小双层
-3. 再逐步演化成正式 memory layer
+1. 把 `memorySummary` 从主链上继续退位，只保留迁移兼容
+2. 把短期总结、长期画像、memory library、relationship evidence 的写入边界继续收口
+3. 补上 structured memory extraction、recall layer、write contract
+4. 再逐步演化成正式 memory layer
 
 最小双层建议：
 
@@ -472,6 +487,25 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 - 关系印象
 - 重要回忆
 - 长期相处模式
+
+### 7.0.4 当前进度台账
+
+按真实落地情况看，当前记忆系统更适合这样判断：
+
+- 已完成：最小双层字段落地
+- 已完成：短期总结自动写回单聊主链
+- 已完成：memory library 的最小归档能力
+- 已完成：记忆层接入 shared relationship projection 与 scene input 主链
+- 进行中：旧字段 `memorySummary` 退位与兼容清理
+- 进行中：跨场景统一消费协议继续收口
+- 未完成：structured memory extraction
+- 未完成：正式 recall layer
+- 未完成：统一 memory write schema
+- 未完成：长期记忆自动沉淀、更新与回流闭环
+
+因此，当前最准确的状态不是“记忆系统未开始”，而是：
+
+**记忆系统已经完成最小可运行骨架，并进入从轻量记忆层走向正式 memory platform 的中段。**
 
 也就是说，当前阶段不是“不做记忆系统”，而是：
 
@@ -503,6 +537,11 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 
 结构化记忆层。
 
+当前状态：
+
+- 尚未正式落地
+- 蓝图仍成立，暂时属于下一阶段建设项
+
 至少抽取：
 
 - `factualMemory`
@@ -529,6 +568,12 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 ### 7.4 Recall Layer
 
 召回层先做轻量版。
+
+当前状态：
+
+- 尚未正式落地
+- 当前仓库更接近“字段直读 + recent summary + relationship projection + 场景裁剪”
+- 还没有形成独立的 recall service / recall contract
 
 优先支持：
 
@@ -1400,6 +1445,16 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 
 这版顺序不是推翻原蓝图，而是把原有主线进一步做成“先固化 contract，再打实主链，再收口旧路径，再继续扩场景”的增强实施建议。
 
+结合 2026-04-10 的真实仓库状态，可把这些阶段理解为：
+
+- Phase A：大体完成，但 context budget、evidence contract 仍是轻量版
+- Phase B：主链已基本跑通，仍需继续收口旧入口和局部 OOC 治理
+- Phase B2：进行中，`setting / memorySummary` 等旧路径仍未完全退位
+- Phase C：已开始接入，dating 与 couple-space 已进入统一关系链，但仍未完全统一 write-back contract
+- Phase D：尚未开始完整建设，目前只有最小双层、summary、library 与 projection 雏形
+- Phase E：couple-space initiative 已有产品化链路，但时间感知与更通用的自主决策底座仍未正式完成
+- Phase F：未开始
+
 ## 13. 当前阶段的明确优先级
 
 基于当前仓库和主线目标，建议把接下来优先级写死为：
@@ -1792,17 +1847,24 @@ Bloom 当前仓库已经长出了“总结能力”，但还没有长成完整�
 
 ### 18.3.1 当前真实阶段判断
 
-- 全项目当前更准确处于 `Phase B 中段`
+- 全项目当前更准确处于 `Phase B 中段后半`
 - 群聊子线当前更准确处于 `P2-5 群聊最小闭环中后段`
-- `群聊 <-> 单聊` 的第一版关系互通与事实互通底座已接通
-- `群 A <-> 群 B` 的正式有限互通尚未开始
-- 群聊主线不再以“恢复功能”为主矛盾，而是转向“边界是否清楚、记忆是否干净、后续群生态接入时会不会串味”
-- 已经可以把下列事项视为“当前阶段暂时收口，后期再升级”：
+- 群聊当前已经不是“恢复能不能用”的阶段，而是进入“体验收口、活人感补强、旧路径清理”的阶段
+- 群聊生成中继续输入已落地，体感已向单聊靠拢
+- 群聊撤回已落地，不再只是摆设
+- 群气泡颜色第一版已真实影响群聊显示，且已补上用户自己的群内气泡颜色
+- 群气泡设置弹窗的交互与选中态已完成第一轮收口，当前批次新 UI 默认继续遵守“浅灰选中态，不用纯黑高亮”
+- `buildGroupChatPrompt / buildChatSceneInput / buildDatingSceneInput` 的主链文本清理已完成
+- `longTermMemoryProfile` 的旧兼容回读已补上，旧路径清理继续向前推进
+- 群聊关系层实验已回退，当前不作为主线推进项；主线仍优先保证人设稳定、边界清楚、场景不串味
+- `群聊 <-> 单聊` 的第一版关系互通与事实互通底座已接通，但 `群 A <-> 群 B` 的正式有限互通尚未开始
+- 群聊活跃度底层能力已经存在，但“角色对角色回复强度、碎节奏密度、整体活人感”仍未达到目标，这仍是后续体验主线
+- 当前阶段已经可以视为“暂时收口，后期再升级”的事项：
   1. 群邀请机制第一版
   2. 群头衔第一版
   3. 多群有限互通
-  4. 群聊发言调度第一轮收口
-  5. 群聊目标识别第一轮收口
+  4. 群聊关系层实验第一轮
+  5. 群聊基础 UI 收口第一轮
   6. 基础角色稳定性 / OOC 治理第一轮收口
 
 ### 18.4 第二阶段总清单

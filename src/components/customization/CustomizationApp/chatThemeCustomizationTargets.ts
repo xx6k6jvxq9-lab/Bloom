@@ -9,6 +9,8 @@ export const CHAT_THEME_TARGET_GROUPS = [
       '.bot-bubble',
       '.left',
       '.right',
+      '.chat-bubble-left / .chat-bubble-right',
+      '.user-left-bubble / .user-right-bubble',
       '.corner.tl / .tr / .bl / .br',
       '.sticker-skull',
     ],

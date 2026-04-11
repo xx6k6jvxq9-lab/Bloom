@@ -1,11 +1,13 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { VisualSettings, WidgetConfig, DesktopIconConfig } from '../../../types';
+import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
+import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
@@ -322,8 +324,25 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  const { setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground);
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(settings.navBar?.backgroundImage || '');
+  const typography = settings.themeTypography || {};
+  const effectiveFontPriority = resolveThemeFontPriority(typography);
+  const importedFonts: ThemeFontAsset[] = typography.importedFonts || [];
+  const { resolvedFonts } = useResolvedThemeTypographyCss(typography);
+  const previewFontFamily =
+    typography.selectedFontId && effectiveFontPriority !== 'css-only'
+      ? `"${getThemeImportedFontFamily(typography.selectedFontId)}"`
+      : settings.desktop?.fontFamily === 'Mono'
+        ? 'monospace'
+        : settings.desktop?.fontFamily === 'Serif'
+          ? 'serif'
+          : settings.desktop?.fontFamily === 'Cursive'
+            ? 'cursive'
+            : 'sans-serif';
+  const previewText =
+    typography.previewText || '桌面字体预览 你好，Bloom\nBloom Font Preview 123 ABC abc';
   const visibleWidgets = useMemo(
     () => (settings.widgets || []).filter((widget: WidgetConfig) => widget.type !== 'music'),
     [settings.widgets]
@@ -411,6 +430,15 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
       }),
     },
   ];
+
+  const updateTypography = (patch: Partial<VisualSettings['themeTypography']>) =>
+    setSettings({
+      ...settings,
+      themeTypography: {
+        ...typography,
+        ...patch,
+      },
+    });
 
   const addWidgetByType = (type: WidgetConfig['type']) => {
     const template = widgetTemplates.find(item => item.type === type);
@@ -929,23 +957,168 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
       {subTab === 'font' && (
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">字体设置</h3>
-          
+          {resolvedFonts.length > 0 ? (
+            <style>
+              {resolvedFonts
+                .map(
+                  font => `@font-face {
+  font-family: "${font.familyName}";
+  src: url("${font.resolvedUrl}");
+  font-display: swap;
+}`,
+                )
+                .join('\n\n')}
+            </style>
+          ) : null}
+
+          <div className="rounded-[20px] border border-zinc-100 bg-zinc-50/80 p-4">
+            <div className="text-[12px] font-bold text-zinc-500">字体预览</div>
+            <div
+              className="mt-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-sm whitespace-pre-wrap"
+              style={{
+                fontFamily: previewFontFamily,
+                fontSize: `${settings.desktop?.fontSize ?? 12}px`,
+                color: settings.desktop?.fontColor ?? '#18181b',
+                fontWeight:
+                  (settings.desktop?.fontWeight || 'normal') === 'bold'
+                    ? 'bold'
+                    : (settings.desktop?.fontWeight || 'normal') === 'lighter'
+                      ? 'lighter'
+                      : 'normal',
+              }}
+            >
+              {previewText}
+            </div>
+            <textarea
+              value={previewText}
+              onChange={e => updateTypography({ previewText: e.target.value })}
+              placeholder="输入你想拿来预览这套字体的示例文字..."
+              className="mt-3 min-h-[88px] w-full resize-y rounded-[16px] border border-zinc-200 bg-white px-4 py-3 text-[13px] text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+            />
+          </div>
+
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500">字体样式</label>
             <div className="grid grid-cols-2 gap-2">
               {['Inter', 'Serif', 'Mono', 'Cursive'].map(font => (
-                 <button 
-                   key={font}
-                   onClick={() => setSettings({...settings, desktop: {...settings.desktop, fontFamily: font}})}
-                   className={`px-3 py-2 rounded-xl text-xs border ${
-                     settings.desktop?.fontFamily === font 
-                       ? 'bg-zinc-100 border-zinc-900 text-zinc-900' 
-                       : 'bg-zinc-50 border-zinc-200 text-zinc-600'
-                   }`}
-                   style={{ fontFamily: font === 'Mono' ? 'monospace' : font === 'Serif' ? 'serif' : font === 'Cursive' ? 'cursive' : 'sans-serif' }}
-                 >
-                   {font}
-                 </button>
+                <button
+                  key={font}
+                  onClick={() => setSettings({ ...settings, desktop: { ...settings.desktop, fontFamily: font } })}
+                  className={`px-3 py-2 rounded-xl text-xs border ${
+                    settings.desktop?.fontFamily === font
+                      ? 'bg-zinc-100 border-zinc-900 text-zinc-900'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-600'
+                  }`}
+                  style={{ fontFamily: font === 'Mono' ? 'monospace' : font === 'Serif' ? 'serif' : font === 'Cursive' ? 'cursive' : 'sans-serif' }}
+                >
+                  {font}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-bold text-zinc-500">导入字体</label>
+              <label className="cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
+                上传字体
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".ttf,.otf,.woff,.woff2,.ttc"
+                  onChange={async e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const source = await setUploadedFile(file);
+                    const nextFont: ThemeFontAsset = {
+                      id: `font-${Date.now()}`,
+                      name: file.name.replace(/\.[^.]+$/, ''),
+                      source,
+                      format: file.name.split('.').pop()?.toLowerCase(),
+                    };
+                    updateTypography({
+                      importedFonts: [...importedFonts, nextFont],
+                      selectedFontId: nextFont.id,
+                      fontPriority: typography.fontPriority || 'lock-imported',
+                    });
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+
+            {importedFonts.length > 0 ? (
+              <div className="space-y-2">
+                {importedFonts.map(font => {
+                  const isSelected = typography.selectedFontId === font.id;
+                  return (
+                    <div
+                      key={font.id}
+                      className={`flex items-center justify-between gap-3 rounded-[18px] border px-4 py-3 ${
+                        isSelected ? 'border-zinc-300 bg-zinc-100' : 'border-zinc-200 bg-zinc-50'
+                      }`}
+                    >
+                      <button
+                        onClick={() =>
+                          updateTypography({
+                            selectedFontId: font.id,
+                            fontPriority: typography.fontPriority || 'lock-imported',
+                          })
+                        }
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div
+                          className="truncate text-[14px] font-semibold text-zinc-900"
+                          style={{ fontFamily: `"${getThemeImportedFontFamily(font.id)}", sans-serif` }}
+                        >
+                          {font.name}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          {font.format?.toUpperCase() || 'FONT'}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() =>
+                          updateTypography({
+                            importedFonts: importedFonts.filter(item => item.id !== font.id),
+                            selectedFontId: typography.selectedFontId === font.id ? '' : typography.selectedFontId,
+                          })
+                        }
+                        className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-rose-500 transition-colors hover:bg-rose-50"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-4 text-[12px] text-zinc-500">
+                还没有导入字体。支持 `ttf / otf / woff / woff2 / ttc`。
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500">字体优先级</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'css-only', label: '只用基础字', helper: '保留页面与 CSS 原有字体逻辑' },
+                { value: 'imported-first', label: '导入优先', helper: '优先使用导入字体，但不强锁' },
+                { value: 'lock-imported', label: '锁定导入', helper: '导入字体优先，不让样式覆盖' },
+              ].map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => updateTypography({ fontPriority: option.value as 'css-only' | 'imported-first' | 'lock-imported' })}
+                  className={`rounded-[18px] border px-3 py-3 text-left transition-all ${
+                    effectiveFontPriority === option.value
+                      ? 'border-zinc-300 bg-zinc-100 text-zinc-900 shadow-sm'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                  }`}
+                >
+                  <div className="text-[12px] font-semibold">{option.label}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-zinc-500">{option.helper}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -955,61 +1128,45 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
               <span>字体大小</span>
               <span>{settings.desktop?.fontSize ?? 12}px</span>
             </label>
-            <input 
-              type="range" 
-              min="10" 
-              max="20" 
-              value={settings.desktop?.fontSize ?? 12} 
-              onChange={e => setSettings({...settings, desktop: {...settings.desktop, fontSize: Number(e.target.value)}})} 
-              className="w-full accent-zinc-900" 
+            <input
+              type="range"
+              min="10"
+              max="20"
+              value={settings.desktop?.fontSize ?? 12}
+              onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, fontSize: Number(e.target.value) } })}
+              className="w-full accent-zinc-900"
             />
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500">字体颜色</label>
-            <div className="grid grid-cols-6 gap-2">
-              {[
-                '#ffffff',
-                '#000000',
-                '#3b82f6',
-                '#2563eb',
-                '#60a5fa',
-                '#ef4444',
-                '#f43f5e',
-                '#fb7185',
-                '#10b981',
-                '#14b8a6',
-                '#22c55e',
-                '#f59e0b',
-                '#f97316',
-                '#eab308',
-                '#a855f7',
-                '#8b5cf6',
-                '#ec4899',
-                '#6b7280',
-              ].map((color, index) => (
-                <button
-                  key={`${color}-${index}`}
-                  onClick={() => setSettings({...settings, desktop: {...settings.desktop, fontColor: color}})}
-                  className={`w-8 h-8 rounded-full border-2 transition-transform ${
-                    settings.desktop?.fontColor === color ? 'border-zinc-900 scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={settings.desktop?.fontColor ?? '#18181b'}
+                onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, fontColor: e.target.value } })}
+                className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
+              />
+              <input
+                type="text"
+                value={settings.desktop?.fontColor ?? '#18181b'}
+                onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, fontColor: e.target.value } })}
+                placeholder="#18181b"
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+              />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500">字体粗细</label>
             <div className="flex bg-zinc-100 p-1 rounded-xl">
               {['normal', 'bold', 'lighter'].map(weight => (
                 <button
                   key={weight}
-                  onClick={() => setSettings({...settings, desktop: {...settings.desktop, fontWeight: weight}})}
+                  onClick={() => setSettings({ ...settings, desktop: { ...settings.desktop, fontWeight: weight } })}
                   className={`flex-1 py-1.5 text-xs rounded-lg transition-all ${
-                    (settings.desktop?.fontWeight || 'normal') === weight 
-                      ? 'bg-white shadow-sm text-zinc-900 font-bold' 
+                    (settings.desktop?.fontWeight || 'normal') === weight
+                      ? 'bg-white shadow-sm text-zinc-900 font-bold'
                       : 'text-zinc-500'
                   }`}
                 >
@@ -1018,7 +1175,6 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
               ))}
             </div>
           </div>
-
         </div>
       )}
     </div>

@@ -11,6 +11,14 @@ import {
 import { Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import {
+  getWorldBookPriorityLabel,
+  normalizeWorldBookCategory,
+  normalizeWorldBookPriorityLevel,
+  sortWorldBooksByPriority,
+  WORLD_BOOK_CATEGORY_PRESETS,
+  WORLD_BOOK_PRIORITY_OPTIONS,
+} from '../../services/world-book/worldBookMeta';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 
 type MePageProps = {

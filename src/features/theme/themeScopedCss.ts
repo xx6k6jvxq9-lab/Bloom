@@ -1,4 +1,4 @@
-import { THEME_SCOPE_TARGETS, type ThemeScopeTargetId } from './themeCustomizationTargets';
+import { DISABLED_THEME_SCOPE_TARGET_IDS, THEME_SCOPE_TARGETS, type ThemeScopeTargetId } from './themeCustomizationTargets';
 
 function looksLikeCssRuleBlock(input: string): boolean {
   return /(^|\n)\s*[^@\n][^{\n]*\{/.test(input) || /@media\s*\(|@supports\s*\(/.test(input);
@@ -13,11 +13,13 @@ export function buildThemeScopedCss(themeScopedCss?: Record<string, string>): st
     return '';
   }
 
+  const disabledTargetIds = new Set<ThemeScopeTargetId>(DISABLED_THEME_SCOPE_TARGET_IDS);
+
   return Object.entries(themeScopedCss)
     .map(([targetId, rawValue]) => {
       const target = THEME_SCOPE_TARGETS[targetId as ThemeScopeTargetId];
       const css = typeof rawValue === 'string' ? rawValue.trim() : '';
-      if (!target || !css) {
+      if (!target || !css || disabledTargetIds.has(targetId as ThemeScopeTargetId)) {
         return '';
       }
 

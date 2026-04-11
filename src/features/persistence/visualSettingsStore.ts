@@ -8,6 +8,8 @@ export function hydrateVisualSettings(
   source: Partial<VisualSettings> | null | undefined,
   fallbackGlobalBackground: string,
 ): VisualSettings {
+  const hydratedFontPriority = source?.themeTypography?.fontPriority || 'lock-imported';
+
   return {
     globalBackground: source?.globalBackground || fallbackGlobalBackground,
     chatOpacity: source?.chatOpacity ?? 1,
@@ -16,7 +18,7 @@ export function hydrateVisualSettings(
     themeTypography: {
       importedFonts: source?.themeTypography?.importedFonts || [],
       selectedFontId: source?.themeTypography?.selectedFontId || '',
-      fontPriority: source?.themeTypography?.fontPriority || 'css-only',
+      fontPriority: hydratedFontPriority,
       textColor: source?.themeTypography?.textColor || '#18181b',
       previewText:
         source?.themeTypography?.previewText

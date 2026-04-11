@@ -45,6 +45,9 @@ function BubbleColorEditorSheet({
   const [color, setColor] = useState(normalizeColor(member.bubbleColor));
   const hasChanges = color !== savedColor;
   const isDefaultColor = color === '#FFFFFF';
+  const handleColorValueChange = (value: string) => {
+    setColor(value.toUpperCase());
+  };
 
   return (
     <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/35 backdrop-blur-[1px]">
@@ -81,7 +84,8 @@ function BubbleColorEditorSheet({
               <input
                 type="color"
                 value={color}
-                onChange={(event) => setColor(event.target.value.toUpperCase())}
+                onInput={(event) => handleColorValueChange(event.currentTarget.value)}
+                onChange={(event) => handleColorValueChange(event.target.value)}
                 className="absolute inset-0 cursor-pointer opacity-0"
               />
             </div>

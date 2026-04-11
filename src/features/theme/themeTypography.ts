@@ -20,7 +20,7 @@ function quoteFontFamily(value: string): string {
 
 export function inferThemeFontFormat(font: Pick<ThemeFontAsset, 'name' | 'source' | 'format'>): string {
   if (font.format?.trim()) {
-    return font.format.trim();
+    return FONT_FORMAT_BY_EXTENSION[font.format.trim().toLowerCase()] || font.format.trim();
   }
 
   const candidate = `${font.name || ''} ${font.source || ''}`.toLowerCase();
@@ -36,6 +36,26 @@ export function getThemeImportedFontFamily(fontId: string): string {
   return `ThemeImportedFont-${fontId}`;
 }
 
+export function resolveThemeFontPriority(
+  typography: ThemeTypographySettings | undefined,
+): 'css-only' | 'imported-first' | 'lock-imported' {
+  return typography?.fontPriority || 'lock-imported';
+}
+
+export function getThemeSelectedFontStack(typography: ThemeTypographySettings | undefined): string | undefined {
+  const selectedFontId = typography?.selectedFontId?.trim();
+  if (!selectedFontId) {
+    return undefined;
+  }
+
+  const fontPriority = resolveThemeFontPriority(typography);
+  if (fontPriority === 'css-only') {
+    return undefined;
+  }
+
+  return `"${getThemeImportedFontFamily(selectedFontId)}", "PingFang SC", "Microsoft YaHei", sans-serif`;
+}
+
 export function buildThemeTypographyCss(
   typography: ThemeTypographySettings | undefined,
   resolvedFonts: ResolvedThemeFont[],
@@ -45,35 +65,34 @@ export function buildThemeTypographyCss(
   }
 
   const fontFaces = resolvedFonts
-    .map((font) => {
-      const format = inferThemeFontFormat(font);
-      return `@font-face {
+    .map((font) => `@font-face {
   font-family: ${quoteFontFamily(font.familyName)};
-  src: url("${font.resolvedUrl}") format("${format}");
+  src: url("${font.resolvedUrl}");
   font-display: swap;
-}`;
-    })
+}`)
     .join('\n\n');
 
   const selectedFont = resolvedFonts.find((font) => font.id === typography.selectedFontId);
   const selectedFamily = selectedFont ? quoteFontFamily(selectedFont.familyName) : '';
-  const selectedStack = selectedFamily
-    ? `${selectedFamily}, "PingFang SC", "Microsoft YaHei", sans-serif`
-    : '';
+  const selectedStack = getThemeSelectedFontStack(typography) || '';
+  const fontPriorityTargets = 'body, .app-shell, .app-shell *, .app-shell *::before, .app-shell *::after, .app-phone-container, .app-phone-container *, .app-phone-container *::before, .app-phone-container *::after';
+  const textColorTargets = 'body, .app-shell, .app-phone-container, button, input, textarea, select';
   const textColorCss = typography.textColor?.trim()
-    ? `body, button, input, textarea, select {
+    ? `${textColorTargets} {
   color: ${typography.textColor.trim()};
 }
 `
     : '';
 
   let fontPriorityCss = '';
-  if (selectedStack && typography.fontPriority === 'imported-first') {
-    fontPriorityCss = `body, button, input, textarea, select {
+  const effectiveFontPriority = resolveThemeFontPriority(typography);
+
+  if (selectedStack && effectiveFontPriority === 'imported-first') {
+    fontPriorityCss = `${fontPriorityTargets} {
   font-family: ${selectedStack};
 }`;
-  } else if (selectedStack && typography.fontPriority === 'lock-imported') {
-    fontPriorityCss = `body, button, input, textarea, select {
+  } else if (selectedStack && effectiveFontPriority === 'lock-imported') {
+    fontPriorityCss = `${fontPriorityTargets} {
   font-family: ${selectedStack} !important;
 }`;
   } else if (selectedStack) {

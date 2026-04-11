@@ -1,5 +1,14 @@
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { selectActiveGroupWorldBooks } from '../../features/group-world-book/selectActiveGroupWorldBooks';
+import type {
+  Character,
+  ChatGroup,
+  ChatHistory,
+  CoupleSpaceData,
+  Mask,
+  PerceptionSettings,
+  WorldBookEntry,
+} from '../../types';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';

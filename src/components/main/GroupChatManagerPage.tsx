@@ -119,7 +119,7 @@ export function GroupChatManagerPage({
             setSelectedMembers([]);
             setShowCreate(true);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white transition-transform active:scale-90"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
         >
           <Plus size={20} />
         </button>
@@ -232,7 +232,7 @@ export function GroupChatManagerPage({
                   onCreateGroup(newGroupName, selectedMembers);
                   closeCreateModal();
                 }}
-                className="w-full rounded-xl bg-blue-500 py-3.5 font-bold text-white shadow-lg shadow-blue-500/30 transition-transform active:scale-95"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-100 py-3.5 font-bold text-zinc-900 shadow-sm transition-all hover:bg-zinc-200 active:scale-95"
               >
                 创建
               </button>

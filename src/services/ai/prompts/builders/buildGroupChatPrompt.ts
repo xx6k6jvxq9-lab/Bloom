@@ -1,9 +1,32 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { GROUP_CHAT_SCENARIO_PROMPT } from '../scenarios/groupChat';
+import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
 
 export type BuildGroupChatPromptOptions = {
   sceneInput: GroupChatSceneInput;
 };
+
+function buildPersonaGuardBlock(sceneInput: GroupChatSceneInput): string {
+  const lines = [
+    sceneInput.speakerCorePersona
+      ? `核心人设优先：${sceneInput.speakerCorePersona}`
+      : '',
+    sceneInput.speakerSignature
+      ? `角色自我表达线索：${sceneInput.speakerSignature}`
+      : '',
+    sceneInput.recentContext?.expressionStyle
+      ? `说话手感：${sceneInput.recentContext.expressionStyle}`
+      : '',
+    sceneInput.recentContext?.boundaryPack
+      ? `不能轻易越过的边界：${sceneInput.recentContext.boundaryPack}`
+      : '',
+    '如果群里气氛、关系张力、他人语气和你的人设发生冲突，以你的人设、表达习惯和边界为准。',
+    '不要因为是群聊就自动变得更热情、更圆滑、更会接梗、更像调停者。',
+    '允许冷一点、慢一点、刺一点、嘴硬一点、收着一点，只要这更像这个角色本人。',
+  ].filter(Boolean);
+
+  return lines.length > 0 ? ['人设守则：', ...lines].join('\n') : '';
+}
 
 function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
   const lines = [
@@ -97,6 +120,7 @@ export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions
     `角色名字：${sceneInput.speakerName}`,
     `核心人设：${sceneInput.speakerCorePersona || '未提供'}`,
     sceneInput.speakerSignature ? `个性签名：${sceneInput.speakerSignature}` : '',
+    buildPersonaGuardBlock(sceneInput),
     buildRecentContextBlock(sceneInput),
     '',
     '群聊资料：',

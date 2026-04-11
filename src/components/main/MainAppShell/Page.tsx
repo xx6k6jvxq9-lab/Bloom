@@ -13,6 +13,7 @@ import { usePersistedMomentsBridge } from '../../../features/persistence/usePers
 import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
+import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
 
 function ResolvedMainShellAvatar({
   value,
@@ -159,6 +160,7 @@ export function MainApp({
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
   const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'worldbooks' | 'characters'>('main');
+  const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => ({
       kind: 'group' as const,
@@ -195,6 +197,7 @@ export function MainApp({
   return (
     <motion.div 
       className="absolute inset-0 flex flex-col bg-zinc-50"
+      style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
     >
       {/* Header */}
       {!(activeTab === 'me' && meSection !== 'main') && (

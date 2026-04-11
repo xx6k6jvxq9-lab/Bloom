@@ -338,10 +338,7 @@ export function WorldBookManager({
               <button onClick={onBack} className="-ml-2 rounded-full p-2 text-zinc-400 transition-colors hover:bg-black/5">
                 <X size={24} />
               </button>
-              <div className="flex flex-col">
-                <h3 className="text-[17px] font-bold">世界书</h3>
-                <span className="text-[11px] text-zinc-500">分类决定归属，优先级决定谁更先被读到。</span>
-              </div>
+              <h3 className="text-[17px] font-bold">世界书</h3>
             </div>
             <div className="flex items-center gap-2">
               <label className="cursor-pointer rounded-full p-2 text-zinc-600 transition-colors hover:bg-black/5">
@@ -371,10 +368,6 @@ export function WorldBookManager({
           </div>
 
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[12px] leading-5 text-zinc-500">
-              手动分类适合整理设定范围；高优先或强制优先更适合硬规则、禁忌和关键背景。
-            </div>
-
             {filtered.length === 0 && (
               <div className="py-20 text-center text-zinc-300">
                 <Book size={48} className="mx-auto mb-4 opacity-20" />

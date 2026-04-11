@@ -1,6 +1,13 @@
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildTemporalContextPrompt } from '../relationship-time/buildTemporalContextPrompt';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import type {
+  Character,
+  ChatMessage,
+  DateSession,
+  PerceptionSettings,
+  UserProfileExtended,
+} from '../../types';
 
 export type DatingSceneInput = {
   mode: 'start' | 'continue';
