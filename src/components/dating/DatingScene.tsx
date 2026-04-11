@@ -583,7 +583,7 @@ export function DatingScene({
         <div className="dating-scene__body">
           <div className="dating-scene__messages">
             {currentSession.messages.length === 0 && isLoading ? (
-              <div className="dating-scene__scene-card dating-scene__scene-card--placeholder">
+              <div className="dating-scene__scene-content dating-scene__scene-content--placeholder">
                 <div className="dating-scene__scene-header">
                   <div className="dating-scene__scene-title">{currentSession.scenario || '正式约会'}</div>
                 </div>
@@ -626,7 +626,7 @@ export function DatingScene({
 
               return (
                 <div key={`${message.id}-${messageIndex}`} className="dating-scene__message dating-scene__message--scene">
-                  <div className="dating-scene__scene-card">
+                  <div className="dating-scene__scene-content">
                     {content ? (
                       <>
                         <div className="dating-scene__scene-header">
