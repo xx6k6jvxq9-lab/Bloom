@@ -571,7 +571,7 @@ export function DatingScene({
                       }}
                     >
                       <Save size={15} />
-                      保存
+                      保存进度
                     </button>
                     <button
                       type="button"
