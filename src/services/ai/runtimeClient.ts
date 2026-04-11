@@ -308,6 +308,13 @@ function extractTextFromPayload(data: unknown): string {
           if (messageContent) {
             return messageContent;
           }
+
+          // Compatibility fallback for providers that incorrectly place the
+          // user-visible body into reasoning_content instead of content.
+          const reasoningContent = extractTextFromContentValue(Reflect.get(message, 'reasoning_content'));
+          if (reasoningContent) {
+            return reasoningContent;
+          }
         }
 
         const delta = Reflect.get(choice, 'delta');
