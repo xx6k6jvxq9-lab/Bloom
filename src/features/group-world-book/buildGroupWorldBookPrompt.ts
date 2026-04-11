@@ -1,4 +1,5 @@
 import type { WorldBookEntry } from '../../types';
+import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../../services/world-book/worldBookMeta';
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
@@ -10,7 +11,7 @@ export function buildGroupWorldBookPrompt(worldBooks: WorldBookEntry[] | undefin
     return undefined;
   }
 
-  const sections = worldBooks
+  const sections = sortWorldBooksByPriority(worldBooks)
     .map((entry) => {
       const title = normalizeOptionalText(entry.title);
       const content = normalizeOptionalText(entry.content);
@@ -19,7 +20,7 @@ export function buildGroupWorldBookPrompt(worldBooks: WorldBookEntry[] | undefin
         return '';
       }
 
-      return `[${entry.category}] ${title}:\n${content}`;
+      return `[${normalizeWorldBookCategory(entry.category)}] ${title}:\n${content}`;
     })
     .filter(Boolean);
 

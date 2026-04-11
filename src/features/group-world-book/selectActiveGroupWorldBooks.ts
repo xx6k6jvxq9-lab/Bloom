@@ -1,4 +1,5 @@
 import type { ChatGroup, Character, WorldBookEntry } from '../../types';
+import { sortWorldBooksByPriority } from '../../services/world-book/worldBookMeta';
 
 type SelectActiveGroupWorldBooksParams = {
   speaker: Character;
@@ -15,11 +16,11 @@ export function selectActiveGroupWorldBooks(
     return [];
   }
 
-  return params.worldBooks.filter((worldBook) => {
+  return sortWorldBooksByPriority(params.worldBooks.filter((worldBook) => {
     if (!worldBook) {
       return false;
     }
 
     return activeIds.has(worldBook.id);
-  });
+  }));
 }

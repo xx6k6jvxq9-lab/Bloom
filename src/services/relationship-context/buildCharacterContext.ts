@@ -1,5 +1,6 @@
 import type { Character, Mask, WorldBookEntry } from '../../types';
 import type { CharacterContext } from './types';
+import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 
 type BuildCharacterContextInput = {
   character: Character;
@@ -29,13 +30,13 @@ function buildMaskPrompt(mask?: Mask | null): string | undefined {
 function buildWorldBookPrompt(worldBooks: WorldBookEntry[] | undefined): string | undefined {
   if (!worldBooks || worldBooks.length === 0) return undefined;
 
-  const sections = worldBooks
+  const sections = sortWorldBooksByPriority(worldBooks)
     .map((entry) => {
       const title = normalizeOptionalText(entry.title);
       const content = normalizeOptionalText(entry.content);
 
       if (!title || !content) return '';
-      return `[${entry.category}] ${title}:\n${content}`;
+      return `[${normalizeWorldBookCategory(entry.category)}] ${title}:\n${content}`;
     })
     .filter(Boolean);
 

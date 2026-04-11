@@ -5,6 +5,7 @@ import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { streamTextWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 import {
   classifyMomentCommentType,
   getRecentMomentReplyContext,
@@ -90,13 +91,15 @@ function buildMaskPrompt(characterId: string, masks: Mask[]) {
 }
 
 function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[]) {
-  const activeWorldBooks = worldBook.filter(wb =>
+  const activeWorldBooks = sortWorldBooksByPriority(worldBook.filter(wb =>
     (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
     character.activeWorldBookIds?.includes(wb.id)
-  );
+  ));
 
   return activeWorldBooks.length > 0
-    ? activeWorldBooks.map(wb => `[${wb.category}] ${wb.title}:\n${wb.content}`).join('\n\n')
+    ? activeWorldBooks
+        .map(wb => `[${normalizeWorldBookCategory(wb.category)}] ${wb.title}:\n${wb.content}`)
+        .join('\n\n')
     : '';
 }
 

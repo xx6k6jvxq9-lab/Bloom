@@ -216,7 +216,8 @@ export type WorldBookEntry = {
   id: string;
   title: string;
   content: string;
-  category: '世界设定' | '角色设定' | '自己设定' | '热梗知识' | '其他';
+  category: string;
+  priorityLevel?: 'low' | 'normal' | 'high' | 'critical';
   isActive: boolean;
   isGlobal: boolean;
   characterIds?: string[];

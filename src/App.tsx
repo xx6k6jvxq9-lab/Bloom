@@ -6,7 +6,7 @@ import {
   Character, ChatGroup, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
-import { WorldBookManager } from './components/main/MePage';
+import { WorldBookManager } from './components/main/WorldBookManager';
 import { MonitorApp } from './components/monitor/MonitorApp/Page';
 import { CustomizationApp } from './components/customization/CustomizationApp/Page';
 import { HomeScreen } from './components/home/HomeScreen/Page';

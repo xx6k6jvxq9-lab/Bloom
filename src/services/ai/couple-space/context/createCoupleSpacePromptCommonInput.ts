@@ -14,6 +14,7 @@ import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLa
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../../relationship-time/buildTemporalContextPrompt';
+import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../../../world-book/worldBookMeta';
 import type {
   CoupleSpacePromptCommonInputDiagnostics,
   CoupleSpacePromptCommonInputEnvelope,
@@ -304,12 +305,13 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
   const activeMask = source.masks?.find(
     (mask) => mask.isActive && mask.linkedCharacters.includes(source.partner.id),
   );
-  const activeWorldBooks =
+  const activeWorldBooks = sortWorldBooksByPriority(
     source.worldBooks?.filter(
       (worldBook) =>
         (worldBook.isActive && (worldBook.isGlobal || worldBook.characterIds?.includes(source.partner.id))) ||
         !!source.partner.activeWorldBookIds?.includes(worldBook.id),
-    ) ?? [];
+    ) ?? [],
+  );
 
   const maskPrompt = activeMask
     ? [
@@ -322,7 +324,9 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
     : undefined;
 
   const worldBookPrompt = activeWorldBooks.length
-    ? activeWorldBooks.map((worldBook) => `[${worldBook.category}] ${worldBook.title}:\n${worldBook.content}`).join('\n\n')
+    ? activeWorldBooks
+        .map((worldBook) => `[${normalizeWorldBookCategory(worldBook.category)}] ${worldBook.title}:\n${worldBook.content}`)
+        .join('\n\n')
     : undefined;
 
   return {
