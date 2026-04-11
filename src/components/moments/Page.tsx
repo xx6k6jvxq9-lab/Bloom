@@ -394,7 +394,7 @@ export function MomentsApp({
       <div className="absolute inset-0 z-[100] flex flex-col bg-white/80 backdrop-blur-xl">
         <div
           className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
         >
           <button onClick={() => setShowPublish(false)} className="text-zinc-600">取消</button>
           <button
@@ -405,10 +405,7 @@ export function MomentsApp({
             发表
           </button>
         </div>
-        <div
-          className="flex-1 overflow-y-auto px-4 pb-4"
-          style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)' }}
-        >
+        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-4">
           <textarea
             value={publishContent}
             onChange={(e) => setPublishContent(e.target.value)}
@@ -491,7 +488,10 @@ export function MomentsApp({
       <div className="relative pb-4">
         <div className="relative h-40 overflow-hidden">
           {!resolvedMomentsBackgroundUrl && <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />}
-          <div className="absolute right-4 top-4 z-10 flex gap-3">
+          <div
+            className="absolute right-4 z-10 flex gap-3"
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 52px)' }}
+          >
             <button
               onClick={handleRefresh}
               className="rounded-full border border-white/20 bg-white/20 p-2 text-zinc-800 shadow-sm backdrop-blur-md transition-all hover:bg-white/30"
