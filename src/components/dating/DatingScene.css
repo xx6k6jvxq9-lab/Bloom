@@ -526,7 +526,7 @@
   border: none;
   padding: 0;
   overflow: hidden;
-  background: #000000;
+  background: rgba(4, 6, 10, 0.18);
   color: #f8f9ff;
   text-align: left;
 }
@@ -534,8 +534,11 @@
 .dating-scene__ending-backdrop {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 1) 100%);
-  backdrop-filter: blur(12px);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 50% 65%, rgba(255, 244, 214, 0.06), transparent 38%),
+    linear-gradient(180deg, rgba(8, 12, 18, 0.52) 0%, rgba(8, 12, 18, 0.72) 42%, rgba(8, 12, 18, 0.86) 100%);
+  backdrop-filter: blur(18px) saturate(0.95);
 }
 
 .dating-scene__ending-content {

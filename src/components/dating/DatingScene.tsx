@@ -454,7 +454,7 @@ export function DatingScene({
   };
 
   const handleEndDate = async () => {
-    if (isLoading || endingState === 'generating' || endingState === 'ready' || endingState === 'returning') {
+    if (endingState === 'generating' || endingState === 'ready' || endingState === 'returning') {
       return;
     }
 
@@ -781,7 +781,15 @@ export function DatingScene({
                       <Undo2 size={15} />
                       {rollbackMode ? '取消回溯' : '回溯'}
                     </button>
-                    <button type="button" className="dating-scene__menu-item dating-scene__menu-item--danger" onClick={handleEndDate}>
+                    <button
+                      type="button"
+                      className="dating-scene__menu-item dating-scene__menu-item--danger"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void handleEndDate();
+                      }}
+                    >
                       <X size={15} />
                       结束约会
                     </button>
