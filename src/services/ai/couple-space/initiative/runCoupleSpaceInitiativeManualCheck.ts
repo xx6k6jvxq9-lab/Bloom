@@ -34,6 +34,10 @@ import {
 } from './runCoupleSpaceInitiativeDevCheck';
 import { runCoupleSpaceInitiativeCandidate } from './runCoupleSpaceInitiativeCandidate';
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
+import {
+  buildExecutionBoundaryAwareArtifactPreview,
+  buildExecutionBoundaryAwareStatusText,
+} from './coupleSpaceInitiativeExecutionFeedback';
 
 export type CoupleSpaceInitiativeCheckCommonContext = {
   user: UserProfileExtended;
@@ -197,9 +201,11 @@ export function buildRunStatusText(
   candidate: CoupleSpaceInitiativeCandidate,
   runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>,
 ): string {
-  const label = getActionLabel(candidate.actionType);
+  return buildExecutionBoundaryAwareStatusText(candidate, runResult);
+}
 
-  if (runResult.executorStatus !== 'accepted') {
+/* legacy manual feedback path kept for reference while consumers migrate.
+if (runResult.executorStatus !== 'accepted') {
     return `这次选中了${label}，但没有继续执行：${runResult.reason}`;
   }
 
@@ -228,12 +234,15 @@ export function buildRunStatusText(
   return `这次选中了${label}：${runResult.reason}`;
 }
 
+*/
 export function buildArtifactPreview(
   candidate: CoupleSpaceInitiativeCandidate,
   runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>>,
 ): RunCoupleSpaceInitiativeManualCheckResult['artifactPreview'] {
-  const label = getActionLabel(candidate.actionType);
+  return buildExecutionBoundaryAwareArtifactPreview(candidate, runResult);
+}
 
+/* legacy manual artifact preview path kept for reference while consumers migrate.
   if ('draftContent' in runResult && runResult.draftContent) {
     return {
       kind: 'draft',
@@ -254,6 +263,7 @@ export function buildArtifactPreview(
 
   return null;
 }
+*/
 
 function buildCommonPromptInput({ user, partner, coupleSpace }: CoupleSpaceInitiativeCheckCommonContext) {
   const personaSummary = buildCharacterContext({ character: partner }).corePersona;
