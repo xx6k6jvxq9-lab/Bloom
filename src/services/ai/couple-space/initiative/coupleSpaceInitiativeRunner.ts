@@ -1,5 +1,6 @@
 import type {
   CoupleSpaceInitiativeCandidate,
+  CoupleSpaceInitiativeRuntimeRecord,
   CoupleSpaceInitiativeRuntimeRule,
   CoupleSpaceInitiativeRuntimeState,
   CoupleSpaceInitiativeSettings,
@@ -188,9 +189,12 @@ function collectInteractionCandidates(
 export function collectCoupleSpaceInitiativeCandidates(
   settings: CoupleSpaceInitiativeSettings | null | undefined,
   context: CoupleSpaceInitiativeRunnerContext = createEmptyNormalizedContext(),
+  runtimeRecords?: Partial<
+    Record<CoupleSpaceInitiativeCandidate['actionType'], CoupleSpaceInitiativeRuntimeRecord>
+  > | null,
   now = Date.now(),
 ): CoupleSpaceInitiativeCheckResult {
-  const runtimeState = buildCoupleSpaceInitiativeRuntimeState(settings);
+  const runtimeState = buildCoupleSpaceInitiativeRuntimeState(settings, runtimeRecords);
 
   const candidates = [
     ...collectPublishingCandidates(runtimeState, context, now),
@@ -209,7 +213,10 @@ export function collectCoupleSpaceInitiativeCandidates(
 export function pickNextCoupleSpaceInitiative(
   settings: CoupleSpaceInitiativeSettings | null | undefined,
   context: CoupleSpaceInitiativeRunnerContext = createEmptyNormalizedContext(),
+  runtimeRecords?: Partial<
+    Record<CoupleSpaceInitiativeCandidate['actionType'], CoupleSpaceInitiativeRuntimeRecord>
+  > | null,
   now = Date.now(),
 ): CoupleSpaceInitiativeCandidate | null {
-  return collectCoupleSpaceInitiativeCandidates(settings, context, now).candidates[0] ?? null;
+  return collectCoupleSpaceInitiativeCandidates(settings, context, runtimeRecords, now).candidates[0] ?? null;
 }

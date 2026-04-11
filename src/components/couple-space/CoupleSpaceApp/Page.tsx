@@ -41,6 +41,7 @@ import {
   publishCoupleSpaceInitiativeDraft,
   removeCoupleSpaceInitiativeDraft,
 } from '../../../services/ai/couple-space/initiative/coupleSpaceDraftBuffer';
+import { applyCoupleSpaceInitiativeRuntimeResult } from '../../../services/ai/couple-space/initiative/coupleSpaceInitiativeRuntimePersistence';
 import { normalizeCoupleSpaceInitiativeSettings } from '../../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeAutoCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { runCoupleSpaceInitiativeManualCheck } from '../../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeManualCheck';
@@ -188,6 +189,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
   const [isCropping, setIsCropping] = useState(false);
+  const [initiativeAutoCheckTick, setInitiativeAutoCheckTick] = useState(0);
 
   const coupleSpaceState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
   const coupleSpace = resolveCurrentCoupleSpace(coupleSpaceState, appData.coupleSpace);
@@ -297,17 +299,23 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     runResult: RunCoupleSpaceInitiativeCandidateResult | null,
     source: CoupleSpaceInitiativeDraftEntry['source'],
   ): { nextCoupleSpace: CoupleSpaceData; draftSaved: boolean } => {
+    const runtimeAppliedSpace = applyCoupleSpaceInitiativeRuntimeResult(
+      baseCoupleSpace,
+      runResult,
+      Date.now(),
+    );
+
     if (
       !runResult ||
       (runResult.actionType !== 'write_love_letter' && runResult.actionType !== 'write_co_note') ||
       !('draftContent' in runResult) ||
       !runResult.draftContent
     ) {
-      return { nextCoupleSpace: baseCoupleSpace, draftSaved: false };
+      return { nextCoupleSpace: runtimeAppliedSpace, draftSaved: false };
     }
 
     const nextCoupleSpace = appendCoupleSpaceInitiativeDraft(
-      baseCoupleSpace,
+      runtimeAppliedSpace,
       createCoupleSpaceInitiativeDraftEntry({
         actionType: runResult.actionType,
         content: runResult.draftContent,
@@ -378,6 +386,20 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   };
 
   useEffect(() => {
+    if (activeView !== 'main' || !partner) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setInitiativeAutoCheckTick((prev) => prev + 1);
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeView, partner?.id]);
+
+  useEffect(() => {
     if (activeView !== 'main' || !partner || initiativeCheckBusy || initiativeAutoCheckBusy) {
       return;
     }
@@ -446,7 +468,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     return () => {
       cancelled = true;
     };
-  }, [activeView, partner, initiativeCheckBusy, initiativeAutoCheckBusy, user, coupleSpace, appData.chatHistory, settings]);
+  }, [activeView, partner, initiativeCheckBusy, initiativeAutoCheckBusy, user, coupleSpace, appData.chatHistory, settings, initiativeAutoCheckTick]);
 
   if (!partner && activeView === 'main') {
     const selectedPartner = getCharacterById(selectedPartnerId);

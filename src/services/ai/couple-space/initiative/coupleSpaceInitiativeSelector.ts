@@ -1,5 +1,6 @@
 import type {
   CoupleSpaceInitiativeCandidate,
+  CoupleSpaceInitiativeRuntimeRecord,
   CoupleSpaceInitiativeRuntimeState,
   CoupleSpaceInitiativeSettings,
 } from '../../../../types';
@@ -32,9 +33,12 @@ function createEmptyNormalizedContext(): CoupleSpaceInitiativeNormalizedContext 
 export function selectCoupleSpaceInitiative(
   settings: CoupleSpaceInitiativeSettings | null | undefined,
   context: CoupleSpaceInitiativeNormalizedContext = createEmptyNormalizedContext(),
+  runtimeRecords?: Partial<
+    Record<CoupleSpaceInitiativeCandidate['actionType'], CoupleSpaceInitiativeRuntimeRecord>
+  > | null,
   now = Date.now(),
 ): CoupleSpaceInitiativeSelectionResult {
-  const runnerResult = collectCoupleSpaceInitiativeCandidates(settings, context, now);
+  const runnerResult = collectCoupleSpaceInitiativeCandidates(settings, context, runtimeRecords, now);
   const sortedCandidates = sortCoupleSpaceInitiativeCandidates(runnerResult.candidates);
   const bestCandidate = pickBestCoupleSpaceInitiativeCandidate(sortedCandidates);
 

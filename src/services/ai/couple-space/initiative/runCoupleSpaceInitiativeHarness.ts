@@ -90,7 +90,12 @@ export async function runCoupleSpaceInitiativeHarness(
   });
   const normalizedContext = signalResult.normalizedContext;
 
-  const selection = selectCoupleSpaceInitiative(input.settings, normalizedContext, checkedAt);
+  const selection = selectCoupleSpaceInitiative(
+    input.settings,
+    normalizedContext,
+    input.coupleSpace.initiativeRuntime,
+    checkedAt,
+  );
   const decisionSnapshot = selection.trace
     ? serializeCoupleSpaceInitiativeDecisionTrace(selection.trace)
     : null;

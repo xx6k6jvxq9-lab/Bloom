@@ -473,6 +473,11 @@ export type CoupleSpaceInitiativeRuntimeRule = {
   lastCommittedAt: number | null;
 };
 
+export type CoupleSpaceInitiativeRuntimeRecord = Pick<
+  CoupleSpaceInitiativeRuntimeRule,
+  'lastTriggeredAt' | 'lastDraftedAt' | 'lastCommittedAt'
+>;
+
 export type CoupleSpaceInitiativeRuntimeState = {
   rules: Record<CoupleSpaceInitiativeActionType, CoupleSpaceInitiativeRuntimeRule>;
 };
@@ -690,6 +695,9 @@ export type CoupleSpaceData = {
   anniversaries?: Anniversary[];
   messageBoard?: MessageBoardEntry[];
   initiativeDrafts?: CoupleSpaceInitiativeDraftEntry[];
+  initiativeRuntime?: Partial<
+    Record<CoupleSpaceInitiativeActionType, CoupleSpaceInitiativeRuntimeRecord>
+  >;
   addedPartnerIds?: string[];
   perception?: PerceptionSettings;
   initiativeSettings?: CoupleSpaceInitiativeSettings;

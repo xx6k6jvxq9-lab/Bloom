@@ -23,6 +23,7 @@ export function createDefaultCoupleSpaceData(
     anniversaries: [],
     messageBoard: [],
     initiativeDrafts: [],
+    initiativeRuntime: {},
     addedPartnerIds: [],
     loveLetterEnvelopeColor: '#f6d9e4',
     loveLetterPaperTexture: 'default',
@@ -73,6 +74,7 @@ export function hydrateCoupleSpace(
     initiativeDrafts: Array.isArray(source?.initiativeDrafts)
       ? source.initiativeDrafts
       : fallback.initiativeDrafts,
+    initiativeRuntime: source?.initiativeRuntime ?? fallback.initiativeRuntime,
     addedPartnerIds: Array.isArray(source?.addedPartnerIds) ? source.addedPartnerIds : fallback.addedPartnerIds,
     perception: source?.perception ?? fallback.perception,
     initiativeSettings: {
@@ -490,6 +492,7 @@ function looksLikeLegacyCoupleSpace(
     'coNotes' in value ||
     'loveLetters' in value ||
     'messageBoard' in value ||
-    'initiativeDrafts' in value
+    'initiativeDrafts' in value ||
+    'initiativeRuntime' in value
   );
 }
