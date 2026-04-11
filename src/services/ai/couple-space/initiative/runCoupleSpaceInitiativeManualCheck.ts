@@ -505,11 +505,18 @@ function shouldTryNextCandidate(
     return true;
   }
 
-  if (!('sinkStatus' in runResult)) {
+  if (!('executionBoundary' in runResult) || !('sinkStatus' in runResult)) {
     return false;
   }
 
-  return runResult.sinkStatus === 'rejected' || runResult.sinkStatus === 'unsupported';
+  switch (runResult.executionBoundary.channel) {
+    case 'direct_write':
+    case 'draft_buffer':
+    case 'confirmation_queue':
+      return runResult.sinkStatus === 'rejected' || runResult.sinkStatus === 'unsupported';
+    default:
+      return false;
+  }
 }
 
 function buildPreparedExecutionRequestForCandidate(
