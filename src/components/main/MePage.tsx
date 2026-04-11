@@ -1624,18 +1624,23 @@ function DateRecordsPageV3({
 
     setAppData((prev: any) => ({
       ...prev,
-      savedDates: (prev.savedDates || []).filter((record: DateSession, index: number) => {
-        if (index !== targetIndex) {
-          return true;
-        }
-
-        return !(
+      savedDates: (() => {
+        const nextSavedDates = [...(prev.savedDates || [])];
+        const removeIndex = nextSavedDates.findIndex((record: DateSession) => (
           record.id === targetRecord.id &&
           record.characterId === targetRecord.characterId &&
           record.timestamp === targetRecord.timestamp &&
-          (record.endedAt || 0) === (targetRecord.endedAt || 0)
-        );
-      }),
+          (record.endedAt || 0) === (targetRecord.endedAt || 0) &&
+          (record.location || '') === (targetRecord.location || '') &&
+          (record.scenario || '') === (targetRecord.scenario || '')
+        ));
+
+        if (removeIndex >= 0) {
+          nextSavedDates.splice(removeIndex, 1);
+        }
+
+        return nextSavedDates;
+      })(),
     }));
 
     if (selectedRecordKey === getRecordKey(targetRecord, targetIndex)) {
@@ -1662,7 +1667,7 @@ function DateRecordsPageV3({
           onClick={() => setManageMode(prev => !prev)}
           className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
             manageMode
-              ? 'border-zinc-900 bg-zinc-900 text-white'
+              ? 'border-zinc-300 bg-zinc-100 text-zinc-800'
               : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
           }`}
         >
