@@ -288,9 +288,24 @@ export function DatingScene({
   const requestedStartTokenRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const endingScreenRef = useRef<HTMLButtonElement | null>(null);
+  const endingFlowActiveRef = useRef(false);
 
   useEffect(() => {
     const normalizedMessages = normalizeDateSessionMessages(session);
+
+    if (endingFlowActiveRef.current && session.id === currentSession.id) {
+      setCurrentSession(prev => ({
+        ...prev,
+        ...session,
+        status: session.status || prev.status || 'active',
+        endedAt: session.endedAt,
+        messages: normalizedMessages,
+        generatedContent: getLatestGeneratedContent(normalizedMessages, session.generatedContent),
+        isCollected: (session as SceneSessionState).isCollected || prev.isCollected || false,
+      }));
+      return;
+    }
+
     setCurrentSession({
       ...session,
       status: session.status || 'active',
@@ -470,6 +485,7 @@ export function DatingScene({
     setEndingReturnText('');
     setEndingRevealCount(0);
     setEndingRipple(null);
+    endingFlowActiveRef.current = true;
     setEndingState('generating');
 
     window.setTimeout(() => {
@@ -508,6 +524,7 @@ export function DatingScene({
       key: Date.now(),
     });
     setEndingState('returning');
+    endingFlowActiveRef.current = false;
 
     const archivedSession: SceneSessionState = {
       ...currentSession,
@@ -1029,9 +1046,18 @@ export function DatingScene({
           >
             <div className="dating-scene__ending-backdrop" />
             <div className="dating-scene__ending-content">
-              <div className="dating-scene__ending-text">
-                {endingState === 'generating' ? '他想说点什么' : endingMonologue.slice(0, endingRevealCount)}
-              </div>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={endingState === 'generating' ? 'pending-thought' : 'ending-monologue'}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
+                  className="dating-scene__ending-text"
+                >
+                  {endingState === 'generating' ? '他想说点什么' : endingMonologue.slice(0, endingRevealCount)}
+                </motion.div>
+              </AnimatePresence>
               {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
               {endingState === 'ready' && !endingError && endingMonologue && endingRevealCount >= endingMonologue.length ? (
                 <div className="dating-scene__ending-hint">
