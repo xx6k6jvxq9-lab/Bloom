@@ -1577,14 +1577,23 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     { id: 'walletData', label: '钱包数据', icon: <Banknote size={20} />, category: 'apps', data: appData?.walletData },
   ];
 
-  const countModuleItems = (data: any): number => {
-    if (Array.isArray(data)) return data.length;
-    if (!data) return 0;
-    if (typeof data === 'object') return Object.keys(data).length;
-    return 1;
+  const getModuleSizeBytes = (data: any): number => {
+    if (data == null) return 0;
+    try {
+      const json = JSON.stringify(data);
+      return new TextEncoder().encode(json).length;
+    } catch {
+      return 0;
+    }
   };
 
-  const totalDataCount = modules.reduce((sum, mod) => sum + countModuleItems(mod.data), 0);
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes >= 10 * 1024 ? 0 : 1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  };
+
+  const totalDataBytes = modules.reduce((sum, mod) => sum + getModuleSizeBytes(mod.data), 0);
   const totalModuleCount = modules.length;
 
   const handleExportSelected = () => {
@@ -1685,6 +1694,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               {mod.icon}
             </div>
             <span className="text-[13px] font-bold">{mod.label}</span>
+            <span className="text-[11px] text-zinc-400">{formatBytes(getModuleSizeBytes(mod.data))}</span>
             {selectedModules.includes(mod.id) && (
               <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center text-zinc-900">
                 <Check size={12} strokeWidth={4} />
@@ -1704,8 +1714,8 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
           <div className="text-[12px] text-zinc-500">总数据统计</div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-[22px] font-bold text-zinc-900">{totalDataCount}</span>
-            <span className="text-[12px] text-zinc-500">条数据 / {totalModuleCount} 个模块</span>
+            <span className="text-[22px] font-bold text-zinc-900">{formatBytes(totalDataBytes)}</span>
+            <span className="text-[12px] text-zinc-500">总占用 / {totalModuleCount} 个模块</span>
           </div>
         </div>
         
@@ -1732,7 +1742,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 alert('全量备份导出成功！');
               }, 100);
             }}
-            className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-800 p-4 text-white shadow-sm active:scale-95 transition-transform"
+            className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
           >
             <Database size={24} />
             <span className="text-[14px] font-bold">全量备份</span>
