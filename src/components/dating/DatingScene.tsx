@@ -1021,15 +1021,17 @@ export function DatingScene({
           >
             <div className="dating-scene__ending-backdrop" />
             <div className="dating-scene__ending-content">
-              <div className="dating-scene__ending-label">约会落幕</div>
               <div className="dating-scene__ending-text">
-                {endingState === 'generating' ? '这场约会正在慢慢沉入他的心里……' : endingMonologue.slice(0, endingRevealCount)}
+                {endingState === 'generating' ? '他想说点什么' : endingMonologue.slice(0, endingRevealCount)}
               </div>
               {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
-              {endingState === 'ready' && (!endingMonologue || endingRevealCount >= endingMonologue.length) ? (
+              {endingState === 'ready' && !endingError && endingMonologue && endingRevealCount >= endingMonologue.length ? (
                 <div className="dating-scene__ending-hint">
-                  {endingError ? '轻触页面，结束约会并回到聊天' : '轻触页面，回到聊天'}
+                  轻触页面，回到聊天
                 </div>
+              ) : null}
+              {endingState === 'ready' && endingError ? (
+                <div className="dating-scene__ending-hint">轻触页面，结束约会并回到聊天</div>
               ) : null}
             </div>
             {endingRipple ? (
