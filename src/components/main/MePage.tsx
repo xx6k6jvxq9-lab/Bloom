@@ -869,13 +869,13 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
                       : [...temp.linkedCharacters, char.id];
                     setTemp({...temp, linkedCharacters: linked});
                   }}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-blue-50 border-blue-200' : 'bg-zinc-50 border-zinc-100'}`}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-zinc-100 border-zinc-300' : 'bg-zinc-50 border-zinc-100'}`}
                 >
                   <div className="flex items-center gap-2">
                     <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-6 h-6 rounded-full" />
                     <span className="text-[12px]">{char.name}</span>
                   </div>
-                  {temp.linkedCharacters.includes(char.id) && <Check size={14} className="text-blue-500" />}
+                  {temp.linkedCharacters.includes(char.id) && <Check size={14} className="text-zinc-900" />}
                 </button>
               ))}
             </div>
@@ -883,7 +883,7 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
 
           <div className="flex gap-2 pt-4">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-600 text-[14px] font-bold">取消</button>
-            <button onClick={() => onSave(temp)} className="flex-1 py-3 rounded-xl bg-blue-500 text-white text-[14px] font-bold">保存</button>
+            <button onClick={() => onSave(temp)} className="flex-1 py-3 rounded-xl bg-zinc-900 text-white text-[14px] font-bold">保存</button>
           </div>
         </div>
       </motion.div>
@@ -968,7 +968,7 @@ function DataManager({
         <button 
           onClick={handleExportSelected}
           disabled={selectedModules.length === 0}
-          className="text-[14px] font-bold text-blue-500 disabled:opacity-50 px-2"
+          className="px-2 text-[14px] font-bold text-zinc-900 disabled:opacity-40"
         >
           导出 ({selectedModules.length})
         </button>
@@ -999,13 +999,13 @@ function DataManager({
                 onClick={() => toggleModule(mod.id)}
                 className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all active:scale-[0.99] ${
                   selectedModules.includes(mod.id)
-                    ? 'bg-zinc-900 border-zinc-900 text-white shadow-md'
+                    ? 'bg-zinc-100 border-zinc-300 text-zinc-900 shadow-md'
                     : globalBackground ? 'bg-white/50 border-white/30 text-zinc-700' : 'bg-white border-zinc-100 text-zinc-600'
                 }`}
               >
                 <div className="flex items-center gap-4">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedModules.includes(mod.id) ? 'bg-white/20' : 'bg-zinc-50'
+                    selectedModules.includes(mod.id) ? 'bg-white' : 'bg-zinc-50'
                   }`}>
                     {mod.icon}
                   </div>
@@ -1018,9 +1018,9 @@ function DataManager({
                 </div>
                 
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                  selectedModules.includes(mod.id) ? 'bg-white border-white' : 'border-zinc-200 bg-transparent'
+                  selectedModules.includes(mod.id) ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-200 bg-transparent'
                 }`}>
-                  {selectedModules.includes(mod.id) && <Check size={14} className="text-zinc-900" strokeWidth={3} />}
+                  {selectedModules.includes(mod.id) && <Check size={14} className="text-white" strokeWidth={3} />}
                 </div>
               </button>
             ))}

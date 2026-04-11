@@ -1577,6 +1577,16 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     { id: 'walletData', label: '钱包数据', icon: <Banknote size={20} />, category: 'apps', data: appData?.walletData },
   ];
 
+  const countModuleItems = (data: any): number => {
+    if (Array.isArray(data)) return data.length;
+    if (!data) return 0;
+    if (typeof data === 'object') return Object.keys(data).length;
+    return 1;
+  };
+
+  const totalDataCount = modules.reduce((sum, mod) => sum + countModuleItems(mod.data), 0);
+  const totalModuleCount = modules.length;
+
   const handleExportSelected = () => {
     if (selectedModules.length === 0) {
       alert('请先选择要备份的功能');
@@ -1691,6 +1701,13 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
         <h3 className="text-sm font-bold text-zinc-800">数据管理</h3>
         <p className="text-xs text-zinc-500">管理所有应用数据，支持分类导出备份和导入恢复。</p>
+        <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
+          <div className="text-[12px] text-zinc-500">总数据统计</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-[22px] font-bold text-zinc-900">{totalDataCount}</span>
+            <span className="text-[12px] text-zinc-500">条数据 / {totalModuleCount} 个模块</span>
+          </div>
+        </div>
         
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
@@ -1715,7 +1732,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 alert('全量备份导出成功！');
               }, 100);
             }}
-            className="flex flex-col items-center gap-2 p-4 bg-blue-500 text-white rounded-3xl shadow-lg active:scale-95 transition-transform"
+            className="flex flex-col items-center gap-2 rounded-3xl bg-zinc-900 p-4 text-white shadow-lg active:scale-95 transition-transform"
           >
             <Database size={24} />
             <span className="text-[14px] font-bold">全量备份</span>
@@ -1755,7 +1772,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               <button 
                 onClick={handleExportSelected}
                 disabled={selectedModules.length === 0}
-                className="text-[12px] font-bold text-blue-500 disabled:opacity-50"
+                className="text-[12px] font-bold text-zinc-900 disabled:opacity-40"
               >
                 导出选中 ({selectedModules.length})
               </button>
