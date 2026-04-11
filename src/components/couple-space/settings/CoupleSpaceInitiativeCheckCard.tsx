@@ -125,7 +125,7 @@ export function CoupleSpaceInitiativeCheckCard({
                       <button
                         type="button"
                         onClick={() => onPublishDraft(draft.id)}
-                        className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-bold text-white shadow-sm transition-transform active:scale-95"
+                        className="rounded-full bg-[#f6b6cd] px-3 py-1 text-xs font-bold text-white shadow-sm shadow-[#f6b6cd]/40 transition-transform active:scale-95"
                       >
                         发布到空间
                       </button>
