@@ -4,12 +4,14 @@ import type {
 } from '../../../../types';
 import {
   appendFallbackStatusNote,
-  buildArtifactPreview,
   buildNoCandidateStatusText,
-  buildRunStatusText,
   runPreparedCoupleSpaceInitiativeCandidates,
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
+import {
+  buildExecutionBoundaryAwareArtifactPreview,
+  buildExecutionBoundaryAwareStatusText,
+} from './coupleSpaceInitiativeExecutionFeedback';
 import { hasEnabledCoupleSpaceInitiatives } from './coupleSpaceTriggerPolicy';
 import {
   runCoupleSpaceInitiativeDevCheck,
@@ -130,10 +132,10 @@ export async function runCoupleSpaceInitiativeAutoCheck(
     runResult,
     nextCoupleSpace: attemptResult.nextCoupleSpace,
     statusText: appendFallbackStatusNote(
-      buildRunStatusText(candidate, runResult),
+      buildExecutionBoundaryAwareStatusText(candidate, runResult),
       attemptResult.attemptedCount,
       attemptResult.usedFallbackCandidate,
     ),
-    artifactPreview: buildArtifactPreview(candidate, runResult),
+    artifactPreview: buildExecutionBoundaryAwareArtifactPreview(candidate, runResult),
   };
 }
