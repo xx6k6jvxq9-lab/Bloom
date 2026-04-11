@@ -9,6 +9,7 @@ import {
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
 import {
+  type CoupleSpaceInitiativeArtifactPreview,
   buildExecutionBoundaryAwareArtifactPreview,
   buildExecutionBoundaryAwareStatusText,
 } from './coupleSpaceInitiativeExecutionFeedback';
@@ -29,12 +30,7 @@ export type RunCoupleSpaceInitiativeAutoCheckResult = {
   runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>> | null;
   nextCoupleSpace: CoupleSpaceData;
   statusText: string;
-  artifactPreview: {
-    kind: 'draft' | 'confirmation';
-    title: string;
-    content: string;
-    note?: string;
-  } | null;
+  artifactPreview: CoupleSpaceInitiativeArtifactPreview;
 };
 
 /**

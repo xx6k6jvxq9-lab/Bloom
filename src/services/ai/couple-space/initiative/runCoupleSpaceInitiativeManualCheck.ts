@@ -35,6 +35,7 @@ import {
 import { runCoupleSpaceInitiativeCandidate } from './runCoupleSpaceInitiativeCandidate';
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import {
+  type CoupleSpaceInitiativeArtifactPreview,
   buildExecutionBoundaryAwareArtifactPreview,
   buildExecutionBoundaryAwareStatusText,
 } from './coupleSpaceInitiativeExecutionFeedback';
@@ -60,12 +61,7 @@ export type RunCoupleSpaceInitiativeManualCheckResult = {
   runResult: Awaited<ReturnType<typeof runCoupleSpaceInitiativeCandidate>> | null;
   nextCoupleSpace: CoupleSpaceData;
   statusText: string;
-  artifactPreview: {
-    kind: 'draft' | 'confirmation';
-    title: string;
-    content: string;
-    note?: string;
-  } | null;
+  artifactPreview: CoupleSpaceInitiativeArtifactPreview;
 };
 
 function getReadableActionLabel(actionType: CoupleSpaceInitiativeCandidate['actionType'] | null | undefined): string {

@@ -18,6 +18,7 @@ import {
   type CoupleSpaceInitiativeCheckCommonContext,
 } from './runCoupleSpaceInitiativeManualCheck';
 import {
+  type CoupleSpaceInitiativeArtifactPreview,
   buildExecutionBoundaryAwareArtifactPreview,
   buildExecutionBoundaryAwareStatusText,
 } from './coupleSpaceInitiativeExecutionFeedback';
@@ -40,12 +41,7 @@ export type RunCoupleSpaceInitiativeRandomRefreshResult = {
   runResult: RunCoupleSpaceInitiativeCandidateResult | null;
   nextCoupleSpace: CoupleSpaceData;
   statusText: string;
-  artifactPreview: {
-    kind: 'draft' | 'confirmation';
-    title: string;
-    content: string;
-    note?: string;
-  } | null;
+  artifactPreview: CoupleSpaceInitiativeArtifactPreview;
 };
 
 function buildPreparedRequest(candidate: CoupleSpaceInitiativeCandidate) {
