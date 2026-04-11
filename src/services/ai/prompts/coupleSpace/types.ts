@@ -47,6 +47,13 @@ export type CoupleSpaceRelationshipContext = {
   intimacyBoundary?: string;
 };
 
+export type CoupleSpaceRecentImageReference = {
+  imageUrl: string;
+  authorLabel?: string;
+  timestamp?: number;
+  relatedText?: string;
+};
+
 export type CoupleSpaceRecentContext = {
   currentSubScene?: string;
   recentCoupleSpaceSummary?: string;
@@ -54,6 +61,7 @@ export type CoupleSpaceRecentContext = {
   recentSharedMomentsSummary?: string;
   occasion?: string;
   triggerReason?: string;
+  recentImageReferences?: CoupleSpaceRecentImageReference[];
 };
 
 export type CoupleSpacePromptCommonInput = {

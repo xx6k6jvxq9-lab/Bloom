@@ -72,6 +72,7 @@ export function createCoupleSpacePromptCommonInput(
   const recentCoupleSpaceArtifacts = options.includeRecentCoupleSpaceArtifacts
     ? buildRecentArtifacts(source, policy)
     : [];
+  const recentImageReferences = buildRecentImageReferences(source);
   const recentRelationshipEvents = options.includeRecentRelationshipEvents
     ? buildRelationshipEvents(source, recentChatTurns, recentCoupleSpaceArtifacts, policy)
     : [];
@@ -137,6 +138,7 @@ export function createCoupleSpacePromptCommonInput(
         recentSharedMomentsSummary: scene?.sharedMomentsSummary,
         occasion: scene?.occasion,
         triggerReason: scene?.triggerReason,
+        recentImageReferences,
         recentChatTurns,
         recentChatTranscript,
         recentChatSummary,
@@ -147,6 +149,7 @@ export function createCoupleSpacePromptCommonInput(
       sections: [
         temporalContext,
         formatTemporalStatePrompt(temporalState),
+        formatRecentImageReferencePrompt(recentImageReferences),
       ].filter(Boolean),
     },
     policy,
@@ -675,6 +678,40 @@ function buildArtifactFromPost(
   };
 }
 
+function buildRecentImageReferences(source: CreateCoupleSpacePromptCommonInputSource) {
+  const imagePosts = [...(source.coupleSpace.posts ?? [])]
+    .filter((post) => Array.isArray(post.images) && post.images.length > 0)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  const references: Array<{
+    imageUrl: string;
+    authorLabel?: string;
+    timestamp?: number;
+    relatedText?: string;
+  }> = [];
+
+  for (const post of imagePosts) {
+    for (const imageUrl of post.images.slice(0, 2)) {
+      if (!imageUrl) {
+        continue;
+      }
+
+      references.push({
+        imageUrl,
+        authorLabel: resolveAuthorLabel(source, post.authorId),
+        timestamp: post.timestamp,
+        relatedText: summarizeText(post.content),
+      });
+
+      if (references.length >= 2) {
+        return references;
+      }
+    }
+  }
+
+  return references;
+}
+
 function buildArtifactFromPostComment(
   source: CreateCoupleSpacePromptCommonInputSource,
   comment: CouplePostComment | undefined,
@@ -708,6 +745,35 @@ function summarizeText(text: string | undefined): string {
     return '';
   }
   return normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
+}
+
+function formatRecentImageReferencePrompt(
+  references: Array<{
+    imageUrl: string;
+    authorLabel?: string;
+    timestamp?: number;
+    relatedText?: string;
+  }>,
+): string | undefined {
+  if (!references.length) {
+    return undefined;
+  }
+
+  const lines = [
+    '## 最近相关图片参考',
+    '本次会同时附上最近的情侣空间图片作为多模态参考。',
+    '只能依据图片里直接可见的内容辅助判断，不要虚构图片外的信息。',
+    ...references.map((reference, index) => {
+      const parts = [
+        `${index + 1}.`,
+        reference.authorLabel ? `发布者：${reference.authorLabel}` : '',
+        reference.relatedText ? `配文：${reference.relatedText}` : '',
+      ].filter(Boolean);
+      return parts.join(' ');
+    }),
+  ];
+
+  return lines.join('\n');
 }
 
 function buildSharedContextSummary(

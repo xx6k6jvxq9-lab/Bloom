@@ -17,6 +17,7 @@ import type {
   BuildCoupleLoveLetterReplyPromptOptions,
   BuildCoupleMessageBoardPromptOptions,
 } from '../../prompts';
+import type { CoupleSpaceRecentImageReference } from '../../prompts/coupleSpace/types';
 import { generateTextFromMessagesWithConfig } from '../../runtimeClient';
 
 export type CoupleSpaceSettingsLike = {
@@ -36,15 +37,50 @@ async function generateCoupleSpaceText(options: {
   settings: CoupleSpaceSettingsLike;
   prompt: string;
   temperature?: number;
+  recentImageReferences?: CoupleSpaceRecentImageReference[];
 }) {
   const activeConfig = resolveActiveConfig(options.settings);
   if (!activeConfig) return '';
 
+  const recentImageReferences = canUseCoupleSpaceImageInputs(activeConfig)
+    ? (options.recentImageReferences ?? []).filter((reference) => !!reference.imageUrl).slice(0, 2)
+    : [];
+
   return generateTextFromMessagesWithConfig({
     activeConfig,
-    messages: [{ role: 'user', content: options.prompt }],
+    messages: [
+      { role: 'user', content: options.prompt },
+      ...recentImageReferences.map((reference, index) => ({
+        role: 'user' as const,
+        content: buildRecentImageReferenceMessage(reference, index),
+        imageUrl: reference.imageUrl,
+      })),
+    ],
     temperature: options.temperature,
   });
+}
+
+function canUseCoupleSpaceImageInputs(activeConfig: ApiConfig): boolean {
+  if (activeConfig.provider === 'Google Gemini' || !activeConfig.baseUrl?.trim()) {
+    return true;
+  }
+
+  const model = activeConfig.model?.trim().toLowerCase() || '';
+  const provider = activeConfig.provider?.trim().toLowerCase() || '';
+  return /(gpt-4o|gpt-4\.1|gpt-4-turbo|vision|claude-3|gemini|qwen-vl|glm-4v|o1|o3|o4)/i.test(model)
+    || provider.includes('openai');
+}
+
+function buildRecentImageReferenceMessage(
+  reference: CoupleSpaceRecentImageReference,
+  index: number,
+): string {
+  return [
+    `这是情侣空间最近的相关图片参考 ${index + 1}。`,
+    reference.authorLabel ? `发布者：${reference.authorLabel}` : '',
+    reference.relatedText ? `配文或上下文：${reference.relatedText}` : '',
+    '请只依据图片里能直接看到的内容辅助判断，不要虚构图片外的信息。',
+  ].filter(Boolean).join('\n');
 }
 
 /**
@@ -65,6 +101,7 @@ export async function generateCoupleDailyCommentReply(
     settings,
     prompt: buildCoupleDailyCommentReplyPrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -76,6 +113,7 @@ export async function generateCoupleCoNote(
     settings,
     prompt: buildCoupleCoNotePrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -87,6 +125,7 @@ export async function generateCoupleLoveLetterReply(
     settings,
     prompt: buildCoupleLoveLetterReplyPrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -98,6 +137,7 @@ export async function generateCoupleDailyPost(
     settings,
     prompt: buildCoupleDailyPostPrompt(input),
     temperature: 0.95,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -109,6 +149,7 @@ export async function generateCoupleLoveLetter(
     settings,
     prompt: buildCoupleLoveLetterPrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -120,6 +161,7 @@ export async function generateCoupleDailyComment(
     settings,
     prompt: buildCoupleDailyCommentPrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -131,6 +173,7 @@ export async function generateCoupleMessageBoardReply(
     settings,
     prompt: buildCoupleMessageBoardPrompt(input),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
 
@@ -145,5 +188,6 @@ export async function generateCoupleMessageBoardEntry(
       mode: input.mode ?? 'active',
     }),
     temperature: 0.9,
+    recentImageReferences: input.recentContext?.recentImageReferences,
   });
 }
