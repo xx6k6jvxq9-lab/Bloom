@@ -1528,6 +1528,30 @@ function DateRecordsPageV2({
                       </p>
                     ))}
                   </div>
+                  <div className="rounded-2xl bg-zinc-50 p-3 text-[13px] text-zinc-600">
+                    <div className="mb-2 text-[12px] font-semibold text-zinc-900">状态</div>
+                    <div className="space-y-1">
+                      <div>地点：{selectedRecord.generatedContent.status.location || selectedRecord.location || '未记录'}</div>
+                      <div>时间：{selectedRecord.generatedContent.status.time || '未记录'}</div>
+                      <div>心情：{selectedRecord.generatedContent.status.mood || selectedRecord.mood || '未记录'}</div>
+                      <div>内心 OS：{selectedRecord.generatedContent.status.innerThought || '未记录'}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-3 text-[13px] text-zinc-600">
+                    <div className="mb-2 text-[12px] font-semibold text-zinc-900">歌单</div>
+                    {selectedRecord.generatedContent.playlist.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedRecord.generatedContent.playlist.map((song, songIndex) => (
+                          <div key={`${selectedRecord.id}-song-${songIndex}`}>
+                            <div className="font-medium text-zinc-900">{song.title} · {song.artist}</div>
+                            {song.note ? <div className="text-[12px] text-zinc-500">{song.note}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>未记录</div>
+                    )}
+                  </div>
                 </div>
               ) : null}
 
