@@ -2325,6 +2325,20 @@ export function ChatSessionScreen({
         <DatingModal
           isOpen={showDatingModal}
           onClose={() => setShowDatingModal(false)}
+          onEndDateComplete={({ returnChatText }) => {
+            setShowDatingModal(false);
+            if (!returnChatText.trim()) {
+              return;
+            }
+            setHistory([
+              ...history,
+              {
+                role: 'model',
+                text: returnChatText.trim(),
+                timestamp: Date.now(),
+              },
+            ]);
+          }}
           character={character}
           userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
           activeConfig={activeConfig}

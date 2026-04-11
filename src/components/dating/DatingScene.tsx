@@ -37,9 +37,14 @@ type DatingSceneProps = {
   onClose: () => void;
   onSaveDate: (session: DateSession) => void;
   onCollectDate: (session: DateSession) => void;
+  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => void;
 };
 
 type SceneSessionState = DateSession & { isCollected?: boolean; isSaved?: boolean };
+type EndingSequencePayload = {
+  monologue: string;
+  chatFollowup: string;
+};
 
 const DATING_STICKERS = ['🥺', '😤', '😭', '😳', '😎', '❤️', '(贴贴)', '(抱抱)', '(委屈)', '(不理你了)'];
 
@@ -178,6 +183,33 @@ function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | 
   return null;
 }
 
+function parseEndingSequencePayload(text: string): EndingSequencePayload | null {
+  const candidates = extractCandidateJsonObjects(text);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as Partial<EndingSequencePayload>;
+      const monologue = parsed.monologue?.trim();
+      const chatFollowup = parsed.chatFollowup?.trim();
+
+      if (monologue && chatFollowup) {
+        return {
+          monologue,
+          chatFollowup,
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  console.warn('[dating-scene] Ignoring invalid ending payload.', {
+    rawPreview: buildRawPreview(text),
+    extractedPreview: buildRawPreview(candidates[0] || text),
+  });
+  return null;
+}
+
 function normalizeGeneratedContent(
   parsed: Partial<DatingGeneratedContent> | null | undefined,
   session: DateSession,
@@ -228,6 +260,7 @@ export function DatingScene({
   onClose,
   onSaveDate,
   onCollectDate,
+  onEndDateComplete,
 }: DatingSceneProps) {
   const [currentSession, setCurrentSession] = useState<SceneSessionState>(() => ({
     ...session,
@@ -246,8 +279,15 @@ export function DatingScene({
   const [backgroundBroken, setBackgroundBroken] = useState(false);
   const [statusExpandedMap, setStatusExpandedMap] = useState<Record<string, boolean>>({});
   const [playlistExpandedMap, setPlaylistExpandedMap] = useState<Record<string, boolean>>({});
+  const [endingState, setEndingState] = useState<'idle' | 'generating' | 'ready' | 'returning'>('idle');
+  const [endingMonologue, setEndingMonologue] = useState('');
+  const [endingRevealCount, setEndingRevealCount] = useState(0);
+  const [endingReturnText, setEndingReturnText] = useState('');
+  const [endingError, setEndingError] = useState('');
+  const [endingRipple, setEndingRipple] = useState<{ x: number; y: number; key: number } | null>(null);
   const requestedStartTokenRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const endingScreenRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const normalizedMessages = normalizeDateSessionMessages(session);
@@ -267,11 +307,38 @@ export function DatingScene({
     setBackgroundBroken(false);
     setStatusExpandedMap({});
     setPlaylistExpandedMap({});
+    setEndingState('idle');
+    setEndingMonologue('');
+    setEndingRevealCount(0);
+    setEndingReturnText('');
+    setEndingError('');
+    setEndingRipple(null);
   }, [session]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentSession.messages, isLoading]);
+
+  useEffect(() => {
+    if (endingState !== 'ready' || !endingMonologue) {
+      setEndingRevealCount(0);
+      return;
+    }
+
+    setEndingRevealCount(0);
+    const timer = window.setInterval(() => {
+      setEndingRevealCount(prev => {
+        const next = prev + 1;
+        if (next >= endingMonologue.length) {
+          window.clearInterval(timer);
+          return endingMonologue.length;
+        }
+        return next;
+      });
+    }, 42);
+
+    return () => window.clearInterval(timer);
+  }, [endingMonologue, endingState]);
 
   useEffect(() => {
     if (!startToken) return;
@@ -330,15 +397,119 @@ export function DatingScene({
     onSaveDate(merged);
   };
 
-  const handleEndDate = () => {
-    persistSession({
+  const buildEndingSequencePrompt = (archivedSession: SceneSessionState) => {
+    const latestGeneratedContent = getLatestGeneratedContent(archivedSession.messages, archivedSession.generatedContent);
+    const latestNarrative = latestGeneratedContent?.narrative.segments.map(segment => segment.text).join('\n') || '';
+    const latestStatus = latestGeneratedContent?.status;
+    const recentUserMessages = archivedSession.messages
+      .filter(message => message.role === 'user')
+      .slice(-4)
+      .map(message => `- ${message.text}`)
+      .join('\n');
+
+    return [
+      `你现在要为角色 ${character.name} 生成“结束约会后的收尾内容”。`,
+      '请严格只输出 JSON，不要输出解释、前缀、Markdown。',
+      'JSON 格式如下：',
+      '{"monologue":"1到2句角色内心独白","chatFollowup":"回到线上聊天后角色主动发给用户的一句话"}',
+      '要求：',
+      '- monologue 必须是角色心里正在想的话，偏克制、收束、带回味，不要写动作说明。',
+      '- monologue 只能 1 到 2 句。',
+      '- chatFollowup 必须是线上聊天语境的一句话，不要再写线下现场动作，不要继续约会场景描写。',
+      '- chatFollowup 要自然像回到聊天软件后的主动开口。',
+      `角色当前信息：心情=${archivedSession.mood || '未设定'}；地点=${archivedSession.location || '未设定'}；场景=${archivedSession.scenario || '未设定'}。`,
+      latestStatus
+        ? `本轮结束时的状态：地点=${latestStatus.location || archivedSession.location || '未设定'}；时间=${latestStatus.time || '未设定'}；心情=${latestStatus.mood || archivedSession.mood || '未设定'}；内心=${latestStatus.innerThought || '未设定'}。`
+        : '',
+      latestNarrative ? `本轮约会最后的主要内容：\n${latestNarrative}` : '',
+      recentUserMessages ? `用户本轮最近说过的话：\n${recentUserMessages}` : '',
+      chatHistory.length > 0
+        ? `你们线上聊天最近的语气参考：\n${chatHistory
+            .slice(-6)
+            .map(message => `${message.role === 'user' ? userProfile.name : character.name}：${message.text}`)
+            .join('\n')}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  };
+
+  const generateEndingSequence = async (archivedSession: SceneSessionState) => {
+    const rawText = await generateTextFromMessagesWithConfig({
+      activeConfig,
+      messages: [
+        {
+          role: 'user',
+          content: buildEndingSequencePrompt(archivedSession),
+        },
+      ],
+    });
+
+    const parsed = parseEndingSequencePayload(rawText);
+    if (!parsed) {
+      throw new Error('约会收尾内容生成失败，请稍后重试。');
+    }
+
+    return parsed;
+  };
+
+  const handleEndDate = async () => {
+    if (isLoading || endingState === 'generating' || endingState === 'ready' || endingState === 'returning') {
+      return;
+    }
+
+    const archivedSession: SceneSessionState = {
       ...currentSession,
       status: 'ended',
       endedAt: Date.now(),
-    });
+    };
+
+    persistSession(archivedSession);
     setMenuOpen(false);
-    alert('本轮约会已结束，并已保存到约会记录。');
-    onClose();
+    setEndingError('');
+    setEndingMonologue('');
+    setEndingReturnText('');
+    setEndingRevealCount(0);
+    setEndingRipple(null);
+    setEndingState('generating');
+
+    try {
+      const endingPayload = await generateEndingSequence(archivedSession);
+      setEndingMonologue(endingPayload.monologue);
+      setEndingReturnText(endingPayload.chatFollowup);
+      setEndingState('ready');
+    } catch (err) {
+      console.error('[dating-scene] ending sequence failed', err);
+      setEndingError(err instanceof Error ? err.message : '约会收尾内容生成失败，请稍后重试。');
+      setEndingState('ready');
+    }
+  };
+
+  const handleEndingScreenClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (endingState !== 'ready' || endingRevealCount < endingMonologue.length || !endingReturnText) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setEndingRipple({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      key: Date.now(),
+    });
+    setEndingState('returning');
+
+    const archivedSession: SceneSessionState = {
+      ...currentSession,
+      status: 'ended',
+      endedAt: currentSession.endedAt || Date.now(),
+    };
+
+    window.setTimeout(() => {
+      onEndDateComplete({
+        archivedSession,
+        returnChatText: endingReturnText,
+      });
+    }, 720);
   };
 
   const replaceMessage = (messages: DateMessage[], messageId: string, updater: (message: DateMessage) => DateMessage) =>
@@ -826,6 +997,38 @@ export function DatingScene({
           </div>
         </div>
       </div>
+      <AnimatePresence>
+        {endingState !== 'idle' ? (
+          <motion.button
+            ref={endingScreenRef}
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={`dating-scene__ending-screen dating-scene__ending-screen--${endingState}`}
+            onClick={handleEndingScreenClick}
+          >
+            <div className="dating-scene__ending-backdrop" />
+            <div className="dating-scene__ending-content">
+              <div className="dating-scene__ending-label">约会落幕</div>
+              <div className="dating-scene__ending-text">
+                {endingState === 'generating' ? '这场约会正在慢慢沉入他的心里……' : endingMonologue.slice(0, endingRevealCount)}
+              </div>
+              {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
+              {endingState === 'ready' && endingRevealCount >= endingMonologue.length && endingReturnText ? (
+                <div className="dating-scene__ending-hint">轻触页面，回到聊天</div>
+              ) : null}
+            </div>
+            {endingRipple ? (
+              <span
+                key={endingRipple.key}
+                className="dating-scene__ending-ripple"
+                style={{ left: endingRipple.x, top: endingRipple.y }}
+              />
+            ) : null}
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

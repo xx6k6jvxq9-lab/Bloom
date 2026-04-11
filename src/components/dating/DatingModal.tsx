@@ -23,6 +23,7 @@ import { resolveDateBackgroundInput } from './sessionUtils';
 interface DatingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => void;
   character: Character;
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
@@ -42,6 +43,7 @@ const MOOD_OPTIONS = ['浪漫', '轻松', '搞笑', '严肃', '温柔', '刺激'
 export const DatingModal: React.FC<DatingModalProps> = ({
   isOpen,
   onClose,
+  onEndDateComplete,
   character,
   userProfile,
   activeConfig,
@@ -217,6 +219,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                 onSaveDate(session);
               }}
               onCollectDate={onCollectDate}
+              onEndDateComplete={onEndDateComplete}
             />
           ) : null}
 
