@@ -1100,18 +1100,12 @@ export function useDirectChatRuntime({
   }, [activeConfig, character, coupleSpace, onAcceptCoupleSpaceInvite, setHistory, userName]);
 
   const sendInnerVoiceProbe = useCallback(() => {
-    const userMsg: ChatMessage = {
-      role: 'user',
-      text: '[使用道具：倾听Ta的心声]',
-      timestamp: Date.now(),
+    void handleSendRef.current({
+      promptText: '[倾听心声]',
+      userText: '[使用道具：倾听Ta的心声]',
       isInnerVoice: true,
-    };
-    setHistory([...historyRef.current, userMsg]);
-
-    setTimeout(() => {
-      handleSendRef.current('[倾听心声]');
-    }, 100);
-  }, [setHistory]);
+    });
+  }, []);
 
   const sendSpeechTranscript = useCallback((transcript: string) => {
     const trimmedTranscript = transcript.trim();

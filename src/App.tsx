@@ -1059,6 +1059,9 @@ export default function App() {
           {activeApp === 'character-moments' && selectedCharacter && (
             <CharacterMomentsProfile
               character={selectedCharacter}
+              appData={appData}
+              setAppData={setAppData}
+              settings={settings}
               moments={appData.moments || []}
               onBack={() => setActiveApp(characterMomentsBackApp)}
             />

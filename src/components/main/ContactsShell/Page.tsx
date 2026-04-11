@@ -1,13 +1,17 @@
 ﻿import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AppData, Character, ChatGroup, FriendRequest } from '../../../types';
+import { AppData, AppSettings, Character, ChatGroup, FriendRequest, MomentComment, MomentItem } from '../../../types';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR } from '../../../utils';
 import { patchChatHistoryRecords } from '../../../features/persistence/chatHistoryStore';
 import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
+import { buildFallbackMomentCommentReply, generateMomentCommentReply } from '../../../services/moments/generators';
+import { getRecentMomentReplyContext } from '../../../services/moments/triggers';
 
 function ResolvedContactsAvatar({
   value,
@@ -523,19 +527,37 @@ type CharacterMoment = {
   images?: string[];
   timestamp: number;
   likes: number;
-  comments: Array<{ id: string }>;
+  likedBy?: string[];
+  isLiked?: boolean;
+  comments: MomentComment[];
 };
 
 export function CharacterMomentsProfile({
   character,
+  appData,
+  setAppData,
+  settings,
   moments,
   onBack,
 }: {
   character: Character;
+  appData: AppData;
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>;
+  settings: AppSettings;
   moments: CharacterMoment[];
   onBack: () => void;
 }) {
+  const [commentingOn, setCommentingOn] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [replyTarget, setReplyTarget] = useState<{
+    momentId: string;
+    commentId: string;
+    authorId: string;
+    authorName: string;
+  } | null>(null);
   const displayName = character.remarkName?.trim() || character.name;
+  const { userProfile, characters } = appData;
+  const { getCharacterById, getCharacterDisplayName } = createCharacterDirectory({ characters });
   const ownMoments = moments
     .filter(moment => moment.authorId === character.id)
     .sort((a, b) => b.timestamp - a.timestamp);
@@ -548,6 +570,101 @@ export function CharacterMomentsProfile({
     : character.gender === 'male'
       ? 'from-zinc-200 via-sky-200 to-zinc-500'
       : 'from-zinc-200 via-zinc-400 to-zinc-600';
+  const activeConfig = useMemo(
+    () => settings.configs.find((config) => config.id === settings.activeConfigId) || settings.configs[0],
+    [settings],
+  );
+
+  const resolveMomentAuthor = (authorId: string): Character | typeof userProfile | undefined => {
+    if (authorId === 'user') return userProfile;
+    return getCharacterById(authorId) || undefined;
+  };
+
+  const handleLike = (momentId: string) => {
+    setAppData((prev) => ({
+      ...prev,
+      moments: (prev.moments || []).map((moment: MomentItem) => {
+        if (moment.id !== momentId) return moment;
+        const likedBy = moment.likedBy || [];
+        const isLiked = likedBy.includes('user');
+        const nextLikedBy = isLiked ? likedBy.filter((id) => id !== 'user') : [...likedBy, 'user'];
+        return {
+          ...moment,
+          likedBy: nextLikedBy,
+          likes: nextLikedBy.length,
+          isLiked: !isLiked,
+        };
+      }),
+    }));
+  };
+
+  const appendCommentToMoment = (momentId: string, comment: MomentComment) => {
+    setAppData((prev) => ({
+      ...prev,
+      moments: (prev.moments || []).map((moment: MomentItem) =>
+        moment.id === momentId ? { ...moment, comments: [...moment.comments, comment] } : moment,
+      ),
+    }));
+  };
+
+  const handleComment = async (momentId: string) => {
+    if (!commentText.trim()) return;
+
+    const activeReplyTarget = replyTarget?.momentId === momentId ? replyTarget : null;
+    const userComment: MomentComment = {
+      id: Date.now().toString(),
+      authorId: 'user',
+      content: commentText.trim(),
+      timestamp: Date.now(),
+      replyToCommentId: activeReplyTarget?.commentId,
+      replyToAuthorId: activeReplyTarget?.authorId,
+      replyToAuthorName: activeReplyTarget?.authorName,
+    };
+
+    appendCommentToMoment(momentId, userComment);
+    setCommentingOn(null);
+    setCommentText('');
+    setReplyTarget(null);
+
+    const moment = (appData.moments || []).find((item: MomentItem) => item.id === momentId);
+    if (!moment || !activeConfig) return;
+
+    try {
+      const replyText = await generateMomentCommentReply({
+        activeConfig,
+        replyCharacter: character,
+        moment,
+        userComment: userComment.content,
+        characters,
+        userName: userProfile.name,
+      });
+      const normalizedReply = replyText.trim();
+      if (!normalizedReply) return;
+      appendCommentToMoment(momentId, {
+        id: `${Date.now()}_${character.id}_reply`,
+        authorId: character.id,
+        content: normalizedReply,
+        timestamp: Date.now(),
+        replyToCommentId: userComment.id,
+        replyToAuthorId: userComment.authorId,
+        replyToAuthorName: userProfile.name,
+      });
+    } catch (error) {
+      console.error('Character moment reply failed', error);
+      const recentCommentReplies = getRecentMomentReplyContext(moment, characters, userProfile.name);
+      const fallback = buildFallbackMomentCommentReply(character, moment, userComment.content, recentCommentReplies).trim();
+      if (!fallback) return;
+      appendCommentToMoment(momentId, {
+        id: `${Date.now()}_${character.id}_reply`,
+        authorId: character.id,
+        content: fallback,
+        timestamp: Date.now(),
+        replyToCommentId: userComment.id,
+        replyToAuthorId: userComment.authorId,
+        replyToAuthorName: userProfile.name,
+      });
+    }
+  };
 
   return (
     <motion.div
@@ -619,11 +736,89 @@ export function CharacterMomentsProfile({
                       ))}
                     </div>
                   )}
-                  <div className="bg-zinc-50 rounded-xl p-3 mt-2">
-                    <div className="flex items-center gap-1.5 text-[13px] text-zinc-600 font-medium">
-                      <Heart size={12} className="fill-red-500 text-red-500" />
-                      <span>点赞 {moment.likes} · 评论 {moment.comments.length}</span>
+                  <div className="bg-zinc-50 rounded-2xl p-3 mt-3">
+                    <div className="flex items-center gap-3 text-[13px] text-zinc-600 font-medium">
+                      <button
+                        onClick={() => handleLike(moment.id)}
+                        className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:bg-white"
+                      >
+                        <Heart
+                          size={13}
+                          className={(moment.likedBy?.includes('user') || moment.isLiked) ? 'fill-red-500 text-red-500' : 'text-zinc-500'}
+                        />
+                        <span>点赞 {moment.likes}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCommentingOn(moment.id);
+                          setReplyTarget(null);
+                        }}
+                        className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:bg-white"
+                      >
+                        <MessageSquare size={13} className="text-zinc-500" />
+                        <span>评论 {moment.comments.length}</span>
+                      </button>
                     </div>
+                    {moment.comments.length > 0 && (
+                      <div className="mt-2 border-t border-zinc-200/70 pt-2">
+                        {moment.comments.map((comment) => {
+                          const commentAuthor = resolveMomentAuthor(comment.authorId);
+                          if (!commentAuthor) return null;
+
+                          return (
+                            <button
+                              key={comment.id}
+                              type="button"
+                              onClick={() => {
+                                setCommentingOn(moment.id);
+                                setReplyTarget({
+                                  momentId: moment.id,
+                                  commentId: comment.id,
+                                  authorId: comment.authorId,
+                                  authorName: commentAuthor.name,
+                                });
+                              }}
+                              className="mt-1 block w-full rounded-lg px-1 py-1 text-left text-[13px] leading-relaxed transition-colors hover:bg-white/80"
+                            >
+                              <span className="font-bold text-zinc-900">
+                                {comment.authorId === 'user' ? userProfile.name : getCharacterDisplayName(comment.authorId)}
+                              </span>
+                              {comment.replyToAuthorName ? (
+                                <>
+                                  <span className="mx-1 text-zinc-500">回复</span>
+                                  <span className="font-bold text-zinc-700">{comment.replyToAuthorName}</span>
+                                  <span className="text-zinc-500">：</span>
+                                </>
+                              ) : (
+                                <span className="text-zinc-500">：</span>
+                              )}
+                              <span className="text-zinc-700">{comment.content}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {commentingOn === moment.id && (
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          type="text"
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder={replyTarget?.momentId === moment.id ? `回复 ${replyTarget.authorName}` : '发一条评论'}
+                          className="flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleComment(moment.id);
+                          }}
+                        />
+                        <button
+                          onClick={() => void handleComment(moment.id)}
+                          className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100"
+                        >
+                          发送
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

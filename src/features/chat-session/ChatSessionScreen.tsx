@@ -1798,7 +1798,11 @@ export function ChatSessionScreen({
                                     e.preventDefault();
                                     handleMessageClick(e, i);
                                   }}
-                                  className={`chat-inner-voice-card inline-block max-w-[min(84%,36rem)] rounded-2xl overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
+                                  className={`chat-inner-voice-card inline-block rounded-[24px] overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
+                                    msg.role === 'user'
+                                      ? 'w-[min(72vw,20rem)] max-w-[min(72vw,20rem)]'
+                                      : 'max-w-[min(82vw,24rem)]'
+                                  } ${
                                     msg.role === 'user' 
                                       ? 'bg-white border-zinc-200' 
                                       : 'bg-rose-50/95 border-rose-100'
@@ -1806,16 +1810,16 @@ export function ChatSessionScreen({
                                 >
                                   {msg.role === 'user' ? (
                                     <>
-                                      <div className="p-3 flex items-center gap-3">
+                                      <div className="px-3.5 py-3.5 flex items-center gap-3">
                                         <div className="w-10 h-10 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center shrink-0">
-                                          <Heart size={20} fill="currentColor" />
+                                          <Heart size={19} fill="currentColor" />
                                         </div>
                                         <div className="flex flex-col min-w-0">
                                           <span className="text-sm font-bold text-zinc-900 truncate">倾听心声</span>
                                           <span className="text-[10px] text-zinc-500 truncate">正在感知Ta的内心世界...</span>
                                         </div>
                                       </div>
-                                      <div className="px-3 py-2 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                      <div className="px-3.5 py-2.5 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
                                         <span className="text-[10px] text-zinc-400">道具使用</span>
                                         <ChevronRight size={12} className="text-zinc-400" />
                                       </div>
