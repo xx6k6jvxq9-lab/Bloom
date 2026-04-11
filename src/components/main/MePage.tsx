@@ -46,6 +46,11 @@ type MePageProps = {
   onSectionChange?: (section: 'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters') => void;
 };
 
+type DateRecordEntry = DateSession & {
+  endedAt?: number;
+  status?: 'active' | 'ended';
+};
+
 export function MePage({ 
   userProfile, 
   setUserProfile, 
@@ -1199,7 +1204,7 @@ function DateRecordsPage({
   onBack,
   globalBackground,
 }: {
-  savedDates: DateSession[];
+  savedDates: DateRecordEntry[];
   characters?: any[];
   onBack: () => void;
   globalBackground?: string;
@@ -1266,7 +1271,7 @@ function DateRecordsDetailPage({
   onBack,
   globalBackground,
 }: {
-  savedDates: DateSession[];
+  savedDates: DateRecordEntry[];
   characters?: any[];
   onBack: () => void;
   globalBackground?: string;
@@ -1413,7 +1418,7 @@ function DateRecordsPageV2({
   onBack,
   globalBackground,
 }: {
-  savedDates: DateSession[];
+  savedDates: DateRecordEntry[];
   characters?: any[];
   onBack: () => void;
   globalBackground?: string;
@@ -1590,7 +1595,7 @@ function DateRecordsPageV3({
   globalBackground,
   setAppData,
 }: {
-  savedDates: DateSession[];
+  savedDates: DateRecordEntry[];
   characters?: any[];
   onBack: () => void;
   globalBackground?: string;
