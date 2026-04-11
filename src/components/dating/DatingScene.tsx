@@ -491,7 +491,13 @@ export function DatingScene({
   };
 
   const handleEndingScreenClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (endingState !== 'ready' || endingRevealCount < endingMonologue.length || !endingReturnText) {
+    if (endingState !== 'ready') {
+      return;
+    }
+
+    const monologueReady = !endingMonologue || endingRevealCount >= endingMonologue.length;
+    if (!monologueReady) {
+      setEndingRevealCount(endingMonologue.length);
       return;
     }
 
@@ -512,7 +518,7 @@ export function DatingScene({
     window.setTimeout(() => {
       onEndDateComplete({
         archivedSession,
-        returnChatText: endingReturnText,
+        returnChatText: endingReturnText.trim(),
       });
     }, 720);
   };
@@ -1020,8 +1026,10 @@ export function DatingScene({
                 {endingState === 'generating' ? '这场约会正在慢慢沉入他的心里……' : endingMonologue.slice(0, endingRevealCount)}
               </div>
               {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
-              {endingState === 'ready' && endingRevealCount >= endingMonologue.length && endingReturnText ? (
-                <div className="dating-scene__ending-hint">轻触页面，回到聊天</div>
+              {endingState === 'ready' && (!endingMonologue || endingRevealCount >= endingMonologue.length) ? (
+                <div className="dating-scene__ending-hint">
+                  {endingError ? '轻触页面，结束约会并回到聊天' : '轻触页面，回到聊天'}
+                </div>
               ) : null}
             </div>
             {endingRipple ? (
