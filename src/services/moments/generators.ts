@@ -2,7 +2,7 @@ import { Character, Mask, ApiConfig, WorldBookEntry } from '../../types';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
-import { streamTextWithConfig } from '../ai/runtimeClient';
+import { generateTextFromMessagesWithConfig, streamTextWithConfig, type RuntimeChatMessage } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
@@ -23,6 +23,7 @@ type MomentLike = {
   authorId: string;
   content: string;
   timestamp: number;
+  images?: string[];
   comments: MomentCommentLike[];
 };
 
@@ -217,6 +218,61 @@ async function generateSingleText(options: {
   }
 
   return fallback.trim();
+}
+
+function buildMomentImageReferenceMessages(moment: MomentLike): RuntimeChatMessage[] {
+  if (!moment.images?.length) {
+    return [];
+  }
+
+  return moment.images
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((imageUrl, index) => ({
+      role: 'user' as const,
+      content: `这是这条动态的配图参考 ${index + 1}，请先看图，再结合动态文字和任务要求生成回复。`,
+      imageUrl,
+    }));
+}
+
+async function generateMomentTextWithOptionalImages(options: {
+  activeConfig: ApiConfig;
+  prompt: string;
+  requestText: string;
+  fallback: string;
+  moment: MomentLike;
+}) {
+  const { activeConfig, prompt, requestText, fallback, moment } = options;
+  const imageMessages = buildMomentImageReferenceMessages(moment);
+
+  if (imageMessages.length === 0) {
+    return generateSingleText({
+      activeConfig,
+      prompt,
+      requestText,
+      fallback,
+    });
+  }
+
+  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return fallback.trim();
+  }
+
+  return generateTextFromMessagesWithConfig({
+    activeConfig: {
+      ...activeConfig,
+      apiKey,
+    },
+    temperature: activeConfig.temperature ?? 0.7,
+    messages: [
+      ...imageMessages,
+      {
+        role: 'user',
+        content: `${prompt}\n\n${requestText.trim() || '请按上面的规则直接生成最终内容。'}`,
+      },
+    ],
+  });
 }
 
 function buildMomentPostPrompt(options: {
@@ -452,11 +508,12 @@ export async function generateMomentCommentReply(options: {
       ].filter(Boolean) as string[],
     });
 
-    const response = await generateSingleText({
+    const response = await generateMomentTextWithOptionalImages({
       activeConfig,
       prompt,
       requestText: `请以评论区回复的方式，自然回复这条用户评论：${userComment}`,
       fallback: buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies),
+      moment,
     });
 
     return response || buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
@@ -534,11 +591,12 @@ export async function generateMomentAutoComment(options: {
       ].filter(Boolean) as string[],
     });
 
-    const response = await generateSingleText({
+    const response = await generateMomentTextWithOptionalImages({
       activeConfig,
       prompt,
       requestText: `请作为路过看到动态的人，留下一句自然评论。动态内容：${moment.content}`,
       fallback: buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies),
+      moment,
     });
 
     return response || buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
