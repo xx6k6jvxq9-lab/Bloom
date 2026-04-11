@@ -661,7 +661,7 @@ export function MomentsApp({
                     />
                     <button
                       onClick={() => handleComment(moment.id)}
-                      className="shrink-0 whitespace-nowrap rounded-full bg-pink-300 px-3 py-1.5 text-[12px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-pink-200"
+                      className="shrink-0 whitespace-nowrap rounded-full border border-zinc-900 bg-white px-3 py-1.5 text-[12px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-900 hover:text-white"
                     >
                       回复
                     </button>
