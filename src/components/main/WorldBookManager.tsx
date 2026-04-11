@@ -191,7 +191,7 @@ export function WorldBookManager({
   return (
     <div className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       {showAdd ? (
-        <div className={`flex flex-1 flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
+        <div className={`flex h-full min-h-0 flex-1 flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
           <div className={`flex items-center justify-between border-b px-4 pb-4 pt-12 ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>
             <button onClick={() => setShowAdd(false)} className="rounded-lg px-2 py-1 text-zinc-500 transition-colors hover:bg-black/5">
               取消
@@ -202,7 +202,7 @@ export function WorldBookManager({
             </button>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4">
             <div className="space-y-1.5">
               <label className="text-[13px] text-zinc-500">标题</label>
               <input
