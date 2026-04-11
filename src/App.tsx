@@ -1458,6 +1458,8 @@ export default function App() {
             partner,
             coupleSpace,
             chatHistory: appData.chatHistory,
+            masks: appData.masks,
+            worldBooks: appData.worldBooks,
             appSettings: settings,
             now,
           });

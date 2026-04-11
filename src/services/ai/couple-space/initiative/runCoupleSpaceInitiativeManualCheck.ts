@@ -6,7 +6,9 @@ import type {
   CoupleSpaceInitiativeCandidate,
   CoupleSpaceInitiativeRuntimeRule,
   CoupleSpaceInitiativeSource,
+  Mask,
   UserProfileExtended,
+  WorldBookEntry,
 } from '../../../../types';
 import type {
   BuildCoupleCoNotePromptOptions,
@@ -38,6 +40,8 @@ export type CoupleSpaceInitiativeCheckCommonContext = {
   partner: Character;
   coupleSpace: CoupleSpaceData;
   chatHistory?: ChatHistory | null;
+  masks?: Mask[] | null;
+  worldBooks?: WorldBookEntry[] | null;
   appSettings: AppSettings;
   triggerSource?: CoupleSpaceInitiativeSource;
   now?: number;
@@ -286,9 +290,8 @@ function buildUnifiedCommonPromptInput(
       partner: input.partner,
       coupleSpace: input.coupleSpace,
       chatHistory: input.chatHistory,
-      // Manual check is the first adopted entrypoint. This phase intentionally
-      // stays inside the data already owned by the manual-check context, so
-      // masks/worldBooks remain omitted instead of widening the scope here.
+      masks: input.masks ?? undefined,
+      worldBooks: input.worldBooks ?? undefined,
       settings: {
         initiativeSettings: input.coupleSpace.initiativeSettings,
       },

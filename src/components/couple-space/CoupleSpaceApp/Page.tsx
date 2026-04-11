@@ -342,6 +342,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         partner,
         coupleSpace,
         chatHistory: appData.chatHistory,
+        masks: appData.masks,
+        worldBooks: appData.worldBooks,
         appSettings: settings,
         now: Date.now(),
       });
@@ -380,6 +382,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         partner,
         coupleSpace,
         chatHistory: appData.chatHistory,
+        masks: appData.masks,
+        worldBooks: appData.worldBooks,
         appSettings: settings,
         now: Date.now(),
       });
@@ -448,6 +452,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           partner,
           coupleSpace,
           chatHistory: appData.chatHistory,
+          masks: appData.masks,
+          worldBooks: appData.worldBooks,
           appSettings: settings,
           now,
         });
