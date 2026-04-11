@@ -69,7 +69,7 @@ export function MomentsApp({
       return userProfile;
     }
 
-    return getCharacterById(authorId);
+    return getCharacterById(authorId) || undefined;
   };
 
   const sanitizedMoments = (moments || [])
@@ -661,7 +661,7 @@ export function MomentsApp({
                     />
                     <button
                       onClick={() => handleComment(moment.id)}
-                      className="shrink-0 whitespace-nowrap rounded-full bg-zinc-900 px-3 py-1.5 text-[12px] font-bold text-white shadow-sm"
+                      className="shrink-0 whitespace-nowrap rounded-full bg-pink-300 px-3 py-1.5 text-[12px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-pink-200"
                     >
                       回复
                     </button>
