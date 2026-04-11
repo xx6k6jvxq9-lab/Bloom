@@ -1800,7 +1800,7 @@ export function ChatSessionScreen({
                                   }}
                                   className={`chat-inner-voice-card inline-block rounded-[24px] overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
                                     msg.role === 'user'
-                                      ? 'w-[min(72vw,20rem)] max-w-[min(72vw,20rem)]'
+                                      ? 'w-[min(66vw,18rem)] max-w-[min(66vw,18rem)]'
                                       : 'max-w-[min(82vw,24rem)]'
                                   } ${
                                     msg.role === 'user' 

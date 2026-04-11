@@ -318,6 +318,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
 type DirectSendOverridePayload = {
   promptText: string;
   userText?: string;
+  suppressUserText?: boolean;
   imageUrl?: string;
   audioUrl?: string;
   audioMimeType?: string;
@@ -663,9 +664,12 @@ export function useDirectChatRuntime({
       activeAssistantMessageIdRef.current = null;
     }
 
+    const shouldSuppressUserText = !!overridePayload?.suppressUserText && !!effectiveLocationData;
     const userMsg: ChatMessage = {
       role: 'user',
-      text: overridePayload?.userText?.trim() || textToSend.trim() || (effectiveLocationData ? `[位置分享] ${effectiveLocationData.name}` : ''),
+      text: shouldSuppressUserText
+        ? ''
+        : (overridePayload?.userText?.trim() || textToSend.trim() || (effectiveLocationData ? `[位置分享] ${effectiveLocationData.name}` : '')),
       timestamp: Date.now(),
       ...(replyingTo ? { replyTo: replyingTo } : {}),
       ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
@@ -1034,7 +1038,11 @@ export function useDirectChatRuntime({
   }, []);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
-    handleSendRef.current(text, locationData);
+    void handleSendRef.current({
+      promptText: text,
+      suppressUserText: true,
+      locationData,
+    });
   }, []);
 
   const sendCoupleSpaceInvitation = useCallback(() => {
