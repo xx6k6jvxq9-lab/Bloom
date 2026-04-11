@@ -157,6 +157,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [isInitiativeCheckOpen, setIsInitiativeCheckOpen] = useState(false);
   const [selectedLoveLetterId, setSelectedLoveLetterId] = useState<string | null>(null);
   const [initiativeCheckBusy, setInitiativeCheckBusy] = useState(false);
+  const [initiativeAutoCheckBusy, setInitiativeAutoCheckBusy] = useState(false);
   const [initiativeCheckStatus, setInitiativeCheckStatus] = useState<string | null>(null);
   const [initiativeArtifactPreview, setInitiativeArtifactPreview] = useState<{
     kind: 'draft' | 'confirmation';
@@ -274,7 +275,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   };
 
   const handleManualInitiativeCheck = async () => {
-    if (!partner || initiativeCheckBusy) return;
+    if (!partner || initiativeCheckBusy || initiativeAutoCheckBusy) return;
 
     setInitiativeCheckBusy(true);
     try {
@@ -300,7 +301,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   };
 
   useEffect(() => {
-    if (activeView !== 'main' || !partner || initiativeCheckBusy) {
+    if (activeView !== 'main' || !partner || initiativeCheckBusy || initiativeAutoCheckBusy) {
       return;
     }
 
@@ -319,7 +320,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     let cancelled = false;
 
     void (async () => {
-      setInitiativeCheckBusy(true);
+      setInitiativeAutoCheckBusy(true);
       try {
         const result = await runCoupleSpaceInitiativeAutoCheck({
           user,
@@ -345,7 +346,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         }
       } finally {
         if (!cancelled) {
-          setInitiativeCheckBusy(false);
+          setInitiativeAutoCheckBusy(false);
         }
       }
     })();
@@ -353,7 +354,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     return () => {
       cancelled = true;
     };
-  }, [activeView, partner, initiativeCheckBusy, user, coupleSpace, appData.chatHistory, settings]);
+  }, [activeView, partner, initiativeCheckBusy, initiativeAutoCheckBusy, user, coupleSpace, appData.chatHistory, settings]);
 
   if (!partner && activeView === 'main') {
     const selectedPartner = getCharacterById(selectedPartnerId);
