@@ -14,12 +14,13 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
-import { streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextFromMessagesWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import { compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
@@ -68,6 +69,23 @@ function parseDirectActionCue(segment: string): {
     kind: 'normal',
     content: trimmed,
   };
+}
+
+function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies'>): number {
+  if (!Number.isFinite(character.maxReplies)) {
+    return 3;
+  }
+
+  return Math.max(1, Math.min(Math.floor(character.maxReplies as number), 5));
+}
+
+function isRetryableSummaryStreamError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('failed to fetch') || message.includes('networkerror');
 }
 
 function toPromptHistoryContent(message: ChatMessage): string {
@@ -218,7 +236,13 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
 const splitStreamingModelResponseIntoMessages = (
   text: string,
   baseTimestamp: number,
-  options: { isInnerVoice?: boolean; transferTargetLabel?: string; assistantAliases?: string[]; availableStickers?: string[] } = {}
+  options: {
+    isInnerVoice?: boolean;
+    transferTargetLabel?: string;
+    assistantAliases?: string[];
+    availableStickers?: string[];
+    maxDirectReplyBubbles?: number;
+  } = {}
 ): ChatMessage[] => {
   if (options.isInnerVoice) {
     return [{
@@ -258,7 +282,7 @@ const splitStreamingModelResponseIntoMessages = (
     sanitizePipeMarkers(legacyTranslationParts.mainText, '\n'),
     options.assistantAliases || [],
   );
-  const parts = splitDirectAssistantReplyText(mainText);
+  const parts = splitDirectAssistantReplyText(mainText, options.maxDirectReplyBubbles);
 
   return parts.map((part, index) => {
     const cue = parseDirectActionCue(part);
@@ -457,6 +481,7 @@ export function useDirectChatRuntime({
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: character.stickers || [],
+            maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
           });
           const nextMessages = messages.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
@@ -763,6 +788,7 @@ export function useDirectChatRuntime({
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         availableStickers: character.stickers || [],
+        maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
       });
       const nextMessages = messages.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
@@ -966,6 +992,21 @@ export function useDirectChatRuntime({
       ) {
         try {
           const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, character.memoryLimit);
+          const summarySourceLines = summaryHistoryWindow
+            .map((msg) => {
+              const mainText = getMessageMainText(msg).trim();
+              if (!mainText) {
+                return '';
+              }
+
+              return `${msg.role === 'user' ? '用户' : character.name}: ${mainText}`;
+            })
+            .filter(Boolean);
+
+          if (summarySourceLines.length === 0) {
+            return;
+          }
+
           const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
           const characterCorePersona = buildCharacterContext({
             character,
@@ -978,19 +1019,28 @@ export function useDirectChatRuntime({
             memoryContext: {
               longTermMemoryProfile,
             },
-            sections: [
-              summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
-            ],
+            sections: [summarySourceLines.join('\n')],
           });
 
           let summaryText = '';
-          await streamTextWithConfig({
-            activeConfig,
-            messages: [{ role: 'system', content: prompt }],
-            onTextChunk: (chunkText) => {
-              summaryText += chunkText;
-            },
-          });
+          try {
+            await streamTextWithConfig({
+              activeConfig,
+              messages: [{ role: 'user', content: prompt }],
+              onTextChunk: (chunkText) => {
+                summaryText += chunkText;
+              },
+            });
+          } catch (error) {
+            if (!isRetryableSummaryStreamError(error)) {
+              throw error;
+            }
+
+            summaryText = await generateTextFromMessagesWithConfig({
+              activeConfig,
+              messages: [{ role: 'user', content: prompt }],
+            });
+          }
 
           if (summaryText) {
             const shortTermEntry = createMemoryLibraryEntry({
@@ -1017,19 +1067,28 @@ export function useDirectChatRuntime({
                   shortTermSummary: summaryText,
                   longTermMemoryProfile,
                 },
-                sections: [
-                  summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n'),
-                ],
+                sections: [summarySourceLines.join('\n')],
               });
 
               let longTermSummaryText = '';
-              await streamTextWithConfig({
-                activeConfig,
-                messages: [{ role: 'system', content: longTermPrompt }],
-                onTextChunk: (chunkText) => {
-                  longTermSummaryText += chunkText;
-                },
-              });
+              try {
+                await streamTextWithConfig({
+                  activeConfig,
+                  messages: [{ role: 'user', content: longTermPrompt }],
+                  onTextChunk: (chunkText) => {
+                    longTermSummaryText += chunkText;
+                  },
+                });
+              } catch (error) {
+                if (!isRetryableSummaryStreamError(error)) {
+                  throw error;
+                }
+
+                longTermSummaryText = await generateTextFromMessagesWithConfig({
+                  activeConfig,
+                  messages: [{ role: 'user', content: longTermPrompt }],
+                });
+              }
 
               if (longTermSummaryText.trim()) {
                 nextLongTermMemoryProfile = longTermSummaryText.trim();
@@ -1044,8 +1103,12 @@ export function useDirectChatRuntime({
               }
             }
 
+            const nextShortTermSummary = nextLongTermMemoryProfile
+              ? compressShortTermSummaryAfterLongTerm(summaryText)
+              : summaryText;
+
             const patch: Partial<Character> = {
-              shortTermSummary: summaryText,
+              shortTermSummary: nextShortTermSummary,
               memoryLibraryEntries: nextMemoryLibraryEntries,
               ...(nextLongTermMemoryProfile
                 ? { longTermMemoryProfile: nextLongTermMemoryProfile }

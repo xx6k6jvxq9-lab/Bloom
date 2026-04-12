@@ -1,14 +1,21 @@
 import type { Character, MemoryLibraryEntry } from '../../types';
 
-const MIN_AUTO_SHORT_TERM_ENTRIES_BEFORE_LONG_TERM = 3;
+const DEFAULT_MIN_AUTO_SHORT_TERM_ENTRIES_BEFORE_LONG_TERM = 5;
+const DEFAULT_MIN_AUTO_SHORT_TERM_DAY_SPAN = 2;
+const DEFAULT_MIN_STABLE_SIGNAL_ENTRIES = 2;
 const MIN_SHORT_TERM_SUMMARY_CHARS = 24;
 
 export type AutoLongTermRefreshPlan = {
   shouldRefresh: boolean;
   pendingShortTermEntryCount: number;
+  pendingShortTermDaySpan: number;
+  stableSignalEntryCount: number;
 };
 
-type BuildAutoLongTermRefreshPlanInput = Pick<Character, 'memoryLibraryEntries'> & {
+type BuildAutoLongTermRefreshPlanInput = Pick<
+  Character,
+  'memoryLibraryEntries' | 'autoLongTermMinShortTermEntries' | 'autoLongTermMinDaySpan'
+> & {
   latestShortTermSummary?: string;
   pendingEntries?: MemoryLibraryEntry[];
 };
@@ -19,6 +26,17 @@ function getLatestLongTermAnchorTimestamp(entries: MemoryLibraryEntry[]): number
     .reduce((latest, entry) => Math.max(latest, entry.createdAt), 0);
 }
 
+const STABLE_SIGNAL_PATTERNS = [
+  /稳定|一贯|长期|边界|偏好|模式|关系定位|相处逻辑|经常|总是|反复/u,
+  /开放回路（(?:waiting_user|dormant)）/u,
+];
+
+function countStableSignalEntries(entries: MemoryLibraryEntry[]): number {
+  return entries.filter((entry) => (
+    STABLE_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.content))
+  )).length;
+}
+
 export function buildAutoLongTermRefreshPlan(
   input: BuildAutoLongTermRefreshPlanInput,
 ): AutoLongTermRefreshPlan {
@@ -27,20 +45,44 @@ export function buildAutoLongTermRefreshPlan(
     return {
       shouldRefresh: false,
       pendingShortTermEntryCount: 0,
+      pendingShortTermDaySpan: 0,
+      stableSignalEntryCount: 0,
     };
   }
+
+  const minShortTermEntries = Number.isFinite(input.autoLongTermMinShortTermEntries)
+    ? Math.max(1, Math.floor(input.autoLongTermMinShortTermEntries as number))
+    : DEFAULT_MIN_AUTO_SHORT_TERM_ENTRIES_BEFORE_LONG_TERM;
+  const minDaySpan = Number.isFinite(input.autoLongTermMinDaySpan)
+    ? Math.max(1, Math.floor(input.autoLongTermMinDaySpan as number))
+    : DEFAULT_MIN_AUTO_SHORT_TERM_DAY_SPAN;
 
   const entries = [...(input.pendingEntries || input.memoryLibraryEntries || [])]
     .sort((left, right) => right.createdAt - left.createdAt);
   const latestLongTermAnchorTimestamp = getLatestLongTermAnchorTimestamp(entries);
-  const pendingShortTermEntryCount = entries.filter((entry) => (
+  const pendingShortTermEntries = entries.filter((entry) => (
     entry.kind === 'short-term'
     && entry.source === 'auto'
     && entry.createdAt > latestLongTermAnchorTimestamp
-  )).length;
+  ));
+  const pendingShortTermEntryCount = pendingShortTermEntries.length;
+  const pendingShortTermDayKeys = new Set(
+    pendingShortTermEntries.map((entry) => `${entry.year}-${entry.month}-${entry.day}`),
+  );
+  const pendingShortTermDaySpan = pendingShortTermDayKeys.size;
+  const stableSignalEntryCount = countStableSignalEntries(pendingShortTermEntries);
 
   return {
-    shouldRefresh: pendingShortTermEntryCount >= MIN_AUTO_SHORT_TERM_ENTRIES_BEFORE_LONG_TERM,
+    shouldRefresh: (
+      pendingShortTermEntryCount >= minShortTermEntries
+      && pendingShortTermDaySpan >= minDaySpan
+      && (
+        stableSignalEntryCount >= DEFAULT_MIN_STABLE_SIGNAL_ENTRIES
+        || pendingShortTermEntryCount >= (minShortTermEntries + 2)
+      )
+    ),
     pendingShortTermEntryCount,
+    pendingShortTermDaySpan,
+    stableSignalEntryCount,
   };
 }

@@ -158,6 +158,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
 
   const [showRecharge, setShowRecharge] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showManageMenu, setShowManageMenu] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [selectedCardForWithdraw, setSelectedCardForWithdraw] = useState<string>('');
@@ -421,6 +422,37 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     setIsSettingPassword(false);
   };
 
+  const handleClearTransactions = () => {
+    if (!window.confirm('确认清空当前钱包交易记录吗？')) return;
+    updateWalletData(balance, cards, [], yuebaoBalance, familyCards, paymentPassword, yuebaoInterest);
+    setShowManageMenu(false);
+  };
+
+  const handleResetWallet = () => {
+    if (!window.confirm('确认重置钱包到默认状态吗？这会覆盖当前余额、卡片和交易记录。')) return;
+    if (onUpdateAppData) {
+      onUpdateAppData({
+        ...appData,
+        walletData: {
+          balance: 12580.0,
+          yuebaoBalance: 0,
+          yuebaoInterest: 0,
+          familyCards: [],
+          paymentPassword: '',
+          cards: MOCK_CARDS,
+          transactions: MOCK_TRANSACTIONS,
+        },
+      });
+    }
+    setExpandedSection(null);
+    setShowManageMenu(false);
+  };
+
+  const handleCollapsePanels = () => {
+    setExpandedSection(null);
+    setShowManageMenu(false);
+  };
+
   // Simple grouping logic for transactions
   const groupedTransactions: { [key: string]: typeof transactions } = {};
   transactions.forEach(t => {
@@ -447,10 +479,50 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
           </button>
           <h1 className="text-xl font-bold text-zinc-900">钱包</h1>
         </div>
-        <div className="flex gap-2">
-          <button className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
+        <div className="relative flex gap-2">
+          <button
+            onClick={() => setShowManageMenu((prev) => !prev)}
+            className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors"
+            aria-label="钱包管理"
+            title="钱包管理"
+          >
             <MoreHorizontal size={20} />
           </button>
+          <AnimatePresence>
+            {showManageMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                className="absolute right-0 top-11 z-30 min-w-[148px] rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg"
+              >
+                <button
+                  onClick={handleCollapsePanels}
+                  className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-100"
+                >
+                  收起功能区
+                </button>
+                <button
+                  onClick={handleCalculateInterest}
+                  className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-100"
+                >
+                  模拟发收益
+                </button>
+                <button
+                  onClick={handleClearTransactions}
+                  className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-100"
+                >
+                  清空交易记录
+                </button>
+                <button
+                  onClick={handleResetWallet}
+                  className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-red-500 transition-colors hover:bg-red-50"
+                >
+                  重置钱包
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -473,7 +545,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
             </button>
             <button 
               onClick={() => setShowWithdraw(true)}
-              className="flex-1 bg-zinc-900 hover:bg-black text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+              className="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-medium py-2.5 rounded-lg transition-colors text-sm"
             >
               提现
             </button>
@@ -539,7 +611,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
                     <button onClick={() => { setYuebaoAmount(''); setYuebaoTransferMethod('balance'); setShowYuebaoTransferIn(true); }} className="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-medium py-2.5 rounded-lg transition-colors text-sm">
                       转入
                     </button>
-                    <button onClick={() => { setYuebaoAmount(''); setYuebaoTransferMethod('balance'); setShowYuebaoTransferOut(true); }} className="flex-1 bg-zinc-900 hover:bg-black text-white font-medium py-2.5 rounded-lg transition-colors text-sm">
+                    <button onClick={() => { setYuebaoAmount(''); setYuebaoTransferMethod('balance'); setShowYuebaoTransferOut(true); }} className="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-medium py-2.5 rounded-lg transition-colors text-sm">
                       转出
                     </button>
                   </div>

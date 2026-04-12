@@ -58,6 +58,14 @@ export function parseAssistantSpeakerLabel(text: string): { senderLabel: string;
 }
 
 const DIRECT_MAX_BUBBLES = 5;
+
+function resolveDirectBubbleCap(maxBubbles?: number): number {
+  if (!Number.isFinite(maxBubbles)) {
+    return DIRECT_MAX_BUBBLES;
+  }
+
+  return Math.max(1, Math.min(Math.floor(maxBubbles as number), DIRECT_MAX_BUBBLES));
+}
 const DIRECT_ENDING_PUNCTUATION = /[\u3002\uFF01\uFF1F!?]+$/u;
 const DIRECT_SENTENCE_REGEX = /[^\u3002\uFF01\uFF1F!?\n]+(?:[\u3002\uFF01\uFF1F!?]+)?/gu;
 const DIRECT_SHORT_REACTION = /^(?:嗯|哦|喔|行|行吧|行啊|好|好吧|知道了|在呢|来了|收到|别闹|别急|没事|可以)$/u;
@@ -201,13 +209,13 @@ function splitByStarterRhythm(text: string): string[] {
   return [normalized];
 }
 
-function mergeRhythmParts(parts: string[]): string[] {
-  if (parts.length <= DIRECT_MAX_BUBBLES) {
+function mergeRhythmParts(parts: string[], maxBubbles = DIRECT_MAX_BUBBLES): string[] {
+  if (parts.length <= maxBubbles) {
     return parts;
   }
 
   const merged = [...parts];
-  while (merged.length > DIRECT_MAX_BUBBLES) {
+  while (merged.length > maxBubbles) {
     const first = merged.shift();
     const second = merged.shift();
     if (!first || !second) {
@@ -220,7 +228,8 @@ function mergeRhythmParts(parts: string[]): string[] {
   return merged;
 }
 
-export function splitDirectAssistantReplyText(text: string): string[] {
+export function splitDirectAssistantReplyText(text: string, maxBubbles?: number): string[] {
+  const bubbleCap = resolveDirectBubbleCap(maxBubbles);
   const normalized = text.trim();
   if (!normalized) {
     return [];
@@ -233,7 +242,7 @@ export function splitDirectAssistantReplyText(text: string): string[] {
 
   if (explicitLines.length > 1) {
     return explicitLines
-      .slice(0, DIRECT_MAX_BUBBLES)
+      .slice(0, bubbleCap)
       .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1));
   }
 
@@ -246,8 +255,8 @@ export function splitDirectAssistantReplyText(text: string): string[] {
 
   const resolvedParts = parts.length > 0 ? parts : [normalized];
 
-  return mergeRhythmParts(resolvedParts)
-    .slice(0, DIRECT_MAX_BUBBLES)
+  return mergeRhythmParts(resolvedParts, bubbleCap)
+    .slice(0, bubbleCap)
     .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1))
     .filter(Boolean);
 }

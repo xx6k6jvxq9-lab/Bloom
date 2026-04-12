@@ -2,7 +2,7 @@ import { Character, Mask, ApiConfig, MomentImageCard, WorldBookEntry } from '../
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
-import { generateTextFromMessagesWithConfig, streamTextWithConfig, type RuntimeChatMessage } from '../ai/runtimeClient';
+import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
@@ -32,81 +32,66 @@ type GeneratedMomentPost = {
   imageCard?: MomentImageCard;
 };
 
-const MOMENT_TEMPLATES = [
-  '今天不太想说话。',
-  '嘴上说没事，其实有点累。',
-  '晚上的风一吹，人安静了一点。',
-  '今天适合少解释。',
-  '状态一般，先这样。',
-  '风有点大，脑子也有点乱。',
+const MOMENT_FALLBACKS = [
+  '今天先这样，晚点再说。',
+  '脑子有点乱，先记一笔。',
+  '风一吹，心情就安静了一点。',
+  '今天适合少解释，先过完这一天。',
+  '状态一般，但还在往前走。',
 ];
 
-const MOMENT_BAD_SAMPLE_PATTERNS = [
+const MOMENT_BAD_PATTERNS = [
   /发动态/,
   /我发一条/,
-  /我发一个/,
-  /你让我发/,
   /那我发/,
-  /我去发/,
   /给你发/,
-  /发点什么/,
-  /这条动态/,
-  /要我发什么/,
-  /你想看什么动态/,
-  /我来发/,
+  /你让我发/,
+  /chat reply/i,
+  /trigger/i,
+  /stylehint/i,
 ];
 
-const MOMENT_PROMPT_LEAK_PATTERNS = [
-  /##\s*/,
-  /triggerReason/i,
-  /styleHints/i,
-  /maxLength/i,
-  /allowImages/i,
-  /relationship/i,
-  /output\s*rules?/i,
-  /character(Core|Setting)/i,
-  /memorySummary/i,
-  /触发语义/,
-  /风格提示/,
-  /输出要求/,
-  /建议长度/,
-  /当前公开语境/,
-  /直接给出要发布的动态正文/,
-  /不要写成私聊回复/,
-  /不要写成任务说明/,
-  /用户刚刚要求你去发一条动态/,
-  /这不是聊天回复/,
-];
-
-const CHAT_REACTION_PREVIEW_PATTERNS = [
-  /我发一句/,
-  /我发个/,
+const CHAT_REACTION_BAD_PATTERNS = [
+  /我发一条/,
+  /我去发/,
   /我准备发/,
-  /我去发个/,
-  /给你发个/,
-  /发条/,
-  /动态[:：]/,
-  /状态[:：]/,
+  /给你发个动态/,
+  /下面是动态/,
 ];
 
 function buildMaskPrompt(characterId: string, masks: Mask[]) {
-  const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(characterId));
-  return activeMask
-    ? `Name: ${activeMask.name || ''}\nPersonality: ${activeMask.personality || ''}\nOccupation: ${activeMask.occupation || ''}\nRelationship with you: ${activeMask.relationship || ''}\nWorld Background: ${activeMask.worldBackground || 'Standard'}`
-    : '';
+  const activeMask = masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(characterId));
+  if (!activeMask) return '';
+
+  return [
+    activeMask.name ? `Name: ${activeMask.name}` : '',
+    activeMask.personality ? `Personality: ${activeMask.personality}` : '',
+    activeMask.occupation ? `Occupation: ${activeMask.occupation}` : '',
+    activeMask.relationship ? `Relationship with you: ${activeMask.relationship}` : '',
+    activeMask.worldBackground ? `World Background: ${activeMask.worldBackground}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[]) {
-  const activeWorldBooks = sortWorldBooksByPriority(worldBook.filter(wb =>
-    (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
-    character.activeWorldBookIds?.includes(wb.id)
-  ));
+  const activeWorldBooks = sortWorldBooksByPriority(
+    worldBook.filter(
+      (entry) =>
+        (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
+        || character.activeWorldBookIds?.includes(entry.id),
+    ),
+  );
 
-  return activeWorldBooks.length > 0
-    ? activeWorldBooks
-        .map(wb => `[${normalizeWorldBookCategory(wb.category)}] ${wb.title}:\n${wb.content}`)
-        .join('\n\n')
-    : '';
+  return activeWorldBooks
+    .map((entry) => {
+      const title = entry.title?.trim();
+      const content = entry.content?.trim();
+      if (!title || !content) return '';
+      return `[${normalizeWorldBookCategory(entry.category)}] ${title}\n${content}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function buildMomentCharacterCore(options: {
@@ -117,172 +102,157 @@ function buildMomentCharacterCore(options: {
   const { character, masks, worldBook } = options;
   const characterContext = buildCharacterContext({
     character,
+    activeMask: masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id)) ?? null,
+    activeWorldBooks: worldBook.filter(
+      (entry) =>
+        (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
+        || character.activeWorldBookIds?.includes(entry.id),
+    ),
   });
 
   return {
-    characterSetting: characterContext.corePersona ?? '',
-    maskPrompt: buildMaskPrompt(character.id, masks),
-    worldBookPrompt: buildWorldBookPrompt(character, worldBook),
+    characterSetting: [
+      characterContext.corePersona,
+      characterContext.expressionStyle ? `表达风格：${characterContext.expressionStyle}` : '',
+      characterContext.boundaryPack ? `边界与禁区：${characterContext.boundaryPack}` : '',
+      characterContext.extendedLore ? `扩展设定：${characterContext.extendedLore}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    maskPrompt: characterContext.maskPrompt || buildMaskPrompt(character.id, masks),
+    worldBookPrompt: characterContext.worldBookPrompt || buildWorldBookPrompt(character, worldBook),
   };
 }
 
 function buildMomentMemoryContext(character: Character) {
-  const memory = buildResolvedMemoryLayers(character);
+  const layers = buildResolvedMemoryLayers(character);
+  const lifeFlavor = [
+    character.signature?.trim() ? `公开底色：${character.signature.trim()}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return {
-    longTermMemoryProfile: memory.longTermMemoryProfile ?? '',
+    shortTermSummary: layers.shortTermSummary?.trim()
+      ? `近期余波（只作背景，不要整条围着用户转）：${layers.shortTermSummary.trim()}`
+      : '',
+    longTermMemoryProfile: layers.longTermMemoryProfile?.trim()
+      ? `长期印象（保持角色连续性，但不要独占主题）：${layers.longTermMemoryProfile.trim()}`
+      : '',
+    perceptionPrompt: lifeFlavor,
   };
 }
 
-function buildMomentExpressionStyleSection(character: Character) {
-  const expressionStyle = buildCharacterContext({ character }).expressionStyle?.trim();
-  return expressionStyle ? ['## 表达风格与相处方式', expressionStyle].join('\n') : undefined;
-}
+function inferMomentPostMode(requestText: string): 'self_life' | 'relationship_carryover' | 'public_daily' {
+  const normalized = requestText.trim().toLowerCase();
 
-function buildMomentCommentToneGuardSection() {
-  return [
-    '## 评论区语气约束',
-    '不要写成长辈腔、说教口吻或过度管束感。',
-    '优先保留角色原本的少年感、自然感和轻微嘴硬。',
-    '像评论区顺手回一句，不要把气氛写成训人或教育人。',
-  ].join('\n');
-}
-
-function getCleanMomentFallback() {
-  return MOMENT_TEMPLATES[Math.floor(Math.random() * MOMENT_TEMPLATES.length)];
-}
-
-function pickMomentImageTheme(content: string): MomentImageCard['theme'] {
-  if (/雨|夜|窗|路灯|街|晚风|影子/.test(content)) return 'film';
-  if (/咖啡|甜品|冰淇淋|饭|早餐|晚餐|蛋糕/.test(content)) return 'polaroid';
-  if (/备忘|计划|记得|清单|安排/.test(content)) return 'note';
-  return 'poster';
-}
-
-function buildFallbackMomentImageCard(content: string): MomentImageCard {
-  const normalized = content.replace(/\s+/g, ' ').trim();
-  const short = normalized.slice(0, 24) || '这一刻';
-  return {
-    title: short,
-    description: normalized || '把这一刻收进一张带画面感的动态卡片里。',
-    theme: pickMomentImageTheme(normalized),
-  };
-}
-
-function shouldAttachMomentImageCard(content: string) {
-  if (/图|照片|拍|风景|雨|夜|晚风|街|阳光|云|海|猫|狗|花|咖啡|甜品|饭|蛋糕|窗/.test(content)) {
-    return true;
+  if (/emotion-and-closing|emotion-after-long-chat|event-and-closing|long-chat-closing|relationship|carryover|after-chat|用户|余波|刚聊完|聊天后/.test(normalized)) {
+    return 'relationship_carryover';
   }
-  return Math.random() < 0.38;
-}
 
-function parseMomentImageCard(rawText: string, fallback: MomentImageCard): MomentImageCard {
-  const trimmed = rawText.trim();
-  if (!trimmed) return fallback;
-
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return fallback;
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as Partial<MomentImageCard>;
-    const theme = parsed.theme;
-    const normalizedTheme =
-      theme === 'polaroid' || theme === 'film' || theme === 'note' || theme === 'poster'
-        ? theme
-        : fallback.theme;
-
-    return {
-      title: (parsed.title || fallback.title).trim().slice(0, 24) || fallback.title,
-      description: (parsed.description || fallback.description).trim().slice(0, 120) || fallback.description,
-      theme: normalizedTheme,
-    };
-  } catch {
-    return fallback;
+  if (/自主发动态|auto|self|life|daily|status|rhythm|observe|interest|today|busy|moment|生活|日常|状态|节奏|观察|兴趣|今天|在忙|发动态/.test(normalized)) {
+    return 'self_life';
   }
+
+  return 'public_daily';
 }
 
-async function generateMomentImageCard(options: {
-  activeConfig: ApiConfig;
+function buildBalancedMomentPostPrompt(options: {
   character: Character;
-  momentContent: string;
-}): Promise<MomentImageCard | undefined> {
-  const { activeConfig, character, momentContent } = options;
-  if (!shouldAttachMomentImageCard(momentContent)) {
-    return undefined;
-  }
+  masks: Mask[];
+  worldBook: WorldBookEntry[];
+  triggerHint?: string;
+  extraStyleHints?: string[];
+  mode?: 'self_life' | 'relationship_carryover' | 'public_daily';
+}) {
+  const { character, masks, worldBook, triggerHint, extraStyleHints = [], mode = 'public_daily' } = options;
 
-  const fallback = buildFallbackMomentImageCard(momentContent);
-  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return fallback;
-  }
+  const relationship =
+    mode === 'relationship_carryover'
+      ? '这是一条公开动态，可以轻轻带到和用户有关的关系余波，但整体仍要像公开状态，而不是写给用户看的私聊。'
+      : mode === 'self_life'
+        ? '这是一条公开动态，优先写角色自己的生活节奏、观察、兴趣和状态感。'
+        : '这是一条公开动态，可以是生活碎片、公开日常或轻微关系余波，但不要每条都围着用户转。';
 
-  try {
-    const response = await generateTextFromMessagesWithConfig({
-      activeConfig: {
-        ...activeConfig,
-        apiKey,
-      },
-      temperature: 0.6,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            '请把下面这条角色动态，整理成一张“文字版图片卡片”的结构化描述。',
-            '只输出 JSON，不要解释。',
-            '格式：{"title":"不超过12字","description":"不超过48字，强调画面感","theme":"polaroid|film|note|poster"}',
-            `角色：${character.name}`,
-            `动态正文：${momentContent}`,
-          ].join('\n'),
-        },
+  const styleHints =
+    mode === 'relationship_carryover'
+      ? [
+          '直接给出已经可以发布的动态正文。',
+          '允许带一点和用户有关的余波，但不要写成对用户说话。',
+          '重点是公开可见的状态感，而不是私聊外溢。',
+        ]
+      : mode === 'self_life'
+        ? [
+            '直接给出已经可以发布的动态正文。',
+            '优先写角色自己的生活、观察、兴趣和状态感。',
+            '如果提到用户，只能是很轻的关系余波。',
+          ]
+        : [
+            '直接给出已经可以发布的动态正文。',
+            '可以写公开日常、兴趣吐槽或生活碎片。',
+            '和用户有关的内容不是禁区，但不要每条都围着用户转。',
+          ];
+
+  return buildMomentsPrompt({
+    characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
+    memoryContext: buildMomentMemoryContext(character),
+    postContext: {
+      signature: character.signature,
+      relationship,
+      maxLength: 50,
+      allowImages: false,
+      triggerReason: triggerHint || '当前是在生成一条已经准备公开发出的动态正文。这不是私聊回复。',
+      styleHints: [
+        ...styleHints,
+        '不要写成任务说明。',
+        '不要出现“你让我发”“那我发一条”这类过渡句。',
+        '像角色自己会发的一条公开状态。',
+        ...extraStyleHints,
       ],
-    });
-
-    return parseMomentImageCard(response, fallback);
-  } catch {
-    return fallback;
-  }
-}
-
-function getCleanChatReactionFallback() {
-  const fallbackReactions = [
-    '行，等着。',
-    '知道了，别催。',
-    '又使唤我了是吧。',
-    '行，我去弄。',
-  ];
-  return fallbackReactions[Math.floor(Math.random() * fallbackReactions.length)];
+    },
+  });
 }
 
 function normalizeGeneratedMomentContent(text: string) {
   return text
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/\r/g, '')
     .trim()
-    .replace(/^["“”'\s]+|["“”'\s]+$/g, '')
-    .replace(/^(动态|状态|朋友圈)[:：]\s*/i, '')
-    .trim();
+    .split('\n')
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 120);
 }
 
 function isContaminatedMomentContent(text: string) {
-  const normalized = normalizeGeneratedMomentContent(text);
+  const normalized = text.trim();
   if (!normalized) return true;
-  if (normalized.length > 120) return true;
-  if (MOMENT_BAD_SAMPLE_PATTERNS.some(pattern => pattern.test(normalized))) return true;
-  if (MOMENT_PROMPT_LEAK_PATTERNS.some(pattern => pattern.test(normalized))) return true;
-  return false;
+  return MOMENT_BAD_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function normalizeChatReaction(text: string) {
-  return text.replace(/\r?\n+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+  return text
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/\r/g, '')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 80);
 }
 
 function isContaminatedChatReaction(text: string) {
-  const normalized = normalizeChatReaction(text);
+  const normalized = text.trim();
   if (!normalized) return true;
-  if (normalized.length > 24) return true;
-  if (normalized.split(/[。！？!?]/).filter(Boolean).length > 2) return true;
-  if (CHAT_REACTION_PREVIEW_PATTERNS.some(pattern => pattern.test(normalized))) return true;
-  if (normalized.includes('“') || normalized.includes('"') || normalized.includes('：')) return true;
-  return false;
+  return CHAT_REACTION_BAD_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function getCleanMomentFallback() {
+  return MOMENT_FALLBACKS[Math.floor(Math.random() * MOMENT_FALLBACKS.length)];
+}
+
+function getCleanChatReactionFallback() {
+  return '行，我去整理一条。';
 }
 
 async function generateSingleText(options: {
@@ -292,114 +262,48 @@ async function generateSingleText(options: {
   fallback: string;
 }) {
   const { activeConfig, prompt, requestText, fallback } = options;
-  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
-
-  if (apiKey) {
-    let responseText = '';
-    await streamTextWithConfig({
-      activeConfig: {
-        ...activeConfig,
-        apiKey,
-      },
-      temperature: activeConfig.temperature ?? 0.7,
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: requestText.trim() || '请按上面的规则直接生成最终内容。' },
-      ],
-      onTextChunk: (chunkText) => {
-        responseText += chunkText;
-      },
-    });
-
-    return responseText;
-  }
-
-  return fallback.trim();
-}
-
-function buildMomentImageReferenceMessages(moment: MomentLike): RuntimeChatMessage[] {
-  if (!moment.images?.length) {
-    return [];
-  }
-
-  return moment.images
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((imageUrl, index) => ({
-      role: 'user' as const,
-      content: `这是这条动态的配图参考 ${index + 1}，请先看图，再结合动态文字和任务要求生成回复。`,
-      imageUrl,
-    }));
-}
-
-async function generateMomentTextWithOptionalImages(options: {
-  activeConfig: ApiConfig;
-  prompt: string;
-  requestText: string;
-  fallback: string;
-  moment: MomentLike;
-}) {
-  const { activeConfig, prompt, requestText, fallback, moment } = options;
-  const imageMessages = buildMomentImageReferenceMessages(moment);
-
-  if (imageMessages.length === 0) {
-    return generateSingleText({
+  try {
+    const text = await generateTextFromMessagesWithConfig({
       activeConfig,
-      prompt,
-      requestText,
-      fallback,
+      messages: [
+        {
+          role: 'user',
+          content: `${prompt}\n\n${requestText}`,
+        },
+      ],
+      temperature: 0.8,
     });
+    return text?.trim() || fallback;
+  } catch {
+    return fallback;
   }
-
-  const apiKey = activeConfig.apiKey?.trim() || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return fallback.trim();
-  }
-
-  return generateTextFromMessagesWithConfig({
-    activeConfig: {
-      ...activeConfig,
-      apiKey,
-    },
-    temperature: activeConfig.temperature ?? 0.7,
-    messages: [
-      ...imageMessages,
-      {
-        role: 'user',
-        content: `${prompt}\n\n${requestText.trim() || '请按上面的规则直接生成最终内容。'}`,
-      },
-    ],
-  });
 }
 
-function buildMomentPostPrompt(options: {
+function hashString(input: string) {
+  let value = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    value = ((value << 5) - value + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(value);
+}
+
+async function generateMomentImageCard(options: {
+  activeConfig: ApiConfig;
   character: Character;
-  masks: Mask[];
-  worldBook: WorldBookEntry[];
-  triggerHint?: string;
-  extraStyleHints?: string[];
-}) {
-  const { character, masks, worldBook, triggerHint, extraStyleHints = [] } = options;
-  return buildMomentsPrompt({
-    characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
-    memoryContext: buildMomentMemoryContext(character),
-    postContext: {
-      signature: character.signature,
-      relationship: '角色在社交动态页发一条公开可见的状态',
-      maxLength: 50,
-      allowImages: false,
-      triggerReason: triggerHint || '当前是一次发动态行为，需要生成一条已经准备发布到动态页的公开正文。',
-      styleHints: [
-        '直接给出要发布的动态正文',
-        '不要回应用户指令',
-        '不要写成私聊回复',
-        '不要写成任务说明',
-        '不要出现“你让我发”“那我发一条”“我来发”这类过渡句',
-        '像角色自己会发的状态',
-        ...extraStyleHints,
-      ],
-    },
-  });
+  momentContent: string;
+}): Promise<MomentImageCard | undefined> {
+  const { character, momentContent } = options;
+  const normalized = momentContent.trim();
+  if (!normalized) return undefined;
+
+  const themePool: MomentImageCard['theme'][] = ['polaroid', 'film', 'note', 'poster'];
+  const theme = themePool[hashString(`${character.id}:${normalized}`) % themePool.length];
+
+  return {
+    title: `${character.name} 的动态`,
+    description: normalized.slice(0, 28),
+    theme,
+  };
 }
 
 export async function generateMomentPostContent(options: {
@@ -411,18 +315,20 @@ export async function generateMomentPostContent(options: {
 }): Promise<GeneratedMomentPost> {
   const { activeConfig, character, masks, worldBook, requestText } = options;
   const fallback = getCleanMomentFallback();
+  const momentMode = inferMomentPostMode(requestText);
 
-  const firstPrompt = buildMomentPostPrompt({
+  const firstPrompt = buildBalancedMomentPostPrompt({
     character,
     masks,
     worldBook,
-    triggerHint: '当前是一次发动态行为，需要生成一条角色已经准备公开发布的动态正文。这不是聊天回复。',
+    triggerHint: 'Generate a publishable public post body. This is not a chat reply.',
+    mode: momentMode,
   });
 
   const firstPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: firstPrompt,
-    requestText: `请直接生成一条可发布的动态正文。触发来源：${requestText}`,
+    requestText: `Generate one publishable public post body. Trigger: ${requestText}`,
     fallback,
   }));
 
@@ -437,22 +343,24 @@ export async function generateMomentPostContent(options: {
     };
   }
 
-  const retryPrompt = buildMomentPostPrompt({
+  const retryPrompt = buildBalancedMomentPostPrompt({
     character,
     masks,
     worldBook,
-    triggerHint: '重新生成一条真正的动态正文。上一版带有任务解释或对用户说话的痕迹，这次只保留角色本人会发的状态内容。',
+    triggerHint: 'Regenerate a clean public post body. Remove task narration and direct-chat residue.',
+    mode: momentMode,
     extraStyleHints: [
-      '绝对不要提用户要求你发动态',
-      '绝对不要出现“发动态”“我发一条”“给你发”之类字样',
-      '把内容写成已经发出去的一条状态',
+      'Do not write the post as direct speech to the user.',
+      'Do not make the whole post orbit around the user.',
+      'Prefer the character’s own life fragments, interests, observations, and state.',
+      'Write it as a post that has already been published.',
     ],
   });
 
   const secondPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: retryPrompt,
-    requestText: `请重新生成一条可发布的动态正文。触发来源：${requestText}`,
+    requestText: `Regenerate one publishable public post body. Trigger: ${requestText}`,
     fallback,
   }));
 
@@ -485,30 +393,25 @@ export async function generateMomentChatReaction(options: {
   requestText: string;
 }) {
   const { activeConfig, character, masks, worldBook, requestText } = options;
+
   const reactionPrompt = buildChatPrompt({
     mode: 'chat',
     characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
     memoryContext: buildMomentMemoryContext(character),
     sections: [
-      `【特殊当前任务】
-用户刚刚要求你去发一条动态，原话是：“${requestText}”
-
-你现在只需要在聊天里先回用户一句自然反应。
-这句是聊天回复，不是动态正文，也不是动态预告。
-
-要求：
-1. 只回复 1 到 2 句短反应。
-2. 可以答应、吐槽、嘴硬、敷衍、接梗，但要像对用户说话。
-3. 不要直接输出准备发布的动态正文。
-4. 不要提前说出你打算发什么内容。
-5. 不要出现“我发一句……”“我去发个……”“我准备发……”这种预告式表达。`
+      [
+        '【特殊当前任务】用户刚刚要你去发一条动态。',
+        '你现在只需要先在聊天里自然回用户一句，像聊天回复，不是动态正文。',
+        '要求：1 到 2 句；可以答应、吐槽、接梗，但不要提前把动态正文说出来。',
+        '不要出现“我发一条”“我去发个动态”这种预告式表达。',
+      ].join('\n'),
     ],
   });
 
   const reaction = normalizeChatReaction(await generateSingleText({
     activeConfig,
     prompt: reactionPrompt,
-    requestText: `请按规则先在聊天里自然回应这次发动态请求：${requestText}`,
+    requestText: `请先在聊天里自然回应这次发动态请求：${requestText}`,
     fallback: getCleanChatReactionFallback(),
   }));
 
@@ -528,53 +431,23 @@ export function buildFallbackMomentCommentReply(
   const commentType = classifyMomentCommentType(userComment);
   const content = moment.content.trim();
   const pools: Record<string, string[]> = {
-    '无意义搭话 / 测试词': [
-      '别水我。',
-      '又来试探我？',
-      '你这也太敷衍了。',
-      '发个正经评论行不行。',
-    ],
-    '调侃 / 接梗': [
-      '行，你这梗我接了。',
-      '嘴还挺会贫。',
-      '你这句倒是挺到位。',
-      '又被你接上了。',
-    ],
-    '吐槽': [
-      '我也没说错吧。',
-      '你先别急着嫌弃。',
-      '这条就是给你吐槽的。',
-      '我发这句本来就带点怨气。',
-    ],
-    '冒犯 / 骂人': [
-      '嘴这么冲干嘛。',
-      '行，你今天火气不小。',
-      '少来这套。',
-      '你这是专门来呛我？',
-    ],
-    '求助 / 认真问': [
-      '先别慌，我看一眼。',
-      '你先说细一点。',
-      '这条底下问我，算你找对人。',
-      '行，我接着跟你说。',
-    ],
-    '普通评论': [
-      '你这句我收到了。',
-      '这条底下回你一句。',
-      '行，我看到你这句了。',
-      '你倒是会挑地方说。',
-    ],
+    '无意义搭话 / 测试话': ['别水我。', '又来试探我？', '你这也太敷衍了。', '发个正经评论行不行。'],
+    '调侃 / 接梗': ['行，你这梗我接了。', '嘴还挺会贫。', '你这句倒是挺到位。', '又被你接上了。'],
+    '吐槽': ['我也没说错吧。', '你先别急着嫌弃。', '这条就是给你吐槽的。', '我发这句本来就带点怨气。'],
+    '冒犯 / 骂人': ['嘴这么冲干啥。', '行，你今天火气不小。', '少来这套。', '你这是专门来呛我？'],
+    '求助 / 认真问': ['先别慌，我看一眼。', '你先说细一点。', '这条底下问我，算你找对人。', '行，我接着跟你说。'],
+    '普通评论': ['你这句我收到了。', '这条底下回你一句。', '行，我看到你这句了。', '你倒是会挑地方说。'],
   };
 
-  const toneBoost = /困|累|烦|无语|离谱|崩/.test(content)
+  const toneBoost = /烦|累|无语|离谱|崩/.test(content)
     ? ['我这条本来就带点烦。', '你正好撞我这会儿情绪上。']
     : /哈哈|开心|好耶|笑死/.test(content)
       ? ['你这句接得还挺顺。', '行，这条底下算你接住了。']
       : [];
 
   const candidates = [...(pools[commentType] || pools['普通评论']), ...toneBoost];
-  const lowerRecent = recentReplies.map(item => item.toLowerCase());
-  const picked = candidates.find(item => !lowerRecent.some(recent => recent.includes(item.toLowerCase())));
+  const lowerRecent = recentReplies.map((item) => item.toLowerCase());
+  const picked = candidates.find((item) => !lowerRecent.some((recent) => recent.includes(item.toLowerCase())));
 
   return picked || candidates[0] || `${replyCharacter.name} 看到了。`;
 }
@@ -590,80 +463,40 @@ export async function generateMomentCommentReply(options: {
   const { activeConfig, replyCharacter, moment, userComment, characters, userName } = options;
   const recentCommentReplies = getRecentMomentReplyContext(moment, characters, userName);
   const commentType = classifyMomentCommentType(userComment);
+  const fallback = buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
 
-  if (!activeConfig.apiKey) {
-    return buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
-  }
+  const prompt = buildMomentCommentReplyPrompt({
+    characterCore: {
+      characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
+    },
+    memoryContext: buildMomentMemoryContext(replyCharacter),
+    momentContext: {
+      momentContent: moment.content,
+      momentTone: inferMomentTone(moment.content),
+      momentIntent: inferMomentIntent(moment.content),
+      signature: replyCharacter.signature,
+      relationship: '角色在自己动态的评论区里回复用户',
+      commentType,
+      userComment,
+      recentCommentReplies,
+      maxLength: 30,
+      replyStyleHints: [
+        '要贴着动态正文接话。',
+        '像评论区顺手回一句。',
+        '不要展开成长解释。',
+        '最近几条回复不要重复句型。',
+      ],
+    },
+  });
 
-  try {
-    const prompt = buildMomentCommentReplyPrompt({
-      characterCore: {
-        characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
-      },
-      memoryContext: buildMomentMemoryContext(replyCharacter),
-      momentContext: {
-        momentContent: moment.content,
-        momentTone: inferMomentTone(moment.content),
-        momentIntent: inferMomentIntent(moment.content),
-        signature: replyCharacter.signature,
-        relationship: '角色在自己动态的评论区里回复用户',
-        commentType,
-        userComment,
-        recentCommentReplies,
-        maxLength: 30,
-        replyStyleHints: [
-          '要贴着动态正文接话',
-          '延续发动态时的状态',
-          '像评论区顺手回一句',
-          '不要展开解释',
-          '最近几条回复不要重复句型',
-          '按评论类型自然区分回应方式',
-        ],
-      },
-      sections: [
-        buildMomentExpressionStyleSection(replyCharacter),
-        buildMomentCommentToneGuardSection(),
-      ].filter(Boolean) as string[],
-    });
+  const response = normalizeChatReaction(await generateSingleText({
+    activeConfig,
+    prompt,
+    requestText: `请以评论区回复的方式，自然回应这条用户评论：${userComment}`,
+    fallback,
+  }));
 
-    const response = await generateMomentTextWithOptionalImages({
-      activeConfig,
-      prompt,
-      requestText: `请以评论区回复的方式，自然回复这条用户评论：${userComment}`,
-      fallback: buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies),
-      moment,
-    });
-
-    return response || buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
-  } catch {
-    return buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
-  }
-}
-
-export function buildFallbackMomentAutoComment(
-  replyCharacter: Character,
-  moment: MomentLike,
-  recentReplies: string[],
-) {
-  const content = moment.content.trim();
-  const toneBoost = /哈哈|开心|庆祝|爽|太好了|收工/.test(content)
-    ? ['这条看着还挺有劲。', '这句状态我认。', '行，这条我给你点个头。']
-    : /烦|累|崩|难受|无语|不想/.test(content)
-      ? ['看出来你今天状态不轻松。', '这条一看就有情绪。', '行，我先在这条底下陪你一句。']
-      : ['这条我看见了。', '这句还挺像你。', '这条底下我先占个位置。'];
-
-  const genericPool = [
-    `${replyCharacter.name} 已阅。`,
-    '这条我先评论一句。',
-    '我路过，留个言。',
-    '行，这条我看到了。',
-  ];
-
-  const candidates = [...toneBoost, ...genericPool];
-  const lowerRecent = recentReplies.map(item => item.toLowerCase());
-  const picked = candidates.find(item => !lowerRecent.some(recent => recent.includes(item.toLowerCase())));
-
-  return picked || candidates[0] || `${replyCharacter.name} 看到了。`;
+  return response || fallback;
 }
 
 export async function generateMomentAutoComment(options: {
@@ -675,50 +508,43 @@ export async function generateMomentAutoComment(options: {
 }) {
   const { activeConfig, replyCharacter, moment, characters, userName } = options;
   const recentCommentReplies = getRecentMomentReplyContext(moment, characters, userName);
+  const fallbackPool = [
+    '这条我看到了。',
+    '行，这句有点意思。',
+    '先记一笔。',
+    '这状态我懂。',
+  ];
+  const fallback = fallbackPool[hashString(`${replyCharacter.id}:${moment.content}`) % fallbackPool.length];
 
-  if (!activeConfig.apiKey) {
-    return buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
-  }
+  const prompt = buildMomentCommentReplyPrompt({
+    characterCore: {
+      characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
+    },
+    memoryContext: buildMomentMemoryContext(replyCharacter),
+    momentContext: {
+      momentContent: moment.content,
+      momentTone: inferMomentTone(moment.content),
+      momentIntent: inferMomentIntent(moment.content),
+      signature: replyCharacter.signature,
+      relationship: '角色在公开动态下顺手留一句评论',
+      commentType: '自动评论',
+      userComment: '请对这条动态留一句自然短评。',
+      recentCommentReplies,
+      maxLength: 24,
+      replyStyleHints: [
+        '像评论区顺手留一句短评。',
+        '可以是态度、接梗、轻吐槽或认可。',
+        '不要写成私聊回复。',
+      ],
+    },
+  });
 
-  try {
-    const prompt = buildMomentCommentReplyPrompt({
-      characterCore: {
-        characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
-      },
-      memoryContext: buildMomentMemoryContext(replyCharacter),
-      momentContext: {
-        momentContent: moment.content,
-        momentTone: inferMomentTone(moment.content),
-        momentIntent: inferMomentIntent(moment.content),
-        signature: replyCharacter.signature,
-        relationship: '角色在用户动态的评论区里自然留言',
-        userComment: '用户刚发了一条动态，请自然留一句评论。',
-        recentCommentReplies,
-        maxLength: 24,
-        replyStyleHints: [
-          '这是顶层评论，不是回复用户的评论',
-          '像刷到动态后顺手留一句',
-          '不要写成聊天回复',
-          '不要长篇解释',
-          '最近几条评论不要重复句型',
-        ],
-      },
-      sections: [
-        buildMomentExpressionStyleSection(replyCharacter),
-        buildMomentCommentToneGuardSection(),
-      ].filter(Boolean) as string[],
-    });
+  const response = normalizeChatReaction(await generateSingleText({
+    activeConfig,
+    prompt,
+    requestText: `请为这条动态写一句自然短评：${moment.content}`,
+    fallback,
+  }));
 
-    const response = await generateMomentTextWithOptionalImages({
-      activeConfig,
-      prompt,
-      requestText: `请作为路过看到动态的人，留下一句自然评论。动态内容：${moment.content}`,
-      fallback: buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies),
-      moment,
-    });
-
-    return response || buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
-  } catch {
-    return buildFallbackMomentAutoComment(replyCharacter, moment, recentCommentReplies);
-  }
+  return response || fallback;
 }

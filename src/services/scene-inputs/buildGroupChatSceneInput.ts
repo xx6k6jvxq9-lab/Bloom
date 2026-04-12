@@ -333,7 +333,7 @@ function buildRelationshipTensionSummary(
       const memberHasRomantic = memberSignals.has('romantic') || memberSignals.has('ambiguous_romantic') || memberSignals.has('ex');
 
       if (speakerHasRomantic && memberHasRomantic) {
-        return `${member.name} 也和用户存在恋爱或暧昧向关系，同场时可能自然出现比较、试探、吃味、装作没事或轻微抢位；但只有符合你的人设时才需要表现出来。`;
+        return `${member.name} 也和用户存在恋爱或暧昧向关系，同场时可能自然出现比较、试探、吃味、装作没事或轻微护位；但只有符合你的人设时才需要表现出来。`;
       }
 
       if (sharedSignals.length > 0) {
@@ -452,7 +452,7 @@ function formatGroupTemporalStatePrompt(
     low: '低',
   };
   const topicActionGuideMap: Record<typeof state.topicHeatState.suggestedTopicAction, string> = {
-    continue: '当前群里这个点还能自然接，但仍然只接最 relevant 的一小步，不要抢着把话说满。',
+    continue: '当前群里这个点还可以自然承接，但仍然只接最 relevant 的一小步，不要抢着把话说满。',
     soften: '当前群里这个点已经有点过热了，优先收一收力度，别一直围着同一个点追打。',
     shift: '当前群里可以自然转去更贴近此刻气氛的新点，不要死咬旧点不放。',
     close: '当前群里这个点可以先收束，允许停顿、留白，或者把空间让给别人。',

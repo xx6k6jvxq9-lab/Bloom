@@ -539,6 +539,8 @@ export type Character = {
   globalMemory?: string;
   autoSummaryEnabled?: boolean;
   summaryInterval?: number;
+  autoLongTermMinShortTermEntries?: number;
+  autoLongTermMinDaySpan?: number;
   memorySummary?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
@@ -567,6 +569,57 @@ export type SharedPostSnapshot = {
   images?: string[];
   authorName: string;
   authorAvatar: string;
+};
+
+export type GroupPollOption = {
+  id: string;
+  text: string;
+  voterIds: string[];
+};
+
+export type GroupPollCard = {
+  kind: 'poll';
+  title: string;
+  createdBy: string;
+  createdAt: number;
+  status: 'active' | 'completed';
+  options: GroupPollOption[];
+};
+
+export type GroupRelayEntry = {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  timestamp: number;
+};
+
+export type GroupRelayCard = {
+  kind: 'relay';
+  topic: string;
+  createdBy: string;
+  createdAt: number;
+  status: 'active' | 'completed';
+  entries: GroupRelayEntry[];
+};
+
+export type GroupTaskEntry = {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  timestamp: number;
+};
+
+export type GroupTaskCard = {
+  kind: 'task';
+  prompt: string;
+  createdBy: string;
+  createdAt: number;
+  participantIds: string[];
+  rounds: number;
+  status: 'active' | 'completed';
+  entries: GroupTaskEntry[];
 };
 
 export type ChatMessage = {
@@ -601,6 +654,9 @@ export type ChatMessage = {
   duration?: number; // For voice call duration
   location?: { name: string; address?: string; isVirtual?: boolean };
   isInnerVoice?: boolean;
+  groupPollCard?: GroupPollCard;
+  groupRelayCard?: GroupRelayCard;
+  groupTaskCard?: GroupTaskCard;
 };
 
 export type ChatHistory = {

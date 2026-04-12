@@ -14,6 +14,7 @@ import { buildCharacterContext } from '../relationship-context/buildCharacterCon
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
+import { decayShortTermSummaryForContinuity } from '../memory/buildShortTermSummary';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
@@ -139,6 +140,34 @@ function buildContinuityResumePrompt(state: ReturnType<typeof buildCharacterTemp
   ].join('\n');
 }
 
+function formatPresenceCuePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
+  if (state.continuityMode === 'continuous_scene') {
+    return [
+      '## 角色当前在线存在感',
+      '[上线方式] 当前仍是连续聊天，不需要额外表演“重新出现”。',
+      `[当下状态提示] ${state.presenceCue.attentionNote}`,
+      '[表达要求] 自然延续即可，不要突然补一段“这段时间发生了什么”。',
+    ].join('\n');
+  }
+
+  const resumeStyleLabelMap: Record<typeof state.presenceCue.resumeStyle, string> = {
+    natural_continue: '自然延续',
+    soft_return: '轻量回线',
+    fresh_reentry: '重新上线',
+  };
+
+  return [
+    '## 角色当前在线存在感',
+    `[上线方式] ${resumeStyleLabelMap[state.presenceCue.resumeStyle]}`,
+    `[当前生活底色] ${state.presenceCue.currentActivity}`,
+    `[开口力度] ${state.presenceCue.attentionNote}`,
+    `[余波提醒] ${state.presenceCue.lifeResidue}`,
+    state.continuityMode === 'same_day_resume'
+      ? '[表达要求] 这轮更像同一天里隔了一会儿又回来，不要演成久别重逢，也不要把状态说明书式地说出来。'
+      : '[表达要求] 这轮更像隔了一段时间后重新上线，可以带一点“刚回来”的气息，但不要播报日程、不要突然制造关键新事实。',
+  ].join('\n');
+}
+
 function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
   const timePeriodLabelMap: Record<typeof state.temporalFacts.timePeriod, string> = {
     late_night: '深夜',
@@ -261,7 +290,12 @@ export function buildChatSceneInput(
     userName: params.userName,
   };
   const recentContext: ChatRecentContext = {
-    shortTermSummary: characterScopedMemory.shortTermSummary,
+    shortTermSummary: characterScopedMemory.shortTermSummary
+      ? decayShortTermSummaryForContinuity(
+        characterScopedMemory.shortTermSummary,
+        characterTemporalState.continuityMode,
+      )
+      : characterScopedMemory.shortTermSummary,
     recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
     sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
     publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
@@ -276,6 +310,7 @@ export function buildChatSceneInput(
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
     }).concat(
+      formatPresenceCuePrompt(characterTemporalState),
       buildSharedGroupInteropSections(
         directMemoryReadableGroups,
         params.character,
@@ -286,6 +321,13 @@ export function buildChatSceneInput(
 
   return {
     mode: params.mode,
+    directReplyConfig: {
+      minReplies: Math.max(1, Math.min(params.character.minReplies || 1, 10)),
+      maxReplies: Math.max(
+        Math.max(1, Math.min(params.character.minReplies || 1, 10)),
+        Math.min(params.character.maxReplies || 3, 10),
+      ),
+    },
     includeProtocolRules: params.includeProtocolRules,
     characterCore: {
       characterSetting: characterContext.corePersona ?? '',

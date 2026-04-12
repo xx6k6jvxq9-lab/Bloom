@@ -7,13 +7,13 @@ import { ChatMemoryLibraryEntry } from './ChatMemoryLibraryEntry';
 import { ChatMemoryLibraryYear } from './ChatMemoryLibraryYear';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
-import { generateTextWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
+import { generateTextFromMessagesWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 import { appendMemoryLibraryEntries, deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExportFormat, type MemoryExportScope } from '../../services/memory/exportMemory';
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
-import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
+import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
@@ -56,6 +56,15 @@ function SettingsSection({
       {open && <div className="mt-3">{children}</div>}
     </div>
   );
+}
+
+function isRetryableSummaryStreamError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('failed to fetch') || message.includes('networkerror');
 }
 
 function ResolvedSettingsImage({
@@ -250,6 +259,14 @@ export function ChatSettingsPanel({
   visualSettings: VisualSettings;
   onUpdateVisualSettings: (settings: VisualSettings) => void;
 }) {
+  const CHARACTER_EDITOR_LIMITS = {
+    remarkName: 32,
+    signature: 200,
+    corePersona: 6000,
+    expressionStyle: 3000,
+    boundaryPack: 2000,
+  } as const;
+
   const { setUploadedFile } = usePersistentFieldActions();
   const [expandedSection, setExpandedSection] = useState<'basic' | 'chat' | 'model' | 'resource' | null>(null);
   const [tempAvatar, setTempAvatar] = useState('');
@@ -354,6 +371,28 @@ export function ChatSettingsPanel({
   useEffect(() => {
     setPendingSignature(character.signature ?? '');
   }, [character.signature]);
+
+  useEffect(() => {
+    if (!activeMemoryDetail) {
+      return;
+    }
+
+    setActiveMemoryEntry((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return activeMemoryEntries.find((entry) => entry.id === current.id) ?? null;
+    });
+
+    setActiveMemoryYear((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return activeMemoryYearGroups.find((group) => group.key === current.key) ?? null;
+    });
+  }, [activeMemoryDetail, character.memoryLibraryEntries]);
 
   const appendSharedStickers = (stickers: string[]) => {
     const nextStickers = normalizeStickerEntries([
@@ -499,6 +538,21 @@ export function ChatSettingsPanel({
     setLoading(true);
     try {
       const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
+      const summarySourceLines = summaryHistoryWindow
+        .map((msg) => {
+          const mainText = getMessageMainText(msg).trim();
+          if (!mainText) {
+            return '';
+          }
+
+          return `${msg.role === 'user' ? '用户' : character.name}: ${mainText}`;
+        })
+        .filter(Boolean);
+
+      if (summarySourceLines.length === 0) {
+        alert('当前窗口里没有可供总结的有效文本内容。');
+        return;
+      }
       
       const prompt = buildSummaryPrompt({
         mode,
@@ -509,17 +563,31 @@ export function ChatSettingsPanel({
           shortTermSummary,
           longTermMemoryProfile,
         },
-        sections: [
-          summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n')
-        ],
-      });
-      const responseText = await generateTextWithConfig({
-        activeConfig,
-        prompt,
+        sections: [summarySourceLines.join('\n')],
       });
 
-      if (responseText) {
-        onComplete(responseText);
+      let responseText = '';
+      try {
+        await streamTextWithConfig({
+          activeConfig,
+          messages: [{ role: 'user', content: prompt }],
+          onTextChunk: (chunkText) => {
+            responseText += chunkText;
+          },
+        });
+      } catch (error) {
+        if (!isRetryableSummaryStreamError(error)) {
+          throw error;
+        }
+
+        responseText = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [{ role: 'user', content: prompt }],
+        });
+      }
+
+      if (responseText.trim()) {
+        onComplete(responseText.trim());
         alert('总结完成！');
       }
     } catch (error: any) {
@@ -556,6 +624,7 @@ export function ChatSettingsPanel({
       longTermMemoryProfile,
       onComplete: (responseText) => onUpdate({
         ...character,
+        shortTermSummary: compressShortTermSummaryAfterLongTerm(shortTermSummary),
         longTermMemoryProfile: responseText,
         ...buildMemoryLibraryPatch(character, {
           kind: 'long-term',
@@ -1064,10 +1133,13 @@ export function ChatSettingsPanel({
                       <input
                         type="text"
                         value={pendingRemarkName}
-                        onChange={e => setPendingRemarkName(e.target.value)}
+                        onChange={e => setPendingRemarkName(e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.remarkName))}
                         placeholder="例如：阿白、学长、小周"
                         className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-zinc-900"
                       />
+                      <div className="text-[11px] text-zinc-400 text-right">
+                        {pendingRemarkName.length}/{CHARACTER_EDITOR_LIMITS.remarkName}
+                      </div>
                       <button
                         onClick={() => {
                           onUpdate({ ...character, remarkName: pendingRemarkName });
@@ -1096,10 +1168,13 @@ export function ChatSettingsPanel({
                     <div className="space-y-2">
                       <textarea
                         value={pendingSignature}
-                        onChange={e => setPendingSignature(e.target.value)}
+                        onChange={e => setPendingSignature(e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.signature))}
                         placeholder="这个角色希望在资料页展示的一句签名..."
                         className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[88px] resize-none"
                       />
+                      <div className="text-[11px] text-zinc-400 text-right">
+                        {pendingSignature.length}/{CHARACTER_EDITOR_LIMITS.signature}
+                      </div>
                       <button
                         onClick={() => {
                           onUpdate({ ...character, signature: pendingSignature });
@@ -1607,16 +1682,48 @@ export function ChatSettingsPanel({
                   </div>
 
                   {character.autoSummaryEnabled && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[14px] text-zinc-700">总结间隔 (条)</span>
-                      <input
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={character.summaryInterval || 20}
-                        onChange={e => onUpdate({ ...character, summaryInterval: parseInt(e.target.value) })}
-                        className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
-                      />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[14px] text-zinc-700">总结间隔 (条)</span>
+                        <input
+                          type="number"
+                          min="10"
+                          max="100"
+                          value={character.summaryInterval || 20}
+                          onChange={e => onUpdate({ ...character, summaryInterval: parseInt(e.target.value) })}
+                          className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[14px] text-zinc-700">长期沉淀阈值 (短期条数)</span>
+                          <span className="text-[11px] text-zinc-500">累计多少条自动短期记忆后，才允许尝试自动生成长期画像。</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={character.autoLongTermMinShortTermEntries || 5}
+                          onChange={e => onUpdate({ ...character, autoLongTermMinShortTermEntries: parseInt(e.target.value) })}
+                          className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[14px] text-zinc-700">长期沉淀跨天阈值</span>
+                          <span className="text-[11px] text-zinc-500">这些自动短期记忆至少跨几天后，才允许进入长期，避免同一天情绪直接沉淀。</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          max="7"
+                          value={character.autoLongTermMinDaySpan || 2}
+                          onChange={e => onUpdate({ ...character, autoLongTermMinDaySpan: parseInt(e.target.value) })}
+                          className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-blue-500"
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1795,10 +1902,13 @@ export function ChatSettingsPanel({
                   <p className="text-[11px] text-zinc-500 mb-3">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
                   <textarea
                     value={character.corePersona ?? character.setting}
-                    onChange={e => onUpdate({ ...character, corePersona: e.target.value })}
+                    onChange={e => onUpdate({ ...character, corePersona: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.corePersona) })}
                     placeholder="输入核心人设..."
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[320px] resize-none"
                   />
+                  <div className="mt-2 text-[11px] text-zinc-400 text-right">
+                    {(character.corePersona ?? character.setting).length}/{CHARACTER_EDITOR_LIMITS.corePersona}
+                  </div>
                 </div>
               </SettingsSection>
 
@@ -1812,10 +1922,13 @@ export function ChatSettingsPanel({
                   </p>
                   <textarea
                     value={expressionStyle}
-                    onChange={e => onUpdate({ ...character, expressionStyle: e.target.value })}
+                    onChange={e => onUpdate({ ...character, expressionStyle: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.expressionStyle) })}
                     placeholder="例如：嘴硬时会先轻轻顶一句，再把真实关心补回来；靠近时不黏腻，会用很自然的小动作和短句试探。"
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
                   />
+                  <div className="mt-2 text-[11px] text-zinc-400 text-right">
+                    {expressionStyle.length}/{CHARACTER_EDITOR_LIMITS.expressionStyle}
+                  </div>
                 </div>
               </SettingsSection>
 
@@ -1829,10 +1942,13 @@ export function ChatSettingsPanel({
                   </p>
                   <textarea
                     value={boundaryPack}
-                    onChange={e => onUpdate({ ...character, boundaryPack: e.target.value })}
+                    onChange={e => onUpdate({ ...character, boundaryPack: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.boundaryPack) })}
                     placeholder="例如：不把关心写成控制；关系没到时不主动说过火的话；不会说脏话；不能编造不存在的共同经历。"
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[160px] resize-none"
                   />
+                  <div className="mt-2 text-[11px] text-zinc-400 text-right">
+                    {boundaryPack.length}/{CHARACTER_EDITOR_LIMITS.boundaryPack}
+                  </div>
                 </div>
               </SettingsSection>
             </div>

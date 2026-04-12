@@ -124,6 +124,27 @@ function ResolvedAssetImage({
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
+  if (text.startsWith('[notice]')) {
+    return text.replace(/^\[notice\]\s*/i, '').trim();
+  }
+  if (text.startsWith('[audio]')) {
+    return '[语音]';
+  }
+  if (text.startsWith('[image]')) {
+    return '[图片]';
+  }
+  if (text.startsWith('[sticker]')) {
+    return '[表情包]';
+  }
+  if (text.startsWith('[group-poll]')) {
+    return '[群投票]';
+  }
+  if (text.startsWith('[group-relay]')) {
+    return '[群接龙]';
+  }
+  if (text.startsWith('[group-task]')) {
+    return '[群小任务]';
+  }
   if (text.startsWith('[GAME_CARD]')) {
     return '[游戏卡片]';
   }
@@ -1359,6 +1380,124 @@ export default function App() {
 }
 
 function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) => void; onBack: () => void; groups: string[]; key?: string }) {
+  const CHARACTER_FIELD_LIMITS = {
+    name: 32,
+    remarkName: 32,
+    setting: 6000,
+    signature: 200,
+    openingRemark: 300,
+    avatar: 4000,
+    importText: 20000,
+  } as const;
+
+  const MAX_CHARACTER_IMPORT_FILE_SIZE = 512 * 1024;
+
+  const clampText = (value: unknown, max: number) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().slice(0, max);
+  };
+
+  const normalizeImportedGender = (value: unknown): 'male' | 'female' | 'other' => {
+    if (typeof value !== 'string') return 'other';
+    const normalized = value.trim().toLowerCase();
+    if (['male', 'man', 'm', '男'].includes(normalized)) return 'male';
+    if (['female', 'woman', 'f', '女'].includes(normalized)) return 'female';
+    return 'other';
+  };
+
+  const appendSectionValue = (target: Record<string, string>, key: string, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    target[key] = target[key] ? `${target[key]}\n${trimmed}` : trimmed;
+  };
+
+  const mapImportKey = (rawKey: string): string | null => {
+    const key = rawKey
+      .replace(/^#+\s*/, '')
+      .replace(/[：:]\s*$/, '')
+      .trim()
+      .toLowerCase();
+
+    if (['name', '角色名', '角色姓名', '姓名', '名字'].includes(key)) return 'name';
+    if (['remarkname', 'remark', '备注', '备注名', '称呼'].includes(key)) return 'remarkName';
+    if (['gender', '性别'].includes(key)) return 'gender';
+    if (['avatar', '头像', '头像链接', '头像地址'].includes(key)) return 'avatar';
+    if (['setting', 'persona', 'profile', '角色设定', '设定', '人设'].includes(key)) return 'setting';
+    if (['signature', '个性签名', '签名'].includes(key)) return 'signature';
+    if (['openingremark', 'opening', '开场白', '第一句话'].includes(key)) return 'openingRemark';
+    if (['group', 'groupid', '分组'].includes(key)) return 'groupId';
+    return null;
+  };
+
+  const parseLooseCharacterImport = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) throw new Error('导入内容为空');
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Fallback to labeled text/markdown parsing.
+    }
+
+    const sections: Record<string, string> = {};
+    let currentKey: string | null = null;
+
+    trimmed.split(/\r?\n/).forEach((line) => {
+      const cleaned = line.trim();
+      if (!cleaned) return;
+
+      const headingLike = cleaned.replace(/^[-*]\s*/, '');
+      const headingKey = mapImportKey(headingLike);
+      if (headingKey && !/[：:]/.test(headingLike)) {
+        currentKey = headingKey;
+        return;
+      }
+
+      const pairMatch = cleaned.match(/^#{0,6}\s*([^：:]+)\s*[：:]\s*(.*)$/);
+      if (pairMatch) {
+        const mapped = mapImportKey(pairMatch[1]);
+        if (mapped) {
+          currentKey = mapped;
+          appendSectionValue(sections, mapped, pairMatch[2]);
+          return;
+        }
+      }
+
+      if (currentKey) {
+        appendSectionValue(sections, currentKey, cleaned);
+      } else {
+        appendSectionValue(sections, 'setting', cleaned);
+      }
+    });
+
+    if (!sections.name) {
+      throw new Error('缺少角色姓名');
+    }
+
+    return sections;
+  };
+
+  const buildImportedCharacter = (raw: string) => {
+    const data = parseLooseCharacterImport(raw);
+    const nameValue = clampText(data.name, CHARACTER_FIELD_LIMITS.name);
+    if (!nameValue) throw new Error('缺少角色姓名');
+
+    return {
+      id: Date.now().toString(),
+      name: nameValue,
+      remarkName: clampText(data.remarkName, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
+      gender: normalizeImportedGender(data.gender),
+      avatar: clampText(data.avatar, CHARACTER_FIELD_LIMITS.avatar),
+      setting: clampText(data.setting, CHARACTER_FIELD_LIMITS.setting),
+      signature: clampText(data.signature, CHARACTER_FIELD_LIMITS.signature) || undefined,
+      openingRemark: clampText(data.openingRemark, CHARACTER_FIELD_LIMITS.openingRemark),
+      groupId: clampText(data.groupId, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
+    } satisfies Character;
+  };
+
   const [view, setView] = useState<'edit' | 'import'>('edit');
   const [name, setName] = useState('');
   const [remarkName, setRemarkName] = useState('');
@@ -1375,35 +1514,43 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
     if (!name.trim()) return alert('请输入角色姓名');
     onSave({
       id: Date.now().toString(),
-      name,
-      remarkName: remarkName.trim() || undefined,
+      name: name.trim().slice(0, CHARACTER_FIELD_LIMITS.name),
+      remarkName: remarkName.trim().slice(0, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
       gender,
-      avatar,
-      setting,
-      signature: signature.trim() || undefined,
-      openingRemark,
+      avatar: avatar.trim().slice(0, CHARACTER_FIELD_LIMITS.avatar),
+      setting: setting.slice(0, CHARACTER_FIELD_LIMITS.setting),
+      signature: signature.trim().slice(0, CHARACTER_FIELD_LIMITS.signature) || undefined,
+      openingRemark: openingRemark.slice(0, CHARACTER_FIELD_LIMITS.openingRemark),
       groupId: groupId || undefined,
     });
   };
 
   const handleImport = () => {
     try {
-      const data = JSON.parse(importJson);
-      if (!data.name) throw new Error('缺少角色姓名');
-      onSave({
-        id: Date.now().toString(),
-        name: data.name,
-        remarkName: data.remarkName || undefined,
-        gender: data.gender || 'other',
-        avatar: typeof data.avatar === 'string' ? data.avatar.trim() : '',
-        setting: data.setting || '',
-        signature: data.signature || undefined,
-        openingRemark: data.openingRemark || '',
-        groupId: data.groupId || undefined,
-      });
+      onSave(buildImportedCharacter(importJson));
     } catch (e: any) {
       alert('导入失败: ' + e.message);
     }
+  };
+
+  const handleImportFile = (file?: File | null) => {
+    if (!file) return;
+    if (file.size > MAX_CHARACTER_IMPORT_FILE_SIZE) {
+      alert('导入失败: 文件过大，请控制在 512KB 以内。');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const raw = String(reader.result || '');
+        setImportJson(raw.slice(0, CHARACTER_FIELD_LIMITS.importText));
+        onSave(buildImportedCharacter(raw));
+      } catch (e: any) {
+        alert('导入失败: ' + e.message);
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -1440,7 +1587,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                   type="text"
                   placeholder="输入头像链接..."
                   value={avatarDraft}
-                  onChange={e => setAvatarDraft(e.target.value)}
+                  onChange={e => setAvatarDraft(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.avatar))}
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2.5 text-[12px] outline-none focus:border-zinc-900"
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -1451,11 +1598,11 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                       setAvatar(extractImageUrls(nextAvatar)[0] || nextAvatar);
                       setAvatarDraft('');
                     }}
-                    className="bg-zinc-900 text-white text-[14px] py-3 rounded-xl font-semibold active:opacity-90"
+                    className="bg-zinc-100 border border-zinc-200 text-zinc-800 text-[14px] py-3 rounded-xl font-semibold active:opacity-90"
                   >
                     确认
                   </button>
-                  <label className="bg-white text-zinc-700 text-[14px] py-3 rounded-xl font-medium text-center cursor-pointer border border-zinc-100 active:opacity-80">
+                  <label className="bg-zinc-50 text-zinc-700 text-[14px] py-3 rounded-xl font-medium text-center cursor-pointer border border-zinc-200 active:opacity-80">
                     上传文件
                     <input 
                       type="file" 
@@ -1481,7 +1628,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                 <input
                   type="text"
                   value={name}
-                  onChange={e => setName(e.target.value)}
+                  onChange={e => setName(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.name))}
                   placeholder="角色姓名"
                   className="text-[15px] font-bold text-zinc-900 text-center bg-transparent border-none outline-none focus:ring-1 focus:ring-zinc-100 rounded px-2"
                 />
@@ -1496,10 +1643,11 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                 <input
                   type="text"
                   value={remarkName}
-                  onChange={e => setRemarkName(e.target.value)}
+                  onChange={e => setRemarkName(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.remarkName))}
                   placeholder="例如：阿白、学长、小周"
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors"
                 />
+                <p className="text-[12px] text-zinc-400 text-right">{remarkName.length}/{CHARACTER_FIELD_LIMITS.remarkName}</p>
               </div>
 
               <div className="space-y-1.5">
@@ -1509,7 +1657,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                     <button
                       key={g}
                       onClick={() => setGender(g)}
-                    className={`flex-1 py-2.5 rounded-xl text-[14px] font-medium border transition-all ${gender === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    className={`flex-1 py-2.5 rounded-xl text-[14px] font-medium border transition-all ${gender === g ? 'bg-zinc-100 border-zinc-200 text-zinc-800' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                     >
                       {g === 'male' ? '男' : g === 'female' ? '女' : '其他'}
                     </button>
@@ -1521,31 +1669,34 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                 <label className="text-[13px] text-zinc-500 ml-1">角色设定</label>
                 <textarea 
                   value={setting}
-                  onChange={e => setSetting(e.target.value)}
+                  onChange={e => setSetting(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.setting))}
                   placeholder="写这个角色是谁、怎么说话、关系气质和核心设定..."
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[120px] resize-none"
                 />
                 <p className="text-[12px] text-zinc-400 ml-1">先写完整设定，后续可在设置里细化。</p>
+                <p className="text-[12px] text-zinc-400 text-right">{setting.length}/{CHARACTER_FIELD_LIMITS.setting}</p>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[13px] text-zinc-500 ml-1">个性签名</label>
                 <textarea
                   value={signature}
-                  onChange={e => setSignature(e.target.value)}
+                  onChange={e => setSignature(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.signature))}
                   placeholder="这个角色在资料页里显示的一句签名..."
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[80px] resize-none"
                 />
+                <p className="text-[12px] text-zinc-400 text-right">{signature.length}/{CHARACTER_FIELD_LIMITS.signature}</p>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[13px] text-zinc-500 ml-1">开场白</label>
                 <textarea 
                   value={openingRemark}
-                  onChange={e => setOpeningRemark(e.target.value)}
+                  onChange={e => setOpeningRemark(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.openingRemark))}
                   placeholder="角色对你说的第一句话..."
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[15px] outline-none focus:border-zinc-900 transition-colors min-h-[80px] resize-none"
                 />
+                <p className="text-[12px] text-zinc-400 text-right">{openingRemark.length}/{CHARACTER_FIELD_LIMITS.openingRemark}</p>
               </div>
 
               <div className="space-y-1.5">
@@ -1553,7 +1704,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setGroupId('')}
-                    className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${!groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${!groupId ? 'bg-zinc-100 border-zinc-200 text-zinc-800' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                   >
                     无分组
                   </button>
@@ -1561,7 +1712,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
                     <button
                       key={g}
                       onClick={() => setGroupId(g)}
-                      className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                      className={`px-4 py-2 rounded-xl text-[13px] font-medium border transition-all ${groupId === g ? 'bg-zinc-100 border-zinc-200 text-zinc-800' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                     >
                       {g}
                     </button>
@@ -1582,18 +1733,40 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[13px] text-zinc-500 ml-1">JSON 数据</label>
-              <textarea 
-                value={importJson}
-                onChange={e => setImportJson(e.target.value)}
-                placeholder='{"name": "角色名", "setting": "角色设定", ...}'
-                className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[13px] font-mono outline-none focus:border-blue-500 transition-colors min-h-[300px] resize-none"
-              />
+              <div className="space-y-1.5">
+                <label className="text-[13px] text-zinc-500 ml-1">JSON 数据</label>
+                <textarea 
+                  value={importJson}
+                  onChange={e => setImportJson(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.importText))}
+                  placeholder={'{"name": "角色名", "setting": "角色设定", ...}\n\n或使用文本 / Markdown：\n角色名：阿白\n性别：男\n角色设定：...\n个性签名：...\n开场白：...'}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[13px] font-mono outline-none focus:border-blue-500 transition-colors min-h-[300px] resize-none"
+                />
+              </div>
+            <div className="space-y-3 px-1">
+              <p className="text-[12px] text-zinc-400">
+                支持 `JSON / TXT / Markdown`。文本格式可用“字段名：内容”的方式导入。
+              </p>
+              <p className="text-[12px] text-zinc-400 text-right">
+                {importJson.length}/{CHARACTER_FIELD_LIMITS.importText}
+              </p>
+              <label className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-zinc-200 text-zinc-600 text-[14px] font-medium active:bg-zinc-50 cursor-pointer">
+                <Upload size={18} />
+                从文件导入（JSON / TXT / MD）
+                <input
+                  type="file"
+                  accept=".json,.txt,.md,application/json,text/plain,text/markdown"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    handleImportFile(file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </label>
+              <p className="text-[12px] text-zinc-400">
+                为了避免本地存储爆掉，单个导入文件目前限制在 512KB 以内。
+              </p>
             </div>
-            <p className="text-[12px] text-zinc-400 px-1">
-              请粘贴符合格式的角色 JSON 数据。
-            </p>
           </div>
         )}
       </div>

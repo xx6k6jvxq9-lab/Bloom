@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import {
@@ -67,6 +67,18 @@ import { getGroupMemberBubbleColor } from '../group-settings/groupBubbleColors';
 import { getGroupMemberBadge } from '../group-settings/memberBadges';
 import { buildGroupSettingsPatch, createGroupSettingsFormState, hasGroupSettingsChanges } from '../group-settings/utils';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
+import { GroupChatFunPanel } from './GroupChatFunPanel';
+import {
+  appendGroupRelayEntry,
+  appendGroupTaskEntry,
+  completeGroupPollMessage,
+  completeGroupRelayMessage,
+  createGroupPollMessage,
+  createGroupRelayMessage,
+  createGroupTaskMessage,
+  updateGroupTaskMessage,
+  voteOnGroupPollMessage,
+} from './groupFeatureCards';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { AudioMessageCard } from './AudioMessageCard';
@@ -118,6 +130,151 @@ function formatChatDividerTime(timestamp: number): string {
     minute: '2-digit',
     hour12: false,
   });
+}
+
+function parseGroupPollAiDecision(rawText: string, options: GroupPollOption[]) {
+  const trimmed = rawText.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as { option?: string; reason?: string };
+      const matchedOption = options.find((option) => parsed.option?.includes(option.text) || option.text.includes(parsed.option || ''));
+      if (matchedOption) {
+        return {
+          optionId: matchedOption.id,
+          reason: (parsed.reason || '').trim(),
+        };
+      }
+    } catch {
+      // Ignore invalid JSON and fall back to plain-text matching.
+    }
+  }
+
+  const matchedOption = options.find((option) => trimmed.includes(option.text)) ?? options[0];
+  const reason = trimmed
+    .replace(matchedOption?.text || '', '')
+    .replace(/^[^：:]*[:：]\s*/, '')
+    .trim();
+
+  return {
+    optionId: matchedOption?.id || options[0]?.id || '',
+    reason,
+  };
+}
+
+function buildGroupFeaturePersonaGuard(featureName: string) {
+  return [
+    `这是群聊里的${featureName}互动，不是单独开怼模式。`,
+    '投票和表态必须优先符合角色自己的人设、表达习惯、稳定偏好、生活习惯和判断逻辑。',
+    '如果长期记忆、短期记忆或当前生活状态里有相关偏好，可以把它们当依据；如果没有，就按角色此刻最自然的选择来。',
+    '优先写“这个角色自己为什么会选这个”，而不是先围着用户或群里别人的关系去转。',
+    '用户关系和群成员关系只能影响语气、站位和轻微偏向，不应该盖过角色自己的主见。',
+    '轻话题默认只要轻表态、轻理由，不要为了显得“真实”就自动放大成毒舌、攻击或阴阳怪气。',
+    '除非当前群里本来就张力很高，或者角色本来就会自然轻刺一句，否则不要凭空提高攻击性。',
+    '最终效果应该像“这个人真的会这么投、也真的会这么接一句”，而不是像模板吐槽。',
+  ].join('\n');
+}
+
+function parseGroupRelayAiLine(rawText: string) {
+  const trimmed = rawText.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as { line?: string };
+      return (parsed.line || '').trim();
+    } catch {
+      // Ignore invalid JSON and fall back to plain text.
+    }
+  }
+
+  return trimmed
+    .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+    .replace(/^[^：:]*[:：]\s*/, '')
+    .trim();
+}
+
+function parseGroupTaskAiEntry(rawText: string) {
+  const trimmed = rawText.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as { entry?: string; finished?: boolean };
+      return {
+        entry: (parsed.entry || '').trim(),
+        finished: parsed.finished === true,
+      };
+    } catch {
+      // Ignore invalid JSON and fall back to plain text.
+    }
+  }
+
+  return {
+    entry: trimmed
+      .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+      .replace(/^[^：:]*[:：]\s*/, '')
+      .trim(),
+    finished: false,
+  };
+}
+
+type GroupFeatureInitiativePlan =
+  | { feature: 'none' }
+  | { feature: 'poll'; title: string; options: string[] }
+  | { feature: 'relay'; topic: string; starterText: string }
+  | { feature: 'task'; prompt: string };
+
+function parseGroupFeatureInitiativePlan(rawText: string): GroupFeatureInitiativePlan {
+  const trimmed = rawText.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        feature?: string;
+        title?: string;
+        options?: string[];
+        topic?: string;
+        starterText?: string;
+        prompt?: string;
+      };
+      const feature = (parsed.feature || '').trim().toLowerCase();
+
+      if (feature === 'poll') {
+        const options = Array.isArray(parsed.options)
+          ? parsed.options.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6)
+          : [];
+        if ((parsed.title || '').trim() && options.length >= 2) {
+          return {
+            feature: 'poll',
+            title: parsed.title!.trim(),
+            options,
+          };
+        }
+      }
+
+      if (feature === 'relay') {
+        const topic = (parsed.topic || '').trim();
+        const starterText = (parsed.starterText || '').trim() || topic;
+        if (topic) {
+          return { feature: 'relay', topic, starterText };
+        }
+      }
+
+      if (feature === 'task') {
+        const prompt = (parsed.prompt || '').trim();
+        if (prompt) {
+          return { feature: 'task', prompt };
+        }
+      }
+    } catch {
+      // Ignore invalid JSON and fall back to none.
+    }
+  }
+
+  return { feature: 'none' };
 }
 
 function shouldShowChatTimeDivider(
@@ -220,8 +377,20 @@ const formatMessagePreview = (text: string | undefined): string => {
   if (text.startsWith('[audio]')) {
     return '[语音]';
   }
+  if (text.startsWith('[image]')) {
+    return '[图片]';
+  }
   if (text.startsWith('[sticker]')) {
-    return text.replace(/^\[sticker\]\s*/i, '').trim();
+    return '[表情包]';
+  }
+  if (text.startsWith('[group-poll]')) {
+    return '[群投票]';
+  }
+  if (text.startsWith('[group-relay]')) {
+    return '[群接龙]';
+  }
+  if (text.startsWith('[group-task]')) {
+    return '[群小任务]';
   }
   if (text.startsWith('[GAME_CARD]')) {
     return '[游戏卡片]';
@@ -410,6 +579,11 @@ export function GroupChatSessionScreen({
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [activeGroupFeatureComposer, setActiveGroupFeatureComposer] = useState<'poll' | 'relay' | 'task' | null>(null);
+  const [groupPollTitleDraft, setGroupPollTitleDraft] = useState('');
+  const [groupPollOptionsDraft, setGroupPollOptionsDraft] = useState('选项一\n选项二');
+  const [groupRelayTopicDraft, setGroupRelayTopicDraft] = useState('');
+  const [groupTaskPromptDraft, setGroupTaskPromptDraft] = useState('');
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -437,6 +611,8 @@ export function GroupChatSessionScreen({
   const previousSettingsOpenRef = useRef(false);
   const previousSettingsGroupIdRef = useRef(group.id);
   const latestGroupBackgroundRef = useRef(group.groupBackground || '');
+  const lastProcessedInitiativeTriggerRef = useRef<number | null>(null);
+  const lastInitiativeAtRef = useRef(0);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1155,6 +1331,591 @@ export function GroupChatSessionScreen({
     });
   };
 
+  const publishGroupFeatureNotice = (noticeText: string) => {
+    const trimmedNotice = noticeText.trim();
+    if (!trimmedNotice) return;
+    const noticeMessage: ChatMessage = {
+      role: 'model',
+      text: `[notice] ${trimmedNotice}`,
+      timestamp: Date.now(),
+      isSystem: true,
+    };
+    setHistory((prev) => [...prev, noticeMessage]);
+    void reactToNoticeUpdate({
+      noticeText: trimmedNotice,
+      currentHistory: [...history, noticeMessage],
+    });
+  };
+
+  const runAiVotesForPoll = async (params: { pollMessage: ChatMessage; pollOptions: string[] }) => {
+    if (!params.pollMessage.groupPollCard || !activeConfig || !hasUsableConfig) {
+      return;
+    }
+
+    let workingHistory = [...history, params.pollMessage];
+    for (const member of members) {
+      try {
+        const systemPrompt = buildGroupChatPrompt({
+          sceneInput: buildGroupChatSceneInput({
+            speaker: member,
+            members,
+            group,
+            history: workingHistory,
+            userName: groupUserDisplayName,
+            directChatHistory,
+          }),
+        });
+
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                `群里刚发起了一条投票：《${params.pollMessage.groupPollCard.title}》`,
+                `可选项：${params.pollOptions.join('、')}`,
+                buildGroupFeaturePersonaGuard('投票'),
+                '请先判断：如果完全不考虑用户，只按这个角色自己的偏好、生活方式、兴趣和判断逻辑，他最可能投什么。',
+                '再判断：当前群聊语境和关系会不会让他在表达上稍微偏一下，但不要改变他最核心的选择理由。',
+                '然后用群里自然说话的方式，补一句很短的真实反应或原因。',
+                '这句反应优先像自然表态，最好带一点角色自己的思路、习惯或生活感，不要默认带攻击性；如果只是轻松话题，就保持轻一点。',
+                '只输出 JSON，不要解释。',
+                '格式：{"option":"原样填写你选的选项","reason":"一句群聊短反应，不超过18字"}',
+              ].join('\n'),
+            },
+          ],
+        });
+
+        const parsed = parseGroupPollAiDecision(response, params.pollMessage.groupPollCard.options);
+        if (!parsed.optionId) {
+          continue;
+        }
+
+        const selectedOptionText =
+          params.pollMessage.groupPollCard.options.find((item) => item.id === parsed.optionId)?.text || '这个';
+        const reasonText = parsed.reason.trim() || `我投 ${selectedOptionText}。`;
+        const reactionMessage: ChatMessage = {
+          role: 'model',
+          text: reasonText,
+          timestamp: Date.now() + Math.floor(Math.random() * 120),
+          senderCharacterId: member.id,
+        };
+
+        setHistory((prev) => prev.map((message) => {
+          if (message.timestamp !== params.pollMessage.timestamp || !message.groupPollCard) {
+            return message;
+          }
+          return voteOnGroupPollMessage({
+            message,
+            voterId: member.id,
+            optionId: parsed.optionId,
+          });
+        }).concat(reactionMessage));
+
+        workingHistory = workingHistory.map((message) => {
+          if (message.timestamp !== params.pollMessage.timestamp || !message.groupPollCard) {
+            return message;
+          }
+          return voteOnGroupPollMessage({
+            message,
+            voterId: member.id,
+            optionId: parsed.optionId,
+          });
+        }).concat(reactionMessage);
+      } catch {
+        // Ignore a single member failure and keep the rest of the poll flow running.
+      }
+    }
+
+    setHistory((prev) => prev.map((message) => {
+      if (message.timestamp !== params.pollMessage.timestamp || !message.groupPollCard) {
+        return message;
+      }
+      return completeGroupPollMessage(message);
+    }));
+  };
+
+  const runAiRelayEntries = async (params: { relayMessage: ChatMessage }) => {
+    if (!params.relayMessage.groupRelayCard || !activeConfig || !hasUsableConfig) {
+      return;
+    }
+
+    let workingHistory = [...history, params.relayMessage];
+    for (const member of members) {
+      try {
+        const currentRelayCard = workingHistory.find(
+          (message) => message.timestamp === params.relayMessage.timestamp,
+        )?.groupRelayCard || params.relayMessage.groupRelayCard;
+
+        const systemPrompt = buildGroupChatPrompt({
+          sceneInput: buildGroupChatSceneInput({
+            speaker: member,
+            members,
+            group,
+            history: workingHistory,
+            userName: groupUserDisplayName,
+            directChatHistory,
+          }),
+        });
+
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                `群里正在玩接龙，主题是：《${currentRelayCard.topic}》`,
+                '当前已经接到这里：',
+                ...currentRelayCard.entries.map((entry) => `- ${entry.authorName}：${entry.content}`),
+                buildGroupFeaturePersonaGuard('接龙'),
+                '请按角色自己的思路和语气，顺着上一句自然接一句。',
+                '优先让这句像角色自己会接的内容，可以带一点他的习惯、偏好、脑回路或生活感。',
+                '不要复读前一句，不要改写别人的句子，不要突然变成长回复。',
+                '只输出 JSON，不要解释。',
+                '格式：{"line":"接龙里要发出的下一句，不超过20字"}',
+              ].join('\n'),
+            },
+          ],
+        });
+
+        const line = parseGroupRelayAiLine(response);
+        if (!line) {
+          continue;
+        }
+
+        setHistory((prev) => prev.map((message) => {
+          if (message.timestamp !== params.relayMessage.timestamp || !message.groupRelayCard) {
+            return message;
+          }
+          return appendGroupRelayEntry({
+            message,
+            authorId: member.id,
+            authorName: member.remarkName?.trim() || member.name,
+            content: line,
+          });
+        }));
+
+        workingHistory = workingHistory.map((message) => {
+          if (message.timestamp !== params.relayMessage.timestamp || !message.groupRelayCard) {
+            return message;
+          }
+          return appendGroupRelayEntry({
+            message,
+            authorId: member.id,
+            authorName: member.remarkName?.trim() || member.name,
+            content: line,
+          });
+        });
+      } catch {
+        // Ignore a single member failure and keep the rest of the relay flow running.
+      }
+    }
+
+    setHistory((prev) => prev.map((message) => {
+      if (message.timestamp !== params.relayMessage.timestamp || !message.groupRelayCard) {
+        return message;
+      }
+      return completeGroupRelayMessage(message);
+    }));
+  };
+
+  const runAiTaskEntries = async (params: { taskMessage: ChatMessage }) => {
+    if (!params.taskMessage.groupTaskCard || !activeConfig || !hasUsableConfig) {
+      return;
+    }
+
+    let workingHistory = [...history, params.taskMessage];
+    const maxRounds = 3;
+    let currentRound = 0;
+    let taskCompleted = false;
+
+    while (currentRound < maxRounds && !taskCompleted) {
+      currentRound += 1;
+      let roundMessageCount = 0;
+      let finishSignals = 0;
+
+      for (const member of members) {
+        try {
+          const currentTaskCard = workingHistory.find(
+            (message) => message.timestamp === params.taskMessage.timestamp,
+          )?.groupTaskCard || params.taskMessage.groupTaskCard;
+
+          const systemPrompt = buildGroupChatPrompt({
+            sceneInput: buildGroupChatSceneInput({
+              speaker: member,
+              members,
+              group,
+              history: workingHistory,
+              userName: groupUserDisplayName,
+              directChatHistory,
+            }),
+          });
+
+          const response = await generateTextFromMessagesWithConfig({
+            activeConfig,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              {
+                role: 'user',
+                content: [
+                  `群里正在做一个小任务：《${currentTaskCard.prompt}》`,
+                  `当前是第 ${currentRound} 轮。`,
+                  '任务卡片只负责发起和显示状态，真正参与任务时要像正常群聊一样用普通消息气泡发言。',
+                  '最近和这个任务有关的内容：',
+                  ...workingHistory
+                    .filter((message) => message.timestamp >= params.taskMessage.timestamp)
+                    .slice(-12)
+                    .map((message) => {
+                      if (message.groupTaskCard) {
+                        return `- 任务卡：${message.groupTaskCard.prompt}（状态：${message.groupTaskCard.status}）`;
+                      }
+                      const resolvedSender = resolveSenderInfo(message);
+                      return `- ${resolvedSender.senderName}：${resolvedSender.content}`;
+                    }),
+                  buildGroupFeaturePersonaGuard('小任务'),
+                  '请先判断：如果完全不考虑用户，只按这个角色自己的偏好、生活习惯、兴趣、判断逻辑和当前状态，他现在最自然会怎么参与这个任务。',
+                  '如果任务已经自然完成，或者这个角色此刻不需要再补一句，也可以选择不发。',
+                  '如果要发，就用正常群聊消息的口吻回答，不要写成系统卡片文案。',
+                  '只输出 JSON，不要解释。',
+                  '格式：{"entry":"这轮要发出的正常群聊消息，不超过22字；如果不发就留空","finished":true/false}',
+                ].join('\n'),
+              },
+            ],
+          });
+
+          const parsed = parseGroupTaskAiEntry(response);
+          if (parsed.finished) {
+            finishSignals += 1;
+          }
+
+          if (!parsed.entry) {
+            continue;
+          }
+
+          const reactionMessage: ChatMessage = {
+            role: 'model',
+            text: parsed.entry,
+            timestamp: Date.now() + Math.floor(Math.random() * 120),
+            senderCharacterId: member.id,
+          };
+
+          workingHistory = workingHistory.map((message) => {
+            if (message.timestamp !== params.taskMessage.timestamp || !message.groupTaskCard) {
+              return message;
+            }
+            return updateGroupTaskMessage({
+              message: appendGroupTaskEntry({
+                message,
+                authorId: member.id,
+                authorName: member.remarkName?.trim() || member.name,
+                content: parsed.entry,
+              }),
+              participantId: member.id,
+              rounds: currentRound,
+            });
+          }).concat(reactionMessage);
+
+          setHistory(workingHistory);
+          roundMessageCount += 1;
+        } catch {
+          // Ignore a single member failure and keep the rest of the task flow running.
+        }
+      }
+
+      const shouldComplete =
+        roundMessageCount === 0
+        || finishSignals >= Math.ceil(members.length / 2)
+        || currentRound >= maxRounds;
+
+      if (shouldComplete) {
+        taskCompleted = true;
+        workingHistory = workingHistory.map((message) => {
+          if (message.timestamp !== params.taskMessage.timestamp || !message.groupTaskCard) {
+            return message;
+          }
+          return updateGroupTaskMessage({
+            message,
+            rounds: currentRound,
+            status: 'completed',
+          });
+        });
+        setHistory(workingHistory);
+      }
+    }
+  };
+
+  const launchGroupFeatureFromPlan = (params: {
+    initiatorId: string;
+    initiatorName: string;
+    role: ChatMessage['role'];
+    senderCharacterId?: string;
+    plan: GroupFeatureInitiativePlan;
+  }) => {
+    if (params.plan.feature === 'poll') {
+      const pollMessage = createGroupPollMessage({
+        title: params.plan.title,
+        options: params.plan.options,
+        creatorName: params.initiatorName,
+        senderCharacterId: params.senderCharacterId,
+      });
+      setHistory((prev) => [...prev, pollMessage]);
+      void runAiVotesForPoll({
+        pollMessage,
+        pollOptions: params.plan.options,
+      });
+      return;
+    }
+
+    if (params.plan.feature === 'relay') {
+      const relayMessage = createGroupRelayMessage({
+        topic: params.plan.topic,
+        starterText: params.plan.starterText,
+        creatorId: params.initiatorId,
+        creatorName: params.initiatorName,
+        role: params.role,
+        senderCharacterId: params.senderCharacterId,
+      });
+      setHistory((prev) => [...prev, relayMessage]);
+      void runAiRelayEntries({
+        relayMessage,
+      });
+      return;
+    }
+
+    if (params.plan.feature === 'task') {
+      const taskMessage = createGroupTaskMessage({
+        prompt: params.plan.prompt,
+        creatorId: params.initiatorId,
+        creatorName: params.initiatorName,
+        role: params.role,
+        senderCharacterId: params.senderCharacterId,
+      });
+      setHistory((prev) => [...prev, taskMessage]);
+      void runAiTaskEntries({
+        taskMessage,
+      });
+    }
+  };
+
+  const handleLaunchGroupPoll = () => {
+    const title = groupPollTitleDraft.trim();
+    const options = groupPollOptionsDraft
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    if (!title || options.length < 2) return;
+
+    launchGroupFeatureFromPlan({
+      initiatorId: 'user',
+      initiatorName: groupUserDisplayName,
+      role: 'user',
+      plan: {
+        feature: 'poll',
+        title,
+        options,
+      },
+    });
+    setGroupPollTitleDraft('');
+    setGroupPollOptionsDraft('选项一\n选项二');
+    setActiveGroupFeatureComposer(null);
+    setShowFunPanel(false);
+  };
+
+  const handleLaunchGroupRelay = () => {
+    const topic = groupRelayTopicDraft.trim();
+    if (!topic) return;
+
+    launchGroupFeatureFromPlan({
+      initiatorId: 'user',
+      initiatorName: groupUserDisplayName,
+      role: 'user',
+      plan: {
+        feature: 'relay',
+        topic,
+        starterText: topic,
+      },
+    });
+    setGroupRelayTopicDraft('');
+    setActiveGroupFeatureComposer(null);
+    setShowFunPanel(false);
+  };
+
+  const handleLaunchGroupTask = () => {
+    const prompt = groupTaskPromptDraft.trim();
+    if (!prompt) return;
+
+    launchGroupFeatureFromPlan({
+      initiatorId: 'user',
+      initiatorName: groupUserDisplayName,
+      role: 'user',
+      plan: {
+        feature: 'task',
+        prompt,
+      },
+    });
+    setGroupTaskPromptDraft('');
+    setActiveGroupFeatureComposer(null);
+    setShowFunPanel(false);
+  };
+
+  const handleVoteOnPoll = (messageTimestamp: number, optionId: string) => {
+    setHistory((prev) => prev.map((message) => {
+      if (message.timestamp !== messageTimestamp || !message.groupPollCard) {
+        return message;
+      }
+      return voteOnGroupPollMessage({
+        message,
+        voterId: 'user',
+        optionId,
+      });
+    }));
+  };
+
+  useEffect(() => {
+    if (!activeConfig || !hasUsableConfig || isLoading || pendingMessage || members.length === 0) {
+      return;
+    }
+
+    const recentNormalMessages = history.filter((message) => (
+      !message.isSystem
+      && !message.groupPollCard
+      && !message.groupRelayCard
+      && !message.groupTaskCard
+    ));
+    const latestUserMessage = [...recentNormalMessages].reverse().find((message) => message.role === 'user');
+    if (!latestUserMessage) {
+      return;
+    }
+
+    if (lastProcessedInitiativeTriggerRef.current === latestUserMessage.timestamp) {
+      return;
+    }
+
+    const followupMessages = recentNormalMessages.filter((message) => message.timestamp > latestUserMessage.timestamp);
+    if (followupMessages.length < 2) {
+      return;
+    }
+
+    const latestFeatureMessage = [...history].reverse().find((message) => (
+      message.groupPollCard || message.groupRelayCard || message.groupTaskCard
+    ));
+    const recentMessages = history.slice(-12);
+    const featureInRecentWindow = recentMessages.some((message) => (
+      message.groupPollCard || message.groupRelayCard || message.groupTaskCard
+    ));
+
+    if (featureInRecentWindow) {
+      lastProcessedInitiativeTriggerRef.current = latestUserMessage.timestamp;
+      return;
+    }
+
+    if (
+      latestFeatureMessage
+      && latestUserMessage.timestamp - latestFeatureMessage.timestamp < 8 * 60 * 1000
+    ) {
+      lastProcessedInitiativeTriggerRef.current = latestUserMessage.timestamp;
+      return;
+    }
+
+    if (Date.now() - lastInitiativeAtRef.current < 30 * 1000) {
+      return;
+    }
+
+    lastProcessedInitiativeTriggerRef.current = latestUserMessage.timestamp;
+
+    if (recentNormalMessages.length < 6 || Math.random() > 0.16) {
+      return;
+    }
+
+    const initiator = members[Math.floor(Math.random() * members.length)];
+    if (!initiator) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runInitiative = async () => {
+      try {
+        const systemPrompt = buildGroupChatPrompt({
+          sceneInput: buildGroupChatSceneInput({
+            speaker: initiator,
+            members,
+            group,
+            history,
+            userName: groupUserDisplayName,
+            directChatHistory,
+            perception,
+          }),
+        });
+
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                '请判断：这个角色现在要不要顺势在群里主动发起一个轻量群功能。',
+                '目标是低频、顺势、像这个角色自己临场起意，不要像系统推送。',
+                '优先看角色自己的生活感、兴趣、习惯、判断逻辑和当前状态，再看最近群聊气氛，关系只做修饰。',
+                '如果最近已经发过类似功能，或者气氛不适合，就不要发起。',
+                '可选功能只有：poll / relay / task / none。',
+                'poll 适合轻选择和分歧；relay 适合顺着气氛玩一句；task 适合“每人来一个”的轻任务。',
+                '如果选择 poll，给出 title 和 2-4 个 options。',
+                '如果选择 relay，给出 topic 和 starterText。',
+                '如果选择 task，给出 prompt。',
+                '只输出 JSON，不要解释。',
+                '格式：{"feature":"none"} 或 {"feature":"poll","title":"...","options":["...","..."]} 或 {"feature":"relay","topic":"...","starterText":"..."} 或 {"feature":"task","prompt":"..."}',
+              ].join('\n'),
+            },
+          ],
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const plan = parseGroupFeatureInitiativePlan(response);
+        if (plan.feature === 'none') {
+          return;
+        }
+
+        lastInitiativeAtRef.current = Date.now();
+        launchGroupFeatureFromPlan({
+          initiatorId: initiator.id,
+          initiatorName: initiator.remarkName?.trim() || initiator.name,
+          role: 'model',
+          senderCharacterId: initiator.id,
+          plan,
+        });
+      } catch {
+        // Ignore initiative failure and keep the normal group flow running.
+      }
+    };
+
+    void runInitiative();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    hasUsableConfig,
+    history,
+    isLoading,
+    members,
+    pendingMessage,
+    perception,
+    setHistory,
+  ]);
+
   const handleSaveGroupInfo = () => {
     const trimmedName = groupSettingsForm.name.trim();
     if (!trimmedName) return;
@@ -1406,6 +2167,18 @@ export function GroupChatSessionScreen({
   };
 
   const getMessageVisualKind = (message: ChatMessage, content: string) => {
+    if (message.groupPollCard) {
+      return 'poll' as const;
+    }
+
+    if (message.groupRelayCard) {
+      return 'relay' as const;
+    }
+
+    if (message.groupTaskCard) {
+      return 'task' as const;
+    }
+
     if (message.isSystem || content.startsWith('[notice]')) {
       return 'notice' as const;
     }
@@ -1437,8 +2210,8 @@ export function GroupChatSessionScreen({
     currentMessage: ChatMessage;
     currentContent: string;
     streakIndex: number;
-    previousVisualKind: 'notice' | 'sticker' | 'reply' | 'normal';
-    currentVisualKind: 'notice' | 'sticker' | 'reply' | 'normal';
+    previousVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task';
+    currentVisualKind: 'notice' | 'sticker' | 'reply' | 'normal' | 'poll' | 'relay' | 'task';
   }) => {
     const {
       previousMessage,
@@ -1665,6 +2438,143 @@ export function GroupChatSessionScreen({
             );
           }
 
+          if (visualKind === 'poll' && msg.groupPollCard) {
+            const totalVotes = msg.groupPollCard.options.reduce((sum, option) => sum + option.voterIds.length, 0);
+            const userVotedOptionId = msg.groupPollCard.options.find((option) => option.voterIds.includes('user'))?.id;
+            const pollStatus = msg.groupPollCard.status === 'completed' ? 'completed' : 'active';
+
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="w-full max-w-[88%] rounded-[24px] border border-zinc-200 bg-white/92 px-4 py-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">投票</div>
+                    <div className="text-[16px] font-semibold text-zinc-900">{msg.groupPollCard.title}</div>
+                    <div className="mt-1 text-[12px] text-zinc-500">
+                      {msg.groupPollCard.createdBy} 发起 · {pollStatus === 'completed' ? '已结束' : '进行中'} · 共 {totalVotes} 票
+                    </div>
+                    <div className="mt-4 space-y-2.5">
+                      {msg.groupPollCard.options.map((option) => {
+                        const isSelected = userVotedOptionId === option.id;
+                        const ratio = totalVotes > 0 ? (option.voterIds.length / totalVotes) * 100 : 0;
+                        return (
+                          <button
+                            key={option.id}
+                            onClick={() => {
+                              if (pollStatus === 'completed') return;
+                              handleVoteOnPoll(msg.timestamp, option.id);
+                            }}
+                            className={`relative w-full overflow-hidden rounded-2xl border px-3 py-3 text-left transition-colors ${
+                              isSelected
+                                ? 'border-zinc-300 bg-zinc-100'
+                                : 'border-zinc-200 bg-zinc-50/70 hover:bg-zinc-100/80'
+                            } ${pollStatus === 'completed' ? 'cursor-default opacity-90' : ''}`}
+                          >
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-2xl bg-zinc-200/70"
+                              style={{ width: `${Math.max(ratio, 0)}%` }}
+                            />
+                            <div className="relative flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[14px] font-medium text-zinc-900">{option.text}</div>
+                                <div className="mt-1 text-[12px] text-zinc-500">
+                                  {option.voterIds.length > 0 ? `${option.voterIds.length} 人支持` : '还没有人投'}
+                                </div>
+                              </div>
+                              <div className="shrink-0 text-[12px] font-medium text-zinc-600">
+                                {Math.round(ratio)}%
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (visualKind === 'relay' && msg.groupRelayCard) {
+            const relayStatus = msg.groupRelayCard.status === 'completed' ? 'completed' : 'active';
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="w-full max-w-[88%] rounded-[24px] border border-zinc-200 bg-white/92 px-4 py-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">接龙</div>
+                    <div className="text-[16px] font-semibold text-zinc-900">{msg.groupRelayCard.topic}</div>
+                    <div className="mt-1 text-[12px] text-zinc-500">
+                      {msg.groupRelayCard.createdBy} 发起 · {relayStatus === 'completed' ? '已结束' : '进行中'} · 已接 {msg.groupRelayCard.entries.length} 句
+                    </div>
+                    <div className="mt-4 space-y-2.5">
+                      {msg.groupRelayCard.entries.map((entry: GroupRelayEntry, entryIndex) => (
+                        <div
+                          key={entry.id || `${entry.authorId}-${entryIndex}`}
+                          className="rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3 py-3"
+                        >
+                          <div className="text-[12px] font-medium text-zinc-500">{entry.authorName}</div>
+                          <div className="mt-1 text-[14px] leading-6 text-zinc-900">{entry.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (visualKind === 'task' && msg.groupTaskCard) {
+            const taskRounds = typeof msg.groupTaskCard.rounds === 'number' ? msg.groupTaskCard.rounds : 0;
+            const taskParticipantIds = Array.isArray(msg.groupTaskCard.participantIds) ? msg.groupTaskCard.participantIds : [];
+            const taskStatus = msg.groupTaskCard.status === 'completed' ? 'completed' : 'active';
+            return (
+              <div key={messageKey}>
+                {shouldRenderTimeDivider && (
+                  <div className="mb-3 flex justify-center">
+                    <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
+                      {formatChatDividerTime(msg.timestamp)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center py-1">
+                  <div className="w-full max-w-[88%] rounded-[24px] border border-zinc-200 bg-white/92 px-4 py-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">小任务</div>
+                    <div className="text-[16px] font-semibold text-zinc-900">{msg.groupTaskCard.prompt}</div>
+                    <div className="mt-1 text-[12px] text-zinc-500">
+                      {msg.groupTaskCard.createdBy} 发起 · {taskStatus === 'completed' ? '已结束' : '进行中'}
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[13px] font-medium text-zinc-700">
+                          已进行 {taskRounds} 轮
+                        </div>
+                        <div className="text-[12px] text-zinc-500">
+                          已参与 {taskParticipantIds.length} 人
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[12px] leading-5 text-zinc-500">
+                        任务发起后，成员会用下面的正常消息气泡继续参与，直到任务自然结束。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           const isPendingMessage = !!msg.isPending;
 
           const senderBubbleStyleCss = !isUser ? senderCharacter?.bubbleStyleCss : undefined;
@@ -1884,11 +2794,6 @@ export function GroupChatSessionScreen({
                         );
                       })()}
                     </>
-                  )}
-                  {!msg.isRecalled && !msg.imageUrl && visualKind === 'sticker' && (
-                    <div className="mb-2 inline-flex items-center rounded-full bg-pink-100 px-2.5 py-1 text-[11px] font-medium text-pink-500">
-                      STICKER
-                    </div>
                   )}
                   {!msg.isRecalled && msg.location && (
                     <div className="chat-location-inline-card mb-2 rounded-xl bg-zinc-100/80 px-3 py-2 text-[12px] text-zinc-600">
@@ -2129,50 +3034,30 @@ export function GroupChatSessionScreen({
 
           <AnimatePresence>
             {showFunPanel && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="grid grid-cols-3 gap-4 pt-4">
-                  <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-2">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-900 transition-transform active:scale-95">
-                      <ImageIcon size={28} />
-                    </div>
-                    <span className="text-[12px] text-zinc-600">发图</span>
-                  </button>
-                  <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
-
-                  <button
-                    onClick={() => {
-                      setShowLocationPicker(true);
-                      setShowFunPanel(false);
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-900 transition-transform active:scale-95">
-                      <MapPin size={28} />
-                    </div>
-                    <span className="text-[12px] text-zinc-600">发位置</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowEmojiPanel(true);
-                      setShowFunPanel(false);
-                    }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-900 transition-transform active:scale-95">
-                      <Smile size={28} />
-                    </div>
-                    <span className="text-[12px] text-zinc-600">表情</span>
-                  </button>
-                </div>
-              </motion.div>
+              <GroupChatFunPanel
+                activeGroupFeatureComposer={activeGroupFeatureComposer}
+                groupPollTitleDraft={groupPollTitleDraft}
+                groupPollOptionsDraft={groupPollOptionsDraft}
+                groupRelayTopicDraft={groupRelayTopicDraft}
+                groupTaskPromptDraft={groupTaskPromptDraft}
+                onOpenImagePicker={() => fileInputRef.current?.click()}
+                onOpenLocationPicker={() => {
+                  setShowLocationPicker(true);
+                  setShowFunPanel(false);
+                }}
+                onSelectFeature={(feature) => setActiveGroupFeatureComposer(feature)}
+                onCancelFeature={() => setActiveGroupFeatureComposer(null)}
+                onGroupPollTitleChange={setGroupPollTitleDraft}
+                onGroupPollOptionsChange={setGroupPollOptionsDraft}
+                onGroupRelayTopicChange={setGroupRelayTopicDraft}
+                onGroupTaskPromptChange={setGroupTaskPromptDraft}
+                onLaunchGroupPoll={handleLaunchGroupPoll}
+                onLaunchGroupRelay={handleLaunchGroupRelay}
+                onLaunchGroupTask={handleLaunchGroupTask}
+              />
             )}
           </AnimatePresence>
+          <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
         </div>
       </div>
 

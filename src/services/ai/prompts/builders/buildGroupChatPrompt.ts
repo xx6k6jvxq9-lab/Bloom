@@ -30,6 +30,8 @@ function buildPersonaGuardBlock(sceneInput: GroupChatSceneInput): string {
 
 function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
   const lines = [
+    '这些上下文只用于帮助判断群里的熟悉度、张力和最近余波，不代表群聊已经自动切成线下现场。',
+    '如果某些内容带有现实关系推进感，也只允许把它们当作背景理解；除非用户或当前上下文明确推动，否则不要把任何人直接写进已经发生的线下场景或身体动作。',
     sceneInput.recentContext?.shortTermSummary
       ? `近期关系余波：${sceneInput.recentContext.shortTermSummary}`
       : '',
@@ -90,7 +92,7 @@ function buildGroupFieldUsageBlock(sceneInput: GroupChatSceneInput): string {
   return [
     '群资料使用要求：',
     sceneInput.groupBehaviorGuide || '',
-    '这些资料的作用是帮你判断这句话该怎么说、该亲近还是克制、该不该接这个话题。',
+    '这些资料的作用是帮助你判断这句该怎么说、该亲近还是克制、该不该接这个话题。',
     '不要把“群背景简述 / 成员关系状态 / 当前群场景 / 群公开事实”直接改写成说明书式台词。',
     '只有当聊天内容真的碰到这些信息时，才允许轻量自然地带出其中一小部分。',
   ]

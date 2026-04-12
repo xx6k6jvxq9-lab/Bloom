@@ -16,13 +16,15 @@ export type MemoryContextInput = {
 export const SHORT_TERM_MEMORY_CONTEXT_HEADER = [
   '【近期记忆与当前处境】以下内容是最近几轮互动留下来的短期状态背景，会影响你接下来几轮的回应温度、关注点和互动方向。',
   '它更像近期余波、未完事项和当前气氛，不代表长期结论，也不是需要机械执行的行为指令。',
-  '请把这些内容理解成当前还没散掉的关系氛围和状态提示，让它自然渗进表达，而不是逐条复述或照着表演。'
+  '如果你看到“开放回路（waiting_user）”或“开放回路（dormant）”，把它理解成背景条件或待用户再触发的点，不要主动把话题硬拉回去。',
+  '如果你看到“开放回路（active）”，也要先结合当前用户输入和当前场景判断它是不是仍然值得承接，而不是机械续写上一幕。',
+  '请把这些内容理解成当前还没散掉的关系氛围和状态提示，让它自然渗进表达，而不是逐条复述或照着表演。',
 ].join('\n');
 
 export const LONG_TERM_MEMORY_CONTEXT_HEADER = [
   '【长期记忆与当前处境】以下内容是已经沉淀下来的关系印象、稳定偏好和长期理解，它们会继续影响你说话时的熟悉感、距离感、判断方式和在意程度。',
   '这些内容是你长期带着的关系背景，不是临时聊天任务，也不应用来机械复述或直接替代核心人格。',
-  '请让这些长期记忆自然渗进你的表达，而不是生硬强调、反复搬运，或照着记忆内容表演。'
+  '请让这些长期记忆自然渗进你的表达，而不是生硬强调、反复搬运，或照着记忆内容表演。',
 ].join('\n');
 
 export function buildShortTermMemoryContextSection(input: MemoryContextInput): string {
@@ -55,7 +57,7 @@ export function buildLongTermMemoryContextSection(input: MemoryContextInput): st
 
 /**
  * 兼容旧调用：当前默认仍按长期记忆语义解释。
- * 后续总结链和其它 builder 拆分后，再逐步改成显式选择短期或长期版本。
+ * 后续总结链和其他 builder 拆分后，再逐步改成显式选择短期或长期版本。
  */
 export function buildMemoryContextSection(input: MemoryContextInput): string {
   return buildLongTermMemoryContextSection(input);
