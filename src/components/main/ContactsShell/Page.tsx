@@ -101,6 +101,7 @@ export function ContactsApp({
               avatar: req.fromUserAvatar,
               gender: 'other',
               setting: '你的新朋友',
+              corePersona: '你的新朋友',
               openingRemark: '你好！很高兴认识你。',
               lastTime: Date.now(),
               groupId: '朋友'

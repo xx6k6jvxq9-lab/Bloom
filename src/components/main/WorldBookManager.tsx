@@ -464,6 +464,7 @@ export function WorldBookManager({
                           onAddCharacter({
                             name: worldBook.title,
                             setting: worldBook.content,
+                            corePersona: worldBook.content,
                             avatar: `https://picsum.photos/seed/${worldBook.id}/200`,
                             gender: 'other',
                             openingRemark: '你好。',
