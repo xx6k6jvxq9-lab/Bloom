@@ -34,6 +34,7 @@ import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
+import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -2251,9 +2252,15 @@ export function ChatSessionScreen({
         </div>
       </div>
 
-      {/* Location Picker */}
+      <GroupLocationPickerSheet
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSend={(location) => sendLocationMessage(`[sent location] ${location.name}`, location)}
+      />
+
+      {/* Legacy Location Picker */}
       <AnimatePresence>
-        {showLocationPicker && (
+        {false && showLocationPicker && (
           <div className="absolute inset-0 z-[110] flex items-end justify-center bg-black/40 backdrop-blur-sm">
             <motion.div 
               initial={{ y: '100%' }}

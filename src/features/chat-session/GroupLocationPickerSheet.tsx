@@ -126,7 +126,7 @@ export function GroupLocationPickerSheet({
             <div className="space-y-6 overflow-y-auto pb-2">
               <section className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-4">
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-800">
                     <LocateFixed size={20} />
                   </div>
                   <div>
@@ -138,7 +138,7 @@ export function GroupLocationPickerSheet({
                 <button
                   onClick={handleLocate}
                   disabled={isLocating || isSending}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-900 transition-colors disabled:cursor-not-allowed disabled:opacity-60 hover:bg-zinc-200"
                 >
                   {isLocating ? <LoaderCircle size={18} className="animate-spin" /> : <LocateFixed size={18} />}
                   {isLocating ? '定位中...' : '获取当前位置'}
@@ -153,7 +153,7 @@ export function GroupLocationPickerSheet({
                     <button
                       onClick={() => void handleSend(detectedLocation)}
                       disabled={isSending}
-                      className="mt-3 w-full rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                      className="mt-3 w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-900 transition-colors disabled:cursor-not-allowed disabled:opacity-60 hover:bg-zinc-200"
                     >
                       发送真实位置
                     </button>
@@ -163,7 +163,7 @@ export function GroupLocationPickerSheet({
 
               <section className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-4">
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-800">
                     <PlusCircle size={20} />
                   </div>
                   <div>
@@ -196,7 +196,7 @@ export function GroupLocationPickerSheet({
                 <button
                   onClick={() => customLocation && void handleSend(customLocation)}
                   disabled={!customLocation || isSending}
-                  className="mt-3 w-full rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-3 w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-medium text-zinc-900 transition-colors disabled:cursor-not-allowed disabled:opacity-60 hover:bg-zinc-200"
                 >
                   发送虚拟位置
                 </button>

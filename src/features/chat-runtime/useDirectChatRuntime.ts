@@ -836,6 +836,12 @@ export function useDirectChatRuntime({
         },
       });
 
+      if (!currentResponseText && effectiveLocationData) {
+        activeAssistantMessageIdRef.current = null;
+        setHistory(newHistory);
+        return;
+      }
+
       if (!currentResponseText) {
         throw new Error('模型返回为空');
       }
