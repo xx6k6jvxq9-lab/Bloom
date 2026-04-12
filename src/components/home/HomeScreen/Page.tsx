@@ -33,6 +33,25 @@ type AppDefinition = {
   onClick: () => void;
 };
 
+type DragGhostState =
+  | {
+      kind: 'icon';
+      id: string;
+      x: number;
+      y: number;
+      iconSize: number;
+      app: AppDefinition;
+    }
+  | {
+      kind: 'widget';
+      id: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      widget: WidgetConfig;
+    };
+
 function resolveDesktopFontFamily(visualSettings?: VisualSettings): string | undefined {
   const priority = resolveThemeFontPriority(visualSettings?.themeTypography);
   const selectedFontId = visualSettings?.themeTypography?.selectedFontId;
@@ -122,6 +141,7 @@ export function HomeScreen({
   const [navBarPreviewSlotId, setNavBarPreviewSlotId] = useState<string | null>(null);
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
   const [widgetPreviewConfigs, setWidgetPreviewConfigs] = useState<WidgetConfig[] | null>(null);
+  const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
@@ -657,6 +677,7 @@ export function HomeScreen({
     setDraggingIconPage(null);
     setDraggingIconOriginPage(null);
     setIconPreviewConfigs(null);
+    setDragGhost(null);
   };
 
   const mergePageWidgetConfigs = (page: number, nextPageConfigs: WidgetConfig[], baseConfigs: WidgetConfig[]) => {
@@ -732,6 +753,7 @@ export function HomeScreen({
     setDraggingWidgetId(null);
     setWidgetPreviewConfigs(null);
     ignoreSwipeUntilRef.current = Date.now() + 260;
+    setDragGhost(null);
   };
 
   const activeSlotIds = useMemo(() => {
@@ -1086,7 +1108,7 @@ export function HomeScreen({
 
         <div className={`homeDesktop__surface ${isEditingDesktop ? 'homeDesktop__surface--editing' : ''}`}>
           <div className="homeDesktop__grid" style={desktopGridStyle}>
-          {pageWidgets.map(widget => {
+          {pageWidgets.filter(widget => widget.id !== draggingWidgetId).map(widget => {
             const placement = pageWidgetLayout.placements[widget.id];
             if (!placement) return null;
             return (
@@ -1101,8 +1123,24 @@ export function HomeScreen({
                 onDragStart={() => {
                   resetSwipeInteraction();
                   setDraggingWidgetId(widget.id);
+                  setDragGhost({
+                    kind: 'widget',
+                    id: widget.id,
+                    x: placement.x,
+                    y: placement.y,
+                    width: placement.width,
+                    height: placement.height,
+                    widget,
+                  });
                 }}
-                onDrag={info => handleWidgetDragPreview(widget.id, placement.x, placement.y, info, page)}
+                onDrag={info => {
+                  setDragGhost(current =>
+                    current?.kind === 'widget' && current.id === widget.id
+                      ? { ...current, x: placement.x + info.offset.x, y: placement.y + info.offset.y }
+                      : current,
+                  );
+                  handleWidgetDragPreview(widget.id, placement.x, placement.y, info, page);
+                }}
                 onDragEnd={info => handleWidgetDragCommit(widget.id, placement.x, placement.y, info, page)}
                 onWidgetChange={(updates) => {
                   const currentWidgets = visualSettings.widgets || [];
@@ -1141,9 +1179,7 @@ export function HomeScreen({
             );
           })}
 
-          {desktopApps.filter(app => (
-            pageApps.includes(app.id as DesktopAppId) && draggingIconId !== app.id
-          ) || (draggingIconId === app.id && draggingIconOriginPage === page)).map(app => {
+          {desktopApps.filter(app => pageApps.includes(app.id as DesktopAppId) && draggingIconId !== app.id).map(app => {
             const committedPlacement = pageCommittedPlacements[app.id];
             const previewPlacement = draggingIconId === app.id ? pagePreviewPlacements[app.id] : pagePreviewOtherPlacements[app.id];
             const placement = previewPlacement || committedPlacement;
@@ -1172,8 +1208,23 @@ export function HomeScreen({
                   setDraggingIconOriginPage(page);
                   lastPreviewSlotIdRef.current = committedPlacement.slotId;
                   setIconPreviewConfigs(null);
+                  setDragGhost({
+                    kind: 'icon',
+                    id: app.id,
+                    x: committedPlacement.x,
+                    y: committedPlacement.y,
+                    iconSize: iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                    app,
+                  });
                 }}
-                onDrag={info => handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info)}
+                onDrag={info => {
+                  setDragGhost(current =>
+                    current?.kind === 'icon' && current.id === app.id
+                      ? { ...current, x: committedPlacement.x + info.offset.x, y: committedPlacement.y + info.offset.y }
+                      : current,
+                  );
+                  handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info);
+                }}
                 onDragEnd={info => handleIconDragCommit(app.id, committedPlacement.x, committedPlacement.y, info)}
               />
             );
@@ -1221,6 +1272,7 @@ export function HomeScreen({
         }
         setDraggingWidgetId(null);
         setWidgetPreviewConfigs(null);
+        setDragGhost(null);
         setIsArrangeMode(false);
       }}
       style={
@@ -1257,6 +1309,47 @@ export function HomeScreen({
           {Array.from({ length: pageCount }, (_, page) => renderDesktopPage(page))}
         </div>
       </div>
+
+      {dragGhost && (
+        <div
+          className="pointer-events-none absolute z-[320]"
+          style={{
+            left: dragGhost.x,
+            top: dragGhost.y,
+            width: dragGhost.kind === 'widget' ? dragGhost.width : dragGhost.iconSize + 28,
+            height: dragGhost.kind === 'widget' ? dragGhost.height : dragGhost.iconSize + 34,
+          }}
+        >
+          <div className="homeDesktop__dragGhost">
+            {dragGhost.kind === 'icon' ? (
+              <AppIcon
+                id={dragGhost.app.id}
+                name={dragGhost.app.name}
+                icon={dragGhost.app.icon}
+                onClick={() => {}}
+                visualSettings={visualSettings}
+                iconSize={dragGhost.iconSize}
+              />
+            ) : (
+              <DesktopWidget
+                widget={dragGhost.widget}
+                isPreview
+                musicData={appData.musicData}
+                setMusicData={setterOrValue =>
+                  setAppData(prev => {
+                    const prevMusicData = prev.musicData!;
+                    const nextMusicData =
+                      typeof setterOrValue === 'function'
+                        ? (setterOrValue as (value: MusicData) => MusicData)(prevMusicData)
+                        : setterOrValue;
+                    return { ...prev, musicData: nextMusicData };
+                  })
+                }
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {false && (<AnimatePresence initial={false} custom={pageDirection}>
         <motion.div
