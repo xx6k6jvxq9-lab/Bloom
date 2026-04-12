@@ -27,11 +27,11 @@ export function createCancelAdminSystemMessage(memberName: string, timestamp: nu
 }
 
 export function createSetMemberBadgeSystemMessage(memberName: string, badgeLabel: string, timestamp: number): ChatMessage {
-  return createGroupNoticeMessage(`你给 ${memberName} 设置了头衔 ${badgeLabel}`, timestamp);
+  return createGroupNoticeMessage(`你给 ${memberName} 设置了群头衔“${badgeLabel}”`, timestamp);
 }
 
 export function createClearMemberBadgeSystemMessage(memberName: string, timestamp: number): ChatMessage {
-  return createGroupNoticeMessage(`你清除了 ${memberName} 的群内头衔`, timestamp);
+  return createGroupNoticeMessage(`你清除了 ${memberName} 的群头衔`, timestamp);
 }
 
 export function createLeaveGroupSystemMessage(timestamp: number): ChatMessage {
