@@ -21,6 +21,7 @@ import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneI
 import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
+import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
@@ -86,6 +87,23 @@ function toPromptHistoryContent(message: ChatMessage): string {
   }
 
   return message.text;
+}
+
+function getDirectHistoryWindowByTemporalMode(
+  messages: ChatMessage[],
+  historyLimit: number,
+  continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap',
+): ChatMessage[] {
+  const cappedWindow = messages.slice(-historyLimit);
+  if (continuityMode === 'continuous_scene') {
+    return cappedWindow;
+  }
+
+  if (continuityMode === 'same_day_resume') {
+    return cappedWindow.slice(-Math.min(historyLimit, 10));
+  }
+
+  return cappedWindow.slice(-Math.min(historyLimit, 6));
 }
 
 const extractTransferAmount = (text: string) => {
@@ -426,7 +444,18 @@ export function useDirectChatRuntime({
 
         try {
           const historyLimit = character.memoryLimit || 20;
-          const historyWindow = historySnapshot.slice(-historyLimit);
+          const characterTemporalState = buildCharacterTemporalState({
+            characterId: character.id,
+            perception,
+            directChatHistory,
+            groupMessages: [],
+            coupleSpace,
+          });
+          const historyWindow = getDirectHistoryWindowByTemporalMode(
+            historySnapshot,
+            historyLimit,
+            characterTemporalState.continuityMode,
+          );
 
           const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
@@ -761,7 +790,18 @@ export function useDirectChatRuntime({
       }
 
       const historyLimit = character.memoryLimit || 20;
-      const historyWindow = newHistory.slice(-historyLimit);
+      const characterTemporalState = buildCharacterTemporalState({
+        characterId: character.id,
+        perception,
+        directChatHistory,
+        groupMessages: [],
+        coupleSpace,
+      });
+      const historyWindow = getDirectHistoryWindowByTemporalMode(
+        newHistory,
+        historyLimit,
+        characterTemporalState.continuityMode,
+      );
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 

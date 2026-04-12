@@ -7,6 +7,7 @@ export type CharacterTemporalState = {
   temporalFacts: TemporalFacts;
   interactionGapState: InteractionGapState;
   topicHeatState: TopicHeatState;
+  continuityMode: InteractionGapState['continuityMode'];
   energyState: 'high' | 'steady' | 'low' | 'sleepy';
   socialState: 'open' | 'neutral' | 'reserved' | 'avoidant';
   attentionState: 'focused' | 'split' | 'drifting' | 'resting';
@@ -105,11 +106,14 @@ export function buildCharacterTemporalState(
     temporalFacts,
     interactionGapState,
     topicHeatState,
+    continuityMode: interactionGapState.continuityMode,
     energyState,
     socialState,
     attentionState,
     relationshipPull,
     initiativeReadiness,
-    sceneMomentum: topicHeatState.suggestedTopicAction,
+    sceneMomentum: interactionGapState.continuityMode === 'resume_after_gap'
+      ? (topicHeatState.hasPendingEmotionalThread ? 'shift' : 'close')
+      : topicHeatState.suggestedTopicAction,
   };
 }

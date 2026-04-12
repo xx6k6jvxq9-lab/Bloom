@@ -7,6 +7,8 @@ export type InteractionGapState = {
   minutesSinceLastCharacterReply: number | null;
   minutesSinceLastCoupleSpaceActivity: number | null;
   recentInteractionDensity: 'high' | 'medium' | 'low';
+  continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  crossedCalendarDaySinceLastDirectChat: boolean;
 };
 
 type BuildInteractionGapStateInput = {
@@ -32,6 +34,14 @@ function getLatestTimestamp(values: Array<number | null | undefined>): number | 
   }
 
   return Math.max(...normalized);
+}
+
+function isSameLocalDay(leftTimestamp: number, rightTimestamp: number): boolean {
+  const left = new Date(leftTimestamp);
+  const right = new Date(rightTimestamp);
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
 }
 
 function getLatestCoupleSpaceTimestamp(coupleSpace?: CoupleSpaceData): number | null {
@@ -72,12 +82,29 @@ export function buildInteractionGapState(input: BuildInteractionGapStateInput): 
     recentInteractionDensity = 'medium';
   }
 
+  const minutesSinceLastDirectChat = getMinutesSince(input.nowTimestamp, latestDirectChatTimestamp);
+  const crossedCalendarDaySinceLastDirectChat = latestDirectChatTimestamp == null
+    ? false
+    : !isSameLocalDay(input.nowTimestamp, latestDirectChatTimestamp);
+  let continuityMode: InteractionGapState['continuityMode'] = 'resume_after_gap';
+  if (minutesSinceLastDirectChat !== null && minutesSinceLastDirectChat <= 45 && !crossedCalendarDaySinceLastDirectChat) {
+    continuityMode = 'continuous_scene';
+  } else if (
+    minutesSinceLastDirectChat !== null
+    && minutesSinceLastDirectChat <= 6 * 60
+    && !crossedCalendarDaySinceLastDirectChat
+  ) {
+    continuityMode = 'same_day_resume';
+  }
+
   return {
-    minutesSinceLastDirectChat: getMinutesSince(input.nowTimestamp, latestDirectChatTimestamp),
+    minutesSinceLastDirectChat,
     minutesSinceLastGroupChat: getMinutesSince(input.nowTimestamp, latestGroupChatTimestamp),
     minutesSinceLastUserMessage: getMinutesSince(input.nowTimestamp, latestUserMessageTimestamp),
     minutesSinceLastCharacterReply: getMinutesSince(input.nowTimestamp, latestCharacterReplyTimestamp),
     minutesSinceLastCoupleSpaceActivity: getMinutesSince(input.nowTimestamp, latestCoupleSpaceTimestamp),
     recentInteractionDensity,
+    continuityMode,
+    crossedCalendarDaySinceLastDirectChat,
   };
 }
