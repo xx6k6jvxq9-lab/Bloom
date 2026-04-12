@@ -15,6 +15,7 @@ import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExpor
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -318,7 +319,7 @@ export function ChatSettingsPanel({
   const currentGroupLabel = character.groupId || '无分组';
   const remarkName = character.remarkName?.trim() || '';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
-  const resolvedCorePersona = character.corePersona?.trim() || character.setting.trim();
+  const resolvedCorePersona = buildCharacterContext({ character }).corePersona ?? '';
   const expressionStyle = character.expressionStyle ?? '';
   const boundaryPack = character.boundaryPack ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
@@ -1901,13 +1902,13 @@ export function ChatSettingsPanel({
                 <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
                   <p className="text-[11px] text-zinc-500 mb-3">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
                   <textarea
-                    value={character.corePersona ?? character.setting}
+                    value={resolvedCorePersona}
                     onChange={e => onUpdate({ ...character, corePersona: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.corePersona) })}
                     placeholder="输入核心人设..."
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[320px] resize-none"
                   />
                   <div className="mt-2 text-[11px] text-zinc-400 text-right">
-                    {(character.corePersona ?? character.setting).length}/{CHARACTER_EDITOR_LIMITS.corePersona}
+                    {resolvedCorePersona.length}/{CHARACTER_EDITOR_LIMITS.corePersona}
                   </div>
                 </div>
               </SettingsSection>

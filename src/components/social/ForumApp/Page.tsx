@@ -425,7 +425,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
         id: character.id,
         name: character.name,
         avatar: character.avatar,
-        description: character.signature || character.setting,
+        description: character.signature || character.corePersona || character.openingRemark || '',
       };
     }
     

@@ -8,6 +8,7 @@ import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
@@ -80,9 +81,10 @@ function wantsAnotherSpeaker(text: string): boolean {
 }
 
 function buildCharacterEvidence(character: Character): string {
+  const corePersona = buildCharacterContext({ character }).corePersona;
+
   return [
-    character.corePersona,
-    character.setting,
+    corePersona,
     character.expressionStyle,
     character.signature,
     character.sceneHints?.groupChat,

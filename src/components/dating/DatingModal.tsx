@@ -17,6 +17,7 @@ import type { ApiConfig, Character, ChatMessage, DateSession, PerceptionSettings
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { DatingScene } from './DatingScene';
 import { resolveDateBackgroundInput } from './sessionUtils';
 
@@ -315,7 +316,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                     <div className="min-w-0 flex-1">
                       <h3 className="text-[16px] font-semibold text-zinc-900">{character.name}</h3>
                       <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-zinc-500">
-                        {character.signature || character.setting || '给这次约会先定下一个适合你们的开场。'}
+                        {character.signature || buildCharacterContext({ character }).corePersona || '给这次约会先定下一个适合你们的开场。'}
                       </p>
                     </div>
                   </div>

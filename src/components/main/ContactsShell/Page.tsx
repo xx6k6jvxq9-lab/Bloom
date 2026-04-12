@@ -400,7 +400,7 @@ export function CharacterProfile({
 }) {
   const displayName = character.remarkName?.trim() || character.name;
   const fallbackSignature = character.openingRemark?.trim()
-    || `${character.setting.trim().slice(0, 36)}${character.setting.trim().length > 36 ? '...' : ''}`;
+    || `${(character.corePersona?.trim() || '').slice(0, 36)}${(character.corePersona?.trim() || '').length > 36 ? '...' : ''}`;
   const profileSignature = character.signature?.trim() || fallbackSignature;
 
   return (

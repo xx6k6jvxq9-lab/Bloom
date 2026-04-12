@@ -128,9 +128,10 @@ function pickHigherFamiliarity(
 }
 
 function getCharacterRelationshipSourceText(character: Character): string {
+  const corePersona = buildCharacterContext({ character }).corePersona;
+
   return [
-    character.corePersona,
-    character.setting,
+    corePersona,
     character.expressionStyle,
     character.signature,
   ]
