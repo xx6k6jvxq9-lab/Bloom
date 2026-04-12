@@ -19,6 +19,7 @@ import {
   type HomeScreenSizeTier,
   getNearestDesktopSlotId,
   resolveDesktopIconDrop,
+  resolveWidgetDrop,
   resolveNavBarDrop,
 } from './layout';
 import './HomeScreen.css';
@@ -119,6 +120,8 @@ export function HomeScreen({
   const [draggingNavBar, setDraggingNavBar] = useState(false);
   const [draggingNavBarPage, setDraggingNavBarPage] = useState<number | null>(null);
   const [navBarPreviewSlotId, setNavBarPreviewSlotId] = useState<string | null>(null);
+  const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
+  const [widgetPreviewConfigs, setWidgetPreviewConfigs] = useState<WidgetConfig[] | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
@@ -265,6 +268,10 @@ export function HomeScreen({
     () => (visualSettings.widgets || []).map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
     [visualSettings.widgets],
   );
+  const workingWidgetConfigs = useMemo(
+    () => (widgetPreviewConfigs || normalizedWidgets).map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
+    [widgetPreviewConfigs, normalizedWidgets],
+  );
   const navBarPage = normalizeDesktopPage(visualSettings.navBar?.page);
 
   useLayoutEffect(() => {
@@ -331,8 +338,8 @@ export function HomeScreen({
   );
 
   const currentPageWidgets = useMemo(
-    () => normalizedWidgets.filter(widget => normalizeDesktopPage(widget.page) === currentPage),
-    [currentPage, normalizedWidgets],
+    () => workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === currentPage),
+    [currentPage, workingWidgetConfigs],
   );
   const navOccupiedSlotIds = useMemo(
     () => (navBarPage === currentPage ? new Set(navBarPlacement.slotIds) : new Set<string>()),
@@ -652,6 +659,81 @@ export function HomeScreen({
     setIconPreviewConfigs(null);
   };
 
+  const mergePageWidgetConfigs = (page: number, nextPageConfigs: WidgetConfig[], baseConfigs: WidgetConfig[]) => {
+    const normalizedPage = normalizeDesktopPage(page);
+    const nextMap = new Map(nextPageConfigs.map(widget => [widget.id, { ...widget, page: normalizedPage }]));
+    return baseConfigs.map(widget => {
+      if (normalizeDesktopPage(widget.page) !== normalizedPage) {
+        return widget;
+      }
+      const next = nextMap.get(widget.id);
+      return next
+        ? {
+            ...widget,
+            ...next,
+            page: normalizedPage,
+            x: undefined,
+            y: undefined,
+          }
+        : widget;
+    });
+  };
+
+  const persistWidgetConfigs = (nextConfigs: WidgetConfig[]) => {
+    setVisualSettings({
+      ...visualSettings,
+      widgets: nextConfigs.map(widget => ({
+        ...widget,
+        page: normalizeDesktopPage(widget.page),
+      })),
+    });
+  };
+
+  const handleWidgetDragPreview = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
+    const rawX = originX + info.offset.x;
+    const rawY = originY + info.offset.y;
+    const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
+      ...widget,
+      page: normalizeDesktopPage(widget.page),
+    }));
+    const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
+    const nextPageConfigs = resolveWidgetDrop({
+      widgets: pageWidgets,
+      draggedId: widgetId,
+      rawX,
+      rawY,
+      slots,
+      cols,
+      baseOccupiedSlotIds,
+    }) as WidgetConfig[];
+    setWidgetPreviewConfigs(mergePageWidgetConfigs(page, nextPageConfigs, baseConfigs));
+  };
+
+  const handleWidgetDragCommit = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
+    const rawX = originX + info.offset.x;
+    const rawY = originY + info.offset.y;
+    const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
+      ...widget,
+      page: normalizeDesktopPage(widget.page),
+    }));
+    const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
+    const nextPageConfigs = resolveWidgetDrop({
+      widgets: pageWidgets,
+      draggedId: widgetId,
+      rawX,
+      rawY,
+      slots,
+      cols,
+      baseOccupiedSlotIds,
+    }) as WidgetConfig[];
+    persistWidgetConfigs(mergePageWidgetConfigs(page, nextPageConfigs, baseConfigs));
+    setDraggingWidgetId(null);
+    setWidgetPreviewConfigs(null);
+    ignoreSwipeUntilRef.current = Date.now() + 260;
+  };
+
   const activeSlotIds = useMemo(() => {
     const ids = new Set<string>();
     if (draggingIconId && draggedPreviewSlotId) {
@@ -660,10 +742,13 @@ export function HomeScreen({
     if (draggingNavBar) {
       navBarPlacement.slotIds.forEach(slotId => ids.add(slotId));
     }
+    if (draggingWidgetId) {
+      (widgetLayout.placements[draggingWidgetId]?.slotIds || []).forEach(slotId => ids.add(slotId));
+    }
     return ids;
-  }, [draggedPreviewSlotId, draggingIconId, draggingNavBar, navBarPlacement.slotIds]);
+  }, [draggedPreviewSlotId, draggingIconId, draggingNavBar, draggingWidgetId, navBarPlacement.slotIds, widgetLayout.placements]);
 
-  const isEditingDesktop = Boolean(isArrangeMode || draggingIconId || draggingNavBar);
+  const isEditingDesktop = Boolean(isArrangeMode || draggingIconId || draggingNavBar || draggingWidgetId);
   const resetSwipeInteraction = () => {
     swipeEnabledRef.current = false;
     swipeStartRef.current = null;
@@ -736,7 +821,7 @@ export function HomeScreen({
   };
 
   const renderDesktopPage = (page: number) => {
-    const pageWidgets = normalizedWidgets.filter(widget => normalizeDesktopPage(widget.page) === page);
+    const pageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
     const pageNavOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
     const pageWidgetLayout = buildDesktopWidgetPlacements(pageWidgets, slots, cols, pageNavOccupiedSlotIds);
     const pageOccupiedSlotIds = new Set(pageWidgetLayout.occupiedSlotIds);
@@ -1010,8 +1095,15 @@ export function HomeScreen({
                 widget={widget}
                 placement={placement}
                 gridStyle={getExplicitGridStyle(placement.anchorSlotId || widget.slotId, widget.w || 1, widget.h || 1)}
+                isArrangeMode={isArrangeMode}
                 appData={appData}
                 setAppData={setAppData}
+                onDragStart={() => {
+                  resetSwipeInteraction();
+                  setDraggingWidgetId(widget.id);
+                }}
+                onDrag={info => handleWidgetDragPreview(widget.id, placement.x, placement.y, info, page)}
+                onDragEnd={info => handleWidgetDragCommit(widget.id, placement.x, placement.y, info, page)}
                 onWidgetChange={(updates) => {
                   const currentWidgets = visualSettings.widgets || [];
                   const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
@@ -1127,6 +1219,8 @@ export function HomeScreen({
         if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
           return;
         }
+        setDraggingWidgetId(null);
+        setWidgetPreviewConfigs(null);
         setIsArrangeMode(false);
       }}
       style={
@@ -1422,8 +1516,15 @@ export function HomeScreen({
               key={widget.id}
               widget={widget}
               placement={placement}
+              isArrangeMode={isArrangeMode}
               appData={appData}
               setAppData={setAppData}
+              onDragStart={() => {
+                resetSwipeInteraction();
+                setDraggingWidgetId(widget.id);
+              }}
+              onDrag={info => handleWidgetDragPreview(widget.id, placement.x, placement.y, info, currentPage)}
+              onDragEnd={info => handleWidgetDragCommit(widget.id, placement.x, placement.y, info, currentPage)}
               onWidgetChange={(updates) => {
                 const currentWidgets = visualSettings.widgets || [];
                 const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
@@ -1531,6 +1632,10 @@ function DraggableWidget({
   widget,
   placement,
   gridStyle,
+  isArrangeMode,
+  onDragStart,
+  onDrag,
+  onDragEnd,
   onPositionChange,
   onWidgetChange,
   appData,
@@ -1539,31 +1644,30 @@ function DraggableWidget({
   widget: any;
   placement: { x: number; y: number; width: number; height: number };
   gridStyle?: React.CSSProperties;
+  isArrangeMode: boolean;
+  onDragStart: () => void;
+  onDrag: (info: PanInfo) => void;
+  onDragEnd: (info: PanInfo) => void;
   onPositionChange: (x: number, y: number) => void;
   onWidgetChange: (updates: Partial<WidgetConfig>) => void;
   appData: AppData;
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
 }) {
-  const isDragging = useRef(false);
-
   return (
     <motion.div
       className={`homeDesktop__item homeDesktop__item--widget ${gridStyle ? 'homeDesktop__item--grid' : ''}`}
       initial={false}
       animate={gridStyle ? undefined : { x: placement.x, y: placement.y }}
-      drag
+      drag={isArrangeMode}
+      dragListener={isArrangeMode}
       dragMomentum={false}
-      onDragStart={() => {
-        isDragging.current = true;
-      }}
+      onDragStart={onDragStart}
+      onDrag={(_, info) => onDrag(info)}
       onDragEnd={(_, info) => {
-        setTimeout(() => {
-          isDragging.current = false;
-        }, 50);
-        onPositionChange(placement.x + info.offset.x, placement.y + info.offset.y);
+        onDragEnd(info);
       }}
       style={gridStyle || { width: placement.width, height: placement.height }}
-      whileDrag={{ scale: 1.02, zIndex: 260 }}
+      whileDrag={isArrangeMode ? { scale: 1.02, zIndex: 260 } : undefined}
       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
     >
       <DesktopWidget
