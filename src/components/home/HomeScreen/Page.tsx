@@ -563,6 +563,8 @@ export function HomeScreen({
     const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
     const rawX = trackRawX - (targetPage * desktopViewport.width);
     const rawY = originY + info.offset.y;
+    const probeX = rawX + layoutMetrics.slotWidth / 2;
+    const probeY = rawY + layoutMetrics.slotHeight / 2;
     const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
     if (
       Date.now() >= dragPageTurnUntilRef.current
@@ -599,22 +601,26 @@ export function HomeScreen({
     const targetPageConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
       icon.id === appId ? { ...icon, page: targetPage } : { ...icon, page: normalizeDesktopPage(icon.page) }
     );
-    const targetPageWidgets = normalizedWidgets.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
+    const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
     const targetPageWidgetLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
     const targetPageOccupiedSlotIds = new Set(targetPageWidgetLayout.occupiedSlotIds);
     dockPlacement.slotIds.forEach(slotId => targetPageOccupiedSlotIds.add(slotId));
     const currentSlotId = lastPreviewSlotIdRef.current || targetPageConfigs.find(icon => icon.id === appId)?.slotId || null;
     const currentSlot = currentSlotId ? slots.find(slot => slot.id === currentSlotId) : null;
-    const hysteresis = 18;
+    const hysteresis = 10;
 
-    let nextSlotId = getNearestDesktopSlotId(rawX, rawY, slots.filter(slot => !targetPageOccupiedSlotIds.has(slot.id) || slot.id === currentSlotId));
+    let nextSlotId = getNearestDesktopSlotId(
+      probeX,
+      probeY,
+      slots.filter(slot => !targetPageOccupiedSlotIds.has(slot.id) || slot.id === currentSlotId),
+    );
     if (
       currentSlot &&
-      rawX >= currentSlot.x - hysteresis &&
-      rawX <= currentSlot.x + currentSlot.width + hysteresis &&
-      rawY >= currentSlot.y - hysteresis &&
-      rawY <= currentSlot.y + currentSlot.height + hysteresis
+      probeX >= currentSlot.x - hysteresis &&
+      probeX <= currentSlot.x + currentSlot.width + hysteresis &&
+      probeY >= currentSlot.y - hysteresis &&
+      probeY <= currentSlot.y + currentSlot.height + hysteresis
     ) {
       nextSlotId = currentSlot.id;
     }
@@ -630,8 +636,8 @@ export function HomeScreen({
       }),
       iconConfigs: targetPageConfigs.filter(icon => normalizeDesktopPage(icon.page) === targetPage),
       draggedId: appId,
-      rawX,
-      rawY,
+      rawX: probeX,
+      rawY: probeY,
       slots,
       occupiedSlotIds: targetPageOccupiedSlotIds,
     });
@@ -649,10 +655,12 @@ export function HomeScreen({
     const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
     const rawX = trackRawX - (targetPage * desktopViewport.width);
     const rawY = originY + info.offset.y;
+    const probeX = rawX + layoutMetrics.slotWidth / 2;
+    const probeY = rawY + layoutMetrics.slotHeight / 2;
     const targetPageConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
       icon.id === appId ? { ...icon, page: targetPage } : { ...icon, page: normalizeDesktopPage(icon.page) }
     );
-    const targetPageWidgets = normalizedWidgets.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
+    const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
     const targetPageWidgetLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
     const targetPageOccupiedSlotIds = new Set(targetPageWidgetLayout.occupiedSlotIds);
@@ -664,8 +672,8 @@ export function HomeScreen({
       }),
       iconConfigs: targetPageConfigs.filter(icon => normalizeDesktopPage(icon.page) === targetPage),
       draggedId: appId,
-      rawX,
-      rawY,
+      rawX: probeX,
+      rawY: probeY,
       slots,
       occupiedSlotIds: targetPageOccupiedSlotIds,
     });
@@ -711,8 +719,18 @@ export function HomeScreen({
   };
 
   const handleWidgetDragPreview = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
-    const rawX = originX + info.offset.x;
-    const rawY = originY + info.offset.y;
+    const placement =
+      workingWidgetConfigs
+        .filter(widget => normalizeDesktopPage(widget.page) === page)
+        .map(widget => buildDesktopWidgetPlacements(
+          workingWidgetConfigs.filter(candidate => normalizeDesktopPage(candidate.page) === page),
+          slots,
+          cols,
+          navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+        ).placements[widgetId])
+        .find(Boolean) || null;
+    const rawX = originX + info.offset.x + ((placement?.width ?? 0) / 2);
+    const rawY = originY + info.offset.y + ((placement?.height ?? 0) / 2);
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
       page: normalizeDesktopPage(widget.page),
@@ -732,8 +750,18 @@ export function HomeScreen({
   };
 
   const handleWidgetDragCommit = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
-    const rawX = originX + info.offset.x;
-    const rawY = originY + info.offset.y;
+    const placement =
+      workingWidgetConfigs
+        .filter(widget => normalizeDesktopPage(widget.page) === page)
+        .map(widget => buildDesktopWidgetPlacements(
+          workingWidgetConfigs.filter(candidate => normalizeDesktopPage(candidate.page) === page),
+          slots,
+          cols,
+          navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+        ).placements[widgetId])
+        .find(Boolean) || null;
+    const rawX = originX + info.offset.x + ((placement?.width ?? 0) / 2);
+    const rawY = originY + info.offset.y + ((placement?.height ?? 0) / 2);
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
       page: normalizeDesktopPage(widget.page),
