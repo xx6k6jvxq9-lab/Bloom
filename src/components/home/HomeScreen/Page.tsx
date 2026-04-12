@@ -663,6 +663,12 @@ export function HomeScreen({
   }, [draggedPreviewSlotId, draggingIconId, draggingNavBar, navBarPlacement.slotIds]);
 
   const isEditingDesktop = Boolean(draggingIconId || draggingNavBar);
+  const resetSwipeInteraction = () => {
+    swipeEnabledRef.current = false;
+    swipeStartRef.current = null;
+    setIsSwipeDragging(false);
+    setSwipeOffset(0);
+  };
   const changePage = (nextPage: number) => {
     const resolved = normalizeDesktopPage(nextPage);
     if (resolved === currentPage) return;
@@ -1060,6 +1066,7 @@ export function HomeScreen({
                 isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
                 isDragging={draggingIconId === app.id}
                 onDragStart={() => {
+                  resetSwipeInteraction();
                   setDraggingIconId(app.id);
                   setDraggingIconPage(page);
                   setDraggingIconOriginPage(page);
@@ -1106,9 +1113,6 @@ export function HomeScreen({
           handleSwipeEnd(e.clientX, e.clientY);
         }
       }}
-      onTouchStart={e => handleSwipeStart(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target)}
-      onTouchMove={e => handleSwipeMove(e.changedTouches[0].clientX, e.changedTouches[0].clientY)}
-      onTouchEnd={e => handleSwipeEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY)}
       style={
         {
           '--home-desktop-dock-gap': sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
@@ -1163,6 +1167,7 @@ export function HomeScreen({
               placement={navBarPlacement}
               dragging={draggingNavBar}
               onDragStart={() => {
+                resetSwipeInteraction();
                 setDraggingNavBar(true);
                 setDraggingNavBarPage(navBarPage);
                 setNavBarPreviewSlotId(visualSettings.navBar?.slotId || navBarPlacement.anchorSlotId);
@@ -1222,6 +1227,7 @@ export function HomeScreen({
                 ignoreSwipeUntilRef.current = Date.now() + 260;
                 dragPageTurnUntilRef.current = 0;
                 setNavBarPreviewSlotId(null);
+                resetSwipeInteraction();
               }}
             >
               <div
