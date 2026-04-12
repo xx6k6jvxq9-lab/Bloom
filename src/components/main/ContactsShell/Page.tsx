@@ -873,6 +873,7 @@ export function AddFriendModal({
                 gender: 'other',
                 avatar: DEFAULT_WHITE_AVATAR,
                 setting: `你是一个新添加的 AI 好友，名字叫 ${query}。`,
+                corePersona: `你是一个新添加的 AI 好友，名字叫 ${query}。`,
                 openingRemark: `你好！很高兴认识你，我是 ${query}。`,
               });
               setQuery('');

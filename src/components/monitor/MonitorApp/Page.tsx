@@ -32,6 +32,7 @@ type Character = {
   name: string;
   avatar: string;
   setting: string;
+  corePersona?: string;
   category?: string;
 };
 
@@ -296,7 +297,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                     
                     <div>
                       <p className="text-[16px] font-black text-zinc-900 tracking-tight">{char.name}</p>
-                      <p className="text-[11px] text-zinc-400 mt-1 font-medium line-clamp-1 px-2">{char.setting}</p>
+                      <p className="text-[11px] text-zinc-400 mt-1 font-medium line-clamp-1 px-2">{char.corePersona || ''}</p>
                     </div>
                     
                     <div className="mt-2 w-full py-2 bg-zinc-50 rounded-2xl text-[10px] font-black text-zinc-400 uppercase tracking-widest group-hover:bg-zinc-900 group-hover:text-white transition-all">
@@ -358,7 +359,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
                             <ResolvedMonitorAvatar value={char.avatar} alt={char.name} className="w-10 h-10 rounded-xl object-cover shadow-sm" />
                             <div className="flex-1">
                               <p className="font-bold text-zinc-900 text-sm">{char.name}</p>
-                              <p className="text-[10px] text-zinc-400 line-clamp-1">{char.setting}</p>
+                              <p className="text-[10px] text-zinc-400 line-clamp-1">{char.corePersona || ''}</p>
                             </div>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shadow-sm ${
                               charToAdd?.id === char.id ? 'bg-zinc-100 text-zinc-900' : 'bg-white text-zinc-300'

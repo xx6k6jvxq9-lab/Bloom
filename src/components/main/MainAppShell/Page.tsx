@@ -495,6 +495,7 @@ export function MainApp({
                   gender: char.gender || 'other',
                   avatar: char.avatar || DEFAULT_WHITE_AVATAR,
                   setting: char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
+                  corePersona: char.corePersona || char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
                   openingRemark: char.openingRemark || `你好，很高兴认识你，我是 ${char.name}。`,
                   lastMessage: char.openingRemark || `你好，很高兴认识你，我是 ${char.name}。`,
                   lastTime: Date.now(),
