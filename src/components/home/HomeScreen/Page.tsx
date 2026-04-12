@@ -84,6 +84,7 @@ type DesktopAppId = 'chat' | 'settings' | 'worldbook' | 'monitor' | 'couple-spac
 const WALLPAPER_URL = 'https://tse4.mm.bing.net/th/id/OIP.Cg3l8e76ACyxyLdkdP_tSgAAAA?rs=1&pid=ImgDetMain&o=7&rm=3';
 const APP_ICON_URL = 'https://tu.tuhenmei.com/tu2026/2025120917/gg0qhoi1q2j25922.jpeg';
 const DESKTOP_ROWS = 7;
+const MIN_DESKTOP_PAGE_COUNT = 2;
 const DOCK_APP_IDS = ['wallet', 'sms', 'customization'] as const;
 
 export function HomeScreen({
@@ -123,7 +124,6 @@ export function HomeScreen({
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
-  const pageCount = 1;
   const { resolvedFonts } = useResolvedThemeTypographyCss(visualSettings?.themeTypography);
   const desktopFontFaceCss = resolvedFonts
     .map((font) => `@font-face {
@@ -210,6 +210,13 @@ export function HomeScreen({
 
   const desktopApps = useMemo(() => apps.filter(app => appOrder.includes(app.id as DesktopAppId)), [apps, appOrder]);
   const currentIcons = visualSettings.desktopIcons || [];
+  const pageCount = useMemo(() => {
+    const iconPages = currentIcons.map(icon => (typeof icon.page === 'number' ? icon.page : 0));
+    const widgetPages = (visualSettings.widgets || []).map(widget => (typeof widget.page === 'number' ? widget.page : 0));
+    const navBarPages = [typeof visualSettings.navBar?.page === 'number' ? visualSettings.navBar.page : 0];
+    const maxPage = Math.max(0, ...iconPages, ...widgetPages, ...navBarPages);
+    return Math.max(MIN_DESKTOP_PAGE_COUNT, maxPage + 1);
+  }, [currentIcons, visualSettings.navBar?.page, visualSettings.widgets]);
   const normalizeDesktopPage = (page?: number) => {
     const resolved = typeof page === 'number' ? page : 0;
     return Math.min(Math.max(resolved, 0), pageCount - 1);
@@ -217,6 +224,7 @@ export function HomeScreen({
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const swipeEnabledRef = useRef(false);
   const ignoreSwipeUntilRef = useRef(0);
+  const dragPageTurnUntilRef = useRef(0);
   const lastPreviewSlotIdRef = useRef<string | null>(null);
   const navBarInnerRef = useRef<HTMLDivElement | null>(null);
   const desktopRootRef = useRef<HTMLDivElement | null>(null);
@@ -304,6 +312,10 @@ export function HomeScreen({
   useEffect(() => {
     setCurrentPage(0);
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(prev => Math.min(prev, pageCount - 1));
+  }, [pageCount]);
 
   const navBarPlacement = useMemo(
     () =>
@@ -523,9 +535,14 @@ export function HomeScreen({
     const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
     const rawX = trackRawX - (targetPage * desktopViewport.width);
     const rawY = originY + info.offset.y;
-    const edgeThreshold = 28;
-    if (rawX >= desktopViewport.width - edgeThreshold && targetPage < pageCount - 1) {
+    const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
+    if (
+      Date.now() >= dragPageTurnUntilRef.current
+      && rawX >= desktopViewport.width - edgeThreshold
+      && targetPage < pageCount - 1
+    ) {
       const nextPage = targetPage + 1;
+      dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
       lastPreviewSlotIdRef.current = null;
@@ -537,8 +554,9 @@ export function HomeScreen({
       });
       return;
     }
-    if (rawX <= edgeThreshold && targetPage > 0) {
+    if (Date.now() >= dragPageTurnUntilRef.current && rawX <= edgeThreshold && targetPage > 0) {
       const nextPage = targetPage - 1;
+      dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
       lastPreviewSlotIdRef.current = null;
@@ -626,6 +644,7 @@ export function HomeScreen({
     lastPreviewSlotIdRef.current = null;
     persistIconConfigs(mergePageIconConfigs(targetPage, nextPageConfigs as DesktopIconConfig[], targetPageConfigs));
     ignoreSwipeUntilRef.current = Date.now() + 260;
+    dragPageTurnUntilRef.current = 0;
     setDraggingIconId(null);
     setDraggingIconPage(null);
     setDraggingIconOriginPage(null);
@@ -1151,16 +1170,22 @@ export function HomeScreen({
               onDrag={info => {
                 const targetPage = draggingNavBarPage ?? currentPage;
                 const rawX = navBarPlacement.x + info.offset.x;
-                const edgeThreshold = 28;
-                if (rawX >= desktopViewport.width - edgeThreshold && targetPage < pageCount - 1) {
+                const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
+                if (
+                  Date.now() >= dragPageTurnUntilRef.current
+                  && rawX >= desktopViewport.width - edgeThreshold
+                  && targetPage < pageCount - 1
+                ) {
                   const nextPage = targetPage + 1;
+                  dragPageTurnUntilRef.current = Date.now() + 220;
                   changePage(nextPage);
                   setDraggingNavBarPage(nextPage);
                   setNavBarPreviewSlotId(null);
                   return;
                 }
-                if (rawX <= edgeThreshold && targetPage > 0) {
+                if (Date.now() >= dragPageTurnUntilRef.current && rawX <= edgeThreshold && targetPage > 0) {
                   const nextPage = targetPage - 1;
+                  dragPageTurnUntilRef.current = Date.now() + 220;
                   changePage(nextPage);
                   setDraggingNavBarPage(nextPage);
                   setNavBarPreviewSlotId(null);
@@ -1195,6 +1220,7 @@ export function HomeScreen({
                 setDraggingNavBar(false);
                 setDraggingNavBarPage(null);
                 ignoreSwipeUntilRef.current = Date.now() + 260;
+                dragPageTurnUntilRef.current = 0;
                 setNavBarPreviewSlotId(null);
               }}
             >
