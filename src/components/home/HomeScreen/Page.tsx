@@ -140,6 +140,7 @@ export function HomeScreen({
   const [draggingNavBarPage, setDraggingNavBarPage] = useState<number | null>(null);
   const [navBarPreviewSlotId, setNavBarPreviewSlotId] = useState<string | null>(null);
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
+  const [draggingWidgetPage, setDraggingWidgetPage] = useState<number | null>(null);
   const [widgetPreviewConfigs, setWidgetPreviewConfigs] = useState<WidgetConfig[] | null>(null);
   const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
@@ -250,6 +251,18 @@ export function HomeScreen({
   const ignoreSwipeUntilRef = useRef(0);
   const dragPageTurnUntilRef = useRef(0);
   const lastPreviewSlotIdRef = useRef<string | null>(null);
+  const iconPointerSessionRef = useRef<{
+    appId: string;
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const widgetPointerSessionRef = useRef<{
+    widgetId: string;
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
   const navBarInnerRef = useRef<HTMLDivElement | null>(null);
   const desktopRootRef = useRef<HTMLDivElement | null>(null);
   const sizeTier: HomeScreenSizeTier =
@@ -557,12 +570,19 @@ export function HomeScreen({
     });
   };
 
-  const handleIconDragPreview = (appId: string, originX: number, originY: number, info: PanInfo) => {
+  const getLocalPointerPosition = (clientX: number, clientY: number) => {
+    const rect = desktopRootRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return null;
+    }
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  };
+
+  const handleIconDragPreview = (appId: string, rawX: number, rawY: number) => {
     const targetPage = draggingIconPage ?? currentPage;
-    const originPage = draggingIconOriginPage ?? targetPage;
-    const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
-    const rawX = trackRawX - (targetPage * desktopViewport.width);
-    const rawY = originY + info.offset.y;
     setDragGhost(current =>
       current?.kind === 'icon' && current.id === appId
         ? { ...current, x: rawX, y: rawY }
@@ -580,15 +600,6 @@ export function HomeScreen({
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
-      setDragGhost(current =>
-        current?.kind === 'icon' && current.id === appId
-          ? {
-              ...current,
-              x: Math.max(12, rawX - desktopViewport.width),
-              y: rawY,
-            }
-          : current,
-      );
       lastPreviewSlotIdRef.current = null;
       setIconPreviewConfigs(prev => {
         const base = (prev || normalizedIcons).map(icon =>
@@ -603,15 +614,6 @@ export function HomeScreen({
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
-      setDragGhost(current =>
-        current?.kind === 'icon' && current.id === appId
-          ? {
-              ...current,
-              x: Math.min(desktopViewport.width - current.iconSize - 16, rawX + desktopViewport.width),
-              y: rawY,
-            }
-          : current,
-      );
       lastPreviewSlotIdRef.current = null;
       setIconPreviewConfigs(prev => {
         const base = (prev || normalizedIcons).map(icon =>
@@ -672,12 +674,8 @@ export function HomeScreen({
     setIconPreviewConfigs(mergePageIconConfigs(targetPage, nextPageConfigs as DesktopIconConfig[], targetPageConfigs));
   };
 
-  const handleIconDragCommit = (appId: string, originX: number, originY: number, info: PanInfo) => {
+  const handleIconDragCommit = (appId: string, rawX: number, rawY: number) => {
     const targetPage = draggingIconPage ?? currentPage;
-    const originPage = draggingIconOriginPage ?? targetPage;
-    const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
-    const rawX = trackRawX - (targetPage * desktopViewport.width);
-    const rawY = originY + info.offset.y;
     const probeX = rawX + layoutMetrics.slotWidth / 2;
     const probeY = rawY + layoutMetrics.slotHeight / 2;
     const targetPageConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
@@ -711,6 +709,69 @@ export function HomeScreen({
     setDragGhost(null);
   };
 
+  const beginIconPointerDrag = (app: AppDefinition, page: number, placement: { x: number; y: number; slotId: string | null }, clientX: number, clientY: number, pointerId: number, dragIconSize: number) => {
+    const local = getLocalPointerPosition(clientX, clientY);
+    if (!local) return;
+    resetSwipeInteraction();
+    iconPointerSessionRef.current = {
+      appId: app.id,
+      pointerId,
+      offsetX: local.x - placement.x,
+      offsetY: local.y - placement.y,
+    };
+    setDraggingIconId(app.id);
+    setDraggingIconPage(page);
+    setDraggingIconOriginPage(page);
+    lastPreviewSlotIdRef.current = placement.slotId;
+    setIconPreviewConfigs(null);
+    setDragGhost({
+      kind: 'icon',
+      id: app.id,
+      x: placement.x,
+      y: placement.y,
+      iconSize: dragIconSize,
+      app,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingIconId) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const session = iconPointerSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      const local = getLocalPointerPosition(event.clientX, event.clientY);
+      if (!local) return;
+      handleIconDragPreview(session.appId, local.x - session.offsetX, local.y - session.offsetY);
+    };
+
+    const finishPointerDrag = (event: PointerEvent) => {
+      const session = iconPointerSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      const local = getLocalPointerPosition(event.clientX, event.clientY);
+      if (local) {
+        handleIconDragCommit(session.appId, local.x - session.offsetX, local.y - session.offsetY);
+      } else {
+        setDraggingIconId(null);
+        setDraggingIconPage(null);
+        setDraggingIconOriginPage(null);
+        setIconPreviewConfigs(null);
+        setDragGhost(null);
+      }
+      iconPointerSessionRef.current = null;
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', finishPointerDrag);
+    window.addEventListener('pointercancel', finishPointerDrag);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', finishPointerDrag);
+      window.removeEventListener('pointercancel', finishPointerDrag);
+    };
+  }, [currentPage, desktopViewport.width, draggingIconId, draggingIconPage, iconPreviewConfigs, layoutMetrics.slotHeight, layoutMetrics.slotWidth, normalizedIcons, workingWidgetConfigs]);
+
   const mergePageWidgetConfigs = (page: number, nextPageConfigs: WidgetConfig[], baseConfigs: WidgetConfig[]) => {
     const normalizedPage = normalizeDesktopPage(page);
     const nextMap = new Map(nextPageConfigs.map(widget => [widget.id, { ...widget, page: normalizedPage }]));
@@ -741,71 +802,173 @@ export function HomeScreen({
     });
   };
 
-  const handleWidgetDragPreview = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
-    const placement =
-      workingWidgetConfigs
-        .filter(widget => normalizeDesktopPage(widget.page) === page)
-        .map(widget => buildDesktopWidgetPlacements(
-          workingWidgetConfigs.filter(candidate => normalizeDesktopPage(candidate.page) === page),
-          slots,
-          cols,
-          navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>(),
-        ).placements[widgetId])
-        .find(Boolean) || null;
-    const rawX = originX + info.offset.x + ((placement?.width ?? 0) / 2);
-    const rawY = originY + info.offset.y + ((placement?.height ?? 0) / 2);
+  const handleWidgetDragPreview = (widgetId: string, rawX: number, rawY: number) => {
+    const targetPage = draggingWidgetPage ?? currentPage;
+    const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
+    if (
+      Date.now() >= dragPageTurnUntilRef.current
+      && rawX >= desktopViewport.width - edgeThreshold
+      && targetPage < pageCount - 1
+    ) {
+      const nextPage = targetPage + 1;
+      dragPageTurnUntilRef.current = Date.now() + 220;
+      changePage(nextPage);
+      setDraggingWidgetPage(nextPage);
+      setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
+        widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
+      ));
+      return;
+    }
+    if (
+      Date.now() >= dragPageTurnUntilRef.current
+      && rawX <= edgeThreshold
+      && targetPage > 0
+    ) {
+      const nextPage = targetPage - 1;
+      dragPageTurnUntilRef.current = Date.now() + 220;
+      changePage(nextPage);
+      setDraggingWidgetPage(nextPage);
+      setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
+        widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
+      ));
+      return;
+    }
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
       page: normalizeDesktopPage(widget.page),
     }));
-    const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
-    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
+    const placement =
+      buildDesktopWidgetPlacements(
+        baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage),
+        slots,
+        cols,
+        navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+      ).placements[widgetId] || null;
+    const centeredRawX = rawX + ((placement?.width ?? 0) / 2);
+    const centeredRawY = rawY + ((placement?.height ?? 0) / 2);
+    const baseOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const nextPageConfigs = resolveWidgetDrop({
       widgets: pageWidgets,
       draggedId: widgetId,
-      rawX,
-      rawY,
+      rawX: centeredRawX,
+      rawY: centeredRawY,
       slots,
       cols,
       baseOccupiedSlotIds,
     }) as WidgetConfig[];
-    setWidgetPreviewConfigs(mergePageWidgetConfigs(page, nextPageConfigs, baseConfigs));
+    setWidgetPreviewConfigs(mergePageWidgetConfigs(targetPage, nextPageConfigs, baseConfigs));
   };
 
-  const handleWidgetDragCommit = (widgetId: string, originX: number, originY: number, info: PanInfo, page: number) => {
-    const placement =
-      workingWidgetConfigs
-        .filter(widget => normalizeDesktopPage(widget.page) === page)
-        .map(widget => buildDesktopWidgetPlacements(
-          workingWidgetConfigs.filter(candidate => normalizeDesktopPage(candidate.page) === page),
-          slots,
-          cols,
-          navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>(),
-        ).placements[widgetId])
-        .find(Boolean) || null;
-    const rawX = originX + info.offset.x + ((placement?.width ?? 0) / 2);
-    const rawY = originY + info.offset.y + ((placement?.height ?? 0) / 2);
+  const handleWidgetDragCommit = (widgetId: string, rawX: number, rawY: number) => {
+    const targetPage = draggingWidgetPage ?? currentPage;
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
       page: normalizeDesktopPage(widget.page),
     }));
-    const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
-    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
+    const placement =
+      buildDesktopWidgetPlacements(
+        baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage),
+        slots,
+        cols,
+        navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+      ).placements[widgetId] || null;
+    const centeredRawX = rawX + ((placement?.width ?? 0) / 2);
+    const centeredRawY = rawY + ((placement?.height ?? 0) / 2);
+    const baseOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const nextPageConfigs = resolveWidgetDrop({
       widgets: pageWidgets,
       draggedId: widgetId,
-      rawX,
-      rawY,
+      rawX: centeredRawX,
+      rawY: centeredRawY,
       slots,
       cols,
       baseOccupiedSlotIds,
     }) as WidgetConfig[];
-    persistWidgetConfigs(mergePageWidgetConfigs(page, nextPageConfigs, baseConfigs));
+    persistWidgetConfigs(mergePageWidgetConfigs(targetPage, nextPageConfigs, baseConfigs));
     setDraggingWidgetId(null);
+    setDraggingWidgetPage(null);
     setWidgetPreviewConfigs(null);
     ignoreSwipeUntilRef.current = Date.now() + 260;
+    dragPageTurnUntilRef.current = 0;
     setDragGhost(null);
   };
+
+  const beginWidgetPointerDrag = (
+    widget: WidgetConfig,
+    page: number,
+    placement: { x: number; y: number; width: number; height: number },
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+  ) => {
+    const local = getLocalPointerPosition(clientX, clientY);
+    if (!local) return;
+    resetSwipeInteraction();
+    widgetPointerSessionRef.current = {
+      widgetId: widget.id,
+      pointerId,
+      offsetX: local.x - placement.x,
+      offsetY: local.y - placement.y,
+    };
+    setDraggingWidgetId(widget.id);
+    setDraggingWidgetPage(page);
+    setWidgetPreviewConfigs(null);
+    setDragGhost({
+      kind: 'widget',
+      id: widget.id,
+      x: placement.x,
+      y: placement.y,
+      width: placement.width,
+      height: placement.height,
+      widget,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingWidgetId) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const session = widgetPointerSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      const local = getLocalPointerPosition(event.clientX, event.clientY);
+      if (!local) return;
+      const nextX = local.x - session.offsetX;
+      const nextY = local.y - session.offsetY;
+      setDragGhost(current =>
+        current?.kind === 'widget' && current.id === session.widgetId
+          ? { ...current, x: nextX, y: nextY }
+          : current,
+      );
+      handleWidgetDragPreview(session.widgetId, nextX, nextY);
+    };
+
+    const finishPointerDrag = (event: PointerEvent) => {
+      const session = widgetPointerSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      const local = getLocalPointerPosition(event.clientX, event.clientY);
+      if (local) {
+        handleWidgetDragCommit(session.widgetId, local.x - session.offsetX, local.y - session.offsetY);
+      } else {
+        setDraggingWidgetId(null);
+        setDraggingWidgetPage(null);
+        setWidgetPreviewConfigs(null);
+        setDragGhost(null);
+      }
+      widgetPointerSessionRef.current = null;
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', finishPointerDrag);
+    window.addEventListener('pointercancel', finishPointerDrag);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', finishPointerDrag);
+      window.removeEventListener('pointercancel', finishPointerDrag);
+    };
+  }, [currentPage, desktopViewport.width, draggingWidgetId, draggingWidgetPage, normalizedWidgets, widgetPreviewConfigs]);
 
   const activeSlotIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1159,7 +1322,7 @@ export function HomeScreen({
 
         <div className={`homeDesktop__surface ${isEditingDesktop ? 'homeDesktop__surface--editing' : ''}`}>
           <div className="homeDesktop__grid" style={desktopGridStyle}>
-          {pageWidgets.filter(widget => widget.id !== draggingWidgetId).map(widget => {
+          {pageWidgets.map(widget => {
             const placement = pageWidgetLayout.placements[widget.id];
             if (!placement) return null;
             return (
@@ -1171,28 +1334,11 @@ export function HomeScreen({
                 isArrangeMode={isArrangeMode}
                 appData={appData}
                 setAppData={setAppData}
-                onDragStart={() => {
-                  resetSwipeInteraction();
-                  setDraggingWidgetId(widget.id);
-                  setDragGhost({
-                    kind: 'widget',
-                    id: widget.id,
-                    x: placement.x,
-                    y: placement.y,
-                    width: placement.width,
-                    height: placement.height,
-                    widget,
-                  });
+                isDragging={draggingWidgetId === widget.id}
+                hideWhileDragging={draggingWidgetId === widget.id}
+                onPointerDragStart={(clientX, clientY, pointerId) => {
+                  beginWidgetPointerDrag(widget, page, placement, clientX, clientY, pointerId);
                 }}
-                onDrag={info => {
-                  setDragGhost(current =>
-                    current?.kind === 'widget' && current.id === widget.id
-                      ? { ...current, x: placement.x + info.offset.x, y: placement.y + info.offset.y }
-                      : current,
-                  );
-                  handleWidgetDragPreview(widget.id, placement.x, placement.y, info, page);
-                }}
-                onDragEnd={info => handleWidgetDragCommit(widget.id, placement.x, placement.y, info, page)}
                 onWidgetChange={(updates) => {
                   const currentWidgets = visualSettings.widgets || [];
                   const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
@@ -1253,24 +1399,17 @@ export function HomeScreen({
                   ignoreSwipeUntilRef.current = Date.now() + 260;
                   setIsArrangeMode(true);
                 }}
-                onDragStart={() => {
-                  resetSwipeInteraction();
-                  setDraggingIconId(app.id);
-                  setDraggingIconPage(page);
-                  setDraggingIconOriginPage(page);
-                  lastPreviewSlotIdRef.current = committedPlacement.slotId;
-                  setIconPreviewConfigs(null);
-                  setDragGhost({
-                    kind: 'icon',
-                    id: app.id,
-                    x: committedPlacement.x,
-                    y: committedPlacement.y,
-                    iconSize: iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                onPointerDragStart={(clientX, clientY, pointerId) => {
+                  beginIconPointerDrag(
                     app,
-                  });
+                    page,
+                    committedPlacement,
+                    clientX,
+                    clientY,
+                    pointerId,
+                    iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                  );
                 }}
-                onDrag={info => handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info)}
-                onDragEnd={info => handleIconDragCommit(app.id, committedPlacement.x, committedPlacement.y, info)}
               />
             );
           })}
@@ -1771,9 +1910,9 @@ function DraggableWidget({
   placement,
   gridStyle,
   isArrangeMode,
-  onDragStart,
-  onDrag,
-  onDragEnd,
+  isDragging,
+  hideWhileDragging,
+  onPointerDragStart,
   onPositionChange,
   onWidgetChange,
   appData,
@@ -1783,9 +1922,9 @@ function DraggableWidget({
   placement: { x: number; y: number; width: number; height: number };
   gridStyle?: React.CSSProperties;
   isArrangeMode: boolean;
-  onDragStart: () => void;
-  onDrag: (info: PanInfo) => void;
-  onDragEnd: (info: PanInfo) => void;
+  isDragging: boolean;
+  hideWhileDragging: boolean;
+  onPointerDragStart: (clientX: number, clientY: number, pointerId: number) => void;
   onPositionChange: (x: number, y: number) => void;
   onWidgetChange: (updates: Partial<WidgetConfig>) => void;
   appData: AppData;
@@ -1795,18 +1934,20 @@ function DraggableWidget({
     <motion.div
       className={`homeDesktop__item homeDesktop__item--widget ${gridStyle ? 'homeDesktop__item--grid' : ''}`}
       initial={false}
-      animate={gridStyle ? undefined : { x: placement.x, y: placement.y }}
-      drag={isArrangeMode}
-      dragListener={isArrangeMode}
-      dragMomentum={false}
-      onDragStart={onDragStart}
-      onDrag={(_, info) => onDrag(info)}
-      onDragEnd={(_, info) => {
-        onDragEnd(info);
+      animate={gridStyle ? undefined : (isDragging ? { x: placement.x, y: placement.y } : { x: placement.x, y: placement.y })}
+      onPointerDown={event => {
+        if (!isArrangeMode) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        onPointerDragStart(event.clientX, event.clientY, event.pointerId);
       }}
-      style={gridStyle || { width: placement.width, height: placement.height }}
-      whileDrag={isArrangeMode ? { scale: 1.02, zIndex: 260 } : undefined}
-      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+      style={{
+        ...(gridStyle || { width: placement.width, height: placement.height }),
+        opacity: hideWhileDragging ? 0 : undefined,
+        pointerEvents: hideWhileDragging ? 'none' : undefined,
+      }}
+      whileTap={isArrangeMode ? { scale: 0.98 } : undefined}
+      transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
     >
       <DesktopWidget
         widget={widget}
@@ -1839,9 +1980,7 @@ function DraggableAppIcon({
   hideWhileDragging,
   isArrangeMode,
   onEnterArrangeMode,
-  onDragStart,
-  onDrag,
-  onDragEnd,
+  onPointerDragStart,
 }: {
   app: AppDefinition;
   placement: { x: number; y: number; slotId: string | null };
@@ -1854,13 +1993,19 @@ function DraggableAppIcon({
   hideWhileDragging: boolean;
   isArrangeMode: boolean;
   onEnterArrangeMode: () => void;
-  onDragStart: () => void;
-  onDrag: (info: PanInfo) => void;
-  onDragEnd: (info: PanInfo) => void;
+  onPointerDragStart: (clientX: number, clientY: number, pointerId: number) => void;
 }) {
   const dragLock = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (isDragging) return;
+    const timer = setTimeout(() => {
+      dragLock.current = false;
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isDragging]);
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current) {
@@ -1874,13 +2019,15 @@ function DraggableAppIcon({
       className={`homeDesktop__item homeDesktop__item--icon ${gridStyle ? 'homeDesktop__item--grid' : ''} ${isDragging ? 'homeDesktop__item--dragging' : ''} ${isPreviewing ? 'homeDesktop__item--previewing' : ''} ${isArrangeMode ? 'homeDesktop__item--arranging' : ''}`}
       initial={false}
       animate={gridStyle ? undefined : (isDragging ? { x: committedPlacement.x, y: committedPlacement.y } : { x: placement.x, y: placement.y })}
-      drag={isArrangeMode}
-      dragListener={isArrangeMode}
-      dragMomentum={false}
       onPointerDown={event => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         pointerStartRef.current = { x: event.clientX, y: event.clientY };
-        if (isArrangeMode) return;
+        if (isArrangeMode) {
+          dragLock.current = true;
+          event.preventDefault();
+          onPointerDragStart(event.clientX, event.clientY, event.pointerId);
+          return;
+        }
         clearLongPressTimer();
         longPressTimerRef.current = setTimeout(() => {
           dragLock.current = true;
@@ -1903,25 +2050,11 @@ function DraggableAppIcon({
         pointerStartRef.current = null;
         clearLongPressTimer();
       }}
-      onDragStart={() => {
-        dragLock.current = true;
-        onDragStart();
-      }}
-      onDrag={(_, info) => onDrag(info)}
-      onDragEnd={(_, info) => {
-        setTimeout(() => {
-          dragLock.current = false;
-        }, 50);
-        pointerStartRef.current = null;
-        clearLongPressTimer();
-        onDragEnd(info);
-      }}
       style={{
         ...gridStyle,
         opacity: hideWhileDragging ? 0 : undefined,
         pointerEvents: hideWhileDragging ? 'none' : undefined,
       }}
-      whileDrag={isArrangeMode ? { scale: 1.1, zIndex: 180, cursor: 'grabbing' } : undefined}
       whileTap={isArrangeMode ? { scale: 0.96 } : undefined}
       transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 32 }}
     >
