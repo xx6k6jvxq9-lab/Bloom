@@ -563,6 +563,11 @@ export function HomeScreen({
     const trackRawX = (originPage * desktopViewport.width) + originX + info.offset.x;
     const rawX = trackRawX - (targetPage * desktopViewport.width);
     const rawY = originY + info.offset.y;
+    setDragGhost(current =>
+      current?.kind === 'icon' && current.id === appId
+        ? { ...current, x: rawX, y: rawY }
+        : current,
+    );
     const probeX = rawX + layoutMetrics.slotWidth / 2;
     const probeY = rawY + layoutMetrics.slotHeight / 2;
     const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
@@ -575,6 +580,15 @@ export function HomeScreen({
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
+      setDragGhost(current =>
+        current?.kind === 'icon' && current.id === appId
+          ? {
+              ...current,
+              x: Math.max(12, rawX - desktopViewport.width),
+              y: rawY,
+            }
+          : current,
+      );
       lastPreviewSlotIdRef.current = null;
       setIconPreviewConfigs(prev => {
         const base = (prev || normalizedIcons).map(icon =>
@@ -589,6 +603,15 @@ export function HomeScreen({
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
       setDraggingIconPage(nextPage);
+      setDragGhost(current =>
+        current?.kind === 'icon' && current.id === appId
+          ? {
+              ...current,
+              x: Math.min(desktopViewport.width - current.iconSize - 16, rawX + desktopViewport.width),
+              y: rawY,
+            }
+          : current,
+      );
       lastPreviewSlotIdRef.current = null;
       setIconPreviewConfigs(prev => {
         const base = (prev || normalizedIcons).map(icon =>
@@ -1245,14 +1268,7 @@ export function HomeScreen({
                     app,
                   });
                 }}
-                onDrag={info => {
-                  setDragGhost(current =>
-                    current?.kind === 'icon' && current.id === app.id
-                      ? { ...current, x: committedPlacement.x + info.offset.x, y: committedPlacement.y + info.offset.y }
-                      : current,
-                  );
-                  handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info);
-                }}
+                onDrag={info => handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info)}
                 onDragEnd={info => handleIconDragCommit(app.id, committedPlacement.x, committedPlacement.y, info)}
               />
             );
