@@ -263,6 +263,7 @@ export function HomeScreen({
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const draggingWidgetPageRef = useRef<number | null>(null);
   const navBarInnerRef = useRef<HTMLDivElement | null>(null);
   const desktopRootRef = useRef<HTMLDivElement | null>(null);
   const sizeTier: HomeScreenSizeTier =
@@ -803,7 +804,7 @@ export function HomeScreen({
   };
 
   const handleWidgetDragPreview = (widgetId: string, rawX: number, rawY: number) => {
-    const targetPage = draggingWidgetPage ?? currentPage;
+    const targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
     const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
     if (
       Date.now() >= dragPageTurnUntilRef.current
@@ -813,6 +814,7 @@ export function HomeScreen({
       const nextPage = targetPage + 1;
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
+      draggingWidgetPageRef.current = nextPage;
       setDraggingWidgetPage(nextPage);
       setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
         widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
@@ -827,6 +829,7 @@ export function HomeScreen({
       const nextPage = targetPage - 1;
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
+      draggingWidgetPageRef.current = nextPage;
       setDraggingWidgetPage(nextPage);
       setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
         widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
@@ -861,7 +864,7 @@ export function HomeScreen({
   };
 
   const handleWidgetDragCommit = (widgetId: string, rawX: number, rawY: number) => {
-    const targetPage = draggingWidgetPage ?? currentPage;
+    const targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
       page: normalizeDesktopPage(widget.page),
@@ -888,6 +891,7 @@ export function HomeScreen({
     }) as WidgetConfig[];
     persistWidgetConfigs(mergePageWidgetConfigs(targetPage, nextPageConfigs, baseConfigs));
     setDraggingWidgetId(null);
+    draggingWidgetPageRef.current = null;
     setDraggingWidgetPage(null);
     setWidgetPreviewConfigs(null);
     ignoreSwipeUntilRef.current = Date.now() + 260;
@@ -913,6 +917,7 @@ export function HomeScreen({
       offsetY: local.y - placement.y,
     };
     setDraggingWidgetId(widget.id);
+    draggingWidgetPageRef.current = page;
     setDraggingWidgetPage(page);
     setWidgetPreviewConfigs(null);
     setDragGhost({
@@ -952,6 +957,7 @@ export function HomeScreen({
         handleWidgetDragCommit(session.widgetId, local.x - session.offsetX, local.y - session.offsetY);
       } else {
         setDraggingWidgetId(null);
+        draggingWidgetPageRef.current = null;
         setDraggingWidgetPage(null);
         setWidgetPreviewConfigs(null);
         setDragGhost(null);
