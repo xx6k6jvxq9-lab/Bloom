@@ -1230,7 +1230,7 @@ export function HomeScreen({
             );
           })}
 
-          {desktopApps.filter(app => pageApps.includes(app.id as DesktopAppId) && draggingIconId !== app.id).map(app => {
+          {desktopApps.filter(app => pageApps.includes(app.id as DesktopAppId)).map(app => {
             const committedPlacement = pageCommittedPlacements[app.id];
             const previewPlacement = draggingIconId === app.id ? pagePreviewPlacements[app.id] : pagePreviewOtherPlacements[app.id];
             const placement = previewPlacement || committedPlacement;
@@ -1246,6 +1246,7 @@ export function HomeScreen({
                 iconSize={iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0)}
                 isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
                 isDragging={draggingIconId === app.id}
+                hideWhileDragging={draggingIconId === app.id}
                 isArrangeMode={isArrangeMode}
                 onEnterArrangeMode={() => {
                   resetSwipeInteraction();
@@ -1835,6 +1836,7 @@ function DraggableAppIcon({
   iconSize,
   isPreviewing,
   isDragging,
+  hideWhileDragging,
   isArrangeMode,
   onEnterArrangeMode,
   onDragStart,
@@ -1849,6 +1851,7 @@ function DraggableAppIcon({
   iconSize: number;
   isPreviewing: boolean;
   isDragging: boolean;
+  hideWhileDragging: boolean;
   isArrangeMode: boolean;
   onEnterArrangeMode: () => void;
   onDragStart: () => void;
@@ -1913,7 +1916,11 @@ function DraggableAppIcon({
         clearLongPressTimer();
         onDragEnd(info);
       }}
-      style={gridStyle}
+      style={{
+        ...gridStyle,
+        opacity: hideWhileDragging ? 0 : undefined,
+        pointerEvents: hideWhileDragging ? 'none' : undefined,
+      }}
       whileDrag={isArrangeMode ? { scale: 1.1, zIndex: 180, cursor: 'grabbing' } : undefined}
       whileTap={isArrangeMode ? { scale: 0.96 } : undefined}
       transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 32 }}
