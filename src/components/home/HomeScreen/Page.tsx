@@ -111,6 +111,7 @@ export function HomeScreen({
   const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [tempUrl, setTempUrl] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
+  const [isArrangeMode, setIsArrangeMode] = useState(false);
   const [draggingIconId, setDraggingIconId] = useState<string | null>(null);
   const [draggingIconPage, setDraggingIconPage] = useState<number | null>(null);
   const [draggingIconOriginPage, setDraggingIconOriginPage] = useState<number | null>(null);
@@ -662,7 +663,7 @@ export function HomeScreen({
     return ids;
   }, [draggedPreviewSlotId, draggingIconId, draggingNavBar, navBarPlacement.slotIds]);
 
-  const isEditingDesktop = Boolean(draggingIconId || draggingNavBar);
+  const isEditingDesktop = Boolean(isArrangeMode || draggingIconId || draggingNavBar);
   const resetSwipeInteraction = () => {
     swipeEnabledRef.current = false;
     swipeStartRef.current = null;
@@ -677,6 +678,7 @@ export function HomeScreen({
     setCurrentPage(resolved);
   };
   const handleSwipeStart = (clientX: number, clientY: number, target?: EventTarget | null) => {
+    if (isArrangeMode) return;
     if (Date.now() < ignoreSwipeUntilRef.current) return;
     const element = target instanceof HTMLElement ? target : null;
     if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
@@ -1065,6 +1067,12 @@ export function HomeScreen({
                 iconSize={iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0)}
                 isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
                 isDragging={draggingIconId === app.id}
+                isArrangeMode={isArrangeMode}
+                onEnterArrangeMode={() => {
+                  resetSwipeInteraction();
+                  ignoreSwipeUntilRef.current = Date.now() + 260;
+                  setIsArrangeMode(true);
+                }}
                 onDragStart={() => {
                   resetSwipeInteraction();
                   setDraggingIconId(app.id);
@@ -1112,6 +1120,14 @@ export function HomeScreen({
         if (e.pointerType === 'mouse' || e.pointerType === 'touch') {
           handleSwipeEnd(e.clientX, e.clientY);
         }
+      }}
+      onClick={e => {
+        if (!isArrangeMode || draggingIconId || draggingNavBar) return;
+        const element = e.target instanceof HTMLElement ? e.target : null;
+        if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
+          return;
+        }
+        setIsArrangeMode(false);
       }}
       style={
         {
@@ -1578,6 +1594,8 @@ function DraggableAppIcon({
   iconSize,
   isPreviewing,
   isDragging,
+  isArrangeMode,
+  onEnterArrangeMode,
   onDragStart,
   onDrag,
   onDragEnd,
@@ -1590,19 +1608,57 @@ function DraggableAppIcon({
   iconSize: number;
   isPreviewing: boolean;
   isDragging: boolean;
+  isArrangeMode: boolean;
+  onEnterArrangeMode: () => void;
   onDragStart: () => void;
   onDrag: (info: PanInfo) => void;
   onDragEnd: (info: PanInfo) => void;
 }) {
   const dragLock = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <motion.div
-      className={`homeDesktop__item homeDesktop__item--icon ${gridStyle ? 'homeDesktop__item--grid' : ''} ${isDragging ? 'homeDesktop__item--dragging' : ''} ${isPreviewing ? 'homeDesktop__item--previewing' : ''}`}
+      className={`homeDesktop__item homeDesktop__item--icon ${gridStyle ? 'homeDesktop__item--grid' : ''} ${isDragging ? 'homeDesktop__item--dragging' : ''} ${isPreviewing ? 'homeDesktop__item--previewing' : ''} ${isArrangeMode ? 'homeDesktop__item--arranging' : ''}`}
       initial={false}
       animate={gridStyle ? undefined : (isDragging ? { x: committedPlacement.x, y: committedPlacement.y } : { x: placement.x, y: placement.y })}
-      drag
+      drag={isArrangeMode}
+      dragListener={isArrangeMode}
       dragMomentum={false}
+      onPointerDown={event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        if (isArrangeMode) return;
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => {
+          dragLock.current = true;
+          onEnterArrangeMode();
+          longPressTimerRef.current = null;
+        }, 260);
+      }}
+      onPointerMove={event => {
+        const start = pointerStartRef.current;
+        if (!start || isArrangeMode) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+          clearLongPressTimer();
+        }
+      }}
+      onPointerUp={() => {
+        pointerStartRef.current = null;
+        clearLongPressTimer();
+      }}
+      onPointerCancel={() => {
+        pointerStartRef.current = null;
+        clearLongPressTimer();
+      }}
       onDragStart={() => {
         dragLock.current = true;
         onDragStart();
@@ -1612,16 +1668,23 @@ function DraggableAppIcon({
         setTimeout(() => {
           dragLock.current = false;
         }, 50);
+        pointerStartRef.current = null;
+        clearLongPressTimer();
         onDragEnd(info);
       }}
       style={gridStyle}
-      whileDrag={{ scale: 1.1, zIndex: 180, cursor: 'grabbing' }}
-      whileTap={{ scale: 0.96 }}
+      whileDrag={isArrangeMode ? { scale: 1.1, zIndex: 180, cursor: 'grabbing' } : undefined}
+      whileTap={isArrangeMode ? { scale: 0.96 } : undefined}
       transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 32 }}
     >
       <div
+        className={isArrangeMode ? 'homeDesktop__itemBody homeDesktop__itemBody--arranging' : 'homeDesktop__itemBody'}
         onClick={event => {
           if (dragLock.current) {
+            event.stopPropagation();
+            return;
+          }
+          if (isArrangeMode) {
             event.stopPropagation();
             return;
           }
