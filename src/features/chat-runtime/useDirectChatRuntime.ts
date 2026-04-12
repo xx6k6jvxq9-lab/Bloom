@@ -106,6 +106,35 @@ function getDirectHistoryWindowByTemporalMode(
   return cappedWindow.slice(-Math.min(historyLimit, 6));
 }
 
+function buildDirectResumeModePrompt(
+  continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap',
+): string {
+  if (continuityMode === 'continuous_scene') {
+    return [
+      '## 聊天连续性',
+      '[当前模式] 连续场景',
+      '[线上规则] 这仍然是同一段正在进行的私聊，可以自然接上上一轮，但只推进当前最自然的一个点，不要机械重复刚刚的话题。',
+    ].join('\n');
+  }
+
+  if (continuityMode === 'same_day_resume') {
+    return [
+      '## 聊天连续性',
+      '[当前模式] 同日重连',
+      '[线上规则] 这是同一天里隔了一段时间后重新接上，默认按聊天软件里重新上线处理，不要把上一次的现场感直接续写成正在眼前发生。',
+      '[表达要求] 先回到角色当前在线状态、这段时间在做什么，再决定是否轻轻接回旧话题。',
+    ].join('\n');
+  }
+
+  return [
+    '## 聊天连续性',
+    '[当前模式] 隔段重连',
+    '[线上规则] 私聊默认是线上社交聊天软件语境，不是线下现场连续推进。现在应按角色重新上线处理，而不是默认还停在上次聊天的那一刻。',
+    '[默认做法] 先回到当下时间、角色当前状态、他这段时间自己的生活，再决定是否要接回旧话题。',
+    '[明确限制] 除非用户主动提起，或上一轮有明显未完的强情绪线，否则不要默认直接续昨天或更早的话题。',
+  ].join('\n');
+}
+
 const extractTransferAmount = (text: string) => {
   const bracketMatch = text.match(TRANSFER_BRACKET_REGEX);
   if (bracketMatch?.[1]) {
@@ -507,6 +536,7 @@ export function useDirectChatRuntime({
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
             sections: [
+              buildDirectResumeModePrompt(characterTemporalState.continuityMode),
               ...(chatSceneInput.sections || []),
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
@@ -851,6 +881,7 @@ export function useDirectChatRuntime({
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
         sections: [
+          buildDirectResumeModePrompt(characterTemporalState.continuityMode),
           ...(chatSceneInput.sections || []),
           buildAssistantStickerPromptSection(character.stickers || []),
         ].filter(Boolean),

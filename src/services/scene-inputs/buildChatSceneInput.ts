@@ -88,6 +88,7 @@ function buildSharedGroupInteropSections(
 
 function buildExtraSections(input: {
   temporalStatePrompt?: string;
+  continuityPrompt?: string;
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
@@ -95,6 +96,7 @@ function buildExtraSections(input: {
 }): string[] {
   return [
     input.temporalStatePrompt || '',
+    input.continuityPrompt || '',
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
       : '',
@@ -108,6 +110,33 @@ function buildExtraSections(input: {
       ? ['## 当前聊天场景补充', input.chatSceneHint].join('\n')
       : '',
   ].filter(Boolean);
+}
+
+function buildContinuityResumePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
+  if (state.continuityMode === 'continuous_scene') {
+    return [
+      '## 连续性判断',
+      '[当前模式] 连续场景',
+      '[规则] 这是同一段正在延续的聊天，可以自然接上上一轮，但仍然只推进一个主要点，不要机械复述刚刚的话题。',
+    ].join('\n');
+  }
+
+  if (state.continuityMode === 'same_day_resume') {
+    return [
+      '## 连续性判断',
+      '[当前模式] 同日重连',
+      '[规则] 这是同一天里隔了一段时间后重新接上。先回到角色当前状态、这段时间在做什么，带一点新的生活感，再决定是否轻轻接回旧话题。',
+      '[限制] 不要把上一次聊天的最后一句当成眼前刚发生的事直接续写。',
+    ].join('\n');
+  }
+
+  return [
+    '## 连续性判断',
+    '[当前模式] 隔段重连',
+    '[规则] 这不是上一句的直接继续，而是角色过了一段自己的生活后重新出现。默认先回到当下时间、角色当前状态、他这段时间在做什么。',
+    '[限制] 除非用户主动提起，或上一轮有明显未完的强情绪线，否则不要默认直接续昨天或更早的话题。',
+    '[表达要求] 让角色像一个重新上线的人，而不是一直停在上次聊天现场的人。',
+  ].join('\n');
 }
 
 function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
@@ -241,6 +270,7 @@ export function buildChatSceneInput(
     recentContext,
     sections: buildExtraSections({
       temporalStatePrompt: formatTemporalStatePrompt(characterTemporalState),
+      continuityPrompt: buildContinuityResumePrompt(characterTemporalState),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,
