@@ -297,6 +297,37 @@ async function startServer() {
     }
   });
 
+  app.get("/api/netease/user-playlists", async (req, res) => {
+    const uid = String(req.query.uid || "").trim();
+    const limit = Math.max(1, Math.min(30, Number(req.query.limit || 12)));
+    if (!uid) {
+      return res.status(400).json({ error: "Missing user ID" });
+    }
+
+    try {
+      const response = await fetch(
+        `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            Referer: "https://music.163.com/",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch NetEase user playlists: ${response.status}`);
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching NetEase user playlists:", error);
+      res.status(500).json({ error: "Failed to fetch user playlists" });
+    }
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: {

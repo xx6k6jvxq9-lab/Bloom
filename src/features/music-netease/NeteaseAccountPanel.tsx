@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { ExternalLink, Link2, LogIn, ShieldCheck, Unlink2 } from 'lucide-react';
+import { ExternalLink, Link2, LogIn, RefreshCw, ShieldCheck, Unlink2 } from 'lucide-react';
 import type { MusicData } from '../../types';
 import { getNeteaseLoginUrl, parseNeteaseAccountInput } from './neteaseAccount';
 
 type NeteaseAccountPanelProps = {
   value?: MusicData['neteaseAccount'];
   onChange: (next: MusicData['neteaseAccount']) => void;
+  onSyncPlaylists?: () => void | Promise<void>;
+  isSyncing?: boolean;
 };
 
 function formatLinkedAt(timestamp?: number | null) {
@@ -16,7 +18,7 @@ function formatLinkedAt(timestamp?: number | null) {
   });
 }
 
-export function NeteaseAccountPanel({ value, onChange }: NeteaseAccountPanelProps) {
+export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncing = false }: NeteaseAccountPanelProps) {
   const [input, setInput] = useState(value?.profileUrl || value?.uid || '');
   const [error, setError] = useState('');
 
@@ -104,6 +106,16 @@ export function NeteaseAccountPanel({ value, onChange }: NeteaseAccountPanelProp
             <ExternalLink size={15} />
             {value?.profileUrl ? '打开主页' : '打开网易云'}
           </button>
+          {value?.uid && onSyncPlaylists ? (
+            <button
+              onClick={() => void onSyncPlaylists()}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-zinc-200 active:scale-95 transition-transform disabled:opacity-60"
+            >
+              <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+              {isSyncing ? '同步中...' : '同步歌单'}
+            </button>
+          ) : null}
           {value?.uid ? (
             <button
               onClick={() => {

@@ -33,6 +33,7 @@ import { usePersistedMusicDataBridge } from "../../features/persistence/usePersi
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
+import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
 
 function ResolvedMusicAvatar({
   value,
@@ -119,6 +120,7 @@ export default function MusicApp({
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [playbackError, setPlaybackError] = useState("");
   const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
+  const [isSyncingNeteasePlaylists, setIsSyncingNeteasePlaylists] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const currentMusicDataRef = useRef<MusicData | null>(null);
@@ -677,6 +679,36 @@ export default function MusicApp({
       alert("导入失败，请检查链接或稍后重试");
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleSyncNeteasePlaylists = async () => {
+    const uid = currentMusicData.neteaseAccount?.uid?.trim();
+    if (!uid || isSyncingNeteasePlaylists) return;
+
+    setIsSyncingNeteasePlaylists(true);
+    try {
+      const syncedPlaylists = await syncNeteasePlaylistsByUid(uid);
+      if (syncedPlaylists.length === 0) {
+        alert("没有拉到可导入的公开歌单，请先确认主页链接或歌单公开状态。");
+        return;
+      }
+
+      const preservedPlaylists = currentMusicData.playlists.filter(
+        (playlist) => !playlist.id.startsWith("netease-pl-"),
+      );
+
+      onUpdateMusicData({
+        ...currentMusicData,
+        playlists: [...preservedPlaylists, ...syncedPlaylists],
+      });
+
+      alert(`已同步 ${syncedPlaylists.length} 个网易云歌单。`);
+    } catch (error) {
+      console.error("NetEase playlist sync error:", error);
+      alert("同步歌单失败，请稍后再试。");
+    } finally {
+      setIsSyncingNeteasePlaylists(false);
     }
   };
 
@@ -1578,6 +1610,8 @@ export default function MusicApp({
                 neteaseAccount,
               })
             }
+            onSyncPlaylists={handleSyncNeteasePlaylists}
+            isSyncing={isSyncingNeteasePlaylists}
           />
 
           <section className="bg-white rounded-[24px] p-3 shadow-lg shadow-zinc-200/10 border border-white">
