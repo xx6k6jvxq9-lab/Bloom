@@ -1,4 +1,5 @@
 import type { Song } from '../../types';
+import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 
 type NeteaseArtist = {
   name?: string;
@@ -45,15 +46,18 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
   };
 }
 
-export async function searchNeteaseMusic(query: string, limit = 12): Promise<Song[]> {
+async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
-  const response = await fetch(`/api/netease/search?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`, {
-    headers: {
-      Accept: 'application/json',
+  const response = await fetch(
+    `/api/netease/search?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
+    {
+      headers: {
+        Accept: 'application/json',
+      },
     },
-  });
+  );
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
@@ -65,5 +69,17 @@ export async function searchNeteaseMusic(query: string, limit = 12): Promise<Son
     throw new Error(data.error || `搜索失败：${response.status}`);
   }
 
-  return (data.result?.songs || []).map(mapNeteaseSongToSong);
+  return (data.result?.songs || []).map((track) => ({
+    song: mapNeteaseSongToSong(track),
+    sourceId: 'netease',
+    sourceLabel: '网易云',
+    playbackStatus: 'unverified',
+    note: '当前只保证能搜到结果，不保证每首都能直接网页播放。',
+  }));
 }
+
+export const neteaseMusicSearchSource: MusicSearchSource = {
+  id: 'netease',
+  label: '网易云',
+  search: searchNeteaseMusic,
+};
