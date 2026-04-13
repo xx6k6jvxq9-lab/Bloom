@@ -32,6 +32,7 @@ import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
 import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
+import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 
 function ResolvedMusicAvatar({
   value,
@@ -1569,6 +1570,16 @@ export default function MusicApp({
           </div>
 
           {/* Menu List - No Counts */}
+          <NeteaseAccountPanel
+            value={currentMusicData.neteaseAccount || null}
+            onChange={(neteaseAccount) =>
+              onUpdateMusicData({
+                ...currentMusicData,
+                neteaseAccount,
+              })
+            }
+          />
+
           <section className="bg-white rounded-[24px] p-3 shadow-lg shadow-zinc-200/10 border border-white">
             {[
               {
