@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+﻿import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
 import {
   Play,
@@ -171,7 +171,7 @@ export default function MusicApp({
   const defaultSongs: Song[] = [
     {
       id: "1",
-      title: "晴天",
+      title: "鏅村ぉ",
       artist: "周杰伦",
       albumArt: "https://picsum.photos/seed/music1/300/300",
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
@@ -187,7 +187,7 @@ export default function MusicApp({
     },
     {
       id: "3",
-      title: "告白气球",
+      title: "鍛婄櫧姘旂悆",
       artist: "周杰伦",
       albumArt: "https://picsum.photos/seed/music3/300/300",
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
@@ -195,7 +195,7 @@ export default function MusicApp({
     },
   ];
 
-  const currentMusicData: MusicData = {
+  const defaultMusicData: MusicData = {
     currentSong: defaultSongs[0],
     isPlaying: false,
     progress: 0,
@@ -232,6 +232,9 @@ export default function MusicApp({
     chatHistory: [],
     queue: defaultSongs,
     collectedSongs: [],
+  };
+  const currentMusicData: MusicData = {
+    ...defaultMusicData,
     ...musicData,
   };
   const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
@@ -579,7 +582,7 @@ export default function MusicApp({
         ...currentMusicData.chatHistory,
         {
           role: "model",
-          text: `嘿，我接受了你的邀请！让我们一起听这首歌吧。`,
+          text: "嘿，我接受了你的邀请！让我们一起听这首歌吧。",
           timestamp: Date.now(),
         },
       ],
@@ -769,7 +772,14 @@ export default function MusicApp({
 
   const sendChatMessage = async () => {
     const trimmedInput = chatInput.trim();
-    if (!trimmedInput || isSendingTogetherChat || !currentMusicData.togetherWith) return;
+    if (
+      !trimmedInput
+      || isSendingTogetherChat
+      || !currentMusicData.togetherWith
+    ) {
+      return;
+    }
+
     const newMsg: ChatMessage = {
       role: "user",
       text: trimmedInput,
@@ -794,19 +804,27 @@ export default function MusicApp({
       });
 
       const nextData = currentMusicDataRef.current;
-      if (!nextData?.togetherWith) return;
+      if (!nextData?.togetherWith) {
+        return;
+      }
 
       onUpdateMusicDataRef.current({
         ...nextData,
         chatHistory: [
           ...nextData.chatHistory,
-          { role: "model", text: replyText, timestamp: Date.now() },
+          {
+            role: "model",
+            text: replyText,
+            timestamp: Date.now(),
+          },
         ],
       });
     } catch (error) {
       console.error("Together chat generation error:", error);
       const nextData = currentMusicDataRef.current;
-      if (!nextData?.togetherWith) return;
+      if (!nextData?.togetherWith) {
+        return;
+      }
 
       onUpdateMusicDataRef.current({
         ...nextData,
@@ -825,29 +843,7 @@ export default function MusicApp({
     } finally {
       setIsSendingTogetherChat(false);
     }
-
-    return;
-
-    // Mock character response
-    setTimeout(() => {
-      const responses = [
-        "这首歌的旋律真的很棒，不是吗？",
-        "听这首歌让我想起了一些往事...",
-        "你觉得这段歌词写得怎么样？",
-        "和你一起听歌感觉时间过得很快。",
-      ];
-      const randomResponse =
-        responses[Math.floor(Math.random() * responses.length)];
-      onUpdateMusicData({
-        ...currentMusicData,
-        chatHistory: [
-          ...updatedHistory,
-          { role: "model", text: randomResponse, timestamp: Date.now() },
-        ],
-      });
-    }, 1500);
   };
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -1319,7 +1315,7 @@ export default function MusicApp({
             <Search size={18} className="text-zinc-400" />
             <input
               type="text"
-              placeholder="搜索我的或 Ta 的歌单"
+              placeholder="搜索我的/TA的歌单"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-transparent outline-none flex-1 text-[15px] placeholder:text-zinc-400 font-medium"
@@ -1382,7 +1378,7 @@ export default function MusicApp({
                                 : "bg-blue-100 text-blue-600"
                             }`}
                           >
-                            {p.type === "character" ? "Ta 的" : p.type === "collaborative" ? "共创" : "我的"}
+                            {p.type === "character" ? "TA的" : p.type === "collaborative" ? "共创" : "我的"}
                           </span>
                           <p className="text-[12px] font-medium text-zinc-400">
                             {p.songs.length} 首歌曲
@@ -1428,7 +1424,7 @@ export default function MusicApp({
                     共创歌单
                   </h3>
                   <button className="text-[14px] font-bold text-pink-500">
-                    更多
+                    鏇村
                   </button>
                 </div>
                 <div className="flex gap-5 overflow-x-auto pb-4 -mx-6 px-6 no-scrollbar">
@@ -1488,7 +1484,7 @@ export default function MusicApp({
                           {p.name}
                         </h4>
                         <p className="text-[12px] font-medium text-zinc-400 mt-0.5">
-                          {p.type === "character" ? character.name : p.type === "collaborative" ? "共创" : "我"} ·{" "}
+                          {p.type === "character" ? character.name : p.type === "collaborative" ? "共创" : "我的"} ·{" "}
                           {p.songs.length} 首
                         </p>
                       </div>
@@ -2248,7 +2244,7 @@ export default function MusicApp({
           <div className="flex items-center gap-1.5 mt-0.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span className="text-[10px] text-zinc-400 font-medium">
-              正在与 {character.name} 聆听
+              正在与 {character.name} 共听
             </span>
           </div>
         </div>
@@ -2488,7 +2484,7 @@ export default function MusicApp({
 
                 {/* Direct URL Section */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-zinc-800">添加链接</h4>
+                  <h4 className="text-sm font-bold text-zinc-800">娣诲姞閾炬帴</h4>
                   <div className="space-y-3">
                     <input
                       type="text"
@@ -2552,7 +2548,7 @@ export default function MusicApp({
                   onClick={() => setShowAddMusicDialog(false)}
                   className="w-full py-3 bg-zinc-50 rounded-xl font-bold text-zinc-400 active:scale-95 transition-transform border border-zinc-100"
                 >
-                  取消
+                  鍙栨秷
                 </button>
               </div>
             </motion.div>
@@ -2590,7 +2586,7 @@ export default function MusicApp({
                     <div className="flex-1 text-left">
                       <p className="font-bold text-zinc-800">{char.name}</p>
                       <p className="text-xs text-zinc-400">
-                        {char.motto || "在线"}
+                        {char.motto || "鍦ㄧ嚎"}
                       </p>
                     </div>
                     <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900">
@@ -2604,7 +2600,7 @@ export default function MusicApp({
                 onClick={() => setShowInviteDialog(false)}
                 className="w-full mt-8 py-4 bg-zinc-100 rounded-2xl font-bold text-zinc-500 active:scale-95 transition-transform"
               >
-                取消
+                鍙栨秷
               </button>
             </motion.div>
           </div>
@@ -2613,3 +2609,5 @@ export default function MusicApp({
     </motion.div>
   );
 }
+
+
