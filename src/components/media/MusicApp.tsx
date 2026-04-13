@@ -122,11 +122,6 @@ export default function MusicApp({
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
 
-  useEffect(() => {
-    currentMusicDataRef.current = currentMusicData;
-    onUpdateMusicDataRef.current = onUpdateMusicData;
-  }, [currentMusicData, onUpdateMusicData]);
-
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
     {
@@ -195,6 +190,11 @@ export default function MusicApp({
     ...musicData,
   };
   usePersistedMusicDataBridge(currentMusicData, onUpdateMusicData);
+
+  useEffect(() => {
+    currentMusicDataRef.current = currentMusicData;
+    onUpdateMusicDataRef.current = onUpdateMusicData;
+  }, [currentMusicData, onUpdateMusicData]);
 
   useEffect(() => {
     if (chatEndRef.current) {
