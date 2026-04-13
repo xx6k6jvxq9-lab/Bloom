@@ -362,6 +362,51 @@ async function startServer() {
     }
   });
 
+  app.get("/api/netease/playlist-playable", async (req, res) => {
+    const id = req.query.id;
+    if (!id) {
+      return res.status(400).json({ error: "Missing playlist ID" });
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${PORT}/api/netease/playlist?id=${id}`,
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch playlist detail: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const playlist = data.playlist || data.result;
+
+      if (!playlist) {
+        return res.status(404).json({ error: "Playlist not found" });
+      }
+
+      const playableTracks = [];
+      for (const track of playlist.tracks || []) {
+        const playableUrl = await resolveNeteasePlayableUrl(track.id);
+        if (!playableUrl) continue;
+        playableTracks.push(track);
+      }
+
+      const nextPlaylist = {
+        ...playlist,
+        tracks: playableTracks,
+      };
+
+      res.json({
+        ...data,
+        playlist: data.playlist ? nextPlaylist : undefined,
+        result: data.result ? nextPlaylist : undefined,
+      });
+    } catch (error) {
+      console.error("Error fetching playable NetEase playlist:", error);
+      res.status(500).json({ error: "Failed to fetch playable playlist data" });
+    }
+  });
+
   app.get("/api/netease/user-playlists", async (req, res) => {
     const uid = String(req.query.uid || "").trim();
     const limit = Math.max(1, Math.min(30, Number(req.query.limit || 12)));

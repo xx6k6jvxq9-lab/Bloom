@@ -93,7 +93,7 @@ export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promis
   const imported: Playlist[] = [];
 
   for (const rawPlaylist of rawPlaylists) {
-    const detailResponse = await fetch(`/api/netease/playlist?id=${rawPlaylist.id}`);
+    const detailResponse = await fetch(`/api/netease/playlist-playable?id=${rawPlaylist.id}`);
     const detailData = await readJsonResponse<NeteasePlaylistDetailResponse>(
       detailResponse,
       '歌单详情接口暂时没有接通，请重启当前开发服务后再试。',

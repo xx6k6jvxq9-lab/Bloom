@@ -658,7 +658,7 @@ export default function MusicApp({
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
       } else {
-        const response = await fetch(`/api/netease/playlist?id=${id}`);
+        const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
         if (!response.ok) throw new Error("获取歌单失败");
 
         const data = await response.json();
