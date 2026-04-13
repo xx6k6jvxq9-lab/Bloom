@@ -115,8 +115,17 @@ export default function MusicApp({
   const [directMusicTitle, setDirectMusicTitle] = useState("");
   const [showPlayerMoreMenu, setShowPlayerMoreMenu] = useState(false);
   const [showDataManagement, setShowDataManagement] = useState(false);
+  const [playbackError, setPlaybackError] = useState("");
+  const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const currentMusicDataRef = useRef<MusicData | null>(null);
+  const onUpdateMusicDataRef = useRef(onUpdateMusicData);
+
+  useEffect(() => {
+    currentMusicDataRef.current = currentMusicData;
+    onUpdateMusicDataRef.current = onUpdateMusicData;
+  }, [currentMusicData, onUpdateMusicData]);
 
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
@@ -209,15 +218,50 @@ export default function MusicApp({
     };
 
     const handleEnded = () => {
+      setIsAudioActuallyPlaying(false);
       skipForward();
+    };
+
+    const handlePlaying = () => {
+      setPlaybackError("");
+      setIsAudioActuallyPlaying(true);
+    };
+
+    const handlePause = () => {
+      setIsAudioActuallyPlaying(false);
+    };
+
+    const handleWaiting = () => {
+      setIsAudioActuallyPlaying(false);
+    };
+
+    const handlePlaybackError = () => {
+      setIsAudioActuallyPlaying(false);
+      setPlaybackError("当前歌曲暂时无法播放");
+      if (currentMusicDataRef.current?.isPlaying) {
+        onUpdateMusicDataRef.current({
+          ...currentMusicDataRef.current,
+          isPlaying: false,
+        });
+      }
     };
 
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("stalled", handleWaiting);
+    audio.addEventListener("error", handlePlaybackError);
 
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("stalled", handleWaiting);
+      audio.removeEventListener("error", handlePlaybackError);
     };
   }, []); // Only run once on mount
 
@@ -317,6 +361,7 @@ export default function MusicApp({
     if (!audio || !currentMusicData.currentSong) return;
 
     const syncPlayback = async () => {
+      setPlaybackError("");
       // If source changed, update it
       if (audio.src !== currentMusicData.currentSong?.url) {
         // Before changing src, we should wait for any pending play promise
@@ -333,6 +378,7 @@ export default function MusicApp({
 
       if (currentMusicData.isPlaying) {
         console.log('MusicApp attempting to play');
+        setIsAudioActuallyPlaying(false);
         // Wait for any pending play promise
         if (playPromiseRef.current) {
           try {
@@ -345,14 +391,23 @@ export default function MusicApp({
         try {
           await playPromiseRef.current;
         } catch (e) {
+          setIsAudioActuallyPlaying(false);
+          setPlaybackError("当前歌曲暂时无法播放");
           // Check if it's the interruption error
           if (e instanceof Error && e.name !== "AbortError") {
             console.error("Playback error:", e);
+          }
+          if (currentMusicDataRef.current?.isPlaying) {
+            onUpdateMusicDataRef.current({
+              ...currentMusicDataRef.current,
+              isPlaying: false,
+            });
           }
         } finally {
           playPromiseRef.current = null;
         }
       } else {
+        setPlaybackError("");
         if (!audio.paused) {
           audio.pause();
         }
@@ -413,6 +468,7 @@ export default function MusicApp({
   };
 
   const playSong = (song: Song) => {
+    setPlaybackError("");
     onUpdateMusicData({
       ...currentMusicData,
       currentSong: song,
@@ -811,6 +867,11 @@ export default function MusicApp({
             <p className="text-[15px] font-medium text-pink-500 truncate px-4">
               {currentMusicData.currentSong?.artist}
             </p>
+            {playbackError ? (
+              <p className="mt-2 text-[12px] font-semibold text-rose-500">
+                {playbackError}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex-1 w-full flex items-start justify-center px-4 min-h-0 relative pt-2">
@@ -824,7 +885,7 @@ export default function MusicApp({
                   className="relative aspect-square max-h-full max-w-[260px] w-full"
                 >
                   <motion.div
-                    animate={{ rotate: currentMusicData.isPlaying ? 360 : 0 }}
+                    animate={{ rotate: currentMusicData.isPlaying && isAudioActuallyPlaying ? 360 : 0 }}
                     transition={{
                       duration: 20,
                       repeat: Infinity,
