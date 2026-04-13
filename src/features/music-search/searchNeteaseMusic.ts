@@ -61,20 +61,20 @@ async function searchNeteaseMusic(query: string, limit = 30): Promise<MusicSearc
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('搜索服务暂时没有接通，请确认当前用的是项目开发服务');
+    throw new Error('网易云搜索服务暂时没有接通，请确认当前使用的是项目开发服务。');
   }
 
   const data = (await response.json()) as NeteaseSearchResponse;
   if (!response.ok) {
-    throw new Error(data.error || `搜索失败：${response.status}`);
+    throw new Error(data.error || `网易云搜索失败：${response.status}`);
   }
 
   return (data.result?.songs || []).map((track) => ({
     song: mapNeteaseSongToSong(track),
     sourceId: 'netease',
     sourceLabel: '网易云',
-    playbackStatus: 'unverified',
-    note: '目前先给到更多搜索结果，但网页直播仍不稳定。',
+    playbackStatus: 'search-only',
+    note: '先保留搜索结果展示，网页直播放在当前环境里并不稳定。',
   }));
 }
 

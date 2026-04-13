@@ -197,6 +197,40 @@ async function startServer() {
     }
   });
 
+  app.get("/api/freetouse/search", async (req, res) => {
+    const query = String(req.query.query || "").trim();
+    const limit = Math.max(1, Math.min(30, Number(req.query.limit || 30)));
+    if (!query) {
+      return res.status(400).json({ error: "Missing query" });
+    }
+
+    try {
+      const upstreamUrl = new URL("https://api.freetouse.com/v3/music/tracks/search");
+      upstreamUrl.searchParams.set("query", query);
+      upstreamUrl.searchParams.set("limit", String(limit));
+
+      const response = await fetch(upstreamUrl, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+          Referer: "https://freetouse.com/",
+          Origin: "https://freetouse.com",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch from Free To Use: ${response.status}`);
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Error searching Free To Use music:", error);
+      res.status(500).json({ error: "Failed to search Free To Use music" });
+    }
+  });
+
   app.get("/api/netease/playlist", async (req, res) => {
     const id = req.query.id;
     if (!id) {

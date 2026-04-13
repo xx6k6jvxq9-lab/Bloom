@@ -1,7 +1,21 @@
 import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
+import { freeToUseMusicSearchSource } from './searchFreeToUseMusic';
 import { neteaseMusicSearchSource } from './searchNeteaseMusic';
 
-const musicSearchSources: MusicSearchSource[] = [neteaseMusicSearchSource];
+const musicSearchSources: MusicSearchSource[] = [freeToUseMusicSearchSource, neteaseMusicSearchSource];
+
+function getPlaybackPriority(result: MusicSearchResult) {
+  switch (result.playbackStatus) {
+    case 'supported':
+      return 0;
+    case 'unverified':
+      return 1;
+    case 'search-only':
+      return 2;
+    default:
+      return 3;
+  }
+}
 
 export async function searchMusicAcrossSources(
   query: string,
@@ -24,7 +38,7 @@ export async function searchMusicAcrossSources(
   });
 
   if (aggregated.length > 0) {
-    return aggregated;
+    return aggregated.sort((left, right) => getPlaybackPriority(left) - getPlaybackPriority(right));
   }
 
   if (failures.length > 0) {
