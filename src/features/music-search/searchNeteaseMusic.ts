@@ -46,12 +46,12 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
   };
 }
 
-async function searchNeteaseMusic(query: string, limit = 30): Promise<MusicSearchResult[]> {
+async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
   const response = await fetch(
-    `/api/netease/search?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
+    `/api/netease/search-playable?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
     {
       headers: {
         Accept: 'application/json',
@@ -61,7 +61,7 @@ async function searchNeteaseMusic(query: string, limit = 30): Promise<MusicSearc
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('网易云搜索服务暂时没有接通，请确认当前使用的是项目开发服务。');
+    throw new Error('网易云可播搜索服务暂时没有接通，请重启当前开发服务后再试。');
   }
 
   const data = (await response.json()) as NeteaseSearchResponse;
@@ -73,8 +73,8 @@ async function searchNeteaseMusic(query: string, limit = 30): Promise<MusicSearc
     song: mapNeteaseSongToSong(track),
     sourceId: 'netease',
     sourceLabel: '网易云',
-    playbackStatus: 'search-only',
-    note: '先保留搜索结果展示，网页直播放在当前环境里并不稳定。',
+    playbackStatus: 'supported',
+    note: '已过滤当前环境里不能直接播放的歌曲。',
   }));
 }
 

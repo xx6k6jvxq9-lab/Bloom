@@ -69,9 +69,21 @@ function mapPlaylistToAppPlaylist(playlist: NonNullable<NeteasePlaylistDetailRes
   };
 }
 
+async function readJsonResponse<T>(response: Response, offlineMessage: string): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(offlineMessage);
+  }
+
+  return (await response.json()) as T;
+}
+
 export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promise<Playlist[]> {
   const response = await fetch(`/api/netease/user-playlists?uid=${encodeURIComponent(uid)}&limit=${limit}`);
-  const data = (await response.json()) as NeteaseUserPlaylistResponse;
+  const data = await readJsonResponse<NeteaseUserPlaylistResponse>(
+    response,
+    '歌单同步接口暂时没有接通，请重启当前开发服务后再试。',
+  );
 
   if (!response.ok) {
     throw new Error(data.error || '获取网易云歌单列表失败');
@@ -82,7 +94,11 @@ export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promis
 
   for (const rawPlaylist of rawPlaylists) {
     const detailResponse = await fetch(`/api/netease/playlist?id=${rawPlaylist.id}`);
-    const detailData = (await detailResponse.json()) as NeteasePlaylistDetailResponse;
+    const detailData = await readJsonResponse<NeteasePlaylistDetailResponse>(
+      detailResponse,
+      '歌单详情接口暂时没有接通，请重启当前开发服务后再试。',
+    );
+
     if (!detailResponse.ok) {
       continue;
     }

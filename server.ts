@@ -26,6 +26,35 @@ async function startServer() {
   const PORT = 3000;
   const HOST = "0.0.0.0";
 
+  const resolveNeteasePlayableUrl = async (id: string | number) => {
+    let finalUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+
+    const headResponse = await fetch(finalUrl, {
+      method: "HEAD",
+      redirect: "manual",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    });
+
+    if (headResponse.status === 301 || headResponse.status === 302) {
+      const location = headResponse.headers.get("location");
+      if (location) {
+        if (location.includes("/404")) {
+          return null;
+        }
+        finalUrl = location.replace(/^http:/, "https:");
+      }
+    }
+
+    if (headResponse.status >= 400) {
+      return null;
+    }
+
+    return finalUrl;
+  };
+
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -38,27 +67,11 @@ async function startServer() {
     }
 
     try {
-      let finalUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
-
-      const headResponse = await fetch(finalUrl, {
-        method: "HEAD",
-        redirect: "manual",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        },
-      });
-
-      if (headResponse.status === 301 || headResponse.status === 302) {
-        const location = headResponse.headers.get("location");
-        if (location) {
-          if (location.includes("/404")) {
-            return res
-              .status(404)
-              .json({ error: "Song not found or is VIP/copyright restricted" });
-          }
-          finalUrl = location.replace(/^http:/, "https:");
-        }
+      const finalUrl = await resolveNeteasePlayableUrl(String(id));
+      if (!finalUrl) {
+        return res
+          .status(404)
+          .json({ error: "Song not found or is VIP/copyright restricted" });
       }
 
       const headers: Record<string, string> = {
@@ -194,6 +207,58 @@ async function startServer() {
     } catch (error) {
       console.error("Error searching NetEase music:", error);
       res.status(500).json({ error: "Failed to search music" });
+    }
+  });
+
+  app.get("/api/netease/search-playable", async (req, res) => {
+    const keywords = String(req.query.keywords || "").trim();
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit || 10)));
+    if (!keywords) {
+      return res.status(400).json({ error: "Missing keywords" });
+    }
+
+    try {
+      const response = await fetch("https://music.163.com/api/search/get/web?csrf_token=", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Referer: "https://music.163.com/",
+        },
+        body: new URLSearchParams({
+          s: keywords,
+          type: "1",
+          offset: "0",
+          limit: String(limit),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch from NetEase: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const songs = data?.result?.songs || [];
+      const playableChecks = await Promise.all(
+        songs.map(async (song: any) => ({
+          song,
+          playableUrl: await resolveNeteasePlayableUrl(song.id),
+        }))
+      );
+
+      const playableSongs = playableChecks
+        .filter((item) => item.playableUrl)
+        .map((item) => item.song);
+
+      res.json({
+        result: {
+          songs: playableSongs,
+        },
+      });
+    } catch (error) {
+      console.error("Error searching playable NetEase music:", error);
+      res.status(500).json({ error: "Failed to search playable music" });
     }
   });
 

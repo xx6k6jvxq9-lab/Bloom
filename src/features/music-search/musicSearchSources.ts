@@ -1,7 +1,13 @@
 import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 import { freeToUseMusicSearchSource } from './searchFreeToUseMusic';
+import { neteaseMusicSearchSource } from './searchNeteaseMusic';
 
-const musicSearchSources: MusicSearchSource[] = [freeToUseMusicSearchSource];
+const musicSearchSources: MusicSearchSource[] = [neteaseMusicSearchSource, freeToUseMusicSearchSource];
+
+const SOURCE_PRIORITY: Record<string, number> = {
+  netease: 0,
+  freetouse: 1,
+};
 
 function getPlaybackPriority(result: MusicSearchResult) {
   switch (result.playbackStatus) {
@@ -18,7 +24,7 @@ function getPlaybackPriority(result: MusicSearchResult) {
 
 export async function searchMusicAcrossSources(
   query: string,
-  limitPerSource = 30,
+  limitPerSource = 20,
 ): Promise<MusicSearchResult[]> {
   const settled = await Promise.allSettled(
     musicSearchSources.map((source) => source.search(query, limitPerSource)),
@@ -37,7 +43,15 @@ export async function searchMusicAcrossSources(
   });
 
   if (aggregated.length > 0) {
-    return aggregated.sort((left, right) => getPlaybackPriority(left) - getPlaybackPriority(right));
+    return aggregated.sort((left, right) => {
+      const playbackDiff = getPlaybackPriority(left) - getPlaybackPriority(right);
+      if (playbackDiff !== 0) return playbackDiff;
+
+      const sourceDiff = (SOURCE_PRIORITY[left.sourceId] ?? 99) - (SOURCE_PRIORITY[right.sourceId] ?? 99);
+      if (sourceDiff !== 0) return sourceDiff;
+
+      return left.song.title.localeCompare(right.song.title, 'zh-CN');
+    });
   }
 
   if (failures.length > 0) {
