@@ -121,6 +121,7 @@ export default function MusicApp({
   const [playbackError, setPlaybackError] = useState("");
   const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
   const [isSyncingNeteasePlaylists, setIsSyncingNeteasePlaylists] = useState(false);
+  const lastRecordedPlaybackIdRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const currentMusicDataRef = useRef<MusicData | null>(null);
@@ -141,6 +142,20 @@ export default function MusicApp({
     }
     return new URL(url, window.location.origin).toString();
   };
+
+  const appendSongOnce = (ids: string[], songId: string) => [
+    songId,
+    ...ids.filter((id) => id !== songId),
+  ];
+
+  const recordSongPlayback = (song: Song, data: MusicData) => ({
+    ...data,
+    history: appendSongOnce(data.history || [], song.id),
+    recentlyPlayed: appendSongOnce(data.recentlyPlayed || [], song.id),
+  });
+
+  const toggleSongInList = (ids: string[], songId: string) =>
+    ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
 
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
@@ -245,6 +260,13 @@ export default function MusicApp({
     const handlePlaying = () => {
       setPlaybackError("");
       setIsAudioActuallyPlaying(true);
+      const activeData = currentMusicDataRef.current;
+      const activeSong = activeData?.currentSong;
+      if (!activeData || !activeSong) return;
+      if (lastRecordedPlaybackIdRef.current === activeSong.id) return;
+
+      lastRecordedPlaybackIdRef.current = activeSong.id;
+      onUpdateMusicDataRef.current(recordSongPlayback(activeSong, activeData));
     };
 
     const handlePause = () => {
@@ -379,6 +401,9 @@ export default function MusicApp({
     console.log('MusicApp syncPlayback effect triggered, isPlaying:', currentMusicData.isPlaying);
     const audio = audioRef.current;
     if (!audio || !currentMusicData.currentSong) return;
+    if (currentMusicData.currentSong.id !== lastRecordedPlaybackIdRef.current) {
+      lastRecordedPlaybackIdRef.current = null;
+    }
 
     const syncPlayback = async () => {
       setPlaybackError("");
@@ -1061,17 +1086,12 @@ export default function MusicApp({
                   >
                     <button
                       onClick={() => {
-                        const isLiked = currentMusicData.likedSongs.includes(
-                          currentMusicData.currentSong?.id || "",
+                        const songId = currentMusicData.currentSong?.id;
+                        if (!songId) return;
+                        const newLiked = toggleSongInList(
+                          currentMusicData.likedSongs || [],
+                          songId,
                         );
-                        const newLiked = isLiked
-                          ? currentMusicData.likedSongs.filter(
-                              (id) => id !== currentMusicData.currentSong?.id,
-                            )
-                          : [
-                              ...currentMusicData.likedSongs,
-                              currentMusicData.currentSong?.id || "",
-                            ];
                         onUpdateMusicData({
                           ...currentMusicData,
                           likedSongs: newLiked,
@@ -1096,18 +1116,12 @@ export default function MusicApp({
                     </button>
                     <button
                       onClick={() => {
-                        const isCollected =
-                          currentMusicData.collectedSongs?.includes(
-                            currentMusicData.currentSong?.id || "",
-                          );
-                        const newCollected = isCollected
-                          ? currentMusicData.collectedSongs.filter(
-                              (id) => id !== currentMusicData.currentSong?.id,
-                            )
-                          : [
-                              ...(currentMusicData.collectedSongs || []),
-                              currentMusicData.currentSong?.id || "",
-                            ];
+                        const songId = currentMusicData.currentSong?.id;
+                        if (!songId) return;
+                        const newCollected = toggleSongInList(
+                          currentMusicData.collectedSongs || [],
+                          songId,
+                        );
                         onUpdateMusicData({
                           ...currentMusicData,
                           collectedSongs: newCollected,
@@ -1495,6 +1509,7 @@ export default function MusicApp({
   const renderMe = () => {
     const allKnownSongs = [
       ...defaultSongs,
+      ...(currentMusicData.currentSong ? [currentMusicData.currentSong] : []),
       ...currentMusicData.queue,
       ...currentMusicData.playlists.flatMap((p) => p.songs),
     ];
