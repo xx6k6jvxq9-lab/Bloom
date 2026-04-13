@@ -28,12 +28,19 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { showInAppConfirm } from "../../utils";
-import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
+import {
+  Song,
+  Playlist,
+  MusicData,
+  Character,
+  ChatMessage,
+} from "../../types";
 import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
+import { generateTogetherChatReply } from "../../features/music-together/generateTogetherChatReply";
 
 function ResolvedMusicAvatar({
   value,
@@ -120,6 +127,7 @@ export default function MusicApp({
   const [showDataManagement, setShowDataManagement] = useState(false);
   const [showCollaborativeLibrary, setShowCollaborativeLibrary] =
     useState(false);
+  const [isSendingTogetherChat, setIsSendingTogetherChat] = useState(false);
   const [playbackError, setPlaybackError] = useState("");
   const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
   const [isSyncingNeteasePlaylists, setIsSyncingNeteasePlaylists] = useState(false);
@@ -158,6 +166,17 @@ export default function MusicApp({
 
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
+
+  const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      playlist.name.toLowerCase().includes(query) ||
+      playlist.songs.some((song) =>
+        `${song.title} ${song.artist}`.toLowerCase().includes(query),
+      )
+    );
+  });
 
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
@@ -749,11 +768,12 @@ export default function MusicApp({
     }
   };
 
-  const sendChatMessage = () => {
-    if (!chatInput.trim()) return;
+  const sendChatMessage = async () => {
+    const trimmedInput = chatInput.trim();
+    if (!trimmedInput || isSendingTogetherChat || !currentMusicData.togetherWith) return;
     const newMsg: ChatMessage = {
       role: "user",
-      text: chatInput,
+      text: trimmedInput,
       timestamp: Date.now(),
     };
     const updatedHistory = [...currentMusicData.chatHistory, newMsg];
@@ -763,6 +783,51 @@ export default function MusicApp({
       chatHistory: updatedHistory,
     });
     setChatInput("");
+    setIsSendingTogetherChat(true);
+
+    try {
+      const replyText = await generateTogetherChatReply({
+        character,
+        userName,
+        currentSong: currentMusicData.currentSong,
+        togetherDuration: getTogetherDuration(),
+        history: updatedHistory,
+      });
+
+      const nextData = currentMusicDataRef.current;
+      if (!nextData?.togetherWith) return;
+
+      onUpdateMusicDataRef.current({
+        ...nextData,
+        chatHistory: [
+          ...nextData.chatHistory,
+          { role: "model", text: replyText, timestamp: Date.now() },
+        ],
+      });
+    } catch (error) {
+      console.error("Together chat generation error:", error);
+      const nextData = currentMusicDataRef.current;
+      if (!nextData?.togetherWith) return;
+
+      onUpdateMusicDataRef.current({
+        ...nextData,
+        chatHistory: [
+          ...nextData.chatHistory,
+          {
+            role: "model",
+            text:
+              error instanceof Error && error.message
+                ? `我刚刚有点没接上，你再和我说一次吧。${error.message}`
+                : "我刚刚有点没接上，你再和我说一次吧。",
+            timestamp: Date.now(),
+          },
+        ],
+      });
+    } finally {
+      setIsSendingTogetherChat(false);
+    }
+
+    return;
 
     // Mock character response
     setTimeout(() => {
@@ -2234,6 +2299,7 @@ export default function MusicApp({
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
+            disabled={isSendingTogetherChat}
             placeholder="说点什么..."
             className="flex-1 bg-transparent outline-none text-[14px]"
           />
@@ -2241,7 +2307,8 @@ export default function MusicApp({
         </div>
         <button
           onClick={sendChatMessage}
-          className="w-11 h-11 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg shadow-pink-200 active:scale-90 transition-transform"
+          disabled={isSendingTogetherChat}
+          className="w-11 h-11 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg shadow-pink-200 active:scale-90 transition-transform disabled:opacity-60"
         >
           <Send size={20} />
         </button>
