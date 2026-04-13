@@ -214,16 +214,7 @@ export function HomeScreen({
         id: 'music',
         name: '音乐',
         icon: APP_ICON_URL,
-        onClick: () => {
-          onOpenApp('music');
-          setAppData(prev => ({
-            ...prev,
-            musicData: {
-              ...prev.musicData!,
-              isPlaying: !prev.musicData?.isPlaying,
-            },
-          }));
-        },
+        onClick: () => onOpenApp('music'),
       },
       { id: 'forum', name: '论坛', icon: APP_ICON_URL, onClick: () => onOpenApp('forum') },
       { id: 'wallet', name: '钱包', icon: APP_ICON_URL, onClick: () => onOpenApp('wallet') },

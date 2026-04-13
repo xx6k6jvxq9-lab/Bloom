@@ -116,15 +116,7 @@ export default function MusicApp({
   const [showPlayerMoreMenu, setShowPlayerMoreMenu] = useState(false);
   const [showDataManagement, setShowDataManagement] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  // const audioRef = useRef<HTMLAudioElement | null>(null); // Removed
   const playPromiseRef = useRef<Promise<void> | null>(null);
-  const musicDataRef = useRef<MusicData | null>(null);
-  const onUpdateMusicDataRef = useRef(onUpdateMusicData);
-
-  useEffect(() => {
-    musicDataRef.current = currentMusicData;
-    onUpdateMusicDataRef.current = onUpdateMusicData;
-  });
 
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
@@ -226,19 +218,8 @@ export default function MusicApp({
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
-      // audio.pause(); // Removed to allow music to continue playing
-      if (musicDataRef.current) {
-        // onUpdateMusicDataRef.current({ ...musicDataRef.current, isPlaying: false }); // Removed to allow music to continue playing
-      }
     };
   }, []); // Only run once on mount
-
-  // Sync state on re-entry
-  useEffect(() => {
-    if (audioRef.current && !audioRef.current.paused && !musicData.isPlaying) {
-      onUpdateMusicData({ ...musicData, isPlaying: true });
-    }
-  }, []);
 
   // Sync volume
   useEffect(() => {
