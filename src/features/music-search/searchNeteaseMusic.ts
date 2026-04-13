@@ -46,7 +46,7 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
   };
 }
 
-async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearchResult[]> {
+async function searchNeteaseMusic(query: string, limit = 30): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
@@ -74,7 +74,7 @@ async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearc
     sourceId: 'netease',
     sourceLabel: '网易云',
     playbackStatus: 'unverified',
-    note: '当前只保证能搜到结果，不保证每首都能直接网页播放。',
+    note: '目前先给到更多搜索结果，但网页直播仍不稳定。',
   }));
 }
 

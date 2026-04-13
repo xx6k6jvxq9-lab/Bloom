@@ -89,17 +89,17 @@ export function MusicSearchResults({
         <div className="absolute -top-12 right-0 h-32 w-32 rounded-full bg-pink-200/30 blur-3xl" />
         <div className="absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-amber-100/60 blur-3xl" />
         <div className="relative flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.28em] text-pink-500/80">
               <Sparkles size={12} />
               即时搜歌
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
-            <p className="mt-1 text-[13px] font-medium text-zinc-500">
-              当前先接入 {activeSources.map((source) => source.label).join(' / ')}，后面还能继续加新来源。
+            <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
+              当前接入 {activeSources.map((source) => source.label).join(' / ')}，先把更多结果拉出来。
             </p>
           </div>
-          <div className="rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold text-zinc-500 shadow-sm">
+          <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
             {isLoading ? '搜索中...' : `${results.length} 个结果`}
           </div>
         </div>
@@ -109,7 +109,7 @@ export function MusicSearchResults({
         <div className="flex flex-col items-center justify-center rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <LoaderCircle size={34} className="mb-4 animate-spin text-pink-400" />
           <p className="text-[15px] font-bold text-zinc-700">正在搜索歌曲</p>
-          <p className="mt-1 text-[12px] font-medium text-zinc-400">先把结果拉出来，再逐步接真正稳定的可播源。</p>
+          <p className="mt-1 text-[12px] font-medium text-zinc-400">先把更多歌曲结果拉出来</p>
         </div>
       ) : errorMessage ? (
         <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)]">
@@ -117,7 +117,7 @@ export function MusicSearchResults({
             <Search size={34} className="mb-4 text-rose-300" />
             <p className="text-[15px] font-bold text-zinc-700">{errorMessage}</p>
             <p className="mt-2 text-[12px] font-medium text-zinc-400">
-              现在这一步已经把“搜索源”和“播放源”拆开，后面可以继续接真正稳定的可播地址。
+              当前搜索页已经支持更多结果展示，后面再继续接真正稳定的可播源。
             </p>
           </div>
         </div>
@@ -152,7 +152,7 @@ export function MusicSearchResults({
                       </h4>
                       <p className="mt-1 truncate text-[13px] font-medium text-zinc-500">{result.song.artist}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
                         {result.sourceLabel}
                       </div>
@@ -162,21 +162,21 @@ export function MusicSearchResults({
                     </div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 text-[11px] font-bold text-zinc-400">
-                      <div className="flex items-center gap-1.5">
+                  <div className="mt-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400">
                         <Clock3 size={12} />
                         {formatDuration(result.song.duration)}
                       </div>
                       {result.note ? (
-                        <div className="flex items-center gap-1.5 text-amber-500">
-                          <AlertCircle size={12} />
-                          <span className="truncate">{result.note}</span>
+                        <div className="mt-1 flex min-w-0 items-start gap-1.5 text-[11px] font-bold leading-5 text-amber-500">
+                          <AlertCircle size={12} className="mt-1 shrink-0" />
+                          <span className="break-words">{result.note}</span>
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
                         onClick={(event) => {
                           event.stopPropagation();

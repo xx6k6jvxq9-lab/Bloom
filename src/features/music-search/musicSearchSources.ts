@@ -5,7 +5,7 @@ const musicSearchSources: MusicSearchSource[] = [neteaseMusicSearchSource];
 
 export async function searchMusicAcrossSources(
   query: string,
-  limitPerSource = 12,
+  limitPerSource = 30,
 ): Promise<MusicSearchResult[]> {
   const settled = await Promise.allSettled(
     musicSearchSources.map((source) => source.search(query, limitPerSource)),
