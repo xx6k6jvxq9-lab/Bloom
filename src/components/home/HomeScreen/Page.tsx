@@ -383,6 +383,14 @@ export function HomeScreen({
     () => buildDesktopWidgetPlacements(currentPageWidgets, slots, cols, navOccupiedSlotIds),
     [cols, currentPageWidgets, navOccupiedSlotIds, slots],
   );
+  const draggedWidgetPreviewSlotIds = useMemo(() => {
+    if (!draggingWidgetId) return [];
+    const targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
+    const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
+    const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const targetPreviewLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
+    return targetPreviewLayout.placements[draggingWidgetId]?.slotIds || [];
+  }, [cols, currentPage, draggingWidgetId, draggingWidgetPage, navBarPage, navBarPlacement.slotIds, slots, workingWidgetConfigs]);
 
   const dockPlacement = useMemo(
     () =>
@@ -985,10 +993,10 @@ export function HomeScreen({
       navBarPlacement.slotIds.forEach(slotId => ids.add(slotId));
     }
     if (draggingWidgetId) {
-      (widgetLayout.placements[draggingWidgetId]?.slotIds || []).forEach(slotId => ids.add(slotId));
+      draggedWidgetPreviewSlotIds.forEach(slotId => ids.add(slotId));
     }
     return ids;
-  }, [draggedPreviewSlotId, draggingIconId, draggingNavBar, draggingWidgetId, navBarPlacement.slotIds, widgetLayout.placements]);
+  }, [draggedPreviewSlotId, draggedWidgetPreviewSlotIds, draggingIconId, draggingNavBar, draggingWidgetId, navBarPlacement.slotIds]);
 
   const isEditingDesktop = Boolean(isArrangeMode || draggingIconId || draggingNavBar || draggingWidgetId);
   const resetSwipeInteraction = () => {
@@ -2139,6 +2147,8 @@ function DockAppIcon({
       className="absolute inset-0 w-full h-full object-cover"
       alt={app.name}
       referrerPolicy="no-referrer"
+      draggable={false}
+      onContextMenu={event => event.preventDefault()}
     />
   );
 }
@@ -2225,6 +2235,7 @@ function AppIcon({
           alt={name}
           referrerPolicy="no-referrer"
           draggable={false}
+          onContextMenu={event => event.preventDefault()}
         />
       </div>
       <span className="homeDesktop__appLabel drop-shadow-md tracking-wide" style={fontStyle}>
