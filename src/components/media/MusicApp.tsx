@@ -157,6 +157,29 @@ export default function MusicApp({
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
 
+  const buildCollaborativePlaylistView = (playlists: Playlist[]): Playlist => {
+    const collaborativePlaylists = playlists.filter(
+      (playlist) => playlist.type === "collaborative",
+    );
+    const dedupedSongs = collaborativePlaylists
+      .flatMap((playlist) => playlist.songs)
+      .filter(
+        (song, index, songs) =>
+          songs.findIndex((candidate) => candidate.id === song.id) === index,
+      );
+
+    return {
+      id: "collaborative-songs",
+      name: "我的共创",
+      cover:
+        collaborativePlaylists[0]?.cover ||
+        dedupedSongs[0]?.albumArt ||
+        "https://picsum.photos/seed/collaborative/300/300",
+      songs: dedupedSongs,
+      type: "collaborative",
+    };
+  };
+
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
     {
@@ -1652,13 +1675,19 @@ export default function MusicApp({
                 icon: <Disc size={18} />,
                 action: () => setShowDataManagement(true),
               },
-              { name: "我的共创", icon: <Users size={18} /> },
-              { name: "音乐云盘", icon: <MusicIcon size={18} /> },
-            ].map((item, i) => (
+              {
+                name: "我的共创",
+                icon: <Users size={18} />,
+                action: () =>
+                  setSelectedPlaylist(
+                    buildCollaborativePlaylistView(currentMusicData.playlists),
+                  ),
+              },
+            ].map((item, i, items) => (
               <div
                 key={item.name}
                 onClick={item.action}
-                className={`flex items-center gap-3 p-3 active:bg-zinc-50 transition-colors cursor-pointer ${i !== 3 ? "border-b border-zinc-50" : ""}`}
+                className={`flex items-center gap-3 p-3 active:bg-zinc-50 transition-colors cursor-pointer ${i !== items.length - 1 ? "border-b border-zinc-50" : ""}`}
               >
                 <div className="w-8 h-8 rounded-lg bg-zinc-50 flex items-center justify-center text-zinc-400">
                   {item.icon}

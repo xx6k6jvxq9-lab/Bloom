@@ -98,7 +98,7 @@ export function NeteaseAccountPanel({
             <button
               onClick={() => void onSyncPlaylists()}
               disabled={isSyncing}
-              className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-zinc-200 active:scale-95 transition-transform disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-4 py-2.5 text-[12px] font-bold text-rose-500 active:scale-95 transition-transform disabled:opacity-60"
             >
               <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
               {isSyncing ? '同步中...' : '同步歌单'}
