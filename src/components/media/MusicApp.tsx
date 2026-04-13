@@ -167,17 +167,6 @@ export default function MusicApp({
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
 
-  const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return true;
-    return (
-      playlist.name.toLowerCase().includes(query) ||
-      playlist.songs.some((song) =>
-        `${song.title} ${song.artist}`.toLowerCase().includes(query),
-      )
-    );
-  });
-
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
     {
@@ -245,6 +234,16 @@ export default function MusicApp({
     collectedSongs: [],
     ...musicData,
   };
+  const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      playlist.name.toLowerCase().includes(query) ||
+      playlist.songs.some((song) =>
+        `${song.title} ${song.artist}`.toLowerCase().includes(query),
+      )
+    );
+  });
   usePersistedMusicDataBridge(currentMusicData, onUpdateMusicData);
 
   useEffect(() => {
