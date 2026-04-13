@@ -257,6 +257,7 @@ export function HomeScreen({
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const draggingIconPageRef = useRef<number | null>(null);
   const widgetPointerSessionRef = useRef<{
     widgetId: string;
     pointerId: number;
@@ -591,7 +592,7 @@ export function HomeScreen({
   };
 
   const handleIconDragPreview = (appId: string, rawX: number, rawY: number) => {
-    const targetPage = draggingIconPage ?? currentPage;
+    let targetPage = draggingIconPageRef.current ?? draggingIconPage ?? currentPage;
     setDragGhost(current =>
       current?.kind === 'icon' && current.id === appId
         ? { ...current, x: rawX, y: rawY }
@@ -599,7 +600,7 @@ export function HomeScreen({
     );
     const probeX = rawX + layoutMetrics.slotWidth / 2;
     const probeY = rawY + layoutMetrics.slotHeight / 2;
-    const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
+    const edgeThreshold = Math.max(52, Math.round(desktopViewport.width * 0.14));
     if (
       Date.now() >= dragPageTurnUntilRef.current
       && rawX >= desktopViewport.width - edgeThreshold
@@ -608,31 +609,26 @@ export function HomeScreen({
       const nextPage = targetPage + 1;
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
+      draggingIconPageRef.current = nextPage;
       setDraggingIconPage(nextPage);
       lastPreviewSlotIdRef.current = null;
-      setIconPreviewConfigs(prev => {
-        const base = (prev || normalizedIcons).map(icon =>
-          icon.id === appId ? { ...icon, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...icon, page: normalizeDesktopPage(icon.page) }
-        );
-        return base;
-      });
-      return;
+      targetPage = nextPage;
     }
     if (Date.now() >= dragPageTurnUntilRef.current && rawX <= edgeThreshold && targetPage > 0) {
       const nextPage = targetPage - 1;
       dragPageTurnUntilRef.current = Date.now() + 220;
       changePage(nextPage);
+      draggingIconPageRef.current = nextPage;
       setDraggingIconPage(nextPage);
       lastPreviewSlotIdRef.current = null;
-      setIconPreviewConfigs(prev => {
-        const base = (prev || normalizedIcons).map(icon =>
-          icon.id === appId ? { ...icon, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...icon, page: normalizeDesktopPage(icon.page) }
-        );
-        return base;
-      });
-      return;
+      targetPage = nextPage;
     }
-    const targetPageConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
+    const baseConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
+      icon.id === appId && normalizeDesktopPage(icon.page) !== targetPage
+        ? { ...icon, page: targetPage, slotId: undefined, x: undefined, y: undefined }
+        : { ...icon, page: normalizeDesktopPage(icon.page) }
+    );
+    const targetPageConfigs = baseConfigs.map(icon =>
       icon.id === appId ? { ...icon, page: targetPage } : { ...icon, page: normalizeDesktopPage(icon.page) }
     );
     const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
@@ -684,7 +680,7 @@ export function HomeScreen({
   };
 
   const handleIconDragCommit = (appId: string, rawX: number, rawY: number) => {
-    const targetPage = draggingIconPage ?? currentPage;
+    const targetPage = draggingIconPageRef.current ?? draggingIconPage ?? currentPage;
     const probeX = rawX + layoutMetrics.slotWidth / 2;
     const probeY = rawY + layoutMetrics.slotHeight / 2;
     const targetPageConfigs = (iconPreviewConfigs || normalizedIcons).map(icon =>
@@ -712,6 +708,7 @@ export function HomeScreen({
     ignoreSwipeUntilRef.current = Date.now() + 260;
     dragPageTurnUntilRef.current = 0;
     setDraggingIconId(null);
+    draggingIconPageRef.current = null;
     setDraggingIconPage(null);
     setDraggingIconOriginPage(null);
     setIconPreviewConfigs(null);
@@ -729,6 +726,7 @@ export function HomeScreen({
       offsetY: local.y - placement.y,
     };
     setDraggingIconId(app.id);
+    draggingIconPageRef.current = page;
     setDraggingIconPage(page);
     setDraggingIconOriginPage(page);
     lastPreviewSlotIdRef.current = placement.slotId;
@@ -762,6 +760,7 @@ export function HomeScreen({
         handleIconDragCommit(session.appId, local.x - session.offsetX, local.y - session.offsetY);
       } else {
         setDraggingIconId(null);
+        draggingIconPageRef.current = null;
         setDraggingIconPage(null);
         setDraggingIconOriginPage(null);
         setIconPreviewConfigs(null);
@@ -812,8 +811,8 @@ export function HomeScreen({
   };
 
   const handleWidgetDragPreview = (widgetId: string, rawX: number, rawY: number) => {
-    const targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
-    const edgeThreshold = Math.max(36, Math.round(desktopViewport.width * 0.1));
+    let targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
+    const edgeThreshold = Math.max(52, Math.round(desktopViewport.width * 0.14));
     if (
       Date.now() >= dragPageTurnUntilRef.current
       && rawX >= desktopViewport.width - edgeThreshold
@@ -824,10 +823,7 @@ export function HomeScreen({
       changePage(nextPage);
       draggingWidgetPageRef.current = nextPage;
       setDraggingWidgetPage(nextPage);
-      setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
-        widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
-      ));
-      return;
+      targetPage = nextPage;
     }
     if (
       Date.now() >= dragPageTurnUntilRef.current
@@ -839,14 +835,14 @@ export function HomeScreen({
       changePage(nextPage);
       draggingWidgetPageRef.current = nextPage;
       setDraggingWidgetPage(nextPage);
-      setWidgetPreviewConfigs(prev => (prev || normalizedWidgets).map(widget =>
-        widget.id === widgetId ? { ...widget, page: nextPage, slotId: undefined, x: undefined, y: undefined } : { ...widget, page: normalizeDesktopPage(widget.page) }
-      ));
-      return;
+      targetPage = nextPage;
     }
     const baseConfigs = (widgetPreviewConfigs || normalizedWidgets).map(widget => ({
       ...widget,
-      page: normalizeDesktopPage(widget.page),
+      page: widget.id === widgetId && normalizeDesktopPage(widget.page) !== targetPage ? targetPage : normalizeDesktopPage(widget.page),
+      slotId: widget.id === widgetId && normalizeDesktopPage(widget.page) !== targetPage ? undefined : widget.slotId,
+      x: widget.id === widgetId && normalizeDesktopPage(widget.page) !== targetPage ? undefined : widget.x,
+      y: widget.id === widgetId && normalizeDesktopPage(widget.page) !== targetPage ? undefined : widget.y,
     }));
     const placement =
       buildDesktopWidgetPlacements(
@@ -1061,9 +1057,9 @@ export function HomeScreen({
       return;
     }
 
-    if (deltaX < 0 && currentPage < pageCount - 1) {
+    if (deltaX > 0 && currentPage < pageCount - 1) {
       changePage(currentPage + 1);
-    } else if (deltaX > 0 && currentPage > 0) {
+    } else if (deltaX < 0 && currentPage > 0) {
       changePage(currentPage - 1);
     } else {
       setSwipeOffset(0);
