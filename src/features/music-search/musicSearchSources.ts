@@ -1,8 +1,7 @@
 import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 import { freeToUseMusicSearchSource } from './searchFreeToUseMusic';
-import { neteaseMusicSearchSource } from './searchNeteaseMusic';
 
-const musicSearchSources: MusicSearchSource[] = [freeToUseMusicSearchSource, neteaseMusicSearchSource];
+const musicSearchSources: MusicSearchSource[] = [freeToUseMusicSearchSource];
 
 function getPlaybackPriority(result: MusicSearchResult) {
   switch (result.playbackStatus) {

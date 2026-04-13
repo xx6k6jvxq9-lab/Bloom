@@ -96,7 +96,7 @@ export function MusicSearchResults({
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
             <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-              当前接入 {activeSources.map((source) => source.label).join(' / ')}，会把真正可直接播放的免费结果优先排在前面。
+              当前只保留可直接播放的免费源结果。没有结果时，宁可空着，也不再给你搜到却听不了的歌。
             </p>
           </div>
           <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
@@ -109,7 +109,7 @@ export function MusicSearchResults({
         <div className="flex flex-col items-center justify-center rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <LoaderCircle size={34} className="mb-4 animate-spin text-pink-400" />
           <p className="text-[15px] font-bold text-zinc-700">正在搜索歌曲</p>
-          <p className="mt-1 text-[12px] font-medium text-zinc-400">先把更多歌曲结果拉出来</p>
+          <p className="mt-1 text-[12px] font-medium text-zinc-400">只拉真正能直接播放的结果</p>
         </div>
       ) : errorMessage ? (
         <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)]">
@@ -117,7 +117,7 @@ export function MusicSearchResults({
             <Search size={34} className="mb-4 text-rose-300" />
             <p className="text-[15px] font-bold text-zinc-700">{errorMessage}</p>
             <p className="mt-2 text-[12px] font-medium text-zinc-400">
-              如果某个来源临时不可用，这里会直接告诉你，不再把 HTML 或技术报错原样抛出来。
+              如果当前可播源暂时没返回结果，这里会直接告诉你，不再混入不可播的来源。
             </p>
           </div>
         </div>
@@ -125,15 +125,11 @@ export function MusicSearchResults({
         <div className="space-y-3">
           {results.map((result, index) => {
             const badge = getPlaybackBadge(result);
-            const isPlayable = result.playbackStatus !== 'search-only';
-
             return (
               <div
                 key={`${result.sourceId}-${result.song.id}`}
-                onClick={() => {
-                  if (isPlayable) onPlaySong(result.song);
-                }}
-                className={`group flex items-center gap-4 rounded-[24px] border border-white/80 bg-white/85 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.05)] transition-all active:scale-[0.99] ${isPlayable ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default opacity-90'}`}
+                onClick={() => onPlaySong(result.song)}
+                className="group flex cursor-pointer items-center gap-4 rounded-[24px] border border-white/80 bg-white/85 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.05)] transition-all active:scale-[0.99] hover:-translate-y-0.5"
               >
                 <div className="relative h-18 w-18 shrink-0 overflow-hidden rounded-[20px] shadow-lg shadow-pink-100/40">
                   <img
@@ -184,24 +180,20 @@ export function MusicSearchResults({
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (!isPlayable) return;
                           onQueueSong(result.song);
                         }}
-                        className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${isPlayable ? 'bg-zinc-100 text-zinc-500 hover:bg-pink-100 hover:text-pink-500' : 'bg-zinc-100/70 text-zinc-300'}`}
-                        title={isPlayable ? '加入队列' : '当前来源只支持搜索展示'}
-                        disabled={!isPlayable}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-pink-100 hover:text-pink-500"
+                        title="加入队列"
                       >
                         <Plus size={17} />
                       </button>
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (!isPlayable) return;
                           onPlaySong(result.song);
                         }}
-                        className={`flex h-9 min-w-9 items-center justify-center rounded-full px-3 shadow-lg transition-transform active:scale-95 ${isPlayable ? 'bg-pink-500 text-white shadow-pink-200' : 'bg-zinc-200 text-zinc-400 shadow-zinc-100'}`}
-                        title={isPlayable ? '播放歌曲' : '当前来源只支持搜索展示'}
-                        disabled={!isPlayable}
+                        className="flex h-9 min-w-9 items-center justify-center rounded-full bg-pink-500 px-3 text-white shadow-lg shadow-pink-200 transition-transform active:scale-95"
+                        title="播放歌曲"
                       >
                         <Play size={16} fill="currentColor" />
                       </button>
@@ -216,8 +208,8 @@ export function MusicSearchResults({
         <div className="rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col items-center justify-center text-center text-zinc-400">
             <Music2 size={34} className="mb-4 text-zinc-300" />
-            <p className="text-[15px] font-bold text-zinc-700">还没有找到相关歌曲</p>
-            <p className="mt-1 text-[12px] font-medium text-zinc-400">换一个歌名、歌手名，或者试试更完整的关键词</p>
+            <p className="text-[15px] font-bold text-zinc-700">这次没有找到可直接播放的歌曲</p>
+            <p className="mt-1 text-[12px] font-medium text-zinc-400">换一个关键词试试。现在不会再混入搜得到却听不了的结果。</p>
           </div>
         </div>
       )}
