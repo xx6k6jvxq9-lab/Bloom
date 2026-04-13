@@ -118,6 +118,8 @@ export default function MusicApp({
   const [directMusicTitle, setDirectMusicTitle] = useState("");
   const [showPlayerMoreMenu, setShowPlayerMoreMenu] = useState(false);
   const [showDataManagement, setShowDataManagement] = useState(false);
+  const [showCollaborativeLibrary, setShowCollaborativeLibrary] =
+    useState(false);
   const [playbackError, setPlaybackError] = useState("");
   const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
   const [isSyncingNeteasePlaylists, setIsSyncingNeteasePlaylists] = useState(false);
@@ -156,29 +158,6 @@ export default function MusicApp({
 
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
-
-  const buildCollaborativePlaylistView = (playlists: Playlist[]): Playlist => {
-    const collaborativePlaylists = playlists.filter(
-      (playlist) => playlist.type === "collaborative",
-    );
-    const dedupedSongs = collaborativePlaylists
-      .flatMap((playlist) => playlist.songs)
-      .filter(
-        (song, index, songs) =>
-          songs.findIndex((candidate) => candidate.id === song.id) === index,
-      );
-
-    return {
-      id: "collaborative-songs",
-      name: "我的共创",
-      cover:
-        collaborativePlaylists[0]?.cover ||
-        dedupedSongs[0]?.albumArt ||
-        "https://picsum.photos/seed/collaborative/300/300",
-      songs: dedupedSongs,
-      type: "collaborative",
-    };
-  };
 
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
@@ -1678,10 +1657,7 @@ export default function MusicApp({
               {
                 name: "我的共创",
                 icon: <Users size={18} />,
-                action: () =>
-                  setSelectedPlaylist(
-                    buildCollaborativePlaylistView(currentMusicData.playlists),
-                  ),
+                action: () => setShowCollaborativeLibrary(true),
               },
             ].map((item, i, items) => (
               <div
@@ -1995,6 +1971,92 @@ export default function MusicApp({
     );
   };
 
+  const renderCollaborativeLibrary = () => {
+    if (!showCollaborativeLibrary) return null;
+
+    const collaborativePlaylists = currentMusicData.playlists.filter(
+      (playlist) => playlist.type === "collaborative",
+    );
+
+    return (
+      <motion.div
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        className="absolute inset-0 bg-zinc-50 z-[190] flex flex-col"
+      >
+        <div className="px-6 pt-12 pb-4 bg-white/80 backdrop-blur-xl sticky top-0 z-20 border-b border-zinc-100 flex items-center gap-4">
+          <button
+            onClick={() => setShowCollaborativeLibrary(false)}
+            className="p-2 -ml-2 text-zinc-500 active:opacity-50 transition-opacity"
+          >
+            <ChevronLeft size={28} strokeWidth={2.5} />
+          </button>
+          <h1 className="text-xl font-bold text-zinc-900 tracking-tight truncate flex-1">
+            我的共创
+          </h1>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pb-32">
+          <div className="p-6 flex flex-col items-center">
+            <div className="w-28 h-28 rounded-[28px] bg-white shadow-lg shadow-zinc-200/40 border border-white flex items-center justify-center text-pink-500 mb-5">
+              <Users size={42} />
+            </div>
+            <h2 className="text-2xl font-black text-zinc-900 text-center mb-2">
+              共创歌单
+            </h2>
+            <p className="text-[13px] font-bold text-zinc-400 mb-2">
+              共 {collaborativePlaylists.length} 个歌单
+            </p>
+          </div>
+
+          {collaborativePlaylists.length > 0 ? (
+            <div className="px-6 space-y-4">
+              {collaborativePlaylists.map((playlist) => (
+                <div
+                  key={playlist.id}
+                  onClick={() => {
+                    setShowCollaborativeLibrary(false);
+                    setSelectedPlaylist(playlist);
+                  }}
+                  className="flex items-center gap-4 group cursor-pointer active:opacity-70 transition-opacity"
+                >
+                  <div className="w-16 h-16 rounded-xl overflow-hidden shadow-md border border-zinc-100 shrink-0">
+                    <ResolvedMusicCover
+                      value={playlist.cover}
+                      alt={playlist.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 border-b border-zinc-100 pb-4">
+                    <h4 className="text-[15px] font-bold text-zinc-800 truncate">
+                      {playlist.name}
+                    </h4>
+                    <p className="text-[12px] font-medium text-zinc-400 mt-0.5">
+                      共创 · {playlist.songs.length} 首
+                    </p>
+                  </div>
+                  <ChevronLeft
+                    size={16}
+                    className="rotate-180 text-zinc-200 shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-6 py-16 flex flex-col items-center text-zinc-300">
+              <Users size={48} className="mb-4 opacity-20" />
+              <p className="font-bold">还没有共创歌单</p>
+              <p className="mt-2 text-[13px] font-medium text-zinc-400 text-center">
+                先新建一个邀请角色参与的歌单，再从这里进入。
+              </p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
+
   const renderQueue = () => (
     <motion.div
       initial={{ y: "100%" }}
@@ -2221,6 +2283,7 @@ export default function MusicApp({
 
       {/* Playlist Detail Overlay */}
       <AnimatePresence>
+        {showCollaborativeLibrary && renderCollaborativeLibrary()}
         {selectedPlaylist && renderPlaylistDetail()}
       </AnimatePresence>
 
