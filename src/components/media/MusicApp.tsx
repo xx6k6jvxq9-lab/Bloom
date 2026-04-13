@@ -123,6 +123,22 @@ export default function MusicApp({
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
 
+  const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
+    if (!song) return "";
+    if (song.id.startsWith("netease-")) {
+      return `/api/netease/song?id=${song.id.replace("netease-", "")}`;
+    }
+    return song.url;
+  };
+
+  const normalizePlaybackUrl = (url: string) => {
+    if (!url) return "";
+    if (url.startsWith("blob:") || url.startsWith("data:")) {
+      return url;
+    }
+    return new URL(url, window.location.origin).toString();
+  };
+
   // Mock data with real audio URLs
   const defaultSongs: Song[] = [
     {
@@ -363,8 +379,12 @@ export default function MusicApp({
 
     const syncPlayback = async () => {
       setPlaybackError("");
+      const nextPlaybackUrl = resolveSongPlaybackUrl(currentMusicData.currentSong);
+      const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
+      const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
+
       // If source changed, update it
-      if (audio.src !== currentMusicData.currentSong?.url) {
+      if (currentAudioUrl !== targetAudioUrl) {
         // Before changing src, we should wait for any pending play promise
         if (playPromiseRef.current) {
           try {
@@ -373,7 +393,13 @@ export default function MusicApp({
             // Ignore interruption errors
           }
         }
-        audio.src = currentMusicData.currentSong!.url;
+        if (!audio.paused) {
+          audio.pause();
+        }
+        audio.removeAttribute("src");
+        audio.load();
+        audio.src = nextPlaybackUrl;
+        audio.currentTime = 0;
         audio.load();
       }
 
@@ -568,7 +594,7 @@ export default function MusicApp({
           albumArt:
             (track.al || track.album)?.picUrl ||
             "https://picsum.photos/seed/netease/300/300",
-          url: `https://api.injahow.cn/meting/?type=url&id=${track.id}&server=netease`,
+          url: `/api/netease/song?id=${track.id}`,
           duration: Math.floor((track.dt || track.duration || 240000) / 1000),
         };
 
@@ -612,7 +638,7 @@ export default function MusicApp({
           albumArt:
             (track.al || track.album)?.picUrl ||
             "https://picsum.photos/seed/netease/300/300",
-          url: `https://api.injahow.cn/meting/?type=url&id=${track.id}&server=netease`,
+            url: `/api/netease/song?id=${track.id}`,
           duration: Math.floor((track.dt || track.duration || 240000) / 1000),
         }));
 
