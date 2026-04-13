@@ -31,6 +31,7 @@ import { showInAppConfirm } from "../../utils";
 import { Song, Playlist, MusicData, Character, ChatMessage } from "../../types";
 import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
+import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 
 function ResolvedMusicAvatar({
   value,
@@ -1142,10 +1143,6 @@ export default function MusicApp({
   );
 
   const renderPlaylists = () => {
-    const filteredPlaylists = currentMusicData.playlists.filter((p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-
     return (
       <div className="flex-1 flex flex-col overflow-hidden relative bg-zinc-50">
         {/* Search Header */}
@@ -1183,6 +1180,12 @@ export default function MusicApp({
 
         <div className="flex-1 overflow-y-auto space-y-10 px-6 pt-6 pb-32">
           {searchQuery ? (
+            <MusicSearchResults
+              query={searchQuery}
+              onPlaySong={playSong}
+              onQueueSong={addToQueue}
+            />
+          ) : false ? (
             /* Search Results */
             <section>
               <div className="flex items-center justify-between mb-5">

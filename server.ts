@@ -161,6 +161,42 @@ async function startServer() {
     }
   });
 
+  app.get("/api/netease/search", async (req, res) => {
+    const keywords = String(req.query.keywords || "").trim();
+    const limit = Math.max(1, Math.min(30, Number(req.query.limit || 12)));
+    if (!keywords) {
+      return res.status(400).json({ error: "Missing keywords" });
+    }
+
+    try {
+      const response = await fetch("https://music.163.com/api/search/get/web?csrf_token=", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Referer: "https://music.163.com/",
+        },
+        body: new URLSearchParams({
+          s: keywords,
+          type: "1",
+          offset: "0",
+          limit: String(limit),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch from NetEase: ${response.status}`);
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Error searching NetEase music:", error);
+      res.status(500).json({ error: "Failed to search music" });
+    }
+  });
+
   app.get("/api/netease/playlist", async (req, res) => {
     const id = req.query.id;
     if (!id) {
