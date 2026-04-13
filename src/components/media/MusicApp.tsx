@@ -569,6 +569,16 @@ export default function MusicApp({
     setShowInviteDialog(false);
   };
 
+  const disconnectTogether = () => {
+    onUpdateMusicData({
+      ...currentMusicData,
+      togetherWith: null,
+      togetherStartTime: null,
+      chatHistory: [],
+    });
+    setShowChat(false);
+  };
+
   const createPlaylist = () => {
     if (!newPlaylistName.trim()) return;
     const newPlaylist: Playlist = {
@@ -801,7 +811,7 @@ export default function MusicApp({
         <div className="absolute inset-0 bg-white/60" />
       </div>
 
-      <div className="relative z-10 flex-1 flex flex-col px-6 pb-6 pt-6">
+      <div className="relative z-10 flex-1 flex flex-col px-6 pb-6 pt-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-0 shrink-0">
           <button
@@ -816,6 +826,14 @@ export default function MusicApp({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {currentMusicData.togetherWith && (
+              <button
+                onClick={disconnectTogether}
+                className="h-10 rounded-full px-3 flex items-center justify-center bg-zinc-100 text-zinc-500 shadow-sm transition-all text-[12px] font-bold"
+              >
+                断开
+              </button>
+            )}
             {currentMusicData.togetherWith && (
               <button
                 onClick={() => setShowChat(!showChat)}
