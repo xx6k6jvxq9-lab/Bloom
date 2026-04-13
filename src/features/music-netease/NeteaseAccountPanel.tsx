@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ExternalLink, Link2, LogIn, RefreshCw, ShieldCheck, Unlink2 } from 'lucide-react';
+import { Link2, LogIn, RefreshCw, ShieldCheck, Unlink2 } from 'lucide-react';
 import type { MusicData } from '../../types';
-import { getNeteaseLoginUrl, parseNeteaseAccountInput } from './neteaseAccount';
+import { parseNeteaseAccountInput } from './neteaseAccount';
 
 type NeteaseAccountPanelProps = {
   value?: MusicData['neteaseAccount'];
@@ -18,18 +18,19 @@ function formatLinkedAt(timestamp?: number | null) {
   });
 }
 
-export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncing = false }: NeteaseAccountPanelProps) {
+export function NeteaseAccountPanel({
+  value,
+  onChange,
+  onSyncPlaylists,
+  isSyncing = false,
+}: NeteaseAccountPanelProps) {
   const [input, setInput] = useState(value?.profileUrl || value?.uid || '');
   const [error, setError] = useState('');
 
   const statusLabel = useMemo(() => {
-    if (!value?.uid) return '未连接网易云账号';
-    return `已连接 UID ${value.uid}`;
+    if (!value?.uid) return '还没有绑定网易云 UID';
+    return `已绑定 UID ${value.uid}`;
   }, [value]);
-
-  const openExternal = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
 
   const handleConnect = () => {
     const parsed = parseNeteaseAccountInput(input);
@@ -49,19 +50,13 @@ export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncin
         <div>
           <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.24em] text-rose-400">
             <ShieldCheck size={13} />
-            网易云账号
+            网易云歌单
           </div>
-          <h3 className="mt-2 text-[22px] font-black tracking-tight text-zinc-900">登录入口</h3>
+          <h3 className="mt-2 text-[22px] font-black tracking-tight text-zinc-900">直接导入入口</h3>
           <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-            先连接你的网易云主页，后面可以在这个基础上继续做歌单同步。登录账号不等于让当前网页播放器直接获得所有版权歌播放权限。
+            这里不再跳去外面。你只需要粘贴网易云个人主页链接或 UID，就能直接把公开歌单同步到音乐页里。
           </p>
         </div>
-        <button
-          onClick={() => openExternal(getNeteaseLoginUrl())}
-          className="shrink-0 rounded-full bg-zinc-900 px-4 py-2 text-[12px] font-bold text-white shadow-lg shadow-zinc-200 active:scale-95 transition-transform"
-        >
-          打开登录
-        </button>
       </div>
 
       <div className="mt-5 rounded-[22px] bg-gradient-to-br from-pink-50 via-white to-orange-50 p-4">
@@ -71,11 +66,11 @@ export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncin
         </div>
         {value?.uid ? (
           <p className="mt-1 text-[12px] font-medium text-zinc-400">
-            {formatLinkedAt(value.linkedAt)} 已保存主页链接，后面可以直接继续做歌单同步。
+            {formatLinkedAt(value.linkedAt)} 已保存 UID，接下来可以直接同步你的公开歌单。
           </p>
         ) : (
           <p className="mt-1 text-[12px] font-medium text-zinc-400">
-            登录后把“个人主页链接”或 UID 贴到下面，就能把账号连接状态留在音乐页里。
+            登录动作你可以自己在网易云完成，这里只负责接收 UID 或主页链接并同步歌单。
           </p>
         )}
 
@@ -97,14 +92,7 @@ export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncin
             className="inline-flex items-center gap-2 rounded-full bg-pink-500 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-pink-200 active:scale-95 transition-transform"
           >
             <LogIn size={15} />
-            连接账号
-          </button>
-          <button
-            onClick={() => openExternal(value?.profileUrl || getNeteaseLoginUrl())}
-            className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2.5 text-[12px] font-bold text-zinc-600 active:scale-95 transition-transform"
-          >
-            <ExternalLink size={15} />
-            {value?.profileUrl ? '打开主页' : '打开网易云'}
+            保存 UID
           </button>
           {value?.uid && onSyncPlaylists ? (
             <button
@@ -126,7 +114,7 @@ export function NeteaseAccountPanel({ value, onChange, onSyncPlaylists, isSyncin
               className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-4 py-2.5 text-[12px] font-bold text-rose-500 active:scale-95 transition-transform"
             >
               <Unlink2 size={15} />
-              断开连接
+              清除 UID
             </button>
           ) : null}
         </div>
