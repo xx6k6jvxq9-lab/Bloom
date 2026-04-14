@@ -34,14 +34,11 @@ function getPlaybackBadge(result: MusicSearchResult) {
 const FILTERS: Array<{ id: MusicSearchFilter; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'song', label: '歌曲' },
-  { id: 'podcast', label: '播客' },
   { id: 'free', label: '免费源' },
 ];
 
 function getCategoryLabel(result: MusicSearchResult) {
   switch (result.category) {
-    case 'podcast':
-      return '播客';
     case 'free':
       return '免费源';
     default:
@@ -121,7 +118,7 @@ export function MusicSearchResults({
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
             <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-              当前接入 {activeSources.map((source) => source.label).join(' / ')}，可以切换筛选查看这次搜到的内容类型。
+              当前接入 {activeSources.map((source) => source.label).join(' / ')}，搜索结果会先展示，播放时再轻量校验。
             </p>
           </div>
           <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
@@ -138,7 +135,7 @@ export function MusicSearchResults({
             className={`shrink-0 rounded-full px-4 py-2 text-[12px] font-bold transition-colors ${
               activeFilter === filter.id
                 ? 'bg-pink-500 text-white shadow-lg shadow-pink-200'
-                : 'bg-white text-zinc-500 border border-zinc-100'
+                : 'border border-zinc-100 bg-white text-zinc-500'
             }`}
           >
             {filter.label}
@@ -150,7 +147,7 @@ export function MusicSearchResults({
         <div className="flex flex-col items-center justify-center rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <LoaderCircle size={34} className="mb-4 animate-spin text-pink-400" />
           <p className="text-[15px] font-bold text-zinc-700">正在搜索内容</p>
-          <p className="mt-1 text-[12px] font-medium text-zinc-400">会同时尝试歌曲、免费源和网易云播客</p>
+          <p className="mt-1 text-[12px] font-medium text-zinc-400">会同时尝试网易云歌曲和免费源</p>
         </div>
       ) : errorMessage ? (
         <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)]">

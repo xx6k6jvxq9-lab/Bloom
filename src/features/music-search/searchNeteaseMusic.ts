@@ -1,5 +1,5 @@
-import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 import type { Song } from '../../types';
+import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 
 type NeteaseArtist = {
   name?: string;
@@ -76,7 +76,7 @@ async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearc
     sourceLabel: '网易云',
     category: 'song',
     playbackStatus: 'unverified',
-    note: '先展示搜索结果，播放时再校验当前网页端是否可播。',
+    note: '先展示搜索结果，播放时再轻量校验当前网页端是否可播。',
   }));
 }
 
