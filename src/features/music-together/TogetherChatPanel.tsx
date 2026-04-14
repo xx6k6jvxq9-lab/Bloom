@@ -15,7 +15,6 @@ import {
 import { getThemeSelectedFontStack } from "../theme/themeTypography";
 import { AudioMessageCard } from "../chat-session/AudioMessageCard";
 import { useAudioMessageRecorder } from "../chat-session/useAudioMessageRecorder";
-import { usePressToRecordInteraction } from "../chat-session/usePressToRecordInteraction";
 
 function BubbleThemeAnchors() {
   return (
@@ -149,26 +148,19 @@ export function TogetherChatPanel({
       );
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
-  const basicEmojis = React.useMemo(
-    () => ["馃ズ", "馃槶", "馃グ", "馃槼", "馃槨", "馃槾", "馃樀", "馃", "馃挆", "馃挗", "馃樇", "馃憖", "馃帶", "馃幍"],
-    [],
-  );
-  const availableCustomStickers = React.useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            ...(settings.sharedStickers || []),
-            ...(activeTogetherCharacter.stickers || []),
-          ]
-            .filter(
-              (sticker): sticker is string =>
-                typeof sticker === "string" && sticker.trim().length > 0,
-            )
-            .map((sticker) => sticker.trim()),
-        ),
-      ),
-    [activeTogetherCharacter.stickers, settings.sharedStickers],
+  const basicEmojis = ["🙂", "😆", "🥺", "😼", "😊", "🤍", "😉", "😳", "🫶", "🌙", "😇", "🥹", "🎵", "🎧"];
+  const availableCustomStickers = Array.from(
+    new Set(
+      [
+        ...(settings.sharedStickers || []),
+        ...(activeTogetherCharacter.stickers || []),
+      ]
+        .filter(
+          (sticker): sticker is string =>
+            typeof sticker === "string" && sticker.trim().length > 0,
+        )
+        .map((sticker) => sticker.trim()),
+    ),
   );
   const directChatFontCss = chatFontFamily
     ? `.chat-bubble-theme-scope .chat-bubble,
@@ -201,12 +193,38 @@ export function TogetherChatPanel({
       });
     },
   });
-  const audioRecordInteraction = usePressToRecordInteraction({
-    isRecording,
-    startRecording,
-    stopRecording,
-    cancelRecording,
-  });
+  const handleVoicePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Ignore capture failures and still try to record.
+      }
+    }
+    void startRecording();
+  };
+
+  const handleVoicePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore release failures.
+      }
+    }
+    stopRecording();
+  };
+
+  const handleVoicePointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore release failures.
+      }
+    }
+    cancelRecording();
+  };
 
   const getDirectTextBubbleClass = (role: ChatMessage["role"]) => {
     if (role === "model") {
@@ -469,17 +487,17 @@ export function TogetherChatPanel({
 
           {isVoiceMode ? (
             <button
-              onPointerDown={audioRecordInteraction.onPointerDown}
-              onPointerUp={audioRecordInteraction.onPointerUp}
-              onPointerCancel={audioRecordInteraction.onPointerCancel}
-              onPointerLeave={audioRecordInteraction.onPointerLeave}
+              onPointerDown={handleVoicePointerDown}
+              onPointerUp={handleVoicePointerUp}
+              onPointerCancel={handleVoicePointerCancel}
+              onPointerLeave={() => undefined}
               disabled={isSendingTogetherChat}
               className={`flex-1 h-11 rounded-[28px] font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isRecording ? "bg-zinc-200 text-zinc-800" : "bg-zinc-50 border border-zinc-100 text-zinc-700"
               } disabled:opacity-60`}
               style={chatTextStyle}
             >
-              {audioRecordInteraction.buttonLabel}
+              {isRecording ? "松开发送" : "按住说话"}
             </button>
           ) : (
             <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-[28px] px-4 py-2.5 flex items-center gap-2">
