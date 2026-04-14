@@ -14,6 +14,7 @@ import {
   Forward,
   Plus,
   Reply,
+  ScanEye,
   Send,
   Share2,
   Smile,
@@ -87,6 +88,9 @@ import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
+const getGroupMessageSelectionKey = (message: ChatMessage) => (
+  `${message.timestamp}::${message.role}::${message.senderCharacterId ?? ''}::${message.text}`
+);
 
 const AUTO_OPENING_DEDUPE_WINDOW_MS = 1500;
 const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
@@ -579,6 +583,7 @@ export function GroupChatSessionScreen({
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [activeGroupFeatureComposer, setActiveGroupFeatureComposer] = useState<'poll' | 'relay' | 'task' | null>(null);
   const [groupPollTitleDraft, setGroupPollTitleDraft] = useState('');
   const [groupPollOptionsDraft, setGroupPollOptionsDraft] = useState('选项一\n选项二');
@@ -1256,6 +1261,25 @@ export function GroupChatSessionScreen({
     }
 
     setHistory(deleteMessageAtIndex(history, contextMenuMessageIndex));
+    closeContextMenu();
+  };
+
+  const handleToggleTranscript = () => {
+    if (!contextMenuMessage || !contextMenuMessage.audioUrl || !contextMenuMessage.audioTranscript) {
+      closeContextMenu();
+      return;
+    }
+
+    const messageKey = getGroupMessageSelectionKey(contextMenuMessage);
+    setExpandedAudioTranscriptKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageKey)) {
+        next.delete(messageKey);
+      } else {
+        next.add(messageKey);
+      }
+      return next;
+    });
     closeContextMenu();
   };
 
@@ -2774,6 +2798,7 @@ export function GroupChatSessionScreen({
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
                       transcript={msg.audioTranscript || null}
+                      showTranscript={expandedAudioTranscriptKeys.has(getGroupMessageSelectionKey(msg))}
                       isUser={isUser}
                       className="shadow-none"
                     />
@@ -3158,6 +3183,15 @@ export function GroupChatSessionScreen({
               >
 	                <Copy size={20} />
 	              </button>
+              {contextMenuMessage.audioUrl && contextMenuMessage.audioTranscript && (
+                <button
+                  onClick={handleToggleTranscript}
+                  className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
+                  title={expandedAudioTranscriptKeys.has(getGroupMessageSelectionKey(contextMenuMessage)) ? '收起转文字' : '转文字'}
+                >
+                  <ScanEye size={20} />
+                </button>
+              )}
 	              <button
 	                onClick={handleDelete}
 	                className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50"

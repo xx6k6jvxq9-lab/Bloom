@@ -417,6 +417,7 @@ export function ChatSessionScreen({
   } | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -816,6 +817,25 @@ export function ChatSessionScreen({
     }
 
     deleteMessageAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
+  const handleToggleTranscript = () => {
+    if (!contextMenuMessage || !contextMenuMessage.audioUrl || !contextMenuMessage.audioTranscript) {
+      closeContextMenu();
+      return;
+    }
+
+    const messageKey = getMessageSelectionKey(contextMenuMessage);
+    setExpandedAudioTranscriptKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageKey)) {
+        next.delete(messageKey);
+      } else {
+        next.add(messageKey);
+      }
+      return next;
+    });
     closeContextMenu();
   };
 
@@ -1508,6 +1528,7 @@ export function ChatSessionScreen({
                                   value={msg.audioUrl}
                                   durationSeconds={msg.duration}
                                   transcript={msg.audioTranscript || null}
+                                  showTranscript={expandedAudioTranscriptKeys.has(getMessageSelectionKey(msg))}
                                   isUser={msg.role === 'user'}
                                   onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                                   onContextMenu={(e) => {
@@ -2662,6 +2683,15 @@ export function ChatSessionScreen({
                 >
                   <Copy size={20} />
                 </button>
+                {contextMenuMessage.audioUrl && contextMenuMessage.audioTranscript && (
+                  <button
+                    onClick={handleToggleTranscript}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title={expandedAudioTranscriptKeys.has(getMessageSelectionKey(contextMenuMessage)) ? '鏀惰捣杞枃瀛?' : '杞枃瀛?'}
+                  >
+                    <ScanEye size={20} />
+                  </button>
+                )}
                 <button 
                   onClick={handleFavorite}
                   className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"

@@ -18,6 +18,7 @@ export function AudioMessageCard({
   value,
   durationSeconds,
   transcript,
+  showTranscript = false,
   isUser,
   className = '',
   onClick,
@@ -26,6 +27,7 @@ export function AudioMessageCard({
   value?: string | null;
   durationSeconds?: number;
   transcript?: string | null;
+  showTranscript?: boolean;
   isUser?: boolean;
   className?: string;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
@@ -140,7 +142,7 @@ export function AudioMessageCard({
           </div>
         </div>
       </div>
-      {transcript ? (
+      {showTranscript && transcript ? (
         <span className={`whitespace-pre-wrap break-words px-1 text-[12px] leading-5 ${
           isUser ? 'text-white/88' : 'text-zinc-500'
         }`}>

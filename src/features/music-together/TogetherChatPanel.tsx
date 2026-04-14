@@ -353,6 +353,7 @@ export function TogetherChatPanel({
                   value={msg.audioUrl}
                   durationSeconds={msg.duration}
                   transcript={msg.audioTranscript || null}
+                  showTranscript={false}
                   isUser={msg.role === "user"}
                   className="shadow-none"
                 />
