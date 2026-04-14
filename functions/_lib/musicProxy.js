@@ -102,8 +102,6 @@ export async function resolveNeteasePlayableUrl(id) {
       return null;
     }
 
-    // Some deployments/upstreams reject HEAD or return non-ideal statuses
-    // while the actual audio GET still works, so keep the outer URL as fallback.
     return fallbackUrl;
   } catch (error) {
     console.warn("Failed to pre-resolve NetEase playable URL, fallback to outer URL", error);
@@ -204,7 +202,7 @@ export async function searchNeteaseSongs(keywords, limit) {
   return searchNeteaseByType(keywords, limit, 1);
 }
 
-export async function fetchNeteaseDjProgramsByRadio(radioId, limit = 5) {
+export async function fetchNeteaseDjProgramsByRadio(radioId, limit = 8) {
   return fetchJson(
     `https://music.163.com/api/dj/program/byradio?radioId=${radioId}&offset=0&limit=${limit}&asc=false`,
     {
@@ -213,13 +211,10 @@ export async function fetchNeteaseDjProgramsByRadio(radioId, limit = 5) {
   );
 }
 
-export async function searchNeteaseRadioPrograms(keywords, limit) {
-  const data = await searchNeteaseByType(keywords, limit, 1009);
-  const radios = data?.result?.djRadios || [];
-
-  const enrichedRadios = await mapWithConcurrency(radios, 4, async (radio) => {
+async function enrichRadioSearchResults(radios) {
+  const entries = await mapWithConcurrency(radios, 4, async (radio) => {
     try {
-      const programData = await fetchNeteaseDjProgramsByRadio(radio.id, 5);
+      const programData = await fetchNeteaseDjProgramsByRadio(radio.id, 8);
       const programs = programData?.programs || [];
 
       for (const program of programs) {
@@ -236,6 +231,7 @@ export async function searchNeteaseRadioPrograms(keywords, limit) {
             name: program.name,
             coverUrl: program.coverUrl,
             duration: program.duration,
+            description: program.description,
             mainSong: program.mainSong,
           },
         };
@@ -248,9 +244,38 @@ export async function searchNeteaseRadioPrograms(keywords, limit) {
     }
   });
 
+  return entries.filter(Boolean);
+}
+
+export async function searchNeteaseRadioPrograms(keywords, limit) {
+  const candidateQueries = [
+    keywords,
+    `${keywords} 播客`,
+    `${keywords} 电台`,
+  ].filter(Boolean);
+
+  const settled = await Promise.allSettled(
+    candidateQueries.map((query) => searchNeteaseByType(query, limit, 1009)),
+  );
+
+  const radioMap = new Map();
+
+  settled.forEach((result) => {
+    if (result.status !== "fulfilled") return;
+    const radios = result.value?.result?.djRadios || [];
+    radios.forEach((radio) => {
+      if (radio?.id && !radioMap.has(radio.id)) {
+        radioMap.set(radio.id, radio);
+      }
+    });
+  });
+
+  const radios = Array.from(radioMap.values()).slice(0, limit * 2);
+  const programs = await enrichRadioSearchResults(radios);
+
   return {
     result: {
-      programs: enrichedRadios.filter(Boolean),
+      programs: programs.slice(0, limit),
     },
   };
 }

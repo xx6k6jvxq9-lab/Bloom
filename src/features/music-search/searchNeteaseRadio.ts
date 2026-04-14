@@ -6,6 +6,7 @@ type NeteaseRadioProgram = {
   name?: string;
   coverUrl?: string;
   duration?: number;
+  description?: string;
   mainSong?: {
     id?: number | string;
     duration?: number;
@@ -38,14 +39,15 @@ function mapNeteaseRadioToSong(entry: { radio?: NeteaseDjRadio; program?: Neteas
   if (!mainSongId) return null;
 
   const normalizedId = String(mainSongId);
-  const radioName = radio?.name?.trim() || '网易云电台';
+  const radioName = radio?.name?.trim() || '网易云播客';
   const hostName = radio?.dj?.nickname?.trim();
   const programName = program?.name?.trim() || `${radioName} 最新节目`;
+  const artistLabel = hostName ? `${radioName} · ${hostName}` : radioName;
 
   return {
     id: `netease-${normalizedId}`,
     title: programName,
-    artist: hostName ? `${radioName} · ${hostName}` : radioName,
+    artist: artistLabel,
     albumArt:
       program?.coverUrl ||
       radio?.picUrl ||
@@ -55,7 +57,7 @@ function mapNeteaseRadioToSong(entry: { radio?: NeteaseDjRadio; program?: Neteas
   };
 }
 
-async function searchNeteaseRadio(query: string, limit = 6): Promise<MusicSearchResult[]> {
+async function searchNeteaseRadio(query: string, limit = 8): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
@@ -70,12 +72,12 @@ async function searchNeteaseRadio(query: string, limit = 6): Promise<MusicSearch
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('网易云电台搜索服务暂时不可用，请稍后再试。');
+    throw new Error('网易云播客搜索服务暂时不可用，请稍后再试。');
   }
 
   const data = (await response.json()) as NeteaseRadioSearchResponse;
   if (!response.ok) {
-    throw new Error(data.error || `网易云电台搜索失败：${response.status}`);
+    throw new Error(data.error || `网易云播客搜索失败：${response.status}`);
   }
 
   const results: MusicSearchResult[] = [];
@@ -87,9 +89,9 @@ async function searchNeteaseRadio(query: string, limit = 6): Promise<MusicSearch
     results.push({
       song,
       sourceId: 'netease-radio',
-      sourceLabel: '网易云电台',
+      sourceLabel: '网易云播客',
       playbackStatus: 'supported',
-      note: '已匹配当前可直接播放的电台节目。',
+      note: '已匹配当前可直接播放的播客或电台节目。',
     });
   });
 
@@ -98,6 +100,6 @@ async function searchNeteaseRadio(query: string, limit = 6): Promise<MusicSearch
 
 export const neteaseRadioSearchSource: MusicSearchSource = {
   id: 'netease-radio',
-  label: '网易云电台',
+  label: '网易云播客',
   search: searchNeteaseRadio,
 };
