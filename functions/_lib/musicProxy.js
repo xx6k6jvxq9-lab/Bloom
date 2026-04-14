@@ -211,20 +211,15 @@ export async function fetchNeteaseDjProgramsByRadio(radioId, limit = 8) {
   );
 }
 
-async function enrichRadioSearchResults(radios) {
+async function collectRadioPrograms(radios) {
   const entries = await mapWithConcurrency(radios, 4, async (radio) => {
     try {
       const programData = await fetchNeteaseDjProgramsByRadio(radio.id, 8);
       const programs = programData?.programs || [];
 
-      for (const program of programs) {
-        const mainSongId = program?.mainSong?.id;
-        if (!mainSongId) continue;
-
-        const playableUrl = await resolveNeteasePlayableUrl(mainSongId);
-        if (!playableUrl) continue;
-
-        return {
+      const matchedPrograms = programs
+        .filter((program) => program?.mainSong?.id)
+        .map((program) => ({
           radio,
           program: {
             id: program.id,
@@ -234,17 +229,16 @@ async function enrichRadioSearchResults(radios) {
             description: program.description,
             mainSong: program.mainSong,
           },
-        };
-      }
+        }));
 
-      return null;
+      return matchedPrograms;
     } catch (error) {
-      console.warn("Failed to resolve NetEase radio program", radio?.id, error);
-      return null;
+      console.warn("Failed to fetch NetEase radio programs", radio?.id, error);
+      return [];
     }
   });
 
-  return entries.filter(Boolean);
+  return entries.flat();
 }
 
 export async function searchNeteaseRadioPrograms(keywords, limit) {
@@ -271,7 +265,7 @@ export async function searchNeteaseRadioPrograms(keywords, limit) {
   });
 
   const radios = Array.from(radioMap.values()).slice(0, limit * 2);
-  const programs = await enrichRadioSearchResults(radios);
+  const programs = await collectRadioPrograms(radios);
 
   return {
     result: {
