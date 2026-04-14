@@ -38,19 +38,21 @@ export function AudioMessageCard({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-
-  if (!src) {
-    return null;
-  }
-
   const effectiveDuration = durationSeconds || 0;
   const durationText = formatDuration(effectiveDuration);
   const progressRatio = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
-  const waveformHeights = useMemo(() => [0.4, 0.8, 0.55, 0.95, 0.62, 0.72, 0.46, 0.86, 0.58, 0.76], []);
+  const waveformHeights = useMemo(
+    () => [0.4, 0.8, 0.55, 0.95, 0.62, 0.72, 0.46, 0.86, 0.58, 0.76],
+    [],
+  );
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return undefined;
+    if (!audio || !src) {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      return undefined;
+    }
 
     const syncTime = () => {
       setCurrentTime(audio.currentTime || 0);
@@ -74,6 +76,10 @@ export function AudioMessageCard({
       audio.removeEventListener('ended', syncEnded);
     };
   }, [src]);
+
+  if (!src) {
+    return null;
+  }
 
   const togglePlay = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -119,9 +125,11 @@ export function AudioMessageCard({
               </span>
             ) : null}
           </div>
-          <div className={`mt-2 flex items-end gap-1 rounded-full px-2 py-2 ${
-            isUser ? 'bg-white/10' : 'bg-zinc-100/90'
-          }`}>
+          <div
+            className={`mt-2 flex items-end gap-1 rounded-full px-2 py-2 ${
+              isUser ? 'bg-white/10' : 'bg-zinc-100/90'
+            }`}
+          >
             {waveformHeights.map((height, index) => {
               const filled = progressRatio >= (index + 1) / waveformHeights.length;
               return (
@@ -129,8 +137,12 @@ export function AudioMessageCard({
                   key={index}
                   className={`block w-1 rounded-full transition-colors ${
                     filled
-                      ? isUser ? 'bg-white' : 'bg-zinc-700'
-                      : isUser ? 'bg-white/35' : 'bg-zinc-300'
+                      ? isUser
+                        ? 'bg-white'
+                        : 'bg-zinc-700'
+                      : isUser
+                        ? 'bg-white/35'
+                        : 'bg-zinc-300'
                   }`}
                   style={{ height: `${18 * height}px` }}
                 />
@@ -143,9 +155,11 @@ export function AudioMessageCard({
         </div>
       </div>
       {showTranscript && transcript ? (
-        <span className={`whitespace-pre-wrap break-words px-1 text-[12px] leading-5 ${
-          isUser ? 'text-white/88' : 'text-zinc-500'
-        }`}>
+        <span
+          className={`whitespace-pre-wrap break-words px-1 text-[12px] leading-5 ${
+            isUser ? 'text-white/88' : 'text-zinc-500'
+          }`}
+        >
           转文字：{transcript}
         </span>
       ) : null}
