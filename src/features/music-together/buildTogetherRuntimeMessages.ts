@@ -16,7 +16,7 @@ function buildUserMessageContent(message: ChatMessage) {
   }
 
   if (message.audioUrl) {
-    const transcript = stripVisualMessageMarker(message.text);
+    const transcript = message.audioTranscript?.trim() || stripVisualMessageMarker(message.text);
     if (transcript) {
       return `[sent a voice message; transcript: ${transcript}]`;
     }

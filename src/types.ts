@@ -649,6 +649,7 @@ export type ChatMessage = {
   imageUrl?: string;
   audioUrl?: string;
   audioMimeType?: string;
+  audioTranscript?: string;
   stickerLabel?: string;
   isVoiceCall?: boolean;
   duration?: number; // For voice call duration

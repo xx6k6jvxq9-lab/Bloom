@@ -1,5 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+type SpeechRecognitionCtor = new () => {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const speechWindow = window as typeof window & {
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+    SpeechRecognition?: SpeechRecognitionCtor;
+  };
+
+  return speechWindow.webkitSpeechRecognition || speechWindow.SpeechRecognition || null;
+}
+
 function writeAsciiString(view: DataView, offset: number, value: string) {
   for (let index = 0; index < value.length; index += 1) {
     view.setUint8(offset + index, value.charCodeAt(index));
@@ -84,7 +109,7 @@ function pickRecordingMimeType(): string {
 }
 
 type UseAudioMessageRecorderArgs = {
-  onRecorded: (payload: { blob: Blob; durationMs: number }) => void | Promise<void>;
+  onRecorded: (payload: { blob: Blob; durationMs: number; transcript?: string }) => void | Promise<void>;
 };
 
 type FinishRecordingOptions = {
@@ -101,6 +126,10 @@ export function useAudioMessageRecorder({
   const isStartingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const discardRequestedRef = useRef(false);
+  const transcriptRef = useRef('');
+  const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
+  const recognitionEndPromiseRef = useRef<Promise<void> | null>(null);
+  const resolveRecognitionEndRef = useRef<(() => void) | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
   const stopStream = useCallback(() => {
@@ -130,6 +159,81 @@ export function useAudioMessageRecorder({
     finishRecording({ discard: true });
   }, [finishRecording]);
 
+  const stopRecognition = useCallback(async () => {
+    if (!recognitionRef.current) {
+      return;
+    }
+
+    const pendingEnd = recognitionEndPromiseRef.current;
+    recognitionRef.current.stop();
+    recognitionRef.current = null;
+
+    if (!pendingEnd) {
+      return;
+    }
+
+    await Promise.race([
+      pendingEnd,
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 1200);
+      }),
+    ]);
+  }, []);
+
+  const startRecognition = useCallback(() => {
+    transcriptRef.current = '';
+    const SpeechRecognitionCtor = getSpeechRecognitionCtor();
+    if (!SpeechRecognitionCtor) {
+      recognitionRef.current = null;
+      recognitionEndPromiseRef.current = null;
+      resolveRecognitionEndRef.current = null;
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'zh-CN';
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognitionRef.current = recognition;
+      recognitionEndPromiseRef.current = new Promise<void>((resolve) => {
+        resolveRecognitionEndRef.current = resolve;
+      });
+
+      recognition.onresult = (event: any) => {
+        let combinedTranscript = '';
+        for (let index = 0; index < (event?.results?.length || 0); index += 1) {
+          const transcript = event?.results?.[index]?.[0]?.transcript?.trim?.() || '';
+          if (transcript) {
+            combinedTranscript += transcript;
+          }
+        }
+        if (combinedTranscript) {
+          transcriptRef.current = combinedTranscript.trim();
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event?.error !== 'no-speech' && event?.error !== 'aborted') {
+          console.warn('Speech recognition during audio record failed', event?.error);
+        }
+      };
+
+      recognition.onend = () => {
+        resolveRecognitionEndRef.current?.();
+        resolveRecognitionEndRef.current = null;
+        recognitionEndPromiseRef.current = null;
+      };
+
+      recognition.start();
+    } catch (error) {
+      console.warn('Unable to start speech recognition during recording', error);
+      recognitionRef.current = null;
+      recognitionEndPromiseRef.current = null;
+      resolveRecognitionEndRef.current = null;
+    }
+  }, []);
+
   const startRecording = useCallback(async () => {
     if (isRecording || isStartingRef.current) {
       return;
@@ -153,6 +257,7 @@ export function useAudioMessageRecorder({
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       startedAtRef.current = Date.now();
+      startRecognition();
 
       mediaRecorder.onstart = () => {
         isStartingRef.current = false;
@@ -185,6 +290,9 @@ export function useAudioMessageRecorder({
 
         const durationMs = startedAtRef.current ? Math.max(Date.now() - startedAtRef.current, 0) : 0;
         startedAtRef.current = null;
+        await stopRecognition();
+        const transcript = transcriptRef.current.trim();
+        transcriptRef.current = '';
 
         const rawBlob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         chunksRef.current = [];
@@ -202,7 +310,7 @@ export function useAudioMessageRecorder({
 
         try {
           const wavBlob = await normalizeRecordedAudioToWav(rawBlob);
-          await onRecorded({ blob: wavBlob, durationMs });
+          await onRecorded({ blob: wavBlob, durationMs, transcript: transcript || undefined });
         } finally {
           discardRequestedRef.current = false;
         }
@@ -222,13 +330,14 @@ export function useAudioMessageRecorder({
       setIsRecording(false);
       stopStream();
     }
-  }, [isRecording, onRecorded, stopStream]);
+  }, [isRecording, onRecorded, startRecognition, stopRecognition, stopStream]);
 
   useEffect(() => () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       discardRequestedRef.current = true;
       mediaRecorderRef.current.stop();
     }
+    recognitionRef.current?.stop();
     stopStream();
   }, [stopStream]);
 

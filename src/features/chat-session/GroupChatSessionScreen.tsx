@@ -847,12 +847,17 @@ export function GroupChatSessionScreen({
     activeConfig,
   });
   const { isRecording, startRecording, stopRecording, cancelRecording } = useAudioMessageRecorder({
-    onRecorded: async ({ blob, durationMs }) => {
+    onRecorded: async ({ blob, durationMs, transcript }) => {
       const audioRef = await saveUploadedBlob(blob, {
         fileName: `group-voice-message-${Date.now()}.wav`,
         mimeType: 'audio/wav',
       });
-      await sendAudioMessage(audioRef, 'audio/wav', Math.max(1, Math.round(durationMs / 1000)));
+      await sendAudioMessage(
+        audioRef,
+        'audio/wav',
+        Math.max(1, Math.round(durationMs / 1000)),
+        transcript,
+      );
       setShowFunPanel(false);
     },
   });
@@ -2768,7 +2773,7 @@ export function GroupChatSessionScreen({
                     <AudioMessageCard
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
-                      caption={stripVisualMessageMarker(content) || null}
+                      transcript={msg.audioTranscript || null}
                       isUser={isUser}
                       className="shadow-none"
                     />

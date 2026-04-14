@@ -442,12 +442,17 @@ export function ChatSessionScreen({
     stopRecording: stopAudioRecording,
     cancelRecording: cancelAudioRecording,
   } = useAudioMessageRecorder({
-    onRecorded: async ({ blob, durationMs }) => {
+    onRecorded: async ({ blob, durationMs, transcript }) => {
       const audioRef = await saveUploadedBlob(blob, {
         fileName: `voice-message-${Date.now()}.wav`,
         mimeType: 'audio/wav',
       });
-      sendAudioMessage(audioRef, 'audio/wav', Math.max(1, Math.round(durationMs / 1000)));
+      sendAudioMessage(
+        audioRef,
+        'audio/wav',
+        Math.max(1, Math.round(durationMs / 1000)),
+        transcript,
+      );
       setShowFunPanel(false);
     },
   });
@@ -1502,7 +1507,7 @@ export function ChatSessionScreen({
                                 <AudioMessageCard
                                   value={msg.audioUrl}
                                   durationSeconds={msg.duration}
-                                  caption={stripMediaMessageMarker(cleanText) || null}
+                                  transcript={msg.audioTranscript || null}
                                   isUser={msg.role === 'user'}
                                   onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                                   onContextMenu={(e) => {

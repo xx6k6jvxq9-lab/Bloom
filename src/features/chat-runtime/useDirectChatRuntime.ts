@@ -90,7 +90,10 @@ function isRetryableSummaryStreamError(error: unknown): boolean {
 
 function toPromptHistoryContent(message: ChatMessage): string {
   if (message.audioUrl) {
-    return '[sent a voice message]';
+    const transcript = message.audioTranscript?.trim();
+    return transcript
+      ? `[sent a voice message; transcript: ${transcript}]`
+      : '[sent a voice message]';
   }
 
   if (message.imageUrl) {
@@ -358,7 +361,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   handleVoiceCallAIResponse: (userText: string) => Promise<string | null>;
   sendImageMessage: (base64String: string) => void;
-  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number) => void;
+  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => void;
   sendStickerMessage: (sticker: string) => void;
   sendLocationMessage: (text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => void;
   sendCoupleSpaceInvitation: () => void;
@@ -1154,12 +1157,15 @@ export function useDirectChatRuntime({
     });
   }, []);
 
-  const sendAudioMessage = useCallback((audioUrl: string, audioMimeType: string, durationSeconds?: number) => {
+  const sendAudioMessage = useCallback((audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => {
     void handleSendRef.current({
-      promptText: '[sent a voice message]',
+      promptText: audioTranscript?.trim()
+        ? `[sent a voice message; transcript: ${audioTranscript.trim()}]`
+        : '[sent a voice message]',
       userText: '[audio]',
       audioUrl,
       audioMimeType,
+      ...(audioTranscript?.trim() ? { audioTranscript: audioTranscript.trim() } : {}),
       ...(typeof durationSeconds === 'number' ? { duration: durationSeconds } : {}),
     });
   }, []);

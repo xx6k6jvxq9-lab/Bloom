@@ -188,7 +188,7 @@ export function TogetherChatPanel({
     stopRecording,
     cancelRecording,
   } = useAudioMessageRecorder({
-    onRecorded: async ({ blob, durationMs }) => {
+    onRecorded: async ({ blob, durationMs, transcript }) => {
       const audioUrl = await saveUploadedBlob(blob, {
         fileName: `music-together-voice-${Date.now()}.wav`,
         mimeType: "audio/wav",
@@ -197,6 +197,7 @@ export function TogetherChatPanel({
         audioUrl,
         audioMimeType: "audio/wav",
         durationSeconds: Math.max(1, Math.round(durationMs / 1000)),
+        ...(transcript?.trim() ? { transcript: transcript.trim() } : {}),
       });
     },
   });
@@ -348,13 +349,13 @@ export function TogetherChatPanel({
               />
             )}
             {msg.audioUrl ? (
-              <AudioMessageCard
-                value={msg.audioUrl}
-                durationSeconds={msg.duration}
-                caption={stripVisualMessageMarker(msg.text) || null}
-                isUser={msg.role === "user"}
-                className="shadow-none"
-              />
+                <AudioMessageCard
+                  value={msg.audioUrl}
+                  durationSeconds={msg.duration}
+                  transcript={msg.audioTranscript || null}
+                  isUser={msg.role === "user"}
+                  className="shadow-none"
+                />
             ) : (
               <div
                 className={`chat-bubble message-bubble ${msg.role === "user" ? "user-bubble right chat-bubble-right" : "bot-bubble left chat-bubble-left"} ${getDirectTextBubbleClass(msg.role)} relative border ${

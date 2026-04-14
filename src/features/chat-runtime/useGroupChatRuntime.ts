@@ -55,7 +55,7 @@ type UseGroupChatRuntimeResult = {
   sendText: () => Promise<void>;
   sendSpeechTranscript: (transcript: string) => Promise<void>;
   sendImageMessage: (base64String: string) => Promise<void>;
-  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number) => Promise<void>;
+  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   maybeOpenScene: () => Promise<void>;
@@ -258,7 +258,10 @@ function getMessageMainText(message: ChatMessage): string {
 
 function getPromptTextForMessage(message: ChatMessage): string {
   if (message.audioUrl) {
-    return '[sent a voice message]';
+    const transcript = message.audioTranscript?.trim();
+    return transcript
+      ? `[sent a voice message; transcript: ${transcript}]`
+      : '[sent a voice message]';
   }
 
   if (message.imageUrl) {
@@ -2265,7 +2268,7 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, replyingTo, submitUserMessage]);
 
-  const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number) => {
+  const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => {
     if (!hasActiveConfig) return;
 
     await submitUserMessage({
@@ -2274,11 +2277,14 @@ export function useGroupChatRuntime({
         text: '[audio]',
         audioUrl,
         audioMimeType,
+        ...(audioTranscript?.trim() ? { audioTranscript: audioTranscript.trim() } : {}),
         ...(typeof durationSeconds === 'number' ? { duration: durationSeconds } : {}),
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
-      promptText: '[sent a voice message]',
+      promptText: audioTranscript?.trim()
+        ? `[sent a voice message; transcript: ${audioTranscript.trim()}]`
+        : '[sent a voice message]',
     });
   }, [hasActiveConfig, replyingTo, submitUserMessage]);
 

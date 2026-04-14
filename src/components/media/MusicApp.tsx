@@ -914,16 +914,19 @@ export default function MusicApp({
     audioUrl,
     audioMimeType,
     durationSeconds,
+    transcript,
   }: {
     audioUrl: string;
     audioMimeType: string;
     durationSeconds?: number;
+    transcript?: string;
   }) => {
     await sendTogetherMessage({
       role: "user",
       text: "[audio]",
       audioUrl,
       audioMimeType,
+      ...(transcript?.trim() ? { audioTranscript: transcript.trim() } : {}),
       ...(typeof durationSeconds === "number" ? { duration: durationSeconds } : {}),
       timestamp: Date.now(),
     });
