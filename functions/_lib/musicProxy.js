@@ -1,0 +1,238 @@
+const NETEASE_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  Referer: "https://music.163.com/",
+};
+
+const FREETOUSE_HEADERS = {
+  Accept: "application/json",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  Referer: "https://freetouse.com/",
+  Origin: "https://freetouse.com",
+};
+
+function json(data, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  return new Response(JSON.stringify(data), {
+    ...init,
+    headers,
+  });
+}
+
+export function badRequest(message) {
+  return json({ error: message }, { status: 400 });
+}
+
+export function serverError(message, error) {
+  console.error(message, error);
+  return json({ error: message }, { status: 500 });
+}
+
+async function fetchJson(url, init) {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`Upstream request failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function resolveNeteasePlayableUrl(id) {
+  let finalUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+  const headResponse = await fetch(finalUrl, {
+    method: "HEAD",
+    redirect: "manual",
+    headers: NETEASE_HEADERS,
+  });
+
+  if (headResponse.status === 301 || headResponse.status === 302) {
+    const location = headResponse.headers.get("location");
+    if (location) {
+      if (location.includes("/404")) {
+        return null;
+      }
+      finalUrl = location.replace(/^http:/, "https:");
+    }
+  }
+
+  if (headResponse.status >= 400) {
+    return null;
+  }
+
+  return finalUrl;
+}
+
+export async function proxyNeteaseSong(request, id) {
+  const finalUrl = await resolveNeteasePlayableUrl(id);
+  if (!finalUrl) {
+    return json(
+      { error: "Song not found or is VIP/copyright restricted" },
+      { status: 404 },
+    );
+  }
+
+  const headers = new Headers(NETEASE_HEADERS);
+  const range = request.headers.get("range");
+  if (range) {
+    headers.set("Range", range);
+  }
+
+  const response = await fetch(finalUrl, { headers });
+  if (!response.ok) {
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+    });
+  }
+
+  const passHeaders = new Headers();
+  const headerNames = [
+    "content-type",
+    "content-length",
+    "content-range",
+    "accept-ranges",
+    "cache-control",
+  ];
+
+  for (const headerName of headerNames) {
+    const value = response.headers.get(headerName);
+    if (value) {
+      passHeaders.set(headerName, value);
+    }
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    headers: passHeaders,
+  });
+}
+
+export async function fetchNeteaseSongDetail(id) {
+  return fetchJson(`https://music.163.com/api/song/detail?ids=[${id}]`, {
+    headers: NETEASE_HEADERS,
+  });
+}
+
+export async function fetchNeteaseLyric(id) {
+  return fetchJson(
+    `https://music.163.com/api/song/lyric?id=${id}&lv=1&kv=1&tv=-1`,
+    {
+      headers: NETEASE_HEADERS,
+    },
+  );
+}
+
+export async function searchPlayableNeteaseSongs(keywords, limit) {
+  const data = await fetchJson("https://music.163.com/api/search/get/web?csrf_token=", {
+    method: "POST",
+    headers: {
+      ...NETEASE_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      s: keywords,
+      type: "1",
+      offset: "0",
+      limit: String(limit),
+    }),
+  });
+
+  const songs = data?.result?.songs || [];
+  const playableChecks = await Promise.all(
+    songs.map(async (song) => ({
+      song,
+      playableUrl: await resolveNeteasePlayableUrl(song.id),
+    })),
+  );
+
+  return {
+    result: {
+      songs: playableChecks.filter((item) => item.playableUrl).map((item) => item.song),
+    },
+  };
+}
+
+export async function fetchNeteasePlaylist(id) {
+  const data = await fetchJson(`https://music.163.com/api/playlist/detail?id=${id}`, {
+    headers: NETEASE_HEADERS,
+  });
+  const playlist = data.playlist || data.result;
+
+  if (!playlist) {
+    return data;
+  }
+
+  if (playlist.trackIds && playlist.trackIds.length > 0) {
+    const trackIds = playlist.trackIds.map((track) => track.id);
+    const allTracks = [];
+
+    for (let index = 0; index < trackIds.length; index += 500) {
+      const batchIds = trackIds.slice(index, index + 500);
+      const detailData = await fetchJson(
+        `https://music.163.com/api/song/detail?ids=[${batchIds.join(",")}]`,
+        {
+          headers: NETEASE_HEADERS,
+        },
+      );
+
+      if (detailData?.songs?.length) {
+        allTracks.push(...detailData.songs);
+      }
+    }
+
+    if (allTracks.length > 0) {
+      playlist.tracks = allTracks;
+    }
+  }
+
+  return data;
+}
+
+export async function fetchPlayableNeteasePlaylist(id) {
+  const data = await fetchNeteasePlaylist(id);
+  const playlist = data.playlist || data.result;
+
+  if (!playlist) {
+    return data;
+  }
+
+  const playableTracks = [];
+  for (const track of playlist.tracks || []) {
+    const playableUrl = await resolveNeteasePlayableUrl(track.id);
+    if (playableUrl) {
+      playableTracks.push(track);
+    }
+  }
+
+  const nextPlaylist = {
+    ...playlist,
+    tracks: playableTracks,
+  };
+
+  return {
+    ...data,
+    playlist: data.playlist ? nextPlaylist : undefined,
+    result: data.result ? nextPlaylist : undefined,
+  };
+}
+
+export async function fetchNeteaseUserPlaylists(uid, limit) {
+  return fetchJson(
+    `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
+    {
+      headers: NETEASE_HEADERS,
+    },
+  );
+}
+
+export async function searchFreeToUseMusic(query, limit) {
+  const upstreamUrl = new URL("https://api.freetouse.com/v3/music/tracks/search");
+  upstreamUrl.searchParams.set("query", query);
+  upstreamUrl.searchParams.set("limit", String(limit));
+  return fetchJson(upstreamUrl, {
+    headers: FREETOUSE_HEADERS,
+  });
+}
+
+export { json };
