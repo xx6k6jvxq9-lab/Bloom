@@ -20,12 +20,12 @@ function getPlaybackBadge(result: MusicSearchResult) {
       };
     case 'search-only':
       return {
-        label: '仅搜索',
+        label: '仅展示',
         className: 'bg-amber-100 text-amber-600',
       };
     default:
       return {
-        label: '待验证',
+        label: '待校验',
         className: 'bg-zinc-100 text-zinc-500',
       };
   }
@@ -92,11 +92,11 @@ export function MusicSearchResults({
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.28em] text-pink-500/80">
               <Sparkles size={12} />
-              即时搜歌
+              即时搜索
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
             <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-              当前接入 {activeSources.map((source) => source.label).join(' / ')}，网易云结果会先过滤掉会员歌和当前环境里不能直接播放的歌。
+              当前接入 {activeSources.map((source) => source.label).join(' / ')}，歌曲和电台会一起展示。
             </p>
           </div>
           <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
@@ -108,8 +108,8 @@ export function MusicSearchResults({
       {isLoading ? (
         <div className="flex flex-col items-center justify-center rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <LoaderCircle size={34} className="mb-4 animate-spin text-pink-400" />
-          <p className="text-[15px] font-bold text-zinc-700">正在搜索歌曲</p>
-          <p className="mt-1 text-[12px] font-medium text-zinc-400">只拉当前环境里能直接播放的结果</p>
+          <p className="text-[15px] font-bold text-zinc-700">正在搜索内容</p>
+          <p className="mt-1 text-[12px] font-medium text-zinc-400">会同时尝试歌曲、免费源和网易云电台</p>
         </div>
       ) : errorMessage ? (
         <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)]">
@@ -117,7 +117,7 @@ export function MusicSearchResults({
             <Search size={34} className="mb-4 text-rose-300" />
             <p className="text-[15px] font-bold text-zinc-700">{errorMessage}</p>
             <p className="mt-2 text-[12px] font-medium text-zinc-400">
-              如果同步歌单或网易云搜索接口暂时没接通，这里会直接告诉你，不再抛出 HTML 报错。
+              如果上游接口暂时波动，这里会直接提示，不再混入错误页面。
             </p>
           </div>
         </div>
@@ -193,7 +193,7 @@ export function MusicSearchResults({
                           onPlaySong(result.song);
                         }}
                         className="flex h-9 min-w-9 items-center justify-center rounded-full bg-pink-500 px-3 text-white shadow-lg shadow-pink-200 transition-transform active:scale-95"
-                        title="播放歌曲"
+                        title="播放内容"
                       >
                         <Play size={16} fill="currentColor" />
                       </button>
@@ -208,8 +208,8 @@ export function MusicSearchResults({
         <div className="rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col items-center justify-center text-center text-zinc-400">
             <Music2 size={34} className="mb-4 text-zinc-300" />
-            <p className="text-[15px] font-bold text-zinc-700">这次没有找到可直接播放的歌曲</p>
-            <p className="mt-1 text-[12px] font-medium text-zinc-400">换一个关键词试试。现在不会再混入搜得到却听不了的结果。</p>
+            <p className="text-[15px] font-bold text-zinc-700">这次没有找到可用内容</p>
+            <p className="mt-1 text-[12px] font-medium text-zinc-400">换个关键词试试，也可以搜歌名、歌手名或电台名。</p>
           </div>
         </div>
       )}

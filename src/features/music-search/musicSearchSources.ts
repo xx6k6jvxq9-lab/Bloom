@@ -1,12 +1,18 @@
 import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 import { freeToUseMusicSearchSource } from './searchFreeToUseMusic';
 import { neteaseMusicSearchSource } from './searchNeteaseMusic';
+import { neteaseRadioSearchSource } from './searchNeteaseRadio';
 
-const musicSearchSources: MusicSearchSource[] = [neteaseMusicSearchSource, freeToUseMusicSearchSource];
+const musicSearchSources: MusicSearchSource[] = [
+  neteaseMusicSearchSource,
+  neteaseRadioSearchSource,
+  freeToUseMusicSearchSource,
+];
 
 const SOURCE_PRIORITY: Record<string, number> = {
   netease: 0,
-  freetouse: 1,
+  'netease-radio': 1,
+  freetouse: 2,
 };
 
 function getPlaybackPriority(result: MusicSearchResult) {

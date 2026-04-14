@@ -47,12 +47,12 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
   };
 }
 
-async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearchResult[]> {
+async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
   const response = await fetch(
-    `/api/netease/search-playable?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
+    `/api/netease/search?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
     {
       headers: {
         Accept: 'application/json',
@@ -74,8 +74,8 @@ async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearc
     song: mapNeteaseSongToSong(track),
     sourceId: 'netease',
     sourceLabel: '网易云',
-    playbackStatus: 'supported',
-    note: '已过滤当前网页端不可直接播放的结果。',
+    playbackStatus: 'unverified',
+    note: '先展示搜索结果，播放时再校验当前网页端是否可播。',
   }));
 }
 
