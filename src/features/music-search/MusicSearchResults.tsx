@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Clock3, LoaderCircle, Music2, Play, Plus, Search, Sparkles } from 'lucide-react';
 import type { Song } from '../../types';
 import { getMusicSearchSources, searchMusicAcrossSources } from './musicSearchSources';
-import type { MusicSearchFilter, MusicSearchResult } from './musicSearchTypes';
+import type { MusicSearchEntitlement, MusicSearchFilter, MusicSearchResult } from './musicSearchTypes';
 
 function formatDuration(seconds: number) {
   if (!seconds) return '--:--';
@@ -28,6 +28,23 @@ function getPlaybackBadge(result: MusicSearchResult) {
         label: '待校验',
         className: 'bg-zinc-100 text-zinc-500',
       };
+  }
+}
+
+function getEntitlementBadge(entitlement?: MusicSearchEntitlement) {
+  switch (entitlement) {
+    case 'vip':
+      return {
+        label: 'VIP',
+        className: 'bg-rose-100 text-rose-600',
+      };
+    case 'free':
+      return {
+        label: '免费',
+        className: 'bg-sky-100 text-sky-600',
+      };
+    default:
+      return null;
   }
 }
 
@@ -118,7 +135,7 @@ export function MusicSearchResults({
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
             <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-              当前接入 {activeSources.map((source) => source.label).join(' / ')}，搜索结果会先展示，播放时再轻量校验。
+              当前接入 {activeSources.map((source) => source.label).join(' / ')}，网易云结果会额外标注免费或 VIP，播放时再轻量校验。
             </p>
           </div>
           <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
@@ -163,6 +180,8 @@ export function MusicSearchResults({
         <div className="space-y-3">
           {filteredResults.map((result, index) => {
             const badge = getPlaybackBadge(result);
+            const entitlementBadge = getEntitlementBadge(result.entitlement);
+
             return (
               <div
                 key={`${result.sourceId}-${result.song.id}`}
@@ -197,6 +216,11 @@ export function MusicSearchResults({
                       <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
                         {getCategoryLabel(result)}
                       </div>
+                      {entitlementBadge ? (
+                        <div className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${entitlementBadge.className}`}>
+                          {entitlementBadge.label}
+                        </div>
+                      ) : null}
                       <div className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${badge.className}`}>
                         {badge.label}
                       </div>

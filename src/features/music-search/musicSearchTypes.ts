@@ -2,12 +2,14 @@ import type { Song } from '../../types';
 
 export type MusicSearchCategory = 'song' | 'free';
 export type MusicSearchFilter = 'all' | MusicSearchCategory;
+export type MusicSearchEntitlement = 'free' | 'vip' | 'unknown';
 
 export type MusicSearchResult = {
   song: Song;
   sourceId: string;
   sourceLabel: string;
   category: MusicSearchCategory;
+  entitlement?: MusicSearchEntitlement;
   playbackStatus: 'unverified' | 'search-only' | 'supported';
   note?: string;
 };

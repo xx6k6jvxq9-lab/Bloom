@@ -1,5 +1,5 @@
 import type { Song } from '../../types';
-import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
+import type { MusicSearchEntitlement, MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
 
 type NeteaseArtist = {
   name?: string;
@@ -18,6 +18,11 @@ type NeteaseSong = {
   };
   dt?: number;
   duration?: number;
+  fee?: number;
+  privilege?: {
+    fee?: number;
+    payed?: number;
+  };
 };
 
 type NeteaseSearchResponse = {
@@ -47,6 +52,21 @@ function mapNeteaseSongToSong(track: NeteaseSong): Song {
   };
 }
 
+function getNeteaseEntitlement(track: NeteaseSong): MusicSearchEntitlement {
+  const fee = typeof track.fee === 'number' ? track.fee : track.privilege?.fee;
+  const payed = track.privilege?.payed;
+
+  if (fee === 1 || fee === 4 || fee === 16 || payed === 1) {
+    return 'vip';
+  }
+
+  if (fee === 0 || fee === 8) {
+    return 'free';
+  }
+
+  return 'unknown';
+}
+
 async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearchResult[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
@@ -70,14 +90,21 @@ async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearc
     throw new Error(data.error || `网易云搜索失败：${response.status}`);
   }
 
-  return (data.result?.songs || []).map((track) => ({
-    song: mapNeteaseSongToSong(track),
-    sourceId: 'netease',
-    sourceLabel: '网易云',
-    category: 'song',
-    playbackStatus: 'unverified',
-    note: '先展示搜索结果，播放时再轻量校验当前网页端是否可播。',
-  }));
+  return (data.result?.songs || []).map((track) => {
+    const entitlement = getNeteaseEntitlement(track);
+    return {
+      song: mapNeteaseSongToSong(track),
+      sourceId: 'netease',
+      sourceLabel: '网易云',
+      category: 'song',
+      entitlement,
+      playbackStatus: 'unverified',
+      note:
+        entitlement === 'vip'
+          ? '这首歌可能需要会员，播放时会再轻量校验。'
+          : '先展示搜索结果，播放时再轻量校验当前网页端是否可播。',
+    };
+  });
 }
 
 export const neteaseMusicSearchSource: MusicSearchSource = {
