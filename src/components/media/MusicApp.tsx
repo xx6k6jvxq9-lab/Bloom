@@ -1441,7 +1441,7 @@ export default function MusicApp({
         {/* Search Header */}
         <div
           className="sticky top-0 z-20 border-b border-zinc-100 bg-white/80 px-6 pb-4 backdrop-blur-xl"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
         >
           <div className="mb-4 flex items-center justify-between">
             <h1 className="text-[30px] font-extrabold leading-none tracking-tight text-zinc-900 sm:text-3xl sm:font-black sm:tracking-tighter">
