@@ -2030,6 +2030,7 @@ function DraggableAppIcon({
       className={`homeDesktop__item homeDesktop__item--icon ${gridStyle ? 'homeDesktop__item--grid' : ''} ${isDragging ? 'homeDesktop__item--dragging' : ''} ${isPreviewing ? 'homeDesktop__item--previewing' : ''} ${isArrangeMode ? 'homeDesktop__item--arranging' : ''}`}
       initial={false}
       animate={gridStyle ? undefined : (isDragging ? { x: committedPlacement.x, y: committedPlacement.y } : { x: placement.x, y: placement.y })}
+      onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         pointerStartRef.current = { x: event.clientX, y: event.clientY };
@@ -2071,6 +2072,7 @@ function DraggableAppIcon({
     >
       <div
         className={isArrangeMode ? 'homeDesktop__itemBody homeDesktop__itemBody--arranging' : 'homeDesktop__itemBody'}
+        onDragStart={event => event.preventDefault()}
         onClick={event => {
           if (dragLock.current) {
             event.stopPropagation();

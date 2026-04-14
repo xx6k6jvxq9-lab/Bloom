@@ -653,25 +653,38 @@ export function resolveDesktopIconDrop({
   if (!nearestSlot) return iconConfigs;
 
   const currentPlacements = buildDesktopIconPlacements(appIds, iconConfigs, slots, occupiedSlotIds);
-  const orderedIds = availableSlots
-    .map(slot => appIds.find(id => currentPlacements[id]?.slotId === slot.id))
-    .filter((id): id is string => Boolean(id));
-
-  const withoutDragged = orderedIds.filter(id => id !== draggedId);
-  const targetIndex = Math.max(0, availableSlots.findIndex(slot => slot.id === nearestSlot.id));
-  withoutDragged.splice(Math.min(targetIndex, withoutDragged.length), 0, draggedId);
-
   const configMap = new Map(iconConfigs.map(icon => [icon.id, icon]));
+  const draggedCurrentSlotId = currentPlacements[draggedId]?.slotId ?? null;
+  const displacedId = appIds.find((id) => id !== draggedId && currentPlacements[id]?.slotId === nearestSlot.id) || null;
+  const fallbackSlots = availableSlots.filter((slot) => (
+    slot.id !== nearestSlot.id
+    && slot.id !== draggedCurrentSlotId
+    && !appIds.some((id) => id !== displacedId && currentPlacements[id]?.slotId === slot.id)
+  ));
 
-  return withoutDragged.map((appId, index) => {
-    const previous = configMap.get(appId) || { id: appId };
-    return {
-      ...previous,
-      id: appId,
-      slotId: availableSlots[index]?.id ?? previous.slotId ?? null ?? undefined,
-      x: undefined,
-      y: undefined,
-    };
+  return iconConfigs.map((icon) => {
+    const previous = configMap.get(icon.id) || icon;
+
+    if (icon.id === draggedId) {
+      return {
+        ...previous,
+        slotId: nearestSlot.id,
+        x: undefined,
+        y: undefined,
+      };
+    }
+
+    if (icon.id === displacedId) {
+      const nextSlotId = draggedCurrentSlotId || fallbackSlots[0]?.id || previous.slotId;
+      return {
+        ...previous,
+        slotId: nextSlotId ?? undefined,
+        x: undefined,
+        y: undefined,
+      };
+    }
+
+    return previous;
   });
 }
 
