@@ -1007,7 +1007,7 @@ export default function MusicApp({
 
       <div
         className="relative z-10 flex flex-1 min-h-0 flex-col px-4 pb-3 sm:px-6 sm:pb-4"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
       >
         {/* Header */}
         <div className="mb-1 flex shrink-0 items-center justify-between">
