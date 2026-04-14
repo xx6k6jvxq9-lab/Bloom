@@ -144,20 +144,7 @@ export async function fetchNeteaseLyric(id) {
 }
 
 export async function searchPlayableNeteaseSongs(keywords, limit) {
-  const data = await fetchJson("https://music.163.com/api/search/get/web?csrf_token=", {
-    method: "POST",
-    headers: {
-      ...NETEASE_HEADERS,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      s: keywords,
-      type: "1",
-      offset: "0",
-      limit: String(limit),
-    }),
-  });
-
+  const data = await searchNeteaseSongs(keywords, limit);
   const songs = data?.result?.songs || [];
   const playableChecks = await Promise.all(
     songs.map(async (song) => ({
@@ -171,6 +158,22 @@ export async function searchPlayableNeteaseSongs(keywords, limit) {
       songs: playableChecks.filter((item) => item.playableUrl).map((item) => item.song),
     },
   };
+}
+
+export async function searchNeteaseSongs(keywords, limit) {
+  return fetchJson("https://music.163.com/api/search/get/web?csrf_token=", {
+    method: "POST",
+    headers: {
+      ...NETEASE_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      s: keywords,
+      type: "1",
+      offset: "0",
+      limit: String(limit),
+    }),
+  });
 }
 
 export async function fetchNeteasePlaylist(id) {

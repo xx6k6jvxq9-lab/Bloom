@@ -1,5 +1,5 @@
-import type { Song } from '../../types';
 import type { MusicSearchResult, MusicSearchSource } from './musicSearchTypes';
+import type { Song } from '../../types';
 
 type NeteaseArtist = {
   name?: string;
@@ -51,7 +51,7 @@ async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearc
   if (!trimmedQuery) return [];
 
   const response = await fetch(
-    `/api/netease/search-playable?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
+    `/api/netease/search?keywords=${encodeURIComponent(trimmedQuery)}&limit=${limit}`,
     {
       headers: {
         Accept: 'application/json',
@@ -61,7 +61,7 @@ async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearc
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('网易云可播搜索服务暂时没有接通，请重启当前开发服务后再试。');
+    throw new Error('网易云搜索服务暂时没有接通，请稍后再试。');
   }
 
   const data = (await response.json()) as NeteaseSearchResponse;
@@ -73,8 +73,8 @@ async function searchNeteaseMusic(query: string, limit = 10): Promise<MusicSearc
     song: mapNeteaseSongToSong(track),
     sourceId: 'netease',
     sourceLabel: '网易云',
-    playbackStatus: 'supported',
-    note: '已过滤当前环境里不能直接播放的歌曲。',
+    playbackStatus: 'unverified',
+    note: '先展示网易云搜索结果，真正点播放时再验证是否可播。',
   }));
 }
 
