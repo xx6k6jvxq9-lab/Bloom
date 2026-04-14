@@ -61,7 +61,7 @@ async function searchFreeToUseMusic(query: string, limit = 30): Promise<MusicSea
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('Free To Use 搜索服务暂时没有接通，请确认本地服务端已经启动。');
+    throw new Error('Free To Use 搜索服务暂时不可用，请确认服务已启动后再试。');
   }
 
   const data = (await response.json()) as FreeToUseSearchResponse;
@@ -76,7 +76,7 @@ async function searchFreeToUseMusic(query: string, limit = 30): Promise<MusicSea
     playbackStatus: track.is_premium ? 'search-only' : 'supported',
     note: track.is_premium
       ? '这首是高级曲目，当前只展示结果，不直接播放。'
-      : '免费可播源，支持网页直接播放。',
+      : '免费可播音源，支持网页直接播放。',
   }));
 }
 

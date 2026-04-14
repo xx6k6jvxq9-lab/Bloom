@@ -22,24 +22,22 @@ type NeteaseTrack = {
   duration?: number;
 };
 
+type NeteasePlaylistDetail = {
+  id: number | string;
+  name?: string;
+  coverImgUrl?: string;
+  tracks?: NeteaseTrack[];
+};
+
 type NeteasePlaylistDetailResponse = {
-  playlist?: {
-    id: number | string;
-    name?: string;
-    coverImgUrl?: string;
-    tracks?: NeteaseTrack[];
-  };
-  result?: {
-    id: number | string;
-    name?: string;
-    coverImgUrl?: string;
-    tracks?: NeteaseTrack[];
-  };
+  playlist?: NeteasePlaylistDetail;
+  result?: NeteasePlaylistDetail;
   error?: string;
 };
 
 function mapTrackToSong(track: NeteaseTrack): Song {
   const normalizedId = String(track.id);
+
   return {
     id: `netease-${normalizedId}`,
     title: track.name || '未知歌曲',
@@ -57,7 +55,7 @@ function mapTrackToSong(track: NeteaseTrack): Song {
   };
 }
 
-function mapPlaylistToAppPlaylist(playlist: NonNullable<NeteasePlaylistDetailResponse['playlist']>): Playlist {
+function mapPlaylistToAppPlaylist(playlist: NeteasePlaylistDetail): Playlist {
   return {
     id: `netease-pl-${playlist.id}`,
     name: playlist.name || '网易云歌单',
@@ -78,11 +76,30 @@ async function readJsonResponse<T>(response: Response, offlineMessage: string): 
   return (await response.json()) as T;
 }
 
+async function fetchPlayablePlaylist(rawPlaylist: NeteaseUserPlaylistItem): Promise<Playlist | null> {
+  const detailResponse = await fetch(`/api/netease/playlist-playable?id=${rawPlaylist.id}`);
+  const detailData = await readJsonResponse<NeteasePlaylistDetailResponse>(
+    detailResponse,
+    '歌单详情接口暂时不可用，请稍后再试。',
+  );
+
+  if (!detailResponse.ok) {
+    return null;
+  }
+
+  const detailPlaylist = detailData.playlist || detailData.result;
+  if (!detailPlaylist) {
+    return null;
+  }
+
+  return mapPlaylistToAppPlaylist(detailPlaylist);
+}
+
 export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promise<Playlist[]> {
   const response = await fetch(`/api/netease/user-playlists?uid=${encodeURIComponent(uid)}&limit=${limit}`);
   const data = await readJsonResponse<NeteaseUserPlaylistResponse>(
     response,
-    '歌单同步接口暂时没有接通，请重启当前开发服务后再试。',
+    '歌单同步接口暂时不可用，请稍后再试。',
   );
 
   if (!response.ok) {
@@ -90,26 +107,10 @@ export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promis
   }
 
   const rawPlaylists = data.playlist || [];
-  const imported: Playlist[] = [];
+  const settled = await Promise.allSettled(rawPlaylists.map(fetchPlayablePlaylist));
 
-  for (const rawPlaylist of rawPlaylists) {
-    const detailResponse = await fetch(`/api/netease/playlist-playable?id=${rawPlaylist.id}`);
-    const detailData = await readJsonResponse<NeteasePlaylistDetailResponse>(
-      detailResponse,
-      '歌单详情接口暂时没有接通，请重启当前开发服务后再试。',
-    );
-
-    if (!detailResponse.ok) {
-      continue;
-    }
-
-    const detailPlaylist = detailData.playlist || detailData.result;
-    if (!detailPlaylist) {
-      continue;
-    }
-
-    imported.push(mapPlaylistToAppPlaylist(detailPlaylist));
-  }
-
-  return imported;
+  return settled
+    .filter((result): result is PromiseFulfilledResult<Playlist | null> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((playlist): playlist is Playlist => Boolean(playlist));
 }
