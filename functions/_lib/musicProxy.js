@@ -39,33 +39,42 @@ async function fetchJson(url, init) {
 }
 
 export async function resolveNeteasePlayableUrl(id) {
-  let finalUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
-  const headResponse = await fetch(finalUrl, {
-    method: "HEAD",
-    redirect: "manual",
-    headers: NETEASE_HEADERS,
-  });
+  const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
 
-  if (headResponse.status === 301 || headResponse.status === 302) {
-    const location = headResponse.headers.get("location");
-    if (location) {
-      if (location.includes("/404")) {
-        return null;
+  try {
+    const headResponse = await fetch(fallbackUrl, {
+      method: "HEAD",
+      redirect: "manual",
+      headers: NETEASE_HEADERS,
+    });
+
+    if (headResponse.status === 301 || headResponse.status === 302) {
+      const location = headResponse.headers.get("location");
+      if (location) {
+        if (location.includes("/404")) {
+          return null;
+        }
+        return location.replace(/^http:/, "https:");
       }
-      finalUrl = location.replace(/^http:/, "https:");
     }
-  }
 
-  if (headResponse.status >= 400) {
-    return null;
-  }
+    if (headResponse.status === 404) {
+      return null;
+    }
 
-  return finalUrl;
+    // Some deployments/upstreams reject HEAD or return non-ideal statuses
+    // while the actual audio GET still works, so keep the outer URL as fallback.
+    return fallbackUrl;
+  } catch (error) {
+    console.warn("Failed to pre-resolve NetEase playable URL, fallback to outer URL", error);
+    return fallbackUrl;
+  }
 }
 
 export async function proxyNeteaseSong(request, id) {
-  const finalUrl = await resolveNeteasePlayableUrl(id);
-  if (!finalUrl) {
+  const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+  const resolvedUrl = await resolveNeteasePlayableUrl(id);
+  if (!resolvedUrl) {
     return json(
       { error: "Song not found or is VIP/copyright restricted" },
       { status: 404 },
@@ -78,12 +87,23 @@ export async function proxyNeteaseSong(request, id) {
     headers.set("Range", range);
   }
 
-  const response = await fetch(finalUrl, { headers });
-  if (!response.ok) {
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
+  let response = await fetch(resolvedUrl, {
+    headers,
+    redirect: "follow",
+  });
+
+  if (!response.ok && resolvedUrl !== fallbackUrl) {
+    response = await fetch(fallbackUrl, {
+      headers,
+      redirect: "follow",
     });
+  }
+
+  if (!response.ok) {
+    return json(
+      { error: "Song not found or is temporarily unavailable" },
+      { status: response.status >= 400 ? response.status : 502 },
+    );
   }
 
   const passHeaders = new Headers();
