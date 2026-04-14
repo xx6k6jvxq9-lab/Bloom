@@ -802,6 +802,7 @@ export default function MusicApp({
 
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
+        alert(`歌单导入完成，当前可播放 ${newSongs.length} 首。`);
       }
     } catch (error) {
       console.error("Import error:", error);
@@ -832,7 +833,11 @@ export default function MusicApp({
         playlists: [...preservedPlaylists, ...syncedPlaylists],
       });
 
-      alert(`已同步 ${syncedPlaylists.length} 个网易云歌单。`);
+      const syncedSongCount = syncedPlaylists.reduce(
+        (total, playlist) => total + playlist.songs.length,
+        0,
+      );
+      alert(`已同步 ${syncedPlaylists.length} 个网易云歌单，共 ${syncedSongCount} 首当前可播放歌曲。`);
     } catch (error) {
       console.error("NetEase playlist sync error:", error);
       alert("同步歌单失败，请稍后再试。");
@@ -1553,7 +1558,7 @@ export default function MusicApp({
                     共创歌单
                   </h3>
                   <button className="text-[14px] font-bold text-pink-500">
-                    鏇村
+                    更多
                   </button>
                 </div>
                 <div className="flex gap-5 overflow-x-auto pb-4 -mx-6 px-6 no-scrollbar">
