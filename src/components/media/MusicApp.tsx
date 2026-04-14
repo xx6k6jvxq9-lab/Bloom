@@ -2548,7 +2548,7 @@ export default function MusicApp({
                   onClick={() => setShowAddMusicDialog(false)}
                   className="w-full py-3 bg-zinc-50 rounded-xl font-bold text-zinc-400 active:scale-95 transition-transform border border-zinc-100"
                 >
-                  鍙栨秷
+                  取消
                 </button>
               </div>
             </motion.div>
@@ -2586,7 +2586,7 @@ export default function MusicApp({
                     <div className="flex-1 text-left">
                       <p className="font-bold text-zinc-800">{char.name}</p>
                       <p className="text-xs text-zinc-400">
-                        {char.motto || "鍦ㄧ嚎"}
+                        {char.motto || "在线"}
                       </p>
                     </div>
                     <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900">
@@ -2600,7 +2600,7 @@ export default function MusicApp({
                 onClick={() => setShowInviteDialog(false)}
                 className="w-full mt-8 py-4 bg-zinc-100 rounded-2xl font-bold text-zinc-500 active:scale-95 transition-transform"
               >
-                鍙栨秷
+                取消
               </button>
             </motion.div>
           </div>
