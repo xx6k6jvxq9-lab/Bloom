@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { motion } from "motion/react";
 import { ChevronLeft, Keyboard, Mic, Send, Smile } from "lucide-react";
 import type { AppSettings, Character, ChatMessage, VisualSettings } from "../../types";
@@ -150,7 +150,7 @@ export function TogetherChatPanel({
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
   const basicEmojis = React.useMemo(
-    () => ["🥺", "😭", "🥰", "😳", "😡", "😴", "😵", "🤍", "💗", "💢", "😼", "👀", "🎧", "🎵"],
+    () => ["馃ズ", "馃槶", "馃グ", "馃槼", "馃槨", "馃槾", "馃樀", "馃", "馃挆", "馃挗", "馃樇", "馃憖", "馃帶", "馃幍"],
     [],
   );
   const availableCustomStickers = React.useMemo(
@@ -310,7 +310,8 @@ export function TogetherChatPanel({
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
-      className="chat-bubble-theme-scope absolute inset-0 bg-zinc-50 z-[200] flex flex-col"
+      className="chat-bubble-theme-scope absolute inset-0 z-[200] flex flex-col overflow-hidden bg-zinc-50"
+      style={{ minHeight: "100dvh", height: "100dvh" }}
     >
       <style>{directBubbleThemeCss}</style>
       <style>{directModelBubbleThemeCss}</style>
@@ -319,7 +320,10 @@ export function TogetherChatPanel({
       <style>{directCharacterUserBubbleThemeCss}</style>
       <style>{directChatFontCss}</style>
 
-      <div className="chat-session-header px-6 pt-12 pb-4 flex items-center justify-between border-b border-zinc-100 bg-white/95 backdrop-blur-md">
+      <div
+        className="chat-session-header flex items-center justify-between border-b border-zinc-100 bg-white/95 px-6 pb-4 backdrop-blur-md"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+      >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-500">
           <ChevronLeft size={28} strokeWidth={2.5} />
         </button>
@@ -328,14 +332,17 @@ export function TogetherChatPanel({
           <div className="flex items-center gap-1.5 mt-0.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span className="text-[10px] text-zinc-400 font-medium">
-              正在与 {activeTogetherCharacter.name} 共听
+              正在和 {activeTogetherCharacter.name} 共听
             </span>
           </div>
         </div>
         <div className="w-10" />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-50/50">
+      <div
+        className="flex-1 overflow-y-auto bg-zinc-50/50 p-4 space-y-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+      >
         {history.map((msg, index) => (
           <div
             key={`${msg.timestamp}-${index}`}
@@ -444,8 +451,11 @@ export function TogetherChatPanel({
         <div ref={chatEndRef} />
       </div>
 
-      <div className="chat-session-footer bg-white/95 backdrop-blur-md border-t border-zinc-100">
-        <div className="p-4 pb-4 flex gap-3 items-end">
+      <div
+        className="chat-session-footer border-t border-zinc-100 bg-white/95 backdrop-blur-md"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        <div className="flex gap-3 items-end p-4">
           <button
             onClick={() => {
               setIsVoiceMode((prev) => !prev);
@@ -503,7 +513,10 @@ export function TogetherChatPanel({
         </div>
 
         {showStickerPanel && !isVoiceMode && (
-          <div className="px-4 pb-10">
+          <div
+            className="px-4"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+          >
             <div className="rounded-[24px] border border-zinc-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex border-b border-zinc-100">
                 <button
@@ -575,3 +588,4 @@ export function TogetherChatPanel({
     </motion.div>
   );
 }
+

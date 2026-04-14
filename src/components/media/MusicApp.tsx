@@ -993,7 +993,7 @@ export default function MusicApp({
   };
 
   const renderPlayer = () => (
-    <div className="flex-1 flex flex-col overflow-hidden relative">
+    <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* Dynamic Background */}
       <div className="absolute inset-0 z-0">
         <div
@@ -1005,7 +1005,10 @@ export default function MusicApp({
         <div className="absolute inset-0 bg-white/60" />
       </div>
 
-      <div className="relative z-10 flex-1 flex flex-col px-6 pb-6 pt-10">
+      <div
+        className="relative z-10 flex flex-1 min-h-0 flex-col px-6 pb-4"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-0 shrink-0">
           <button
@@ -1214,7 +1217,10 @@ export default function MusicApp({
                   className="absolute inset-0 flex flex-col overflow-y-auto no-scrollbar py-4 [mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)]"
                 >
                   {lyrics.length > 0 ? (
-                    <div className="space-y-4 text-center px-6 pb-20">
+                    <div
+                      className="space-y-4 px-6 text-center"
+                      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+                    >
                       {lyrics.map((line, index) => {
                         const isActive = index === activeLyricIndex;
                         return (
@@ -1431,9 +1437,12 @@ export default function MusicApp({
 
   const renderPlaylists = () => {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden relative bg-zinc-50">
+      <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-zinc-50">
         {/* Search Header */}
-        <div className="px-6 pt-12 pb-4 bg-white/80 backdrop-blur-xl sticky top-0 z-20 border-b border-zinc-100">
+        <div
+          className="sticky top-0 z-20 border-b border-zinc-100 bg-white/80 px-6 pb-4 backdrop-blur-xl"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        >
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-3xl font-black text-zinc-900 tracking-tighter">
               歌单
@@ -1465,7 +1474,10 @@ export default function MusicApp({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-10 px-6 pt-6 pb-32">
+        <div
+          className="flex-1 overflow-y-auto space-y-10 px-6 pt-6"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}
+        >
           {searchQuery ? (
             <MusicSearchResults
               query={searchQuery}
@@ -1745,9 +1757,12 @@ export default function MusicApp({
       .filter((s): s is Song => !!s);
 
     return (
-      <div className="flex-1 flex flex-col overflow-hidden relative bg-zinc-50">
+      <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-zinc-50">
         {/* Profile Header */}
-        <div className="px-6 pt-16 pb-6">
+        <div
+          className="px-6 pb-6"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+        >
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-zinc-100 shadow-xl">
               <ResolvedMusicAvatar value={userAvatar} className="w-full h-full object-cover" alt={userName} />
@@ -1771,7 +1786,10 @@ export default function MusicApp({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pt-6 pb-32 space-y-6">
+        <div
+          className="flex-1 overflow-y-auto px-6 pt-6 space-y-6"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}
+        >
           {/* Quick Stats Grid - Smaller */}
           <div className="grid grid-cols-2 gap-3">
             <div
@@ -2371,17 +2389,24 @@ export default function MusicApp({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-0 bg-white flex flex-col z-[100] font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
+      className="absolute inset-0 z-[100] flex flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
+      style={{ minHeight: "100dvh", height: "100dvh" }}
     >
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden pb-20">
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {activeTab === "player" && renderPlayer()}
         {activeTab === "playlists" && renderPlaylists()}
         {activeTab === "me" && renderMe()}
       </div>
 
       {/* iOS Style Bottom Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-xl flex items-center justify-around px-8 pb-0 z-50">
+      <div
+        className="relative z-50 flex shrink-0 items-center justify-around border-t border-zinc-100/80 bg-white/85 px-8 pt-2 backdrop-blur-xl"
+        style={{
+          minHeight: "calc(64px + env(safe-area-inset-bottom, 0px) + 8px)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+        }}
+      >
         <button
           onClick={() => setActiveTab("player")}
           className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
@@ -2558,7 +2583,7 @@ export default function MusicApp({
 
                 {/* Direct URL Section */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-zinc-800">娣诲姞閾炬帴</h4>
+                  <h4 className="text-sm font-bold text-zinc-800">添加链接</h4>
                   <div className="space-y-3">
                     <input
                       type="text"
