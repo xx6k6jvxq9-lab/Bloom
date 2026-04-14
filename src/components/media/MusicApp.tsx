@@ -151,6 +151,22 @@ export default function MusicApp({
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
   const onPatchCharacterRef = useRef(onPatchCharacter);
   const neteaseFallbackAttemptedRef = useRef<string | null>(null);
+  const prefersDirectGesturePlaybackRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      prefersDirectGesturePlaybackRef.current = false;
+      return;
+    }
+
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isTouchMac = window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
+    const isMobileUa = /iphone|ipad|ipod|android|mobile|harmonyos/.test(userAgent) || isTouchMac;
+    const prefersCoarsePointer =
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+
+    prefersDirectGesturePlaybackRef.current = isMobileUa || prefersCoarsePointer;
+  }, []);
 
   const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
     if (!song) return "";
@@ -171,6 +187,41 @@ export default function MusicApp({
       return url;
     }
     return new URL(url, window.location.origin).toString();
+  };
+
+  const primePlaybackFromGesture = async (song: Song) => {
+    const audio = audioRef.current;
+    if (!audio || !prefersDirectGesturePlaybackRef.current) {
+      return;
+    }
+
+    const nextPlaybackUrl = resolveSongPlaybackUrl(song);
+    const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
+    const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
+
+    if (currentAudioUrl !== targetAudioUrl) {
+      if (!audio.paused) {
+        audio.pause();
+      }
+      audio.removeAttribute("src");
+      audio.load();
+      audio.src = nextPlaybackUrl;
+      audio.currentTime = 0;
+      audio.load();
+    }
+
+    try {
+      setPlaybackError("");
+      setIsAudioActuallyPlaying(false);
+      playPromiseRef.current = audio.play();
+      await playPromiseRef.current;
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        console.error("Gesture playback error:", error);
+      }
+    } finally {
+      playPromiseRef.current = null;
+    }
   };
 
   const appendSongOnce = (ids: string[], songId: string) => [
@@ -564,7 +615,11 @@ export default function MusicApp({
     syncPlayback();
   }, [currentMusicData.currentSong?.id, currentMusicData.isPlaying]);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
+    if (!currentMusicData.isPlaying && currentMusicData.currentSong) {
+      await primePlaybackFromGesture(currentMusicData.currentSong);
+    }
+
     onUpdateMusicData({
       ...currentMusicData,
       isPlaying: !currentMusicData.isPlaying,
@@ -614,7 +669,8 @@ export default function MusicApp({
     setLocalProgress(percentage * 100);
   };
 
-  const playSong = (song: Song) => {
+  const playSong = async (song: Song) => {
+    await primePlaybackFromGesture(song);
     setPlaybackError("");
     onUpdateMusicData({
       ...currentMusicData,
