@@ -106,6 +106,15 @@ export async function resolveNeteasePlayableUrl(id) {
   }
 }
 
+function isAudioLikeResponse(response) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  return (
+    contentType.startsWith("audio/") ||
+    contentType.includes("application/octet-stream") ||
+    contentType.includes("binary/octet-stream")
+  );
+}
+
 export async function proxyNeteaseSong(request, id) {
   const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
   const resolvedUrl = await resolveNeteasePlayableUrl(id);
@@ -127,14 +136,14 @@ export async function proxyNeteaseSong(request, id) {
     redirect: "follow",
   });
 
-  if (!response.ok && resolvedUrl !== fallbackUrl) {
+  if ((!response.ok || !isAudioLikeResponse(response)) && resolvedUrl !== fallbackUrl) {
     response = await fetch(fallbackUrl, {
       headers,
       redirect: "follow",
     });
   }
 
-  if (!response.ok) {
+  if (!response.ok || !isAudioLikeResponse(response)) {
     return json(
       { error: "Song not found or is temporarily unavailable" },
       { status: response.status >= 400 ? response.status : 502 },
