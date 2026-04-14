@@ -150,6 +150,7 @@ export default function MusicApp({
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
   const onPatchCharacterRef = useRef(onPatchCharacter);
+  const neteaseFallbackAttemptedRef = useRef<string | null>(null);
 
   const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
     if (!song) return "";
@@ -157,6 +158,11 @@ export default function MusicApp({
       return `/api/netease/song?id=${song.id.replace("netease-", "")}`;
     }
     return song.url;
+  };
+
+  const resolveNeteaseFallbackUrl = (song: Song | null | undefined) => {
+    if (!song || !song.id.startsWith("netease-")) return "";
+    return `https://music.163.com/song/media/outer/url?id=${song.id.replace("netease-", "")}.mp3`;
   };
 
   const normalizePlaybackUrl = (url: string) => {
@@ -324,6 +330,39 @@ export default function MusicApp({
     };
 
     const handlePlaybackError = () => {
+      const activeSong = currentMusicDataRef.current?.currentSong;
+      const fallbackUrl = resolveNeteaseFallbackUrl(activeSong);
+      const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
+      const targetFallbackUrl = normalizePlaybackUrl(fallbackUrl);
+
+      if (
+        activeSong?.id.startsWith("netease-") &&
+        fallbackUrl &&
+        neteaseFallbackAttemptedRef.current !== activeSong.id &&
+        currentAudioUrl !== targetFallbackUrl
+      ) {
+        neteaseFallbackAttemptedRef.current = activeSong.id;
+        setPlaybackError("正在切换备用播放地址…");
+        setIsAudioActuallyPlaying(false);
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        audio.src = fallbackUrl;
+        audio.currentTime = 0;
+        audio.load();
+        if (currentMusicDataRef.current?.isPlaying) {
+          playPromiseRef.current = audio.play();
+          playPromiseRef.current.catch((error) => {
+            if (error instanceof Error && error.name !== "AbortError") {
+              console.error("Playback fallback error:", error);
+            }
+          }).finally(() => {
+            playPromiseRef.current = null;
+          });
+        }
+        return;
+      }
+
       setIsAudioActuallyPlaying(false);
       setPlaybackError("当前歌曲暂时无法播放");
       if (currentMusicDataRef.current?.isPlaying) {
@@ -453,6 +492,9 @@ export default function MusicApp({
     if (!audio || !currentMusicData.currentSong) return;
     if (currentMusicData.currentSong.id !== lastRecordedPlaybackIdRef.current) {
       lastRecordedPlaybackIdRef.current = null;
+    }
+    if (neteaseFallbackAttemptedRef.current !== currentMusicData.currentSong.id) {
+      neteaseFallbackAttemptedRef.current = null;
     }
 
     const syncPlayback = async () => {
