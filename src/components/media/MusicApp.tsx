@@ -1443,8 +1443,8 @@ export default function MusicApp({
           className="sticky top-0 z-20 border-b border-zinc-100 bg-white/80 px-6 pb-4 backdrop-blur-xl"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
         >
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-black text-zinc-900 tracking-tighter">
+          <div className="mb-4 flex items-center justify-between">
+            <h1 className="text-[30px] font-extrabold leading-none tracking-tight text-zinc-900 sm:text-3xl sm:font-black sm:tracking-tighter">
               歌单
             </h1>
             <button
@@ -1768,7 +1768,7 @@ export default function MusicApp({
               <ResolvedMusicAvatar value={userAvatar} className="w-full h-full object-cover" alt={userName} />
             </div>
             <div className="flex-1">
-              <h1 className="text-2xl font-black text-zinc-900 tracking-tighter leading-tight">
+              <h1 className="text-[28px] font-extrabold leading-none tracking-tight text-zinc-900 sm:text-2xl sm:font-black sm:tracking-tighter sm:leading-tight">
                 {userName}
               </h1>
             </div>
