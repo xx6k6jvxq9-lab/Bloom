@@ -1006,11 +1006,11 @@ export default function MusicApp({
       </div>
 
       <div
-        className="relative z-10 flex flex-1 min-h-0 flex-col px-6 pb-4"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        className="relative z-10 flex flex-1 min-h-0 flex-col px-4 pb-3 sm:px-6 sm:pb-4"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-0 shrink-0">
+        <div className="mb-1 flex shrink-0 items-center justify-between">
           <button
             onClick={onBack}
             className="p-2 -ml-2 text-zinc-600 active:opacity-50 transition-opacity"
@@ -1026,7 +1026,7 @@ export default function MusicApp({
             {currentMusicData.togetherWith && (
               <button
                 onClick={disconnectTogether}
-                className="h-10 rounded-full px-3 flex items-center justify-center bg-zinc-100 text-zinc-500 shadow-sm transition-all text-[12px] font-bold"
+                className="flex h-9 items-center justify-center rounded-full bg-zinc-100 px-2.5 text-[11px] font-bold text-zinc-500 shadow-sm transition-all sm:h-10 sm:px-3 sm:text-[12px]"
               >
                 断开
               </button>
@@ -1034,14 +1034,14 @@ export default function MusicApp({
             {currentMusicData.togetherWith && (
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-100 text-zinc-400 shadow-sm transition-all"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-sm transition-all sm:h-10 sm:w-10"
               >
                 <MessageCircle size={20} />
               </button>
             )}
             <button
               onClick={() => setShowInviteDialog(true)}
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-100 text-zinc-400 shadow-sm transition-all"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-sm transition-all sm:h-10 sm:w-10"
             >
               <Users size={20} />
             </button>
@@ -1049,7 +1049,7 @@ export default function MusicApp({
         </div>
 
         {/* Avatars Area (Above CD) */}
-        <div className="h-16 flex items-center justify-center mb-0 shrink-0">
+        <div className="mb-1 flex h-14 shrink-0 items-center justify-center sm:h-16">
           <AnimatePresence mode="wait">
             {!currentMusicData.togetherWith ? (
               <motion.div
@@ -1059,7 +1059,7 @@ export default function MusicApp({
                 exit={{ opacity: 0, y: -10 }}
                 className="flex flex-col items-center gap-1"
               >
-                <div className="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden">
+                <div className="h-9 w-9 overflow-hidden rounded-full border-2 border-white shadow-md sm:h-10 sm:w-10">
                   <ResolvedMusicAvatar
                     value={userAvatar}
                     className="w-full h-full object-cover"
@@ -1075,7 +1075,7 @@ export default function MusicApp({
                 className="flex flex-col items-center"
               >
                 <div className="flex items-center gap-0">
-                  <motion.div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden z-10">
+                  <motion.div className="z-10 h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-lg sm:h-12 sm:w-12">
                     <ResolvedMusicAvatar
                       value={userAvatar}
                       className="w-full h-full object-cover"
@@ -1083,9 +1083,9 @@ export default function MusicApp({
                     />
                   </motion.div>
 
-                  <div className="relative flex items-center justify-center w-20">
+                  <div className="relative flex w-16 items-center justify-center sm:w-20">
                     {/* Left Ripple */}
-                    <svg className="absolute left-0 w-10 h-6 overflow-visible">
+                    <svg className="absolute left-0 h-5 w-8 overflow-visible sm:h-6 sm:w-10">
                       <motion.path
                         d="M 40 12 Q 35 4, 30 12 T 20 12 T 10 12 T 0 12"
                         fill="none"
@@ -1102,7 +1102,7 @@ export default function MusicApp({
                     </svg>
 
                     {/* Right Ripple */}
-                    <svg className="absolute right-0 w-10 h-6 overflow-visible">
+                    <svg className="absolute right-0 h-5 w-8 overflow-visible sm:h-6 sm:w-10">
                       <motion.path
                         d="M 0 12 Q 5 4, 10 12 T 20 12 T 30 12 T 40 12"
                         fill="none"
@@ -1121,7 +1121,7 @@ export default function MusicApp({
                     <motion.div
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 1.5, repeat: Infinity }}
-                      className="text-pink-500 z-10 bg-white rounded-full p-1"
+                      className="z-10 rounded-full bg-white p-1 text-pink-500"
                     >
                       <Heart size={16} fill="currentColor" />
                     </motion.div>
@@ -1131,7 +1131,7 @@ export default function MusicApp({
                     initial={{ x: -60, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                    className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden z-10"
+                    className="z-10 h-10 w-10 overflow-hidden rounded-full border-2 border-white shadow-lg sm:h-12 sm:w-12"
                   >
                     <ResolvedMusicAvatar
                       value={activeTogetherCharacter.avatar}
@@ -1144,10 +1144,10 @@ export default function MusicApp({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="mt-1 flex items-center gap-1.5 bg-pink-500/10 px-3 py-0.5 rounded-full"
+                  className="mt-1 flex items-center gap-1 rounded-full bg-pink-500/10 px-2.5 py-0.5 sm:gap-1.5 sm:px-3"
                 >
                   <Clock size={10} className="text-pink-500" />
-                  <span className="text-[9px] font-bold text-pink-600 uppercase tracking-wider">
+                  <span className="text-[8px] font-bold uppercase tracking-wide text-pink-600 sm:text-[9px] sm:tracking-wider">
                     一起听了 {getTogetherDuration()}
                   </span>
                 </motion.div>
@@ -1162,21 +1162,21 @@ export default function MusicApp({
           onClick={() => setShowLyrics(!showLyrics)}
         >
           {/* Song Info */}
-          <div className="mt-4 mb-2 text-center shrink-0">
-            <h1 className="text-xl font-bold text-zinc-900 tracking-tight mb-0.5 truncate px-4">
+          <div className="mb-2 mt-2 shrink-0 text-center sm:mt-4">
+            <h1 className="mb-0.5 truncate px-2 text-[17px] font-bold tracking-tight text-zinc-900 sm:px-4 sm:text-xl">
               {currentMusicData.currentSong?.title}
             </h1>
-            <p className="text-[15px] font-medium text-pink-500 truncate px-4">
+            <p className="truncate px-2 text-[13px] font-medium text-pink-500 sm:px-4 sm:text-[15px]">
               {currentMusicData.currentSong?.artist}
             </p>
             {playbackError ? (
-              <p className="mt-2 text-[12px] font-semibold text-rose-500">
+              <p className="mt-1.5 text-[11px] font-semibold text-rose-500 sm:mt-2 sm:text-[12px]">
                 {playbackError}
               </p>
             ) : null}
           </div>
 
-          <div className="flex-1 w-full flex items-start justify-center px-4 min-h-0 relative pt-2">
+          <div className="relative flex min-h-0 w-full flex-1 items-start justify-center px-2 pt-1 sm:px-4 sm:pt-2">
             <AnimatePresence mode="wait">
               {!showLyrics ? (
                 <motion.div
@@ -1184,7 +1184,7 @@ export default function MusicApp({
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="relative aspect-square max-h-full max-w-[260px] w-full"
+                  className="relative aspect-square w-full max-w-[220px] max-h-full sm:max-w-[260px]"
                 >
                   <motion.div
                     animate={{ rotate: currentMusicData.isPlaying && isAudioActuallyPlaying ? 360 : 0 }}
@@ -1195,7 +1195,7 @@ export default function MusicApp({
                     }}
                     className="w-full h-full rounded-full bg-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-center p-1 relative"
                   >
-                    <div className="absolute inset-0 rounded-full border-[12px] border-zinc-800/50" />
+                    <div className="absolute inset-0 rounded-full border-[10px] border-zinc-800/50 sm:border-[12px]" />
                     <div className="absolute inset-0 rounded-full border-[1px] border-white/5" />
                     <div className="w-full h-full rounded-full overflow-hidden">
                       <img
@@ -1203,8 +1203,8 @@ export default function MusicApp({
                         className="w-full h-full object-cover opacity-80"
                       />
                     </div>
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-zinc-900 rounded-full border-4 border-zinc-800 flex items-center justify-center shadow-inner">
-                      <div className="w-2 h-2 bg-zinc-700 rounded-full" />
+                    <div className="absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-zinc-800 bg-zinc-900 shadow-inner sm:h-12 sm:w-12">
+                      <div className="h-2 w-2 rounded-full bg-zinc-700" />
                     </div>
                   </motion.div>
                 </motion.div>
@@ -1218,7 +1218,7 @@ export default function MusicApp({
                 >
                   {lyrics.length > 0 ? (
                     <div
-                      className="space-y-4 px-6 text-center"
+                      className="space-y-3 px-4 text-center sm:space-y-4 sm:px-6"
                       style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
                     >
                       {lyrics.map((line, index) => {
@@ -1229,11 +1229,11 @@ export default function MusicApp({
                             id={isActive ? "active-lyric" : undefined}
                             className={`transition-all duration-300 ${isActive ? "scale-105" : ""}`}
                           >
-                            <p className={`${isActive ? "text-base font-bold text-pink-500" : "text-sm font-medium text-zinc-500/80"}`}>
+                            <p className={`${isActive ? "text-[15px] font-bold text-pink-500 sm:text-base" : "text-[13px] font-medium text-zinc-500/80 sm:text-sm"}`}>
                               {line.text}
                             </p>
                             {line.translation && (
-                              <p className={`mt-1 ${isActive ? "text-sm font-bold text-pink-500/80" : "text-xs font-medium text-zinc-500/60"}`}>
+                              <p className={`mt-1 ${isActive ? "text-[12px] font-bold text-pink-500/80 sm:text-sm" : "text-[11px] font-medium text-zinc-500/60 sm:text-xs"}`}>
                                 {line.translation}
                               </p>
                             )}
@@ -1253,8 +1253,8 @@ export default function MusicApp({
         </div>
 
         {/* Controls */}
-        <div className="space-y-4 pb-2 shrink-0">
-          <div className="space-y-3">
+        <div className="shrink-0 space-y-3 pb-1 sm:space-y-4 sm:pb-2">
+          <div className="space-y-2 sm:space-y-3">
             <div
               className="relative h-1.5 bg-zinc-200/50 rounded-full overflow-hidden cursor-pointer"
               onClick={handleSeek}
@@ -1264,13 +1264,13 @@ export default function MusicApp({
                 style={{ width: `${localProgress}%` }}
               />
               <div
-                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md border border-zinc-100"
-                style={{ left: `calc(${localProgress}% - 8px)` }}
+                className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border border-zinc-100 bg-white shadow-md sm:h-4 sm:w-4"
+                style={{ left: `calc(${localProgress}% - 7px)` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] font-bold text-zinc-400 tracking-tighter">
-              <span>{formatTime(localCurrentTime)}</span>
-              <span>
+            <div className="flex justify-between px-0.5 text-[10px] font-bold tracking-tight text-zinc-400 sm:text-[11px]">
+              <span className="min-w-[38px] sm:min-w-[42px]">{formatTime(localCurrentTime)}</span>
+              <span className="min-w-[38px] text-right sm:min-w-[42px]">
                 -
                 {formatTime(
                   Math.max(
@@ -1282,7 +1282,7 @@ export default function MusicApp({
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-2 relative">
+          <div className="relative flex items-center justify-between px-1 sm:px-2">
             <button
               onClick={() => setShowPlayerMoreMenu(!showPlayerMoreMenu)}
               className={`transition-colors ${showPlayerMoreMenu ? "text-pink-500" : "text-zinc-400 active:text-zinc-600"}`}
@@ -1385,28 +1385,28 @@ export default function MusicApp({
               )}
             </AnimatePresence>
 
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-6 sm:gap-8">
               <button
                 onClick={skipBack}
                 className="text-zinc-400 active:scale-90 transition-transform"
               >
-                <SkipBack size={28} fill="currentColor" />
+                <SkipBack size={24} fill="currentColor" className="sm:h-7 sm:w-7" />
               </button>
               <button
                 onClick={togglePlay}
-                className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 shadow-xl shadow-zinc-200/40 active:scale-95 transition-transform"
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-xl shadow-zinc-200/40 transition-transform active:scale-95 sm:h-16 sm:w-16"
               >
                 {currentMusicData.isPlaying ? (
-                  <Pause size={30} fill="currentColor" />
+                  <Pause size={26} fill="currentColor" className="sm:h-[30px] sm:w-[30px]" />
                 ) : (
-                  <Play size={30} fill="currentColor" className="ml-1" />
+                  <Play size={26} fill="currentColor" className="ml-0.5 sm:ml-1 sm:h-[30px] sm:w-[30px]" />
                 )}
               </button>
               <button
                 onClick={skipForward}
                 className="text-zinc-400 active:scale-90 transition-transform"
               >
-                <SkipForward size={28} fill="currentColor" />
+                <SkipForward size={24} fill="currentColor" className="sm:h-7 sm:w-7" />
               </button>
             </div>
             <button
@@ -1418,8 +1418,8 @@ export default function MusicApp({
           </div>
 
           {/* Volume Slider (iOS Style) */}
-          <div className="flex items-center gap-3 px-2">
-            <Volume2 size={14} className="text-zinc-400" />
+          <div className="flex items-center gap-2 px-1 sm:gap-3 sm:px-2">
+            <Volume2 size={13} className="text-zinc-400 sm:h-[14px] sm:w-[14px]" />
             <div
               className="flex-1 h-1.5 bg-zinc-200/50 rounded-full overflow-hidden cursor-pointer"
               onClick={handleVolumeChange}

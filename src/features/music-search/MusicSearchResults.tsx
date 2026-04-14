@@ -123,22 +123,22 @@ export function MusicSearchResults({
   if (!query.trim()) return null;
 
   return (
-    <section className="space-y-5">
-      <div className="relative overflow-hidden rounded-[28px] border border-white/70 bg-gradient-to-br from-pink-100 via-white to-orange-50 p-5 shadow-[0_18px_60px_rgba(244,114,182,0.10)]">
+    <section className="space-y-4 sm:space-y-5">
+      <div className="relative overflow-hidden rounded-[26px] border border-white/70 bg-gradient-to-br from-pink-100 via-white to-orange-50 p-4 shadow-[0_18px_60px_rgba(244,114,182,0.10)] sm:rounded-[28px] sm:p-5">
         <div className="absolute -top-12 right-0 h-32 w-32 rounded-full bg-pink-200/30 blur-3xl" />
         <div className="absolute -bottom-10 left-6 h-24 w-24 rounded-full bg-amber-100/60 blur-3xl" />
-        <div className="relative flex items-start justify-between gap-4">
+        <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.28em] text-pink-500/80">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-pink-500/80 sm:text-[11px] sm:tracking-[0.28em]">
               <Sparkles size={12} />
               即时搜索
             </div>
-            <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
-            <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
+            <h3 className="text-[24px] font-black tracking-tight text-zinc-900 sm:text-[26px]">搜索结果</h3>
+            <p className="mt-1 text-[12px] font-medium leading-5 text-zinc-500 sm:text-[13px] sm:leading-6">
               当前接入 {activeSources.map((source) => source.label).join(' / ')}，网易云结果会额外标注免费或 VIP，播放时再轻量校验。
             </p>
           </div>
-          <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
+          <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[11px] font-bold leading-5 text-zinc-500 shadow-sm sm:text-[12px]">
             {isLoading ? '搜索中...' : `${filteredResults.length} 个结果`}
           </div>
         </div>
@@ -149,7 +149,7 @@ export function MusicSearchResults({
           <button
             key={filter.id}
             onClick={() => setActiveFilter(filter.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-[12px] font-bold transition-colors ${
+            className={`shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition-colors sm:px-4 ${
               activeFilter === filter.id
                 ? 'bg-pink-500 text-white shadow-lg shadow-pink-200'
                 : 'border border-zinc-100 bg-white text-zinc-500'
@@ -161,16 +161,16 @@ export function MusicSearchResults({
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col items-center justify-center rounded-[26px] border border-white/70 bg-white/80 px-6 py-14 text-zinc-400 shadow-[0_10px_30px_rgba(15,23,42,0.05)] sm:rounded-[28px] sm:py-16">
           <LoaderCircle size={34} className="mb-4 animate-spin text-pink-400" />
-          <p className="text-[15px] font-bold text-zinc-700">正在搜索内容</p>
+          <p className="text-[14px] font-bold text-zinc-700 sm:text-[15px]">正在搜索内容</p>
           <p className="mt-1 text-[12px] font-medium text-zinc-400">会同时尝试网易云歌曲和免费源</p>
         </div>
       ) : errorMessage ? (
-        <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)]">
+        <div className="rounded-[26px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-6 py-10 shadow-[0_10px_30px_rgba(244,63,94,0.06)] sm:rounded-[28px]">
           <div className="flex flex-col items-center justify-center text-center text-zinc-400">
             <Search size={34} className="mb-4 text-rose-300" />
-            <p className="text-[15px] font-bold text-zinc-700">{errorMessage}</p>
+            <p className="text-[14px] font-bold text-zinc-700 sm:text-[15px]">{errorMessage}</p>
             <p className="mt-2 text-[12px] font-medium text-zinc-400">
               如果上游接口暂时波动，这里会直接提示，不再混入错误页面。
             </p>
@@ -186,9 +186,9 @@ export function MusicSearchResults({
               <div
                 key={`${result.sourceId}-${result.song.id}`}
                 onClick={() => onPlaySong(result.song)}
-                className="group flex cursor-pointer items-center gap-4 rounded-[24px] border border-white/80 bg-white/85 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.05)] transition-all active:scale-[0.99] hover:-translate-y-0.5"
+                className="group flex cursor-pointer items-start gap-3 rounded-[22px] border border-white/80 bg-white/85 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.05)] transition-all active:scale-[0.99] sm:gap-4 sm:rounded-[24px]"
               >
-                <div className="relative h-18 w-18 shrink-0 overflow-hidden rounded-[20px] shadow-lg shadow-pink-100/40">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[18px] shadow-lg shadow-pink-100/40 sm:h-18 sm:w-18 sm:rounded-[20px]">
                   <img
                     src={result.song.albumArt}
                     alt={result.song.title}
@@ -202,66 +202,69 @@ export function MusicSearchResults({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col gap-2">
                     <div className="min-w-0">
-                      <h4 className="truncate text-[16px] font-black tracking-tight text-zinc-900">
+                      <h4 className="truncate text-[15px] font-black tracking-tight text-zinc-900 sm:text-[16px]">
                         {result.song.title}
                       </h4>
-                      <p className="mt-1 truncate text-[13px] font-medium text-zinc-500">{result.song.artist}</p>
+                      <p className="mt-0.5 truncate text-[12px] font-medium text-zinc-500 sm:mt-1 sm:text-[13px]">
+                        {result.song.artist}
+                      </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
+
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <div className="rounded-full bg-zinc-100/80 px-2 py-1 text-[10px] font-bold text-zinc-500 sm:px-2.5 sm:text-[11px]">
                         {result.sourceLabel}
                       </div>
-                      <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
+                      <div className="rounded-full bg-zinc-100/80 px-2 py-1 text-[10px] font-bold text-zinc-500 sm:px-2.5 sm:text-[11px]">
                         {getCategoryLabel(result)}
                       </div>
                       {entitlementBadge ? (
-                        <div className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${entitlementBadge.className}`}>
+                        <div className={`rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px] ${entitlementBadge.className}`}>
                           {entitlementBadge.label}
                         </div>
                       ) : null}
-                      <div className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${badge.className}`}>
+                      <div className={`rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px] ${badge.className}`}>
                         {badge.label}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400">
-                        <Clock3 size={12} />
-                        {formatDuration(result.song.duration)}
-                      </div>
-                      {result.note ? (
-                        <div className="mt-1 flex min-w-0 items-start gap-1.5 text-[11px] font-bold leading-5 text-amber-500">
-                          <AlertCircle size={12} className="mt-1 shrink-0" />
-                          <span className="break-words">{result.note}</span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400">
+                          <Clock3 size={12} />
+                          {formatDuration(result.song.duration)}
                         </div>
-                      ) : null}
-                    </div>
+                        {result.note ? (
+                          <div className="mt-1 flex min-w-0 items-start gap-1.5 text-[11px] font-bold leading-5 text-amber-500">
+                            <AlertCircle size={12} className="mt-1 shrink-0" />
+                            <span className="line-clamp-2 break-words">{result.note}</span>
+                          </div>
+                        ) : null}
+                      </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onQueueSong(result.song);
-                        }}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-pink-100 hover:text-pink-500"
-                        title="加入队列"
-                      >
-                        <Plus size={17} />
-                      </button>
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onPlaySong(result.song);
-                        }}
-                        className="flex h-9 min-w-9 items-center justify-center rounded-full bg-pink-500 px-3 text-white shadow-lg shadow-pink-200 transition-transform active:scale-95"
-                        title="播放内容"
-                      >
-                        <Play size={16} fill="currentColor" />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-2 self-center">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onQueueSong(result.song);
+                          }}
+                          className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-pink-100 hover:text-pink-500"
+                          title="加入队列"
+                        >
+                          <Plus size={17} />
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPlaySong(result.song);
+                          }}
+                          className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500 text-white shadow-lg shadow-pink-200 transition-transform active:scale-95 sm:h-11 sm:w-11"
+                          title="播放内容"
+                        >
+                          <Play size={16} fill="currentColor" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -270,10 +273,10 @@ export function MusicSearchResults({
           })}
         </div>
       ) : (
-        <div className="rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+        <div className="rounded-[26px] border border-white/70 bg-white/80 px-6 py-14 shadow-[0_10px_30px_rgba(15,23,42,0.05)] sm:rounded-[28px] sm:py-16">
           <div className="flex flex-col items-center justify-center text-center text-zinc-400">
             <Music2 size={34} className="mb-4 text-zinc-300" />
-            <p className="text-[15px] font-bold text-zinc-700">当前筛选下没有结果</p>
+            <p className="text-[14px] font-bold text-zinc-700 sm:text-[15px]">当前筛选下没有结果</p>
             <p className="mt-1 text-[12px] font-medium text-zinc-400">切换上方筛选试试，也可以换个关键词继续搜索。</p>
           </div>
         </div>
