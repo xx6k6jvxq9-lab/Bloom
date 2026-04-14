@@ -74,6 +74,7 @@ async function searchNeteaseMusic(query: string, limit = 12): Promise<MusicSearc
     song: mapNeteaseSongToSong(track),
     sourceId: 'netease',
     sourceLabel: '网易云',
+    category: 'song',
     playbackStatus: 'unverified',
     note: '先展示搜索结果，播放时再校验当前网页端是否可播。',
   }));

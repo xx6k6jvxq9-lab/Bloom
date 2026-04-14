@@ -73,6 +73,7 @@ async function searchFreeToUseMusic(query: string, limit = 30): Promise<MusicSea
     song: mapFreeToUseTrackToSong(track),
     sourceId: 'freetouse',
     sourceLabel: 'Free To Use',
+    category: 'free',
     playbackStatus: track.is_premium ? 'search-only' : 'supported',
     note: track.is_premium
       ? '这首是高级曲目，当前只展示结果，不直接播放。'

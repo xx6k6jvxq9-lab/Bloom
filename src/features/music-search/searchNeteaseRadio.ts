@@ -90,6 +90,7 @@ async function searchNeteaseRadio(query: string, limit = 8): Promise<MusicSearch
       song,
       sourceId: 'netease-radio',
       sourceLabel: '网易云播客',
+      category: 'podcast',
       playbackStatus: 'supported',
       note: '已匹配当前可直接播放的播客或电台节目。',
     });

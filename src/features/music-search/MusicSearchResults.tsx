@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Clock3, LoaderCircle, Music2, Play, Plus, Search, Sparkles } from 'lucide-react';
 import type { Song } from '../../types';
 import { getMusicSearchSources, searchMusicAcrossSources } from './musicSearchSources';
-import type { MusicSearchResult } from './musicSearchTypes';
+import type { MusicSearchFilter, MusicSearchResult } from './musicSearchTypes';
 
 function formatDuration(seconds: number) {
   if (!seconds) return '--:--';
@@ -31,6 +31,24 @@ function getPlaybackBadge(result: MusicSearchResult) {
   }
 }
 
+const FILTERS: Array<{ id: MusicSearchFilter; label: string }> = [
+  { id: 'all', label: '全部' },
+  { id: 'song', label: '歌曲' },
+  { id: 'podcast', label: '播客' },
+  { id: 'free', label: '免费源' },
+];
+
+function getCategoryLabel(result: MusicSearchResult) {
+  switch (result.category) {
+    case 'podcast':
+      return '播客';
+    case 'free':
+      return '免费源';
+    default:
+      return '歌曲';
+  }
+}
+
 export function MusicSearchResults({
   query,
   onPlaySong,
@@ -43,6 +61,7 @@ export function MusicSearchResults({
   const [results, setResults] = useState<MusicSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [activeFilter, setActiveFilter] = useState<MusicSearchFilter>('all');
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -50,6 +69,7 @@ export function MusicSearchResults({
       setResults([]);
       setErrorMessage('');
       setIsLoading(false);
+      setActiveFilter('all');
       return;
     }
 
@@ -81,6 +101,11 @@ export function MusicSearchResults({
 
   const activeSources = useMemo(() => getMusicSearchSources(), []);
 
+  const filteredResults = useMemo(() => {
+    if (activeFilter === 'all') return results;
+    return results.filter((result) => result.category === activeFilter);
+  }, [activeFilter, results]);
+
   if (!query.trim()) return null;
 
   return (
@@ -96,13 +121,29 @@ export function MusicSearchResults({
             </div>
             <h3 className="text-[26px] font-black tracking-tight text-zinc-900">搜索结果</h3>
             <p className="mt-1 text-[13px] font-medium leading-6 text-zinc-500">
-              当前接入 {activeSources.map((source) => source.label).join(' / ')}，歌曲和播客会一起展示。
+              当前接入 {activeSources.map((source) => source.label).join(' / ')}，可以切换筛选查看这次搜到的内容类型。
             </p>
           </div>
           <div className="shrink-0 rounded-full bg-white/85 px-3 py-1.5 text-[12px] font-bold leading-5 text-zinc-500 shadow-sm">
-            {isLoading ? '搜索中...' : `${results.length} 个结果`}
+            {isLoading ? '搜索中...' : `${filteredResults.length} 个结果`}
           </div>
         </div>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            onClick={() => setActiveFilter(filter.id)}
+            className={`shrink-0 rounded-full px-4 py-2 text-[12px] font-bold transition-colors ${
+              activeFilter === filter.id
+                ? 'bg-pink-500 text-white shadow-lg shadow-pink-200'
+                : 'bg-white text-zinc-500 border border-zinc-100'
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
@@ -121,9 +162,9 @@ export function MusicSearchResults({
             </p>
           </div>
         </div>
-      ) : results.length > 0 ? (
+      ) : filteredResults.length > 0 ? (
         <div className="space-y-3">
-          {results.map((result, index) => {
+          {filteredResults.map((result, index) => {
             const badge = getPlaybackBadge(result);
             return (
               <div
@@ -155,6 +196,9 @@ export function MusicSearchResults({
                     <div className="flex shrink-0 items-center gap-2">
                       <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
                         {result.sourceLabel}
+                      </div>
+                      <div className="rounded-full bg-zinc-100/80 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
+                        {getCategoryLabel(result)}
                       </div>
                       <div className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${badge.className}`}>
                         {badge.label}
@@ -208,8 +252,8 @@ export function MusicSearchResults({
         <div className="rounded-[28px] border border-white/70 bg-white/80 px-6 py-16 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col items-center justify-center text-center text-zinc-400">
             <Music2 size={34} className="mb-4 text-zinc-300" />
-            <p className="text-[15px] font-bold text-zinc-700">这次没有找到可用内容</p>
-            <p className="mt-1 text-[12px] font-medium text-zinc-400">换个关键词试试，也可以搜歌名、歌手名或播客名。</p>
+            <p className="text-[15px] font-bold text-zinc-700">当前筛选下没有结果</p>
+            <p className="mt-1 text-[12px] font-medium text-zinc-400">切换上方筛选试试，也可以换个关键词继续搜索。</p>
           </div>
         </div>
       )}
