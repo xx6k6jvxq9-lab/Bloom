@@ -1,5 +1,6 @@
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { selectActiveGroupWorldBooks } from '../../features/group-world-book/selectActiveGroupWorldBooks';
+import { loadChatHistoryRecords } from '../../features/persistence/chatHistoryStore';
 import type {
   Character,
   ChatGroup,
@@ -251,6 +252,9 @@ function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTempor
 export function buildChatSceneInput(
   params: BuildChatSceneInputParams,
 ): BuildChatPromptOptions {
+  const persistedChatHistory = loadChatHistoryRecords();
+  const directEvidenceWaves = persistedChatHistory.directRelationshipWaves?.[params.character.id] || [];
+  const directEvidenceFacts = persistedChatHistory.directFactTraces?.[params.character.id] || [];
   const directMemoryReadableGroups = getDirectMemoryReadableGroups(
     params.chatGroups,
     params.character.id,
@@ -268,12 +272,18 @@ export function buildChatSceneInput(
     groupMessages: directMemoryReadableGroups
       .flatMap((group) => group.history || [])
       .filter((message) => message.role === 'user' || message.senderCharacterId === params.character.id),
-    groupRelationshipWaves: directMemoryReadableGroups
-      .flatMap((group) => group.relationshipWaves || [])
-      .filter((wave) => wave.scope === 'cross_scene_readable'),
-    factTraces: directMemoryReadableGroups
-      .flatMap((group) => group.factTraces || [])
-      .filter((factTrace) => factTrace.visibility === 'cross_scene_readable'),
+    groupRelationshipWaves: [
+      ...directEvidenceWaves,
+      ...directMemoryReadableGroups
+        .flatMap((group) => group.relationshipWaves || [])
+        .filter((wave) => wave.scope === 'cross_scene_readable'),
+    ],
+    factTraces: [
+      ...directEvidenceFacts,
+      ...directMemoryReadableGroups
+        .flatMap((group) => group.factTraces || [])
+        .filter((factTrace) => factTrace.visibility === 'cross_scene_readable'),
+    ],
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
   const directGroupMessages = directMemoryReadableGroups

@@ -4,9 +4,54 @@ import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
   extractGroupSessions,
+  loadChatHistoryRecords,
   saveChatHistoryRecords,
   type PersistedChatHistoryData,
 } from './chatHistoryStore';
+import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
+import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
+
+function mergeDirectWaveRecords(
+  extracted: Record<string, RelationshipWaveRecord[]>,
+): Record<string, RelationshipWaveRecord[]> {
+  const persisted = loadChatHistoryRecords().directRelationshipWaves || {};
+  const keys = new Set([...Object.keys(persisted), ...Object.keys(extracted)]);
+  const result: Record<string, RelationshipWaveRecord[]> = {};
+
+  for (const key of keys) {
+    const preserved = (persisted[key] || []).filter((record) => record.sourceScene !== 'direct_chat');
+    result[key] = [...preserved, ...(extracted[key] || [])].filter((record, index, array) => (
+      array.findIndex((candidate) => (
+        candidate.sourceScene === record.sourceScene
+        && candidate.summary === record.summary
+        && candidate.timestamp === record.timestamp
+      )) === index
+    )).slice(-12);
+  }
+
+  return result;
+}
+
+function mergeDirectFactTraceRecords(
+  extracted: Record<string, FactTraceRecord[]>,
+): Record<string, FactTraceRecord[]> {
+  const persisted = loadChatHistoryRecords().directFactTraces || {};
+  const keys = new Set([...Object.keys(persisted), ...Object.keys(extracted)]);
+  const result: Record<string, FactTraceRecord[]> = {};
+
+  for (const key of keys) {
+    const preserved = (persisted[key] || []).filter((record) => record.sourceScene !== 'direct_chat');
+    result[key] = [...preserved, ...(extracted[key] || [])].filter((record, index, array) => (
+      array.findIndex((candidate) => (
+        candidate.sourceScene === record.sourceScene
+        && candidate.summary === record.summary
+        && candidate.timestamp === record.timestamp
+      )) === index
+    )).slice(-12);
+  }
+
+  return result;
+}
 
 function serializeChatHistoryRecords(data: PersistedChatHistoryData): string {
   return JSON.stringify(data);
@@ -23,8 +68,8 @@ export function usePersistedChatHistoryBridge(
   const hasHydratedRef = useRef(false);
   const initialDataRef = useRef<PersistedChatHistoryData>({
     directHistory,
-    directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
-    directFactTraces: extractDirectFactTraces(directHistory),
+    directRelationshipWaves: mergeDirectWaveRecords(extractDirectRelationshipWaves(directHistory)),
+    directFactTraces: mergeDirectFactTraceRecords(extractDirectFactTraces(directHistory)),
     groupSessions: extractGroupSessions(chatGroups),
   });
   const lastPersistedRef = useRef<string | null>(null);
@@ -43,8 +88,8 @@ export function usePersistedChatHistoryBridge(
   useEffect(() => {
     const currentData = {
       directHistory,
-      directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
-      directFactTraces: extractDirectFactTraces(directHistory),
+      directRelationshipWaves: mergeDirectWaveRecords(extractDirectRelationshipWaves(directHistory)),
+      directFactTraces: mergeDirectFactTraceRecords(extractDirectFactTraces(directHistory)),
       groupSessions: extractGroupSessions(chatGroups),
     };
     const serialized = serializeChatHistoryRecords(currentData);

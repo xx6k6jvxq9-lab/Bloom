@@ -15,17 +15,40 @@ export function usePressToRecordInteraction({
 }: UsePressToRecordInteractionArgs) {
   return useMemo(() => ({
     buttonLabel: isRecording ? '松开 发送' : '按住 说话',
-    onPointerDown: () => {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (typeof event.currentTarget.setPointerCapture === 'function') {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Ignore capture failures and still try to record.
+        }
+      }
       void startRecording();
     },
-    onPointerUp: () => {
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      if (typeof event.currentTarget.releasePointerCapture === 'function') {
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore release failures.
+        }
+      }
       stopRecording();
     },
-    onPointerCancel: () => {
+    onPointerCancel: (event: React.PointerEvent<HTMLElement>) => {
+      if (typeof event.currentTarget.releasePointerCapture === 'function') {
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore release failures.
+        }
+      }
       cancelRecording();
     },
     onPointerLeave: () => {
-      cancelRecording();
+      // Pointer capture keeps the interaction alive even if the finger slides
+      // slightly outside the button bounds, so leaving the element should not
+      // cancel the recording by itself.
     },
   }), [cancelRecording, isRecording, startRecording, stopRecording]);
 }

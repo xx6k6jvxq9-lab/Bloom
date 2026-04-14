@@ -17,6 +17,7 @@ export type RelationshipWaveSourceScene =
   | 'direct_chat'
   | 'group_chat'
   | 'dating'
+  | 'music_together'
   | 'couple_space'
   | 'moments';
 

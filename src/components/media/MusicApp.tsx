@@ -19,8 +19,6 @@ import {
   Volume2,
   Share2,
   Disc,
-  Send,
-  Smile,
   GripVertical,
   Trash2,
   X,
@@ -34,6 +32,9 @@ import {
   MusicData,
   Character,
   ChatMessage,
+  ChatHistory,
+  VisualSettings,
+  AppSettings,
 } from "../../types";
 import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
@@ -41,6 +42,10 @@ import { MusicSearchResults } from "../../features/music-search/MusicSearchResul
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
 import { generateTogetherChatReply } from "../../features/music-together/generateTogetherChatReply";
+import { formatTogetherReplyMessages } from "../../features/music-together/formatTogetherChatReply";
+import { TogetherChatPanel } from "../../features/music-together/TogetherChatPanel";
+import { buildMusicTogetherWritebackPlan } from "../../features/music-together/buildMusicTogetherWritebackPlan";
+import { persistMusicTogetherEvidence } from "../../features/music-together/persistMusicTogetherEvidence";
 
 function ResolvedMusicAvatar({
   value,
@@ -84,6 +89,10 @@ type MusicAppProps = {
   userName: string;
   musicData: MusicData;
   onUpdateMusicData: (data: MusicData) => void;
+  directChatHistory: ChatHistory;
+  visualSettings: VisualSettings;
+  settings: AppSettings;
+  onPatchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onBack: () => void;
   allCharacters: Character[];
   audioRef: React.MutableRefObject<HTMLAudioElement | null>;
@@ -95,6 +104,10 @@ export default function MusicApp({
   userName,
   musicData,
   onUpdateMusicData,
+  directChatHistory,
+  visualSettings,
+  settings,
+  onPatchCharacter,
   onBack,
   allCharacters,
   audioRef,
@@ -136,6 +149,7 @@ export default function MusicApp({
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
+  const onPatchCharacterRef = useRef(onPatchCharacter);
 
   const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
     if (!song) return "";
@@ -237,6 +251,10 @@ export default function MusicApp({
     ...defaultMusicData,
     ...musicData,
   };
+  const activeTogetherCharacter = useMemo(
+    () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || character,
+    [allCharacters, character, currentMusicData.togetherWith],
+  );
   const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
@@ -252,7 +270,12 @@ export default function MusicApp({
   useEffect(() => {
     currentMusicDataRef.current = currentMusicData;
     onUpdateMusicDataRef.current = onUpdateMusicData;
-  }, [currentMusicData, onUpdateMusicData]);
+    onPatchCharacterRef.current = onPatchCharacter;
+  }, [
+    currentMusicData,
+    onPatchCharacter,
+    onUpdateMusicData,
+  ]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -408,6 +431,10 @@ export default function MusicApp({
       return localCurrentTime >= line.time && (index === lyrics.length - 1 || localCurrentTime < lyrics[index + 1].time);
     });
   }, [lyrics, localCurrentTime]);
+  const currentLyricLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex] : null;
+  const nearbyLyricLines = activeLyricIndex >= 0
+    ? lyrics.slice(Math.max(0, activeLyricIndex - 1), activeLyricIndex + 2)
+    : [];
 
   // Scroll active lyric into view
   useEffect(() => {
@@ -574,15 +601,17 @@ export default function MusicApp({
   };
 
   const inviteTogether = (charId: string) => {
+    const invitedCharacter = allCharacters.find((item) => item.id === charId);
     onUpdateMusicData({
       ...currentMusicData,
       togetherWith: charId,
       togetherStartTime: Date.now(),
       chatHistory: [
-        ...currentMusicData.chatHistory,
         {
           role: "model",
-          text: "嘿，我接受了你的邀请！让我们一起听这首歌吧。",
+          text: invitedCharacter
+            ? `好呀，${invitedCharacter.name} 已经到场了。先从这首开始吧。`
+            : "好呀，今天这段时间我陪你一起听。先从这首开始吧。",
           timestamp: Date.now(),
         },
       ],
@@ -770,59 +799,75 @@ export default function MusicApp({
     }
   };
 
-  const sendChatMessage = async () => {
-    const trimmedInput = chatInput.trim();
-    if (
-      !trimmedInput
-      || isSendingTogetherChat
-      || !currentMusicData.togetherWith
-    ) {
+  const sendTogetherMessage = async (message: ChatMessage) => {
+    const sessionCharacterId = currentMusicData.togetherWith;
+    const sessionStartedAt = currentMusicData.togetherStartTime;
+    if (isSendingTogetherChat || !sessionCharacterId || !sessionStartedAt) {
       return;
     }
-
-    const newMsg: ChatMessage = {
-      role: "user",
-      text: trimmedInput,
-      timestamp: Date.now(),
-    };
-    const updatedHistory = [...currentMusicData.chatHistory, newMsg];
+    const sessionCharacter =
+      allCharacters.find((item) => item.id === sessionCharacterId) || activeTogetherCharacter;
+    const updatedHistory = [...currentMusicData.chatHistory, message];
 
     onUpdateMusicData({
       ...currentMusicData,
       chatHistory: updatedHistory,
     });
-    setChatInput("");
     setIsSendingTogetherChat(true);
 
     try {
       const replyText = await generateTogetherChatReply({
-        character,
+        character: sessionCharacter,
         userName,
         currentSong: currentMusicData.currentSong,
         togetherDuration: getTogetherDuration(),
         history: updatedHistory,
+        directChatHistory: directChatHistory[sessionCharacterId] || [],
+        currentLyric: currentLyricLine,
+        nearbyLyrics: nearbyLyricLines,
       });
 
       const nextData = currentMusicDataRef.current;
-      if (!nextData?.togetherWith) {
+      if (
+        !nextData
+        || nextData.togetherWith !== sessionCharacterId
+        || nextData.togetherStartTime !== sessionStartedAt
+      ) {
         return;
       }
 
+      const replyMessages = formatTogetherReplyMessages(replyText, Date.now());
+      const nextSessionHistory = [...nextData.chatHistory, ...replyMessages];
+      const writebackPlan = buildMusicTogetherWritebackPlan({
+        character: sessionCharacter,
+        currentSong: currentMusicData.currentSong,
+        sessionHistory: nextSessionHistory,
+      });
+
       onUpdateMusicDataRef.current({
         ...nextData,
-        chatHistory: [
-          ...nextData.chatHistory,
-          {
-            role: "model",
-            text: replyText,
-            timestamp: Date.now(),
-          },
-        ],
+        chatHistory: nextSessionHistory,
+      });
+      persistMusicTogetherEvidence({
+        characterId: sessionCharacterId,
+        relationshipWaves: writebackPlan.relationshipWaves,
+        factTraces: writebackPlan.factTraces,
+      });
+      onPatchCharacterRef.current(sessionCharacterId, {
+        lastMessage: replyMessages[replyMessages.length - 1]?.text || message.text,
+        lastTime: replyMessages[replyMessages.length - 1]?.timestamp || message.timestamp,
+        ...(writebackPlan.shortTermSummary
+          ? { shortTermSummary: writebackPlan.shortTermSummary }
+          : {}),
       });
     } catch (error) {
       console.error("Together chat generation error:", error);
       const nextData = currentMusicDataRef.current;
-      if (!nextData?.togetherWith) {
+      if (
+        !nextData
+        || nextData.togetherWith !== sessionCharacterId
+        || nextData.togetherStartTime !== sessionStartedAt
+      ) {
         return;
       }
 
@@ -843,6 +888,45 @@ export default function MusicApp({
     } finally {
       setIsSendingTogetherChat(false);
     }
+  };
+  const sendChatMessage = async () => {
+    const trimmedInput = chatInput.trim();
+    if (!trimmedInput) {
+      return;
+    }
+
+    setChatInput("");
+    await sendTogetherMessage({
+      role: "user",
+      text: trimmedInput,
+      timestamp: Date.now(),
+    });
+  };
+  const sendTogetherStickerMessage = async (sticker: string) => {
+    await sendTogetherMessage({
+      role: "user",
+      text: "[sticker]",
+      imageUrl: sticker,
+      timestamp: Date.now(),
+    });
+  };
+  const sendTogetherAudioMessage = async ({
+    audioUrl,
+    audioMimeType,
+    durationSeconds,
+  }: {
+    audioUrl: string;
+    audioMimeType: string;
+    durationSeconds?: number;
+  }) => {
+    await sendTogetherMessage({
+      role: "user",
+      text: "[audio]",
+      audioUrl,
+      audioMimeType,
+      ...(typeof durationSeconds === "number" ? { duration: durationSeconds } : {}),
+      timestamp: Date.now(),
+    });
   };
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -997,9 +1081,9 @@ export default function MusicApp({
                     className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden z-10"
                   >
                     <ResolvedMusicAvatar
-                      value={character.avatar}
+                      value={activeTogetherCharacter.avatar}
                       className="w-full h-full object-cover"
-                      alt={character.name}
+                      alt={activeTogetherCharacter.name}
                     />
                   </motion.div>
                 </div>
@@ -2167,6 +2251,10 @@ export default function MusicApp({
             <Reorder.Item
               key={song.id}
               value={song}
+              onClick={() => {
+                playSong(song);
+                setShowQueue(false);
+              }}
               className={`flex items-center gap-4 p-3 rounded-2xl border transition-all ${
                 currentMusicData.currentSong?.id === song.id
                   ? "bg-pink-50 border-pink-100 shadow-sm"
@@ -2196,7 +2284,8 @@ export default function MusicApp({
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation();
                     const newQueue = currentMusicData.queue.filter(
                       (s) => s.id !== song.id,
                     );
@@ -2206,7 +2295,10 @@ export default function MusicApp({
                 >
                   <Trash2 size={18} />
                 </button>
-                <div className="p-2 text-zinc-300 cursor-grab active:cursor-grabbing">
+                <div
+                  onClick={(event) => event.stopPropagation()}
+                  className="p-2 text-zinc-300 cursor-grab active:cursor-grabbing"
+                >
                   <GripVertical size={18} />
                 </div>
               </div>
@@ -2220,93 +2312,6 @@ export default function MusicApp({
             <p className="font-bold">清单空空如也</p>
           </div>
         )}
-      </div>
-    </motion.div>
-  );
-
-  const renderTogetherChat = () => (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      className="absolute inset-0 bg-white z-[200] flex flex-col"
-    >
-      {/* Chat Header */}
-      <div className="px-6 pt-12 pb-4 flex items-center justify-between border-b border-zinc-100">
-        <button
-          onClick={() => setShowChat(false)}
-          className="p-2 -ml-2 text-zinc-500"
-        >
-          <ChevronLeft size={28} strokeWidth={2.5} />
-        </button>
-        <div className="flex flex-col items-center">
-          <h2 className="text-sm font-bold text-zinc-800">一起听聊天</h2>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-[10px] text-zinc-400 font-medium">
-              正在与 {character.name} 共听
-            </span>
-          </div>
-        </div>
-        <div className="w-10" /> {/* Spacer */}
-      </div>
-
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-50/50">
-        {currentMusicData.chatHistory.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-2`}
-          >
-            {msg.role === "model" && (
-              <ResolvedMusicAvatar
-                value={character.avatar}
-                className="w-8 h-8 rounded-full object-cover shadow-sm mb-1"
-                alt={character.name}
-              />
-            )}
-            <div
-              className={`max-w-[75%] px-4 py-2.5 rounded-[20px] text-[14px] leading-relaxed shadow-sm ${
-                msg.role === "user"
-                  ? "bg-pink-500 text-white rounded-br-none"
-                  : "bg-white text-zinc-800 rounded-bl-none border border-zinc-100"
-              }`}
-            >
-              {msg.text}
-            </div>
-            {msg.role === "user" && (
-              <ResolvedMusicAvatar
-                value={userAvatar}
-                className="w-8 h-8 rounded-full object-cover shadow-sm mb-1"
-                alt={userName}
-              />
-            )}
-          </div>
-        ))}
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* Chat Input */}
-      <div className="p-4 pb-10 bg-white border-t border-zinc-100 flex gap-3 items-center">
-        <div className="flex-1 bg-zinc-100 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-            disabled={isSendingTogetherChat}
-            placeholder="说点什么..."
-            className="flex-1 bg-transparent outline-none text-[14px]"
-          />
-          <Smile size={20} className="text-zinc-400" />
-        </div>
-        <button
-          onClick={sendChatMessage}
-          disabled={isSendingTogetherChat}
-          className="w-11 h-11 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg shadow-pink-200 active:scale-90 transition-transform disabled:opacity-60"
-        >
-          <Send size={20} />
-        </button>
       </div>
     </motion.div>
   );
@@ -2354,7 +2359,26 @@ export default function MusicApp({
       </div>
 
       {/* Full Screen Chat Overlay */}
-      <AnimatePresence>{showChat && renderTogetherChat()}</AnimatePresence>
+      <AnimatePresence>
+        {showChat && (
+          <TogetherChatPanel
+            activeTogetherCharacter={activeTogetherCharacter}
+            settings={settings}
+            userAvatar={userAvatar}
+            userName={userName}
+            history={currentMusicData.chatHistory}
+            chatInput={chatInput}
+            isSendingTogetherChat={isSendingTogetherChat}
+            visualSettings={visualSettings}
+            chatEndRef={chatEndRef}
+            onBack={() => setShowChat(false)}
+            onInputChange={setChatInput}
+            onSend={sendChatMessage}
+            onSendSticker={sendTogetherStickerMessage}
+            onSendAudio={sendTogetherAudioMessage}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Data Management Overlay */}
       <AnimatePresence>

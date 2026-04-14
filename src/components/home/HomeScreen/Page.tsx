@@ -1795,14 +1795,13 @@ export function HomeScreen({
               widget={widget}
               placement={placement}
               isArrangeMode={isArrangeMode}
+              isDragging={draggingWidgetId === widget.id}
+              hideWhileDragging={draggingWidgetId === widget.id}
               appData={appData}
               setAppData={setAppData}
-              onDragStart={() => {
-                resetSwipeInteraction();
-                setDraggingWidgetId(widget.id);
+              onPointerDragStart={(clientX, clientY, pointerId) => {
+                beginWidgetPointerDrag(widget, currentPage, placement, clientX, clientY, pointerId);
               }}
-              onDrag={info => handleWidgetDragPreview(widget.id, placement.x, placement.y, info, currentPage)}
-              onDragEnd={info => handleWidgetDragCommit(widget.id, placement.x, placement.y, info, currentPage)}
               onWidgetChange={(updates) => {
                 const currentWidgets = visualSettings.widgets || [];
                 const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
@@ -1851,18 +1850,29 @@ export function HomeScreen({
               app={app}
               placement={placement}
               committedPlacement={committedPlacement}
+              gridStyle={getExplicitGridStyle(placement.slotId, 1, 1)}
               visualSettings={visualSettings}
               iconSize={iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0)}
               isPreviewing={draggingIconId !== null && draggingIconId !== app.id}
               isDragging={draggingIconId === app.id}
-              onDragStart={() => {
-                setDraggingIconId(app.id);
-                setDraggingIconPage(currentPage);
-                lastPreviewSlotIdRef.current = committedPlacement.slotId;
-                setIconPreviewConfigs(null);
+              hideWhileDragging={draggingIconId === app.id}
+              isArrangeMode={isArrangeMode}
+              onEnterArrangeMode={() => {
+                resetSwipeInteraction();
+                ignoreSwipeUntilRef.current = Date.now() + 260;
+                setIsArrangeMode(true);
               }}
-              onDrag={info => handleIconDragPreview(app.id, committedPlacement.x, committedPlacement.y, info)}
-              onDragEnd={info => handleIconDragCommit(app.id, committedPlacement.x, committedPlacement.y, info)}
+              onPointerDragStart={(clientX, clientY, pointerId) => {
+                beginIconPointerDrag(
+                  app,
+                  currentPage,
+                  committedPlacement,
+                  clientX,
+                  clientY,
+                  pointerId,
+                  iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                );
+              }}
             />
           );
         })}

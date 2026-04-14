@@ -429,29 +429,16 @@ function hydratePersistedCharacters(
 }
 
 
-const DEFAULT_MOMENTS: MomentItem[] = [
-  {
-    id: 'm1',
-    authorId: 'char-2',
-    content: '今天把几个关键测试点都跑了一遍，终于顺下来了。喝杯咖啡缓一缓。',
-    images: ['https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3'],
-    timestamp: Date.now() - 1000 * 60 * 30, // 30 mins ago
-    likes: 1,
-    likedBy: ['user'],
-    comments: [
-      { id: 'c1', authorId: 'user', content: '在哪家店呀？', timestamp: Date.now() - 1000 * 60 * 10 }
-    ]
-  },
-  {
-    id: 'm2',
-    authorId: 'user',
-    content: '桌面和情侣空间又调了一轮，细节越来越顺眼了。',
-    timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-    likes: 1,
-    likedBy: ['char-2'],
-    comments: []
+const DEFAULT_MOMENTS: MomentItem[] = [];
+const REMOVED_DEFAULT_MOMENT_IDS = new Set(['m1', 'm2']);
+
+function sanitizePersistedMoments(moments: MomentItem[] | null | undefined): MomentItem[] {
+  if (!Array.isArray(moments)) {
+    return [];
   }
-];
+
+  return moments.filter((moment) => !REMOVED_DEFAULT_MOMENT_IDS.has(moment.id));
+}
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -695,7 +682,7 @@ export default function App() {
               }
             : parsed.userProfile,
           worldBooks: parsed.worldBooks || [],
-          moments: parsed.moments || DEFAULT_MOMENTS,
+          moments: sanitizePersistedMoments(parsed.moments),
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           chatGroups,
           savedDates: parsed.savedDates || [],
@@ -1282,6 +1269,10 @@ export default function App() {
               userAvatar={appData.userProfile.avatar}
               userName={appData.userProfile.name}
               character={couplePartnerCharacter}
+              directChatHistory={appData.chatHistory}
+              visualSettings={appData.visualSettings}
+              settings={settings}
+              onPatchCharacter={handlePatchCharacterById}
               allCharacters={appData.characters}
               onBack={() => setActiveApp('home')}
               audioRef={audioRef}
