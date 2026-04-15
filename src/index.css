@@ -176,3 +176,13 @@ body {
     background-color: #fff;
   }
 }
+
+@media (display-mode: standalone) {
+  .app-shell {
+    background: #f8fafc;
+  }
+
+  .app-home-indicator-wrap {
+    display: none;
+  }
+}
