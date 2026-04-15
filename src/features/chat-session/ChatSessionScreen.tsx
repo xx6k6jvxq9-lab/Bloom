@@ -1528,7 +1528,7 @@ export function ChatSessionScreen({
                                   value={msg.audioUrl}
                                   durationSeconds={msg.duration}
                                   transcript={msg.audioTranscript || null}
-                                  showTranscript={expandedAudioTranscriptKeys.has(getMessageSelectionKey(msg))}
+                                  showTranscript={!!msg.audioTranscript}
                                   isUser={msg.role === 'user'}
                                   onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                                   onContextMenu={(e) => {

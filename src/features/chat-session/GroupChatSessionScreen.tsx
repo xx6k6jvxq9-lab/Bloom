@@ -2798,7 +2798,7 @@ export function GroupChatSessionScreen({
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
                       transcript={msg.audioTranscript || null}
-                      showTranscript={expandedAudioTranscriptKeys.has(getGroupMessageSelectionKey(msg))}
+                      showTranscript={!!msg.audioTranscript}
                       isUser={isUser}
                       className="shadow-none"
                     />
