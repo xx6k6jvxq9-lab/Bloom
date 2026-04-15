@@ -2676,7 +2676,7 @@ export default function MusicApp({
                       disabled={
                         !directMusicUrl.trim() || !directMusicTitle.trim()
                       }
-                      className="w-full py-3 bg-zinc-900 rounded-xl font-bold text-white shadow-lg shadow-zinc-200 active:scale-95 transition-transform disabled:opacity-50"
+                      className="w-full py-3 rounded-xl bg-pink-500 font-bold text-white shadow-lg shadow-pink-200/80 active:scale-95 transition-transform disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none"
                     >
                       立即播放
                     </button>
@@ -2702,7 +2702,7 @@ export default function MusicApp({
                     <button
                       onClick={handleImportNeteasePlaylist}
                       disabled={!neteaseUrl.trim() || isImporting}
-                      className="w-full py-3 bg-zinc-900 rounded-xl font-bold text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-200/80 active:scale-95 transition-transform disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none"
                     >
                       {isImporting ? (
                         <RefreshCw size={18} className="animate-spin" />
