@@ -442,9 +442,6 @@ function sanitizePersistedMoments(moments: MomentItem[] | null | undefined): Mom
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  if (!audioRef.current) {
-    audioRef.current = new Audio();
-  }
   const [activeApp, setActiveApp] = useState<'home' | 'chat' | 'settings' | 'chat-session' | 'add-character' | 'sms' | 'character-profile' | 'character-moments' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet' | 'group-chat-session'>('home');
   const [activeTab, setActiveTab] = useState<'chat' | 'contacts' | 'moments' | 'me'>('chat');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
@@ -1262,6 +1259,13 @@ export default function App() {
               onBack={() => setActiveApp('home')}
             />
           )}
+          <audio
+            ref={audioRef}
+            preload="auto"
+            playsInline
+            className="pointer-events-none absolute h-0 w-0 opacity-0"
+            aria-hidden="true"
+          />
           {activeApp === 'music' && (
             <MusicApp
               musicData={appData.musicData!}

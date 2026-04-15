@@ -346,10 +346,10 @@ export default function MusicApp({
 
   // Audio Playback Logic
   useEffect(() => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-    }
     const audio = audioRef.current;
+    if (!audio) {
+      return undefined;
+    }
 
     const handleTimeUpdate = () => {
       if (audio.duration) {
