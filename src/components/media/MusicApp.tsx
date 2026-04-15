@@ -152,6 +152,7 @@ export default function MusicApp({
   const onPatchCharacterRef = useRef(onPatchCharacter);
   const neteaseFallbackAttemptedRef = useRef<string | null>(null);
   const prefersDirectGesturePlaybackRef = useRef(false);
+  const gesturePrimedSongIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -192,6 +193,7 @@ export default function MusicApp({
   const primePlaybackFromGesture = async (song: Song) => {
     const audio = audioRef.current;
     if (!audio || !prefersDirectGesturePlaybackRef.current) {
+      gesturePrimedSongIdRef.current = null;
       return;
     }
 
@@ -215,7 +217,9 @@ export default function MusicApp({
       setIsAudioActuallyPlaying(false);
       playPromiseRef.current = audio.play();
       await playPromiseRef.current;
+      gesturePrimedSongIdRef.current = song.id;
     } catch (error) {
+      gesturePrimedSongIdRef.current = null;
       if (error instanceof Error && error.name !== "AbortError") {
         console.error("Gesture playback error:", error);
       }
@@ -556,6 +560,7 @@ export default function MusicApp({
 
       // If source changed, update it
       if (currentAudioUrl !== targetAudioUrl) {
+        gesturePrimedSongIdRef.current = null;
         // Before changing src, we should wait for any pending play promise
         if (playPromiseRef.current) {
           try {
@@ -575,6 +580,15 @@ export default function MusicApp({
       }
 
       if (currentMusicData.isPlaying) {
+        if (
+          gesturePrimedSongIdRef.current === currentMusicData.currentSong.id &&
+          currentAudioUrl === targetAudioUrl &&
+          !audio.paused
+        ) {
+          gesturePrimedSongIdRef.current = null;
+          return;
+        }
+
         console.log('MusicApp attempting to play');
         setIsAudioActuallyPlaying(false);
         // Wait for any pending play promise
@@ -602,9 +616,11 @@ export default function MusicApp({
             });
           }
         } finally {
+          gesturePrimedSongIdRef.current = null;
           playPromiseRef.current = null;
         }
       } else {
+        gesturePrimedSongIdRef.current = null;
         setPlaybackError("");
         if (!audio.paused) {
           audio.pause();
