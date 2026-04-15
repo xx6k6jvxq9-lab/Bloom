@@ -190,43 +190,6 @@ export default function MusicApp({
     return new URL(url, window.location.origin).toString();
   };
 
-  const waitForAudioReady = (audio: HTMLAudioElement, expectedUrl: string) => {
-    if (!expectedUrl) {
-      return Promise.resolve();
-    }
-
-    const normalizedExpectedUrl = normalizePlaybackUrl(expectedUrl);
-    const normalizedCurrentUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
-
-    if (normalizedCurrentUrl === normalizedExpectedUrl && audio.readyState >= 2) {
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      let settled = false;
-
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        audio.removeEventListener("loadedmetadata", finish);
-        audio.removeEventListener("canplay", finish);
-        audio.removeEventListener("canplaythrough", finish);
-        audio.removeEventListener("error", finish);
-        audio.removeEventListener("stalled", finish);
-        window.clearTimeout(timeoutId);
-        resolve();
-      };
-
-      const timeoutId = window.setTimeout(finish, 4000);
-
-      audio.addEventListener("loadedmetadata", finish, { once: true });
-      audio.addEventListener("canplay", finish, { once: true });
-      audio.addEventListener("canplaythrough", finish, { once: true });
-      audio.addEventListener("error", finish, { once: true });
-      audio.addEventListener("stalled", finish, { once: true });
-    });
-  };
-
   const primePlaybackFromGesture = async (song: Song) => {
     const audio = audioRef.current;
     if (!audio || !prefersDirectGesturePlaybackRef.current) {
@@ -247,7 +210,6 @@ export default function MusicApp({
       audio.src = nextPlaybackUrl;
       audio.currentTime = 0;
       audio.load();
-      await waitForAudioReady(audio, nextPlaybackUrl);
     }
 
     try {
@@ -615,7 +577,6 @@ export default function MusicApp({
         audio.src = nextPlaybackUrl;
         audio.currentTime = 0;
         audio.load();
-        await waitForAudioReady(audio, nextPlaybackUrl);
       }
 
       if (currentMusicData.isPlaying) {
