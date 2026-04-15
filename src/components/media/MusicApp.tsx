@@ -1508,6 +1508,8 @@ export default function MusicApp({
   );
 
   const renderPlaylists = () => {
+    const hasSearchQuery = searchQuery.trim().length > 0;
+
     return (
       <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-zinc-50">
         {/* Search Header */}
@@ -1517,7 +1519,7 @@ export default function MusicApp({
         >
           <div className="mb-4 flex items-center justify-between">
             <h1 className="text-[30px] font-extrabold leading-none tracking-tight text-zinc-900 sm:text-3xl sm:font-black sm:tracking-tighter">
-              歌单
+              {hasSearchQuery ? "搜索音乐" : "歌单"}
             </h1>
             <button
               onClick={() => setShowCreatePlaylistDialog(true)}
@@ -1544,18 +1546,27 @@ export default function MusicApp({
               </button>
             )}
           </div>
+          {hasSearchQuery ? (
+            <p className="mt-3 text-[12px] font-medium text-zinc-400">
+              当前优先显示搜索结果，清空后返回歌单视图。
+            </p>
+          ) : null}
         </div>
 
         <div
-          className="flex-1 overflow-y-auto space-y-10 px-6 pt-6"
+          className={`flex-1 overflow-y-auto px-6 ${
+            hasSearchQuery ? "space-y-6 pt-3" : "space-y-10 pt-6"
+          }`}
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}
         >
-          {searchQuery ? (
-            <MusicSearchResults
-              query={searchQuery}
-              onPlaySong={playSong}
-              onQueueSong={addToQueue}
-            />
+          {hasSearchQuery ? (
+            <div className="-mt-1">
+              <MusicSearchResults
+                query={searchQuery}
+                onPlaySong={playSong}
+                onQueueSong={addToQueue}
+              />
+            </div>
           ) : false ? (
             /* Search Results */
             <section>
