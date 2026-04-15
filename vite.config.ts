@@ -8,6 +8,33 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    build: {
+      target: 'es2019',
+      cssTarget: 'chrome88',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined;
+            }
+
+            if (id.includes('react') || id.includes('scheduler')) {
+              return 'react-vendor';
+            }
+
+            if (id.includes('motion') || id.includes('lucide-react')) {
+              return 'ui-vendor';
+            }
+
+            if (id.includes('@google/genai')) {
+              return 'ai-vendor';
+            }
+
+            return undefined;
+          },
+        },
+      },
+    },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
