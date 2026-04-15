@@ -1,0 +1,25 @@
+{
+  "name": "Bloom",
+  "short_name": "Bloom",
+  "description": "Bloom mobile web app",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff4fb",
+  "theme_color": "#f472b6",
+  "icons": [
+    {
+      "src": "/Bloom.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/Bloom.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ]
+}
