@@ -42,7 +42,10 @@ export function CustomizationApp({
   return (
     <div className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans z-50">
       {/* Header */}
-      <div className="p-4 flex items-center justify-between bg-white border-b border-zinc-100 shadow-sm relative z-10">
+      <div
+        className="flex items-center justify-between border-b border-zinc-100 bg-white px-4 pb-4 shadow-sm relative z-10"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+      >
         <div className="flex items-center gap-3">
           <button onClick={() => activeTab === 'home' ? onBack() : setActiveTab('home')} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
             <ChevronLeft size={24} className="text-zinc-600" />
