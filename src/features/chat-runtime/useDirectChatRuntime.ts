@@ -44,7 +44,7 @@ import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitiz
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
-import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp/Page';
+import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp/mockData';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { BaseSessionRuntimeState } from './types';
 

@@ -11,7 +11,7 @@ import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
 import { GameCenter } from '../../components/games/GameCenter';
 import { GameCard } from '../../components/chat/GameCard';
-import { MOCK_CARDS } from '../../components/wallet/WalletApp/Page';
+import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import {
   copyTextContent,
   createShareAction,

@@ -1,14 +1,13 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Suspense, lazy } from 'react';
 import { 
   AppData, Mask, FavoriteMessage, MomentItem, VisualSettings, UserProfileExtended, WorldBookEntry,
   Character, ChatGroup, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
 import { WorldBookManager } from './components/main/WorldBookManager';
-import { MonitorApp } from './components/monitor/MonitorApp/Page';
-import { CustomizationApp } from './components/customization/CustomizationApp/Page';
 import { HomeScreen } from './components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from './components/main/ContactsShell/Page';
 import { MainApp } from './components/main/MainAppShell/Page';
@@ -16,11 +15,7 @@ import { MomentsApp } from './components/moments/Page';
 import { ChatSessionMount } from './features/chat-session/ChatSessionMount';
 import { createCharacterDirectory } from './features/character-domain/useCharacterDirectory';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
-import { CoupleSpaceApp } from './components/couple-space/CoupleSpaceApp/Page';
-import { PerceptionView } from './components/couple-space/PerceptionView';
-import MusicApp from './components/media/MusicApp';
-import ForumApp from './components/social/ForumApp/Page';
-import WalletApp, { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/WalletApp/Page';
+import { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/WalletApp/mockData';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
@@ -82,6 +77,22 @@ import {
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
 
+const MonitorApp = lazy(() =>
+  import('./components/monitor/MonitorApp/Page').then((module) => ({ default: module.MonitorApp })),
+);
+const CustomizationApp = lazy(() =>
+  import('./components/customization/CustomizationApp/Page').then((module) => ({ default: module.CustomizationApp })),
+);
+const CoupleSpaceApp = lazy(() =>
+  import('./components/couple-space/CoupleSpaceApp/Page').then((module) => ({ default: module.CoupleSpaceApp })),
+);
+const PerceptionView = lazy(() =>
+  import('./components/couple-space/PerceptionView').then((module) => ({ default: module.PerceptionView })),
+);
+const MusicApp = lazy(() => import('./components/media/MusicApp'));
+const ForumApp = lazy(() => import('./components/social/ForumApp/Page'));
+const WalletApp = lazy(() => import('./components/wallet/WalletApp/Page'));
+
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
   <style>{`
@@ -94,6 +105,13 @@ const GlobalStyles = ({ customCss }: { customCss?: string }) => (
     }
     ${customCss || ''}
   `}</style>
+);
+
+const AppPanelFallback = ({ label }: { label: string }) => (
+  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 text-zinc-900">
+    <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
+    <p className="mt-4 text-sm font-medium">{label}加载中...</p>
+  </div>
 );
 
 type UserProfile = UserProfileExtended;
@@ -1194,70 +1212,78 @@ export default function App() {
             />
           )}
           {activeApp === 'monitor' && (
-            <MonitorApp 
-              characters={appData.characters}
-              onBack={() => setActiveApp('home')}
-              visualSettings={appData.visualSettings}
-            />
+            <Suspense fallback={<AppPanelFallback label="监控中心" />}>
+              <MonitorApp 
+                characters={appData.characters}
+                onBack={() => setActiveApp('home')}
+                visualSettings={appData.visualSettings}
+              />
+            </Suspense>
           )}
           {activeApp === 'customization' && (
-            <CustomizationApp
-              visualSettings={appData.visualSettings}
-              setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
-              onBack={() => setActiveApp('home')}
-              onResetData={() => {
-                localStorage.removeItem(STORAGE_KEYS.appData);
-                resetCharacters();
-                clearPersistedVisualSettings();
-                window.location.reload();
-              }}
-              onExportData={() => {
-                const data = JSON.stringify(appData);
-                const blob = new Blob([data], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'ai_phone_backup.json';
-                a.click();
-              }}
-              onImportData={(data) => {
-                try {
-                  const parsed = JSON.parse(data);
-                  setAppData({
-                    ...parsed,
-                    characters: sanitizePersistedCharacters(parsed.characters),
-                    userProfile: parsed.userProfile
-                      ? {
-                          ...parsed.userProfile,
-                          avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
-                        }
-                      : parsed.userProfile,
-                  });
-                  alert('导入成功！');
-                } catch (e) {
-                  alert('导入失败，请检查数据格式。');
-                }
-              }}
-              appData={appData}
-              setAppData={setAppData}
-              settings={settings}
-              setSettings={setSettings}
-            />
+            <Suspense fallback={<AppPanelFallback label="自定义中心" />}>
+              <CustomizationApp
+                visualSettings={appData.visualSettings}
+                setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
+                onBack={() => setActiveApp('home')}
+                onResetData={() => {
+                  localStorage.removeItem(STORAGE_KEYS.appData);
+                  resetCharacters();
+                  clearPersistedVisualSettings();
+                  window.location.reload();
+                }}
+                onExportData={() => {
+                  const data = JSON.stringify(appData);
+                  const blob = new Blob([data], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'ai_phone_backup.json';
+                  a.click();
+                }}
+                onImportData={(data) => {
+                  try {
+                    const parsed = JSON.parse(data);
+                    setAppData({
+                      ...parsed,
+                      characters: sanitizePersistedCharacters(parsed.characters),
+                      userProfile: parsed.userProfile
+                        ? {
+                            ...parsed.userProfile,
+                            avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
+                          }
+                        : parsed.userProfile,
+                    });
+                    alert('导入成功！');
+                  } catch (e) {
+                    alert('导入失败，请检查数据格式。');
+                  }
+                }}
+                appData={appData}
+                setAppData={setAppData}
+                settings={settings}
+                setSettings={setSettings}
+              />
+            </Suspense>
           )}
           {activeApp === 'couple-space' && (
-            <CoupleSpaceApp
-              appData={appData}
-              setAppData={setAppData}
-              onBack={() => setActiveApp('home')}
-              settings={settings}
-            />
+            <Suspense fallback={<AppPanelFallback label="情侣空间" />}>
+              <CoupleSpaceApp
+                appData={appData}
+                setAppData={setAppData}
+                onBack={() => setActiveApp('home')}
+                settings={settings}
+              />
+            </Suspense>
           )}
           {activeApp === 'perception' && (
-            <PerceptionView
-              coupleSpace={currentCoupleSpace}
-              updateSpace={handleUpdateCurrentCoupleSpace}
-              onBack={() => setActiveApp('home')}
-            />
+            <Suspense fallback={<AppPanelFallback label="感知视图" />}>
+              <PerceptionView
+                coupleSpace={currentCoupleSpace}
+                updateSpace={handleUpdateCurrentCoupleSpace}
+                onBack={() => setActiveApp('home')}
+              />
+            </Suspense>
           )}
           <audio
             ref={audioRef}
@@ -1267,39 +1293,45 @@ export default function App() {
             aria-hidden="true"
           />
           {activeApp === 'music' && (
-            <MusicApp
-              musicData={appData.musicData!}
-              onUpdateMusicData={(data) => setAppData(prev => ({ ...prev, musicData: data }))}
-              userAvatar={appData.userProfile.avatar}
-              userName={appData.userProfile.name}
-              character={couplePartnerCharacter}
-              directChatHistory={appData.chatHistory}
-              visualSettings={appData.visualSettings}
-              settings={settings}
-              onPatchCharacter={handlePatchCharacterById}
-              allCharacters={appData.characters}
-              onBack={() => setActiveApp('home')}
-              audioRef={audioRef}
-            />
+            <Suspense fallback={<AppPanelFallback label="音乐" />}>
+              <MusicApp
+                musicData={appData.musicData!}
+                onUpdateMusicData={(data) => setAppData(prev => ({ ...prev, musicData: data }))}
+                userAvatar={appData.userProfile.avatar}
+                userName={appData.userProfile.name}
+                character={couplePartnerCharacter}
+                directChatHistory={appData.chatHistory}
+                visualSettings={appData.visualSettings}
+                settings={settings}
+                onPatchCharacter={handlePatchCharacterById}
+                allCharacters={appData.characters}
+                onBack={() => setActiveApp('home')}
+                audioRef={audioRef}
+              />
+            </Suspense>
           )}
           {activeApp === 'forum' && (
-            <ForumApp
-              appData={appData}
-              onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
-              onClose={() => setActiveApp('home')}
-              onOpenChat={(characterId) => {
-                setSelectedCharacterId(characterId);
-                setActiveApp('chat-session');
-              }}
-              initialPostId={selectedForumPostId}
-            />
+            <Suspense fallback={<AppPanelFallback label="论坛" />}>
+              <ForumApp
+                appData={appData}
+                onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
+                onClose={() => setActiveApp('home')}
+                onOpenChat={(characterId) => {
+                  setSelectedCharacterId(characterId);
+                  setActiveApp('chat-session');
+                }}
+                initialPostId={selectedForumPostId}
+              />
+            </Suspense>
           )}
           {activeApp === 'wallet' && (
-            <WalletApp
-              appData={appData}
-              onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
-              onClose={() => setActiveApp('home')}
-            />
+            <Suspense fallback={<AppPanelFallback label="钱包" />}>
+              <WalletApp
+                appData={appData}
+                onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
+                onClose={() => setActiveApp('home')}
+              />
+            </Suspense>
           )}
         </div>
 
