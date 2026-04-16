@@ -419,6 +419,9 @@ export function ChatSessionScreen({
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [chatViewportHeight, setChatViewportHeight] = useState<number | null>(null);
+  const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1028,6 +1031,46 @@ export function ChatSessionScreen({
   font-family: ${chatFontFamily} !important;
 }`
     : '';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      setChatViewportHeight(null);
+      setKeyboardInset(0);
+      return undefined;
+    }
+
+    const updateViewportMetrics = () => {
+      const viewportHeight = Math.round(viewport.height);
+      const layoutHeight = window.innerHeight;
+      const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
+      setChatViewportHeight(viewportHeight);
+      setKeyboardInset(inset > 120 ? inset : 0);
+    };
+
+    updateViewportMetrics();
+    viewport.addEventListener('resize', updateViewportMetrics);
+    viewport.addEventListener('scroll', updateViewportMetrics);
+    window.addEventListener('orientationchange', updateViewportMetrics);
+
+    return () => {
+      viewport.removeEventListener('resize', updateViewportMetrics);
+      viewport.removeEventListener('scroll', updateViewportMetrics);
+      window.removeEventListener('orientationchange', updateViewportMetrics);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!keyboardInset || document.activeElement !== inputTextareaRef.current) {
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [keyboardInset]);
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
@@ -1107,10 +1150,22 @@ export function ChatSessionScreen({
     };
   }
 
+  const chatFooterLift = keyboardInset;
+  const chatFooterStyle: React.CSSProperties = {
+    ...layoutConfig.inputContainerStyle,
+    ...footerStyleObj,
+    transform: chatFooterLift > 0 ? `translateY(-${chatFooterLift}px)` : undefined,
+    transition: 'transform 180ms ease',
+  };
+  const chatMessageListStyle: React.CSSProperties = {
+    paddingBottom: `${72 + chatFooterLift}px`,
+  };
+
   return (
     <motion.div 
       className="absolute inset-0 bg-zinc-50 flex flex-col z-[60] chat-bubble-theme-scope"
       style={{ 
+        height: chatViewportHeight ? `${chatViewportHeight}px` : undefined,
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -1188,7 +1243,7 @@ export function ChatSessionScreen({
       )}
 
       {/* Messages */}
-      <div className={layoutConfig.messageListClass}>
+      <div className={layoutConfig.messageListClass} style={chatMessageListStyle}>
         {error && (
           <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
             {error}
@@ -1989,10 +2044,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         className={`chat-session-footer chat-footer ${footerClassName}`}
-        style={{ 
-          ...layoutConfig.inputContainerStyle,
-          ...footerStyleObj
-        }}
+        style={chatFooterStyle}
       >
         {replyingTo && (
           <div className="chat-footer-reply-preview flex items-center justify-between bg-zinc-100/80 backdrop-blur-sm rounded-xl px-3 py-2 text-[13px] text-zinc-600 border border-zinc-200/50">
@@ -2033,6 +2085,7 @@ export function ChatSessionScreen({
               footerControlTone.inputShell
             }`}>
               <textarea 
+                ref={inputTextareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => {

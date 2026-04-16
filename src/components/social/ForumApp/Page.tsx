@@ -1388,8 +1388,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
     return (
       <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
-        <div className="px-4 py-3 border-b border-zinc-100">
-          <h2 className="text-lg font-bold text-zinc-900">为你推荐的趋势</h2>
+        <div className="sticky top-0 z-10 border-b border-zinc-100 bg-white/95 px-5 pb-3 backdrop-blur-md" style={forumTopInsetStyle}>
+          <h2 className="text-[20px] font-black tracking-tight text-zinc-900">为你推荐的趋势</h2>
         </div>
         <div className="space-y-0">
           {hotPosts.map((post, index) => {
@@ -1403,10 +1403,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                   const newPosts = posts.map(p => p.id === post.id ? { ...p, viewCount: p.viewCount + 1 } : p);
                   updatePosts(newPosts);
                 }}
-                className="px-4 py-3 hover:bg-zinc-50 transition-colors cursor-pointer flex justify-between items-start"
+                className="flex cursor-pointer items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-zinc-50"
               >
-                <div className="flex-1 min-w-0 pr-4">
-                  <div className="flex items-center justify-between mb-1">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-start justify-between gap-3">
                     <span className="text-[12px] text-zinc-500 font-bold">{index + 1} · 趋势</span>
                     <div className="relative">
                       <button 
@@ -1475,13 +1475,13 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
                       )}
                     </div>
                   </div>
-                  <h3 className="text-[14px] font-bold text-zinc-900 mb-1 line-clamp-2">{post.title || post.content}</h3>
+                  <h3 className="mb-2 pr-2 text-[15px] font-bold leading-7 text-zinc-900 line-clamp-2">{post.title || post.content}</h3>
                   <div className="text-[12px] text-zinc-500">
                     {post.viewCount > 1000 ? `${(post.viewCount / 1000).toFixed(1)}K` : post.viewCount} 帖子
                   </div>
                 </div>
                 {post.images && post.images.length > 0 && (
-                <ResolvedImage value={post.images[0]} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                <ResolvedImage value={post.images[0]} className="h-24 w-24 shrink-0 rounded-2xl object-cover" />
                 )}
               </div>
             );
@@ -1943,7 +1943,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     return (
       <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
         <div className="px-4 pb-3 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-100 flex items-center justify-between" style={forumTopInsetStyle}>
-           <div className="text-lg font-bold text-zinc-900">通知</div>
+           <div className="text-[20px] font-black tracking-tight text-zinc-900">通知</div>
            <button className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
              <Settings size={20} className="text-zinc-900" />
            </button>
@@ -2011,9 +2011,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
             );
           })}
           {myNotifications.length === 0 && (
-            <div className="text-center py-10 text-zinc-500 text-[14px]">
-              <h3 className="font-bold text-lg text-zinc-900 mb-2">这里还没有任何内容</h3>
-              <p>从喜欢到转发以及更多，这里是所有互动发生的地方。</p>
+            <div className="px-8 pt-16 text-center text-[14px] text-zinc-500">
+              <h3 className="mb-3 text-[18px] font-bold text-zinc-900">这里还没有任何内容</h3>
+              <p className="leading-7">从喜欢到转发以及更多，这里是所有互动发生的地方。</p>
             </div>
           )}
         </div>
