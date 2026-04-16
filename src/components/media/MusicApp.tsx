@@ -147,6 +147,7 @@ export default function MusicApp({
   const lastRecordedPlaybackIdRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const playbackRequestIdRef = useRef(0);
   const currentMusicDataRef = useRef<MusicData | null>(null);
   const onUpdateMusicDataRef = useRef(onUpdateMusicData);
   const onPatchCharacterRef = useRef(onPatchCharacter);
@@ -190,6 +191,27 @@ export default function MusicApp({
     return new URL(url, window.location.origin).toString();
   };
 
+  const resetAudioElement = (
+    audio: HTMLAudioElement,
+    nextPlaybackUrl = "",
+    invalidatePendingRequest = true,
+  ) => {
+    if (invalidatePendingRequest) {
+      playbackRequestIdRef.current += 1;
+    }
+    if (!audio.paused) {
+      audio.pause();
+    }
+    audio.removeAttribute("src");
+    audio.load();
+    if (nextPlaybackUrl) {
+      audio.src = nextPlaybackUrl;
+      audio.currentTime = 0;
+      audio.load();
+    }
+    playPromiseRef.current = null;
+  };
+
   const primePlaybackFromGesture = async (song: Song) => {
     const audio = audioRef.current;
     if (!audio || !prefersDirectGesturePlaybackRef.current) {
@@ -202,14 +224,7 @@ export default function MusicApp({
     const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
 
     if (currentAudioUrl !== targetAudioUrl) {
-      if (!audio.paused) {
-        audio.pause();
-      }
-      audio.removeAttribute("src");
-      audio.load();
-      audio.src = nextPlaybackUrl;
-      audio.currentTime = 0;
-      audio.load();
+      resetAudioElement(audio, nextPlaybackUrl, false);
     }
 
     try {
@@ -399,12 +414,7 @@ export default function MusicApp({
         neteaseFallbackAttemptedRef.current = activeSong.id;
         setPlaybackError("正在切换备用播放地址…");
         setIsAudioActuallyPlaying(false);
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-        audio.src = fallbackUrl;
-        audio.currentTime = 0;
-        audio.load();
+        resetAudioElement(audio, fallbackUrl);
         if (currentMusicDataRef.current?.isPlaying) {
           playPromiseRef.current = audio.play();
           playPromiseRef.current.catch((error) => {
@@ -420,6 +430,7 @@ export default function MusicApp({
 
       setIsAudioActuallyPlaying(false);
       setPlaybackError("当前歌曲暂时无法播放");
+      resetAudioElement(audio);
       if (currentMusicDataRef.current?.isPlaying) {
         onUpdateMusicDataRef.current({
           ...currentMusicDataRef.current,
@@ -542,7 +553,6 @@ export default function MusicApp({
 
   // Sync song source and play state
   useEffect(() => {
-    console.log('MusicApp syncPlayback effect triggered, isPlaying:', currentMusicData.isPlaying);
     const audio = audioRef.current;
     if (!audio || !currentMusicData.currentSong) return;
     if (currentMusicData.currentSong.id !== lastRecordedPlaybackIdRef.current) {
@@ -553,59 +563,63 @@ export default function MusicApp({
     }
 
     const syncPlayback = async () => {
+      const requestId = ++playbackRequestIdRef.current;
       setPlaybackError("");
       const nextPlaybackUrl = resolveSongPlaybackUrl(currentMusicData.currentSong);
-      const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
       const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
+      let activeAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
 
       // If source changed, update it
-      if (currentAudioUrl !== targetAudioUrl) {
+      if (activeAudioUrl !== targetAudioUrl) {
         gesturePrimedSongIdRef.current = null;
-        // Before changing src, we should wait for any pending play promise
         if (playPromiseRef.current) {
           try {
             await playPromiseRef.current;
-          } catch (e) {
-            // Ignore interruption errors
+          } catch {
+            // Ignore interruption errors from the previous source.
           }
         }
-        if (!audio.paused) {
-          audio.pause();
+        if (requestId !== playbackRequestIdRef.current) {
+          return;
         }
-        audio.removeAttribute("src");
-        audio.load();
-        audio.src = nextPlaybackUrl;
-        audio.currentTime = 0;
-        audio.load();
+        resetAudioElement(audio, nextPlaybackUrl, false);
+        activeAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
       }
 
       if (currentMusicData.isPlaying) {
         if (
           gesturePrimedSongIdRef.current === currentMusicData.currentSong.id &&
-          currentAudioUrl === targetAudioUrl &&
+          activeAudioUrl === targetAudioUrl &&
           !audio.paused
         ) {
           gesturePrimedSongIdRef.current = null;
           return;
         }
 
-        console.log('MusicApp attempting to play');
         setIsAudioActuallyPlaying(false);
-        // Wait for any pending play promise
         if (playPromiseRef.current) {
           try {
             await playPromiseRef.current;
-          } catch (e) {
-            // Ignore
+          } catch {
+            // Ignore interruption errors from the previous play attempt.
           }
+        }
+        if (requestId !== playbackRequestIdRef.current) {
+          return;
         }
         playPromiseRef.current = audio.play();
         try {
           await playPromiseRef.current;
+          if (requestId !== playbackRequestIdRef.current) {
+            return;
+          }
         } catch (e) {
+          if (requestId !== playbackRequestIdRef.current) {
+            return;
+          }
           setIsAudioActuallyPlaying(false);
           setPlaybackError("当前歌曲暂时无法播放");
-          // Check if it's the interruption error
+          resetAudioElement(audio);
           if (e instanceof Error && e.name !== "AbortError") {
             console.error("Playback error:", e);
           }
@@ -616,8 +630,10 @@ export default function MusicApp({
             });
           }
         } finally {
-          gesturePrimedSongIdRef.current = null;
-          playPromiseRef.current = null;
+          if (requestId === playbackRequestIdRef.current) {
+            gesturePrimedSongIdRef.current = null;
+            playPromiseRef.current = null;
+          }
         }
       } else {
         gesturePrimedSongIdRef.current = null;
