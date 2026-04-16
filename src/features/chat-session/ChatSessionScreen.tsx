@@ -420,7 +420,6 @@ export function ChatSessionScreen({
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
-  const [chatViewportHeight, setChatViewportHeight] = useState<number | null>(null);
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1039,16 +1038,13 @@ export function ChatSessionScreen({
 
     const viewport = window.visualViewport;
     if (!viewport) {
-      setChatViewportHeight(null);
       setKeyboardInset(0);
       return undefined;
     }
 
     const updateViewportMetrics = () => {
-      const viewportHeight = Math.round(viewport.height);
       const layoutHeight = window.innerHeight;
       const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      setChatViewportHeight(viewportHeight);
       setKeyboardInset(inset > 120 ? inset : 0);
     };
 
@@ -1165,7 +1161,6 @@ export function ChatSessionScreen({
     <motion.div 
       className="absolute inset-0 bg-zinc-50 flex flex-col z-[60] chat-bubble-theme-scope"
       style={{ 
-        height: chatViewportHeight ? `${chatViewportHeight}px` : undefined,
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
