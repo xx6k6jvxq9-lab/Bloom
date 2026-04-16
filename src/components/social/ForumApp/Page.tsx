@@ -361,6 +361,9 @@ const ForumCommentItem: React.FC<ForumCommentItemProps> = ({
 };
 
 export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat, initialPostId }: ForumAppProps) {
+  const forumTopInsetStyle = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' };
+  const forumBottomInsetStyle = { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' };
+  const forumBottomNavStyle = { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' };
   const [activeTab, setActiveTab] = useState<'home' | 'hot' | 'notification' | 'profile'>('home');
   const [currentView, setCurrentView] = useState<'list' | 'detail' | 'editor' | 'edit-profile' | 'user-profile'>('list');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -847,7 +850,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     }
 
     return (
-      <div className="forum-app-scroll h-full min-h-0 overflow-y-auto bg-white pb-20">
+      <div className="forum-app-scroll h-full min-h-0 overflow-y-auto bg-white" style={forumBottomInsetStyle}>
         {displayPosts.map(post => {
           const author = getAuthor(post.authorId);
           const handle = `@${author.id.replace('user_', 'u').replace('char_', 'c')}`;
@@ -1048,7 +1051,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     return (
       <div className="bg-white h-full min-h-0 flex flex-col relative">
         {/* Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 py-2 flex items-center gap-6">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-2 flex items-center gap-6" style={forumTopInsetStyle}>
           <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
             <ArrowLeft size={20} />
           </button>
@@ -1261,7 +1264,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
   const renderEditor = () => (
     <div className="bg-white h-full min-h-0 flex flex-col">
-      <div className="px-4 py-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
+      <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={forumTopInsetStyle}>
         <button onClick={() => {
           setCurrentView('list');
           setEditingPostId(null);
@@ -1384,7 +1387,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     });
 
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
         <div className="px-4 py-3 border-b border-zinc-100">
           <h2 className="text-lg font-bold text-zinc-900">为你推荐的趋势</h2>
         </div>
@@ -1498,9 +1501,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     const isFollowed = followedUsers.includes(user.id);
 
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
         {/* Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 py-3 flex items-center gap-6">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-3 flex items-center gap-6" style={forumTopInsetStyle}>
           <button onClick={() => {
             setCurrentView('list');
             setViewingUserId(null);
@@ -1744,7 +1747,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     if (currentView === 'edit-profile') {
       return (
         <div className="bg-white h-full min-h-0 flex flex-col">
-          <div className="px-4 py-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
+          <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={forumTopInsetStyle}>
             <div className="flex items-center gap-6">
               <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
                 <ArrowLeft size={20} />
@@ -1938,8 +1941,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     const myNotifications = notifications.filter(n => n.userId === currentUser.id).sort((a, b) => b.timestamp - a.timestamp);
     
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
-        <div className="px-4 pt-4 pb-3 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-100 flex items-center justify-between">
+      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
+        <div className="px-4 pb-3 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-100 flex items-center justify-between" style={forumTopInsetStyle}>
            <div className="text-lg font-bold text-zinc-900">通知</div>
            <button className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
              <Settings size={20} className="text-zinc-900" />
@@ -2037,7 +2040,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     <div className="forum-app-shell absolute inset-0 min-h-0 flex flex-col bg-white overflow-hidden">
       {/* Header */}
       {currentView === 'list' && activeTab === 'home' && (
-        <div className="px-4 pt-4 pb-2 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100">
+        <div className="px-4 pb-2 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100" style={forumTopInsetStyle}>
           <button onClick={() => onClose()} className="p-2 -ml-2 hover:bg-zinc-100 rounded-full transition-colors">
             <ChevronLeft size={24} className="text-zinc-900" />
           </button>
@@ -2084,7 +2087,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
       {/* Bottom Navigation */}
       {shouldShowForumBottomNav && (
-        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100 px-6 py-2 flex justify-between items-center pb-0">
+        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100 px-6 pt-2 flex justify-between items-center" style={forumBottomNavStyle}>
           <button 
             onClick={() => { setActiveTab('home'); setCurrentView('list'); }}
             className={`p-2 rounded-full transition-colors ${activeTab === 'home' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}

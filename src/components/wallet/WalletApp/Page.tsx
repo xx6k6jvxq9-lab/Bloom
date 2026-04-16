@@ -469,7 +469,10 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
   return (
     <div className="h-full bg-[#F2F2F7] flex flex-col relative overflow-hidden">
       {/* Header */}
-      <div className="px-4 pt-4 pb-2 flex items-center justify-between bg-[#F2F2F7]/90 backdrop-blur-md sticky top-0 z-20">
+      <div
+        className="px-4 pb-2 flex items-center justify-between bg-[#F2F2F7]/90 backdrop-blur-md sticky top-0 z-20"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+      >
         <div className="flex items-center gap-2">
           <button 
             onClick={onClose}
@@ -527,7 +530,10 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto relative px-4 pt-2 pb-20">
+      <div
+        className="flex-1 overflow-y-auto relative px-4 pt-2"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)" }}
+      >
         
         {/* Balance Section */}
         <div className="bg-white rounded-xl p-5 shadow-sm mb-4 flex flex-col items-center justify-center">

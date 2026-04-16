@@ -222,7 +222,10 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
   if (!selectedCharId) {
     return (
       <div className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans">
-        <div className="p-6 flex items-center justify-between bg-white border-b border-zinc-100 shadow-sm">
+        <div
+          className="flex items-center justify-between bg-white border-b border-zinc-100 shadow-sm px-6 pb-4"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
+        >
           <div className="flex items-center gap-4">
             <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
               <ChevronLeft size={24} className="text-zinc-600" />
@@ -238,7 +241,10 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div
+          className="flex-1 overflow-y-auto p-6"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+        >
           {/* Category Filter */}
           <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
             {categories.map(cat => (
