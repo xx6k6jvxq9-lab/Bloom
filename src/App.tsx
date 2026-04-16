@@ -1,7 +1,6 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Suspense, lazy } from 'react';
 import { 
   AppData, Mask, FavoriteMessage, MomentItem, VisualSettings, UserProfileExtended, WorldBookEntry,
   Character, ChatGroup, ChatMessage, PerceptionSettings,
@@ -77,21 +76,25 @@ import {
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
 
-const MonitorApp = lazy(() =>
-  import('./components/monitor/MonitorApp/Page').then((module) => ({ default: module.MonitorApp })),
-);
-const CustomizationApp = lazy(() =>
-  import('./components/customization/CustomizationApp/Page').then((module) => ({ default: module.CustomizationApp })),
-);
-const CoupleSpaceApp = lazy(() =>
-  import('./components/couple-space/CoupleSpaceApp/Page').then((module) => ({ default: module.CoupleSpaceApp })),
-);
-const PerceptionView = lazy(() =>
-  import('./components/couple-space/PerceptionView').then((module) => ({ default: module.PerceptionView })),
-);
-const MusicApp = lazy(() => import('./components/media/MusicApp'));
-const ForumApp = lazy(() => import('./components/social/ForumApp/Page'));
-const WalletApp = lazy(() => import('./components/wallet/WalletApp/Page'));
+const loadMonitorApp = () =>
+  import('./components/monitor/MonitorApp/Page').then((module) => ({ default: module.MonitorApp }));
+const loadCustomizationApp = () =>
+  import('./components/customization/CustomizationApp/Page').then((module) => ({ default: module.CustomizationApp }));
+const loadCoupleSpaceApp = () =>
+  import('./components/couple-space/CoupleSpaceApp/Page').then((module) => ({ default: module.CoupleSpaceApp }));
+const loadPerceptionView = () =>
+  import('./components/couple-space/PerceptionView').then((module) => ({ default: module.PerceptionView }));
+const loadMusicApp = () => import('./components/media/MusicApp');
+const loadForumApp = () => import('./components/social/ForumApp/Page');
+const loadWalletApp = () => import('./components/wallet/WalletApp/Page');
+
+const MonitorApp = lazy(loadMonitorApp);
+const CustomizationApp = lazy(loadCustomizationApp);
+const CoupleSpaceApp = lazy(loadCoupleSpaceApp);
+const PerceptionView = lazy(loadPerceptionView);
+const MusicApp = lazy(loadMusicApp);
+const ForumApp = lazy(loadForumApp);
+const WalletApp = lazy(loadWalletApp);
 
 // Global styles for hiding scrollbar to make it look more like a native app
 const GlobalStyles = ({ customCss }: { customCss?: string }) => (
@@ -113,6 +116,11 @@ const AppPanelFallback = ({ label }: { label: string }) => (
     <p className="mt-4 text-sm font-medium">{label}加载中...</p>
   </div>
 );
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
 
 type UserProfile = UserProfileExtended;
 type CoupleSpaceUpdateToast = {
@@ -546,6 +554,7 @@ export default function App() {
       queue: []
     }
   });
+  const hasPrefetchedPanelChunksRef = useRef(false);
   const [appDialog, setAppDialog] = useState<AppDialogRequest | null>(null);
   const [appDialogInput, setAppDialogInput] = useState('');
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
@@ -553,6 +562,67 @@ export default function App() {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)').matches;
   });
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasPrefetchedPanelChunksRef.current) {
+      return undefined;
+    }
+
+    const idleWindow = window as IdleWindow;
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isIosLike = /iphone|ipad|ipod/.test(userAgent);
+
+    if (!isStandalone && !isIosLike) {
+      return undefined;
+    }
+
+    hasPrefetchedPanelChunksRef.current = true;
+    let cancelled = false;
+    let fallbackHandle: number | null = null;
+
+    const preloadHighTrafficPanels = async () => {
+      const panelLoaders = [loadForumApp, loadMusicApp, loadWalletApp, loadCustomizationApp];
+
+      for (const loadPanel of panelLoaders) {
+        if (cancelled) {
+          return;
+        }
+
+        try {
+          await loadPanel();
+        } catch (error) {
+          console.warn('Panel preload failed', error);
+        }
+      }
+    };
+
+    const schedulePreload = () => {
+      fallbackHandle = window.setTimeout(() => {
+        if (!cancelled) {
+          void preloadHighTrafficPanels();
+        }
+      }, 900);
+    };
+
+    let idleHandle: number | null = null;
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleHandle = idleWindow.requestIdleCallback(schedulePreload, { timeout: 1800 });
+    } else {
+      schedulePreload();
+    }
+
+    return () => {
+      cancelled = true;
+      if (fallbackHandle !== null) {
+        window.clearTimeout(fallbackHandle);
+      }
+      if (idleHandle !== null && typeof idleWindow.cancelIdleCallback === 'function') {
+        idleWindow.cancelIdleCallback(idleHandle);
+      }
+    };
+  }, []);
   const coupleSpaceAutoGateRef = React.useRef<Record<string, { lastCheckedAt: number | null; lastPartnerId: string | null }>>({});
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
