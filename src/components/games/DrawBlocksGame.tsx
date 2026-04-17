@@ -92,7 +92,7 @@ function createRandomTower(): TowerState {
     const layerShift = baseLean + (random() - 0.5) * 6 + (layerIndex - layerCount / 2) * ((random() - 0.5) * 0.8);
 
     for (let slotIndex = 0; slotIndex < BLOCKS_PER_LAYER; slotIndex += 1) {
-      const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 18) * taper;
+      const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 14) * taper;
       const centerX = layerShift + slotShift + (random() - 0.5) * 2.5;
       const width = BASE_BLOCK_WIDTH + (random() - 0.5) * 3.5;
 
@@ -295,38 +295,57 @@ function getHorizontalOverlap(left: TowerBlock, right: TowerBlock) {
 }
 
 function computeRenderedTowerBlocks(blocks: TowerBlock[]): RenderedTowerBlock[] {
-  const presentBlocks = getPresentBlocks(blocks).sort((left, right) => {
-    if (left.layerIndex !== right.layerIndex) {
-      return left.layerIndex - right.layerIndex;
-    }
-    return left.slotIndex - right.slotIndex;
-  });
+  const presentBlocks = getPresentBlocks(blocks);
+  const sortedLayers = Array.from(new Set(presentBlocks.map((block) => block.layerIndex))).sort((left, right) => left - right);
+  const layerMap = new Map<number, TowerBlock[]>();
 
-  const placedBlocks: RenderedTowerBlock[] = [];
-
-  for (const block of presentBlocks) {
-    const supporters = placedBlocks.filter((candidate) => {
-      const overlap = getHorizontalOverlap(block, candidate);
-      return overlap >= Math.min(block.width, candidate.width) * 0.22;
-    });
-
-    const highestSupportLayer = supporters.length > 0
-      ? Math.max(...supporters.map((candidate) => candidate.renderLayer))
-      : -1;
-
-    placedBlocks.push({
-      ...block,
-      renderLayer: highestSupportLayer + 1,
-    });
+  for (const layerIndex of sortedLayers) {
+    layerMap.set(
+      layerIndex,
+      presentBlocks
+        .filter((block) => block.layerIndex === layerIndex)
+        .sort((left, right) => left.slotIndex - right.slotIndex),
+    );
   }
 
-  return blocks.map((block) => {
-    const placed = placedBlocks.find((candidate) => candidate.id === block.id);
-    return {
-      ...block,
-      renderLayer: placed?.renderLayer ?? block.layerIndex,
-    };
-  });
+  const renderedById = new Map<string, number>();
+  let nextRenderLayer = 0;
+
+  for (const layerIndex of sortedLayers) {
+    const layerBlocks = layerMap.get(layerIndex) || [];
+    if (layerBlocks.length === 0) {
+      continue;
+    }
+
+    let targetRenderLayer = nextRenderLayer;
+    if (nextRenderLayer > 0) {
+      const previousLayer = sortedLayers
+        .filter((candidate) => candidate < layerIndex)
+        .reverse()
+        .find((candidate) => (layerMap.get(candidate) || []).length > 0);
+
+      if (previousLayer !== undefined) {
+        const previousBlocks = (layerMap.get(previousLayer) || []).filter((block) => renderedById.has(block.id));
+        const hasSupport = layerBlocks.some((block) =>
+          previousBlocks.some((supportBlock) => getHorizontalOverlap(block, supportBlock) >= Math.min(block.width, supportBlock.width) * 0.28),
+        );
+
+        if (!hasSupport) {
+          targetRenderLayer = Math.max(0, nextRenderLayer - 1);
+        }
+      }
+    }
+
+    for (const block of layerBlocks) {
+      renderedById.set(block.id, targetRenderLayer);
+    }
+    nextRenderLayer = targetRenderLayer + 1;
+  }
+
+  return blocks.map((block) => ({
+    ...block,
+    renderLayer: renderedById.get(block.id) ?? block.layerIndex,
+  }));
 }
 
 function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) {
