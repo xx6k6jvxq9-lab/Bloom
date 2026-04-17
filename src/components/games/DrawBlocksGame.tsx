@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { BrickWall, CheckCircle2, Sparkles } from 'lucide-react';
+import { BrickWall, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import { Character } from '../../types';
 
 interface DrawBlocksGameProps {
@@ -10,14 +10,67 @@ interface DrawBlocksGameProps {
 }
 
 type CharacterPlayStyle = 'strategist' | 'gentle' | 'tsundere' | 'playful';
+type PlayerTurn = 'user' | 'character';
 type Winner = 'user' | 'character' | null;
+type BlockOrientation = 'x' | 'z';
 
-const TOTAL_BLOCKS = 21;
+type TowerBlock = {
+  id: string;
+  layerIndex: number;
+  slotIndex: number;
+  centerX: number;
+  width: number;
+  depth: number;
+  hue: number;
+  tint: number;
+  orientation: BlockOrientation;
+  removedBy?: PlayerTurn;
+  removedAt?: number;
+};
+
+type TowerState = {
+  blocks: TowerBlock[];
+  towerSeed: number;
+  baseLean: number;
+};
+
+type StabilitySnapshot = {
+  stable: boolean;
+  risk: number;
+  weakestLayer: number | null;
+};
+
+const SCENE_WIDTH = 288;
+const BLOCKS_PER_LAYER = 3;
+const BLOCK_HEIGHT = 16;
+const LAYER_STEP = 20;
+const BASE_BLOCK_WIDTH = 72;
+const BASE_BLOCK_DEPTH = 18;
+const MAX_CHARACTER_DELAY_MS = 950;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function pickRandom<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function createSeededRandom(seed: number) {
+  let current = seed % 2147483647;
+  if (current <= 0) {
+    current += 2147483646;
+  }
+  return () => {
+    current = (current * 16807) % 2147483647;
+    return (current - 1) / 2147483646;
+  };
+}
 
 function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
   const fingerprint = `${character.name} ${character.setting} ${character.expressionStyle || ''} ${character.signature || ''}`.toLowerCase();
 
-  if (/冷静|清晰|理性|克制|测试|稳/.test(fingerprint)) {
+  if (/冷静|清晰|理性|克制|测试|稳定|分析/.test(fingerprint)) {
     return 'strategist';
   }
 
@@ -32,216 +85,388 @@ function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
   return 'playful';
 }
 
-function clampTakeCount(value: number, remaining: number) {
-  return Math.max(1, Math.min(3, Math.min(value, remaining)));
+function createRandomTower(): TowerState {
+  const towerSeed = Math.floor(Date.now() + Math.random() * 100000);
+  const random = createSeededRandom(towerSeed);
+  const layerCount = 7 + Math.floor(random() * 2);
+  const baseLean = (random() - 0.5) * 18;
+  const blocks: TowerBlock[] = [];
+
+  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+    const orientation: BlockOrientation = layerIndex % 2 === 0 ? 'x' : 'z';
+    const layerShift = baseLean + (random() - 0.5) * 12 + (layerIndex - layerCount / 2) * ((random() - 0.5) * 1.8);
+
+    for (let slotIndex = 0; slotIndex < BLOCKS_PER_LAYER; slotIndex += 1) {
+      const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 10);
+      const centerX = layerShift + slotShift + (random() - 0.5) * 5;
+      const width = BASE_BLOCK_WIDTH + (random() - 0.5) * 6;
+      const depth = BASE_BLOCK_DEPTH + (random() - 0.5) * 4;
+      const hue = 32 + Math.round(random() * 10);
+      const tint = 56 + Math.round(random() * 16);
+
+      blocks.push({
+        id: `tower-${towerSeed}-${layerIndex}-${slotIndex}`,
+        layerIndex,
+        slotIndex,
+        centerX,
+        width,
+        depth,
+        hue,
+        tint,
+        orientation,
+      });
+    }
+  }
+
+  return { blocks, towerSeed, baseLean };
 }
 
-function pickRandom<T>(items: T[]) {
-  return items[Math.floor(Math.random() * items.length)];
+function getHighestLayer(blocks: TowerBlock[]) {
+  return blocks.reduce((max, block) => Math.max(max, block.layerIndex), 0);
 }
 
-function getCharacterOpening(character: Character, style: CharacterPlayStyle) {
+function getPresentBlocks(blocks: TowerBlock[]) {
+  return blocks.filter((block) => !block.removedBy);
+}
+
+function getLayerBlocks(blocks: TowerBlock[], layerIndex: number) {
+  return blocks.filter((block) => !block.removedBy && block.layerIndex === layerIndex);
+}
+
+function getLayerSupportRange(blocks: TowerBlock[]) {
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return {
+    min: Math.min(...blocks.map((block) => block.centerX - block.width / 2)),
+    max: Math.max(...blocks.map((block) => block.centerX + block.width / 2)),
+  };
+}
+
+function getUpperMassCenter(blocks: TowerBlock[], layerIndex: number) {
+  const upperBlocks = blocks.filter((block) => !block.removedBy && block.layerIndex >= layerIndex);
+  if (upperBlocks.length === 0) {
+    return null;
+  }
+  return upperBlocks.reduce((sum, block) => sum + block.centerX, 0) / upperBlocks.length;
+}
+
+function evaluateTowerStability(blocks: TowerBlock[]): StabilitySnapshot {
+  const presentBlocks = getPresentBlocks(blocks);
+  const highestLayer = getHighestLayer(presentBlocks);
+  let maxRisk = 0;
+  let weakestLayer: number | null = null;
+
+  for (let layerIndex = 0; layerIndex < highestLayer; layerIndex += 1) {
+    const supportRange = getLayerSupportRange(getLayerBlocks(blocks, layerIndex));
+    const upperCenter = getUpperMassCenter(blocks, layerIndex + 1);
+
+    if (!supportRange || upperCenter === null) {
+      continue;
+    }
+
+    const supportSpan = supportRange.max - supportRange.min;
+    const margin = clamp(6 + supportSpan * 0.06, 6, 12);
+    const riskLeft = supportRange.min + margin - upperCenter;
+    const riskRight = upperCenter - (supportRange.max - margin);
+    const localRisk = Math.max(0, riskLeft, riskRight);
+
+    if (supportSpan < 70) {
+      maxRisk = Math.max(maxRisk, 0.35);
+    }
+
+    if (localRisk > maxRisk) {
+      maxRisk = localRisk;
+      weakestLayer = layerIndex;
+    }
+  }
+
+  return {
+    stable: maxRisk < 8,
+    risk: clamp(maxRisk / 14, 0, 1),
+    weakestLayer,
+  };
+}
+
+function describeBlockPosition(block: TowerBlock) {
+  if (block.slotIndex === 1) {
+    return '中间那根';
+  }
+  return block.slotIndex === 0 ? '左边那根' : '右边那根';
+}
+
+function getTowerIntro(character: Character, style: CharacterPlayStyle, layerCount: number) {
   if (style === 'strategist') {
-    return `${character.name}把积木在桌上排好，低声说：“来吧，别急着乱抽，我会认真陪你玩完这一局。”`;
+    return `${character.name}把 ${layerCount} 层积木塔摆好，指尖在塔边停了一下：“这次塔型不一样。你可以先观察，再决定抽哪根。”`;
   }
-
   if (style === 'gentle') {
-    return `${character.name}把积木往你这边推了推：“你先来。我看着，别紧张，抽坏了也算我的。”`;
+    return `${character.name}把积木塔轻轻扶稳，往你这边看了一眼：“这次搭得有点斜。你先挑，别急，我会接着玩。”`;
   }
-
   if (style === 'tsundere') {
-    return `${character.name}抬了抬眼：“规则很简单。别一会儿输急了又赖我。”`;
+    return `${character.name}抱臂看着新塔型：“先说好，倒了算谁的手抖，不许赖塔。”`;
   }
-
-  return `${character.name}把积木塔敲得轻轻作响：“试试看？这局我可不一定让你。”`;
+  return `${character.name}把新一局积木塔推到中间：“这次塔长得不太一样。你挑一根，看看手气。”`;
 }
 
-function getCharacterReaction(
+function getCharacterThinkingLine(character: Character, style: CharacterPlayStyle, targetBlock: TowerBlock, risk: number) {
+  const position = describeBlockPosition(targetBlock);
+  if (style === 'strategist') {
+    return `${character.name}盯着第 ${targetBlock.layerIndex + 1} 层的${position}：“这根现在的受力还行，风险大概在 ${Math.round(risk * 100)}% 左右。”`;
+  }
+  if (style === 'gentle') {
+    return `${character.name}伸手去碰第 ${targetBlock.layerIndex + 1} 层的${position}：“我先试这根。要是它太紧，我会收手。”`;
+  }
+  if (style === 'tsundere') {
+    return `${character.name}目光落在第 ${targetBlock.layerIndex + 1} 层的${position}：“这根看着别扭，但还没到不能碰的程度。”`;
+  }
+  return `${character.name}已经盯上第 ${targetBlock.layerIndex + 1} 层的${position}：“就它吧，抽出来应该会很好看。”`;
+}
+
+function getCharacterAfterMoveLine(
   character: Character,
   style: CharacterPlayStyle,
-  drawCount: number,
-  remaining: number,
-  isWinningMove: boolean,
+  targetBlock: TowerBlock,
+  stability: StabilitySnapshot,
 ) {
-  if (isWinningMove) {
-    if (style === 'strategist') {
-      return `${character.name}抽走了 ${drawCount} 根，指尖轻敲桌面：“收官了。你刚刚那一步，还是给我留了口子。”`;
-    }
+  const position = describeBlockPosition(targetBlock);
+  if (!stability.stable) {
     if (style === 'gentle') {
-      return `${character.name}轻轻抽走 ${drawCount} 根，朝你弯了弯眼：“这局我先赢一次。下局我还陪你。”`;
+      return `${character.name}刚把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来，塔就开始偏了：“……好，算我这次手重了。”`;
     }
     if (style === 'tsundere') {
-      return `${character.name}把最后 ${drawCount} 根拿开，语气淡淡的：“嗯，我赢了。你刚才要是再稳一点，也不是没机会。”`;
+      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}，塔身随即一晃：“啧，这根比看上去更坏。”`;
     }
-    return `${character.name}利落抽走 ${drawCount} 根，笑了一下：“被我拿下了。你刚才已经快追上我了。”`;
-  }
-
-  if (remaining <= 4) {
     if (style === 'strategist') {
-      return `${character.name}抽走 ${drawCount} 根，剩下 ${remaining} 根：“现在局面很窄了。你可以再想一秒。”`;
+      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}后，塔的支撑线立刻断了：“判断差了一点，这局我认。”`;
     }
-    if (style === 'gentle') {
-      return `${character.name}抽走 ${drawCount} 根，抬眼看你：“只剩 ${remaining} 根了。别慌，慢一点选。”`;
-    }
-    if (style === 'tsundere') {
-      return `${character.name}拿走 ${drawCount} 根，轻哼一声：“剩 ${remaining} 根。你最好别手抖。”`;
-    }
-    return `${character.name}抽走 ${drawCount} 根，眨了下眼：“只剩 ${remaining} 根了，这下有意思了。”`;
+    return `${character.name}刚抽出第 ${targetBlock.layerIndex + 1} 层的${position}，整座塔就倒向一边：“好吧，这次是我翻车了。”`;
   }
 
   if (style === 'strategist') {
-    return `${character.name}抽走 ${drawCount} 根，目光没离开积木：“我在算。你也别只凭感觉。”`;
+    return `${character.name}稳稳抽出第 ${targetBlock.layerIndex + 1} 层的${position}：“还行，重心没有彻底偏。到你了。”`;
   }
-
   if (style === 'gentle') {
-    return `${character.name}抽走 ${drawCount} 根，声音很稳：“到你了。我会看着你抽，不催你。”`;
+    return `${character.name}把第 ${targetBlock.layerIndex + 1} 层的${position}抽了出来，顺手扶了一下塔边：“现在轮到你，慢一点抽。”`;
   }
-
   if (style === 'tsundere') {
-    return `${character.name}抽走 ${drawCount} 根，嘴上还是淡的：“轮到你。可别真输给我得这么快。”`;
+    return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}，语气还是淡淡的：“没倒。你别挑太冒险的那根。”`;
   }
-
-  return `${character.name}顺手抽走 ${drawCount} 根：“到你。让我看看你这次想怎么接。”`;
+  return `${character.name}把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来后朝你扬了扬下巴：“还稳着，接你。”`;
 }
 
-function getResultLine(character: Character, style: CharacterPlayStyle, winner: Winner) {
-  if (winner === 'character') {
+function getWinnerLine(character: Character, style: CharacterPlayStyle, winner: Winner) {
+  if (winner === 'user') {
     if (style === 'gentle') {
-      return `${character.name}赢下了这局，但语气还是软的：“我先记一分。你要是想翻盘，我可以继续陪你。”`;
+      return `${character.name}看着塔在自己手里倒掉，还是轻轻笑了下：“这局算你赢。我下局会认真追回来。”`;
     }
     if (style === 'tsundere') {
-      return `${character.name}看着你，唇角压了压：“这局算我赢。下次别让我这么轻松。”`;
+      return `${character.name}看了一眼倒掉的塔：“行，这局你拿下。别一副早就知道我会失手的样子。”`;
     }
     if (style === 'strategist') {
-      return `${character.name}收起最后一根积木：“这局我拿下了。不过你已经开始会卡我的节奏了。”`;
+      return `${character.name}把倒下的积木重新拢了一下：“这局是你更稳。我输在那根中层支点上。”`;
     }
-    return `${character.name}笑着把最后一根积木放到手心：“我赢了。你差一点点，再来一局会很近。”`;
+    return `${character.name}望着散开的积木塔：“被你拿到了。下一局我不想再让你这么轻松。”`;
   }
 
   if (style === 'gentle') {
-    return `${character.name}看着你赢下来，没恼，只是低声说：“行，你这次比我稳。我认。”`;
+    return `${character.name}接住一根滑下来的积木，声音还是很低：“这局我赢了，但你刚才已经很接近了。”`;
   }
   if (style === 'tsundere') {
-    return `${character.name}顿了下，还是承认了：“行，这局你赢。别一副早就知道会这样似的。”`;
+    return `${character.name}看着倒掉的塔，抬了抬下巴：“这局归我。你刚才那根本来就不该碰。”`;
   }
   if (style === 'strategist') {
-    return `${character.name}看着桌上空掉的积木列，轻轻点头：“这步选得对。你赢得很干净。”`;
+    return `${character.name}望着失衡的塔身：“这根是连锁支点。你一碰，它就会倒。这局我收下了。”`;
   }
-  return `${character.name}望着你手里的最后一根积木，笑意更明显了：“好吧，这局让你拿到了。”`;
+  return `${character.name}看着倒下去的塔，眼里带着笑：“这局我赢。你刚才明明已经快抽出来了。”`;
 }
 
-function getCharacterMove(remaining: number, style: CharacterPlayStyle) {
-  const winningMove = remaining % 4 === 0 ? 3 : (remaining % 4) - 1;
-  const preferred = winningMove >= 1 && winningMove <= 3 ? winningMove : clampTakeCount(Math.ceil(Math.random() * 3), remaining);
+function getPlayableBlocks(blocks: TowerBlock[]) {
+  const presentBlocks = getPresentBlocks(blocks);
+  const topLayer = getHighestLayer(presentBlocks);
+  const safeTopLimit = Math.max(0, topLayer - 1);
 
-  const styleAccuracyMap: Record<CharacterPlayStyle, number> = {
-    strategist: 0.9,
-    gentle: 0.72,
-    tsundere: 0.8,
-    playful: 0.58,
-  };
+  return presentBlocks.filter((block) => {
+    if (block.layerIndex >= safeTopLimit) {
+      return true;
+    }
+    return getLayerBlocks(blocks, block.layerIndex).length > 1;
+  });
+}
 
-  const accuracy = styleAccuracyMap[style];
-  const shouldPlayOptimal = Math.random() < accuracy;
+function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) {
+  const candidates = getPlayableBlocks(blocks).map((block) => {
+    const simulatedBlocks = blocks.map((item): TowerBlock =>
+      item.id === block.id ? { ...item, removedBy: 'character', removedAt: Date.now() } : item,
+    );
+    const stability = evaluateTowerStability(simulatedBlocks);
+    return {
+      block,
+      stability,
+      score: (() => {
+        if (style === 'strategist') {
+          return stability.stable ? stability.risk + block.layerIndex * 0.02 : 9 + stability.risk;
+        }
+        if (style === 'gentle') {
+          return stability.stable ? stability.risk * 0.7 + block.layerIndex * 0.03 : 10 + stability.risk;
+        }
+        if (style === 'tsundere') {
+          return stability.stable ? stability.risk * 0.9 + Math.abs(block.slotIndex - 1) * 0.12 : 4 + stability.risk;
+        }
+        return stability.stable ? Math.abs(block.slotIndex - 1) * 0.08 + stability.risk * 0.95 : 2.8 + stability.risk;
+      })(),
+    };
+  });
 
-  if (shouldPlayOptimal) {
-    return clampTakeCount(preferred, remaining);
-  }
-
-  const casualChoices = [1, 2, 3]
-    .filter((count) => count <= remaining && count !== preferred);
-
-  if (casualChoices.length === 0) {
-    return clampTakeCount(preferred, remaining);
-  }
-
-  return pickRandom(casualChoices);
+  candidates.sort((left, right) => left.score - right.score);
+  return candidates[0] || null;
 }
 
 export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClose, onSendToChat }) => {
   const style = useMemo(() => resolveCharacterPlayStyle(character), [character]);
-  const timeoutRef = useRef<number | null>(null);
-  const [remainingBlocks, setRemainingBlocks] = useState(TOTAL_BLOCKS);
-  const [playerTaken, setPlayerTaken] = useState(0);
-  const [characterTaken, setCharacterTaken] = useState(0);
-  const [currentTurn, setCurrentTurn] = useState<'user' | 'character'>('user');
+  const characterTimerRef = useRef<number | null>(null);
+  const actionTimerRef = useRef<number | null>(null);
+
+  const [towerState, setTowerState] = useState<TowerState>(() => createRandomTower());
+  const [currentTurn, setCurrentTurn] = useState<PlayerTurn>('user');
   const [winner, setWinner] = useState<Winner>(null);
-  const [statusText, setStatusText] = useState(() => getCharacterOpening(character, style));
+  const [statusText, setStatusText] = useState(() => getTowerIntro(character, style, getHighestLayer(createRandomTower().blocks) + 1));
+  const [removedByUser, setRemovedByUser] = useState(0);
+  const [removedByCharacter, setRemovedByCharacter] = useState(0);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [collapseAngle, setCollapseAngle] = useState(0);
+  const [lastStability, setLastStability] = useState<StabilitySnapshot>(() => evaluateTowerStability(towerState.blocks));
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current);
+      if (characterTimerRef.current !== null) {
+        window.clearTimeout(characterTimerRef.current);
+      }
+      if (actionTimerRef.current !== null) {
+        window.clearTimeout(actionTimerRef.current);
       }
     };
   }, []);
 
-  const handleReset = () => {
-    if (timeoutRef.current !== null) {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    setRemainingBlocks(TOTAL_BLOCKS);
-    setPlayerTaken(0);
-    setCharacterTaken(0);
+  const highestLayer = useMemo(() => getHighestLayer(towerState.blocks), [towerState.blocks]);
+  const playableBlocks = useMemo(() => getPlayableBlocks(towerState.blocks), [towerState.blocks]);
+  const visibleBlocks = useMemo(() => towerState.blocks.filter((block) => !block.removedBy || block.id === activeBlockId), [towerState.blocks, activeBlockId]);
+
+  const resetGame = () => {
+    const nextTower = createRandomTower();
+    setTowerState(nextTower);
     setCurrentTurn('user');
     setWinner(null);
-    setStatusText(getCharacterOpening(character, style));
+    setRemovedByUser(0);
+    setRemovedByCharacter(0);
+    setActiveBlockId(null);
+    setCollapseAngle(0);
+    setLastStability(evaluateTowerStability(nextTower.blocks));
+    setStatusText(getTowerIntro(character, style, getHighestLayer(nextTower.blocks) + 1));
   };
 
-  const finishRound = (roundWinner: Winner, nextRemaining: number, summaryLine: string) => {
-    setWinner(roundWinner);
-    setCurrentTurn('user');
-    setRemainingBlocks(nextRemaining);
-    setStatusText(summaryLine);
-  };
+  const applyRemoval = (blockId: string, actor: PlayerTurn, blockLine: string) => {
+    setActiveBlockId(blockId);
+    setStatusText(blockLine);
 
-  const handleCharacterTurn = (remainingAfterUserMove: number) => {
-    setCurrentTurn('character');
-    setStatusText(`${character.name}正在看着积木，像是在算你刚才那一步。`);
+    actionTimerRef.current = window.setTimeout(() => {
+      const nextBlocks = towerState.blocks.map((block) =>
+        block.id === blockId
+          ? {
+              ...block,
+              removedBy: actor,
+              removedAt: Date.now(),
+            }
+          : block,
+      );
 
-    timeoutRef.current = window.setTimeout(() => {
-      const takeCount = getCharacterMove(remainingAfterUserMove, style);
-      const nextRemaining = Math.max(0, remainingAfterUserMove - takeCount);
-      const isWinningMove = nextRemaining === 0;
+      const nextStability = evaluateTowerStability(nextBlocks);
+      const removedBlock = towerState.blocks.find((block) => block.id === blockId) || null;
 
-      setCharacterTaken((prev) => prev + takeCount);
+      setTowerState((prev) => ({
+        ...prev,
+        blocks: nextBlocks,
+      }));
+      setLastStability(nextStability);
+      setActiveBlockId(null);
 
-      if (isWinningMove) {
-        finishRound('character', nextRemaining, getResultLine(character, style, 'character'));
+      if (actor === 'user') {
+        setRemovedByUser((prev) => prev + 1);
+      } else {
+        setRemovedByCharacter((prev) => prev + 1);
+      }
+
+      if (!removedBlock) {
         return;
       }
 
-      setRemainingBlocks(nextRemaining);
-      setCurrentTurn('user');
-      setStatusText(getCharacterReaction(character, style, takeCount, nextRemaining, false));
-    }, 720);
+      if (!nextStability.stable) {
+        const roundWinner: Winner = actor === 'user' ? 'character' : 'user';
+        setWinner(roundWinner);
+        setCurrentTurn('user');
+        setCollapseAngle((removedBlock.slotIndex - 1) * 10 + (actor === 'user' ? -8 : 8));
+        setStatusText(getWinnerLine(character, style, roundWinner));
+        return;
+      }
+
+      if (actor === 'user') {
+        setCurrentTurn('character');
+        setStatusText(`${character.name}看着你抽走了第 ${removedBlock.layerIndex + 1} 层的${describeBlockPosition(removedBlock)}，正在挑下一根。`);
+      } else {
+        setCurrentTurn('user');
+        setStatusText(getCharacterAfterMoveLine(character, style, removedBlock, nextStability));
+      }
+    }, 360);
   };
 
-  const handlePlayerMove = (takeCount: number) => {
-    if (currentTurn !== 'user' || winner) {
+  const handleUserSelectBlock = (block: TowerBlock) => {
+    if (currentTurn !== 'user' || winner || activeBlockId) {
       return;
     }
 
-    const actualTakeCount = clampTakeCount(takeCount, remainingBlocks);
-    const nextRemaining = Math.max(0, remainingBlocks - actualTakeCount);
+    const simulatedBlocks = towerState.blocks.map((item): TowerBlock =>
+      item.id === block.id ? { ...item, removedBy: 'user', removedAt: Date.now() } : item,
+    );
+    const simulatedStability = evaluateTowerStability(simulatedBlocks);
+    const stabilityTone =
+      simulatedStability.risk < 0.28 ? '还算稳' : simulatedStability.risk < 0.56 ? '有点晃' : '很悬';
 
-    setPlayerTaken((prev) => prev + actualTakeCount);
+    applyRemoval(
+      block.id,
+      'user',
+      `你捏住了第 ${block.layerIndex + 1} 层的${describeBlockPosition(block)}，慢慢往外抽。这根现在${stabilityTone}。`,
+    );
+  };
 
-    if (nextRemaining === 0) {
-      finishRound('user', nextRemaining, getResultLine(character, style, 'user'));
+  useEffect(() => {
+    if (currentTurn !== 'character' || winner || activeBlockId) {
       return;
     }
 
-    setRemainingBlocks(nextRemaining);
-    handleCharacterTurn(nextRemaining);
-  };
+    const target = chooseCharacterTarget(towerState.blocks, style);
+    if (!target) {
+      return;
+    }
+
+    setStatusText(getCharacterThinkingLine(character, style, target.block, target.stability.risk));
+    characterTimerRef.current = window.setTimeout(() => {
+      applyRemoval(target.block.id, 'character', getCharacterThinkingLine(character, style, target.block, target.stability.risk));
+    }, clamp(560 + target.stability.risk * 220, 560, MAX_CHARACTER_DELAY_MS));
+
+    return () => {
+      if (characterTimerRef.current !== null) {
+        window.clearTimeout(characterTimerRef.current);
+      }
+    };
+  }, [activeBlockId, character, currentTurn, style, towerState.blocks, winner]);
 
   const handleSendResult = () => {
+    const totalLayers = highestLayer + 1;
     const resultSummary = [
-      `你和${character.name}玩了一局抽积木。`,
-      `你一共抽了 ${playerTaken} 根，${character.name}抽了 ${characterTaken} 根。`,
-      winner === 'user' ? '结果：这局你赢了。' : `结果：这局${character.name}赢了。`,
+      `你和${character.name}玩了一局抽积木塔。`,
+      `这局塔一共有 ${totalLayers} 层，塔形是随机生成的。`,
+      `你抽出了 ${removedByUser} 根，${character.name}抽出了 ${removedByCharacter} 根。`,
+      winner === 'user' ? '结果：你让塔在对方手里倒了。' : '结果：你这边抽动后，塔倒了。',
       statusText,
     ].join('\n');
 
@@ -258,81 +483,134 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
 
   return (
     <div className="flex h-full w-full flex-col items-center py-2">
-      <div className="text-center mb-5">
-        <h3 className="text-xl font-bold text-zinc-800 flex items-center justify-center gap-2">
+      <div className="mb-5 text-center">
+        <h3 className="flex items-center justify-center gap-2 text-xl font-bold text-zinc-800">
           <BrickWall className="text-amber-500" size={20} />
-          抽积木
+          抽积木塔
         </h3>
-        <p className="text-zinc-400 text-xs mt-1 font-medium tracking-wider">
-          和 {character.name} 一起抽，不是和随机数玩
+        <p className="mt-1 text-xs font-medium tracking-wider text-zinc-400">
+          每一局塔形都不同，要点具体积木去抽
         </p>
       </div>
 
-      <div className="w-full max-w-[300px] rounded-3xl border border-amber-100 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm">
-        <div className="rounded-2xl bg-white/90 p-4 border border-amber-100">
-          <div className="flex items-center justify-between text-xs font-semibold text-zinc-500">
-            <span>剩余积木</span>
-            <span>{remainingBlocks} / {TOTAL_BLOCKS}</span>
+      <div className="w-full max-w-[320px] rounded-[28px] border border-amber-100 bg-gradient-to-b from-amber-50 to-white p-4 shadow-[0_20px_50px_rgba(249,115,22,0.08)]">
+        <div className="rounded-[24px] border border-amber-100 bg-white/95 p-4">
+          <div className="mb-3 flex items-center justify-between text-xs font-semibold text-zinc-500">
+            <span>塔稳定度</span>
+            <span>{Math.round((1 - lastStability.risk) * 100)}%</span>
           </div>
-          <div className="mt-3 grid grid-cols-7 gap-1.5">
-            {Array.from({ length: remainingBlocks }).map((_, index) => (
-              <motion.div
-                key={`${remainingBlocks}-${index}`}
-                layout
-                className="h-6 rounded-md bg-gradient-to-r from-amber-300 to-orange-300 shadow-[0_2px_6px_rgba(251,146,60,0.25)]"
-              />
-            ))}
+          <div className="h-2 rounded-full bg-zinc-100">
+            <motion.div
+              className={`h-full rounded-full ${lastStability.risk > 0.55 ? 'bg-rose-400' : lastStability.risk > 0.3 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+              animate={{ width: `${Math.max(10, (1 - lastStability.risk) * 100)}%` }}
+            />
           </div>
-        </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-zinc-950 px-4 py-3 text-white">
-            <div className="text-[11px] uppercase tracking-widest text-zinc-400">你</div>
-            <div className="mt-1 text-2xl font-bold">{playerTaken}</div>
-            <div className="text-xs text-zinc-400">已抽走</div>
-          </div>
-          <div className="rounded-2xl bg-white px-4 py-3 border border-zinc-200">
-            <div className="text-[11px] uppercase tracking-widest text-zinc-400">{character.name}</div>
-            <div className="mt-1 text-2xl font-bold text-zinc-800">{characterTaken}</div>
-            <div className="text-xs text-zinc-400">已抽走</div>
-          </div>
-        </div>
+          <div className="relative mx-auto mt-5 h-[260px] w-full overflow-hidden rounded-[24px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(254,243,199,0.8)_55%,_rgba(255,237,213,0.65))]">
+            <motion.div
+              className="absolute inset-x-0 bottom-3 mx-auto h-[228px] w-[288px]"
+              animate={{
+                rotateZ: winner ? collapseAngle : 0,
+                x: winner ? collapseAngle * 0.8 : 0,
+                y: winner ? 12 : 0,
+              }}
+              transition={{ type: 'spring', stiffness: 120, damping: 18 }}
+            >
+              {visibleBlocks.map((block) => {
+                const isRemoved = !!block.removedBy;
+                const isClickable = currentTurn === 'user' && !winner && !activeBlockId && playableBlocks.some((item) => item.id === block.id);
+                const isActive = activeBlockId === block.id;
+                const baseLeft = SCENE_WIDTH / 2 + block.centerX - block.width / 2;
+                const bottom = block.layerIndex * LAYER_STEP + 8;
+                const sideShade = block.orientation === 'x' ? 0.88 : 0.78;
 
-        <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
-            <Sparkles size={16} className="text-amber-500" />
-            {currentTurn === 'character' && !winner ? `${character.name} 的回合` : winner ? '这局结束了' : '你的回合'}
+                return (
+                  <motion.button
+                    key={block.id}
+                    type="button"
+                    disabled={!isClickable}
+                    onClick={() => handleUserSelectBlock(block)}
+                    className={`absolute border-none bg-transparent p-0 text-left ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+                    initial={false}
+                    animate={{
+                      left: baseLeft,
+                      bottom,
+                      opacity: isRemoved ? 0 : 1,
+                      x: isActive ? (block.slotIndex - 1) * 10 + 110 : 0,
+                      y: isActive ? -4 : 0,
+                      rotateZ: winner && !isRemoved ? collapseAngle * ((block.layerIndex + 1) / Math.max(1, highestLayer + 1)) : 0,
+                    }}
+                    transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+                    style={{
+                      width: block.width,
+                      height: BLOCK_HEIGHT,
+                      transformStyle: 'preserve-3d',
+                    }}
+                  >
+                    <div
+                      className={`relative h-full w-full rounded-md border border-amber-300/80 shadow-[0_6px_12px_rgba(120,53,15,0.14)] ${isClickable ? 'ring-1 ring-transparent hover:ring-amber-300' : ''}`}
+                      style={{
+                        background: `linear-gradient(135deg, hsl(${block.hue} 90% ${block.tint + 8}%), hsl(${block.hue} 78% ${block.tint}%) 56%, hsl(${block.hue} 65% ${block.tint - 8}%))`,
+                      }}
+                    >
+                      <div
+                        className="absolute inset-y-[2px] right-[5px] w-[8px] rounded-sm"
+                        style={{
+                          background: `linear-gradient(180deg, rgba(120,53,15,${sideShade}), rgba(120,53,15,0.35))`,
+                        }}
+                      />
+                      <div className="absolute inset-x-[8px] top-[4px] h-[2px] rounded-full bg-white/60" />
+                      {isClickable && (
+                        <div className="absolute inset-0 rounded-md bg-white/0 transition-colors hover:bg-white/12" />
+                      )}
+                    </div>
+                  </motion.button>
+                );
+              })}
+
+              <div className="absolute inset-x-6 bottom-0 h-3 rounded-full bg-[rgba(120,53,15,0.18)] blur-md" />
+            </motion.div>
           </div>
-          <p className="mt-2 text-sm leading-6 text-zinc-600 whitespace-pre-wrap">
-            {statusText}
-          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-zinc-950 px-4 py-3 text-white">
+              <div className="text-[11px] uppercase tracking-widest text-zinc-400">你</div>
+              <div className="mt-1 text-2xl font-bold">{removedByUser}</div>
+              <div className="text-xs text-zinc-400">已抽出</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+              <div className="text-[11px] uppercase tracking-widest text-zinc-400">{character.name}</div>
+              <div className="mt-1 text-2xl font-bold text-zinc-800">{removedByCharacter}</div>
+              <div className="text-xs text-zinc-400">已抽出</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
+              <Sparkles size={16} className="text-amber-500" />
+              {winner ? '这局结束了' : currentTurn === 'user' ? '你的回合：点一根积木抽出来' : `${character.name} 正在选积木`}
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
+              {statusText}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid w-full max-w-[300px] grid-cols-3 gap-3">
-        {[1, 2, 3].map((count) => (
-          <button
-            key={count}
-            onClick={() => handlePlayerMove(count)}
-            disabled={currentTurn !== 'user' || !!winner || remainingBlocks < count}
-            className="rounded-2xl bg-white border border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-700 shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:border-amber-300 enabled:hover:bg-amber-50"
-          >
-            抽 {count} 根
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-4 flex w-full max-w-[300px] items-center gap-3">
+      <div className="mt-4 flex w-full max-w-[320px] items-center gap-3">
         <button
-          onClick={handleReset}
+          onClick={resetGame}
           className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-700 transition-all active:scale-95"
         >
-          再来一局
+          <span className="inline-flex items-center gap-2">
+            <RotateCcw size={16} />
+            新塔重开
+          </span>
         </button>
         <button
           onClick={handleSendResult}
           disabled={!winner}
-          className="flex-[1.4] rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex-[1.2] rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span className="inline-flex items-center gap-2">
             <CheckCircle2 size={16} />
