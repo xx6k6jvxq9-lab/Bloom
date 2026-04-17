@@ -513,17 +513,37 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                 const isActive = activeBlockId === block.id;
                 const baseLeft = SCENE_WIDTH / 2 + block.centerX - block.width / 2;
                 const bottom = block.layerIndex * LAYER_STEP + 12;
-                const creamBase = block.layerIndex % 2 === 0;
-
-                const topColor = creamBase
-                  ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,247,233,0.96) 55%, rgba(243,229,203,0.94) 100%)'
-                  : 'linear-gradient(180deg, rgba(255,214,151,0.98), rgba(255,193,111,0.95) 58%, rgba(236,160,72,0.94) 100%)';
-                const frontColor = creamBase
-                  ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(251,242,225,0.94) 72%, rgba(237,221,191,0.96) 100%)'
-                  : 'linear-gradient(180deg, rgba(255,204,129,0.98), rgba(246,176,84,0.95) 74%, rgba(226,145,51,0.96) 100%)';
-                const sideColor = creamBase
-                  ? 'linear-gradient(180deg, rgba(247,235,214,0.98), rgba(228,208,176,0.92))'
-                  : 'linear-gradient(180deg, rgba(245,182,92,0.98), rgba(211,126,38,0.92))';
+                const paletteIndex = (block.layerIndex + block.slotIndex) % 4;
+                const blockPalette = [
+                  {
+                    top: 'linear-gradient(180deg, rgba(255,233,178,0.98), rgba(255,210,129,0.96) 56%, rgba(240,171,72,0.95) 100%)',
+                    front: 'linear-gradient(180deg, rgba(255,220,155,0.98), rgba(248,188,97,0.95) 74%, rgba(227,145,46,0.96) 100%)',
+                    side: 'linear-gradient(180deg, rgba(240,171,72,0.98), rgba(198,116,31,0.94))',
+                    glow: 'rgba(245, 158, 11, 0.22)',
+                    rim: 'rgba(255, 244, 214, 0.72)',
+                  },
+                  {
+                    top: 'linear-gradient(180deg, rgba(255,244,216,0.98), rgba(247,228,183,0.96) 56%, rgba(228,197,141,0.95) 100%)',
+                    front: 'linear-gradient(180deg, rgba(255,239,205,0.98), rgba(241,219,172,0.95) 74%, rgba(214,180,120,0.96) 100%)',
+                    side: 'linear-gradient(180deg, rgba(229,201,149,0.98), rgba(181,145,86,0.94))',
+                    glow: 'rgba(180, 145, 86, 0.18)',
+                    rim: 'rgba(255, 250, 236, 0.76)',
+                  },
+                  {
+                    top: 'linear-gradient(180deg, rgba(255,228,196,0.98), rgba(255,200,157,0.96) 56%, rgba(239,147,92,0.95) 100%)',
+                    front: 'linear-gradient(180deg, rgba(255,214,176,0.98), rgba(247,183,136,0.95) 74%, rgba(222,131,73,0.96) 100%)',
+                    side: 'linear-gradient(180deg, rgba(240,157,99,0.98), rgba(191,104,49,0.94))',
+                    glow: 'rgba(234, 88, 12, 0.18)',
+                    rim: 'rgba(255, 237, 220, 0.74)',
+                  },
+                  {
+                    top: 'linear-gradient(180deg, rgba(255,239,189,0.98), rgba(246,216,132,0.96) 56%, rgba(227,178,59,0.95) 100%)',
+                    front: 'linear-gradient(180deg, rgba(252,229,160,0.98), rgba(237,202,104,0.95) 74%, rgba(205,157,42,0.96) 100%)',
+                    side: 'linear-gradient(180deg, rgba(225,183,68,0.98), rgba(172,126,22,0.94))',
+                    glow: 'rgba(202, 138, 4, 0.18)',
+                    rim: 'rgba(255, 246, 201, 0.72)',
+                  },
+                ][paletteIndex];
 
                 return (
                   <motion.button
@@ -551,19 +571,17 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                     <div className="relative h-full w-full" style={{ transformStyle: 'preserve-3d' }}>
                       <div
                         className="absolute left-[9px] right-[8px] top-[2px] h-[5px] rounded-full blur-[3px]"
-                        style={{ background: 'rgba(255,255,255,0.84)' }}
+                        style={{ background: blockPalette.rim }}
                       />
                       <div
                         className={`absolute inset-x-[8px] top-0 rounded-[14px] border ${isClickable ? 'border-white/80' : 'border-white/60'}`}
                         style={{
                           height: BLOCK_HEIGHT + 1,
-                          background: topColor,
-                          boxShadow: creamBase
-                            ? '0 12px 22px rgba(148,163,184,0.12), inset 0 1px 0 rgba(255,255,255,0.96)'
-                            : '0 12px 24px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,248,235,0.95)',
+                          background: blockPalette.top,
+                          boxShadow: `0 12px 24px ${blockPalette.glow}, inset 0 1px 0 rgba(255,255,255,0.72)`,
                         }}
                       >
-                        <div className="absolute left-[11px] right-[14px] top-[3px] h-[4px] rounded-full bg-white/72" />
+                        <div className="absolute left-[11px] right-[14px] top-[3px] h-[4px] rounded-full bg-white/45" />
                         <div className="absolute bottom-[3px] left-[16px] right-[18px] h-[6px] rounded-full bg-black/6 blur-[1px]" />
                         {isClickable && <div className="absolute inset-0 rounded-[14px] bg-white/0 transition-colors hover:bg-white/10" />}
                       </div>
@@ -571,23 +589,21 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                         className="absolute bottom-[1px] left-[11px] right-[12px] rounded-b-[12px]"
                         style={{
                           height: 9,
-                          background: frontColor,
-                          boxShadow: creamBase
-                            ? 'inset 0 -1px 0 rgba(214,196,168,0.55)'
-                            : 'inset 0 -1px 0 rgba(194,118,34,0.36)',
+                          background: blockPalette.front,
+                          boxShadow: 'inset 0 -1px 0 rgba(120, 53, 15, 0.18)',
                         }}
                       />
                       <div
                         className="absolute bottom-[2px] right-[5px] w-[12px] rounded-r-[12px]"
                         style={{
                           top: 6,
-                          background: sideColor,
+                          background: blockPalette.side,
                         }}
                       />
                       <div
                         className="absolute bottom-[-5px] left-[18px] right-[18px] h-[10px] rounded-full blur-[5px]"
                         style={{
-                          background: creamBase ? 'rgba(214,196,168,0.22)' : 'rgba(217,119,6,0.2)',
+                          background: blockPalette.glow,
                         }}
                       />
                     </div>
