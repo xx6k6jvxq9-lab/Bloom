@@ -42,11 +42,11 @@ type RenderedTowerBlock = TowerBlock & {
   renderLayer: number;
 };
 
-const SCENE_WIDTH = 296;
+const SCENE_WIDTH = 252;
 const BLOCKS_PER_LAYER = 3;
 const BLOCK_HEIGHT = 18;
-const LAYER_STEP = 22;
-const BASE_BLOCK_WIDTH = 76;
+const LAYER_STEP = 24;
+const BASE_BLOCK_WIDTH = 64;
 const MAX_CHARACTER_DELAY_MS = 950;
 
 function clamp(value: number, min: number, max: number) {
@@ -82,18 +82,19 @@ function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
 function createRandomTower(): TowerState {
   const towerSeed = Math.floor(Date.now() + Math.random() * 100000);
   const random = createSeededRandom(towerSeed);
-  const layerCount = 7 + Math.floor(random() * 2);
-  const baseLean = (random() - 0.5) * 18;
+  const layerCount = 9 + Math.floor(random() * 2);
+  const baseLean = (random() - 0.5) * 10;
   const blocks: TowerBlock[] = [];
 
   for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
     const orientation: BlockOrientation = layerIndex % 2 === 0 ? 'x' : 'z';
-    const layerShift = baseLean + (random() - 0.5) * 12 + (layerIndex - layerCount / 2) * ((random() - 0.5) * 1.8);
+    const taper = 1 - (layerIndex / Math.max(1, layerCount - 1)) * 0.2;
+    const layerShift = baseLean + (random() - 0.5) * 6 + (layerIndex - layerCount / 2) * ((random() - 0.5) * 0.8);
 
     for (let slotIndex = 0; slotIndex < BLOCKS_PER_LAYER; slotIndex += 1) {
-      const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 10);
-      const centerX = layerShift + slotShift + (random() - 0.5) * 5;
-      const width = BASE_BLOCK_WIDTH + (random() - 0.5) * 6;
+      const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 18) * taper;
+      const centerX = layerShift + slotShift + (random() - 0.5) * 2.5;
+      const width = BASE_BLOCK_WIDTH + (random() - 0.5) * 3.5;
 
       blocks.push({
         id: `tower-${towerSeed}-${layerIndex}-${slotIndex}`,
@@ -162,7 +163,7 @@ function evaluateTowerStability(blocks: TowerBlock[]): StabilitySnapshot {
     const riskRight = upperCenter - (supportRange.max - margin);
     const localRisk = Math.max(0, riskLeft, riskRight);
 
-    if (supportSpan < 70) {
+    if (supportSpan < 56) {
       maxRisk = Math.max(maxRisk, 0.35);
     }
 
@@ -545,9 +546,9 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
         <div className="relative flex h-full min-h-[620px] flex-col overflow-hidden rounded-[30px] border border-white/35 bg-[linear-gradient(180deg,rgba(255,255,255,0.26),rgba(255,255,255,0.08))] shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-[18px]">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-[56%] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.62),rgba(255,255,255,0.08)_58%,transparent_78%)]" />
 
-          <div className="relative h-[430px] shrink-0 overflow-hidden px-2 pt-5">
+          <div className="relative h-[470px] shrink-0 overflow-hidden px-2 pt-5">
             <motion.div
-              className="absolute inset-x-0 bottom-6 mx-auto h-[340px] w-[308px]"
+              className="absolute inset-x-0 bottom-4 mx-auto h-[408px] w-[252px]"
               animate={{
                 rotateZ: winner ? collapseAngle : 0,
                 x: winner ? collapseAngle * 0.9 : 0,
@@ -601,7 +602,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                       left: baseLeft,
                       bottom,
                       opacity: isRemoved ? 0 : 1,
-                      x: isActive ? (block.slotIndex - 1) * 12 + 124 : 0,
+                      x: isActive ? (block.slotIndex - 1) * 8 + 106 : 0,
                       y: isActive ? -4 : 0,
                       rotateZ: winner && !isRemoved ? collapseAngle * ((block.layerIndex + 1) / Math.max(1, highestLayer + 1)) : 0,
                     }}
