@@ -388,8 +388,41 @@ function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) 
     };
   });
 
+  if (candidates.length === 0) {
+    return null;
+  }
+
   candidates.sort((left, right) => left.score - right.score);
-  return candidates[0] || null;
+  const styleConfig = {
+    strategist: { preferredPool: 3, riskWeight: 0.15, fallbackPool: 2 },
+    gentle: { preferredPool: 4, riskWeight: 0.24, fallbackPool: 3 },
+    tsundere: { preferredPool: 5, riskWeight: 0.34, fallbackPool: 4 },
+    playful: { preferredPool: 6, riskWeight: 0.42, fallbackPool: 5 },
+  }[style];
+
+  const stableCandidates = candidates.filter((candidate) => candidate.stability.stable);
+  const safeSource = stableCandidates.length > 0 ? stableCandidates : candidates;
+  const safePool = safeSource.slice(0, Math.min(styleConfig.preferredPool, safeSource.length));
+
+  if (safePool.length === 1) {
+    return safePool[0];
+  }
+
+  const shouldSlip = Math.random() < styleConfig.riskWeight;
+  if (!shouldSlip) {
+    return safePool[Math.floor(Math.random() * safePool.length)];
+  }
+
+  const fallbackSource = stableCandidates.length > styleConfig.fallbackPool ? stableCandidates : candidates;
+  const fallbackStart = safePool.length > 1 ? Math.max(1, Math.floor(safePool.length / 2)) : 0;
+  const fallbackEnd = Math.min(fallbackSource.length, fallbackStart + styleConfig.fallbackPool);
+  const riskyPool = fallbackSource.slice(fallbackStart, fallbackEnd);
+
+  if (riskyPool.length === 0) {
+    return safePool[Math.floor(Math.random() * safePool.length)];
+  }
+
+  return riskyPool[Math.floor(Math.random() * riskyPool.length)];
 }
 
 export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClose, onSendToChat }) => {
