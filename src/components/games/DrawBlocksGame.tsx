@@ -21,8 +21,6 @@ type TowerBlock = {
   centerX: number;
   width: number;
   depth: number;
-  hue: number;
-  tint: number;
   orientation: BlockOrientation;
   removedBy?: PlayerTurn;
   removedAt?: number;
@@ -40,20 +38,15 @@ type StabilitySnapshot = {
   weakestLayer: number | null;
 };
 
-const SCENE_WIDTH = 288;
+const SCENE_WIDTH = 296;
 const BLOCKS_PER_LAYER = 3;
-const BLOCK_HEIGHT = 16;
-const LAYER_STEP = 20;
-const BASE_BLOCK_WIDTH = 72;
-const BASE_BLOCK_DEPTH = 18;
+const BLOCK_HEIGHT = 18;
+const LAYER_STEP = 22;
+const BASE_BLOCK_WIDTH = 76;
 const MAX_CHARACTER_DELAY_MS = 950;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function pickRandom<T>(items: T[]) {
-  return items[Math.floor(Math.random() * items.length)];
 }
 
 function createSeededRandom(seed: number) {
@@ -73,15 +66,12 @@ function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
   if (/冷静|清晰|理性|克制|测试|稳定|分析/.test(fingerprint)) {
     return 'strategist';
   }
-
   if (/青梅|照顾|偏爱|安静|温柔|兜底|陪/.test(fingerprint)) {
     return 'gentle';
   }
-
   if (/嘴硬|别扭|傲娇|逞强/.test(fingerprint)) {
     return 'tsundere';
   }
-
   return 'playful';
 }
 
@@ -100,9 +90,6 @@ function createRandomTower(): TowerState {
       const slotShift = (slotIndex - 1) * (BASE_BLOCK_WIDTH - 10);
       const centerX = layerShift + slotShift + (random() - 0.5) * 5;
       const width = BASE_BLOCK_WIDTH + (random() - 0.5) * 6;
-      const depth = BASE_BLOCK_DEPTH + (random() - 0.5) * 4;
-      const hue = 32 + Math.round(random() * 10);
-      const tint = 56 + Math.round(random() * 16);
 
       blocks.push({
         id: `tower-${towerSeed}-${layerIndex}-${slotIndex}`,
@@ -110,9 +97,7 @@ function createRandomTower(): TowerState {
         slotIndex,
         centerX,
         width,
-        depth,
-        hue,
-        tint,
+        depth: 18,
         orientation,
       });
     }
@@ -121,12 +106,12 @@ function createRandomTower(): TowerState {
   return { blocks, towerSeed, baseLean };
 }
 
-function getHighestLayer(blocks: TowerBlock[]) {
-  return blocks.reduce((max, block) => Math.max(max, block.layerIndex), 0);
-}
-
 function getPresentBlocks(blocks: TowerBlock[]) {
   return blocks.filter((block) => !block.removedBy);
+}
+
+function getHighestLayer(blocks: TowerBlock[]) {
+  return blocks.reduce((max, block) => Math.max(max, block.layerIndex), 0);
 }
 
 function getLayerBlocks(blocks: TowerBlock[], layerIndex: number) {
@@ -149,6 +134,7 @@ function getUpperMassCenter(blocks: TowerBlock[], layerIndex: number) {
   if (upperBlocks.length === 0) {
     return null;
   }
+
   return upperBlocks.reduce((sum, block) => sum + block.centerX, 0) / upperBlocks.length;
 }
 
@@ -198,29 +184,29 @@ function describeBlockPosition(block: TowerBlock) {
 
 function getTowerIntro(character: Character, style: CharacterPlayStyle, layerCount: number) {
   if (style === 'strategist') {
-    return `${character.name}把 ${layerCount} 层积木塔摆好，指尖在塔边停了一下：“这次塔型不一样。你可以先观察，再决定抽哪根。”`;
+    return `${character.name}把 ${layerCount} 层积木塔摆好，低声说：“这局塔型和上一把不同，先看支点再动手。”`;
   }
   if (style === 'gentle') {
-    return `${character.name}把积木塔轻轻扶稳，往你这边看了一眼：“这次搭得有点斜。你先挑，别急，我会接着玩。”`;
+    return `${character.name}把积木塔轻轻扶稳：“这次有点斜。你先挑，慢一点抽就好。”`;
   }
   if (style === 'tsundere') {
-    return `${character.name}抱臂看着新塔型：“先说好，倒了算谁的手抖，不许赖塔。”`;
+    return `${character.name}看了看塔：“先说好，倒了别怪我笑你。”`;
   }
-  return `${character.name}把新一局积木塔推到中间：“这次塔长得不太一样。你挑一根，看看手气。”`;
+  return `${character.name}把新塔推到你面前：“这次长得挺好看。来，挑一根试试。”`;
 }
 
 function getCharacterThinkingLine(character: Character, style: CharacterPlayStyle, targetBlock: TowerBlock, risk: number) {
   const position = describeBlockPosition(targetBlock);
   if (style === 'strategist') {
-    return `${character.name}盯着第 ${targetBlock.layerIndex + 1} 层的${position}：“这根现在的受力还行，风险大概在 ${Math.round(risk * 100)}% 左右。”`;
+    return `${character.name}盯着第 ${targetBlock.layerIndex + 1} 层的${position}：“这根受力还行，风险大概 ${Math.round(risk * 100)}%。”`;
   }
   if (style === 'gentle') {
-    return `${character.name}伸手去碰第 ${targetBlock.layerIndex + 1} 层的${position}：“我先试这根。要是它太紧，我会收手。”`;
+    return `${character.name}碰了碰第 ${targetBlock.layerIndex + 1} 层的${position}：“我试这根。如果太紧，我就换。”`;
   }
   if (style === 'tsundere') {
-    return `${character.name}目光落在第 ${targetBlock.layerIndex + 1} 层的${position}：“这根看着别扭，但还没到不能碰的程度。”`;
+    return `${character.name}盯上第 ${targetBlock.layerIndex + 1} 层的${position}：“这根看着悬，但也不是不能碰。”`;
   }
-  return `${character.name}已经盯上第 ${targetBlock.layerIndex + 1} 层的${position}：“就它吧，抽出来应该会很好看。”`;
+  return `${character.name}已经看中第 ${targetBlock.layerIndex + 1} 层的${position}：“就它吧，抽出来应该挺顺手。”`;
 }
 
 function getCharacterAfterMoveLine(
@@ -230,55 +216,56 @@ function getCharacterAfterMoveLine(
   stability: StabilitySnapshot,
 ) {
   const position = describeBlockPosition(targetBlock);
+
   if (!stability.stable) {
     if (style === 'gentle') {
-      return `${character.name}刚把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来，塔就开始偏了：“……好，算我这次手重了。”`;
+      return `${character.name}刚抽出第 ${targetBlock.layerIndex + 1} 层的${position}，塔就开始偏了：“好吧，这次算我手重。”`;
     }
     if (style === 'tsundere') {
-      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}，塔身随即一晃：“啧，这根比看上去更坏。”`;
+      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}，塔身立刻一晃：“啧，这根比看上去更坏。”`;
     }
     if (style === 'strategist') {
-      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}后，塔的支撑线立刻断了：“判断差了一点，这局我认。”`;
+      return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}后，支撑线断了：“这步判断差了一点。”`;
     }
-    return `${character.name}刚抽出第 ${targetBlock.layerIndex + 1} 层的${position}，整座塔就倒向一边：“好吧，这次是我翻车了。”`;
+    return `${character.name}刚把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来，整座塔就歪了：“这次是我翻车了。”`;
   }
 
   if (style === 'strategist') {
-    return `${character.name}稳稳抽出第 ${targetBlock.layerIndex + 1} 层的${position}：“还行，重心没有彻底偏。到你了。”`;
+    return `${character.name}稳稳抽出第 ${targetBlock.layerIndex + 1} 层的${position}：“还行，重心没彻底偏。到你。”`;
   }
   if (style === 'gentle') {
-    return `${character.name}把第 ${targetBlock.layerIndex + 1} 层的${position}抽了出来，顺手扶了一下塔边：“现在轮到你，慢一点抽。”`;
+    return `${character.name}把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来，顺手扶了扶塔：“还稳着，你来吧。”`;
   }
   if (style === 'tsundere') {
-    return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}，语气还是淡淡的：“没倒。你别挑太冒险的那根。”`;
+    return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}：“没倒。你别乱碰太险的。”`;
   }
-  return `${character.name}把第 ${targetBlock.layerIndex + 1} 层的${position}抽出来后朝你扬了扬下巴：“还稳着，接你。”`;
+  return `${character.name}抽出第 ${targetBlock.layerIndex + 1} 层的${position}后朝你扬了扬下巴：“还稳，接你。”`;
 }
 
 function getWinnerLine(character: Character, style: CharacterPlayStyle, winner: Winner) {
   if (winner === 'user') {
     if (style === 'gentle') {
-      return `${character.name}看着塔在自己手里倒掉，还是轻轻笑了下：“这局算你赢。我下局会认真追回来。”`;
+      return `${character.name}看着塔在自己手里倒掉，还是笑了下：“这局算你赢。下局我再陪你追回来。”`;
     }
     if (style === 'tsundere') {
-      return `${character.name}看了一眼倒掉的塔：“行，这局你拿下。别一副早就知道我会失手的样子。”`;
+      return `${character.name}看着倒掉的塔：“行，这局你拿下。别太得意。”`;
     }
     if (style === 'strategist') {
-      return `${character.name}把倒下的积木重新拢了一下：“这局是你更稳。我输在那根中层支点上。”`;
+      return `${character.name}把散开的积木重新拢了拢：“这局是你更稳。”`;
     }
-    return `${character.name}望着散开的积木塔：“被你拿到了。下一局我不想再让你这么轻松。”`;
+    return `${character.name}望着散开的积木：“被你拿到了。下一局我不想再让你这么轻松。”`;
   }
 
   if (style === 'gentle') {
-    return `${character.name}接住一根滑下来的积木，声音还是很低：“这局我赢了，但你刚才已经很接近了。”`;
+    return `${character.name}接住一根滑下来的积木：“这局我赢了，但你刚才已经很接近了。”`;
   }
   if (style === 'tsundere') {
-    return `${character.name}看着倒掉的塔，抬了抬下巴：“这局归我。你刚才那根本来就不该碰。”`;
+    return `${character.name}看着倒下的塔，抬了抬下巴：“这局归我。你刚才那根本来就不该碰。”`;
   }
   if (style === 'strategist') {
-    return `${character.name}望着失衡的塔身：“这根是连锁支点。你一碰，它就会倒。这局我收下了。”`;
+    return `${character.name}望着失衡的塔身：“那根是连锁支点。你一碰，它就会倒。”`;
   }
-  return `${character.name}看着倒下去的塔，眼里带着笑：“这局我赢。你刚才明明已经快抽出来了。”`;
+  return `${character.name}看着倒下去的塔，眼里带着笑：“这局我赢。”`;
 }
 
 function getPlayableBlocks(blocks: TowerBlock[]) {
@@ -300,6 +287,7 @@ function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) 
       item.id === block.id ? { ...item, removedBy: 'character', removedAt: Date.now() } : item,
     );
     const stability = evaluateTowerStability(simulatedBlocks);
+
     return {
       block,
       stability,
@@ -330,7 +318,10 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
   const [towerState, setTowerState] = useState<TowerState>(() => createRandomTower());
   const [currentTurn, setCurrentTurn] = useState<PlayerTurn>('user');
   const [winner, setWinner] = useState<Winner>(null);
-  const [statusText, setStatusText] = useState(() => getTowerIntro(character, style, getHighestLayer(createRandomTower().blocks) + 1));
+  const [statusText, setStatusText] = useState(() => {
+    const initialTower = createRandomTower();
+    return getTowerIntro(character, style, getHighestLayer(initialTower.blocks) + 1);
+  });
   const [removedByUser, setRemovedByUser] = useState(0);
   const [removedByCharacter, setRemovedByCharacter] = useState(0);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
@@ -350,7 +341,10 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
 
   const highestLayer = useMemo(() => getHighestLayer(towerState.blocks), [towerState.blocks]);
   const playableBlocks = useMemo(() => getPlayableBlocks(towerState.blocks), [towerState.blocks]);
-  const visibleBlocks = useMemo(() => towerState.blocks.filter((block) => !block.removedBy || block.id === activeBlockId), [towerState.blocks, activeBlockId]);
+  const visibleBlocks = useMemo(
+    () => towerState.blocks.filter((block) => !block.removedBy || block.id === activeBlockId),
+    [towerState.blocks, activeBlockId],
+  );
 
   const resetGame = () => {
     const nextTower = createRandomTower();
@@ -370,7 +364,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
     setStatusText(blockLine);
 
     actionTimerRef.current = window.setTimeout(() => {
-      const nextBlocks = towerState.blocks.map((block) =>
+      const nextBlocks = towerState.blocks.map((block): TowerBlock =>
         block.id === blockId
           ? {
               ...block,
@@ -428,8 +422,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
       item.id === block.id ? { ...item, removedBy: 'user', removedAt: Date.now() } : item,
     );
     const simulatedStability = evaluateTowerStability(simulatedBlocks);
-    const stabilityTone =
-      simulatedStability.risk < 0.28 ? '还算稳' : simulatedStability.risk < 0.56 ? '有点晃' : '很悬';
+    const stabilityTone = simulatedStability.risk < 0.28 ? '还算稳' : simulatedStability.risk < 0.56 ? '有点晃' : '很悬';
 
     applyRemoval(
       block.id,
@@ -482,37 +475,35 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
   };
 
   return (
-    <div className="flex h-full w-full flex-col items-center py-2">
-      <div className="mb-5 text-center">
-        <h3 className="flex items-center justify-center gap-2 text-xl font-bold text-zinc-800">
-          <BrickWall className="text-amber-500" size={20} />
-          抽积木塔
-        </h3>
-        <p className="mt-1 text-xs font-medium tracking-wider text-zinc-400">
-          每一局塔形都不同，要点具体积木去抽
-        </p>
+    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-t-[32px] bg-[linear-gradient(180deg,#9fd8ff_0%,#dff3ff_36%,#eef9ff_62%,#fff8ee_100%)]">
+      <div className="pointer-events-none absolute inset-x-[-8%] top-[-84px] h-[210px] rounded-full bg-white/55 blur-3xl" />
+      <div className="pointer-events-none absolute left-[-36px] top-[92px] h-24 w-24 rounded-full bg-white/70 blur-2xl" />
+      <div className="pointer-events-none absolute right-[-14px] top-[76px] h-28 w-28 rounded-full bg-white/60 blur-2xl" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-[142px] mx-auto h-24 w-[72%] rounded-full bg-[radial-gradient(circle,rgba(247,185,70,0.16)_0%,rgba(247,185,70,0.04)_52%,transparent_76%)] blur-2xl" />
+
+      <div className="relative z-10 flex items-center justify-between px-5 pt-4">
+        <div className="rounded-full bg-white/64 px-4 py-2 shadow-[0_12px_28px_rgba(148,163,184,0.14)] backdrop-blur-xl">
+          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
+            <BrickWall className="text-amber-500" size={16} />
+            抽积木塔
+          </div>
+        </div>
+        <div className="rounded-full bg-white/58 px-3 py-2 text-xs font-semibold text-zinc-600 shadow-[0_10px_22px_rgba(148,163,184,0.12)] backdrop-blur-xl">
+          稳定度 {Math.round((1 - lastStability.risk) * 100)}%
+        </div>
       </div>
 
-      <div className="w-full max-w-[320px] rounded-[28px] border border-amber-100 bg-gradient-to-b from-amber-50 to-white p-4 shadow-[0_20px_50px_rgba(249,115,22,0.08)]">
-        <div className="rounded-[24px] border border-amber-100 bg-white/95 p-4">
-          <div className="mb-3 flex items-center justify-between text-xs font-semibold text-zinc-500">
-            <span>塔稳定度</span>
-            <span>{Math.round((1 - lastStability.risk) * 100)}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-zinc-100">
-            <motion.div
-              className={`h-full rounded-full ${lastStability.risk > 0.55 ? 'bg-rose-400' : lastStability.risk > 0.3 ? 'bg-amber-400' : 'bg-emerald-400'}`}
-              animate={{ width: `${Math.max(10, (1 - lastStability.risk) * 100)}%` }}
-            />
-          </div>
+      <div className="relative z-10 flex-1 px-3 pb-3 pt-2">
+        <div className="relative flex h-full min-h-[620px] flex-col overflow-hidden rounded-[30px] border border-white/35 bg-[linear-gradient(180deg,rgba(255,255,255,0.26),rgba(255,255,255,0.08))] shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-[18px]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[56%] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.62),rgba(255,255,255,0.08)_58%,transparent_78%)]" />
 
-          <div className="relative mx-auto mt-5 h-[260px] w-full overflow-hidden rounded-[24px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(254,243,199,0.8)_55%,_rgba(255,237,213,0.65))]">
+          <div className="relative h-[430px] shrink-0 overflow-hidden px-2 pt-5">
             <motion.div
-              className="absolute inset-x-0 bottom-3 mx-auto h-[228px] w-[288px]"
+              className="absolute inset-x-0 bottom-6 mx-auto h-[340px] w-[308px]"
               animate={{
                 rotateZ: winner ? collapseAngle : 0,
-                x: winner ? collapseAngle * 0.8 : 0,
-                y: winner ? 12 : 0,
+                x: winner ? collapseAngle * 0.9 : 0,
+                y: winner ? 14 : 0,
               }}
               transition={{ type: 'spring', stiffness: 120, damping: 18 }}
             >
@@ -521,8 +512,18 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                 const isClickable = currentTurn === 'user' && !winner && !activeBlockId && playableBlocks.some((item) => item.id === block.id);
                 const isActive = activeBlockId === block.id;
                 const baseLeft = SCENE_WIDTH / 2 + block.centerX - block.width / 2;
-                const bottom = block.layerIndex * LAYER_STEP + 8;
-                const sideShade = block.orientation === 'x' ? 0.88 : 0.78;
+                const bottom = block.layerIndex * LAYER_STEP + 12;
+                const creamBase = block.layerIndex % 2 === 0;
+
+                const topColor = creamBase
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,247,233,0.96) 55%, rgba(243,229,203,0.94) 100%)'
+                  : 'linear-gradient(180deg, rgba(255,214,151,0.98), rgba(255,193,111,0.95) 58%, rgba(236,160,72,0.94) 100%)';
+                const frontColor = creamBase
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(251,242,225,0.94) 72%, rgba(237,221,191,0.96) 100%)'
+                  : 'linear-gradient(180deg, rgba(255,204,129,0.98), rgba(246,176,84,0.95) 74%, rgba(226,145,51,0.96) 100%)';
+                const sideColor = creamBase
+                  ? 'linear-gradient(180deg, rgba(247,235,214,0.98), rgba(228,208,176,0.92))'
+                  : 'linear-gradient(180deg, rgba(245,182,92,0.98), rgba(211,126,38,0.92))';
 
                 return (
                   <motion.button
@@ -536,87 +537,115 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                       left: baseLeft,
                       bottom,
                       opacity: isRemoved ? 0 : 1,
-                      x: isActive ? (block.slotIndex - 1) * 10 + 110 : 0,
+                      x: isActive ? (block.slotIndex - 1) * 12 + 124 : 0,
                       y: isActive ? -4 : 0,
                       rotateZ: winner && !isRemoved ? collapseAngle * ((block.layerIndex + 1) / Math.max(1, highestLayer + 1)) : 0,
                     }}
                     transition={{ type: 'spring', stiffness: 220, damping: 22 }}
                     style={{
-                      width: block.width,
-                      height: BLOCK_HEIGHT,
+                      width: block.width + 16,
+                      height: BLOCK_HEIGHT + 16,
                       transformStyle: 'preserve-3d',
                     }}
                   >
-                    <div
-                      className={`relative h-full w-full rounded-md border border-amber-300/80 shadow-[0_6px_12px_rgba(120,53,15,0.14)] ${isClickable ? 'ring-1 ring-transparent hover:ring-amber-300' : ''}`}
-                      style={{
-                        background: `linear-gradient(135deg, hsl(${block.hue} 90% ${block.tint + 8}%), hsl(${block.hue} 78% ${block.tint}%) 56%, hsl(${block.hue} 65% ${block.tint - 8}%))`,
-                      }}
-                    >
+                    <div className="relative h-full w-full" style={{ transformStyle: 'preserve-3d' }}>
                       <div
-                        className="absolute inset-y-[2px] right-[5px] w-[8px] rounded-sm"
+                        className="absolute left-[9px] right-[8px] top-[2px] h-[5px] rounded-full blur-[3px]"
+                        style={{ background: 'rgba(255,255,255,0.84)' }}
+                      />
+                      <div
+                        className={`absolute inset-x-[8px] top-0 rounded-[14px] border ${isClickable ? 'border-white/80' : 'border-white/60'}`}
                         style={{
-                          background: `linear-gradient(180deg, rgba(120,53,15,${sideShade}), rgba(120,53,15,0.35))`,
+                          height: BLOCK_HEIGHT + 1,
+                          background: topColor,
+                          boxShadow: creamBase
+                            ? '0 12px 22px rgba(148,163,184,0.12), inset 0 1px 0 rgba(255,255,255,0.96)'
+                            : '0 12px 24px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,248,235,0.95)',
+                        }}
+                      >
+                        <div className="absolute left-[11px] right-[14px] top-[3px] h-[4px] rounded-full bg-white/72" />
+                        <div className="absolute bottom-[3px] left-[16px] right-[18px] h-[6px] rounded-full bg-black/6 blur-[1px]" />
+                        {isClickable && <div className="absolute inset-0 rounded-[14px] bg-white/0 transition-colors hover:bg-white/10" />}
+                      </div>
+                      <div
+                        className="absolute bottom-[1px] left-[11px] right-[12px] rounded-b-[12px]"
+                        style={{
+                          height: 9,
+                          background: frontColor,
+                          boxShadow: creamBase
+                            ? 'inset 0 -1px 0 rgba(214,196,168,0.55)'
+                            : 'inset 0 -1px 0 rgba(194,118,34,0.36)',
                         }}
                       />
-                      <div className="absolute inset-x-[8px] top-[4px] h-[2px] rounded-full bg-white/60" />
-                      {isClickable && (
-                        <div className="absolute inset-0 rounded-md bg-white/0 transition-colors hover:bg-white/12" />
-                      )}
+                      <div
+                        className="absolute bottom-[2px] right-[5px] w-[12px] rounded-r-[12px]"
+                        style={{
+                          top: 6,
+                          background: sideColor,
+                        }}
+                      />
+                      <div
+                        className="absolute bottom-[-5px] left-[18px] right-[18px] h-[10px] rounded-full blur-[5px]"
+                        style={{
+                          background: creamBase ? 'rgba(214,196,168,0.22)' : 'rgba(217,119,6,0.2)',
+                        }}
+                      />
                     </div>
                   </motion.button>
                 );
               })}
 
-              <div className="absolute inset-x-6 bottom-0 h-3 rounded-full bg-[rgba(120,53,15,0.18)] blur-md" />
+              <div className="absolute inset-x-7 bottom-0 h-4 rounded-full bg-[rgba(120,53,15,0.14)] blur-md" />
             </motion.div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-zinc-950 px-4 py-3 text-white">
-              <div className="text-[11px] uppercase tracking-widest text-zinc-400">你</div>
-              <div className="mt-1 text-2xl font-bold">{removedByUser}</div>
-              <div className="text-xs text-zinc-400">已抽出</div>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-              <div className="text-[11px] uppercase tracking-widest text-zinc-400">{character.name}</div>
-              <div className="mt-1 text-2xl font-bold text-zinc-800">{removedByCharacter}</div>
-              <div className="text-xs text-zinc-400">已抽出</div>
-            </div>
-          </div>
+          <div className="relative z-10 mt-auto px-3 pb-3">
+            <div className="rounded-[24px] bg-white/54 p-3 shadow-[0_12px_32px_rgba(148,163,184,0.14)] backdrop-blur-xl">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-[22px] bg-zinc-950/92 px-4 py-3 text-white shadow-[0_14px_28px_rgba(15,23,42,0.2)]">
+                  <div className="text-[11px] uppercase tracking-widest text-zinc-400">YOU</div>
+                  <div className="mt-1 text-2xl font-bold">{removedByUser}</div>
+                </div>
+                <div className="rounded-[22px] bg-white/86 px-4 py-3 text-zinc-800 shadow-[0_12px_24px_rgba(148,163,184,0.12)]">
+                  <div className="text-[11px] uppercase tracking-widest text-zinc-400">{character.name}</div>
+                  <div className="mt-1 text-2xl font-bold">{removedByCharacter}</div>
+                </div>
+              </div>
 
-          <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
-              <Sparkles size={16} className="text-amber-500" />
-              {winner ? '这局结束了' : currentTurn === 'user' ? '你的回合：点一根积木抽出来' : `${character.name} 正在选积木`}
+              <div className="mt-3 rounded-[22px] bg-white/74 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-700">
+                  <Sparkles size={16} className="text-amber-500" />
+                  {winner ? '这局结束了' : currentTurn === 'user' ? '你的回合：点一根积木' : `${character.name} 正在选积木`}
+                </div>
+                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
+                  {statusText}
+                </p>
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={resetGame}
+                  className="flex-1 rounded-[20px] bg-white/84 px-4 py-3 text-sm font-semibold text-zinc-700 shadow-[0_10px_24px_rgba(148,163,184,0.14)] transition-all active:scale-95"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <RotateCcw size={16} />
+                    新塔重开
+                  </span>
+                </button>
+                <button
+                  onClick={handleSendResult}
+                  disabled={!winner}
+                  className="flex-[1.15] rounded-[20px] bg-gradient-to-r from-amber-400 to-orange-400 px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(245,158,11,0.24)] transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <CheckCircle2 size={16} />
+                    发回聊天
+                  </span>
+                </button>
+              </div>
             </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
-              {statusText}
-            </p>
           </div>
         </div>
-      </div>
-
-      <div className="mt-4 flex w-full max-w-[320px] items-center gap-3">
-        <button
-          onClick={resetGame}
-          className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-700 transition-all active:scale-95"
-        >
-          <span className="inline-flex items-center gap-2">
-            <RotateCcw size={16} />
-            新塔重开
-          </span>
-        </button>
-        <button
-          onClick={handleSendResult}
-          disabled={!winner}
-          className="flex-[1.2] rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span className="inline-flex items-center gap-2">
-            <CheckCircle2 size={16} />
-            发回聊天
-          </span>
-        </button>
       </div>
     </div>
   );
