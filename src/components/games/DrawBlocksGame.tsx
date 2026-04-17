@@ -38,6 +38,10 @@ type StabilitySnapshot = {
   weakestLayer: number | null;
 };
 
+type RenderedTowerBlock = TowerBlock & {
+  renderLayer: number;
+};
+
 const SCENE_WIDTH = 296;
 const BLOCKS_PER_LAYER = 3;
 const BLOCK_HEIGHT = 18;
@@ -281,6 +285,49 @@ function getPlayableBlocks(blocks: TowerBlock[]) {
   });
 }
 
+function getHorizontalOverlap(left: TowerBlock, right: TowerBlock) {
+  const leftMin = left.centerX - left.width / 2;
+  const leftMax = left.centerX + left.width / 2;
+  const rightMin = right.centerX - right.width / 2;
+  const rightMax = right.centerX + right.width / 2;
+  return Math.max(0, Math.min(leftMax, rightMax) - Math.max(leftMin, rightMin));
+}
+
+function computeRenderedTowerBlocks(blocks: TowerBlock[]): RenderedTowerBlock[] {
+  const presentBlocks = getPresentBlocks(blocks).sort((left, right) => {
+    if (left.layerIndex !== right.layerIndex) {
+      return left.layerIndex - right.layerIndex;
+    }
+    return left.slotIndex - right.slotIndex;
+  });
+
+  const placedBlocks: RenderedTowerBlock[] = [];
+
+  for (const block of presentBlocks) {
+    const supporters = placedBlocks.filter((candidate) => {
+      const overlap = getHorizontalOverlap(block, candidate);
+      return overlap >= Math.min(block.width, candidate.width) * 0.22;
+    });
+
+    const highestSupportLayer = supporters.length > 0
+      ? Math.max(...supporters.map((candidate) => candidate.renderLayer))
+      : -1;
+
+    placedBlocks.push({
+      ...block,
+      renderLayer: highestSupportLayer + 1,
+    });
+  }
+
+  return blocks.map((block) => {
+    const placed = placedBlocks.find((candidate) => candidate.id === block.id);
+    return {
+      ...block,
+      renderLayer: placed?.renderLayer ?? block.layerIndex,
+    };
+  });
+}
+
 function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) {
   const candidates = getPlayableBlocks(blocks).map((block) => {
     const simulatedBlocks = blocks.map((item): TowerBlock =>
@@ -341,9 +388,10 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
 
   const highestLayer = useMemo(() => getHighestLayer(towerState.blocks), [towerState.blocks]);
   const playableBlocks = useMemo(() => getPlayableBlocks(towerState.blocks), [towerState.blocks]);
+  const renderedBlocks = useMemo(() => computeRenderedTowerBlocks(towerState.blocks), [towerState.blocks]);
   const visibleBlocks = useMemo(
-    () => towerState.blocks.filter((block) => !block.removedBy || block.id === activeBlockId),
-    [towerState.blocks, activeBlockId],
+    () => renderedBlocks.filter((block) => !block.removedBy || block.id === activeBlockId),
+    [renderedBlocks, activeBlockId],
   );
 
   const resetGame = () => {
@@ -512,7 +560,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                 const isClickable = currentTurn === 'user' && !winner && !activeBlockId && playableBlocks.some((item) => item.id === block.id);
                 const isActive = activeBlockId === block.id;
                 const baseLeft = SCENE_WIDTH / 2 + block.centerX - block.width / 2;
-                const bottom = block.layerIndex * LAYER_STEP + 12;
+                const bottom = block.renderLayer * LAYER_STEP + 12;
                 const paletteIndex = (block.layerIndex + block.slotIndex) % 4;
                 const blockPalette = [
                   {
