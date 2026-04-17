@@ -150,7 +150,8 @@ function evaluateTowerStability(blocks: TowerBlock[]): StabilitySnapshot {
   let weakestLayer: number | null = null;
 
   for (let layerIndex = 0; layerIndex < highestLayer; layerIndex += 1) {
-    const supportRange = getLayerSupportRange(getLayerBlocks(blocks, layerIndex));
+    const currentLayerBlocks = getLayerBlocks(blocks, layerIndex);
+    const supportRange = getLayerSupportRange(currentLayerBlocks);
     const upperCenter = getUpperMassCenter(blocks, layerIndex + 1);
 
     if (!supportRange || upperCenter === null) {
@@ -161,10 +162,24 @@ function evaluateTowerStability(blocks: TowerBlock[]): StabilitySnapshot {
     const margin = clamp(6 + supportSpan * 0.06, 6, 12);
     const riskLeft = supportRange.min + margin - upperCenter;
     const riskRight = upperCenter - (supportRange.max - margin);
-    const localRisk = Math.max(0, riskLeft, riskRight);
+    let localRisk = Math.max(0, riskLeft, riskRight);
+
+    const supportMidpoint = (supportRange.min + supportRange.max) / 2;
+    const centerOffset = Math.abs(upperCenter - supportMidpoint);
+    const normalizedOffset = supportSpan > 0 ? centerOffset / supportSpan : 1;
+    localRisk += normalizedOffset * 4.2;
+
+    const edgeBias = currentLayerBlocks.length === 2 ? 1.35 : currentLayerBlocks.length === 1 ? 2.8 : 0;
+    localRisk += edgeBias;
+
+    const leftOnlySupport = currentLayerBlocks.every((block) => block.centerX < supportMidpoint - 6);
+    const rightOnlySupport = currentLayerBlocks.every((block) => block.centerX > supportMidpoint + 6);
+    if (leftOnlySupport || rightOnlySupport) {
+      localRisk += 3.4;
+    }
 
     if (supportSpan < 56) {
-      maxRisk = Math.max(maxRisk, 0.35);
+      localRisk += 2.6;
     }
 
     if (localRisk > maxRisk) {
