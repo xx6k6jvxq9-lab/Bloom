@@ -143,56 +143,137 @@ function getUpperMassCenter(blocks: TowerBlock[], layerIndex: number) {
   return upperBlocks.reduce((sum, block) => sum + block.centerX, 0) / upperBlocks.length;
 }
 
+function getBlockSupportRatio(block: TowerBlock, supportBlocks: TowerBlock[]) {
+  if (supportBlocks.length === 0) {
+    return 0;
+  }
+
+  const supportedWidth = supportBlocks.reduce((sum, supportBlock) => sum + getHorizontalOverlap(block, supportBlock), 0);
+  return supportedWidth / Math.max(1, block.width);
+}
+
 function evaluateTowerStability(blocks: TowerBlock[]): StabilitySnapshot {
   const presentBlocks = getPresentBlocks(blocks);
+  if (presentBlocks.length === 0) {
+    return {
+      stable: false,
+      risk: 1,
+      weakestLayer: 0,
+    };
+  }
+
   const highestLayer = getHighestLayer(presentBlocks);
   let maxRisk = 0;
   let weakestLayer: number | null = null;
 
-  for (let layerIndex = 0; layerIndex < highestLayer; layerIndex += 1) {
+  for (let layerIndex = 1; layerIndex <= highestLayer; layerIndex += 1) {
     const currentLayerBlocks = getLayerBlocks(blocks, layerIndex);
-    const supportRange = getLayerSupportRange(currentLayerBlocks);
-    const upperCenter = getUpperMassCenter(blocks, layerIndex + 1);
-
-    if (!supportRange || upperCenter === null) {
+    if (currentLayerBlocks.length === 0) {
       continue;
     }
 
+    const supportBlocks = getLayerBlocks(blocks, layerIndex - 1);
+    const supportRange = getLayerSupportRange(supportBlocks);
+    const upperCenter = getUpperMassCenter(blocks, layerIndex);
+
+    if (supportBlocks.length === 0 || !supportRange || upperCenter === null) {
+      return {
+        stable: false,
+        risk: 1,
+        weakestLayer: layerIndex - 1,
+      };
+    }
+
+    let localRisk = 0;
+    for (const block of currentLayerBlocks) {
+      const supportRatio = getBlockSupportRatio(block, supportBlocks);
+      if (supportRatio < 0.18) {
+        return {
+          stable: false,
+          risk: 1,
+          weakestLayer: layerIndex - 1,
+        };
+      }
+
+      if (supportRatio < 0.34) {
+        localRisk += (0.34 - supportRatio) * 20;
+      } else if (supportRatio < 0.5) {
+        localRisk += (0.5 - supportRatio) * 8;
+      }
+    }
+
     const supportSpan = supportRange.max - supportRange.min;
-    const margin = clamp(6 + supportSpan * 0.06, 6, 12);
-    const riskLeft = supportRange.min + margin - upperCenter;
-    const riskRight = upperCenter - (supportRange.max - margin);
-    let localRisk = Math.max(0, riskLeft, riskRight);
+    if (supportSpan < BASE_BLOCK_WIDTH * 1.1) {
+      localRisk += 3.2;
+    } else if (supportSpan < BASE_BLOCK_WIDTH * 1.45) {
+      localRisk += 1.6;
+    }
 
     const supportMidpoint = (supportRange.min + supportRange.max) / 2;
     const centerOffset = Math.abs(upperCenter - supportMidpoint);
     const normalizedOffset = supportSpan > 0 ? centerOffset / supportSpan : 1;
-    localRisk += normalizedOffset * 4.2;
-
-    const edgeBias = currentLayerBlocks.length === 2 ? 1.35 : currentLayerBlocks.length === 1 ? 2.8 : 0;
-    localRisk += edgeBias;
-
-    const leftOnlySupport = currentLayerBlocks.every((block) => block.centerX < supportMidpoint - 6);
-    const rightOnlySupport = currentLayerBlocks.every((block) => block.centerX > supportMidpoint + 6);
-    if (leftOnlySupport || rightOnlySupport) {
-      localRisk += 3.4;
+    if (normalizedOffset > 0.34) {
+      localRisk += (normalizedOffset - 0.34) * 16;
     }
 
-    if (supportSpan < 56) {
-      localRisk += 2.6;
+    const leftEdge = supportBlocks.every((block) => block.slotIndex !== 2);
+    const rightEdge = supportBlocks.every((block) => block.slotIndex !== 0);
+    if (leftEdge || rightEdge) {
+      localRisk += 1.4;
+    }
+
+    if (supportBlocks.length === 1 && currentLayerBlocks.length >= 2) {
+      localRisk += 4.6;
+    } else if (supportBlocks.length === 2 && currentLayerBlocks.length === 3) {
+      localRisk += 1.8;
+    }
+
+    if (localRisk >= 8.5) {
+      return {
+        stable: false,
+        risk: 1,
+        weakestLayer: layerIndex - 1,
+      };
     }
 
     if (localRisk > maxRisk) {
       maxRisk = localRisk;
-      weakestLayer = layerIndex;
+      weakestLayer = layerIndex - 1;
     }
   }
 
   return {
-    stable: maxRisk < 8,
-    risk: clamp(maxRisk / 14, 0, 1),
+    stable: true,
+    risk: clamp(maxRisk / 8.5, 0, 1),
     weakestLayer,
   };
+}
+
+function getHorizontalOverlap(left: TowerBlock, right: TowerBlock) {
+  const leftMin = left.centerX - left.width / 2;
+  const leftMax = left.centerX + left.width / 2;
+  const rightMin = right.centerX - right.width / 2;
+  const rightMax = right.centerX + right.width / 2;
+  return Math.max(0, Math.min(leftMax, rightMax) - Math.max(leftMin, rightMin));
+}
+
+function computeRenderedTowerBlocks(blocks: TowerBlock[]): RenderedTowerBlock[] {
+  const presentBlocks = getPresentBlocks(blocks);
+  const sortedLayers = Array.from(new Set(presentBlocks.map((block) => block.layerIndex))).sort((left, right) => left - right);
+  const renderedById = new Map<string, number>();
+
+  sortedLayers.forEach((layerIndex, renderLayer) => {
+    presentBlocks
+      .filter((block) => block.layerIndex === layerIndex)
+      .forEach((block) => {
+        renderedById.set(block.id, renderLayer);
+      });
+  });
+
+  return blocks.map((block) => ({
+    ...block,
+    renderLayer: renderedById.get(block.id) ?? block.layerIndex,
+  }));
 }
 
 function describeBlockPosition(block: TowerBlock) {
@@ -301,67 +382,6 @@ function getPlayableBlocks(blocks: TowerBlock[]) {
   });
 }
 
-function getHorizontalOverlap(left: TowerBlock, right: TowerBlock) {
-  const leftMin = left.centerX - left.width / 2;
-  const leftMax = left.centerX + left.width / 2;
-  const rightMin = right.centerX - right.width / 2;
-  const rightMax = right.centerX + right.width / 2;
-  return Math.max(0, Math.min(leftMax, rightMax) - Math.max(leftMin, rightMin));
-}
-
-function computeRenderedTowerBlocks(blocks: TowerBlock[]): RenderedTowerBlock[] {
-  const presentBlocks = getPresentBlocks(blocks);
-  const sortedLayers = Array.from(new Set(presentBlocks.map((block) => block.layerIndex))).sort((left, right) => left - right);
-  const layerMap = new Map<number, TowerBlock[]>();
-
-  for (const layerIndex of sortedLayers) {
-    layerMap.set(
-      layerIndex,
-      presentBlocks
-        .filter((block) => block.layerIndex === layerIndex)
-        .sort((left, right) => left.slotIndex - right.slotIndex),
-    );
-  }
-
-  const renderedById = new Map<string, number>();
-  let nextRenderLayer = 0;
-
-  for (const layerIndex of sortedLayers) {
-    const layerBlocks = layerMap.get(layerIndex) || [];
-    if (layerBlocks.length === 0) {
-      continue;
-    }
-
-    let targetRenderLayer = nextRenderLayer;
-    if (nextRenderLayer > 0) {
-      const previousLayer = sortedLayers
-        .filter((candidate) => candidate < layerIndex)
-        .reverse()
-        .find((candidate) => (layerMap.get(candidate) || []).length > 0);
-
-      if (previousLayer !== undefined) {
-        const previousBlocks = (layerMap.get(previousLayer) || []).filter((block) => renderedById.has(block.id));
-        const hasSupport = layerBlocks.some((block) =>
-          previousBlocks.some((supportBlock) => getHorizontalOverlap(block, supportBlock) >= Math.min(block.width, supportBlock.width) * 0.28),
-        );
-
-        if (!hasSupport) {
-          targetRenderLayer = Math.max(0, nextRenderLayer - 1);
-        }
-      }
-    }
-
-    for (const block of layerBlocks) {
-      renderedById.set(block.id, targetRenderLayer);
-    }
-    nextRenderLayer = targetRenderLayer + 1;
-  }
-
-  return blocks.map((block) => ({
-    ...block,
-    renderLayer: renderedById.get(block.id) ?? block.layerIndex,
-  }));
-}
 
 function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) {
   const candidates = getPlayableBlocks(blocks).map((block) => {
