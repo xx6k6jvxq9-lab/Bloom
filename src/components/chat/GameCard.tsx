@@ -5,8 +5,8 @@ import { Heart, Zap, MessageCircle, HelpCircle, X } from 'lucide-react';
 
 interface GameCardProps {
   data: {
-    game: 'qna' | 'tod';
-    type: 'question' | 'answer' | 'truth' | 'dare' | 'request_question';
+    game: 'qna' | 'tod' | 'blocks';
+    type: 'question' | 'answer' | 'truth' | 'dare' | 'request_question' | 'result';
     question?: string; // For QnA
     content: string;
   };
@@ -21,6 +21,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
 
   const getIcon = () => {
     if (data.game === 'qna') return <Heart size={16} className="text-pink-500 fill-pink-500" />;
+    if (data.game === 'blocks') return <Zap size={16} className="text-amber-500 fill-amber-500" />;
     if (data.type === 'truth') return <MessageCircle size={16} className="text-blue-500 fill-blue-500" />;
     if (data.type === 'dare') return <Zap size={16} className="text-red-500 fill-red-500" />;
     return <HelpCircle size={16} className="text-purple-500" />;
@@ -29,6 +30,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
   const getTitle = () => {
     if (data.game === 'qna') return '情侣快问快答';
     if (data.game === 'tod') return '真心话大冒险';
+    if (data.game === 'blocks') return '抽积木';
     return '小游戏';
   };
 
@@ -37,6 +39,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
       if (data.type === 'request_question') return '邀请提问';
       return data.type === 'question' ? '提问' : '回答';
     }
+    if (data.game === 'blocks') return '对局结果';
     if (data.type === 'truth') return data.question ? '真心话回答' : '真心话';
     if (data.type === 'dare') return data.question ? '大冒险回应' : '大冒险';
     return '';
@@ -44,6 +47,7 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
 
   const getGradient = () => {
     if (data.game === 'qna') return 'bg-gradient-to-br from-pink-50 to-rose-100 border-pink-200';
+    if (data.game === 'blocks') return 'bg-gradient-to-br from-amber-50 to-orange-100 border-amber-200';
     if (data.type === 'truth') return 'bg-white border-blue-100 shadow-sm';
     if (data.type === 'dare') return 'bg-white border-orange-100 shadow-sm';
     return 'bg-white border-purple-100 shadow-sm';

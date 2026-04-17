@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Gamepad2, Trophy, ArrowRight, Grid3X3, Zap, Brain, LayoutGrid, Circle, Swords, Sword } from 'lucide-react';
+import { X, Gamepad2, Trophy, ArrowRight, Grid3X3, Zap, Brain, LayoutGrid, Circle, Swords, Sword, BrickWall } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character } from '../../types';
 import { RockPaperScissors } from './RockPaperScissors';
@@ -9,6 +9,7 @@ import { CardDuel } from './CardDuel';
 import { LinkUpGame } from './LinkUpGame';
 import { TruthOrDare } from './TruthOrDare';
 import { CouplesQnA } from './CouplesQnA';
+import { DrawBlocksGame } from './DrawBlocksGame';
 
 interface GameCenterProps {
   isOpen: boolean;
@@ -66,6 +67,13 @@ const GAMES = [
     description: '经典的连连看游戏，和我一起找出所有配对！',
     icon: <Grid3X3 size={24} className="text-white" />,
     color: 'bg-emerald-600'
+  },
+  {
+    id: 'draw_blocks',
+    title: '抽积木',
+    description: '和角色轮流抽积木，这局看谁更稳。',
+    icon: <BrickWall size={24} className="text-white" />,
+    color: 'bg-amber-500'
   }
 ];
 
@@ -195,6 +203,13 @@ export const GameCenter: React.FC<GameCenterProps> = ({
                   )}
                   {selectedGame === 'linkup' && (
                     <LinkUpGame
+                      character={character}
+                      onClose={onClose}
+                      onSendToChat={onSendToChat}
+                    />
+                  )}
+                  {selectedGame === 'draw_blocks' && (
+                    <DrawBlocksGame
                       character={character}
                       onClose={onClose}
                       onSendToChat={onSendToChat}
