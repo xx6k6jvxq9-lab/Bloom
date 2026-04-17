@@ -516,32 +516,28 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                 const paletteIndex = (block.layerIndex + block.slotIndex) % 4;
                 const blockPalette = [
                   {
-                    top: 'linear-gradient(180deg, rgba(255,233,178,0.98), rgba(255,210,129,0.96) 56%, rgba(240,171,72,0.95) 100%)',
-                    front: 'linear-gradient(180deg, rgba(255,220,155,0.98), rgba(248,188,97,0.95) 74%, rgba(227,145,46,0.96) 100%)',
-                    side: 'linear-gradient(180deg, rgba(240,171,72,0.98), rgba(198,116,31,0.94))',
-                    glow: 'rgba(245, 158, 11, 0.22)',
-                    rim: 'rgba(255, 244, 214, 0.72)',
+                    body: 'linear-gradient(180deg, rgba(255,214,124,0.98), rgba(243,176,64,0.96) 100%)',
+                    top: 'rgba(255, 236, 188, 0.88)',
+                    side: 'rgba(214, 132, 34, 0.32)',
+                    glow: 'rgba(245, 158, 11, 0.16)',
                   },
                   {
-                    top: 'linear-gradient(180deg, rgba(255,244,216,0.98), rgba(247,228,183,0.96) 56%, rgba(228,197,141,0.95) 100%)',
-                    front: 'linear-gradient(180deg, rgba(255,239,205,0.98), rgba(241,219,172,0.95) 74%, rgba(214,180,120,0.96) 100%)',
-                    side: 'linear-gradient(180deg, rgba(229,201,149,0.98), rgba(181,145,86,0.94))',
-                    glow: 'rgba(180, 145, 86, 0.18)',
-                    rim: 'rgba(255, 250, 236, 0.76)',
+                    body: 'linear-gradient(180deg, rgba(255,243,212,0.98), rgba(236,208,154,0.96) 100%)',
+                    top: 'rgba(255, 251, 241, 0.88)',
+                    side: 'rgba(181, 145, 86, 0.24)',
+                    glow: 'rgba(180, 145, 86, 0.12)',
                   },
                   {
-                    top: 'linear-gradient(180deg, rgba(255,228,196,0.98), rgba(255,200,157,0.96) 56%, rgba(239,147,92,0.95) 100%)',
-                    front: 'linear-gradient(180deg, rgba(255,214,176,0.98), rgba(247,183,136,0.95) 74%, rgba(222,131,73,0.96) 100%)',
-                    side: 'linear-gradient(180deg, rgba(240,157,99,0.98), rgba(191,104,49,0.94))',
-                    glow: 'rgba(234, 88, 12, 0.18)',
-                    rim: 'rgba(255, 237, 220, 0.74)',
+                    body: 'linear-gradient(180deg, rgba(255,209,168,0.98), rgba(238,150,92,0.96) 100%)',
+                    top: 'rgba(255, 233, 214, 0.88)',
+                    side: 'rgba(191, 104, 49, 0.26)',
+                    glow: 'rgba(234, 88, 12, 0.14)',
                   },
                   {
-                    top: 'linear-gradient(180deg, rgba(255,239,189,0.98), rgba(246,216,132,0.96) 56%, rgba(227,178,59,0.95) 100%)',
-                    front: 'linear-gradient(180deg, rgba(252,229,160,0.98), rgba(237,202,104,0.95) 74%, rgba(205,157,42,0.96) 100%)',
-                    side: 'linear-gradient(180deg, rgba(225,183,68,0.98), rgba(172,126,22,0.94))',
-                    glow: 'rgba(202, 138, 4, 0.18)',
-                    rim: 'rgba(255, 246, 201, 0.72)',
+                    body: 'linear-gradient(180deg, rgba(252,224,145,0.98), rgba(224,172,48,0.96) 100%)',
+                    top: 'rgba(255, 240, 189, 0.86)',
+                    side: 'rgba(172, 126, 22, 0.24)',
+                    glow: 'rgba(202, 138, 4, 0.14)',
                   },
                 ][paletteIndex];
 
@@ -570,33 +566,23 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
                   >
                     <div className="relative h-full w-full" style={{ transformStyle: 'preserve-3d' }}>
                       <div
-                        className="absolute left-[9px] right-[8px] top-[2px] h-[5px] rounded-full blur-[3px]"
-                        style={{ background: blockPalette.rim }}
-                      />
-                      <div
                         className={`absolute inset-x-[8px] top-0 rounded-[14px] border ${isClickable ? 'border-white/80' : 'border-white/60'}`}
                         style={{
-                          height: BLOCK_HEIGHT + 1,
-                          background: blockPalette.top,
-                          boxShadow: `0 12px 24px ${blockPalette.glow}, inset 0 1px 0 rgba(255,255,255,0.72)`,
+                          height: BLOCK_HEIGHT + 9,
+                          background: blockPalette.body,
+                          boxShadow: `0 10px 18px ${blockPalette.glow}, inset 0 1px 0 rgba(255,255,255,0.32)`,
                         }}
                       >
-                        <div className="absolute left-[11px] right-[14px] top-[3px] h-[4px] rounded-full bg-white/45" />
-                        <div className="absolute bottom-[3px] left-[16px] right-[18px] h-[6px] rounded-full bg-black/6 blur-[1px]" />
+                        <div
+                          className="absolute inset-x-[8px] top-[3px] h-[3px] rounded-full"
+                          style={{ background: blockPalette.top }}
+                        />
+                        <div className="absolute bottom-[2px] left-[14px] right-[14px] h-[4px] rounded-full bg-black/5 blur-[1px]" />
                         {isClickable && <div className="absolute inset-0 rounded-[14px] bg-white/0 transition-colors hover:bg-white/10" />}
                       </div>
                       <div
-                        className="absolute bottom-[1px] left-[11px] right-[12px] rounded-b-[12px]"
+                        className="absolute bottom-[2px] right-[6px] top-[7px] w-[10px] rounded-r-[11px]"
                         style={{
-                          height: 9,
-                          background: blockPalette.front,
-                          boxShadow: 'inset 0 -1px 0 rgba(120, 53, 15, 0.18)',
-                        }}
-                      />
-                      <div
-                        className="absolute bottom-[2px] right-[5px] w-[12px] rounded-r-[12px]"
-                        style={{
-                          top: 6,
                           background: blockPalette.side,
                         }}
                       />
