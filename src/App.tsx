@@ -1333,7 +1333,7 @@ export default function App() {
             />
           )}
           {activeApp === 'dream' && (
-            <DreamAppPage key="dream" onBack={() => setActiveApp('home')} />
+            <DreamAppPage key="dream" onBack={() => setActiveApp('home')} characters={appData.characters} />
           )}
           {activeApp === 'worldbook' && (
             <WorldBookManager 

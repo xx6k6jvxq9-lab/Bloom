@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, Coffee, Heart, Moon, ScanEye, Sparkles } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Moon } from 'lucide-react';
+import type { Character } from '../../types';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
-import type { DreamAct, DreamDepth, DreamDomain, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
+import type { DreamAct, DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
 
 type DreamStage =
   | 'splash'
   | 'home'
+  | 'role-picker'
   | 'entry'
   | 'tags'
   | 'confirm'
@@ -17,64 +19,60 @@ type DreamStage =
   | 'ending'
   | 'aftermath';
 
-const decorativeStars = Array.from({ length: 26 }, (_, index) => ({
-  id: index,
-  top: `${8 + (index * 17) % 86}%`,
-  left: `${5 + (index * 13) % 90}%`,
-  size: 1 + (index % 3),
-  opacity: 0.16 + (index % 5) * 0.08,
-  duration: 3.8 + (index % 6) * 0.7,
-}));
-
-const iconMap: Record<DreamDomain['icon'], typeof Sparkles> = {
-  sparkles: Sparkles,
-  scan: ScanEye,
-  heart: Heart,
-  coffee: Coffee,
+type DreamRoleOption = {
+  id: string;
+  glyph: string;
+  name: string;
+  status: string;
+  avatar: string;
 };
 
-const reactionTypingDelay = 16;
+const stars = Array.from({ length: 34 }, (_, index) => ({
+  id: index,
+  top: `${6 + (index * 11) % 88}%`,
+  left: `${4 + (index * 19) % 92}%`,
+  size: 1 + (index % 3),
+  opacity: 0.06 + (index % 5) * 0.05,
+  duration: 3.4 + (index % 7) * 0.8,
+}));
 
-function AppFrame({
-  children,
-  stage,
-  onBack,
-  onRestart,
-}: {
-  children: React.ReactNode;
-  stage: DreamStage;
-  onBack: () => void;
-  onRestart: () => void;
-}) {
+function buildDreamRoleOptions(characters: Character[]): DreamRoleOption[] {
+  return characters
+    .filter((character) => typeof character.name === 'string' && character.name.trim().length > 0)
+    .map((character) => ({
+      id: character.id,
+      glyph: (character.remarkName?.trim() || character.name.trim()).slice(0, 1),
+      name: character.remarkName?.trim() || character.name.trim(),
+      status: character.signature?.trim() || character.motto?.trim() || '今夜在做梦',
+      avatar: character.avatar || '',
+    }));
+}
+
+function Shell({ stage, children }: { stage: DreamStage; children: React.ReactNode }) {
   return (
-    <motion.div
-      className="absolute inset-0 overflow-hidden bg-[#030509] text-[#ede6d6]"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(196,169,106,0.18),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(123,168,196,0.16),transparent_26%),linear-gradient(180deg,#05080e_0%,#070c16_38%,#04070f_100%)]" />
-      <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(196,169,106,0.05)_1px,transparent_1px)] [background-size:100%_32px]" />
+    <motion.div className="absolute inset-0 overflow-hidden bg-[#04070d] text-[#f4eee3]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,48,73,0.42),transparent_45%),radial-gradient(circle_at_50%_30%,rgba(196,169,106,0.08),transparent_35%),linear-gradient(180deg,#070b12_0%,#05080e_48%,#04070d_100%)]" />
+      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(255,255,255,0.06)_0.7px,transparent_0.7px)] [background-size:24px_24px]" />
       <div className="absolute inset-0">
-        {decorativeStars.map((star) => (
+        {stars.map((star) => (
           <span
             key={star.id}
-            className="absolute rounded-full bg-[#c4a96a]"
+            className="absolute rounded-full bg-[#c8aa67]"
             style={{
               top: star.top,
               left: star.left,
               width: `${star.size}px`,
               height: `${star.size}px`,
               opacity: star.opacity,
-              animation: `dream-star ${star.duration}s ease-in-out infinite alternate`,
+              animation: `dream-float ${star.duration}s ease-in-out infinite alternate`,
             }}
           />
         ))}
       </div>
       <style>{`
-        @keyframes dream-star {
-          from { transform: translateY(0px); opacity: .16; }
-          to { transform: translateY(-8px); opacity: .56; }
+        @keyframes dream-float {
+          from { transform: translateY(0px); opacity: .08; }
+          to { transform: translateY(-7px); opacity: .38; }
         }
       `}</style>
 
@@ -82,30 +80,14 @@ function AppFrame({
         children
       ) : (
         <div className="absolute inset-0 flex flex-col">
-          <div
-            className="relative z-10 flex items-center justify-between px-7 pb-4"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
-          >
-            <button
-              onClick={stage === 'home' ? onBack : onRestart}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(196,169,106,0.18)] bg-[rgba(13,18,32,0.62)] text-[#ede6d6] transition hover:border-[rgba(196,169,106,0.3)] hover:text-[#c4a96a]"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <div className="text-center">
-              <div className="text-[10px] tracking-[0.42em] text-[#647899]">DREAM APP</div>
-              <div className="mt-1 text-[28px] font-light tracking-[0.16em] text-[#ede6d6]">梦境</div>
+          <div className="relative z-10 flex-1 px-6 pt-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
+            <div className="absolute inset-x-0 top-1 z-10 flex items-center justify-center px-8">
+              <div className="text-[10px] tracking-[0.42em] text-[#7088b0]">DREAM APP</div>
+              <button className="absolute right-8 flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(196,169,106,0.12)] bg-[rgba(8,12,24,0.18)] text-[#c4a96a]">
+                <Moon size={18} />
+              </button>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(196,169,106,0.12)] bg-[rgba(13,18,32,0.48)] text-[#c4a96a]">
-              <Moon size={18} />
-            </div>
-          </div>
-
-          <div
-            className="relative z-10 flex-1 overflow-hidden px-5"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)' }}
-          >
-            {children}
+            <div className="h-full pt-12">{children}</div>
           </div>
         </div>
       )}
@@ -115,93 +97,171 @@ function AppFrame({
 
 function SplashScreen() {
   return (
-    <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <div className="text-[94px] font-light tracking-[0.08em] text-[#ede6d6]">梦</div>
+    <motion.div className="absolute inset-0 flex flex-col items-center justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="text-[96px] font-light tracking-[0.08em]">梦</div>
       <div className="my-5 h-10 w-px bg-[rgba(196,169,106,0.28)]" />
-      <div className="text-[11px] tracking-[0.6em] text-[#647899]">局 梦 夜</div>
+      <div className="text-[11px] tracking-[0.6em] text-[#7088b0]">局 梦 夜</div>
     </motion.div>
   );
 }
 
-function HomeScreen({ availableLine, expireLine, heroGlyph, heroName, heroStatus, onOpen }: {
+function HaloGlyph({ glyph }: { glyph: string }) {
+  return (
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
+      {glyph}
+      <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
+      <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
+    </div>
+  );
+}
+
+function DreamAvatarArt({
+  avatar,
+  alt,
+  className,
+  imageClassName = '',
+}: {
+  avatar: string;
+  alt: string;
+  className: string;
+  imageClassName?: string;
+}) {
+  return (
+    <div className={`overflow-hidden rounded-full bg-[radial-gradient(circle_at_50%_30%,rgba(28,40,60,0.96),rgba(9,13,22,0.98)_72%,rgba(4,7,13,1)_100%)] ${className}`}>
+      <img src={avatar} alt={alt} className={`h-full w-full object-contain object-center p-1.5 ${imageClassName}`} draggable={false} />
+    </div>
+  );
+}
+
+function HaloAvatar({ glyph, avatar }: { glyph: string; avatar: string }) {
+  return (
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
+      {avatar ? <DreamAvatarArt avatar={avatar} alt={glyph} className="h-full w-full" imageClassName="scale-[1.02]" /> : glyph}
+      <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
+      <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
+    </div>
+  );
+}
+
+function HomeScreen({
+  selectedRole,
+  availableLine,
+  expireLine,
+  onChooseRole,
+  onOpen,
+}: {
+  selectedRole: DreamRoleOption | null;
   availableLine: string;
   expireLine: string;
-  heroGlyph: string;
-  heroName: string;
-  heroStatus: string;
+  onChooseRole: () => void;
   onOpen: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.7)] px-7 pb-7 pt-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)]">
-      <div className="flex items-center justify-between text-[12px] tracking-[0.16em] text-[#647899]">
-        <span>23:14</span>
-        <span className="h-1.5 w-1.5 rounded-full bg-[#c4a96a]" />
-      </div>
+    <motion.div className="flex h-full flex-col pb-4" layout>
+      <div className="mt-1 text-[13px] tracking-[0.16em] text-[#6d82a7]">23:14</div>
       <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <div className="relative mb-7 flex h-[92px] w-[92px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.22)] bg-[radial-gradient(circle_at_40%_35%,rgba(196,169,106,0.32),rgba(123,168,196,0.16)_58%,transparent_74%)] text-[32px] font-light">
-          {heroGlyph}
-          <div className="absolute inset-[-14px] rounded-full border border-[rgba(196,169,106,0.12)]" />
-          <div className="absolute inset-[-26px] rounded-full border border-[rgba(196,169,106,0.05)]" />
-        </div>
-        <div className="text-[22px] font-light tracking-[0.24em]">{heroName}</div>
-        <div className="mt-2 text-[12px] tracking-[0.18em] text-[#647899]">{heroStatus}</div>
-        <div className="relative mt-10 w-full max-w-[290px] border border-[rgba(196,169,106,0.14)] bg-[rgba(196,169,106,0.04)] px-6 py-5">
-          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#05080e] px-3 text-[10px] tracking-[0.3em] text-[#c4a96a]">今夜</div>
-          <div className="text-[15px] font-light tracking-[0.1em] text-[#ede6d6]">{availableLine}</div>
-          <div className="mt-2 text-[11px] tracking-[0.12em] text-[#647899]">{expireLine}</div>
-        </div>
-        <button
-          onClick={onOpen}
-          className="mt-10 w-full max-w-[290px] border border-[rgba(196,169,106,0.24)] bg-transparent px-5 py-4 text-[13px] tracking-[0.42em] text-[#c4a96a] transition hover:bg-[rgba(196,169,106,0.08)] hover:tracking-[0.5em]"
-        >
-          进入梦境
-        </button>
+        <motion.button onClick={onChooseRole} className="transition hover:opacity-90" whileTap={{ scale: 0.98 }} layout>
+          {selectedRole ? <HaloAvatar glyph={selectedRole.glyph} avatar={selectedRole.avatar} /> : <HaloGlyph glyph="梦" />}
+        </motion.button>
+
+        <AnimatePresence mode="wait">
+          {selectedRole ? (
+            <motion.div key="selected-role" className="flex w-full flex-col items-center" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
+              <div className="mt-14 text-[34px] font-light tracking-[0.12em] text-[#f5efe2] [text-shadow:0_0_8px_rgba(123,168,196,0.28)]">{selectedRole.name}</div>
+              <div className="mt-3 text-[15px] tracking-[0.1em] text-[#7088b0]">{selectedRole.status}</div>
+              <div className="relative mt-12 w-full max-w-[322px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.03)] px-6 py-7">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#05080e] px-5 text-[11px] tracking-[0.42em] text-[#c4a96a]">今夜</div>
+                <div className="text-[18px] font-light tracking-[0.08em] text-[#f5efe2]">{availableLine}</div>
+                <div className="mt-3 text-[12px] tracking-[0.12em] text-[#7088b0]">{expireLine}</div>
+              </div>
+              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-7 text-[18px] tracking-[0.52em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
+                进入今夜
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div key="unselected-role" className="mt-14 text-[15px] tracking-[0.18em] text-[#7088b0]" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+              点击头像，选择今夜入梦的角色
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      <div className="flex items-center justify-around border-t border-[rgba(196,169,106,0.12)] pt-4 text-[11px] tracking-[0.28em] text-[#647899]">
-        <div className="flex flex-col items-center gap-2 text-[#c4a96a]"><span>今夜</span><span className="h-1 w-1 rounded-full bg-[#c4a96a]" /></div>
-        <div className="flex flex-col items-center gap-2"><span>残响</span><span className="h-1 w-1 rounded-full bg-current opacity-40" /></div>
-        <div className="flex flex-col items-center gap-2"><span>深层</span><span className="h-1 w-1 rounded-full bg-current opacity-40" /></div>
+
+      <div className="mx-5 flex items-center justify-around border-t border-[rgba(196,169,106,0.1)] pt-4 text-[12px] tracking-[0.34em] text-[#7088b0]">
+        <div className="flex flex-col items-center gap-2 text-[#d4b46f]"><span>今夜</span><span className="h-1.5 w-1.5 rounded-full bg-[#d4b46f]" /></div>
+        <div className="flex flex-col items-center gap-2"><span>残响</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
+        <div className="flex flex-col items-center gap-2"><span>深层</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
       </div>
+    </motion.div>
+  );
+}
+
+function RolePicker({
+  roles,
+  selectedRoleId,
+  onSelect,
+  onClose,
+}: {
+  roles: DreamRoleOption[];
+  selectedRoleId: string | null;
+  onSelect: (roleId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-end">
+      <motion.button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+      <motion.div className="relative z-10 w-full border-t border-[rgba(196,169,106,0.1)] bg-[rgba(8,12,24,0.95)] pb-10 pt-5" initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
+        <div className="mx-auto h-1 w-10 rounded-full bg-[#273347]" />
+        <div className="mt-7 text-center text-[12px] tracking-[0.4em] text-[#7088b0]">选择入梦角色</div>
+        <div className="mt-6 space-y-3 px-6">
+          {roles.map((role) => {
+            const active = selectedRoleId === role.id;
+            return (
+              <button
+                key={role.id}
+                onClick={() => onSelect(role.id)}
+                className={`flex w-full items-center gap-4 border px-4 py-4 text-left transition ${
+                  active
+                    ? 'border-[rgba(196,169,106,0.28)] bg-[rgba(196,169,106,0.06)]'
+                    : 'border-[rgba(196,169,106,0.08)] bg-[rgba(196,169,106,0.02)] hover:border-[rgba(196,169,106,0.18)]'
+                }`}
+              >
+                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-[rgba(196,169,106,0.18)] text-[20px] text-[#c8aa67]">
+                  {role.avatar ? <DreamAvatarArt avatar={role.avatar} alt={role.name} className="h-full w-full" /> : role.glyph}
+                </div>
+                <div>
+                  <div className="text-[16px] tracking-[0.12em] text-[#f4eee3]">{role.name}</div>
+                  <div className="mt-1 text-[12px] leading-6 text-[#7088b0]">{role.status}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </motion.div>
     </div>
   );
 }
 
 function EntryScreen({ onChoose, onClose }: { onChoose: (mode: DreamEntryMode) => void; onClose: () => void }) {
+  const items = [
+    { mode: 'quick' as DreamEntryMode, title: '一键入梦', description: '系统自动决定世界观、张力与情绪底色。' },
+    { mode: 'custom' as DreamEntryMode, title: '自定义入梦', description: '由你选择梦域、题材母题、关系张力和剧情驱动。' },
+    { mode: 'character' as DreamEntryMode, title: '角色入梦', description: '先选角色，再进入由他主导的大部分黑盒设定。' },
+  ];
+
   return (
     <div className="absolute inset-0 flex items-end">
-      <button className="absolute inset-0 bg-[rgba(3,5,9,0.64)]" onClick={onClose} />
-      <motion.div
-        className="relative z-10 w-full rounded-t-[30px] border-t border-[rgba(196,169,106,0.12)] bg-[#080c18] pb-10 pt-4"
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-      >
-        <div className="mx-auto h-1 w-10 rounded-full bg-[#283348]" />
-        <div className="mt-7 text-center text-[12px] tracking-[0.38em] text-[#647899]">选择入梦方式</div>
-        <div className="mt-5">
-          {[
-            { mode: 'quick' as DreamEntryMode, icon: '◌', title: '一键入梦', description: '直接沉入，让梦替你决定今晚先看见什么。' },
-            { mode: 'custom' as DreamEntryMode, icon: '◐', title: '自定义梦局', description: '你先挑梦域、张力和语气，再把自己放进去。' },
-            { mode: 'character' as DreamEntryMode, icon: '✶', title: '角色入梦', description: '更深地贴近角色内里，从他没说完的那层开始。' },
-          ].map((item) => (
-            <button
-              key={item.mode}
-              onClick={() => onChoose(item.mode)}
-              className="flex w-full items-center gap-5 border-b border-[rgba(196,169,106,0.1)] px-8 py-5 text-left transition hover:bg-[rgba(196,169,106,0.04)]"
-            >
-              <div className="flex h-10 w-10 items-center justify-center border border-[rgba(196,169,106,0.16)] text-[#c4a96a]">
-                {item.icon}
-              </div>
+      <button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} />
+      <motion.div className="relative z-10 w-full border-t border-[rgba(196,169,106,0.1)] bg-[rgba(8,12,24,0.95)] pb-10 pt-5" initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+        <div className="mx-auto h-1 w-10 rounded-full bg-[#273347]" />
+        <div className="mt-7 text-center text-[12px] tracking-[0.4em] text-[#7088b0]">选择入梦方式</div>
+        <div className="mt-6">
+          {items.map((item) => (
+            <button key={item.mode} onClick={() => onChoose(item.mode)} className="flex w-full items-start justify-between border-b border-[rgba(196,169,106,0.08)] px-8 py-5 text-left transition hover:bg-[rgba(196,169,106,0.03)]">
               <div>
-                <div className="text-[16px] tracking-[0.12em] text-[#ede6d6]">{item.title}</div>
-                <div className="mt-1 text-[12px] leading-6 text-[#647899]">{item.description}</div>
+                <div className="text-[17px] tracking-[0.12em] text-[#f4eee3]">{item.title}</div>
+                <div className="mt-2 text-[12px] leading-6 text-[#7088b0]">{item.description}</div>
               </div>
+              <span className="pt-1 text-[#c8aa67]">◌</span>
             </button>
           ))}
         </div>
@@ -211,72 +271,32 @@ function EntryScreen({ onChoose, onClose }: { onChoose: (mode: DreamEntryMode) =
 }
 
 function TagsScreen({
+  selectedTags,
   detailExpanded,
   onToggleDetail,
-  selectedTags,
-  selectedTagCount,
   onToggleTag,
   onBack,
   onConfirm,
 }: {
+  selectedTags: Record<DreamTagCategory, string[]>;
   detailExpanded: boolean;
   onToggleDetail: () => void;
-  selectedTags: Record<DreamTagCategory, string[]>;
-  selectedTagCount: number;
   onToggleTag: (category: DreamTagCategory, optionId: string, max: number) => void;
   onBack: () => void;
   onConfirm: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.76)]">
-      <div className="flex items-center gap-4 border-b border-[rgba(196,169,106,0.1)] px-6 py-4">
-        <button onClick={onBack} className="text-lg text-[#647899] transition hover:text-[#c4a96a]">←</button>
-        <div className="text-[13px] tracking-[0.32em] text-[#ede6d6]">自定义梦局</div>
+    <div className="flex h-full flex-col">
+      <div className="mt-1 flex items-center gap-3 text-[12px] tracking-[0.36em] text-[#7088b0]">
+        <button onClick={onBack} className="text-[#c8aa67]">←</button>
+        <span>细化梦局</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 pb-5 pt-3">
-        {dreamTagGroups.filter((group) => !group.detailed).map((group) => (
-          <section key={group.category} className="mt-5">
-            <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.36em] text-[#647899]">
-              <span>{group.label}</span>
-              <span className="h-px flex-1 bg-[rgba(196,169,106,0.12)]" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {group.options.map((option) => {
-                const selected = selectedTags[group.category].includes(option.id);
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => onToggleTag(group.category, option.id, group.max)}
-                    className={`border px-4 py-2 text-[13px] tracking-[0.08em] transition ${
-                      selected
-                        ? 'border-[rgba(196,169,106,0.46)] bg-[rgba(196,169,106,0.14)] text-[#c4a96a]'
-                        : 'border-[rgba(196,169,106,0.12)] text-[#647899] hover:border-[rgba(196,169,106,0.24)] hover:text-[#ede6d6]'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-
-        <button
-          onClick={onToggleDetail}
-          className="mt-6 flex w-full items-center gap-3 border-t border-[rgba(196,169,106,0.1)] pt-4 text-[12px] tracking-[0.28em] text-[#647899]"
-        >
-          <span>细化标签</span>
-          <span className={`transition ${detailExpanded ? 'rotate-180' : ''}`}>⌄</span>
-        </button>
-
-        {detailExpanded && (
-          <div className="pb-6">
-            {dreamTagGroups.filter((group) => group.detailed).map((group) => (
-              <section key={group.category} className="mt-5">
-                <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.36em] text-[#647899]">
-                  <span>{group.label}</span>
-                  <span className="h-px flex-1 bg-[rgba(196,169,106,0.12)]" />
-                </div>
+      <div className="mt-8 flex-1 overflow-y-auto">
+        {[false, true].map((detailed) => (
+          <div key={String(detailed)} className={detailed && !detailExpanded ? 'hidden' : 'block'}>
+            {dreamTagGroups.filter((group) => Boolean(group.detailed) === detailed).map((group) => (
+              <section key={group.category} className="mb-7">
+                <div className="mb-3 text-[10px] tracking-[0.34em] text-[#7088b0]">{group.label}</div>
                 <div className="flex flex-wrap gap-2">
                   {group.options.map((option) => {
                     const selected = selectedTags[group.category].includes(option.id);
@@ -284,10 +304,10 @@ function TagsScreen({
                       <button
                         key={option.id}
                         onClick={() => onToggleTag(group.category, option.id, group.max)}
-                        className={`border px-4 py-2 text-[13px] tracking-[0.08em] transition ${
+                        className={`border px-4 py-2.5 text-[14px] tracking-[0.12em] transition ${
                           selected
-                            ? 'border-[rgba(196,169,106,0.46)] bg-[rgba(196,169,106,0.14)] text-[#c4a96a]'
-                            : 'border-[rgba(196,169,106,0.12)] text-[#647899] hover:border-[rgba(196,169,106,0.24)] hover:text-[#ede6d6]'
+                            ? 'border-[rgba(196,169,106,0.4)] bg-[rgba(196,169,106,0.08)] text-[#d4b46f]'
+                            : 'border-[rgba(196,169,106,0.12)] text-[#7088b0] hover:border-[rgba(196,169,106,0.26)] hover:text-[#f4eee3]'
                         }`}
                       >
                         {option.label}
@@ -298,17 +318,14 @@ function TagsScreen({
               </section>
             ))}
           </div>
-        )}
-      </div>
-      <div className="flex items-center gap-4 border-t border-[rgba(196,169,106,0.1)] px-6 py-4">
-        <div className="whitespace-nowrap text-[11px] tracking-[0.18em] text-[#647899]">已选 {selectedTagCount} 项</div>
-        <button
-          onClick={onConfirm}
-          className="flex-1 border border-[rgba(196,169,106,0.24)] px-4 py-3 text-[13px] tracking-[0.34em] text-[#c4a96a] transition hover:bg-[rgba(196,169,106,0.08)]"
-        >
-          开始造梦
+        ))}
+        <button onClick={onToggleDetail} className="mt-2 text-[12px] tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
+          {detailExpanded ? '收起细化标签' : '展开细化标签'}
         </button>
       </div>
+      <button onClick={onConfirm} className="mt-8 border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-6 text-[16px] tracking-[0.46em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
+        进入确认
+      </button>
     </div>
   );
 }
@@ -318,7 +335,7 @@ function ConfirmScreen({
   dreamDepth,
   heroGlyph,
   heroName,
-  confirmHint,
+  heroStatus,
   tags,
   onBack,
   onStart,
@@ -327,38 +344,107 @@ function ConfirmScreen({
   dreamDepth: DreamDepth;
   heroGlyph: string;
   heroName: string;
-  confirmHint: string;
+  heroStatus: string;
   tags: string[];
   onBack: () => void;
   onStart: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.82)] px-8 text-center">
-      <div className="text-[10px] tracking-[0.38em] text-[#647899]">
-        {domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}
+    <div className="flex h-full flex-col items-center justify-center text-center">
+      <div className="text-[13px] tracking-[0.5em] text-[#6d82a7]">{domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}</div>
+      <div className="mt-10 flex items-center gap-5">
+        <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
+        <div className="flex h-[84px] w-[112px] items-center justify-center border border-[rgba(196,169,106,0.16)] text-[34px] font-light text-[#c8aa67]">
+          {heroGlyph}
+        </div>
+        <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
       </div>
-      <div className="relative mt-8 flex h-20 w-20 items-center justify-center border border-[rgba(196,169,106,0.16)]">
-        <span className="text-[26px] font-light tracking-[0.16em] text-[#c4a96a]">{heroGlyph}</span>
-        <div className="absolute inset-y-0 -left-4 w-px bg-[rgba(196,169,106,0.16)]" />
-        <div className="absolute inset-y-0 -right-4 w-px bg-[rgba(196,169,106,0.16)]" />
-      </div>
-      <div className="mt-7 text-[24px] font-light tracking-[0.24em]">{heroName}</div>
-      <div className="mt-2 text-[12px] tracking-[0.16em] text-[#647899]">{confirmHint}</div>
-      <div className="mt-8 flex flex-wrap justify-center gap-2">
+      <div className="mt-12 text-[36px] font-light tracking-[0.08em] text-[#f4eee3] [text-shadow:0_0_8px_rgba(123,168,196,0.3)]">{heroName}</div>
+      <div className="mt-4 text-[16px] tracking-[0.08em] text-[#7088b0]">{heroStatus}</div>
+      <div className="mt-14 flex max-w-[520px] flex-wrap justify-center gap-3">
         {tags.map((tag) => (
-          <span key={tag} className="border border-[rgba(196,169,106,0.14)] px-3 py-1 text-[11px] tracking-[0.12em] text-[#c4a96a]">
+          <span key={tag} className="border border-[rgba(196,169,106,0.18)] px-5 py-2 text-[15px] tracking-[0.12em] text-[#d4b46f]">
             {tag}
           </span>
         ))}
       </div>
-      <button
-        onClick={onStart}
-        className="relative mt-10 w-full border border-[rgba(196,169,106,0.42)] px-5 py-4 text-[14px] tracking-[0.5em] text-[#c4a96a] transition hover:bg-[rgba(196,169,106,0.08)]"
-      >
-        确认入梦
+      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.36)] bg-[rgba(196,169,106,0.02)] px-6 py-9 text-[20px] tracking-[0.62em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.06)]">
+        确 认 入 梦
       </button>
-      <button onClick={onBack} className="mt-5 text-[11px] tracking-[0.24em] text-[#647899] transition hover:text-[#c4a96a]">
-        返回修改
+      <button onClick={onBack} className="mt-6 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:text-[#c8aa67]">
+        ← 返回修改
+      </button>
+    </div>
+  );
+}
+
+function DreamConfirmScreen({
+  domainName,
+  dreamDepth,
+  heroGlyph,
+  heroAvatar,
+  heroName,
+  heroStatus,
+  entryMode,
+  tags,
+  onBack,
+  onStart,
+}: {
+  domainName: string;
+  dreamDepth: DreamDepth;
+  heroGlyph: string;
+  heroAvatar: string;
+  heroName: string;
+  heroStatus: string;
+  entryMode: DreamEntryMode;
+  tags: string[];
+  onBack: () => void;
+  onStart: () => void;
+}) {
+  const isCharacterEntry = entryMode === 'character';
+  const topLine = [domainName, tags[0], dreamDepth === 'shallow' ? '浅梦' : '深梦'].filter(Boolean).join(' · ');
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-2 text-center">
+      <div className="text-[13px] tracking-[0.46em] text-[#6d82a7]">{isCharacterEntry ? '角色入梦 · 黑盒入场' : topLine}</div>
+      <div className="mt-10 flex items-center gap-6">
+        <div className="h-20 w-px bg-[linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)]" />
+        <div className="flex h-[118px] w-[118px] items-center justify-center border border-[rgba(196,169,106,0.16)] bg-[rgba(196,169,106,0.015)] px-2 py-2 text-[34px] font-light text-[#c8aa67] shadow-[0_0_28px_rgba(11,18,30,0.18)]">
+          {isCharacterEntry ? (
+            <span className="text-[44px] text-[#c8aa67]">?</span>
+          ) : heroAvatar ? (
+            <DreamAvatarArt avatar={heroAvatar} alt={heroName} className="h-full w-full rounded-none border border-[rgba(196,169,106,0.06)]" imageClassName="rounded-none p-2" />
+          ) : (
+            heroGlyph
+          )}
+        </div>
+        <div className="h-20 w-px bg-[linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)]" />
+      </div>
+      <div className="mt-12 text-[38px] font-light tracking-[0.1em] text-[#f4eee3] [text-shadow:0_0_10px_rgba(123,168,196,0.32)]">{heroName}</div>
+      <div className="mt-4 text-[16px] tracking-[0.14em] text-[#7088b0]">{isCharacterEntry ? '他的梦，他来决定' : heroStatus}</div>
+
+      {isCharacterEntry ? (
+        <div className="mt-14 flex max-w-[520px] flex-col items-center text-[#7088b0]">
+          <div className="flex h-[78px] w-[78px] items-center justify-center border border-[rgba(196,169,106,0.08)] bg-[rgba(23,31,46,0.28)] text-[18px] text-[#556685]">◊</div>
+          <div className="mt-8 text-[16px] tracking-[0.14em]">这场梦由他决定</div>
+          <div className="mt-3 text-[15px] tracking-[0.12em]">你进入后才会逐渐知道</div>
+          <div className="mt-5 text-[15px] tracking-[0.24em] text-[#8aa8cf]">身份 · 阵营 · 你们之间是什么关系</div>
+        </div>
+      ) : (
+        <div className="mt-16 flex max-w-[520px] flex-wrap justify-center gap-2.5">
+          {tags.map((tag) => (
+            <span key={tag} className="min-w-[92px] border border-[rgba(196,169,106,0.22)] bg-[rgba(196,169,106,0.015)] px-4 py-2.5 text-[15px] tracking-[0.14em] text-[#d4b46f]">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.38)] bg-[linear-gradient(180deg,rgba(196,169,106,0.035),rgba(196,169,106,0.015))] px-6 py-9 text-[20px] tracking-[0.62em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.08),rgba(196,169,106,0.035))]">
+        确 认 入 梦
+      </button>
+      <button onClick={onBack} className="mt-8 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:text-[#8aa8cf]">
+        ← {isCharacterEntry ? '换一种入梦方式' : '返回修改'}
       </button>
     </div>
   );
@@ -366,26 +452,25 @@ function ConfirmScreen({
 
 function LoadingScreen() {
   return (
-    <div className="flex h-full flex-col items-center justify-center rounded-[32px] border border-[rgba(196,169,106,0.08)] bg-[rgba(3,5,9,0.9)]">
-      <div className="h-14 w-14 rounded-full border border-[rgba(196,169,106,0.22)] bg-[radial-gradient(circle_at_40%_38%,rgba(196,169,106,0.42),transparent_66%)]" />
-      <div className="mt-10 text-[12px] tracking-[0.42em] text-[#647899]">正在进入梦境</div>
-      <div className="mt-5 h-px w-20 overflow-hidden bg-[rgba(196,169,106,0.12)]">
-        <div className="h-full w-full animate-pulse bg-[#c4a96a]" />
+    <div className="flex h-full flex-col items-center justify-center">
+      <div className="relative flex h-[84px] w-[84px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[30px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
+        梦
       </div>
+      <div className="mt-12 text-[12px] tracking-[0.42em] text-[#7088b0]">正在进入梦境</div>
     </div>
   );
 }
 
 function SceneScreen({ act, progressLabel, onContinue }: { act: DreamAct; progressLabel: string; onContinue: () => void }) {
   return (
-    <div className="flex h-full flex-col rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.78)] px-8 py-8">
-      <div className="flex items-start justify-between">
-        <div className="text-[10px] tracking-[0.34em] text-[#647899]">{act.label}</div>
-        <div className="text-[10px] tracking-[0.2em] text-[#647899]">{progressLabel}</div>
+    <div className="flex h-full flex-col px-2">
+      <div className="flex items-start justify-between text-[11px] tracking-[0.28em] text-[#7088b0]">
+        <span>{act.label}</span>
+        <span>{progressLabel}</span>
       </div>
-      <div className="mt-8 text-[16px] font-light leading-[2.1] text-[#ede6d6]">{act.scene}</div>
-      <div className="mt-8 text-[12px] leading-7 tracking-[0.08em] text-[#c4a96a]">{act.charState}</div>
-      <button onClick={onContinue} className="mt-auto self-center pt-10 text-[11px] tracking-[0.34em] text-[#647899] transition hover:text-[#c4a96a]">
+      <div className="mt-10 text-[16px] font-light leading-[2.2] text-[#f4eee3]">{act.scene}</div>
+      <div className="mt-8 text-[13px] leading-7 tracking-[0.08em] text-[#c8aa67]">{act.charState}</div>
+      <button onClick={onContinue} className="mt-auto pb-8 text-center text-[12px] tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
         你想做什么
       </button>
     </div>
@@ -394,23 +479,14 @@ function SceneScreen({ act, progressLabel, onContinue }: { act: DreamAct; progre
 
 function ChoicesScreen({ act, onPick }: { act: DreamAct; onPick: (choiceId: string) => void }) {
   return (
-    <div className="flex h-full flex-col rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.78)] px-6 py-8">
-      <div className="text-center">
-        <div className="inline-flex border border-[rgba(196,169,106,0.12)] px-4 py-1 text-[10px] tracking-[0.2em] text-[#647899]">{act.label}</div>
-        <div className="mt-4 text-[15px] font-light tracking-[0.14em] text-[#ede6d6]">在这场梦里，你选择</div>
-      </div>
-      <div className="mt-8 flex flex-1 flex-col gap-3">
+    <div className="flex h-full flex-col">
+      <div className="text-center text-[12px] tracking-[0.36em] text-[#7088b0]">{act.label}</div>
+      <div className="mt-4 text-center text-[16px] font-light tracking-[0.14em] text-[#f4eee3]">在这场梦里，你选择</div>
+      <div className="mt-10 flex flex-1 flex-col gap-4">
         {act.choices.map((choice) => (
-          <button
-            key={choice.id}
-            onClick={() => onPick(choice.id)}
-            className="flex items-center gap-5 border border-[rgba(196,169,106,0.12)] bg-[rgba(8,12,26,0.58)] px-5 py-5 text-left transition hover:border-[rgba(196,169,106,0.34)] hover:bg-[rgba(196,169,106,0.04)] hover:translate-x-1"
-          >
-            <div className="w-7 text-center text-lg text-[#c4a96a]">{choice.icon}</div>
-            <div>
-              <div className="text-[15px] tracking-[0.08em] text-[#ede6d6]">{choice.title}</div>
-              <div className="mt-1 text-[12px] leading-6 text-[#647899]">{choice.detail}</div>
-            </div>
+          <button key={choice.id} onClick={() => onPick(choice.id)} className="border border-[rgba(196,169,106,0.12)] bg-[rgba(196,169,106,0.02)] px-5 py-5 text-left transition hover:border-[rgba(196,169,106,0.26)] hover:bg-[rgba(196,169,106,0.05)]">
+            <div className="text-[15px] tracking-[0.12em] text-[#f4eee3]">{choice.title}</div>
+            <div className="mt-2 text-[12px] leading-6 text-[#7088b0]">{choice.detail}</div>
           </button>
         ))}
       </div>
@@ -434,71 +510,34 @@ function ReactionScreen({
   isLast: boolean;
 }) {
   return (
-    <div className="flex h-full flex-col rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.8)] px-8 py-8">
-      <div className="text-[10px] tracking-[0.34em] text-[#647899]">
-        你的选择 <span className="ml-2 text-[#c4a96a]">{choiceTitle}</span>
-      </div>
-      <div className="mt-8 min-h-[220px] text-[16px] font-light leading-[2.2] text-[#ede6d6]">
+    <div className="flex h-full flex-col">
+      <div className="text-[11px] tracking-[0.3em] text-[#7088b0]">你的选择 · <span className="text-[#c8aa67]">{choiceTitle}</span></div>
+      <div className="mt-10 min-h-[220px] text-[16px] font-light leading-[2.2] text-[#f4eee3]">
         {reaction}
-        {!reactionDone && <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-[#c4a96a]" />}
+        {!reactionDone && <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-[#c8aa67]" />}
       </div>
-      <div className={`mt-6 inline-flex w-fit items-center gap-2 border px-4 py-2 text-[11px] tracking-[0.12em] transition ${reactionDone ? 'border-[rgba(123,168,196,0.3)] bg-[rgba(123,168,196,0.08)] text-[#7ba8c4]' : 'border-transparent text-transparent'}`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-[#7ba8c4]" />
-        {emotion}
-      </div>
-      <button
-        onClick={onContinue}
-        disabled={!reactionDone}
-        className={`mt-auto self-end border px-5 py-3 text-[11px] tracking-[0.28em] transition ${
-          reactionDone
-            ? 'border-[rgba(196,169,106,0.18)] text-[#647899] hover:border-[rgba(196,169,106,0.34)] hover:text-[#c4a96a]'
-            : 'border-[rgba(196,169,106,0.06)] text-[#39475f]'
-        }`}
-      >
+      <div className={`mt-4 text-[12px] tracking-[0.16em] ${reactionDone ? 'text-[#7ba8c4]' : 'text-transparent'}`}>{emotion}</div>
+      <button onClick={onContinue} disabled={!reactionDone} className={`mt-auto self-end border px-5 py-3 text-[12px] tracking-[0.32em] transition ${reactionDone ? 'border-[rgba(196,169,106,0.16)] text-[#7088b0] hover:border-[rgba(196,169,106,0.28)] hover:text-[#c8aa67]' : 'border-[rgba(196,169,106,0.06)] text-[#334056]'}`}>
         {isLast ? '醒来之前' : '继续下沉'}
       </button>
     </div>
   );
 }
 
-function EndingScreen({
-  title,
-  excerpt,
-  signature,
-  chapter,
-  onAftermath,
-}: {
-  title: string;
-  excerpt: string;
-  signature: string;
-  chapter: string;
-  onAftermath: () => void;
-}) {
+function EndingScreen({ title, excerpt, signature, chapter, onAftermath }: { title: string; excerpt: string; signature: string; chapter: string; onAftermath: () => void }) {
   return (
-    <div className="flex h-full flex-col justify-between rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(3,5,9,0.84)] px-8 py-8">
-      <div className="text-center">
-        <div className="text-[9px] tracking-[0.6em] text-[#647899]">结 局</div>
-        <div className="mt-10 text-[44px] font-light tracking-[0.18em] text-[#ede6d6]">{title}</div>
-        <div className="mx-auto mt-6 flex w-fit items-center gap-3 text-[10px] tracking-[0.2em] text-[#c4a96a]">
-          <span className="h-px w-9 bg-[rgba(196,169,106,0.2)]" />
-          <span>梦尾摘录</span>
-          <span className="h-px w-9 bg-[rgba(196,169,106,0.2)]" />
-        </div>
-      </div>
-      <div className="text-[15px] font-light leading-[2.3] text-[rgba(237,230,214,0.72)]">{excerpt}</div>
+    <div className="flex h-full flex-col justify-between text-center">
       <div>
-        <div className="text-right text-[13px] tracking-[0.22em] text-[rgba(237,230,214,0.44)]">—— {signature}</div>
-        <div className="mt-2 text-right text-[12px] tracking-[0.14em] text-[#c4a96a]">{chapter}</div>
+        <div className="text-[9px] tracking-[0.6em] text-[#7088b0]">结 局</div>
+        <div className="mt-10 text-[42px] font-light tracking-[0.18em] text-[#f4eee3]">{title}</div>
+      </div>
+      <div className="text-[15px] font-light leading-[2.3] text-[rgba(244,238,227,0.74)]">{excerpt}</div>
+      <div>
+        <div className="text-right text-[13px] tracking-[0.22em] text-[rgba(244,238,227,0.44)]">—— {signature}</div>
+        <div className="mt-2 text-right text-[12px] tracking-[0.14em] text-[#c8aa67]">{chapter}</div>
         <div className="mt-8 flex flex-col gap-3">
-          <button className="border border-[rgba(196,169,106,0.22)] px-4 py-3 text-[12px] tracking-[0.34em] text-[#c4a96a] transition hover:bg-[rgba(196,169,106,0.08)]">
-            截图分享这一页
-          </button>
-          <button
-            onClick={onAftermath}
-            className="border border-[rgba(196,169,106,0.12)] px-4 py-3 text-[12px] tracking-[0.28em] text-[#647899] transition hover:border-[rgba(123,168,196,0.24)] hover:text-[#7ba8c4]"
-          >
-            查看梦后余响
-          </button>
+          <button className="border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">截图分享这一页</button>
+          <button onClick={onAftermath} className="border border-[rgba(196,169,106,0.1)] px-4 py-4 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:border-[rgba(123,168,196,0.24)] hover:text-[#7ba8c4]">查看梦后余响</button>
         </div>
       </div>
     </div>
@@ -521,61 +560,36 @@ function AftermathScreen({
   onBackHome: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col rounded-[32px] border border-[rgba(196,169,106,0.12)] bg-[rgba(5,8,14,0.84)] px-6 py-6">
-      <div className="border-b border-[rgba(196,169,106,0.1)] pb-4 text-[10px] tracking-[0.42em] text-[#647899]">梦后余响</div>
-      <div className="mt-7 text-[10px] tracking-[0.42em] text-[#c4a96a]">明天会发生什么</div>
-      <div className="mt-5 border border-[rgba(196,169,106,0.12)] bg-[rgba(13,18,32,0.5)]">
-        <div className="flex items-center gap-3 border-b border-[rgba(196,169,106,0.1)] px-4 py-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(196,169,106,0.2)] bg-[radial-gradient(circle_at_40%_35%,rgba(196,169,106,0.26),transparent_70%)] text-[12px]">
-            {heroGlyph}
-          </div>
+    <div className="flex h-full flex-col">
+      <div className="text-[10px] tracking-[0.42em] text-[#7088b0]">梦后余响</div>
+      <div className="mt-7 border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.03)]">
+        <div className="flex items-center gap-3 border-b border-[rgba(196,169,106,0.08)] px-4 py-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(196,169,106,0.2)] text-[12px] text-[#c8aa67]">{heroGlyph}</div>
           <div>
-            <div className="text-[13px] tracking-[0.12em] text-[#ede6d6]">{heroName}</div>
-            <div className="text-[11px] tracking-[0.08em] text-[#647899]">刚刚在线</div>
+            <div className="text-[13px] text-[#f4eee3]">{heroName}</div>
+            <div className="text-[11px] text-[#7088b0]">刚刚在线</div>
           </div>
         </div>
         <div className="space-y-3 px-4 py-4">
-          <div className="flex gap-2">
-            <div className="max-w-[220px] border border-[rgba(196,169,106,0.14)] bg-[rgba(196,169,106,0.08)] px-3 py-2 text-[13px] leading-6 text-[rgba(237,230,214,0.72)]">
-              {previewMessages[0]}
-            </div>
-            <div className="self-end pb-1 text-[10px] text-[#283348]">08:43</div>
-          </div>
-          <div className="flex flex-row-reverse gap-2">
-            <div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(8,12,26,0.65)] px-3 py-2 text-[13px] leading-6 text-[rgba(237,230,214,0.72)]">
-              在，怎么了
-            </div>
-            <div className="self-end pb-1 text-[10px] text-[#283348]">08:44</div>
-          </div>
-          <div className="flex gap-2">
-            <div className="max-w-[220px] border border-[rgba(196,169,106,0.14)] bg-[rgba(196,169,106,0.08)] px-3 py-2 text-[13px] leading-6 text-[rgba(237,230,214,0.72)]">
-              {previewMessages[1]}
-            </div>
-            <div className="self-end pb-1 text-[10px] text-[#283348]">08:44</div>
-          </div>
+          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">{previewMessages[0]}</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:43</div></div>
+          <div className="flex flex-row-reverse gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.08)] bg-[rgba(8,12,26,0.68)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">在，怎么了</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:44</div></div>
+          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">{previewMessages[1]}</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:44</div></div>
         </div>
       </div>
-      <div className="relative mt-6 border border-[rgba(196,169,106,0.12)] px-5 py-5">
-        <div className="absolute -top-2.5 left-4 bg-[#05080e] px-2 text-[9px] tracking-[0.3em] text-[#c4a96a]">余响</div>
-        <div className="text-[14px] font-light leading-[2.2] text-[rgba(237,230,214,0.72)]">{summary}</div>
-        <div className="mt-3 flex items-center gap-2 text-[11px] tracking-[0.08em] text-[#7ba8c4]">
-          <span className="h-1 w-1 rounded-full bg-[#7ba8c4]" />
-          {detail}
-        </div>
+      <div className="relative mt-6 border border-[rgba(196,169,106,0.1)] px-5 py-5">
+        <div className="absolute -top-2.5 left-4 bg-[#05080e] px-2 text-[9px] tracking-[0.3em] text-[#c8aa67]">余响</div>
+        <div className="text-[14px] leading-[2.2] text-[rgba(244,238,227,0.74)]">{summary}</div>
+        <div className="mt-3 text-[11px] text-[#7ba8c4]">{detail}</div>
       </div>
-      <button
-        onClick={onBackHome}
-        className="mt-auto border border-[rgba(196,169,106,0.22)] px-4 py-4 text-[12px] tracking-[0.34em] text-[#c4a96a] transition hover:bg-[rgba(196,169,106,0.08)]"
-      >
-        回到今夜
-      </button>
+      <button onClick={onBackHome} className="mt-auto border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">回到今夜</button>
     </div>
   );
 }
 
-export function DreamAppPage({ onBack }: { onBack: () => void }) {
+export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => void; characters: Character[] }) {
   const [stage, setStage] = useState<DreamStage>('splash');
   const [entryMode, setEntryMode] = useState<DreamEntryMode>('custom');
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
   const [selectedTags, setSelectedTags] = useState(defaultTagSelection);
@@ -583,15 +597,18 @@ export function DreamAppPage({ onBack }: { onBack: () => void }) {
   const [actIndex, setActIndex] = useState(0);
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   const [typedReaction, setTypedReaction] = useState('');
-  const loadingTimerRef = useRef<number | null>(null);
   const splashTimerRef = useRef<number | null>(null);
+  const loadingTimerRef = useRef<number | null>(null);
 
-  const scenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [dreamDepth, selectedDomain]);
+  const dreamRoles = useMemo(() => buildDreamRoleOptions(characters), [characters]);
+  const scenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
+  const selectedRole = useMemo(() => dreamRoles.find((role) => role.id === selectedRoleId) ?? null, [dreamRoles, selectedRoleId]);
   const currentAct: DreamAct = scenario.acts[Math.min(actIndex, scenario.acts.length - 1)];
   const selectedChoice = currentAct.choices.find((choice) => choice.id === selectedChoiceId) ?? null;
+  const confirmTags = useMemo(() => dreamTagGroups.flatMap((group) => selectedTags[group.category].map((id) => group.options.find((option) => option.id === id)?.label ?? id)), [selectedTags]);
 
   useEffect(() => {
-    splashTimerRef.current = window.setTimeout(() => setStage('home'), 2400);
+    splashTimerRef.current = window.setTimeout(() => setStage('home'), 2200);
     return () => {
       if (splashTimerRef.current !== null) window.clearTimeout(splashTimerRef.current);
       if (loadingTimerRef.current !== null) window.clearTimeout(loadingTimerRef.current);
@@ -605,7 +622,7 @@ export function DreamAppPage({ onBack }: { onBack: () => void }) {
       setSelectedChoiceId(null);
       setTypedReaction('');
       setStage('scene');
-    }, 1700);
+    }, 1500);
     return () => {
       if (loadingTimerRef.current !== null) window.clearTimeout(loadingTimerRef.current);
     };
@@ -619,13 +636,9 @@ export function DreamAppPage({ onBack }: { onBack: () => void }) {
       index += 1;
       setTypedReaction(selectedChoice.reaction.slice(0, index));
       if (index >= selectedChoice.reaction.length) window.clearInterval(timer);
-    }, reactionTypingDelay);
+    }, 16);
     return () => window.clearInterval(timer);
   }, [selectedChoice, stage]);
-
-  const selectedTagCount = useMemo(() => Object.values(selectedTags).reduce((sum, values) => sum + values.length, 0), [selectedTags]);
-  const confirmTags = useMemo(() => dreamTagGroups.flatMap((group) => selectedTags[group.category].map((valueId) => group.options.find((option) => option.id === valueId)?.label ?? valueId)), [selectedTags]);
-  const progressLabel = `${actIndex + 1} / ${scenario.acts.length}`;
 
   function chooseEntryMode(mode: DreamEntryMode) {
     setEntryMode(mode);
@@ -657,15 +670,6 @@ export function DreamAppPage({ onBack }: { onBack: () => void }) {
     if (category === 'world') setSelectedDomain(optionId as DreamDomainId);
   }
 
-  function startDream() {
-    setStage('loading');
-  }
-
-  function pickChoice(choiceId: string) {
-    setSelectedChoiceId(choiceId);
-    setStage('reaction');
-  }
-
   function continueFromReaction() {
     if (actIndex >= scenario.acts.length - 1) {
       setStage('ending');
@@ -686,75 +690,20 @@ export function DreamAppPage({ onBack }: { onBack: () => void }) {
 
   return (
     <AnimatePresence mode="wait">
-      <AppFrame stage={stage} onBack={onBack} onRestart={restartDream}>
+      <Shell stage={stage}>
         {stage === 'splash' && <SplashScreen />}
-        {stage === 'home' && (
-          <HomeScreen
-            availableLine={scenario.availableLine}
-            expireLine={scenario.expireLine}
-            heroGlyph={scenario.heroGlyph}
-            heroName={scenario.heroName}
-            heroStatus={scenario.heroStatus}
-            onOpen={() => setStage('entry')}
-          />
-        )}
+        {stage === 'home' && <HomeScreen selectedRole={selectedRole} availableLine={scenario.availableLine} expireLine={scenario.expireLine} onChooseRole={() => setStage('role-picker')} onOpen={() => setStage('entry')} />}
+        {stage === 'role-picker' && <RolePicker roles={dreamRoles} selectedRoleId={selectedRoleId} onSelect={(roleId) => { setSelectedRoleId(roleId); setStage('home'); }} onClose={() => setStage('home')} />}
         {stage === 'entry' && <EntryScreen onChoose={chooseEntryMode} onClose={() => setStage('home')} />}
-        {stage === 'tags' && (
-          <TagsScreen
-            detailExpanded={detailExpanded}
-            onToggleDetail={() => setDetailExpanded((previous) => !previous)}
-            selectedTags={selectedTags}
-            selectedTagCount={selectedTagCount}
-            onToggleTag={toggleTag}
-            onBack={() => setStage('entry')}
-            onConfirm={() => setStage('confirm')}
-          />
-        )}
-        {stage === 'confirm' && (
-          <ConfirmScreen
-            domainName={resolveDomainName(selectedDomain)}
-            dreamDepth={dreamDepth}
-            heroGlyph={scenario.heroGlyph}
-            heroName={scenario.heroName}
-            confirmHint={scenario.confirmHint}
-            tags={confirmTags}
-            onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')}
-            onStart={startDream}
-          />
-        )}
+        {stage === 'tags' && <TagsScreen selectedTags={selectedTags} detailExpanded={detailExpanded} onToggleDetail={() => setDetailExpanded((previous) => !previous)} onToggleTag={toggleTag} onBack={() => setStage('entry')} onConfirm={() => setStage('confirm')} />}
+        {stage === 'confirm' && <DreamConfirmScreen domainName={resolveDomainName(selectedDomain)} dreamDepth={dreamDepth} heroGlyph={selectedRole?.glyph ?? scenario.heroGlyph} heroAvatar={selectedRole?.avatar ?? ''} heroName={selectedRole?.name ?? scenario.heroName} heroStatus={selectedRole?.status ?? scenario.heroStatus} entryMode={entryMode} tags={confirmTags} onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} onStart={() => setStage('loading')} />}
         {stage === 'loading' && <LoadingScreen />}
-        {stage === 'scene' && <SceneScreen act={currentAct} progressLabel={progressLabel} onContinue={() => setStage('choices')} />}
-        {stage === 'choices' && <ChoicesScreen act={currentAct} onPick={pickChoice} />}
-        {stage === 'reaction' && selectedChoice && (
-          <ReactionScreen
-            choiceTitle={selectedChoice.title}
-            reaction={typedReaction}
-            reactionDone={typedReaction.length === selectedChoice.reaction.length}
-            emotion={selectedChoice.emotion}
-            onContinue={continueFromReaction}
-            isLast={actIndex >= scenario.acts.length - 1}
-          />
-        )}
-        {stage === 'ending' && (
-          <EndingScreen
-            title={scenario.ending.title}
-            excerpt={scenario.ending.excerpt}
-            signature={scenario.ending.signature}
-            chapter={scenario.ending.chapter}
-            onAftermath={() => setStage('aftermath')}
-          />
-        )}
-        {stage === 'aftermath' && (
-          <AftermathScreen
-            heroGlyph={scenario.heroGlyph}
-            heroName={scenario.heroName}
-            summary={scenario.aftermath.summary}
-            detail={scenario.aftermath.detail}
-            previewMessages={scenario.aftermath.previewMessages}
-            onBackHome={restartDream}
-          />
-        )}
-      </AppFrame>
+        {stage === 'scene' && <SceneScreen act={currentAct} progressLabel={`${actIndex + 1} / ${scenario.acts.length}`} onContinue={() => setStage('choices')} />}
+        {stage === 'choices' && <ChoicesScreen act={currentAct} onPick={(choiceId) => { setSelectedChoiceId(choiceId); setStage('reaction'); }} />}
+        {stage === 'reaction' && selectedChoice && <ReactionScreen choiceTitle={selectedChoice.title} reaction={typedReaction} reactionDone={typedReaction.length === selectedChoice.reaction.length} emotion={selectedChoice.emotion} onContinue={continueFromReaction} isLast={actIndex >= scenario.acts.length - 1} />}
+        {stage === 'ending' && <EndingScreen title={scenario.ending.title} excerpt={scenario.ending.excerpt} signature={selectedRole?.name ?? scenario.ending.signature} chapter={scenario.ending.chapter} onAftermath={() => setStage('aftermath')} />}
+        {stage === 'aftermath' && <AftermathScreen heroGlyph={selectedRole?.glyph ?? scenario.heroGlyph} heroName={selectedRole?.name ?? scenario.heroName} summary={scenario.aftermath.summary} detail={scenario.aftermath.detail} previewMessages={scenario.aftermath.previewMessages} onBackHome={restartDream} />}
+      </Shell>
     </AnimatePresence>
   );
 }
