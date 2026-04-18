@@ -14,6 +14,7 @@ import { MomentsApp } from './components/moments/Page';
 import { ChatSessionMount } from './features/chat-session/ChatSessionMount';
 import { createCharacterDirectory } from './features/character-domain/useCharacterDirectory';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
+import { DreamAppPage } from './components/dream/Page';
 import { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/WalletApp/mockData';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
@@ -1332,7 +1333,7 @@ export default function App() {
             />
           )}
           {activeApp === 'dream' && (
-            <DreamApp key="dream" onBack={() => setActiveApp('home')} />
+            <DreamAppPage key="dream" onBack={() => setActiveApp('home')} />
           )}
           {activeApp === 'worldbook' && (
             <WorldBookManager 
@@ -1941,7 +1942,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
   );
 }
 
-function DreamApp({ onBack }: { onBack: () => void; key?: string }) {
+/* function DreamApp({ onBack }: { onBack: () => void; key?: string }) {
   const [activeLayer, setActiveLayer] = useState<'cover' | 'domain' | 'tags' | 'confirm'>('cover');
   const [selectedDomain, setSelectedDomain] = useState<'众生梦' | '歧境梦' | '同梦域' | '心隙梦'>('同梦域');
   const [selectedDreamType, setSelectedDreamType] = useState<'浅梦' | '深梦'>('浅梦');
@@ -2199,6 +2200,7 @@ function DreamApp({ onBack }: { onBack: () => void; key?: string }) {
     </motion.div>
   );
 }
+*/
 function SettingsApp({ 
   onBack, 
   settings, 
