@@ -105,7 +105,7 @@ const WALLPAPER_URL = 'https://tse4.mm.bing.net/th/id/OIP.Cg3l8e76ACyxyLdkdP_tSg
 const APP_ICON_URL = 'https://tu.tuhenmei.com/tu2026/2025120917/gg0qhoi1q2j25922.jpeg';
 const DESKTOP_ROWS = 7;
 const MIN_DESKTOP_PAGE_COUNT = 2;
-const DOCK_APP_IDS = ['wallet', 'sms', 'customization'] as const;
+const DOCK_APP_IDS = ['wallet', 'dream', 'customization'] as const;
 
 export function HomeScreen({
   onOpenApp,
@@ -116,7 +116,7 @@ export function HomeScreen({
   appData,
   setAppData,
 }: {
-  onOpenApp: (app: 'chat' | 'settings' | 'sms' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet') => void;
+  onOpenApp: (app: 'chat' | 'settings' | 'dream' | 'worldbook' | 'monitor' | 'customization' | 'couple-space' | 'perception' | 'music' | 'forum' | 'wallet') => void;
   userProfile: UserProfile;
   setUserProfile: (p: UserProfile) => void;
   visualSettings: VisualSettings;
@@ -218,14 +218,18 @@ export function HomeScreen({
       },
       { id: 'forum', name: '论坛', icon: APP_ICON_URL, onClick: () => onOpenApp('forum') },
       { id: 'wallet', name: '钱包', icon: APP_ICON_URL, onClick: () => onOpenApp('wallet') },
-      { id: 'sms', name: '短信', icon: APP_ICON_URL, onClick: () => onOpenApp('sms') },
+      { id: 'dream', name: '梦境', icon: APP_ICON_URL, onClick: () => onOpenApp('dream') },
       { id: 'customization', name: '自定义', icon: APP_ICON_URL, onClick: () => onOpenApp('customization') },
     ],
     [onOpenApp, setAppData],
   );
 
   const desktopApps = useMemo(() => apps.filter(app => appOrder.includes(app.id as DesktopAppId)), [apps, appOrder]);
-  const currentIcons = visualSettings.desktopIcons || [];
+  const currentIcons = (visualSettings.desktopIcons || []).map((icon) => (
+    icon.id === 'sms'
+      ? { ...icon, id: 'dream' }
+      : icon
+  ));
   const pageCount = useMemo(() => {
     const iconPages = currentIcons.map(icon => (typeof icon.page === 'number' ? icon.page : 0));
     const widgetPages = (visualSettings.widgets || []).map(widget => (typeof widget.page === 'number' ? widget.page : 0));

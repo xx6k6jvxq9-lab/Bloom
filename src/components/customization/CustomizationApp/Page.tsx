@@ -460,7 +460,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
     { id: 'settings', name: 'API 中心', icon: 'Settings' },
     { id: 'worldbook', name: '世界书', icon: 'Book' },
     { id: 'monitor', name: '监控功能', icon: 'Activity' },
-    { id: 'sms', name: '短信', icon: 'MessageCircle' },
+    { id: 'dream', name: '梦境', icon: 'Moon' },
     { id: 'customization', name: '自定义', icon: 'Settings2' },
     { id: 'couple-space', name: '情侣空间', icon: 'Heart' },
     { id: 'perception', name: '感知', icon: 'Eye' },
