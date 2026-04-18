@@ -109,7 +109,7 @@ function Shell({ stage, children }: { stage: DreamStage; children: React.ReactNo
           <div className="relative z-10 flex-1 px-6 pt-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
             <div className="absolute inset-x-0 top-1 z-10 flex items-center justify-center px-8">
               <div className="text-[10px] font-normal tracking-[0.42em]" style={{ color: 'var(--mist)' }}>DREAM APP</div>
-              <button className="absolute right-8 flex h-12 w-12 items-center justify-center border text-[#c4a96a]" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(8,12,24,0.12)', color: 'var(--gold)' }}>
+              <button className="absolute right-8 flex h-12 w-12 items-center justify-center border text-[#c4a96a]" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(8,12,24,0.12)', color: 'var(--gold)', borderRadius: 0 }}>
                 <Moon size={18} />
               </button>
             </div>
@@ -133,10 +133,10 @@ function SplashScreen() {
 
 function HaloGlyph({ glyph }: { glyph: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)' }}>
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)', borderRadius: 0 }}>
       {glyph}
-      <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
-      <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
+      <div className="absolute inset-[-16px] border border-[rgba(196,169,106,0.08)]" style={{ borderRadius: 0 }} />
+      <div className="absolute inset-[-30px] border border-[rgba(196,169,106,0.05)]" style={{ borderRadius: 0 }} />
     </div>
   );
 }
@@ -153,7 +153,7 @@ function DreamAvatarArt({
   imageClassName?: string;
 }) {
   return (
-    <div className={`overflow-hidden rounded-full ${className}`} style={{ backgroundColor: 'var(--surface)' }}>
+    <div className={`overflow-hidden ${className}`} style={{ backgroundColor: 'var(--surface)', borderRadius: 0 }}>
       <img src={avatar} alt={alt} className={`h-full w-full object-contain object-center p-1.5 ${imageClassName}`} draggable={false} />
     </div>
   );
@@ -161,10 +161,10 @@ function DreamAvatarArt({
 
 function HaloAvatar({ glyph, avatar }: { glyph: string; avatar: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)' }}>
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)', borderRadius: 0 }}>
       {avatar ? <DreamAvatarArt avatar={avatar} alt={glyph} className="h-full w-full" imageClassName="scale-[1.02]" /> : glyph}
-      <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
-      <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
+      <div className="absolute inset-[-16px] border border-[rgba(196,169,106,0.08)]" style={{ borderRadius: 0 }} />
+      <div className="absolute inset-[-30px] border border-[rgba(196,169,106,0.05)]" style={{ borderRadius: 0 }} />
     </div>
   );
 }
@@ -260,7 +260,7 @@ function RolePicker({
                     : 'border-[rgba(196,169,106,0.08)] bg-[rgba(8,12,24,0.24)] hover:border-[rgba(196,169,106,0.18)]'
                 }`}
               >
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border text-[20px] text-[#c8aa67]" style={{ borderColor: 'var(--border-mid)', color: 'var(--gold)' }}>
+                <div className="flex h-12 w-12 items-center justify-center overflow-hidden border text-[20px] text-[#c8aa67]" style={{ borderColor: 'var(--border-mid)', color: 'var(--gold)', borderRadius: 0 }}>
                   {role.avatar ? <DreamAvatarArt avatar={role.avatar} alt={role.name} className="h-full w-full" /> : role.glyph}
                 </div>
                 <div>
