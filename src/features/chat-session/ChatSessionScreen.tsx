@@ -424,7 +424,9 @@ export function ChatSessionScreen({
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1165,6 +1167,38 @@ export function ChatSessionScreen({
 
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [keyboardInset]);
+
+  useEffect(() => {
+    const footerNode = chatFooterRef.current;
+    if (!footerNode || typeof window === 'undefined') {
+      return;
+    }
+
+    const updateFooterHeight = () => {
+      const measuredHeight = Math.ceil(footerNode.getBoundingClientRect().height);
+      setChatFooterHeight(measuredHeight > 0 ? measuredHeight : 64);
+    };
+
+    updateFooterHeight();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateFooterHeight);
+      return () => {
+        window.removeEventListener('resize', updateFooterHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateFooterHeight();
+    });
+    observer.observe(footerNode);
+    window.addEventListener('resize', updateFooterHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateFooterHeight);
+    };
+  }, [replyingTo, isVoiceMode, input, visualSettings?.chat?.uiScale]);
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
@@ -1252,7 +1286,7 @@ export function ChatSessionScreen({
     transition: 'transform 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${72 + chatFooterLift}px`,
+    paddingBottom: `${chatFooterHeight + 8 + chatFooterLift}px`,
   };
 
   return (
@@ -2136,6 +2170,7 @@ export function ChatSessionScreen({
 
       {/* Input */}
       <div 
+        ref={chatFooterRef}
         className={`chat-session-footer chat-footer ${footerClassName}`}
         style={chatFooterStyle}
       >
