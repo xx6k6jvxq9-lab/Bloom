@@ -55,6 +55,7 @@ import { getThemeSelectedFontStack } from './features/theme/themeTypography';
 import { loadChatHistoryRecords, mergeGroupSessionsIntoChatGroups } from './features/persistence/chatHistoryStore';
 import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
+import { AddCharacterSheet } from './components/main/AddCharacterSheet';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import { runCoupleSpaceInitiativeAutoCheck } from './services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
@@ -1312,7 +1313,7 @@ export default function App() {
             onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
           />
           {activeApp === 'add-character' && (
-            <AddCharacter
+            <AddCharacterSheet
               key="add-character"
               onSave={handleAddCharacter}
               onBack={() => setActiveApp('chat')}
