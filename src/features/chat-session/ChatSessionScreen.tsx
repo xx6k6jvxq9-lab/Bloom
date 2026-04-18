@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -35,6 +35,10 @@ import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
+import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
+import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
+import { getMessageMainText } from '../../utils';
+import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -526,6 +530,66 @@ export function ChatSessionScreen({
     onAcceptCoupleSpaceInvite,
   });
 
+  const drawBlocksRuntimeContext = useMemo<DrawBlocksCharacterRuntimeContext>(() => {
+    const temporalState = buildCharacterTemporalState({
+      characterId: character.id,
+      perception,
+      directChatHistory,
+      groupMessages: [],
+      coupleSpace,
+    });
+    const relationshipProjection = buildRelationshipProjection({
+      character,
+      coupleSpace,
+      userName,
+      directMessages: history,
+      groupMessages: [],
+    });
+    const recentExchange = history
+      .slice(-6)
+      .map((message) => {
+        const mainText = getMessageMainText(message).trim();
+        if (!mainText) {
+          return '';
+        }
+        return `${message.role === 'user' ? userName : character.name}：${mainText}`;
+      })
+      .filter(Boolean);
+    const recentUserMessages = history.filter((message) => message.role === 'user').slice(-3);
+    const recentUserJoined = recentUserMessages.map((message) => getMessageMainText(message)).join(' ');
+    const recentUserTone: DrawBlocksCharacterRuntimeContext['recentUserTone'] =
+      /哈哈|hh|嘿嘿|逗|玩笑|笑死|可爱|好玩/.test(recentUserJoined)
+        ? 'playful'
+        : /抱抱|想你|喜欢|乖|陪我|晚安|亲|贴贴/.test(recentUserJoined)
+          ? 'warm'
+          : /烦|生气|别|算了|不想|讨厌|怎么又|无语/.test(recentUserJoined)
+            ? 'tense'
+            : 'neutral';
+
+    const playDisposition: DrawBlocksCharacterRuntimeContext['playDisposition'] =
+      recentUserTone === 'warm'
+        ? 'soft'
+        : recentUserTone === 'playful'
+          ? 'teasing'
+          : temporalState.relationshipPull === 'high'
+            ? 'competitive'
+            : temporalState.socialState === 'reserved'
+              ? 'careful'
+              : 'balanced';
+
+    return {
+      recentExchange,
+      relationshipSummary: relationshipProjection.sceneScopedSignals.sharedRecentRelationshipSummary,
+      shortTermSummary: relationshipProjection.characterScopedMemory.shortTermSummary,
+      longTermMemoryProfile: relationshipProjection.characterScopedMemory.longTermMemoryProfile,
+      currentActivity: temporalState.presenceCue.currentActivity,
+      attentionNote: temporalState.presenceCue.attentionNote,
+      continuityMode: temporalState.continuityMode,
+      recentUserTone,
+      playDisposition,
+    };
+  }, [character, coupleSpace, directChatHistory, history, perception, userName]);
+
   useEffect(() => {
     onStatusBarVisibilityChange?.(!showDatingModal);
 
@@ -882,6 +946,40 @@ export function ChatSessionScreen({
     if (payload) {
       setPendingShare(payload);
     }
+    closeContextMenu();
+  };
+
+  const canSetImageAsCharacterAvatar = !!(
+    contextMenuMessage
+    && contextMenuMessage.role === 'user'
+    && contextMenuMessage.imageUrl
+    && !/^\[(?:sticker|表情包)\]/i.test((contextMenuMessage.text || '').trim())
+  );
+
+  const handleSetCharacterAvatarFromMessage = () => {
+    if (!contextMenuMessage?.imageUrl) {
+      closeContextMenu();
+      return;
+    }
+
+    const avatarPatch = { avatar: contextMenuMessage.imageUrl };
+    if (onPatchCharacter) {
+      onPatchCharacter(avatarPatch);
+    } else {
+      onUpdateCharacter({
+        ...character,
+        ...avatarPatch,
+      });
+    }
+
+    setHistory([
+      ...history,
+      {
+        role: 'model',
+        text: `我先换上你刚发的这张头像。要是你之后还想给我换新的，再发我就行。`,
+        timestamp: Date.now(),
+      },
+    ]);
     closeContextMenu();
   };
 
@@ -2754,6 +2852,15 @@ export function ChatSessionScreen({
                 >
                   <Share2 size={20} />
                 </button>
+                {canSetImageAsCharacterAvatar && (
+                  <button
+                    onClick={handleSetCharacterAvatarFromMessage}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="设为Ta头像"
+                  >
+                    <Cpu size={20} />
+                  </button>
+                )}
                 <div className="w-px h-6 bg-zinc-200 mx-1" />
                 <button 
                   onClick={handleMultiSelect}
@@ -2818,6 +2925,7 @@ export function ChatSessionScreen({
         isOpen={showGameCenter}
         onClose={() => setShowGameCenter(false)}
         character={character}
+        runtimeContext={drawBlocksRuntimeContext}
         onSendToChat={handleSend}
       />
     </motion.div>

@@ -3,8 +3,21 @@ import { motion } from 'motion/react';
 import { BrickWall, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import { Character } from '../../types';
 
+export type DrawBlocksCharacterRuntimeContext = {
+  recentExchange: string[];
+  relationshipSummary?: string;
+  shortTermSummary?: string;
+  longTermMemoryProfile?: string;
+  currentActivity?: string;
+  attentionNote?: string;
+  continuityMode?: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  recentUserTone?: 'warm' | 'playful' | 'tense' | 'neutral';
+  playDisposition?: 'careful' | 'balanced' | 'competitive' | 'teasing' | 'soft';
+};
+
 interface DrawBlocksGameProps {
   character: Character;
+  runtimeContext?: DrawBlocksCharacterRuntimeContext;
   onClose: () => void;
   onSendToChat: (text: string) => void;
 }
@@ -77,6 +90,52 @@ function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
     return 'tsundere';
   }
   return 'playful';
+}
+
+function buildRuntimeStatusTail(runtimeContext?: DrawBlocksCharacterRuntimeContext) {
+  if (!runtimeContext) {
+    return '';
+  }
+
+  if (runtimeContext.playDisposition === 'soft') {
+    return ' 他这把明显在收着点力。';
+  }
+  if (runtimeContext.playDisposition === 'competitive') {
+    return ' 他这把明显更想认真赢。';
+  }
+  if (runtimeContext.playDisposition === 'teasing') {
+    return ' 他像是在故意逗你紧张。';
+  }
+  if (runtimeContext.recentUserTone === 'warm') {
+    return ' 刚才那点亲近感还没散掉。';
+  }
+  if (runtimeContext.recentUserTone === 'playful') {
+    return ' 你们刚才那点逗来逗去的劲还在。';
+  }
+  if (runtimeContext.recentUserTone === 'tense') {
+    return ' 他还带着一点刚才较真的劲。';
+  }
+  if (runtimeContext.currentActivity) {
+    return ` 他像是刚从“${runtimeContext.currentActivity}”里抽身回来。`;
+  }
+  return '';
+}
+
+function buildRuntimeStatusLead(runtimeContext?: DrawBlocksCharacterRuntimeContext) {
+  if (!runtimeContext) {
+    return '';
+  }
+
+  if (runtimeContext.relationshipSummary?.trim()) {
+    return `关系氛围：${runtimeContext.relationshipSummary.trim().slice(0, 36)}`;
+  }
+  if (runtimeContext.shortTermSummary?.trim()) {
+    return `近期余波：${runtimeContext.shortTermSummary.trim().slice(0, 36)}`;
+  }
+  if (runtimeContext.longTermMemoryProfile?.trim()) {
+    return `长期印象：${runtimeContext.longTermMemoryProfile.trim().slice(0, 36)}`;
+  }
+  return '';
 }
 
 function createRandomTower(): TowerState {
@@ -383,7 +442,11 @@ function getPlayableBlocks(blocks: TowerBlock[]) {
 }
 
 
-function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) {
+function chooseCharacterTarget(
+  blocks: TowerBlock[],
+  style: CharacterPlayStyle,
+  runtimeContext?: DrawBlocksCharacterRuntimeContext,
+) {
   const candidates = getPlayableBlocks(blocks).map((block) => {
     const simulatedBlocks = blocks.map((item): TowerBlock =>
       item.id === block.id ? { ...item, removedBy: 'character', removedAt: Date.now() } : item,
@@ -413,11 +476,18 @@ function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) 
   }
 
   candidates.sort((left, right) => left.score - right.score);
+  const dispositionRiskBonus = runtimeContext?.playDisposition === 'competitive'
+    ? 0.08
+    : runtimeContext?.playDisposition === 'teasing'
+      ? 0.12
+      : runtimeContext?.playDisposition === 'soft'
+        ? -0.08
+        : 0;
   const styleConfig = {
-    strategist: { preferredPool: 3, riskWeight: 0.15, fallbackPool: 2 },
-    gentle: { preferredPool: 4, riskWeight: 0.24, fallbackPool: 3 },
-    tsundere: { preferredPool: 5, riskWeight: 0.34, fallbackPool: 4 },
-    playful: { preferredPool: 6, riskWeight: 0.42, fallbackPool: 5 },
+    strategist: { preferredPool: 3, riskWeight: 0.15 + dispositionRiskBonus, fallbackPool: 2 },
+    gentle: { preferredPool: 4, riskWeight: 0.24 + dispositionRiskBonus, fallbackPool: 3 },
+    tsundere: { preferredPool: 5, riskWeight: 0.34 + dispositionRiskBonus, fallbackPool: 4 },
+    playful: { preferredPool: 6, riskWeight: 0.42 + dispositionRiskBonus, fallbackPool: 5 },
   }[style];
 
   const stableCandidates = candidates.filter((candidate) => candidate.stability.stable);
@@ -445,8 +515,10 @@ function chooseCharacterTarget(blocks: TowerBlock[], style: CharacterPlayStyle) 
   return riskyPool[Math.floor(Math.random() * riskyPool.length)];
 }
 
-export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClose, onSendToChat }) => {
+export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, runtimeContext, onClose, onSendToChat }) => {
   const style = useMemo(() => resolveCharacterPlayStyle(character), [character]);
+  const runtimeStatusLead = useMemo(() => buildRuntimeStatusLead(runtimeContext), [runtimeContext]);
+  const runtimeStatusTail = useMemo(() => buildRuntimeStatusTail(runtimeContext), [runtimeContext]);
   const characterTimerRef = useRef<number | null>(null);
   const actionTimerRef = useRef<number | null>(null);
 
@@ -455,7 +527,8 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
   const [winner, setWinner] = useState<Winner>(null);
   const [statusText, setStatusText] = useState(() => {
     const initialTower = createRandomTower();
-    return getTowerIntro(character, style, getHighestLayer(initialTower.blocks) + 1);
+    const intro = getTowerIntro(character, style, getHighestLayer(initialTower.blocks) + 1);
+    return runtimeStatusLead ? `${intro}\n${runtimeStatusLead}` : intro;
   });
   const [removedByUser, setRemovedByUser] = useState(0);
   const [removedByCharacter, setRemovedByCharacter] = useState(0);
@@ -492,12 +565,13 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
     setActiveBlockId(null);
     setCollapseAngle(0);
     setLastStability(evaluateTowerStability(nextTower.blocks));
-    setStatusText(getTowerIntro(character, style, getHighestLayer(nextTower.blocks) + 1));
+    const intro = getTowerIntro(character, style, getHighestLayer(nextTower.blocks) + 1);
+    setStatusText(runtimeStatusLead ? `${intro}\n${runtimeStatusLead}` : intro);
   };
 
   const applyRemoval = (blockId: string, actor: PlayerTurn, blockLine: string) => {
     setActiveBlockId(blockId);
-    setStatusText(blockLine);
+    setStatusText(runtimeStatusTail ? `${blockLine}${runtimeStatusTail}` : blockLine);
 
     actionTimerRef.current = window.setTimeout(() => {
       const nextBlocks = towerState.blocks.map((block): TowerBlock =>
@@ -535,7 +609,12 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
         setWinner(roundWinner);
         setCurrentTurn('user');
         setCollapseAngle((removedBlock.slotIndex - 1) * 10 + (actor === 'user' ? -8 : 8));
-        setStatusText(getWinnerLine(character, style, roundWinner));
+        const collapseLead = actor === 'user'
+          ? `你抽掉了第 ${removedBlock.layerIndex + 1} 层的${describeBlockPosition(removedBlock)}，这一下把塔抽垮了。`
+          : `${character.name}抽掉了第 ${removedBlock.layerIndex + 1} 层的${describeBlockPosition(removedBlock)}，这一下把塔抽垮了。`;
+        const weakestLayerLine = nextStability.weakestLayer !== null ? `先失稳的是第 ${nextStability.weakestLayer + 1} 层。` : '';
+        const winnerLine = getWinnerLine(character, style, roundWinner);
+        setStatusText([collapseLead, weakestLayerLine, winnerLine, runtimeStatusLead].filter(Boolean).join('\n'));
         return;
       }
 
@@ -572,7 +651,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
       return;
     }
 
-    const target = chooseCharacterTarget(towerState.blocks, style);
+    const target = chooseCharacterTarget(towerState.blocks, style, runtimeContext);
     if (!target) {
       return;
     }
@@ -587,7 +666,7 @@ export const DrawBlocksGame: React.FC<DrawBlocksGameProps> = ({ character, onClo
         window.clearTimeout(characterTimerRef.current);
       }
     };
-  }, [activeBlockId, character, currentTurn, style, towerState.blocks, winner]);
+  }, [activeBlockId, character, currentTurn, runtimeContext, style, towerState.blocks, winner]);
 
   const handleSendResult = () => {
     const totalLayers = highestLayer + 1;

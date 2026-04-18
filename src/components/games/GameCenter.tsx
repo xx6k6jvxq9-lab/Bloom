@@ -9,12 +9,13 @@ import { CardDuel } from './CardDuel';
 import { LinkUpGame } from './LinkUpGame';
 import { TruthOrDare } from './TruthOrDare';
 import { CouplesQnA } from './CouplesQnA';
-import { DrawBlocksGame } from './DrawBlocksGame';
+import { DrawBlocksGame, type DrawBlocksCharacterRuntimeContext } from './DrawBlocksGame';
 
 interface GameCenterProps {
   isOpen: boolean;
   onClose: () => void;
   character: Character;
+  runtimeContext?: DrawBlocksCharacterRuntimeContext;
   onSendToChat: (text: string) => void;
 }
 
@@ -81,6 +82,7 @@ export const GameCenter: React.FC<GameCenterProps> = ({
   isOpen,
   onClose,
   character,
+  runtimeContext,
   onSendToChat
 }) => {
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
@@ -211,6 +213,7 @@ export const GameCenter: React.FC<GameCenterProps> = ({
                   {selectedGame === 'draw_blocks' && (
                     <DrawBlocksGame
                       character={character}
+                      runtimeContext={runtimeContext}
                       onClose={onClose}
                       onSendToChat={onSendToChat}
                     />
