@@ -287,6 +287,30 @@ function hashString(input: string) {
   return Math.abs(value);
 }
 
+function createMomentPhotoDescription(content: string): string {
+  const cleaned = content
+    .replace(/["'“”‘’]/g, '')
+    .replace(/[。！？!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) {
+    return '一些安静的光影停在眼前';
+  }
+
+  const shortened = cleaned.slice(0, 22);
+
+  if (/(阳光|月光|风|雨|云|灯|窗|海|街|晚霞|影子|天台|阳台)/.test(shortened)) {
+    return shortened;
+  }
+
+  if (/今天|刚刚|现在|这会儿|突然/.test(shortened)) {
+    return `${shortened}的片刻`;
+  }
+
+  return `像${shortened}的一幕`;
+}
+
 async function generateMomentImageCard(options: {
   activeConfig: ApiConfig;
   character: Character;
@@ -301,8 +325,10 @@ async function generateMomentImageCard(options: {
 
   return {
     title: `${character.name} 的动态`,
-    description: normalized.slice(0, 28),
+    description: createMomentPhotoDescription(normalized),
     theme,
+    layout: (hashString(`${character.id}:${normalized}`) % 100) < 62 ? 'described-photo' : 'card',
+    overlayText: createMomentPhotoDescription(normalized),
   };
 }
 

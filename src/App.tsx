@@ -131,6 +131,14 @@ type CoupleSpaceUpdateToast = {
   moduleLabel: string;
 };
 
+type MomentPublishToast = {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  preview: string;
+};
+
 function ResolvedAssetImage({
   value,
   alt,
@@ -558,6 +566,7 @@ export default function App() {
   const [appDialog, setAppDialog] = useState<AppDialogRequest | null>(null);
   const [appDialogInput, setAppDialogInput] = useState('');
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
+  const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)').matches;
@@ -847,6 +856,20 @@ export default function App() {
   }, [coupleSpaceUpdateToast]);
 
   useEffect(() => {
+    if (!momentPublishToast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMomentPublishToast(null);
+    }, 4200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [momentPublishToast]);
+
+  useEffect(() => {
     if (!hasHydratedStorage || activeApp === 'couple-space') {
       return;
     }
@@ -1088,6 +1111,42 @@ export default function App() {
               </div>
             </button>
           )}
+          {momentPublishToast && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveApp('chat');
+                setActiveTab('moments');
+                setMomentPublishToast(null);
+              }}
+              className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? 'top-[98px]' : 'top-4'} z-[69] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 overflow-hidden rounded-2xl bg-zinc-100">
+                  {momentPublishToast.authorAvatar ? (
+                    <ResolvedAssetImage
+                      value={momentPublishToast.authorAvatar}
+                      alt={momentPublishToast.authorName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-zinc-500">
+                      <ImageIcon size={18} />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-zinc-400">角色动态</div>
+                  <div className="mt-0.5 text-sm font-bold text-zinc-800">
+                    {momentPublishToast.authorName} 发布了一条动态
+                  </div>
+                  <div className="mt-1 truncate text-xs text-zinc-500">
+                    {momentPublishToast.preview || '点开看看这次的新内容'}
+                  </div>
+                </div>
+              </div>
+            </button>
+          )}
           {activeApp === 'home' && (
             <HomeScreen 
               key="home" 
@@ -1212,6 +1271,7 @@ export default function App() {
               setActiveApp('forum');
             }}
             onPublishMoment={({ authorId, content, images, imageCard }) => {
+              const author = getCharacterById(authorId);
               console.info('[moment-special] onPublishMoment called', {
                 authorId,
                 content,
@@ -1234,6 +1294,15 @@ export default function App() {
                   comments: []
                 }, ...(prev.moments || [])]
               }));
+              if (author) {
+                setMomentPublishToast({
+                  id: `${authorId}-${Date.now()}`,
+                  authorId,
+                  authorName: author.name,
+                  authorAvatar: author.avatar,
+                  preview: content.slice(0, 26),
+                });
+              }
             }}
             onOpenCharacterMoments={() => {
               setCharacterMomentsBackApp('chat-session');

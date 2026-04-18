@@ -62,6 +62,12 @@ function getMomentDescriptionPhotoStyle(theme: 'polaroid' | 'film' | 'note' | 'p
   }
 }
 
+function getMomentDescriptionOverlayText(moment: Moment) {
+  return moment.imageCard?.overlayText?.trim()
+    || moment.imageCard?.description?.trim()
+    || '一些安静的光影停在眼前';
+}
+
 export function MomentsApp({
   appData,
   setAppData,
@@ -563,7 +569,7 @@ export function MomentsApp({
                 <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
 
                 {moment.imageCard && (
-                  shouldRenderMomentDescriptionPhoto(moment.imageCard.theme) ? (
+                  ((moment.imageCard.layout === 'described-photo') || shouldRenderMomentDescriptionPhoto(moment.imageCard.theme)) ? (
                     <div className="mt-3 overflow-hidden rounded-[24px] border border-zinc-200/80 bg-white p-2 shadow-sm">
                       <div className={`relative aspect-[4/5] overflow-hidden rounded-[18px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] ${getMomentDescriptionPhotoStyle(moment.imageCard.theme)}`}>
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.42),transparent_46%),linear-gradient(180deg,transparent,rgba(255,255,255,0.2))]" />
@@ -572,7 +578,7 @@ export function MomentsApp({
                         </div>
                         <div className="absolute inset-x-5 top-1/2 -translate-y-1/2 rounded-[22px] border border-white/65 bg-white/55 px-5 py-6 text-center shadow-[0_16px_32px_rgba(148,163,184,0.18)] backdrop-blur-md">
                           <p className="text-[19px] font-medium leading-[1.7] tracking-[0.04em] text-zinc-700">
-                            {moment.imageCard.description}
+                            {getMomentDescriptionOverlayText(moment)}
                           </p>
                         </div>
                       </div>
