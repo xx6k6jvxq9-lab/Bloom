@@ -200,8 +200,10 @@ function HomeScreen({
                 <div className="text-[15px] font-[300] tracking-[0.12em] text-[#f5efe2]">{availableLine}</div>
                 <div className="mt-3 text-[11px] font-normal tracking-[0.12em] text-[#7088b0]">{expireLine}</div>
               </div>
-              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border px-5 py-7 text-[13px] font-normal tracking-[0.5em] transition" style={{ borderColor: 'var(--border-mid)', backgroundColor: 'transparent', color: 'var(--gold)' }}>
-                进入今夜
+              <button onClick={onOpen} className="relative mt-14 w-full max-w-[440px] border px-5 py-7 text-[13px] font-normal tracking-[0.5em] transition" style={{ color: 'var(--gold)', borderColor: 'rgba(196,169,106,.34)', outline: '1px solid rgba(196,169,106,.14)', outlineOffset: '-4px' }}>
+                <span className="absolute inset-0 border" style={{ borderColor: 'rgba(196,169,106,.34)' }} />
+                <span className="absolute inset-[3px] border" style={{ borderColor: 'rgba(196,169,106,.14)' }} />
+                <span className="relative z-10">进入今夜</span>
               </button>
             </motion.div>
           ) : (
@@ -213,9 +215,9 @@ function HomeScreen({
       </div>
 
       <div className="mx-5 flex items-center justify-around border-t border-[rgba(196,169,106,0.1)] pt-4 text-[11px] font-normal tracking-[0.28em] text-[#7088b0]">
-        <div className="flex flex-col items-center gap-2 text-[#d4b46f]"><span>今夜</span><span className="h-1.5 w-1.5 rounded-full bg-[#d4b46f]" /></div>
-        <div className="flex flex-col items-center gap-2"><span>残响</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
-        <div className="flex flex-col items-center gap-2"><span>深层</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
+        <div className="flex flex-col items-center gap-2 text-[#d4b46f]"><span>今夜</span><span className="h-[2px] w-[2px] bg-[#d4b46f]" /></div>
+        <div className="flex flex-col items-center gap-2"><span>残响</span><span className="h-[2px] w-[2px] bg-current opacity-50" /></div>
+        <div className="flex flex-col items-center gap-2"><span>深层</span><span className="h-[2px] w-[2px] bg-current opacity-50" /></div>
       </div>
     </motion.div>
   );
@@ -431,8 +433,12 @@ function ConfirmScreen({
           </span>
         ))}
       </div>
-      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.36)', backgroundColor: 'rgba(196,169,106,0.01)', color: 'var(--gold)' }}>
-        确 认 入 梦
+      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ color: 'var(--gold)', borderColor: 'rgba(196,169,106,.4)', outline: '1px solid rgba(196,169,106,.15)', outlineOffset: '-4px' }}>
+        <span className="absolute inset-0 border" style={{ borderColor: 'rgba(196,169,106,.4)' }} />
+        <span className="absolute inset-[3px] border" style={{ borderColor: 'rgba(196,169,106,.15)' }} />
+        <span className="absolute inset-0 border" style={{ borderColor: 'rgba(196,169,106,.4)' }} />
+        <span className="absolute inset-[3px] border" style={{ borderColor: 'rgba(196,169,106,.15)' }} />
+        <span className="relative z-10">确 认 入 梦</span>
       </button>
       <button onClick={onBack} className="mt-6 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#c8aa67]">
         ← 返回修改
@@ -503,7 +509,7 @@ function DreamConfirmScreen({
         </div>
       )}
 
-      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.38)', backgroundColor: 'rgba(196,169,106,0.01)', color: 'var(--gold)' }}>
+      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ color: 'var(--gold)' }}>
         确 认 入 梦
       </button>
       <button onClick={onBack} className="mt-8 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#8aa8cf]">
