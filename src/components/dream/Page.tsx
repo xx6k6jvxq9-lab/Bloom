@@ -27,6 +27,8 @@ type DreamRoleOption = {
   avatar: string;
 };
 
+const dreamFontFamily = "'Noto Serif SC','STSong','SimSun',Georgia,serif";
+
 const stars = Array.from({ length: 34 }, (_, index) => ({
   id: index,
   top: `${6 + (index * 11) % 88}%`,
@@ -50,7 +52,7 @@ function buildDreamRoleOptions(characters: Character[]): DreamRoleOption[] {
 
 function Shell({ stage, children }: { stage: DreamStage; children: React.ReactNode }) {
   return (
-    <motion.div className="absolute inset-0 overflow-hidden bg-[#04070d] text-[#f4eee3]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.div className="absolute inset-0 overflow-hidden bg-[#04070d] text-[#f4eee3]" style={{ fontFamily: dreamFontFamily, fontWeight: 300 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,48,73,0.42),transparent_45%),radial-gradient(circle_at_50%_30%,rgba(196,169,106,0.08),transparent_35%),linear-gradient(180deg,#070b12_0%,#05080e_48%,#04070d_100%)]" />
       <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(255,255,255,0.06)_0.7px,transparent_0.7px)] [background-size:24px_24px]" />
       <div className="absolute inset-0">
@@ -82,7 +84,7 @@ function Shell({ stage, children }: { stage: DreamStage; children: React.ReactNo
         <div className="absolute inset-0 flex flex-col">
           <div className="relative z-10 flex-1 px-6 pt-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
             <div className="absolute inset-x-0 top-1 z-10 flex items-center justify-center px-8">
-              <div className="text-[10px] tracking-[0.42em] text-[#7088b0]">DREAM APP</div>
+              <div className="text-[10px] font-normal tracking-[0.42em] text-[#7088b0]">DREAM APP</div>
               <button className="absolute right-8 flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(196,169,106,0.12)] bg-[rgba(8,12,24,0.18)] text-[#c4a96a]">
                 <Moon size={18} />
               </button>
@@ -98,16 +100,16 @@ function Shell({ stage, children }: { stage: DreamStage; children: React.ReactNo
 function SplashScreen() {
   return (
     <motion.div className="absolute inset-0 flex flex-col items-center justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="text-[96px] font-light tracking-[0.08em]">梦</div>
+      <div className="text-[96px] font-[200] tracking-[0.05em]">梦</div>
       <div className="my-5 h-10 w-px bg-[rgba(196,169,106,0.28)]" />
-      <div className="text-[11px] tracking-[0.6em] text-[#7088b0]">局 梦 夜</div>
+      <div className="text-[11px] font-normal tracking-[0.6em] text-[#7088b0]">局 梦 夜</div>
     </motion.div>
   );
 }
 
 function HaloGlyph({ glyph }: { glyph: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] font-[300] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
       {glyph}
       <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
       <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
@@ -135,7 +137,7 @@ function DreamAvatarArt({
 
 function HaloAvatar({ glyph, avatar }: { glyph: string; avatar: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] font-[300] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
       {avatar ? <DreamAvatarArt avatar={avatar} alt={glyph} className="h-full w-full" imageClassName="scale-[1.02]" /> : glyph}
       <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
       <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
@@ -158,7 +160,7 @@ function HomeScreen({
 }) {
   return (
     <motion.div className="flex h-full flex-col pb-4" layout>
-      <div className="mt-1 text-[13px] tracking-[0.16em] text-[#6d82a7]">23:14</div>
+      <div className="mt-1 text-[12px] font-normal tracking-[0.08em] text-[#6d82a7]">23:14</div>
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <motion.button onClick={onChooseRole} className="transition hover:opacity-90" whileTap={{ scale: 0.98 }} layout>
           {selectedRole ? <HaloAvatar glyph={selectedRole.glyph} avatar={selectedRole.avatar} /> : <HaloGlyph glyph="梦" />}
@@ -167,26 +169,26 @@ function HomeScreen({
         <AnimatePresence mode="wait">
           {selectedRole ? (
             <motion.div key="selected-role" className="flex w-full flex-col items-center" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
-              <div className="mt-14 text-[34px] font-light tracking-[0.12em] text-[#f5efe2] [text-shadow:0_0_8px_rgba(123,168,196,0.28)]">{selectedRole.name}</div>
-              <div className="mt-3 text-[15px] tracking-[0.1em] text-[#7088b0]">{selectedRole.status}</div>
+              <div className="mt-14 text-[34px] font-[200] tracking-[0.16em] text-[#f5efe2] [text-shadow:0_0_8px_rgba(123,168,196,0.28)]">{selectedRole.name}</div>
+              <div className="mt-3 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{selectedRole.status}</div>
               <div className="relative mt-12 w-full max-w-[322px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.03)] px-6 py-7">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#05080e] px-5 text-[11px] tracking-[0.42em] text-[#c4a96a]">今夜</div>
-                <div className="text-[18px] font-light tracking-[0.08em] text-[#f5efe2]">{availableLine}</div>
-                <div className="mt-3 text-[12px] tracking-[0.12em] text-[#7088b0]">{expireLine}</div>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#05080e] px-5 text-[10px] font-normal tracking-[0.4em] text-[#c4a96a]">今夜</div>
+                <div className="text-[15px] font-[300] tracking-[0.12em] text-[#f5efe2]">{availableLine}</div>
+                <div className="mt-3 text-[11px] font-normal tracking-[0.12em] text-[#7088b0]">{expireLine}</div>
               </div>
-              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-7 text-[18px] tracking-[0.52em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
+              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-7 text-[13px] font-normal tracking-[0.5em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
                 进入今夜
               </button>
             </motion.div>
           ) : (
-            <motion.div key="unselected-role" className="mt-14 text-[15px] tracking-[0.18em] text-[#7088b0]" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+            <motion.div key="unselected-role" className="mt-14 text-[12px] font-normal tracking-[0.24em] text-[#7088b0]" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
               点击头像，选择今夜入梦的角色
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="mx-5 flex items-center justify-around border-t border-[rgba(196,169,106,0.1)] pt-4 text-[12px] tracking-[0.34em] text-[#7088b0]">
+      <div className="mx-5 flex items-center justify-around border-t border-[rgba(196,169,106,0.1)] pt-4 text-[11px] font-normal tracking-[0.28em] text-[#7088b0]">
         <div className="flex flex-col items-center gap-2 text-[#d4b46f]"><span>今夜</span><span className="h-1.5 w-1.5 rounded-full bg-[#d4b46f]" /></div>
         <div className="flex flex-col items-center gap-2"><span>残响</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
         <div className="flex flex-col items-center gap-2"><span>深层</span><span className="h-1.5 w-1.5 rounded-full bg-current opacity-50" /></div>
@@ -211,7 +213,7 @@ function RolePicker({
       <motion.button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
       <motion.div className="relative z-10 w-full border-t border-[rgba(196,169,106,0.1)] bg-[rgba(8,12,24,0.95)] pb-10 pt-5" initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
         <div className="mx-auto h-1 w-10 rounded-full bg-[#273347]" />
-        <div className="mt-7 text-center text-[12px] tracking-[0.4em] text-[#7088b0]">选择入梦角色</div>
+        <div className="mt-7 text-center text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦角色</div>
         <div className="mt-6 space-y-3 px-6">
           {roles.map((role) => {
             const active = selectedRoleId === role.id;
@@ -229,8 +231,8 @@ function RolePicker({
                   {role.avatar ? <DreamAvatarArt avatar={role.avatar} alt={role.name} className="h-full w-full" /> : role.glyph}
                 </div>
                 <div>
-                  <div className="text-[16px] tracking-[0.12em] text-[#f4eee3]">{role.name}</div>
-                  <div className="mt-1 text-[12px] leading-6 text-[#7088b0]">{role.status}</div>
+                  <div className="text-[16px] font-[300] tracking-[0.14em] text-[#f4eee3]">{role.name}</div>
+                  <div className="mt-1 text-[12px] font-normal leading-[1.9] tracking-[0.08em] text-[#7088b0]">{role.status}</div>
                 </div>
               </button>
             );
@@ -253,13 +255,13 @@ function EntryScreen({ onChoose, onClose }: { onChoose: (mode: DreamEntryMode) =
       <button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} />
       <motion.div className="relative z-10 w-full border-t border-[rgba(196,169,106,0.1)] bg-[rgba(8,12,24,0.95)] pb-10 pt-5" initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
         <div className="mx-auto h-1 w-10 rounded-full bg-[#273347]" />
-        <div className="mt-7 text-center text-[12px] tracking-[0.4em] text-[#7088b0]">选择入梦方式</div>
+        <div className="mt-7 text-center text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦方式</div>
         <div className="mt-6">
           {items.map((item) => (
             <button key={item.mode} onClick={() => onChoose(item.mode)} className="flex w-full items-start justify-between border-b border-[rgba(196,169,106,0.08)] px-8 py-5 text-left transition hover:bg-[rgba(196,169,106,0.03)]">
               <div>
-                <div className="text-[17px] tracking-[0.12em] text-[#f4eee3]">{item.title}</div>
-                <div className="mt-2 text-[12px] leading-6 text-[#7088b0]">{item.description}</div>
+                <div className="text-[16px] font-normal tracking-[0.14em] text-[#f4eee3]">{item.title}</div>
+                <div className="mt-2 text-[12px] font-normal leading-[1.9] tracking-[0.08em] text-[#7088b0]">{item.description}</div>
               </div>
               <span className="pt-1 text-[#c8aa67]">◌</span>
             </button>
@@ -287,7 +289,7 @@ function TagsScreen({
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="mt-1 flex items-center gap-3 text-[12px] tracking-[0.36em] text-[#7088b0]">
+      <div className="mt-1 flex items-center gap-3 text-[12px] font-normal tracking-[0.34em] text-[#7088b0]">
         <button onClick={onBack} className="text-[#c8aa67]">←</button>
         <span>细化梦局</span>
       </div>
@@ -296,7 +298,7 @@ function TagsScreen({
           <div key={String(detailed)} className={detailed && !detailExpanded ? 'hidden' : 'block'}>
             {dreamTagGroups.filter((group) => Boolean(group.detailed) === detailed).map((group) => (
               <section key={group.category} className="mb-7">
-                <div className="mb-3 text-[10px] tracking-[0.34em] text-[#7088b0]">{group.label}</div>
+                <div className="mb-3 text-[10px] font-normal tracking-[0.34em] text-[#7088b0]">{group.label}</div>
                 <div className="flex flex-wrap gap-2">
                   {group.options.map((option) => {
                     const selected = selectedTags[group.category].includes(option.id);
@@ -304,7 +306,7 @@ function TagsScreen({
                       <button
                         key={option.id}
                         onClick={() => onToggleTag(group.category, option.id, group.max)}
-                        className={`border px-4 py-2.5 text-[14px] tracking-[0.12em] transition ${
+                        className={`border px-4 py-2.5 text-[13px] font-normal tracking-[0.14em] transition ${
                           selected
                             ? 'border-[rgba(196,169,106,0.4)] bg-[rgba(196,169,106,0.08)] text-[#d4b46f]'
                             : 'border-[rgba(196,169,106,0.12)] text-[#7088b0] hover:border-[rgba(196,169,106,0.26)] hover:text-[#f4eee3]'
@@ -319,11 +321,11 @@ function TagsScreen({
             ))}
           </div>
         ))}
-        <button onClick={onToggleDetail} className="mt-2 text-[12px] tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
+        <button onClick={onToggleDetail} className="mt-2 text-[12px] font-normal tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
           {detailExpanded ? '收起细化标签' : '展开细化标签'}
         </button>
       </div>
-      <button onClick={onConfirm} className="mt-8 border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-6 text-[16px] tracking-[0.46em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
+      <button onClick={onConfirm} className="mt-8 border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-6 text-[13px] font-normal tracking-[0.46em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
         进入确认
       </button>
     </div>
@@ -351,7 +353,7 @@ function ConfirmScreen({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
-      <div className="text-[13px] tracking-[0.5em] text-[#6d82a7]">{domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}</div>
+      <div className="text-[10px] font-normal tracking-[0.5em] text-[#6d82a7]">{domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}</div>
       <div className="mt-10 flex items-center gap-5">
         <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
         <div className="flex h-[84px] w-[112px] items-center justify-center border border-[rgba(196,169,106,0.16)] text-[34px] font-light text-[#c8aa67]">
@@ -359,19 +361,19 @@ function ConfirmScreen({
         </div>
         <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
       </div>
-      <div className="mt-12 text-[36px] font-light tracking-[0.08em] text-[#f4eee3] [text-shadow:0_0_8px_rgba(123,168,196,0.3)]">{heroName}</div>
-      <div className="mt-4 text-[16px] tracking-[0.08em] text-[#7088b0]">{heroStatus}</div>
+      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em] text-[#f4eee3] [text-shadow:0_0_8px_rgba(123,168,196,0.3)]">{heroName}</div>
+      <div className="mt-4 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{heroStatus}</div>
       <div className="mt-14 flex max-w-[520px] flex-wrap justify-center gap-3">
         {tags.map((tag) => (
-          <span key={tag} className="border border-[rgba(196,169,106,0.18)] px-5 py-2 text-[15px] tracking-[0.12em] text-[#d4b46f]">
+          <span key={tag} className="border border-[rgba(196,169,106,0.18)] px-5 py-2 text-[11px] font-normal tracking-[0.14em] text-[#d4b46f]">
             {tag}
           </span>
         ))}
       </div>
-      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.36)] bg-[rgba(196,169,106,0.02)] px-6 py-9 text-[20px] tracking-[0.62em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.06)]">
+      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.36)] bg-[rgba(196,169,106,0.02)] px-6 py-9 text-[14px] font-normal tracking-[0.62em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.06)]">
         确 认 入 梦
       </button>
-      <button onClick={onBack} className="mt-6 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:text-[#c8aa67]">
+      <button onClick={onBack} className="mt-6 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#c8aa67]">
         ← 返回修改
       </button>
     </div>
@@ -406,7 +408,7 @@ function DreamConfirmScreen({
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-2 text-center">
-      <div className="text-[13px] tracking-[0.46em] text-[#6d82a7]">{isCharacterEntry ? '角色入梦 · 黑盒入场' : topLine}</div>
+      <div className="text-[10px] font-normal tracking-[0.5em] text-[#6d82a7]">{isCharacterEntry ? '角色入梦 · 黑盒入场' : topLine}</div>
       <div className="mt-10 flex items-center gap-6">
         <div className="h-20 w-px bg-[linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)]" />
         <div className="flex h-[118px] w-[118px] items-center justify-center border border-[rgba(196,169,106,0.16)] bg-[rgba(196,169,106,0.015)] px-2 py-2 text-[34px] font-light text-[#c8aa67] shadow-[0_0_28px_rgba(11,18,30,0.18)]">
@@ -420,30 +422,30 @@ function DreamConfirmScreen({
         </div>
         <div className="h-20 w-px bg-[linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)]" />
       </div>
-      <div className="mt-12 text-[38px] font-light tracking-[0.1em] text-[#f4eee3] [text-shadow:0_0_10px_rgba(123,168,196,0.32)]">{heroName}</div>
-      <div className="mt-4 text-[16px] tracking-[0.14em] text-[#7088b0]">{isCharacterEntry ? '他的梦，他来决定' : heroStatus}</div>
+      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em] text-[#f4eee3] [text-shadow:0_0_10px_rgba(123,168,196,0.32)]">{heroName}</div>
+      <div className="mt-4 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{isCharacterEntry ? '他的梦，他来决定' : heroStatus}</div>
 
       {isCharacterEntry ? (
         <div className="mt-14 flex max-w-[520px] flex-col items-center text-[#7088b0]">
           <div className="flex h-[78px] w-[78px] items-center justify-center border border-[rgba(196,169,106,0.08)] bg-[rgba(23,31,46,0.28)] text-[18px] text-[#556685]">◊</div>
-          <div className="mt-8 text-[16px] tracking-[0.14em]">这场梦由他决定</div>
-          <div className="mt-3 text-[15px] tracking-[0.12em]">你进入后才会逐渐知道</div>
-          <div className="mt-5 text-[15px] tracking-[0.24em] text-[#8aa8cf]">身份 · 阵营 · 你们之间是什么关系</div>
+          <div className="mt-8 text-[13px] font-normal tracking-[0.24em]">这场梦由他决定</div>
+          <div className="mt-3 text-[13px] font-normal tracking-[0.24em]">你进入后才会逐渐知道</div>
+          <div className="mt-5 text-[13px] font-normal tracking-[0.24em] text-[#8aa8cf]">身份 · 阵营 · 你们之间是什么关系</div>
         </div>
       ) : (
         <div className="mt-16 flex max-w-[520px] flex-wrap justify-center gap-2.5">
           {tags.map((tag) => (
-            <span key={tag} className="min-w-[92px] border border-[rgba(196,169,106,0.22)] bg-[rgba(196,169,106,0.015)] px-4 py-2.5 text-[15px] tracking-[0.14em] text-[#d4b46f]">
+            <span key={tag} className="min-w-[92px] border border-[rgba(196,169,106,0.22)] bg-[rgba(196,169,106,0.015)] px-4 py-2.5 text-[11px] font-normal tracking-[0.14em] text-[#d4b46f]">
               {tag}
             </span>
           ))}
         </div>
       )}
 
-      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.38)] bg-[linear-gradient(180deg,rgba(196,169,106,0.035),rgba(196,169,106,0.015))] px-6 py-9 text-[20px] tracking-[0.62em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.08),rgba(196,169,106,0.035))]">
+      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border border-[rgba(196,169,106,0.38)] bg-[linear-gradient(180deg,rgba(196,169,106,0.035),rgba(196,169,106,0.015))] px-6 py-9 text-[14px] font-normal tracking-[0.62em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.08),rgba(196,169,106,0.035))]">
         确 认 入 梦
       </button>
-      <button onClick={onBack} className="mt-8 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:text-[#8aa8cf]">
+      <button onClick={onBack} className="mt-8 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#8aa8cf]">
         ← {isCharacterEntry ? '换一种入梦方式' : '返回修改'}
       </button>
     </div>
@@ -456,7 +458,7 @@ function LoadingScreen() {
       <div className="relative flex h-[84px] w-[84px] items-center justify-center rounded-full border border-[rgba(196,169,106,0.26)] bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.28),rgba(53,68,91,0.56)_58%,rgba(6,10,18,0.96)_100%)] text-[30px] text-[#f6efe4] shadow-[0_0_50px_rgba(18,26,44,0.24)]">
         梦
       </div>
-      <div className="mt-12 text-[12px] tracking-[0.42em] text-[#7088b0]">正在进入梦境</div>
+      <div className="mt-12 text-[12px] font-normal tracking-[0.42em] text-[#7088b0]">正在进入梦境</div>
     </div>
   );
 }
@@ -464,13 +466,13 @@ function LoadingScreen() {
 function SceneScreen({ act, progressLabel, onContinue }: { act: DreamAct; progressLabel: string; onContinue: () => void }) {
   return (
     <div className="flex h-full flex-col px-2">
-      <div className="flex items-start justify-between text-[11px] tracking-[0.28em] text-[#7088b0]">
+      <div className="flex items-start justify-between text-[10px] font-normal tracking-[0.34em] text-[#7088b0]">
         <span>{act.label}</span>
         <span>{progressLabel}</span>
       </div>
-      <div className="mt-10 text-[16px] font-light leading-[2.2] text-[#f4eee3]">{act.scene}</div>
-      <div className="mt-8 text-[13px] leading-7 tracking-[0.08em] text-[#c8aa67]">{act.charState}</div>
-      <button onClick={onContinue} className="mt-auto pb-8 text-center text-[12px] tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
+      <div className="mt-10 text-[16px] font-[300] leading-[2.3] text-[#f4eee3]">{act.scene}</div>
+      <div className="mt-8 text-[12px] font-normal leading-[1.9] tracking-[0.16em] text-[#c8aa67]">{act.charState}</div>
+      <button onClick={onContinue} className="mt-auto pb-8 text-center text-[10px] font-normal tracking-[0.34em] text-[#7088b0] transition hover:text-[#c8aa67]">
         你想做什么
       </button>
     </div>
@@ -480,13 +482,13 @@ function SceneScreen({ act, progressLabel, onContinue }: { act: DreamAct; progre
 function ChoicesScreen({ act, onPick }: { act: DreamAct; onPick: (choiceId: string) => void }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="text-center text-[12px] tracking-[0.36em] text-[#7088b0]">{act.label}</div>
-      <div className="mt-4 text-center text-[16px] font-light tracking-[0.14em] text-[#f4eee3]">在这场梦里，你选择</div>
+      <div className="text-center text-[12px] font-normal tracking-[0.36em] text-[#7088b0]">{act.label}</div>
+      <div className="mt-4 text-center text-[17px] font-[300] tracking-[0.14em] text-[#f4eee3]">在这场梦里，你选择</div>
       <div className="mt-10 flex flex-1 flex-col gap-4">
         {act.choices.map((choice) => (
           <button key={choice.id} onClick={() => onPick(choice.id)} className="border border-[rgba(196,169,106,0.12)] bg-[rgba(196,169,106,0.02)] px-5 py-5 text-left transition hover:border-[rgba(196,169,106,0.26)] hover:bg-[rgba(196,169,106,0.05)]">
-            <div className="text-[15px] tracking-[0.12em] text-[#f4eee3]">{choice.title}</div>
-            <div className="mt-2 text-[12px] leading-6 text-[#7088b0]">{choice.detail}</div>
+            <div className="text-[16px] font-normal tracking-[0.14em] text-[#f4eee3]">{choice.title}</div>
+            <div className="mt-2 text-[12px] font-normal leading-[1.9] tracking-[0.08em] text-[#7088b0]">{choice.detail}</div>
           </button>
         ))}
       </div>
@@ -511,13 +513,13 @@ function ReactionScreen({
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="text-[11px] tracking-[0.3em] text-[#7088b0]">你的选择 · <span className="text-[#c8aa67]">{choiceTitle}</span></div>
-      <div className="mt-10 min-h-[220px] text-[16px] font-light leading-[2.2] text-[#f4eee3]">
+      <div className="text-[11px] font-normal tracking-[0.3em] text-[#7088b0]">你的选择 · <span className="text-[#c8aa67]">{choiceTitle}</span></div>
+      <div className="mt-10 min-h-[220px] text-[16px] font-[300] leading-[2.3] text-[#f4eee3]">
         {reaction}
         {!reactionDone && <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-[#c8aa67]" />}
       </div>
-      <div className={`mt-4 text-[12px] tracking-[0.16em] ${reactionDone ? 'text-[#7ba8c4]' : 'text-transparent'}`}>{emotion}</div>
-      <button onClick={onContinue} disabled={!reactionDone} className={`mt-auto self-end border px-5 py-3 text-[12px] tracking-[0.32em] transition ${reactionDone ? 'border-[rgba(196,169,106,0.16)] text-[#7088b0] hover:border-[rgba(196,169,106,0.28)] hover:text-[#c8aa67]' : 'border-[rgba(196,169,106,0.06)] text-[#334056]'}`}>
+      <div className={`mt-4 text-[12px] font-normal tracking-[0.16em] ${reactionDone ? 'text-[#7ba8c4]' : 'text-transparent'}`}>{emotion}</div>
+      <button onClick={onContinue} disabled={!reactionDone} className={`mt-auto self-end border px-5 py-3 text-[12px] font-normal tracking-[0.32em] transition ${reactionDone ? 'border-[rgba(196,169,106,0.16)] text-[#7088b0] hover:border-[rgba(196,169,106,0.28)] hover:text-[#c8aa67]' : 'border-[rgba(196,169,106,0.06)] text-[#334056]'}`}>
         {isLast ? '醒来之前' : '继续下沉'}
       </button>
     </div>
@@ -528,16 +530,16 @@ function EndingScreen({ title, excerpt, signature, chapter, onAftermath }: { tit
   return (
     <div className="flex h-full flex-col justify-between text-center">
       <div>
-        <div className="text-[9px] tracking-[0.6em] text-[#7088b0]">结 局</div>
-        <div className="mt-10 text-[42px] font-light tracking-[0.18em] text-[#f4eee3]">{title}</div>
+        <div className="text-[9px] font-normal tracking-[0.6em] text-[#7088b0]">结 局</div>
+        <div className="mt-10 text-[42px] font-[200] tracking-[0.18em] text-[#f4eee3]">{title}</div>
       </div>
-      <div className="text-[15px] font-light leading-[2.3] text-[rgba(244,238,227,0.74)]">{excerpt}</div>
+      <div className="text-[15px] font-[300] leading-[2.4] text-[rgba(244,238,227,0.74)]">{excerpt}</div>
       <div>
-        <div className="text-right text-[13px] tracking-[0.22em] text-[rgba(244,238,227,0.44)]">—— {signature}</div>
-        <div className="mt-2 text-right text-[12px] tracking-[0.14em] text-[#c8aa67]">{chapter}</div>
+        <div className="text-right text-[13px] font-normal tracking-[0.22em] text-[rgba(244,238,227,0.44)]">—— {signature}</div>
+        <div className="mt-2 text-right text-[12px] font-normal tracking-[0.14em] text-[#c8aa67]">{chapter}</div>
         <div className="mt-8 flex flex-col gap-3">
-          <button className="border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">截图分享这一页</button>
-          <button onClick={onAftermath} className="border border-[rgba(196,169,106,0.1)] px-4 py-4 text-[12px] tracking-[0.28em] text-[#7088b0] transition hover:border-[rgba(123,168,196,0.24)] hover:text-[#7ba8c4]">查看梦后余响</button>
+          <button className="border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] font-normal tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">截图分享这一页</button>
+          <button onClick={onAftermath} className="border border-[rgba(196,169,106,0.1)] px-4 py-4 text-[12px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:border-[rgba(123,168,196,0.24)] hover:text-[#7ba8c4]">查看梦后余响</button>
         </div>
       </div>
     </div>
@@ -561,27 +563,27 @@ function AftermathScreen({
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="text-[10px] tracking-[0.42em] text-[#7088b0]">梦后余响</div>
+      <div className="text-[10px] font-normal tracking-[0.42em] text-[#7088b0]">梦后余响</div>
       <div className="mt-7 border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.03)]">
         <div className="flex items-center gap-3 border-b border-[rgba(196,169,106,0.08)] px-4 py-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(196,169,106,0.2)] text-[12px] text-[#c8aa67]">{heroGlyph}</div>
           <div>
-            <div className="text-[13px] text-[#f4eee3]">{heroName}</div>
-            <div className="text-[11px] text-[#7088b0]">刚刚在线</div>
+            <div className="text-[13px] font-normal tracking-[0.12em] text-[#f4eee3]">{heroName}</div>
+            <div className="text-[11px] font-normal text-[#7088b0]">刚刚在线</div>
           </div>
         </div>
         <div className="space-y-3 px-4 py-4">
-          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">{previewMessages[0]}</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:43</div></div>
-          <div className="flex flex-row-reverse gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.08)] bg-[rgba(8,12,26,0.68)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">在，怎么了</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:44</div></div>
-          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] text-[rgba(244,238,227,0.74)]">{previewMessages[1]}</div><div className="self-end pb-1 text-[10px] text-[#314055]">08:44</div></div>
+          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] font-[300] leading-[1.8] text-[rgba(244,238,227,0.74)]">{previewMessages[0]}</div><div className="self-end pb-1 text-[10px] font-normal text-[#314055]">08:43</div></div>
+          <div className="flex flex-row-reverse gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.08)] bg-[rgba(8,12,26,0.68)] px-3 py-2 text-[13px] font-[300] leading-[1.8] text-[rgba(244,238,227,0.74)]">在，怎么了</div><div className="self-end pb-1 text-[10px] font-normal text-[#314055]">08:44</div></div>
+          <div className="flex gap-2"><div className="max-w-[220px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.05)] px-3 py-2 text-[13px] font-[300] leading-[1.8] text-[rgba(244,238,227,0.74)]">{previewMessages[1]}</div><div className="self-end pb-1 text-[10px] font-normal text-[#314055]">08:44</div></div>
         </div>
       </div>
       <div className="relative mt-6 border border-[rgba(196,169,106,0.1)] px-5 py-5">
-        <div className="absolute -top-2.5 left-4 bg-[#05080e] px-2 text-[9px] tracking-[0.3em] text-[#c8aa67]">余响</div>
-        <div className="text-[14px] leading-[2.2] text-[rgba(244,238,227,0.74)]">{summary}</div>
-        <div className="mt-3 text-[11px] text-[#7ba8c4]">{detail}</div>
+        <div className="absolute -top-2.5 left-4 bg-[#05080e] px-2 text-[9px] font-normal tracking-[0.3em] text-[#c8aa67]">余响</div>
+        <div className="text-[14px] font-[300] leading-[2.2] text-[rgba(244,238,227,0.74)]">{summary}</div>
+        <div className="mt-3 text-[11px] font-normal tracking-[0.12em] text-[#7ba8c4]">{detail}</div>
       </div>
-      <button onClick={onBackHome} className="mt-auto border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">回到今夜</button>
+      <button onClick={onBackHome} className="mt-auto border border-[rgba(196,169,106,0.18)] px-4 py-4 text-[12px] font-normal tracking-[0.34em] text-[#c8aa67] transition hover:bg-[rgba(196,169,106,0.05)]">回到今夜</button>
     </div>
   );
 }
