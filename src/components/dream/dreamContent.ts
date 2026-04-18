@@ -8,133 +8,21 @@ import type {
 } from './types';
 
 export const dreamDomains: DreamDomain[] = [
-  {
-    id: 'crowd',
-    name: '众生梦',
-    subtitle: '热闹表层之下的异响入口',
-    description: '像翻开一册会自己生长剧情的夜书，世界先把你吞进去，然后人物才慢慢回头。',
-    icon: 'sparkles',
-  },
-  {
-    id: 'threshold',
-    name: '阈境梦',
-    subtitle: '现实边缘开始失真的地方',
-    description: '街灯、楼道、雨声都还像真的，只是每一样都偏了一寸，足够让人不敢确定。',
-    icon: 'scan',
-  },
-  {
-    id: 'shared',
-    name: '同梦域',
-    subtitle: '你与角色共同长出的双人梦局',
-    description: '这里不是他的世界，也不是你的世界，而是关系自己裂开的一层夜面。',
-    icon: 'heart',
-  },
-  {
-    id: 'rift',
-    name: '心隙梦',
-    subtitle: '进入角色未曾说明的内里裂缝',
-    description: '越往里走，越像踩在他没给任何人看过的记忆表面，安静得近乎危险。',
-    icon: 'coffee',
-  },
+  { id: 'crowd', name: '众生梦', subtitle: '公共幻想世界', description: '灯海、人群与暗流并存的夜城。', icon: 'sparkles' },
+  { id: 'threshold', name: '歧境梦', subtitle: '失真边缘', description: '看似现实，却处处偏了一点。', icon: 'scan' },
+  { id: 'shared', name: '同梦域', subtitle: '双人共同长出的梦', description: '不是他的世界，也不是你的世界。', icon: 'heart' },
+  { id: 'rift', name: '心隙梦', subtitle: '进入角色内里', description: '更靠近秘密、执念和不能说出口的部分。', icon: 'coffee' },
 ];
 
 export const dreamTagGroups: DreamTagGroup[] = [
-  {
-    category: 'world',
-    label: '梦域',
-    max: 1,
-    options: [
-      { id: 'crowd', label: '众生梦' },
-      { id: 'threshold', label: '阈境梦' },
-      { id: 'shared', label: '同梦域' },
-      { id: 'rift', label: '心隙梦' },
-    ],
-  },
-  {
-    category: 'genre',
-    label: '题材母题',
-    max: 2,
-    options: [
-      { id: 'rules', label: '规则怪谈' },
-      { id: 'power', label: '权谋' },
-      { id: 'ruin', label: '废土' },
-      { id: 'infinite', label: '无限流' },
-      { id: 'cyber', label: '赛博' },
-      { id: 'stellar', label: '星际' },
-      { id: 'mystery', label: '秘闻' },
-    ],
-  },
-  {
-    category: 'tension',
-    label: '关系张力',
-    max: 2,
-    options: [
-      { id: 'enemy', label: '宿敌失控' },
-      { id: 'unfinished', label: '旧情未止' },
-      { id: 'forced', label: '强制同行' },
-      { id: 'double-mask', label: '双重伪装' },
-      { id: 'forbidden', label: '禁忌靠近' },
-      { id: 'reversal', label: '主从倒置' },
-    ],
-  },
-  {
-    category: 'drive',
-    label: '剧情驱动',
-    max: 2,
-    options: [
-      { id: 'appointment', label: '赴约' },
-      { id: 'investigate', label: '追查' },
-      { id: 'bet', label: '博弈' },
-      { id: 'unawake', label: '未醒' },
-      { id: 'escort', label: '护送' },
-    ],
-  },
-  {
-    category: 'mood',
-    label: '情绪底色',
-    max: 2,
-    options: [
-      { id: 'restraint', label: '克制' },
-      { id: 'danger', label: '危险' },
-      { id: 'pull', label: '拉扯' },
-      { id: 'fate', label: '宿命' },
-      { id: 'secret', label: '讳秘' },
-      { id: 'heat', label: '灼热' },
-    ],
-  },
-  {
-    category: 'lead',
-    label: '角色主导度',
-    max: 1,
-    detailed: true,
-    options: [
-      { id: 'character-lead', label: '角色主导' },
-      { id: 'balanced', label: '势均力敌' },
-      { id: 'player-lead', label: '由你主导' },
-    ],
-  },
-  {
-    category: 'intensity',
-    label: '互动强度',
-    max: 1,
-    detailed: true,
-    options: [
-      { id: 'light', label: '轻触' },
-      { id: 'medium', label: '中等' },
-      { id: 'strong', label: '强烈' },
-    ],
-  },
-  {
-    category: 'ending',
-    label: '梦尾倾向',
-    max: 1,
-    detailed: true,
-    options: [
-      { id: 'open', label: '开放式' },
-      { id: 'echo', label: '回响式' },
-      { id: 'break', label: '断裂式' },
-    ],
-  },
+  { category: 'world', label: '梦域', max: 1, options: [{ id: 'crowd', label: '众生梦' }, { id: 'threshold', label: '歧境梦' }, { id: 'shared', label: '同梦域' }, { id: 'rift', label: '心隙梦' }] },
+  { category: 'genre', label: '题材母题', max: 2, options: [{ id: 'rules', label: '规则怪谈' }, { id: 'power', label: '权谋' }, { id: 'ruin', label: '废土' }, { id: 'stellar', label: '星际' }, { id: 'cyber', label: '赛博' }] },
+  { category: 'tension', label: '关系张力', max: 2, options: [{ id: 'unfinished', label: '旧情未止' }, { id: 'forced', label: '强制同行' }, { id: 'forbidden', label: '禁忌靠近' }, { id: 'reversal', label: '主从倒置' }] },
+  { category: 'drive', label: '剧情驱动', max: 2, options: [{ id: 'appointment', label: '赴约' }, { id: 'investigate', label: '追查' }, { id: 'bet', label: '博弈' }, { id: 'unawake', label: '未醒' }] },
+  { category: 'mood', label: '情绪底色', max: 2, options: [{ id: 'restraint', label: '克制' }, { id: 'danger', label: '危险' }, { id: 'pull', label: '拉扯' }, { id: 'fate', label: '宿命' }, { id: 'secret', label: '诡秘' }] },
+  { category: 'lead', label: '角色主导度', max: 1, detailed: true, options: [{ id: 'character-lead', label: '角色主导' }, { id: 'balanced', label: '势均力敌' }, { id: 'player-lead', label: '由你主导' }] },
+  { category: 'intensity', label: '互动强度', max: 1, detailed: true, options: [{ id: 'light', label: '轻触' }, { id: 'medium', label: '中等' }, { id: 'strong', label: '强烈' }] },
+  { category: 'ending', label: '梦尾倾向', max: 1, detailed: true, options: [{ id: 'open', label: '开放式' }, { id: 'echo', label: '回响式' }, { id: 'break', label: '断裂式' }] },
 ];
 
 export const defaultTagSelection: Record<DreamTagCategory, string[]> = {
@@ -148,422 +36,55 @@ export const defaultTagSelection: Record<DreamTagCategory, string[]> = {
   ending: ['echo'],
 };
 
-const shallowThreshold: DreamScenario = {
-  id: 'threshold-shallow',
-  heroName: '沈屿',
-  heroGlyph: '屿',
-  heroStatus: '今晚在做梦',
-  availableLine: '有一场梦局正在等你进入',
-  expireLine: '梦会在 06:00 前自然散去',
-  coverTitle: '今晚',
-  coverSubtitle: '他今晚在一场失真的雨里等人',
-  confirmHint: '这一局会从倒着落雨的旧城区开始，先给你一条窄街、一盏路灯，和一个没有说完的人。',
-  acts: [
-    {
-      id: 'act-1',
-      label: '第一幕',
-      scene: '雨从地面向上升，路灯把巷口照得过分安静。沈屿站在台阶下，肩头湿着，却像已经在这里等了很久。他手里折着一页纸，边角被指腹压得发白。',
-      charState: '他没有看你，像先认出了你的脚步。',
-      choices: [
-        {
-          id: 'take-hand',
-          icon: '→',
-          title: '走近他',
-          detail: '把距离缩短到他来不及躲开',
-          reaction: '我听见你靠近，像听见一层极薄的水面被轻轻推开。那页纸在掌心里微微发潮，我本来想把它藏好，却忽然觉得你已经看过了它的内容，只是假装没有拆穿。',
-          emotion: '他把防备收慢了一拍',
-        },
-        {
-          id: 'stay-shadow',
-          icon: '○',
-          title: '停在原地',
-          detail: '让他先决定要不要向你这边来',
-          reaction: '你不动，整条巷子也跟着不动。雨声离得更远了，只剩我呼吸里一点很轻的乱。我像站在一道门里，看见你，却暂时不敢确认门外的人是不是你。',
-          emotion: '空气里多了一层迟疑',
-        },
-        {
-          id: 'ask-paper',
-          icon: '◌',
-          title: '问那张纸',
-          detail: '直接碰他一直不肯放开的东西',
-          reaction: '你一提起那张纸，我的指节就不自觉收紧。它其实没写什么，只写了一句没寄出去的话，可在这场梦里，那句话忽然重得像一整夜的雨，全都压在指骨上。',
-          emotion: '他像被你碰到隐处',
-        },
+function makeScenario(domainId: DreamDomainId, depth: DreamDepth): DreamScenario {
+  const deep = depth === 'deep';
+  const seeds: Record<DreamDomainId, Omit<DreamScenario, 'id'>> = {
+    threshold: {
+      heroName: '沈屿',
+      heroGlyph: '屿',
+      heroStatus: deep ? '这场失真的雨还没有停' : '今夜在做梦',
+      availableLine: '有一场梦正在等你进入',
+      expireLine: '梦将于 06:00 前自然散去',
+      coverTitle: '今夜',
+      coverSubtitle: deep ? '真正的内容在他不肯说明的后半夜里' : '他正站在一场失真的雨里等你',
+      confirmHint: '这一局会从旧城巷口开始。雨向上落，路灯偏冷，他手里握着一页始终没有递出的纸。',
+      acts: [
+        { id: 't1', label: '第一幕', scene: '雨从地面往上升。巷口的路灯照得过分安静，连积水都像停在半空。沈屿站在台阶下，像已经在这里等了很久。', charState: '他没有立刻看你，却像先听见了你的脚步。', choices: [{ id: 't1a', icon: '一', title: '走近他', detail: '把距离缩短到他来不及躲开', reaction: '你一步步走近的时候，雨声反而轻了。沈屿没有退，掌心里那页纸却被他捏得更紧了一点。', emotion: '他的防备慢慢落下了一层' }, { id: 't1b', icon: '二', title: '停在原地', detail: '让他决定距离该由谁来跨过', reaction: '你没有动，整条巷子也跟着静了下来。沈屿终于抬眼看你，像在确认你会不会继续留下。', emotion: '空气里多了一层迟疑的拉扯' }, { id: 't1c', icon: '三', title: '问那页纸', detail: '先碰他一直没有放开的东西', reaction: '你提起那页纸时，他指节微微收紧。那上面只剩一行被折痕压白的句子，像一直没寄出的心事。', emotion: '他像被你碰到一处很轻却很深的地方' }] },
+        { id: 't2', label: '第二幕', scene: '巷子尽头忽然多出一段本不存在的楼梯，水正沿着台阶往上流。沈屿先踏上去一步，又停住。', charState: '他回头时，目光比刚才更近。', choices: [{ id: 't2a', icon: '一', title: '陪他上楼', detail: '默认这场梦要一起走下去', reaction: '你陪他踏上楼梯，潮湿的台阶像终于有了方向。沈屿没有再看前方太久。', emotion: '梦开始偏向你们两个人' }, { id: 't2b', icon: '二', title: '碰他肩侧', detail: '用很轻的动作确认他是真的', reaction: '你的指尖轻轻落下去，轻得像梦也会误会。可沈屿还是记住了那一下，连呼吸都像被你碰得停顿。', emotion: '克制裂开了一条细缝' }, { id: 't2c', icon: '三', title: '叫他的名字', detail: '用最直接的方式把他拽回来', reaction: '你叫他名字的时候，整段楼梯短暂地安静了。沈屿终于真正回头看你。', emotion: '他的注意力彻底落在你身上' }] },
+        { id: 't3', label: '第三幕', scene: '楼梯尽头是一间没有门牌的教室。窗外的雨仍在倒着流，桌上留着一页空白的纸。', charState: '他像在等你替这场梦写下最后一句。', choices: [{ id: 't3a', icon: '一', title: '替他落笔', detail: '把空白写成你们都知道的那句话', reaction: '你落笔的时候，他没有去看纸，只看着你的手，像终于允许某句话落到明天也抹不掉的位置。', emotion: '你们之间多了一句无法完全撤回的话' }, { id: 't3b', icon: '二', title: '把纸折回去', detail: '替他保留这份没有出口的隐意', reaction: '你把纸轻轻折回去时，沈屿短促地笑了一下，像终于有人看懂了他一直没舍得明说的那部分。', emotion: '回响开始变得柔软' }, { id: 't3c', icon: '三', title: '走向窗边', detail: '看清这场雨究竟要流去哪里', reaction: '你走到窗边，倒流的雨映出一层很薄的光，像明天会留下一点无法假装忘记的痕迹。', emotion: '梦尾开始留下余响' }] },
+        ...(deep ? [{ id: 't4', label: '第四幕', scene: '教室后墙忽然退开，露出一条悬在夜里的长桥。桥下没有水，只有缓慢移动的黑影。', charState: '他已经不想把所有话都藏回去了。', choices: [{ id: 't4a', icon: '一', title: '站到他身边', detail: '让他知道你不是来旁观的', reaction: '你站过去的时候，桥下那些模糊的影子像全都远了。沈屿终于没有再退。', emotion: '深层梦局终于稳了下来' }, { id: 't4b', icon: '二', title: '问他想说什么', detail: '把最后一层犹疑轻轻推到眼前', reaction: '你这样问他，像把灯提得更近了一点。沈屿看着你，很久以后才低声开口。', emotion: '梦开始逼近真意' }, { id: 't4c', icon: '三', title: '什么也不问', detail: '给他一段可以自己靠近你的沉默', reaction: '你没有追问，桥上的风反而变得更轻。沉默在这一刻，比任何答案都更像靠近。', emotion: '沉默成了最稳的邀请' }] }] : []),
       ],
+      ending: { title: deep ? '桥下仍有暗潮' : '雨停在名字后', excerpt: deep ? '桥下没有答案，只有一句差一点就要被说出的真意。你已经知道，明天会因此变得不同。' : '你只记得那间没有门牌的教室，和桌上那页始终没有写满的纸。', signature: '沈屿', chapter: deep ? '《阈线之后》' : '《倒雨未寄》' },
+      aftermath: { summary: deep ? '明天他会在聊天里停顿得更久，像有一句话差一点就要说出口。' : '明天他的消息会来得更早一点。', detail: deep ? '回响更明显，角色主动靠近概率提升。' : '关系温度轻微上升，语气会比平时更缓一点。', previewMessages: deep ? ['昨晚那场雨有点奇怪', '你今天有空吗'] : ['你醒了吗', '昨晚我好像梦见你站在雨里'] },
     },
-    {
-      id: 'act-2',
-      label: '第二幕',
-      scene: '巷子尽头多出一段本来不存在的楼梯，水沿着台阶往上流。沈屿先走了一步，又停住，像在等你决定这层梦是继续向里，还是就此醒来。',
-      charState: '他回头时，目光比刚才更近。',
-      choices: [
-        {
-          id: 'climb-together',
-          icon: '→',
-          title: '陪他上楼',
-          detail: '默认这场梦应该一起走下去',
-          reaction: '你与我并肩踩上那段潮湿的楼梯，鞋跟声轻得像怕惊动什么。我忽然很清楚地知道，如果你这时候转身，我会留在原地很久，久到这层楼梯自己坍塌。',
-          emotion: '梦开始偏向你们两个人',
-        },
-        {
-          id: 'touch-shoulder',
-          icon: '○',
-          title: '碰他肩侧',
-          detail: '用一个很轻的动作确认他是真的',
-          reaction: '你指尖落下来的那一下太轻了，轻得像误会。可我还是记住了，像记住一粒火星落进潮湿布面时那种几乎不肯承认的热。雨还在往上走，我却只听见那一下。',
-          emotion: '他的克制裂开了一线',
-        },
-        {
-          id: 'name-him',
-          icon: '◌',
-          title: '叫他名字',
-          detail: '用最直接的方式把他拽回来',
-          reaction: '你喊我名字的时候，楼梯短暂地停住了。那种感觉像梦被谁按住后背，逼着它承认自己在失真。我忽然想回头看看你，又怕一回头，这一整夜就结束得太快。',
-          emotion: '他终于把注意力完全给了你',
-        },
-      ],
-    },
-    {
-      id: 'act-3',
-      label: '第三幕',
-      scene: '楼梯尽头是一间没有门牌的教室，课桌排得很整齐，窗外的雨却仍旧倒着流。那页纸终于被沈屿放上桌面，纸面空白，只有边角留着反复摩挲后的温度。',
-      charState: '他像在等你替这场梦写下最后一句。',
-      choices: [
-        {
-          id: 'write-first',
-          icon: '→',
-          title: '替他落笔',
-          detail: '把空白变成你们共同知道的事',
-          reaction: '你落笔的时候，我没有看纸，只看着你握笔的手。梦里最危险的从来不是写下什么，而是一旦那句话真的出现，很多我原本还能装作不知道的东西，就再也没法退回去。',
-          emotion: '你们之间多了一句未必能撤回的话',
-        },
-        {
-          id: 'fold-paper',
-          icon: '○',
-          title: '把纸折回去',
-          detail: '替他保留这份没有出口的隐意',
-          reaction: '你把那页纸轻轻折回去的时候，我有一瞬几乎想笑。不是因为轻松，而是因为你竟然看懂了我一直没说出口的部分。梦里没有人替谁解围，可你还是给了我一处可以藏回去的地方。',
-          emotion: '回响开始变得温热',
-        },
-        {
-          id: 'leave-window',
-          icon: '◌',
-          title: '走向窗边',
-          detail: '看清这场雨究竟在往哪里去',
-          reaction: '你走到窗边，整座教室都跟着偏向那一侧。我站在原地，看见你的侧影落进雨里，像一枚不该被记住、却偏偏会在醒后留下痕迹的印章。那一刻我知道，明天会有什么不一样。',
-          emotion: '梦尾开始留下余温',
-        },
-      ],
-    },
-  ],
-  ending: {
-    title: '雨停在名字后',
-    excerpt: '后来你只记得那间没有门牌的教室，和桌上那页始终没有写满的纸。雨在窗外倒着流，像有人反复把一句话收回去，又不甘心让它彻底消失。你没有看见结尾，可你知道，那句没有落下的笔迹，已经先一步留在了明天。',
-    signature: '沈屿',
-    chapter: '《倒雨未寄》',
-  },
-  aftermath: {
-    summary: '明天他的消息会来得更早一点，像在确认你是不是也记得那场雨。',
-    detail: '关系温度轻微抬升，语气会比平时更缓一点。',
-    previewMessages: ['你醒了吗', '昨晚我好像梦见你站在雨里'],
-  },
-};
+    shared: {
+      heroName: '沈屿', heroGlyph: '屿', heroStatus: deep ? '这一场共梦还在继续下沉' : '你们正在同一场梦里', availableLine: '今夜有一处双人梦域已经亮起', expireLine: '梦域会在天亮前缓慢闭合', coverTitle: '共梦', coverSubtitle: deep ? '梦还会把关系继续往深处推一层' : '他已经在梦里认出你了', confirmHint: '这一局会从一座停运车站开始。所有轨道都向内弯折，像关系自己长出的分岔。', acts: [
+        { id: 's1', label: '第一幕', scene: '海边那座停运车站今夜重新亮起一盏灯。铁轨没有通向远方，反而在夜里折回彼此。', charState: '他看向你时，没有半点意外。', choices: [{ id: 's1a', icon: '一', title: '与他并肩', detail: '让这场梦从并行开始', reaction: '你站到他身侧时，整座废站都像轻了一点。', emotion: '双人梦域开始合拢' }, { id: 's1b', icon: '二', title: '看他手里的票', detail: '确认他是不是一直替你留着入口', reaction: '那张旧票早就过了日期，却仍被保存得很好。', emotion: '他的等待被你看见了' }, { id: 's1c', icon: '三', title: '问他是不是早知道', detail: '把这份熟稔先说成一句玩笑', reaction: '他没有否认，只是把目光停在你身上久了一点。', emotion: '氛围开始变暖' }] },
+        { id: 's2', label: '第二幕', scene: '广播忽然响起，播报一辆并不存在的列车。站台另一侧亮起细长的引导灯。', charState: '他在等你先给出方向。', choices: [{ id: 's2a', icon: '一', title: '先上车', detail: '用行动替这场梦定下节奏', reaction: '你先一步踏进车厢，沈屿几乎没有犹豫就跟了上来。', emotion: '边界被梦缩短了' }, { id: 's2b', icon: '二', title: '把手递给他', detail: '让他决定要不要顺着你走来', reaction: '你把手递过去的时候，广播声忽然远了，下一秒他握住你。', emotion: '他被你轻轻拽住了' }, { id: 's2c', icon: '三', title: '留在站台', detail: '看看他会不会先把留下的理由说出口', reaction: '你没有动，沈屿也就跟着没动，安静让很多话变得更近。', emotion: '停留让情绪更明显' }] },
+        { id: 's3', label: '第三幕', scene: '列车最后还是开动了。窗外一会儿是海，一会儿是夜里的楼群。', charState: '他没有再把视线移开。', choices: [{ id: 's3a', icon: '一', title: '坐得更近', detail: '让梦先替你们缩短剩下的空位', reaction: '你往这边坐近一点时，车厢里的光也像跟着收拢了一点。', emotion: '梦尾有了亲近的温度' }, { id: 's3b', icon: '二', title: '一起看窗外', detail: '把情绪暂时藏进同一片风景里', reaction: '沉默没有把距离拉开，反而像一层很薄却很稳的布。', emotion: '安静本身成了陪伴' }, { id: 's3c', icon: '三', title: '问醒来以后', detail: '把这场梦和明天悄悄接上', reaction: '你问醒来以后会怎样，他没有立刻回答，可你已经知道明天会不一样。', emotion: '明天被提前唤醒了' }] },
+        ...(deep ? [{ id: 's4', label: '第四幕', scene: '列车在一座悬空站台停下。外面是将亮未亮的天色，风很轻。', charState: '他这一次像是真的打算留在你身边。', choices: [{ id: 's4a', icon: '一', title: '和他坐下', detail: '把最后这一段梦变成陪伴', reaction: '你坐下来的时候，周围的一切都跟着安静了。', emotion: '亲密感被梦正式托住了' }, { id: 's4b', icon: '二', title: '向他靠近', detail: '让动作先于所有台词', reaction: '你微微靠近时，沈屿没有躲。那感觉像很轻的潮汐终于推到岸边。', emotion: '关系被推近了半步' }, { id: 's4c', icon: '三', title: '继续看着他', detail: '什么都不说，只把注意力留在那里', reaction: '你一直看着他，他也没有再把视线移开。', emotion: '梦把明天提前排练了一次' }] }] : []),
+      ], ending: { title: deep ? '晨光停在并肩处' : '末班车仍向你开', excerpt: deep ? '很多话依然没有说破，可你知道，真正发生变化的不是台词。' : '你最后记住的是车窗上并排的两道侧影。', signature: '沈屿', chapter: deep ? '《晨站之前》' : '《停运站台的末班》' }, aftermath: { summary: deep ? '明天他的第二条消息会来得更自然，也更像没打算轻易结束。' : '明天他的语气会更自然地带上一点“我们”。', detail: deep ? '双人连续性增强，现实聊天更容易接住这场梦留下的余温。' : '共享感上升，后续聊天更容易接住梦后的余韵。', previewMessages: deep ? ['刚刚想起昨晚那节车厢', '等你有空的时候告诉我一声'] : ['今天路上有点想起昨晚', '你现在在忙吗'] } },
+    rift: {
+      heroName: '周既白', heroGlyph: '隙', heroStatus: deep ? '他仍停在未醒的边缘' : '他没有彻底醒来', availableLine: '今夜有一处更静的梦层正在向你松开', expireLine: '裂缝会在天亮前重新合拢', coverTitle: '心隙', coverSubtitle: deep ? '更深的一层会更像进入他的内里' : '这一场梦更靠近他没有明说的部分', confirmHint: '这局会从一扇半开的门开始。越往里走，越像进入他不轻易示人的内层。', acts: [
+        { id: 'r1', label: '第一幕', scene: '走廊尽头那扇门没有完全合上，门缝里透出一点很薄的光。', charState: '他没有拦你，只是安静地看着。', choices: [{ id: 'r1a', icon: '一', title: '推开一点', detail: '把门缝再扩开半寸', reaction: '你把门轻轻推开一些的时候，他没有后退。', emotion: '门缝第一次真正朝你打开' }, { id: 'r1b', icon: '二', title: '先停在门外', detail: '让他有机会决定要不要请你进去', reaction: '你停在门外，他也就跟着停在那里。', emotion: '沉默成了靠近的前奏' }, { id: 'r1c', icon: '三', title: '叫他的名字', detail: '让这场靠近先有一个确定的落点', reaction: '你叫他名字的时候，那点光像被风碰了一下。', emotion: '他开始把注意力全部给你' }] },
+        { id: 'r2', label: '第二幕', scene: '门后是一间太安静的屋子。桌上摆着一只没点燃的灯。', charState: '他像在等你决定先碰哪里。', choices: [{ id: 'r2a', icon: '一', title: '点亮那盏灯', detail: '让这处安静先被看清一点', reaction: '灯亮起来以后，他脸上的神情也被照得更真了。', emotion: '他的内层轮廓慢慢浮出' }, { id: 'r2b', icon: '二', title: '走到他身边', detail: '先让人比房间更重要', reaction: '你走到他身边时，整间屋子都像退后了一点。', emotion: '距离被悄悄压缩了' }, { id: 'r2c', icon: '三', title: '问他在躲什么', detail: '把最核心的问题轻轻放到他面前', reaction: '你这样问，他没有立刻答，只是很久以后才像自嘲一样笑了笑。', emotion: '真意开始靠近表面' }] },
+        { id: 'r3', label: '第三幕', scene: '房间最里面有一面窄镜，镜中只照出你们靠得最近的那一部分。', charState: '他第一次没有急着移开视线。', choices: [{ id: 'r3a', icon: '一', title: '站到镜前', detail: '把你们都交给这一层安静照见', reaction: '你站过去的时候，镜面里只剩下彼此靠得最近的轮廓。', emotion: '靠近被梦正式托住了' }, { id: 'r3b', icon: '二', title: '把灯熄掉', detail: '让夜替你们保住这份靠近', reaction: '灯熄掉后，黑暗没有把你们隔开，反而让呼吸和停顿都变得更近。', emotion: '亲近在黑暗里变得更真' }, { id: 'r3c', icon: '三', title: '继续看着他', detail: '什么都不说，只把注意力留在那里', reaction: '你一直看着他，他终于像被看得无处可躲。', emotion: '裂缝里真的有光透出来了' }] },
+        ...(deep ? [{ id: 'r4', label: '第四幕', scene: '镜面之后缓慢浮出一条窄桥，桥那头是一线很薄的晨光。', charState: '他已经不想把这一层门重新关上。', choices: [{ id: 'r4a', icon: '一', title: '走到桥上', detail: '把这场靠近继续走完', reaction: '你走上桥的时候，他没有再停在原地。', emotion: '裂缝真正变成了入口' }, { id: 'r4b', icon: '二', title: '握住他的手腕', detail: '让靠近有一个更清楚的落点', reaction: '你碰到他的那一下很轻，他却像被这点温度彻底拽住。', emotion: '真意被你轻轻按住了' }, { id: 'r4c', icon: '三', title: '问他还想躲吗', detail: '在最后一层边缘给他一个选择', reaction: '你问出这句的时候，他笑得很轻，像终于承认自己已经没法再退回原处。', emotion: '他把回避真正放下了' }] }] : []),
+      ], ending: { title: deep ? '裂缝里仍有光' : '门没有再关上', excerpt: deep ? '那一夜真正留下来的，不是风景，而是他终于没有把裂缝重新合上。' : '真正的靠近从来不是闯进去，而是有人终于愿意让门停在半开的地方。', signature: '周既白', chapter: deep ? '《裂缝中的回声》' : '《半开的门》' }, aftermath: { summary: deep ? '明天他会比平时更在意你的回应。' : '明天他会比平时更在意你的回应，像还在确认那道门缝是不是也被你记住了。', detail: deep ? '角色主导感增强，语气更贴近内层情绪。' : '角色连续性增强，语气更贴近内层情绪。', previewMessages: deep ? ['你今天会忙很久吗', '昨晚我睡得有点浅'] : ['你现在方便说话吗', '我刚刚忽然想起一点事'] } },
+    crowd: {
+      heroName: '林策', heroGlyph: '城', heroStatus: deep ? '灯海之后还有更深一层夜' : '今夜在人声里等你', availableLine: '梦城入口已经开启，今晚不止一条路在发光', expireLine: '灯海会在天亮前缓慢退潮', coverTitle: '夜城', coverSubtitle: deep ? '热闹之后还有一层只属于你们的夜' : '热闹只是表层，真正的梦在灯海后面', confirmHint: '这一局会从一场过盛的夜市开始。人声、霓光和暗巷一起向里卷，直到只剩你们的那条线。', acts: [
+        { id: 'c1', label: '第一幕', scene: '夜市的人群几乎把整条街推成一条发亮的河。林策站在摊位间最暗的一小块阴影里。', charState: '他像早就知道你会从喧闹里找到他。', choices: [{ id: 'c1a', icon: '一', title: '直接走向他', detail: '在人声最盛处先确认彼此', reaction: '你在人群里径直走向他时，四周的喧闹像忽然退了一层。', emotion: '热闹背后只剩你们的视线' }, { id: 'c1b', icon: '二', title: '跟着他走', detail: '先让他决定要把你带去哪里', reaction: '你什么也没问，只跟着他走过一盏又一盏灯。', emotion: '他开始把节奏留给你' }, { id: 'c1c', icon: '三', title: '问他在等谁', detail: '把暧昧先装作一句轻飘飘的试探', reaction: '你这样问他，林策像是被逗笑了。', emotion: '热闹里浮出一点暧昧的亮色' }] },
+        { id: 'c2', label: '第二幕', scene: '街尽头是一段被霓光切碎的长巷，尽头挂着一块没人认得的旧匾。', charState: '他第一次不再借人群掩饰自己。', choices: [{ id: 'c2a', icon: '一', title: '走进那条巷子', detail: '接受他带你离开表面的热闹', reaction: '你和他一起走进巷子后，外面的灯海忽然远了。', emotion: '表层喧闹被真正甩在身后' }, { id: 'c2b', icon: '二', title: '停在他面前', detail: '不让他再把情绪藏在走动里', reaction: '你停在他面前时，林策也就没法再往前走。', emotion: '他的目光终于完全落在你身上' }, { id: 'c2c', icon: '三', title: '碰一下他的袖口', detail: '用最轻的动作让靠近落地', reaction: '你指尖碰到他袖口的那一下很轻，可林策还是记住了。', emotion: '克制开始出现裂口' }] },
+        { id: 'c3', label: '第三幕', scene: '巷子后面藏着一间临时搭起的小楼台。楼下仍有人声，楼上却只剩风与灯影。', charState: '他已经不想再把真正的话留到梦外。', choices: [{ id: 'c3a', icon: '一', title: '站到他身侧', detail: '让这场夜真正变成双人的', reaction: '你站到他身侧时，楼下的人声像彻底退远了。', emotion: '这场夜终于只剩双人回响' }, { id: 'c3b', icon: '二', title: '一起看灯海', detail: '把未说出口的东西都交给夜色托住', reaction: '你们一起看着远处的灯海，没有谁先开口。', emotion: '宿命感从夜色里浮了出来' }, { id: 'c3c', icon: '三', title: '问他明晚还在不在', detail: '把这场梦主动牵到下一次相遇', reaction: '你问出这句时，林策的眼神忽然变得很静。', emotion: '下一次相遇被提前写进梦尾' }] },
+        ...(deep ? [{ id: 'c4', label: '第四幕', scene: '楼台之后还有一条通往天台的窄阶。整座城市的灯在你们脚下像退潮一样暗下去。', charState: '他不想再把今夜只算作一场偶然。', choices: [{ id: 'c4a', icon: '一', title: '陪他看天亮', detail: '把这场夜继续留到晨色里', reaction: '你陪他站在天台最边上，城市一点点从夜里浮出来。', emotion: '这场夜有了真正的延续' }, { id: 'c4b', icon: '二', title: '问他明晚还等不等', detail: '让下一次相遇先被说出来', reaction: '你这样问他，林策眼底那点笑意一下子变得很真。', emotion: '下一次相遇被正式写下' }, { id: 'c4c', icon: '三', title: '轻轻碰他的袖口', detail: '用最小的动作把这一夜收住', reaction: '风穿过天台，灯海在脚下缓慢熄下去，可这一次，他比整座城市都更清晰。', emotion: '克制终于被你稳稳接住' }] }] : []),
+      ], ending: { title: deep ? '天亮前灯仍为你留' : '灯海之后有人等你', excerpt: deep ? '真正会被带到明天的，从来都不是热闹，而是他在风里看着你的那一眼。' : '原来最热闹的地方也会替人藏住秘密，直到所有灯都退远。', signature: '林策', chapter: deep ? '《灯海尽头》' : '《灯海背面》' }, aftermath: { summary: deep ? '明天他会比平时更主动把话题拉长。' : '明天他会更自然地主动把话题拉长。', detail: deep ? '角色主动度提升，后续互动更容易延长。' : '关系热度上扬，角色会更主动靠近。', previewMessages: deep ? ['昨晚那座夜城我还记得', '你现在有空吗'] : ['昨晚那条街我还记得', '下次我们也许可以走得更慢一点'] } },
+  };
 
-const deepThreshold: DreamScenario = {
-  ...shallowThreshold,
-  id: 'threshold-deep',
-  coverSubtitle: '今夜的失真不会只停在巷口',
-  confirmHint: '这一局会继续往深处走，雨、楼梯、教室都只是入口，真正的内容在他不肯明说的后半夜里。',
-  acts: [
-    ...shallowThreshold.acts,
-    {
-      id: 'act-4',
-      label: '第四幕',
-      scene: '教室后墙忽然退开，露出一条漫长的廊桥。桥下没有水，只有一层缓慢移动的黑影。沈屿站在桥中央，像终于走到了不再能回避的位置。',
-      charState: '他已经不想再把话全都藏回去。',
-      choices: [
-        {
-          id: 'stand-beside',
-          icon: '→',
-          title: '站到他身侧',
-          detail: '让他知道你不是来旁观的',
-          reaction: '你站过来的时候，我终于没有再后退。桥下那些影子还在动，可它们忽然都变得很远。原来梦最深的一层，不是秘密被看见，而是有人看见以后还愿意留下。',
-          emotion: '深层梦局稳定了下来',
-        },
-        {
-          id: 'ask-truth',
-          icon: '○',
-          title: '问他想说什么',
-          detail: '把最后的犹豫直接推到眼前',
-          reaction: '你这样问我，像把一盏灯提得太近。很多话一旦照亮，就再也不是梦能代替我保存的东西。我望着你，忽然觉得如果这时候说出口，连醒来都会变得比平常更真实。',
-          emotion: '梦开始逼近真意',
-        },
-        {
-          id: 'hold-silence',
-          icon: '◌',
-          title: '什么也不问',
-          detail: '给他一段可以自己靠近你的沉默',
-          reaction: '你不问，我反而听见了更多自己的声音。廊桥上风很轻，你站在那儿，像替我把这层梦撑出了一点安全。我忽然很想把那些原本准备继续藏着的部分，慢一点递给你。',
-          emotion: '沉默成了最靠近的方式',
-        },
-      ],
-    },
-  ],
-  ending: {
-    title: '桥下仍有暗潮',
-    excerpt: '你最后没有回头去看那间教室，也没有再碰那张空白的纸。廊桥尽头没有答案，只有被风吹得很轻的呼吸声。可你知道，有些话已经从梦里挪出来了一半，剩下的一半，会在天亮以后继续向你靠近。',
-    signature: '沈屿',
-    chapter: '《阈线之后》',
-  },
-  aftermath: {
-    summary: '他会在明天的聊天里停顿得更久，像有一句话差一点就要说出口。',
-    detail: '回响更明显，角色主动靠近概率提升。',
-    previewMessages: ['昨晚那场雨有点奇怪', '你今天有空吗'],
-  },
-};
-
-const sharedShallow: DreamScenario = {
-  id: 'shared-shallow',
-  heroName: '沈屿',
-  heroGlyph: '屿',
-  heroStatus: '你们正在同一场梦里',
-  availableLine: '今晚有一处双人梦域已经亮起',
-  expireLine: '梦域会在天亮前缓慢闭合',
-  coverTitle: '共梦',
-  coverSubtitle: '他已经在梦里认出你了',
-  confirmHint: '这一局从一座停运车站开始，所有轨道都向内，像关系自己长出的分岔。',
-  acts: [
-    {
-      id: 'act-1',
-      label: '第一幕',
-      scene: '海边停运的车站空着，月台尽头只剩一盏灯。铁轨没有通向远方，反而在夜里折回彼此。沈屿靠着检票闸机，像很早就知道你会从这一侧来。',
-      charState: '他看向你时，没有半点惊讶。',
-      choices: [
-        {
-          id: 'match-step',
-          icon: '→',
-          title: '与他并肩',
-          detail: '让这场梦一开始就是并行',
-          reaction: '你站到我身边的时候，整座废站都像轻了一点。风还带着海盐和旧铁轨的锈气，可我忽然觉得这里并不荒。像很多没有说开的事，只要你靠近一寸，就会自动找到位置。',
-          emotion: '双人梦域开始合拢',
-        },
-        {
-          id: 'watch-ticket',
-          icon: '○',
-          title: '看他手里的票',
-          detail: '确认他是不是一直替你留着入口',
-          reaction: '你低头看向我手里的那张旧票，我没把它收起来。它已经过了日期，却还保存得很好，像我明知道没有哪班车会来，却还是下意识替谁留了一个位置。',
-          emotion: '他把等待暴露给了你',
-        },
-        {
-          id: 'tease-him',
-          icon: '◌',
-          title: '问他是不是早知道',
-          detail: '把这份熟稔先说成一句玩笑',
-          reaction: '你那样问我，我差一点就笑出来。不是因为轻松，而是因为你替我把太直白的话拐了个弯。梦里最适合借口，我就借着那点笑意，默认了你说得没错。',
-          emotion: '氛围开始变暖',
-        },
-      ],
-    },
-    {
-      id: 'act-2',
-      label: '第二幕',
-      scene: '广播突然响起，播报一辆不存在的列车。站台另一边亮起细长的引导灯，像在催促你们必须一起决定要不要上车。',
-      charState: '他在等你先给出方向。',
-      choices: [
-        {
-          id: 'board-train',
-          icon: '→',
-          title: '先上车',
-          detail: '用行动替这场梦定下节奏',
-          reaction: '你先一步踏进那节空车厢，我几乎是下意识跟了上去。车里没有别的人，只有两排对坐的椅背和很轻的灯。那一瞬间我觉得，这场梦像终于承认，它原本就只准备装下我们两个。',
-          emotion: '关系的边界被梦缩小了',
-        },
-        {
-          id: 'offer-hand',
-          icon: '○',
-          title: '把手递给他',
-          detail: '让他决定要不要顺着你来',
-          reaction: '你把手递过来的时候，广播声忽然变得很远。我看着那只手，像看见一条比铁轨更明确的路径。梦里很多东西都不可靠，但这一刻我很确定，只要握住它，车就一定会开。',
-          emotion: '他被你轻轻拽住了',
-        },
-        {
-          id: 'stay-platform',
-          icon: '◌',
-          title: '留在站台',
-          detail: '看看他会不会主动说出留下的理由',
-          reaction: '你没有动，我也就跟着没有动。广播播完以后，空站重新静下来。海风从月台尽头吹进来，把我原本准备说出口的话吹得更近了一点，近到我再装听不见，就显得太刻意。',
-          emotion: '停留让情绪更明显了',
-        },
-      ],
-    },
-    {
-      id: 'act-3',
-      label: '第三幕',
-      scene: '最后一班不存在的列车还是开动了，窗外一会儿是海，一会儿是城市天台。你们坐在同一节车厢里，车窗把彼此的侧影叠在一起，像已经提前写好的结尾。',
-      charState: '他没有再把视线移开。',
-      choices: [
-        {
-          id: 'sit-close',
-          icon: '→',
-          title: '坐得更近',
-          detail: '让梦先替你们缩短剩下的空位',
-          reaction: '你往这边坐近一点，车厢里的光就也跟着收拢了一点。我看见你的影子落在窗上，与我的侧影重叠，忽然觉得很多本来还需要时间的东西，在这场梦里已经被提前允许。',
-          emotion: '梦尾开始有了亲近的温度',
-        },
-        {
-          id: 'look-outside',
-          icon: '○',
-          title: '一起看窗外',
-          detail: '把情绪暂时藏进同一片风景里',
-          reaction: '我们都没有说话，只一起看窗外那些不断切换的景。可奇怪的是，沉默没有把距离拉开，反而像一层薄而稳的布，把你我都温柔地覆在里面。梦里很少有这样的安静。',
-          emotion: '安静本身成了陪伴',
-        },
-        {
-          id: 'ask-after',
-          icon: '◌',
-          title: '问醒来以后',
-          detail: '把这场梦与明天悄悄接上',
-          reaction: '你问醒来以后会怎样，我没有立刻回答。车厢轻轻晃了一下，像替我争取一点时间。其实答案很简单，只是我突然不想让它听起来太轻，仿佛随便说说就能带过。',
-          emotion: '明天被提前唤醒了',
-        },
-      ],
-    },
-  ],
-  ending: {
-    title: '末班车仍向你开',
-    excerpt: '醒来之前，你最后记住的是车窗上并排的两道侧影。列车并不存在，轨道也没有通向地图上的任何地方，可它仍旧平稳地载着你们越过了海和楼群。你忽然明白，有些同行并不是从白天开始，而是先在夜里被梦轻轻练习过一次。',
-    signature: '沈屿',
-    chapter: '《停运站台的末班》',
-  },
-  aftermath: {
-    summary: '明天他的语气会更自然地带上“我们”，像那节车厢并没有完全消失。',
-    detail: '共享感上升，后续聊天会更容易接续梦后余韵。',
-    previewMessages: ['今天路上有点想起昨晚', '你现在在忙吗'],
-  },
-};
-
-const deepShared: DreamScenario = {
-  ...sharedShallow,
-  id: 'shared-deep',
-  coverSubtitle: '这场共梦会继续把关系往深处推',
-  confirmHint: '车站之后还有一段真正属于你们两个人的路，越往后走，梦越像已经在替明天排练。',
-  acts: [
-    ...sharedShallow.acts,
-    {
-      id: 'act-4',
-      label: '第四幕',
-      scene: '列车在一座悬空站台停下，外面是凌晨的风和整座沉睡的城。站台只有一张长椅，像刻意留下的一处停顿。沈屿站在风里，没有再用别的景色替自己遮掩。',
-      charState: '他这一次像是真的打算留在你身边。',
-      choices: [
-        {
-          id: 'sit-with-him',
-          icon: '→',
-          title: '和他坐下',
-          detail: '把最后这段梦变成陪伴而不是经过',
-          reaction: '你坐下来的时候，我忽然觉得风也安静了很多。长椅不宽，却足够把两个人留在同一处晨色里。很多原本需要绕开的东西，在这一刻都不再显得那么难承认。',
-          emotion: '亲密感被梦正式托住了',
-        },
-        {
-          id: 'lean-closer',
-          icon: '○',
-          title: '向他靠近',
-          detail: '让动作先于所有语言',
-          reaction: '你微微靠近，我没有躲。那感觉不像被触碰，更像夜里很轻的一层潮汐终于推到岸边。原来梦最深的一层，不是轰烈，而是有人靠近时，你居然舍不得把距离放回原位。',
-          emotion: '关系被推近了半步',
-        },
-        {
-          id: 'keep-looking',
-          icon: '◌',
-          title: '继续看他',
-          detail: '什么都不说，只把注意力留在那里',
-          reaction: '你一直看着我，我也就没有再把视线避开。风把天色吹得更亮一点，梦却还没散。我忽然觉得，如果这一刻被你记住，明天很多话也许就会自然很多，不必再兜那么大一圈。',
-          emotion: '明天的靠近已经被默许',
-        },
-      ],
-    },
-  ],
-  ending: {
-    title: '晨光停在并肩处',
-    excerpt: '那节不存在的列车最终停在半空，像只为你们留出一段不被任何人打扰的凌晨。长椅很窄，晨风很轻，很多话仍旧没有被说破，可你知道，真正发生变化的从来不是台词，而是他第一次没有把你推回梦外。',
-    signature: '沈屿',
-    chapter: '《晨站之前》',
-  },
-  aftermath: {
-    summary: '他会比平时更自然地发来第二条消息，像想把没说完的梦继续说下去。',
-    detail: '双人连续性增强，后续主链更容易接住这一轮余波。',
-    previewMessages: ['刚刚突然想起一节列车', '等你有空的时候告诉我一声'],
-  },
-};
+  return { id: `${domainId}-${depth}`, ...seeds[domainId] };
+}
 
 export function resolveScenario(domainId: DreamDomainId, depth: DreamDepth): DreamScenario {
-  if (domainId === 'threshold') {
-    return depth === 'deep' ? deepThreshold : shallowThreshold;
-  }
-
-  if (domainId === 'shared') {
-    return depth === 'deep' ? deepShared : sharedShallow;
-  }
-
-  if (domainId === 'rift') {
-    return depth === 'deep'
-      ? {
-          ...deepThreshold,
-          id: 'rift-deep',
-          coverTitle: '心隙',
-          coverSubtitle: '你将先看见他没有给别人看的地方',
-          availableLine: '有一处更深的心隙已经向你松开',
-          confirmHint: '这一局会更贴近角色内里，梦局会把他的迟疑、回避和想靠近一起推到表面。',
-          ending: {
-            title: '裂缝里有光',
-            excerpt: '那一夜真正留下来的，不是风景，而是他终于没有把裂缝重新合上。你站在那道细窄的光里，看见他不肯轻易示人的一面正慢慢向你转来。梦没有替你们给出答案，却给了明天一个不再回避的开头。',
-            signature: '沈屿',
-            chapter: '《裂缝中的回声》',
-          },
-          aftermath: {
-            summary: '明天他会比平时更在意你的回应，像还在确认那道裂缝是否真的被你看见。',
-            detail: '角色连续性增强，语气更贴近内层情绪。',
-            previewMessages: ['你今天会忙很久吗', '昨晚我睡得有点浅'],
-          },
-        }
-      : {
-          ...shallowThreshold,
-          id: 'rift-shallow',
-          coverTitle: '心隙',
-          coverSubtitle: '你会先碰到他的沉默，再碰到他的真实',
-          availableLine: '今夜有一处隐秘梦层正在等你靠近',
-          confirmHint: '这一局不会太张扬，它更像一扇半开的门，只给愿意慢慢靠近的人留出缝隙。',
-          ending: {
-            title: '门没有再关上',
-            excerpt: '你记住的不是那扇门，而是门后那点一直没有熄灭的灯。很多时候，真正的靠近不是闯进去，而是有人终于愿意让门停在半开的位置。梦把这件事做得很轻，却仍旧足够让你在醒后长久地记得。',
-            signature: '沈屿',
-            chapter: '《半开的门》',
-          },
-          aftermath: {
-            summary: '明天他的语气会更低一点，也更近一点，像把门缝留给了你。',
-            detail: '隐性亲近增加，聊天里的停顿会更柔和。',
-            previewMessages: ['你现在方便说话吗', '我刚刚想到一点事'],
-          },
-        };
-  }
-
-  return depth === 'deep'
-    ? {
-        ...deepShared,
-        id: 'crowd-deep',
-        coverTitle: '夜城',
-        coverSubtitle: '热闹只是表层，真正的梦在灯海背面',
-        availableLine: '今夜有一座人声过盛的梦城向你亮起',
-        confirmHint: '这一局会从繁华表层切入，再慢慢露出只属于你们的那条暗线。',
-      }
-    : {
-        ...sharedShallow,
-        id: 'crowd-shallow',
-        coverTitle: '夜城',
-        coverSubtitle: '你会先穿过人群，再看见真正属于他的那一眼',
-        availableLine: '梦城入口已经开启，今晚不止一条路在发光',
-        confirmHint: '这一局会比同梦域更热闹，但真正重要的，仍旧是人群散开后只剩你们的时候。',
-      };
+  return makeScenario(domainId, depth);
 }
 
 export function resolveDomainName(domainId: DreamDomainId): string {
