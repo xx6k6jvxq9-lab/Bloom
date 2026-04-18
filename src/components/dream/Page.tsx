@@ -233,12 +233,21 @@ function RolePicker({
   onClose: () => void;
 }) {
   return (
-    <div className="absolute inset-0 flex items-end">
-      <motion.button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-      <motion.div className="relative z-10 w-full border-t pb-10 pt-5" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(8,12,24,0.95)' }} initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
-        <div className="mx-auto h-[1px] w-10" style={{ backgroundColor: 'var(--ghost)' }} />
-        <div className="mt-7 text-center text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦角色</div>
-        <div className="mt-6 space-y-3 px-6">
+    <motion.div
+      className="absolute inset-0 z-20"
+      style={{ backgroundColor: 'rgba(8,12,24,0.96)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.24, ease: 'easeOut' }}
+    >
+      <button className="absolute inset-0" onClick={onClose} aria-label="关闭角色选择" />
+      <div className="relative h-full px-7 pt-24 pb-10">
+        <div className="border-b pb-4 text-center" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-[10px] font-normal tracking-[0.42em]" style={{ color: 'var(--mist)' }}>今 夜 角 色</div>
+          <div className="mt-4 text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦角色</div>
+        </div>
+        <div className="mt-8 space-y-3">
           {roles.map((role) => {
             const active = selectedRoleId === role.id;
             return (
@@ -247,8 +256,8 @@ function RolePicker({
                 onClick={() => onSelect(role.id)}
                 className={`flex w-full items-center gap-4 border px-4 py-4 text-left transition ${
                   active
-                    ? 'border-[rgba(196,169,106,0.28)] bg-[rgba(196,169,106,0.06)]'
-                    : 'border-[rgba(196,169,106,0.08)] bg-[rgba(196,169,106,0.02)] hover:border-[rgba(196,169,106,0.18)]'
+                    ? 'border-[rgba(196,169,106,0.38)] bg-[rgba(196,169,106,0.05)]'
+                    : 'border-[rgba(196,169,106,0.08)] bg-[rgba(8,12,24,0.24)] hover:border-[rgba(196,169,106,0.18)]'
                 }`}
               >
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border text-[20px] text-[#c8aa67]" style={{ borderColor: 'var(--border-mid)', color: 'var(--gold)' }}>
@@ -262,8 +271,15 @@ function RolePicker({
             );
           })}
         </div>
-      </motion.div>
-    </div>
+        <button
+          onClick={onClose}
+          className="mt-8 text-[11px] font-normal tracking-[0.28em] transition"
+          style={{ color: 'var(--mist)' }}
+        >
+          返回今夜
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -275,24 +291,45 @@ function EntryScreen({ onChoose, onClose }: { onChoose: (mode: DreamEntryMode) =
   ];
 
   return (
-    <div className="absolute inset-0 flex items-end">
-      <button className="absolute inset-0 bg-[rgba(3,5,9,0.68)]" onClick={onClose} />
-      <motion.div className="relative z-10 w-full border-t pb-10 pt-5" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(8,12,24,0.95)' }} initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
-        <div className="mx-auto h-[1px] w-10" style={{ backgroundColor: 'var(--ghost)' }} />
-        <div className="mt-7 text-center text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦方式</div>
-        <div className="mt-6">
+    <motion.div
+      className="absolute inset-0 z-20"
+      style={{ backgroundColor: 'rgba(8,12,24,0.97)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+    >
+      <button className="absolute inset-0" onClick={onClose} aria-label="关闭入梦方式" />
+      <div className="relative h-full px-7 pt-24 pb-10">
+        <div className="border-b pb-4 text-center" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-[10px] font-normal tracking-[0.42em]" style={{ color: 'var(--mist)' }}>今 夜 入 梦</div>
+          <div className="mt-4 text-center text-[12px] font-normal tracking-[0.4em] text-[#7088b0]">选择入梦方式</div>
+        </div>
+        <div className="mt-8">
           {items.map((item) => (
-            <button key={item.mode} onClick={() => onChoose(item.mode)} className="flex w-full items-start justify-between border-b border-[rgba(196,169,106,0.08)] px-8 py-5 text-left transition hover:bg-[rgba(196,169,106,0.03)]">
+            <button
+              key={item.mode}
+              onClick={() => onChoose(item.mode)}
+              className="flex w-full items-start justify-between border-b px-1 py-5 text-left transition hover:bg-[rgba(196,169,106,0.03)]"
+              style={{ borderColor: 'var(--border)' }}
+            >
               <div>
                 <div className="text-[16px] font-normal tracking-[0.14em] text-[#f4eee3]">{item.title}</div>
                 <div className="mt-2 text-[12px] font-normal leading-[1.9] tracking-[0.08em] text-[#7088b0]">{item.description}</div>
               </div>
-              <span className="pt-1 text-[#c8aa67]">◌</span>
+              <span className="pt-1" style={{ color: 'var(--gold)' }}>◌</span>
             </button>
           ))}
         </div>
-      </motion.div>
-    </div>
+        <button
+          onClick={onClose}
+          className="mt-8 text-[11px] font-normal tracking-[0.28em] transition"
+          style={{ color: 'var(--mist)' }}
+        >
+          返回今夜
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
