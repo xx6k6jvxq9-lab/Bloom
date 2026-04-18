@@ -133,7 +133,7 @@ function SplashScreen() {
 
 function HaloGlyph({ glyph }: { glyph: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.16),rgba(53,68,91,0.42)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.22)' }}>
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)' }}>
       {glyph}
       <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
       <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
@@ -161,7 +161,7 @@ function DreamAvatarArt({
 
 function HaloAvatar({ glyph, avatar }: { glyph: string; avatar: string }) {
   return (
-    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[radial-gradient(circle_at_42%_34%,rgba(218,197,143,0.16),rgba(53,68,91,0.42)_58%,rgba(6,10,18,0.96)_100%)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.22)' }}>
+    <div className="relative flex h-[112px] w-[112px] items-center justify-center rounded-full border bg-[rgba(8,12,24,0.38)] text-[40px] font-[300] text-[#f6efe4]" style={{ borderColor: 'rgba(196,169,106,0.18)' }}>
       {avatar ? <DreamAvatarArt avatar={avatar} alt={glyph} className="h-full w-full" imageClassName="scale-[1.02]" /> : glyph}
       <div className="absolute inset-[-16px] rounded-full border border-[rgba(196,169,106,0.08)]" />
       <div className="absolute inset-[-30px] rounded-full border border-[rgba(196,169,106,0.05)]" />
@@ -195,12 +195,12 @@ function HomeScreen({
             <motion.div key="selected-role" className="flex w-full flex-col items-center" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
               <div className="mt-14 text-[34px] font-[200] tracking-[0.16em] text-[#f5efe2] [text-shadow:0_0_8px_rgba(123,168,196,0.28)]">{selectedRole.name}</div>
               <div className="mt-3 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{selectedRole.status}</div>
-              <div className="relative mt-12 w-full max-w-[322px] border border-[rgba(196,169,106,0.1)] bg-[rgba(196,169,106,0.03)] px-6 py-7">
+              <div className="relative mt-12 w-full max-w-[322px] border px-6 py-7" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(196,169,106,0.02)' }}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#05080e] px-5 text-[10px] font-normal tracking-[0.4em] text-[#c4a96a]">今夜</div>
                 <div className="text-[15px] font-[300] tracking-[0.12em] text-[#f5efe2]">{availableLine}</div>
                 <div className="mt-3 text-[11px] font-normal tracking-[0.12em] text-[#7088b0]">{expireLine}</div>
               </div>
-              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border border-[rgba(196,169,106,0.18)] bg-[linear-gradient(180deg,rgba(196,169,106,0.06),rgba(196,169,106,0.03))] px-5 py-7 text-[13px] font-normal tracking-[0.5em] text-[#c8aa67] transition hover:bg-[linear-gradient(180deg,rgba(196,169,106,0.12),rgba(196,169,106,0.06))]">
+              <button onClick={onOpen} className="mt-14 w-full max-w-[440px] border px-5 py-7 text-[13px] font-normal tracking-[0.5em] transition" style={{ borderColor: 'var(--border-mid)', backgroundColor: 'transparent', color: 'var(--gold)' }}>
                 进入今夜
               </button>
             </motion.div>
@@ -414,24 +414,24 @@ function ConfirmScreen({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
-      <div className="text-[10px] font-normal tracking-[0.5em] text-[#6d82a7]">{domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}</div>
+      <div className="text-[10px] font-normal tracking-[0.5em]" style={{ color: 'var(--mist)' }}>{domainName} · {dreamDepth === 'shallow' ? '浅梦' : '深梦'}</div>
       <div className="mt-10 flex items-center gap-5">
-        <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
+        <div className="h-14 w-px" style={{ backgroundColor: 'var(--border-mid)' }} />
         <div className="flex h-[84px] w-[112px] items-center justify-center border text-[34px] font-light" style={{ borderColor: 'var(--border-mid)', color: 'var(--gold)' }}>
           {heroGlyph}
         </div>
-        <div className="h-14 w-px bg-[rgba(196,169,106,0.14)]" />
+        <div className="h-14 w-px" style={{ backgroundColor: 'var(--border-mid)' }} />
       </div>
-      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em] text-[#f4eee3] [text-shadow:0_0_8px_rgba(123,168,196,0.3)]">{heroName}</div>
-      <div className="mt-4 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{heroStatus}</div>
+      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em]" style={{ color: 'var(--paper)' }}>{heroName}</div>
+      <div className="mt-4 text-[12px] font-normal tracking-[0.16em]" style={{ color: 'var(--mist)' }}>{heroStatus}</div>
       <div className="mt-14 flex max-w-[520px] flex-wrap justify-center gap-3">
         {tags.map((tag) => (
-          <span key={tag} className="border border-[rgba(196,169,106,0.18)] px-5 py-2 text-[11px] font-normal tracking-[0.14em] text-[#d4b46f]">
+          <span key={tag} className="border px-5 py-2 text-[11px] font-normal tracking-[0.14em]" style={{ borderColor: 'var(--border-mid)', color: 'var(--gold)' }}>
             {tag}
           </span>
         ))}
       </div>
-      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.36)', backgroundColor: 'rgba(196,169,106,0.02)', color: 'var(--gold)' }}>
+      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.36)', backgroundColor: 'rgba(196,169,106,0.01)', color: 'var(--gold)' }}>
         确 认 入 梦
       </button>
       <button onClick={onBack} className="mt-6 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#c8aa67]">
@@ -469,7 +469,7 @@ function DreamConfirmScreen({
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-2 text-center">
-      <div className="text-[10px] font-normal tracking-[0.5em] text-[#6d82a7]">{isCharacterEntry ? '角色入梦 · 黑盒入场' : topLine}</div>
+      <div className="text-[10px] font-normal tracking-[0.5em]" style={{ color: 'var(--mist)' }}>{isCharacterEntry ? '角色入梦 · 黑盒入场' : topLine}</div>
       <div className="mt-10 flex items-center gap-6">
         <div className="h-20 w-px" style={{ background: 'linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)' }} />
         <div className="flex h-[118px] w-[118px] items-center justify-center border px-2 py-2 text-[34px] font-light" style={{ borderColor: 'var(--border-mid)', backgroundColor: 'rgba(196,169,106,0.015)', color: 'var(--gold)' }}>
@@ -483,8 +483,8 @@ function DreamConfirmScreen({
         </div>
         <div className="h-20 w-px" style={{ background: 'linear-gradient(180deg,transparent,rgba(196,169,106,0.2),transparent)' }} />
       </div>
-      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em] text-[#f4eee3] [text-shadow:0_0_10px_rgba(123,168,196,0.32)]">{heroName}</div>
-      <div className="mt-4 text-[12px] font-normal tracking-[0.16em] text-[#7088b0]">{isCharacterEntry ? '他的梦，他来决定' : heroStatus}</div>
+      <div className="mt-12 text-[24px] font-[200] tracking-[0.16em]" style={{ color: 'var(--paper)' }}>{heroName}</div>
+      <div className="mt-4 text-[12px] font-normal tracking-[0.16em]" style={{ color: 'var(--mist)' }}>{isCharacterEntry ? '他的梦，他来决定' : heroStatus}</div>
 
       {isCharacterEntry ? (
         <div className="mt-14 flex max-w-[520px] flex-col items-center text-[#7088b0]">
@@ -503,7 +503,7 @@ function DreamConfirmScreen({
         </div>
       )}
 
-      <button onClick={onStart} className="mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.38)', backgroundColor: 'rgba(196,169,106,0.02)', color: 'var(--gold)' }}>
+      <button onClick={onStart} className="relative mt-20 w-full max-w-[520px] border px-6 py-9 text-[14px] font-normal tracking-[0.62em] transition" style={{ borderColor: 'rgba(196,169,106,.38)', backgroundColor: 'rgba(196,169,106,0.01)', color: 'var(--gold)' }}>
         确 认 入 梦
       </button>
       <button onClick={onBack} className="mt-8 text-[11px] font-normal tracking-[0.28em] text-[#7088b0] transition hover:text-[#8aa8cf]">
