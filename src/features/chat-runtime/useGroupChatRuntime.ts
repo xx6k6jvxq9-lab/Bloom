@@ -318,7 +318,7 @@ function hasSenderCharacterId(message: ChatMessage): message is ChatMessage & { 
 }
 
 function parseActionCue(segment: string): {
-  kind: 'normal' | 'reply' | 'notice' | 'sticker';
+  kind: 'normal' | 'reply' | 'notice' | 'sticker' | 'recall';
   content: string;
   replyTargetName?: string;
 } {
@@ -338,6 +338,14 @@ function parseActionCue(segment: string): {
     return {
       kind: 'notice',
       content: noticeMatch[1].trim(),
+    };
+  }
+
+  const recallMatch = normalized.match(/^\[(?:recall|withdraw)\]\s*(.*)$/i);
+  if (recallMatch) {
+    return {
+      kind: 'recall',
+      content: recallMatch[1].trim(),
     };
   }
 
@@ -1103,13 +1111,22 @@ export function useGroupChatRuntime({
 
     const previousMessageBySpeaker = [...currentHistory]
       .reverse()
-      .find((message) => message.role === 'model' && message.senderCharacterId === speaker.id) || null;
+      .find((message) => message.role === 'model' && message.senderCharacterId === speaker.id && !message.isRecalled) || null;
     const quotedReplyKeysBySpeaker = new Set(
       currentHistory
         .filter((message) => message.role === 'model' && message.senderCharacterId === speaker.id)
         .map((message) => buildReplyTargetKey(message.replyTo))
         .filter((key): key is string => !!key),
     );
+
+    const shouldRecallPrevious = messages.some((message) => parseActionCue(getMessageMainText(message)).kind === 'recall');
+    const historyAfterRecall = shouldRecallPrevious
+      ? currentHistory.map((message) => (
+          previousMessageBySpeaker && message.timestamp === previousMessageBySpeaker.timestamp
+            ? { ...message, isRecalled: true }
+            : message
+        ))
+      : currentHistory;
 
     const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
@@ -1123,10 +1140,12 @@ export function useGroupChatRuntime({
         ? `[sticker] ${cue.content || '...'}`
         : cue.kind === 'reply'
           ? cue.content || rawContent
+          : cue.kind === 'recall'
+            ? cue.content
           : cue.content || rawContent;
 
       const candidateReplyPayload = forcedReplyTo
-        || (cue.replyTargetName ? resolveReplyTarget(cue.replyTargetName, currentHistory) : null);
+        || (cue.replyTargetName ? resolveReplyTarget(cue.replyTargetName, historyAfterRecall) : null);
       const candidateReplyKey = buildReplyTargetKey(candidateReplyPayload);
       const shouldDropRepeatedReply =
         (allowReplyOnFirstMessageOnly && index > 0)
@@ -1146,6 +1165,13 @@ export function useGroupChatRuntime({
         isSystem: cue.kind === 'notice' ? true : undefined,
         replyTo: replyPayload || undefined,
       };
+    }).filter((message) => {
+      if (message.isSystem || message.imageUrl) {
+        return true;
+      }
+
+      const mainText = getMessageMainText(message);
+      return mainText.trim().length > 0;
     });
 
     console.info('[group-chat] append speaker messages', {
@@ -1158,7 +1184,7 @@ export function useGroupChatRuntime({
         hasReplyTo: !!message.replyTo,
       })),
     });
-    setHistory((prevHistory) => [...prevHistory, ...structuredMessages]);
+    setHistory(() => [...historyAfterRecall, ...structuredMessages]);
     return structuredMessages;
   }, [resolveReplyTarget, setHistory]);
 

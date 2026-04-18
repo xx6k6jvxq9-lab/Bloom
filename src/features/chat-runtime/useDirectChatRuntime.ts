@@ -53,10 +53,29 @@ const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 
 function parseDirectActionCue(segment: string): {
-  kind: 'normal' | 'sticker';
+  kind: 'normal' | 'sticker' | 'reply' | 'recall';
   content: string;
+  replyTargetName?: string;
 } {
   const trimmed = segment.trim();
+  const normalized = trimmed.replace(/^[\s"'`“”‘’?!！？，、]+/, '');
+  const replyMatch = normalized.match(/^\[(?:quote|reply|reply to)\s*:\s*([^\]]+)\]\s*(.*)$/i);
+  if (replyMatch) {
+    return {
+      kind: 'reply',
+      replyTargetName: replyMatch[1].trim(),
+      content: replyMatch[2].trim(),
+    };
+  }
+
+  const recallMatch = normalized.match(/^\[(?:recall|withdraw)\]\s*(.*)$/i);
+  if (recallMatch) {
+    return {
+      kind: 'recall',
+      content: recallMatch[1].trim(),
+    };
+  }
+
   const stickerMatch = trimmed.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
   if (stickerMatch) {
     return {
@@ -69,6 +88,76 @@ function parseDirectActionCue(segment: string): {
     kind: 'normal',
     content: trimmed,
   };
+}
+
+function resolveDirectReplyTarget(
+  targetName: string | undefined,
+  history: ChatMessage[],
+  userLabel: string,
+  modelLabel: string,
+): ChatMessage['replyTo'] | null {
+  const normalizedTarget = targetName?.trim().toLowerCase();
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  const latestUserMessage = [...history].reverse().find((message) => message.role === 'user' && !message.isSystem && !message.isRecalled);
+  const latestModelMessage = [...history].reverse().find((message) => message.role === 'model' && !message.isSystem && !message.isRecalled);
+
+  if (['user', '我', '你', userLabel.trim().toLowerCase(), '刚才那句', '上一句'].includes(normalizedTarget) && latestUserMessage) {
+    return createQuoteReplyPayload(latestUserMessage, {
+      userLabel,
+      modelLabel,
+    });
+  }
+
+  if (['ta', '你自己', '上一条', '刚才那条', modelLabel.trim().toLowerCase()].includes(normalizedTarget) && latestModelMessage) {
+    return createQuoteReplyPayload(latestModelMessage, {
+      userLabel,
+      modelLabel,
+    });
+  }
+
+  return null;
+}
+
+function hasDirectRecallCue(
+  text: string,
+  options: {
+    assistantAliases?: string[];
+    maxDirectReplyBubbles?: number;
+  } = {},
+): boolean {
+  const trimmedText = text.trim();
+  if (!trimmedText || trimmedText.startsWith('[GAME_CARD]') || parseTransferProtocol(trimmedText)) {
+    return false;
+  }
+
+  const legacyTranslationParts = getLegacyTranslationParts(text);
+  const mainText = stripAssistantSpeakerPrefix(
+    sanitizePipeMarkers(legacyTranslationParts.mainText, '\n'),
+    options.assistantAliases || [],
+  );
+
+  return splitDirectAssistantReplyText(mainText, options.maxDirectReplyBubbles)
+    .some((part) => parseDirectActionCue(part).kind === 'recall');
+}
+
+function markLatestVisibleModelMessageRecalled(messages: ChatMessage[]): ChatMessage[] {
+  const targetIndex = [...messages]
+    .reverse()
+    .findIndex((message) => message.role === 'model' && !message.isSystem && !message.isRecalled);
+
+  if (targetIndex === -1) {
+    return messages;
+  }
+
+  const actualIndex = messages.length - 1 - targetIndex;
+  return messages.map((message, index) => (
+    index === actualIndex
+      ? { ...message, isRecalled: true }
+      : message
+  ));
 }
 
 function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies'>): number {
@@ -245,6 +334,9 @@ const splitStreamingModelResponseIntoMessages = (
     assistantAliases?: string[];
     availableStickers?: string[];
     maxDirectReplyBubbles?: number;
+    currentHistory?: ChatMessage[];
+    userLabel?: string;
+    modelLabel?: string;
   } = {}
 ): ChatMessage[] => {
   if (options.isInnerVoice) {
@@ -286,21 +378,37 @@ const splitStreamingModelResponseIntoMessages = (
     options.assistantAliases || [],
   );
   const parts = splitDirectAssistantReplyText(mainText, options.maxDirectReplyBubbles);
-
-  return parts.map((part, index) => {
+  const mappedMessages = parts.map((part, index) => {
     const cue = parseDirectActionCue(part);
     const pickedSticker = cue.kind === 'sticker'
       ? pickAssistantSticker(cue.content, options.availableStickers || [])
       : null;
+    const replyTo = cue.kind === 'reply'
+      ? resolveDirectReplyTarget(
+          cue.replyTargetName,
+          options.currentHistory || [],
+          options.userLabel || '你',
+          options.modelLabel || '对方',
+        )
+      : undefined;
+    const bodyText = cue.kind === 'recall'
+      ? cue.content
+      : cue.kind === 'reply'
+        ? cue.content || part
+        : cue.content || part;
 
     return {
       role: 'model' as const,
-      text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : cue.content || part,
+      text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : bodyText,
       ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
+      ...(replyTo ? { replyTo } : {}),
       ...(index === parts.length - 1 && legacyTranslationParts.translation ? { translation: legacyTranslationParts.translation } : {}),
       timestamp: baseTimestamp + index,
     };
   });
+
+  const visibleMessages = mappedMessages.filter((message) => (message.text || '').trim().length > 0 || !!message.imageUrl);
+  return visibleMessages;
 };
 
 function parseGameCardData(text: string) {
@@ -480,15 +588,25 @@ export function useDirectChatRuntime({
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
+          const shouldRecallPrevious = hasDirectRecallCue(text, {
+            assistantAliases: [character.name, character.remarkName?.trim() || ''],
+            maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
+          });
           const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId, {
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: character.stickers || [],
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
+            currentHistory: messages,
+            userLabel: userName,
+            modelLabel: character.name,
           });
-          const nextMessages = messages.filter(msg =>
+          const baseMessages = messages.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
           );
+          const nextMessages = shouldRecallPrevious
+            ? markLatestVisibleModelMessageRecalled(baseMessages)
+            : baseMessages;
           renderedAssistantMessageCount = nextAssistantMessages.length;
           return [...nextMessages, ...nextAssistantMessages];
         };
@@ -566,6 +684,7 @@ export function useDirectChatRuntime({
             sections: [
               buildDirectResumeModePrompt(characterTemporalState.continuityMode),
               ...(chatSceneInput.sections || []),
+              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
           });
@@ -786,16 +905,26 @@ export function useDirectChatRuntime({
 
     const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
       const displayText = stripPseudoMomentPrefix(text);
+      const shouldRecallPrevious = hasDirectRecallCue(displayText, {
+        assistantAliases: [character.name, character.remarkName?.trim() || ''],
+        maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
+      });
       const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         availableStickers: character.stickers || [],
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
+        currentHistory: messages,
+        userLabel: userName,
+        modelLabel: character.name,
       });
-      const nextMessages = messages.filter(msg =>
+      const baseMessages = messages.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
       );
+      const nextMessages = shouldRecallPrevious
+        ? markLatestVisibleModelMessageRecalled(baseMessages)
+        : baseMessages;
       renderedAssistantMessageCount = nextAssistantMessages.length;
       return [...nextMessages, ...nextAssistantMessages];
     };
@@ -912,6 +1041,7 @@ export function useDirectChatRuntime({
         sections: [
           buildDirectResumeModePrompt(characterTemporalState.continuityMode),
           ...(chatSceneInput.sections || []),
+          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
           buildAssistantStickerPromptSection(character.stickers || []),
         ].filter(Boolean),
       });
