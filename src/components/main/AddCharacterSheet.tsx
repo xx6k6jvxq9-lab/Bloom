@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, ImagePlus, Upload } from 'lucide-react';
 import type { Character } from '../../types';
@@ -22,7 +22,7 @@ const CHARACTER_FIELD_LIMITS = {
   importText: 20000,
 } as const;
 
-const MAX_CHARACTER_IMPORT_TEXT_FILE_SIZE = 512 * 1024;
+const MAX_CHARACTER_IMPORT_TEXT_FILE_SIZE = 2 * 1024 * 1024;
 const MAX_CHARACTER_IMPORT_PNG_FILE_SIZE = 8 * 1024 * 1024;
 
 function ResolvedAssetImage({
@@ -89,7 +89,7 @@ const parseLooseCharacterImport = (raw: string) => {
       return parsed as Record<string, unknown>;
     }
   } catch {
-    // Fallback to labeled text/markdown parsing.
+    // Fallback to labeled text parsing.
   }
 
   const sections: Record<string, string> = {};
@@ -139,85 +139,86 @@ const toRecord = (value: unknown): Record<string, unknown> => {
 
 const pickFirstText = (...values: unknown[]) => {
   for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return '';
 };
 
-const joinSections = (...values: Array<string | false | null | undefined>) =>
-  values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join('\n\n');
+const joinSections = (...values: (string | false | null | undefined)[]) =>
+  values
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n\n')
+    .trim();
 
-const decodeLatin1 = (bytes: Uint8Array) => String.fromCharCode(...bytes);
+const readAscii = (bytes: Uint8Array) => String.fromCharCode(...bytes);
 
-const decodeBase64Utf8 = (value: string) => {
-  const binary = atob(value);
+const decodeBase64Utf8 = (raw: string) => {
+  const binary = atob(raw);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   return new TextDecoder('utf-8').decode(bytes);
 };
 
-const parsePngTextChunks = (buffer: ArrayBuffer) => {
+const extractTavernCharacterData = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
-  const textDecoder = new TextDecoder('utf-8');
-  const entries = new Map<string, string[]>();
+  const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+  const hasValidSignature = pngSignature.every((byte, index) => bytes[index] === byte);
+  if (!hasValidSignature) throw new Error('这不是有效的 PNG 文件');
+
   let offset = 8;
+  const metadata = new Map<string, string[]>();
 
-  while (offset + 8 <= bytes.length) {
-    const length = new DataView(buffer, offset, 4).getUint32(0);
-    const type = decodeLatin1(bytes.slice(offset + 4, offset + 8));
+  while (offset + 12 <= bytes.length) {
+    const view = new DataView(buffer, offset, 8);
+    const chunkLength = view.getUint32(0);
+    const chunkType = readAscii(bytes.slice(offset + 4, offset + 8));
     const dataStart = offset + 8;
-    const dataEnd = dataStart + length;
+    const dataEnd = dataStart + chunkLength;
 
-    if (dataEnd > bytes.length) break;
+    if (dataEnd + 4 > bytes.length) break;
 
-    if (type === 'tEXt' || type === 'iTXt') {
-      const chunk = bytes.slice(dataStart, dataEnd);
-      let key = '';
-      let value = '';
-
-      if (type === 'tEXt') {
-        const separatorIndex = chunk.indexOf(0);
-        if (separatorIndex >= 0) {
-          key = decodeLatin1(chunk.slice(0, separatorIndex));
-          value = decodeLatin1(chunk.slice(separatorIndex + 1));
-        }
-      } else {
-        const separatorIndex = chunk.indexOf(0);
-        if (separatorIndex >= 0) {
-          key = decodeLatin1(chunk.slice(0, separatorIndex));
-          let cursor = separatorIndex + 1;
-          const compressionFlag = chunk[cursor] ?? 0;
-          cursor += 2;
-
-          while (cursor < chunk.length && chunk[cursor] !== 0) cursor += 1;
-          cursor += 1;
-          while (cursor < chunk.length && chunk[cursor] !== 0) cursor += 1;
-          cursor += 1;
-
-          const textBytes = chunk.slice(cursor);
-          if (compressionFlag === 0) {
-            value = textDecoder.decode(textBytes);
-          }
-        }
-      }
-
-      if (key && value) {
-        const current = entries.get(key) ?? [];
-        current.push(value);
-        entries.set(key, current);
+    if (chunkType === 'tEXt') {
+      const data = bytes.slice(dataStart, dataEnd);
+      const separatorIndex = data.indexOf(0);
+      if (separatorIndex > 0) {
+        const keyword = new TextDecoder('latin1').decode(data.slice(0, separatorIndex));
+        const text = new TextDecoder('latin1').decode(data.slice(separatorIndex + 1));
+        metadata.set(keyword, [...(metadata.get(keyword) || []), text]);
       }
     }
 
-    if (type === 'IEND') break;
+    if (chunkType === 'iTXt') {
+      const data = bytes.slice(dataStart, dataEnd);
+      let cursor = 0;
+      const keywordEnd = data.indexOf(0, cursor);
+      if (keywordEnd > 0) {
+        const keyword = new TextDecoder('latin1').decode(data.slice(cursor, keywordEnd));
+        cursor = keywordEnd + 1;
+        const compressionFlag = data[cursor++];
+        cursor += 1; // compression method
+        const languageEnd = data.indexOf(0, cursor);
+        if (languageEnd < 0) {
+          offset = dataEnd + 4;
+          continue;
+        }
+        cursor = languageEnd + 1;
+        const translatedKeywordEnd = data.indexOf(0, cursor);
+        if (translatedKeywordEnd < 0) {
+          offset = dataEnd + 4;
+          continue;
+        }
+        cursor = translatedKeywordEnd + 1;
+        const textBytes = data.slice(cursor);
+        if (compressionFlag === 0) {
+          const text = new TextDecoder('utf-8').decode(textBytes);
+          metadata.set(keyword, [...(metadata.get(keyword) || []), text]);
+        }
+      }
+    }
+
     offset = dataEnd + 4;
+    if (chunkType === 'IEND') break;
   }
 
-  return entries;
-};
-
-const extractTavernCharacterData = (buffer: ArrayBuffer) => {
-  const metadata = parsePngTextChunks(buffer);
   const rawPayload =
     metadata.get('chara')?.[0] ||
     metadata.get('CHARA')?.[0] ||
@@ -225,7 +226,7 @@ const extractTavernCharacterData = (buffer: ArrayBuffer) => {
     metadata.get('CCV3')?.[0];
 
   if (!rawPayload) {
-    throw new Error('这张 PNG 里没有找到酒馆角色卡数据');
+    throw new Error('这不是有效的酒馆角色卡 PNG，图片里没有角色卡数据');
   }
 
   const trimmed = rawPayload.trim();
@@ -234,7 +235,7 @@ const extractTavernCharacterData = (buffer: ArrayBuffer) => {
   return toRecord(parsed);
 };
 
-const normalizeTavernCardImport = (raw: Record<string, unknown>) => {
+const normalizeTavernCharacterCardImport = (raw: Record<string, unknown>) => {
   const cardData = toRecord(raw.data);
   const source = Object.keys(cardData).length ? cardData : raw;
 
@@ -329,7 +330,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
     try {
       onSave(buildImportedCharacter(importJson));
     } catch (e: any) {
-      alert('导入失败: ' + e.message);
+      alert(`导入失败：${e.message}`);
     }
   };
 
@@ -338,12 +339,12 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
     const isPngCard = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
 
     if (!isPngCard && file.size > MAX_CHARACTER_IMPORT_TEXT_FILE_SIZE) {
-      alert('导入失败: 文本文件请控制在 512KB 以内。');
+      alert('导入失败：文本角色文件请控制在 2MB 以内。');
       return;
     }
 
     if (isPngCard && file.size > MAX_CHARACTER_IMPORT_PNG_FILE_SIZE) {
-      alert('导入失败: 酒馆 PNG 角色卡请控制在 8MB 以内。');
+      alert('导入失败：酒馆 PNG 整套角色卡请控制在 8MB 以内。');
       return;
     }
 
@@ -351,11 +352,11 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       try {
         const [buffer, dataUrl] = await Promise.all([file.arrayBuffer(), readFileAsDataUrl(file)]);
         const rawCard = extractTavernCharacterData(buffer);
-        const normalized = normalizeTavernCardImport(rawCard);
+        const normalized = normalizeTavernCharacterCardImport(rawCard);
         setImportJson(JSON.stringify(rawCard, null, 2).slice(0, CHARACTER_FIELD_LIMITS.importText));
         onSave(buildImportedCharacterFromData(normalized, { avatar: dataUrl }));
       } catch (e: any) {
-        alert('导入失败: ' + e.message);
+        alert(`导入失败：${e.message}`);
       }
       return;
     }
@@ -367,7 +368,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
         setImportJson(raw.slice(0, CHARACTER_FIELD_LIMITS.importText));
         onSave(buildImportedCharacter(raw));
       } catch (e: any) {
-        alert('导入失败: ' + e.message);
+        alert(`导入失败：${e.message}`);
       }
     };
     reader.readAsText(file);
@@ -380,14 +381,9 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
           <button onClick={view === 'import' ? () => setView('edit') : onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
           </button>
-          <h1 className="text-[18px] font-bold text-zinc-900">
-            {view === 'edit' ? '创建角色' : '导入角色'}
-          </h1>
+          <h1 className="text-[18px] font-bold text-zinc-900">{view === 'edit' ? '创建角色' : '导入角色'}</h1>
         </div>
-        <button
-          onClick={view === 'edit' ? handleSave : handleImport}
-          className="text-[15px] font-semibold text-zinc-900 active:opacity-70"
-        >
+        <button onClick={view === 'edit' ? handleSave : handleImport} className="text-[15px] font-semibold text-zinc-900 active:opacity-70">
           {view === 'edit' ? '保存' : '导入'}
         </button>
       </div>
@@ -419,7 +415,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                   >
                     确认
                   </button>
-                  <label className="cursor-pointer rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-center text-[14px] font-medium text-zinc-700 active:opacity-80">
+                  <label className="rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-center text-[14px] font-medium text-zinc-700 active:opacity-80 cursor-pointer">
                     上传图片
                     <input
                       type="file"
@@ -428,55 +424,45 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setAvatar(reader.result as string);
-                          setAvatarDraft('');
-                        };
-                        reader.readAsDataURL(file);
+                        readFileAsDataUrl(file)
+                          .then((url) => setAvatar(url))
+                          .catch((error) => alert(error.message || '图片读取失败'));
+                        e.currentTarget.value = '';
                       }}
                     />
                   </label>
                 </div>
               </div>
-
-              <div className="w-full flex flex-col items-center gap-0.5">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.name))}
-                  placeholder="角色名称"
-                  className="bg-transparent px-2 text-center text-[15px] font-bold text-zinc-900 border-none outline-none rounded focus:ring-1 focus:ring-zinc-100"
-                />
-                <span className="text-[10px] text-zinc-400">点击名称可修改</span>
-              </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="space-y-1.5">
-                <label className="ml-1 text-[13px] text-zinc-500">备注</label>
+                <label className="ml-1 text-[13px] text-zinc-500">角色名称</label>
                 <input
-                  type="text"
-                  value={remarkName}
-                  onChange={(e) => setRemarkName(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.remarkName))}
+                  value={name}
+                  onChange={(e) => setName(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.name))}
                   placeholder="例如：阿白、学长、小周"
                   className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
                 />
-                <p className="text-right text-[12px] text-zinc-400">{remarkName.length}/{CHARACTER_FIELD_LIMITS.remarkName}</p>
+                <p className="text-right text-[12px] text-zinc-400">{name.length}/{CHARACTER_FIELD_LIMITS.name}</p>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <label className="ml-1 text-[13px] text-zinc-500">性别</label>
-                <div className="flex gap-2">
-                  {(['male', 'female', 'other'] as const).map((value) => (
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: '男', value: 'male' as const },
+                    { label: '女', value: 'female' as const },
+                    { label: '其他', value: 'other' as const },
+                  ].map((option) => (
                     <button
-                      key={value}
-                      onClick={() => setGender(value)}
-                      className={`flex-1 rounded-xl border py-2.5 text-[14px] font-medium transition-all ${
-                        gender === value ? 'border-zinc-200 bg-zinc-100 text-zinc-800' : 'border-zinc-100 bg-zinc-50 text-zinc-500'
+                      key={option.value}
+                      onClick={() => setGender(option.value)}
+                      className={`rounded-xl border px-4 py-3 text-[14px] font-medium transition-all ${
+                        gender === option.value ? 'border-zinc-200 bg-zinc-100 text-zinc-800' : 'border-zinc-100 bg-zinc-50 text-zinc-500'
                       }`}
                     >
-                      {value === 'male' ? '男' : value === 'female' ? '女' : '其他'}
+                      {option.label}
                     </button>
                   ))}
                 </div>
@@ -488,9 +474,9 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                   value={setting}
                   onChange={(e) => setSetting(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.setting))}
                   placeholder="写这个角色是谁、怎么说话、关系气质和核心设定..."
-                  className="min-h-[120px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
+                  className="min-h-[160px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
                 />
-                <p className="ml-1 text-[12px] text-zinc-400">先写完整设定，后续可在设置里继续细化。</p>
+                <p className="text-[12px] text-zinc-400">先写完整设定，后续可在设置里细化。</p>
                 <p className="text-right text-[12px] text-zinc-400">{setting.length}/{CHARACTER_FIELD_LIMITS.setting}</p>
               </div>
 
@@ -500,7 +486,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                   value={signature}
                   onChange={(e) => setSignature(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.signature))}
                   placeholder="这个角色在资料页里显示的一句话签名..."
-                  className="min-h-[80px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
+                  className="min-h-[90px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
                 />
                 <p className="text-right text-[12px] text-zinc-400">{signature.length}/{CHARACTER_FIELD_LIMITS.signature}</p>
               </div>
@@ -551,7 +537,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                 </button>
                 <label className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-3.5 text-[14px] font-medium text-zinc-500 active:bg-zinc-50">
                   <ImagePlus size={18} />
-                  导入酒馆 PNG 角色卡
+                  导入角色卡（支持 PNG）
                   <input
                     type="file"
                     accept=".png,image/png"
@@ -579,7 +565,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
             </div>
             <div className="space-y-3 px-1">
               <p className="text-[12px] text-zinc-400">
-                支持 `JSON / TXT / Markdown / 酒馆 PNG 角色卡`。PNG 会自动读取卡内设定，并把图片本身当成角色头像和人设图。
+                支持 `JSON / TXT / Markdown / 酒馆 PNG 角色卡`。酒馆卡会同时导入卡内设定与 PNG 图片本身；普通 PNG 图片上传请走上面的头像入口。
               </p>
               <p className="text-right text-[12px] text-zinc-400">
                 {importJson.length}/{CHARACTER_FIELD_LIMITS.importText}
@@ -599,7 +585,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                 />
               </label>
               <p className="text-[12px] text-zinc-400">
-                文本导入建议控制在 512KB 内；酒馆 PNG 角色卡建议控制在 8MB 内。
+                文本角色文件建议控制在 2MB 内；酒馆 PNG 整套角色卡建议控制在 8MB 内。没有角色卡数据的普通 PNG 不会按酒馆卡导入。
               </p>
             </div>
           </div>
