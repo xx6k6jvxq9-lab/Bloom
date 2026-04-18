@@ -48,6 +48,20 @@ function getMomentImageCardStyle(theme: 'polaroid' | 'film' | 'note' | 'poster')
   }
 }
 
+function shouldRenderMomentDescriptionPhoto(theme: 'polaroid' | 'film' | 'note' | 'poster') {
+  return theme === 'film' || theme === 'poster';
+}
+
+function getMomentDescriptionPhotoStyle(theme: 'polaroid' | 'film' | 'note' | 'poster') {
+  switch (theme) {
+    case 'poster':
+      return 'bg-[linear-gradient(180deg,#e5e7eb,#d4d4d8_52%,#f4f4f5)] text-zinc-700';
+    case 'film':
+    default:
+      return 'bg-[linear-gradient(180deg,#eef2f6,#dbe4ee_56%,#f8fafc)] text-zinc-700';
+  }
+}
+
 export function MomentsApp({
   appData,
   setAppData,
@@ -549,12 +563,28 @@ export function MomentsApp({
                 <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
 
                 {moment.imageCard && (
-                  <div className={`mt-3 overflow-hidden rounded-[22px] border border-zinc-200/70 p-3 shadow-sm ${getMomentImageCardStyle(moment.imageCard.theme)}`}>
-                    <div className="mb-3 rounded-[18px] border border-white/30 bg-white/10 px-4 py-10 text-center backdrop-blur-sm">
-                      <p className="text-[18px] font-semibold tracking-[0.08em]">{moment.imageCard.title}</p>
+                  shouldRenderMomentDescriptionPhoto(moment.imageCard.theme) ? (
+                    <div className="mt-3 overflow-hidden rounded-[24px] border border-zinc-200/80 bg-white p-2 shadow-sm">
+                      <div className={`relative aspect-[4/5] overflow-hidden rounded-[18px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] ${getMomentDescriptionPhotoStyle(moment.imageCard.theme)}`}>
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.42),transparent_46%),linear-gradient(180deg,transparent,rgba(255,255,255,0.2))]" />
+                        <div className="absolute left-3 top-3 rounded-full bg-black/8 px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] text-zinc-600 backdrop-blur-sm">
+                          图片描述
+                        </div>
+                        <div className="absolute inset-x-5 top-1/2 -translate-y-1/2 rounded-[22px] border border-white/65 bg-white/55 px-5 py-6 text-center shadow-[0_16px_32px_rgba(148,163,184,0.18)] backdrop-blur-md">
+                          <p className="text-[19px] font-medium leading-[1.7] tracking-[0.04em] text-zinc-700">
+                            {moment.imageCard.description}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[13px] leading-relaxed opacity-90">{moment.imageCard.description}</p>
-                  </div>
+                  ) : (
+                    <div className={`mt-3 overflow-hidden rounded-[22px] border border-zinc-200/70 p-3 shadow-sm ${getMomentImageCardStyle(moment.imageCard.theme)}`}>
+                      <div className="mb-3 rounded-[18px] border border-white/30 bg-white/10 px-4 py-10 text-center backdrop-blur-sm">
+                        <p className="text-[18px] font-semibold tracking-[0.08em]">{moment.imageCard.title}</p>
+                      </div>
+                      <p className="text-[13px] leading-relaxed opacity-90">{moment.imageCard.description}</p>
+                    </div>
+                  )
                 )}
 
                 {moment.images && moment.images.length > 0 && (

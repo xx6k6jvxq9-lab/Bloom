@@ -678,6 +678,8 @@ export type MomentImageCard = {
   title: string;
   description: string;
   theme: 'polaroid' | 'film' | 'note' | 'poster';
+  layout?: 'card' | 'described-photo';
+  overlayText?: string;
 };
 
 export type MomentItem = {
