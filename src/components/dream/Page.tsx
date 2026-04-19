@@ -1,5 +1,4 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Moon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Character } from '../../types';
@@ -133,19 +132,14 @@ function DreamStars() {
   return <canvas ref={ref} className="pointer-events-none absolute inset-0 z-0 h-full w-full" />;
 }
 
-function Shell({ time, children, bottomTone = true }: { time: string; children: React.ReactNode; bottomTone?: boolean }) {
+function Shell({ time: _time, children, bottomTone = true }: { time: string; children: React.ReactNode; bottomTone?: boolean }) {
   return (
-    <div className="relative mx-auto min-h-screen w-full max-w-[390px] overflow-hidden bg-[var(--ink)] text-[var(--paper)]" style={dreamThemeStyle}>
+    <div className="relative min-h-screen w-full overflow-hidden bg-[var(--ink)] text-[var(--paper)]" style={dreamThemeStyle}>
       <DreamStars />
       <div className="pointer-events-none fixed inset-0 z-[5] opacity-[0.025]" style={{ backgroundImage: dreamNoise, backgroundRepeat: 'repeat', mixBlendMode: 'screen' }} />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
-      <div className="relative z-10 flex min-h-screen flex-col px-7 pb-8 pt-5">
-        <div className="mb-6 flex items-start justify-between text-[10px] tracking-[0.5em] text-[var(--mist)]">
-          <div className="text-[28px] font-[500] tracking-[-0.06em] text-[var(--paper)]">{time}</div>
-          <div className="pt-1">DREAM APP</div>
-          <div className="flex h-10 w-10 items-center justify-center border border-[var(--border)] text-[var(--gold)]"><Moon size={15} strokeWidth={1.2} /></div>
-        </div>
+      <div className="relative z-10 flex min-h-screen flex-col px-7 pb-8 pt-8">
         {children}
       </div>
     </div>
