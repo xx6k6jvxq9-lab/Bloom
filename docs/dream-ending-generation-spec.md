@@ -1,5 +1,7 @@
 # 梦尾摘录生成规范
 
+> 总方案与梦域/轮次/标签/回流等完整设计，见 [dream-app-full-spec.md](/e:/小手机/Bloom/docs/dream-app-full-spec.md:1)
+
 ## 目标
 
 梦境 App 的结局页不使用“短语录”结构，而使用可截图分享的结尾卡结构：
