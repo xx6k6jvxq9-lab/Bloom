@@ -13,6 +13,18 @@ type ActiveDreamChoice = DreamGeneratedChoice & {
   reaction: string;
 };
 
+type DreamEndingView = {
+  title: string;
+  excerpt: string;
+  chapter: string;
+};
+
+type DreamAftermathView = {
+  summary: string;
+  detail: string;
+  previewMessages: [string, string];
+};
+
 type DreamStage =
   | 'splash'
   | 'home'
@@ -347,6 +359,29 @@ function DreamNarrativeBlocks({
       })}
     </div>
   );
+}
+
+function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string): DreamEndingView {
+  const { storyFrame, endingInput } = scenario;
+  return {
+    title: storyFrame.worldTitle || scenario.coverTitle || '今夜',
+    excerpt:
+      endingInput.keyActionSummary ||
+      `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || '你'} 的这场梦，最终停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
+    chapter: `《${endingInput.endingDirection || storyFrame.dreamRelationship || '梦局未竟'}》`,
+  };
+}
+
+function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAftermathView {
+  return {
+    summary: scenario.aftermathInput.relationshipShift || '这场梦会在醒来后留下轻微的关系回响。',
+    detail:
+      scenario.aftermathInput.toneDrift || scenario.aftermathInput.messagePreviewDirection || '明日的聊天语气会沿着这场梦发生偏移。',
+    previewMessages: [
+      scenario.aftermathInput.messagePreviewDirection || '我还记得昨晚梦里的那一段。',
+      scenario.storyFrame.openingNode || '你醒来之后，会先想起哪个瞬间？',
+    ],
+  };
 }
 
 function Home({ time: _time, role: _role, onPickRole: _onPickRole, onEnter: _onEnter }: { time: string; role: DreamRole | null; onPickRole: () => void; onEnter: () => void }) {
@@ -848,6 +883,8 @@ export function DreamAppPage({
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const sceneBlocks = act?.narrative.pages[0]?.blocks ?? [];
+  const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name) : scenario.ending;
+  const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
   const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
   const reactionText = useTypewriter(
     reactionFullText,
@@ -1505,13 +1542,13 @@ export function DreamAppPage({
                   <div className="h-px w-8 bg-[var(--gold)]" />
                   <div className="h-px flex-1 bg-[rgba(196,169,106,.16)]" />
                 </div>
-                <div className="mt-10 text-[48px] font-[200] tracking-[0.08em] text-[var(--paper)]">{scenario.ending.title}</div>
+                <div className="mt-10 text-[48px] font-[200] tracking-[0.08em] text-[var(--paper)]">{endingView.title}</div>
                 <div className="mx-auto mt-10 max-w-[420px] text-left text-[15px] font-[300] leading-[2.85] tracking-[0.08em] text-[var(--paper-60)]">
-                  {scenario.ending.excerpt}
+                  {endingView.excerpt}
                 </div>
                 <div className="mx-auto mt-10 h-px w-16 bg-[rgba(196,169,106,.14)]" />
                 <div className="mt-10 text-right text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
-                <div className="mt-4 text-right text-[12px] tracking-[0.22em] text-[var(--gold)]">{scenario.ending.chapter}</div>
+                <div className="mt-4 text-right text-[12px] tracking-[0.22em] text-[var(--gold)]">{endingView.chapter}</div>
               </div>
               <div className="mt-10 grid gap-4 px-8">
                 <SealButton label="截 图 分 享 这 一 页" onClick={() => setStage('aftermath')} />
@@ -1546,7 +1583,7 @@ export function DreamAppPage({
                   </div>
                 </div>
                 <div className="mt-5 space-y-3">
-                  {scenario.aftermath.previewMessages.map((message, index) => (
+                  {aftermathView.previewMessages.map((message, index) => (
                     <div
                       key={`${message}-${index}`}
                       className="max-w-[92%] border px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]"
@@ -1566,8 +1603,8 @@ export function DreamAppPage({
               </div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">余响</div>
-                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{scenario.aftermath.summary}</div>
-                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{scenario.aftermath.detail}</div>
+                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{aftermathView.summary}</div>
+                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{aftermathView.detail}</div>
                 <div className="mt-5 border-t border-[rgba(123,168,196,.16)] pt-4 text-[11px] tracking-[0.24em] text-[var(--jade)]">轻微关系温度变化 · 语气漂移</div>
               </div>
               <div className="mt-8"><SealButton label="再入一梦" onClick={restart} /></div>

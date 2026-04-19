@@ -10,7 +10,7 @@ function computeShallowActCount(seed: string) {
 
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, memoryLayers, resolvedSelection, domainRule, worldBookPrompt, maskPrompt } = promptInput;
+  const { characterContext, memoryLayers, resolvedSelection, domainRule, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -72,6 +72,21 @@ ${domainRule}
 
 标签摘要：
 ${tagSummary || '未选择标签'}
+
+标签分类读取：
+- 背景层（世界/题材/场景/阵营/NPC）：${tagCategoryContext.background.join(' / ') || '未提供'}
+- 身份层（梦中新身份/参与人数）：${tagCategoryContext.identities.join(' / ') || '未提供'}
+- 关系层（关系张力/主导权）：${tagCategoryContext.relationships.join(' / ') || '未提供'}
+- 驱动层（剧情怎么推进/互动方式/互动强度）：${tagCategoryContext.drives.join(' / ') || '未提供'}
+- 氛围层（情绪底色/结局倾向）：${tagCategoryContext.moods.join(' / ') || '未提供'}
+
+分类使用规则：
+1. 背景层必须决定这局梦是什么世界、什么环境、是否有阵营或第三方势力。
+2. 身份层必须决定用户和角色在梦中的新身份，优先级高于现实原身份。
+3. 关系层必须决定梦内关系，优先级高于现实关系称谓。
+4. 驱动层必须决定主线目标、推进方式和每幕选项的方向差异。
+5. 氛围层必须决定正文质感、台词气味和结局走向。
+6. 用户勾选过的标签必须都被读到，不能只挑其中一两个。
 
 本局展示风格：
 - layoutId: ${presentation.layout.id}

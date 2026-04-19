@@ -1,4 +1,6 @@
 import type { Mask, WorldBookEntry } from '../../types';
+import { dreamTagGroups } from '../../components/dream/dreamContent';
+import type { DreamTagCategory } from '../../components/dream/types';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
@@ -34,6 +36,47 @@ function buildDomainRule(domainId: GenerateDreamScenarioOptions['selection']['do
   }
 }
 
+function resolveTagLabels(category: DreamTagCategory, ids: string[]) {
+  const group = dreamTagGroups.find((item) => item.category === category);
+  if (!group) return [];
+  return group.options.filter((option) => ids.includes(option.id)).map((option) => option.label);
+}
+
+function buildTagCategoryContext(selectedTags: Record<DreamTagCategory, string[]>) {
+  const background = [
+    ...resolveTagLabels('world', selectedTags.world ?? []),
+    ...resolveTagLabels('genre', selectedTags.genre ?? []),
+    ...resolveTagLabels('climate', selectedTags.climate ?? []),
+    ...resolveTagLabels('camp', selectedTags.camp ?? []),
+    ...resolveTagLabels('faction', selectedTags.faction ?? []),
+  ];
+  const identities = [
+    ...resolveTagLabels('identity', selectedTags.identity ?? []),
+    ...resolveTagLabels('participants', selectedTags.participants ?? []),
+  ];
+  const relationships = [
+    ...resolveTagLabels('tension', selectedTags.tension ?? []),
+    ...resolveTagLabels('lead', selectedTags.lead ?? []),
+  ];
+  const drives = [
+    ...resolveTagLabels('drive', selectedTags.drive ?? []),
+    ...resolveTagLabels('interaction', selectedTags.interaction ?? []),
+    ...resolveTagLabels('intensity', selectedTags.intensity ?? []),
+  ];
+  const moods = [
+    ...resolveTagLabels('mood', selectedTags.mood ?? []),
+    ...resolveTagLabels('ending', selectedTags.ending ?? []),
+  ];
+
+  return {
+    background,
+    identities,
+    relationships,
+    drives,
+    moods,
+  };
+}
+
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
@@ -47,12 +90,14 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
     options.selection,
     `${options.character.id}-${options.selection.domainId}-${options.selection.depth}-${options.selection.entryMode}`,
   );
+  const tagCategoryContext = buildTagCategoryContext(resolvedSelection.selectedTags);
 
   return {
     resolvedSelection,
     domainRule: buildDomainRule(resolvedSelection.domainId),
     characterContext,
     memoryLayers,
+    tagCategoryContext,
     worldBookPrompt: characterContext.worldBookPrompt || '未提供',
     maskPrompt: characterContext.maskPrompt || '未提供',
   };
