@@ -33,19 +33,19 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
 8. 不要生成越界内容，不要变成聊天记录。
 
 当前角色：
-- 角色名: ${character.remarkName?.trim() || character.name}
-- 角色核心人设: ${character.corePersona?.trim() || character.setting?.trim() || '暂无'}
+- 角色名：${character.remarkName?.trim() || character.name}
+- 角色核心人设：${character.corePersona?.trim() || character.setting?.trim() || '暂无'}
 
 当前幕：
-- 标题: ${act.label}
-- 场景正文: ${act.scene}
-- 角色状态: ${act.charState}
+- 标题：${act.label}
+- 场景正文：${act.scene}
+- 角色状态：${act.charState}
 
 本次正文样式：
 - layoutId: ${layout.id}
 - layoutName: ${layout.name}
 - layoutDescription: ${layout.description}
-- 推荐 block 顺序: ${layout.suggestedBlocks.join(' -> ')}
+- 推荐 block 顺序：${layout.suggestedBlocks.join(' -> ')}
 
 本次梦主题色：
 - themeId: ${theme.id}

@@ -17,7 +17,7 @@ export const dreamThemePresets: DreamThemePreset[] = [
   { id: 'crimson-veil', name: '绯幕', accent: '#D88E8E', accentSoft: 'rgba(216,142,142,.16)', dialogueText: '#F2B5B5', frameBorder: 'rgba(216,142,142,.48)', frameFill: 'rgba(28,13,15,.58)' },
   { id: 'moon-silver', name: '月银', accent: '#C7CBD6', accentSoft: 'rgba(199,203,214,.16)', dialogueText: '#E4E8F1', frameBorder: 'rgba(199,203,214,.42)', frameFill: 'rgba(20,22,28,.54)' },
   { id: 'sea-glass', name: '海玻璃', accent: '#7FC7C2', accentSoft: 'rgba(127,199,194,.16)', dialogueText: '#B7ECE7', frameBorder: 'rgba(127,199,194,.44)', frameFill: 'rgba(10,24,24,.56)' },
-  { id: 'pearl-lilac', name: '珠丁香', accent: '#C5B0DA', accentSoft: 'rgba(197,176,218,.16)', dialogueText: '#E1D1F1', frameBorder: 'rgba(197,176,218,.46)', frameFill: 'rgba(21,16,29,.56)' },
+  { id: 'pearl-lilac', name: '珍珠丁香', accent: '#C5B0DA', accentSoft: 'rgba(197,176,218,.16)', dialogueText: '#E1D1F1', frameBorder: 'rgba(197,176,218,.46)', frameFill: 'rgba(21,16,29,.56)' },
   { id: 'sunset-copper', name: '落铜', accent: '#CF9169', accentSoft: 'rgba(207,145,105,.16)', dialogueText: '#E9BC9D', frameBorder: 'rgba(207,145,105,.46)', frameFill: 'rgba(28,18,12,.58)' },
   { id: 'frost-cyan', name: '霜青', accent: '#8FCFE3', accentSoft: 'rgba(143,207,227,.16)', dialogueText: '#BFE9F6', frameBorder: 'rgba(143,207,227,.45)', frameFill: 'rgba(10,19,26,.54)' },
   { id: 'olive-gold', name: '苔金', accent: '#B8B06F', accentSoft: 'rgba(184,176,111,.16)', dialogueText: '#DDD59B', frameBorder: 'rgba(184,176,111,.44)', frameFill: 'rgba(24,22,12,.56)' },

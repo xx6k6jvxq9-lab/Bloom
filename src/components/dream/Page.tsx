@@ -3,14 +3,16 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch
 
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
-import type { DreamGeneratedChoice, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import type { DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
 
 type ActiveDreamChoice = DreamGeneratedChoice & {
   reaction: string;
+  fromCustom?: boolean;
 };
 
 type DreamEndingView = {
@@ -364,10 +366,11 @@ function DreamNarrativeBlocks({
 function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string, userName: string): DreamEndingView {
   const { storyFrame, endingInput } = scenario;
   const resolvedUserName = userName.trim() || '你';
+  const normalizedSummary = (endingInput.keyActionSummary || '').replaceAll('用户', resolvedUserName);
   return {
     title: storyFrame.worldTitle || scenario.coverTitle || '今夜',
     excerpt:
-      endingInput.keyActionSummary ||
+      normalizedSummary ||
       `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || resolvedUserName} 的这场梦，最终停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
     chapter: `《${endingInput.endingDirection || storyFrame.dreamRelationship || '梦局未竟'}》`,
   };
@@ -383,6 +386,12 @@ function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAfterma
       scenario.storyFrame.openingNode || '你醒来之后，会先想起哪个瞬间？',
     ],
   };
+}
+
+function upsertDreamAct(acts: DreamRuntimeAct[], nextAct: DreamRuntimeAct, index: number) {
+  const cloned = [...acts];
+  cloned[index] = nextAct;
+  return cloned;
 }
 
 function Home({ time: _time, role: _role, onPickRole: _onPickRole, onEnter: _onEnter }: { time: string; role: DreamRole | null; onPickRole: () => void; onEnter: () => void }) {
@@ -866,6 +875,12 @@ export function DreamAppPage({
   const [actIndex, setActIndex] = useState(0);
   const [selectedChoice, setSelectedChoice] = useState<ActiveDreamChoice | null>(null);
   const [previewChoiceId, setPreviewChoiceId] = useState<string | null>(null);
+  const [customInput, setCustomInput] = useState('');
+  const [customInputOpen, setCustomInputOpen] = useState(false);
+  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+  const [isGeneratingNextAct, setIsGeneratingNextAct] = useState(false);
+  const [isEndingDeepDream, setIsEndingDeepDream] = useState(false);
+  const [closingActId, setClosingActId] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -886,6 +901,9 @@ export function DreamAppPage({
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const sceneBlocks = act?.narrative.pages[0]?.blocks ?? [];
+  const isDeepDream = runtimeScenario?.depth === 'deep';
+  const isClosingAct = Boolean(act && closingActId && act.id === closingActId);
+  const isLastGeneratedAct = Boolean(runtimeScenario && actIndex === runtimeScenario.acts.length - 1);
   const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : scenario.ending;
   const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
   const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
@@ -955,6 +973,8 @@ export function DreamAppPage({
         setLoadingProgress(100);
         setActIndex(0);
         setSelectedChoice(null);
+        setClosingActId(null);
+        setCustomInput('');
         window.setTimeout(() => {
           if (!cancelled) setStage('scene');
         }, 260);
@@ -975,6 +995,7 @@ export function DreamAppPage({
   useEffect(() => {
     if (stage !== 'choices') {
       setPreviewChoiceId(null);
+      setCustomInputOpen(false);
       if (choiceHoldTimerRef.current) {
         window.clearTimeout(choiceHoldTimerRef.current);
         choiceHoldTimerRef.current = null;
@@ -1034,11 +1055,165 @@ export function DreamAppPage({
     });
   };
 
-  const goNextFromReaction = () => {
+  const continueDeeper = async () => {
+    if (!runtimeScenario || !selectedCharacter || !selectedChoice) return;
+    setLoadingError(null);
+    setIsGeneratingNextAct(true);
+    try {
+      const payload = await generateDreamContinuation({
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
+        scenario: runtimeScenario,
+        actIndex,
+        mode: 'deeper',
+        selectedChoice,
+      });
+
+      if (!payload.nextAct) {
+        throw new Error('深梦续写没有返回下一幕。');
+      }
+
+      setRuntimeScenario((prev) =>
+        prev
+          ? {
+              ...prev,
+              acts: [...prev.acts, payload.nextAct!],
+            }
+          : prev,
+      );
+      setActIndex((prev) => prev + 1);
+      setSelectedChoice(null);
+      setStage('scene');
+    } catch (error) {
+      setLoadingError(error instanceof Error ? error.message : '深梦继续失败');
+    } finally {
+      setIsGeneratingNextAct(false);
+    }
+  };
+
+  const submitCustomChoice = async () => {
+    if (!runtimeScenario || !selectedCharacter || !act || !customInput.trim()) return;
+    const needsNextAct = isDeepDream || actIndex < runtimeScenario.acts.length - 1;
+    setLoadingError(null);
+    setIsSubmittingCustom(true);
+    try {
+      const payload = await generateDreamContinuation({
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
+        scenario: runtimeScenario,
+        actIndex,
+        mode: 'custom',
+        userInput: customInput.trim(),
+      });
+
+      if (needsNextAct) {
+        if (!payload.nextAct) {
+          throw new Error('自定义续写没有返回下一幕。');
+        }
+
+        setRuntimeScenario((prev) =>
+          prev
+            ? {
+                ...prev,
+                acts: upsertDreamAct(prev.acts, payload.nextAct!, actIndex + 1),
+              }
+            : prev,
+        );
+      }
+
+      setSelectedChoice({
+        id: `custom-${Date.now()}`,
+        title: '自定义描述',
+        direction: '按你的描述推进',
+        detail: customInput.trim(),
+        reactionHint: payload.reactionText || '梦按你的描述发生了偏转。',
+        storyPush: payload.storyPush || payload.nextAct?.progression.plotAdvance || act.progression.plotAdvance || '主线沿着你的输入继续下沉。',
+        emotion: payload.emotion || '回响',
+        reaction: payload.reactionText || '梦按你的描述继续往下走。',
+        fromCustom: true,
+      });
+      setCustomInput('');
+      setCustomInputOpen(false);
+      setStage('reaction');
+    } catch (error) {
+      setLoadingError(error instanceof Error ? error.message : '自定义续写失败');
+    } finally {
+      setIsSubmittingCustom(false);
+    }
+  };
+
+  const endDeepDream = async () => {
+    if (!runtimeScenario || !selectedCharacter) return;
+    setLoadingError(null);
+    setIsEndingDeepDream(true);
+    try {
+      const payload = await generateDreamContinuation({
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
+        scenario: runtimeScenario,
+        actIndex,
+        mode: 'deep-end',
+        selectedChoice,
+      });
+
+      if (!payload.finalAct || !payload.endingInput || !payload.aftermathInput) {
+        throw new Error('深梦收束没有返回完整的最后一幕与结局。');
+      }
+
+      setRuntimeScenario((prev) =>
+        prev
+          ? {
+              ...prev,
+              acts: [...prev.acts, payload.finalAct!],
+              endingInput: payload.endingInput!,
+              aftermathInput: payload.aftermathInput!,
+            }
+          : prev,
+      );
+      setClosingActId(payload.finalAct.id);
+      setActIndex(runtimeScenario.acts.length);
+      setSelectedChoice(null);
+      setStage('scene');
+    } catch (error) {
+      setLoadingError(error instanceof Error ? error.message : '结束做梦失败');
+    } finally {
+      setIsEndingDeepDream(false);
+    }
+  };
+
+  const goNextFromReaction = async () => {
     if (actIndex < scenario.acts.length - 1) {
       setActIndex((prev) => prev + 1);
       setSelectedChoice(null);
       setStage('scene');
+      return;
+    }
+    if (isDeepDream && !isClosingAct) {
+      await continueDeeper();
       return;
     }
     setStage('ending');
@@ -1054,6 +1229,13 @@ export function DreamAppPage({
     setSelectedChoice(null);
     setPreviewChoiceId(null);
     setLoadingProgress(0);
+    setCustomInput('');
+    setCustomInputOpen(false);
+    setIsSubmittingCustom(false);
+    setIsGeneratingNextAct(false);
+    setIsEndingDeepDream(false);
+    setClosingActId(null);
+    setRuntimeScenario(null);
     setStage('home');
   };
 
@@ -1388,6 +1570,10 @@ export function DreamAppPage({
                       <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
                         节点：{storyFrame.openingNode}
                       </div>
+                      {storyFrame.timeNode ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">时点：{storyFrame.timeNode}</div> : null}
+                      {storyFrame.currentCrisis ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">危机：{storyFrame.currentCrisis}</div> : null}
+                      {storyFrame.forbiddenRule ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">规则：{storyFrame.forbiddenRule}</div> : null}
+                      {storyFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.dialogueText }}>此幕目标：{storyFrame.immediateGoal}</div> : null}
                       <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
                         主线：{storyFrame.storyObjective}
                       </div>
@@ -1401,7 +1587,20 @@ export function DreamAppPage({
                   </div>
                 </div>
               </div>
-              <div className="mt-10"><SealButton label="进入选择" onClick={() => setStage('choices')} /></div>
+              {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
+              <div className="mt-10">
+                <SealButton label={isClosingAct ? '进 入 结 局' : '进 入 选 择'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} />
+              </div>
+              {isDeepDream && !isClosingAct ? (
+                <div className="mt-4">
+                  <SecondaryAction
+                    label={isEndingDeepDream ? '正 在 收 梦' : '结 束 做 梦'}
+                    onClick={() => {
+                      void endDeepDream();
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           </Shell>
         )}
@@ -1448,9 +1647,7 @@ export function DreamAppPage({
                         <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{['一', '二', '三'][index]}</div>
                         <div className="min-w-0">
                           <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div>
-                          <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">
-                            {previewing ? `预感：${choice.emotion}。${choice.detail}` : choice.detail}
-                          </div>
+                          <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{choice.detail}</div>
                         </div>
                       </div>
                     </button>
@@ -1458,7 +1655,7 @@ export function DreamAppPage({
                 })}
                 <button
                   type="button"
-                  disabled
+                  onClick={() => setCustomInputOpen((prev) => !prev)}
                   className="w-full border px-5 py-5 text-left opacity-70"
                   style={{
                     borderColor: 'rgba(123,168,196,.18)',
@@ -1473,6 +1670,38 @@ export function DreamAppPage({
                     </div>
                   </div>
                 </button>
+                {customInputOpen ? (
+                  <div className="border px-5 py-5" style={{ borderColor: 'rgba(123,168,196,.18)', backgroundColor: 'rgba(10,14,24,.82)' }}>
+                    <textarea
+                      value={customInput}
+                      onChange={(event) => setCustomInput(event.target.value)}
+                      placeholder={act.choiceSet.custom.placeholder}
+                      className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)] outline-none placeholder:text-[var(--mist)]"
+                    />
+                    <div className="mt-4 text-[12px] leading-[2] tracking-[0.12em] text-[var(--mist)]">
+                      这里输入的是你这一幕想怎么做、怎么说、想把梦推向哪边。
+                    </div>
+                    <div className="mt-5 grid gap-3">
+                      <SealButton
+                        label={isSubmittingCustom ? '正 在 续 写' : '提 交 自 定 义'}
+                        onClick={() => {
+                          void submitCustomChoice();
+                        }}
+                        disabled={isSubmittingCustom || !customInput.trim()}
+                      />
+                      <SecondaryAction label="收 起 输 入" onClick={() => setCustomInputOpen(false)} />
+                    </div>
+                  </div>
+                ) : null}
+                {loadingError ? <div className="text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
+                {isDeepDream ? (
+                  <SecondaryAction
+                    label={isEndingDeepDream ? '正 在 收 梦' : '结 束 做 梦'}
+                    onClick={() => {
+                      void endDeepDream();
+                    }}
+                  />
+                ) : null}
               </div>
             </div>
           </Shell>
@@ -1523,9 +1752,34 @@ export function DreamAppPage({
                   {selectedChoice.emotion}
                 </span>
               </div>
+              {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-8">
-                <SealButton label={reactionText.length >= reactionFullText.length ? '继续  →' : '反应正在浮出'} onClick={goNextFromReaction} disabled={reactionText.length < reactionFullText.length} />
+                <SealButton
+                  label={
+                    reactionText.length < reactionFullText.length
+                      ? '反 应 正 在 浮 出'
+                      : isDeepDream && isLastGeneratedAct && !isClosingAct
+                        ? isGeneratingNextAct
+                          ? '正 在 下 沉'
+                          : '沉 向 更 深 一 幕'
+                        : '继 续  →'
+                  }
+                  onClick={() => {
+                    void goNextFromReaction();
+                  }}
+                  disabled={reactionText.length < reactionFullText.length || isGeneratingNextAct}
+                />
               </div>
+              {isDeepDream && !isClosingAct ? (
+                <div className="mt-4">
+                  <SecondaryAction
+                    label={isEndingDeepDream ? '正 在 收 梦' : '结 束 做 梦'}
+                    onClick={() => {
+                      void endDeepDream();
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           </Shell>
         )}

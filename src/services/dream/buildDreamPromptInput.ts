@@ -24,15 +24,15 @@ function resolveActiveWorldBooks(characterId: string, worldBooks: WorldBookEntry
 function buildDomainRule(domainId: GenerateDreamScenarioOptions['selection']['domainId']) {
   switch (domainId) {
     case 'crowd':
-      return '众生梦：强调外部世界、第三方势力、公共事件感、场面推进和夜城/群像结构。选项应更偏站队、追查、介入、试探。';
+      return '众生梦：强调外部世界、第三方势力、公共事件、群像结构和夜城流动感。选项更偏站队、追查、介入、试探。';
     case 'threshold':
-      return '歧境梦：强调现实轻微失真、熟悉中的异常、错位感与规则偏移。选项应偏确认异常、维持表面、接近真相、进入裂缝。';
+      return '歧境梦：强调现实轻微失真、熟悉中的异常、错位感与规则偏移。选项偏确认异常、维持表面、靠近真相、进入裂缝。';
     case 'shared':
-      return '同梦域：强调双人共同在场、关系拉扯、陪伴与共振。选项应偏并肩、靠近、试探、一起进入下一层。';
+      return '同梦域：强调双人共同在场、关系拉扯、陪伴、试探与共振。选项偏并肩、靠近、互试、一起进入下一层。';
     case 'rift':
-      return '心隙梦：强调进入角色内层、黑盒感、秘密、执念和不可说。选项应偏碰秘密、保留沉默、逼近真意、看见裂缝。';
+      return '心隙梦：强调进入角色内层、秘密、执念、无法直说的裂缝。选项偏触碰秘密、保留沉默、逼近真意、看见裂口。';
     default:
-      return '梦域规则：围绕当前梦域的叙事职责生成，不要写成普通聊天场景。';
+      return '围绕当前梦域的叙事职责生成，不要写成普通聊天场景。';
   }
 }
 

@@ -57,6 +57,10 @@ export type DreamStoryFrame = {
   storyObjective: string;
   coreConflict: string;
   realityAnchor: string;
+  timeNode: string;
+  currentCrisis: string;
+  forbiddenRule: string;
+  immediateGoal: string;
 };
 
 export type DreamPresentation = {
@@ -88,6 +92,9 @@ export type DreamRuntimeScenario = {
   coverTitle: string;
   coverSubtitle: string;
   confirmHint: string;
+  depth: DreamDepth;
+  entryMode: DreamEntryMode;
+  domainId: DreamDomainId;
   storyFrame: DreamStoryFrame;
   presentation: DreamPresentation;
   acts: DreamRuntimeAct[];
@@ -101,4 +108,24 @@ export type GenerateDreamScenarioOptions = {
   masks: Mask[];
   worldBooks: WorldBookEntry[];
   selection: DreamSelection;
+};
+
+export type DreamContinuationMode = 'custom' | 'deeper' | 'deep-end';
+
+export type GenerateDreamContinuationOptions = GenerateDreamScenarioOptions & {
+  scenario: DreamRuntimeScenario;
+  actIndex: number;
+  mode: DreamContinuationMode;
+  userInput?: string;
+  selectedChoice?: DreamGeneratedChoice | null;
+};
+
+export type DreamContinuationPayload = {
+  reactionText?: string;
+  emotion?: string;
+  storyPush?: string;
+  nextAct?: DreamRuntimeAct;
+  finalAct?: DreamRuntimeAct;
+  endingInput?: DreamEndingInput;
+  aftermathInput?: DreamAftermathInput;
 };
