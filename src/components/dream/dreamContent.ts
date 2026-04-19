@@ -20,9 +20,35 @@ export const dreamTagGroups: DreamTagGroup[] = [
   { category: 'tension', label: '关系张力', max: 2, options: [{ id: 'unfinished', label: '旧情未止' }, { id: 'forced', label: '强制同行' }, { id: 'forbidden', label: '禁忌靠近' }, { id: 'reversal', label: '主从倒置' }] },
   { category: 'drive', label: '剧情驱动', max: 2, options: [{ id: 'appointment', label: '赴约' }, { id: 'investigate', label: '追查' }, { id: 'bet', label: '博弈' }, { id: 'unawake', label: '未醒' }] },
   { category: 'mood', label: '情绪底色', max: 2, options: [{ id: 'restraint', label: '克制' }, { id: 'danger', label: '危险' }, { id: 'pull', label: '拉扯' }, { id: 'fate', label: '宿命' }, { id: 'secret', label: '诡秘' }] },
+  {
+    category: 'faction',
+    label: 'NPC / 阵营',
+    max: 2,
+    detailed: true,
+    options: [
+      { id: 'court', label: '宫廷派系' },
+      { id: 'school', label: '学院序列' },
+      { id: 'company', label: '财团势力' },
+      { id: 'resistance', label: '流亡同盟' },
+      { id: 'watchers', label: '观察者' },
+    ],
+  },
+  {
+    category: 'identity',
+    label: '角色身份',
+    max: 2,
+    detailed: true,
+    options: [
+      { id: 'heir', label: '继承者' },
+      { id: 'guard', label: '守夜人' },
+      { id: 'guide', label: '引路者' },
+      { id: 'prisoner', label: '被困者' },
+      { id: 'double', label: '伪装者' },
+    ],
+  },
   { category: 'lead', label: '角色主导度', max: 1, detailed: true, options: [{ id: 'character-lead', label: '角色主导' }, { id: 'balanced', label: '势均力敌' }, { id: 'player-lead', label: '由你主导' }] },
   { category: 'intensity', label: '互动强度', max: 1, detailed: true, options: [{ id: 'light', label: '轻触' }, { id: 'medium', label: '中等' }, { id: 'strong', label: '强烈' }] },
-  { category: 'ending', label: '梦尾倾向', max: 1, detailed: true, options: [{ id: 'open', label: '开放式' }, { id: 'echo', label: '回响式' }, { id: 'break', label: '断裂式' }] },
+  { category: 'ending', label: '结局倾向', max: 1, detailed: true, options: [{ id: 'open', label: '开放式' }, { id: 'echo', label: '回响式' }, { id: 'break', label: '断裂式' }] },
 ];
 
 export const defaultTagSelection: Record<DreamTagCategory, string[]> = {
@@ -31,6 +57,8 @@ export const defaultTagSelection: Record<DreamTagCategory, string[]> = {
   tension: ['unfinished'],
   drive: ['investigate'],
   mood: ['restraint'],
+  faction: ['watchers'],
+  identity: ['guide'],
   lead: ['balanced'],
   intensity: ['medium'],
   ending: ['echo'],

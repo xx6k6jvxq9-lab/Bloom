@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+﻿import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Character } from '../../types';
@@ -25,6 +25,14 @@ type DreamRole = {
   avatar: string;
   mood: string;
   glyph: string;
+};
+
+type DreamEntryOption = {
+  id: DreamEntryMode;
+  title: string;
+  detail: string;
+  glyph: string;
+  advanced?: boolean;
 };
 
 const dreamThemeStyle = {
@@ -132,14 +140,24 @@ function DreamStars() {
   return <canvas ref={ref} className="pointer-events-none absolute inset-0 z-0 h-full w-full" />;
 }
 
-function Shell({ time: _time, children, bottomTone = true }: { time: string; children: React.ReactNode; bottomTone?: boolean }) {
+function Shell({
+  time: _time,
+  children,
+  bottomTone = true,
+  scrollable = true,
+}: {
+  time: string;
+  children: React.ReactNode;
+  bottomTone?: boolean;
+  scrollable?: boolean;
+}) {
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[var(--ink)] text-[var(--paper)]" style={dreamThemeStyle}>
+    <div className="relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-[var(--ink)] text-[var(--paper)]" style={dreamThemeStyle}>
       <DreamStars />
       <div className="pointer-events-none fixed inset-0 z-[5] opacity-[0.025]" style={{ backgroundImage: dreamNoise, backgroundRepeat: 'repeat', mixBlendMode: 'screen' }} />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
-      <div className="relative z-10 flex min-h-screen flex-col px-7 pb-8 pt-8">
+      <div className={`relative z-10 flex h-[100dvh] min-h-[100dvh] flex-col px-7 pb-8 pt-8 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''}`}>
         {children}
       </div>
     </div>
@@ -147,17 +165,23 @@ function Shell({ time: _time, children, bottomTone = true }: { time: string; chi
 }
 
 function Avatar({ role, secret, small = false }: { role?: DreamRole | null; secret?: boolean; small?: boolean }) {
-  const outer = small ? 'h-16 w-16' : 'h-40 w-40';
-  const inner = small ? 'h-14 w-14' : 'h-32 w-32';
+  const outer = small ? 'h-[88px] w-[88px]' : 'h-[168px] w-[168px]';
+  const inner = small ? 'h-[74px] w-[74px]' : 'h-[88px] w-[88px]';
   return (
     <div className={`relative flex ${outer} items-center justify-center`}>
-      <div className="absolute inset-0 border border-[var(--border)] opacity-60" />
-      <div className="absolute inset-[14%] border border-[var(--border)] opacity-40" />
-      <div className={`relative flex ${inner} items-center justify-center border border-[rgba(196,169,106,.25)] bg-[rgba(13,18,32,.9)]`} style={{ boxShadow: 'inset 0 0 12px rgba(196,169,106,.08)' }}>
+      <div className="absolute inset-[-28px] rounded-full border border-[rgba(196,169,106,.05)] animate-[pulse_6s_ease-in-out_infinite]" />
+      <div className="absolute inset-[-14px] rounded-full border border-[var(--border)] animate-[pulse_5.2s_ease-in-out_infinite]" />
+      <div
+        className={`relative flex ${inner} items-center justify-center rounded-full border border-[var(--border-mid)]`}
+        style={{
+          background:
+            'radial-gradient(circle at 40% 38%, rgba(196,169,106,.35), rgba(123,168,196,.15) 55%, transparent 75%)',
+        }}
+      >
         {secret ? (
           <span className="text-[40px] font-[200] text-[var(--gold)]">?</span>
         ) : role?.avatar ? (
-          <img alt={role.name} src={role.avatar} className="h-full w-full object-contain p-2" />
+          <img alt={role.name} src={role.avatar} className="h-full w-full rounded-full object-cover" />
         ) : (
           <span className={`${small ? 'text-[24px]' : 'text-[56px]'} font-[200] text-[var(--paper)]`}>{role?.glyph || '梦'}</span>
         )}
@@ -168,33 +192,60 @@ function Avatar({ role, secret, small = false }: { role?: DreamRole | null; secr
 
 function SealButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" disabled={disabled} onClick={onClick} className="group relative w-full border border-[rgba(196,169,106,.4)] px-6 py-5 text-center text-[13px] font-[400] tracking-[0.7em] text-[var(--gold)] transition duration-300 disabled:opacity-30" style={{ backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'rgba(13,18,32,.7)' }}>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="group relative w-full overflow-hidden border border-[var(--border-mid)] px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] text-[var(--gold)] transition duration-500 active:scale-[0.99] disabled:opacity-30"
+      style={{ backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: 'var(--gold)' }}
+    >
+      <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 bg-[rgba(196,169,106,.14)] transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" />
       <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
-      <span className="relative">{label}</span>
+      <span className="relative transition duration-500 group-hover:tracking-[0.62em] group-active:tracking-[0.62em]">{label}</span>
     </button>
   );
 }
 
-function Home({ time, role, onPickRole, onEnter }: { time: string; role: DreamRole | null; onPickRole: () => void; onEnter: () => void }) {
+function Home({ time: _time, role: _role, onPickRole: _onPickRole, onEnter: _onEnter }: { time: string; role: DreamRole | null; onPickRole: () => void; onEnter: () => void }) {
+  return null;
+}
+/*
+function HomeLegacyDeadCode() {
   return (
     <Shell time={time}>
       <div className="flex flex-1 flex-col">
-        <div className="pt-4 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
-        <div className="mt-7 text-[28px] font-[300] tracking-[0.16em] text-[var(--mist)]">23:14</div>
+        <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
+          <div>{time}</div>
+          <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
+        </div>
+        <div className="pt-2 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
         <div className="flex flex-1 flex-col items-center justify-center gap-6 py-8 text-center">
           <button type="button" onClick={onPickRole}><Avatar role={role} /></button>
           {role ? (
             <>
-              <div className="space-y-2">
-                <div className="text-[22px] font-[200] tracking-[0.18em] text-[var(--paper)]">{role.name}</div>
-                <div className="text-[13px] font-[300] tracking-[0.18em] text-[var(--mist)]">今夜在做梦</div>
+              <div className="hidden">
+              <div className="hidden">
+                <div className="text-[22px] font-[300] tracking-[0.18em] text-[var(--paper)]">{role.name}</div>
+                <div className="text-[12px] font-[300] tracking-[0.18em] text-[var(--mist)]">今夜在做梦</div>
               </div>
-              <div className="w-full max-w-[320px] border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-5 text-center">
-                <div className="mx-auto -mt-8 mb-3 inline-block bg-[var(--ink)] px-3 text-[11px] tracking-[0.4em] text-[var(--gold)]">今夜</div>
-                <div className="text-[17px] font-[300] leading-[2] text-[var(--paper)]">有一场梦等待进入</div>
-                <div className="mt-2 text-[12px] tracking-[0.18em] text-[var(--mist)]">梦将于 06:00 消散</div>
+              <div className="relative w-full max-w-[320px] border border-[var(--border)] bg-[rgba(196,169,106,.04)] px-7 py-5 text-center">
+                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-[var(--ink)] px-3 text-[10px] tracking-[0.4em] text-[var(--gold)]">今夜</div>
+                <div className="text-[15px] font-[300] leading-[2] tracking-[0.12em] text-[var(--paper)]">有一场梦等待进入</div>
+                <div className="mt-2 text-[11px] tracking-[0.12em] text-[var(--mist)]">梦将于 06:00 消散</div>
+              </div>
+              <div className="w-full max-w-[334px]"><SealButton label="进入今夜" onClick={onEnter} /></div>
+              <div className="hidden">
+                <div className="text-[22px] font-[300] tracking-[0.18em] text-[var(--paper)]">{role.name}</div>
+                <div className="text-[13px] font-[300] tracking-[0.18em] text-[var(--mist)]">浠婂鍦ㄥ仛姊?/div>
+              </div>
+              <div className="hidden">
+              <div className="hidden w-full max-w-[320px] border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-5 text-center">
+                <div className="mx-auto -mt-8 mb-3 inline-block bg-[var(--ink)] px-3 text-[11px] tracking-[0.4em] text-[var(--gold)]">浠婂</div>
+                <div className="text-[17px] font-[300] leading-[2] text-[var(--paper)]">鏈変竴鍦烘ⅵ绛夊緟杩涘叆</div>
+                <div className="mt-2 text-[12px] tracking-[0.18em] text-[var(--mist)]">姊﹀皢浜?06:00 娑堟暎</div>
               </div>
               <div className="w-full max-w-[334px]"><SealButton label="进 入 今 夜" onClick={onEnter} /></div>
+              </div>
             </>
           ) : (
             <div className="pt-2 text-[14px] font-[300] tracking-[0.22em] text-[var(--mist)]">点击头像，选择今夜入梦的角色</div>
@@ -215,6 +266,393 @@ function Home({ time, role, onPickRole, onEnter }: { time: string; role: DreamRo
   );
 }
 
+*/
+function HomeV2({ time, role, onPickRole, onEnter }: { time: string; role: DreamRole | null; onPickRole: () => void; onEnter: () => void }) {
+  return (
+    <Shell time={time}>
+      <div className="flex flex-1 flex-col">
+        <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
+          <div>{time}</div>
+          <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
+        </div>
+        <div className="pt-2 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 py-8 text-center">
+          <button type="button" onClick={onPickRole}>
+            <Avatar role={role} />
+          </button>
+          {role ? (
+            <>
+              <div className="space-y-2">
+                <div className="text-[22px] font-[300] tracking-[0.18em] text-[var(--paper)]">{role.name}</div>
+                <div className="text-[12px] font-[300] tracking-[0.18em] text-[var(--mist)]">今夜在做梦</div>
+              </div>
+              <div className="relative w-full max-w-[320px] border border-[var(--border)] bg-[rgba(196,169,106,.04)] px-7 py-5 text-center">
+                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-[var(--ink)] px-3 text-[10px] tracking-[0.4em] text-[var(--gold)]">今夜</div>
+                <div className="text-[15px] font-[300] leading-[2] tracking-[0.12em] text-[var(--paper)]">有一场梦等待进入</div>
+                <div className="mt-2 text-[11px] tracking-[0.12em] text-[var(--mist)]">梦将于 06:00 消散</div>
+              </div>
+              <div className="w-full max-w-[334px]">
+                <SealButton label="进入今夜" onClick={onEnter} />
+              </div>
+            </>
+          ) : (
+            <div className="pt-2 text-[14px] font-[300] tracking-[0.22em] text-[var(--mist)]">点击头像，选择今夜入梦的角色</div>
+          )}
+        </div>
+        <div className="mt-auto border-t border-[var(--border)] pt-4">
+          <div className="grid grid-cols-3 text-center text-[12px] tracking-[0.28em] text-[var(--mist)]">
+            {['今夜', '残响', '深层'].map((tab, index) => (
+              <div key={tab} className="space-y-2">
+                <div className={index === 0 ? 'text-[var(--gold)]' : ''}>{tab}</div>
+                <div className="mx-auto h-[4px] w-[4px] border border-[var(--border)]">{index === 0 ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function TagsStageV2({
+  time,
+  selectedRole,
+  dreamDepth,
+  setDreamDepth,
+  selectedTags,
+  toggleTag,
+  detailExpanded,
+  setDetailExpanded,
+  selectedLabels,
+  onBack,
+  onConfirm,
+}: {
+  time: string;
+  selectedRole: DreamRole;
+  dreamDepth: DreamDepth;
+  setDreamDepth: (depth: DreamDepth) => void;
+  selectedTags: Record<DreamTagCategory, string[]>;
+  toggleTag: (category: DreamTagCategory, optionId: string, max: number) => void;
+  detailExpanded: boolean;
+  setDetailExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedLabels: string[];
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Shell time={time} scrollable>
+      <div className="flex flex-1 flex-col pb-28">
+        <div className="flex items-center gap-5 border-b border-[var(--border)] pb-5 pt-1 [&>*:nth-child(n+4)]:hidden">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-[30px] font-[500] leading-none text-[var(--gold-bright)]"
+            style={{ textShadow: '0 0 18px rgba(196,169,106,.38)', opacity: 1 }}
+          >
+            ←
+          </button>
+          <div className="text-[16px] tracking-[0.24em] text-[var(--gold)]">自定义入梦</div>
+          <div className="flex-1" />
+          <button type="button" onClick={onBack} className="hidden text-[20px] leading-none text-[var(--jade)]">
+            ‹
+          </button>
+          <div className="text-[16px] tracking-[0.24em] text-[var(--gold)]">自定义入梦</div>
+        </div>
+
+        <div className="mt-8 border-b border-[var(--border)] pb-7">
+          <div className="mb-6 flex items-center gap-4">
+            <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">梦型</div>
+            <div className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { id: 'shallow', title: '浅梦', detail: '4-5 轮，一局一结，更像短篇。' },
+              { id: 'deep', title: '深梦', detail: '更长更沉，幕与幕之间会继续下去。' },
+            ] as const).map((item) => {
+              const active = dreamDepth === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setDreamDepth(item.id)}
+                  className="border px-4 py-4 text-left transition duration-300"
+                  style={{
+                    borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
+                    backgroundColor: active ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.65)',
+                  }}
+                >
+                  <div className={`text-[15px] tracking-[0.18em] ${active ? 'text-[var(--gold-bright)]' : 'text-[var(--jade)]'}`}>{item.title}</div>
+                  <div className="mt-2 text-[11px] leading-[1.8] tracking-[0.08em] text-[var(--mist)]">{item.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-9">
+          {dreamTagGroups
+            .filter((group) => !group.detailed)
+            .map((group) => {
+              const activeIds = selectedTags[group.category] ?? [];
+              return (
+                <div key={group.category} className="border-b border-[var(--border)] pb-7">
+                  <div className="mb-6 flex items-center gap-4">
+                    <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">{group.label}</div>
+                    <div className="h-px flex-1 bg-[var(--border)]" />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {group.options.map((option) => {
+                      const active = activeIds.includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => toggleTag(group.category, option.id, group.max)}
+                          className="border px-5 py-4 text-[12px] tracking-[0.2em] transition duration-300"
+                          style={{
+                            borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
+                            backgroundColor: active ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.65)',
+                            color: active ? 'var(--gold-bright)' : 'var(--jade)',
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        <div className="mt-6 border-b border-t border-[var(--border)] py-5">
+          <button type="button" onClick={() => setDetailExpanded((prev) => !prev)} className="flex w-full items-center justify-between text-left">
+            <span className="text-[13px] tracking-[0.2em] text-[var(--mist)]">细化标签</span>
+            <span className="text-[22px] leading-none text-[var(--jade)]">{detailExpanded ? '˄' : '˅'}</span>
+          </button>
+        </div>
+
+        {detailExpanded ? (
+          <div className="mt-8 flex flex-col gap-9">
+            {dreamTagGroups
+              .filter((group) => group.detailed)
+              .map((group) => {
+                const activeIds = selectedTags[group.category] ?? [];
+                return (
+                  <div key={group.category} className="border-b border-[var(--border)] pb-7">
+                    <div className="mb-6 flex items-center gap-4">
+                      <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">{group.label}</div>
+                      <div className="h-px flex-1 bg-[var(--border)]" />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {group.options.map((option) => {
+                        const active = activeIds.includes(option.id);
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => toggleTag(group.category, option.id, group.max)}
+                            className="border px-5 py-4 text-[12px] tracking-[0.2em] transition duration-300"
+                            style={{
+                              borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
+                              backgroundColor: active ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.65)',
+                              color: active ? 'var(--gold-bright)' : 'var(--jade)',
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : null}
+
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-6 pt-5">
+          <div className="mx-auto flex max-w-[390px] items-center justify-between gap-4">
+            <div className="text-[12px] tracking-[0.16em] text-[var(--jade)]">已选 {selectedLabels.length} 项</div>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="relative w-[62%] overflow-hidden border px-6 py-4 text-center text-[13px] tracking-[0.48em] transition duration-500 active:scale-[0.99]"
+              style={{
+                borderColor: 'rgba(196,169,106,.2)',
+                color: 'var(--gold)',
+                backgroundColor: 'transparent',
+              }}
+            >
+              <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 bg-[rgba(196,169,106,.14)] transition duration-500 hover:scale-x-100" />
+              <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
+              <span className="relative">开始做梦</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function ConfirmStageV2({
+  time,
+  entryMode,
+  selectedRole,
+  selectedDomain,
+  scenario,
+  selectedLabels,
+  onBack,
+  onConfirm,
+}: {
+  time: string;
+  entryMode: DreamEntryMode;
+  selectedRole: DreamRole;
+  selectedDomain: DreamDomainId;
+  scenario: ReturnType<typeof resolveScenario>;
+  selectedLabels: string[];
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Shell time={time} scrollable>
+      <div className="flex flex-1 flex-col">
+        <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">
+          {entryMode === 'character' ? '角色入梦' : `${resolveDomainName(selectedDomain)} · ${scenario.coverTitle}`}
+        </div>
+
+        {entryMode === 'character' ? (
+          <div className="mt-12 flex flex-1 flex-col items-center justify-center text-center">
+            <div className="relative px-7">
+              <div className="absolute left-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+              <div className="absolute right-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+              <div className="flex h-[92px] w-[92px] items-center justify-center border border-[var(--border)] text-[44px] text-[var(--gold)]">?</div>
+            </div>
+            <div className="mt-10 text-[34px] font-[200] tracking-[0.12em] text-[var(--paper)]">{selectedRole.name}</div>
+            <div className="mt-4 text-[13px] tracking-[0.2em] text-[var(--jade)]">他的梦，他来决定</div>
+            <div className="mt-14 flex h-20 w-20 items-center justify-center border border-[rgba(196,169,106,.08)] text-[26px] text-[var(--jade)]">♦</div>
+            <div className="mt-8 space-y-4 text-[15px] leading-[2.1] tracking-[0.18em] text-[var(--jade)]">
+              <div>这场梦由他决定</div>
+              <div>你进入后才会逐渐知道</div>
+              <div>身份 · 阵营 · 你们之间是什么关系</div>
+            </div>
+            <div className="mt-12 w-full max-w-[420px]"><SealButton label="确认入梦" onClick={onConfirm} /></div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="mt-8 inline-flex items-center gap-3 self-center border-b border-[rgba(196,169,106,.16)] pb-2 text-center text-[15px] tracking-[0.22em] text-[var(--gold)]"
+              style={{ textShadow: '0 0 12px rgba(196,169,106,.14)' }}
+            >
+              <span className="text-[18px] leading-none">←</span>
+              <span>换一种入梦方式</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-10 flex flex-col items-center text-center">
+              <div className="relative px-7">
+                <div className="absolute left-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+                <div className="absolute right-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+                <Avatar role={selectedRole} small />
+              </div>
+              <div className="mt-8 text-[28px] font-[200] tracking-[0.18em] text-[var(--paper)]">{selectedRole.name}</div>
+              <div className="mt-3 text-[13px] tracking-[0.18em] text-[var(--mist)]">{scenario.coverSubtitle}</div>
+            </div>
+            <div className="mt-10 flex-1">
+              <div className="flex flex-wrap justify-center gap-3">
+                {selectedLabels.map((label) => (
+                  <div key={label} className="border px-4 py-3 text-[12px] tracking-[0.2em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.7)' }}>
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{scenario.confirmHint}</div>
+            </div>
+            <div className="mt-10"><SealButton label="确认入梦" onClick={onConfirm} /></div>
+            <button type="button" onClick={onBack} className="mt-6 text-center text-[12px] tracking-[0.22em] text-[var(--mist)]">← 换一种入梦方式</button>
+          </>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+function EntrySheet({
+  role,
+  onChoose,
+  onClose,
+}: {
+  role: DreamRole;
+  onChoose: (mode: DreamEntryMode) => void;
+  onClose: () => void;
+}) {
+  const options: DreamEntryOption[] = [
+    {
+      id: 'quick',
+      title: '一键入梦',
+      detail: '系统自动给出世界观、关系张力、剧情驱动与情绪底色。',
+      glyph: '壹',
+    },
+    {
+      id: 'custom',
+      title: '自定义入梦',
+      detail: '你先挑标签，再决定这场梦该往哪里沉。',
+      glyph: '定',
+    },
+    {
+      id: 'character',
+      title: '角色入梦',
+      detail: `这一场梦由 ${role.name} 来决定。你进入之后，才会渐渐知道自己的位置。`,
+      glyph: '隐',
+      advanced: true,
+    },
+  ];
+
+  return (
+    <div className="absolute inset-0 z-20 bg-[rgba(3,5,9,.44)]" style={dreamThemeStyle}>
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ duration: 0.65, ease: [0.2, 0.8, 0.4, 1] }}
+        className="absolute inset-x-0 bottom-0 max-h-[78vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-10 pt-5"
+      >
+        <div className="mx-auto h-[3px] w-10 rounded-[2px] bg-[var(--mist)] opacity-30" />
+        <div className="mt-7 text-center text-[12px] tracking-[0.42em] text-[var(--mist)]">入 梦 方 式</div>
+        <div className="mt-7">
+          {options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onChoose(option.id)}
+              className="flex w-full items-start gap-4 border-b border-[var(--border)] px-1 py-5 text-left transition duration-300 hover:bg-[rgba(196,169,106,.04)]"
+            >
+              <div className="mt-1 flex h-10 w-10 flex-none items-center justify-center border border-[var(--border)] text-[16px] text-[var(--gold)]">
+                {option.glyph}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="text-[16px] font-[400] tracking-[0.12em] text-[var(--paper)]">{option.title}</div>
+                  {option.advanced ? (
+                    <span className="inline-flex border border-[rgba(123,168,196,.25)] px-2 py-[2px] text-[9px] tracking-[0.18em] text-[var(--jade)]">
+                      高级
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 text-[12px] leading-[1.7] tracking-[0.08em] text-[var(--mist)]">{option.detail}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 text-center">
+          <button type="button" onClick={onClose} className="text-[11px] tracking-[0.3em] text-[var(--mist)]">
+            返 回 今 夜
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => void; characters: Character[] }) {
   const roles = useMemo(() => buildRoles(characters), [characters]);
   const [time, setTime] = useState(formatDreamTime);
@@ -224,14 +662,17 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
   const [selectedTags, setSelectedTags] = useState<Record<DreamTagCategory, string[]>>(defaultTagSelection);
-  const [detailExpanded, setDetailExpanded] = useState(false);
+  const [detailExpanded, setDetailExpanded] = useState(true);
   const [actIndex, setActIndex] = useState(0);
   const [selectedChoice, setSelectedChoice] = useState<DreamChoice | null>(null);
+  const [previewChoiceId, setPreviewChoiceId] = useState<string | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const selectedRole = useMemo(() => roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null, [roles, selectedRoleId]);
   const scenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
   const act = scenario.acts[actIndex];
   const sceneText = useTypewriter(act?.scene || '', stage === 'scene');
   const reactionText = useTypewriter(selectedChoice?.reaction || '', stage === 'reaction');
+  const choiceHoldTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setTime(formatDreamTime()), 20000);
@@ -252,13 +693,35 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
   useEffect(() => {
     if (stage !== 'loading' || !selectedRole) return;
     localStorage.setItem('dream_app_latest_session', JSON.stringify({ mode: entryMode, roleId: selectedRole.id, domain: selectedDomain, depth: dreamDepth, selectedTags, scenario, createdAt: Date.now() }));
+    setLoadingProgress(12);
+    const progressTimer = window.setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev >= 92) return prev;
+        return Math.min(92, prev + 1 + Math.random() * 3.5);
+      });
+    }, 180);
     const timer = window.setTimeout(() => {
+      window.clearInterval(progressTimer);
+      setLoadingProgress(100);
       setActIndex(0);
       setSelectedChoice(null);
       setStage('scene');
     }, 1800);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearInterval(progressTimer);
+      window.clearTimeout(timer);
+    };
   }, [dreamDepth, entryMode, scenario, selectedDomain, selectedRole, selectedTags, stage]);
+
+  useEffect(() => {
+    if (stage !== 'choices') {
+      setPreviewChoiceId(null);
+      if (choiceHoldTimerRef.current) {
+        window.clearTimeout(choiceHoldTimerRef.current);
+        choiceHoldTimerRef.current = null;
+      }
+    }
+  }, [stage]);
 
   const openEntry = () => {
     if (!selectedRole) {
@@ -323,14 +786,42 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
     setDetailExpanded(false);
     setActIndex(0);
     setSelectedChoice(null);
+    setPreviewChoiceId(null);
+    setLoadingProgress(0);
     setStage('home');
   };
 
   const selectedLabels = dreamTagGroups.flatMap((group) => group.options.filter((option) => (selectedTags[group.category] ?? []).includes(option.id)).map((option) => option.label));
+  const baseTagGroups = dreamTagGroups.filter((group) => !group.detailed);
+  const detailedTagGroups = dreamTagGroups.filter((group) => group.detailed);
+
+  const loadingLabel =
+    loadingProgress < 25
+      ? '正在入梦'
+      : loadingProgress < 50
+        ? '梦域生成中'
+        : loadingProgress < 75
+          ? '场景浮现'
+          : '进入其中';
+
+  const beginChoicePreview = (choiceId: string) => {
+    if (choiceHoldTimerRef.current) {
+      window.clearTimeout(choiceHoldTimerRef.current);
+    }
+    choiceHoldTimerRef.current = window.setTimeout(() => {
+      setPreviewChoiceId(choiceId);
+    }, 620);
+  };
+
+  const cancelChoicePreview = () => {
+    if (choiceHoldTimerRef.current) {
+      window.clearTimeout(choiceHoldTimerRef.current);
+      choiceHoldTimerRef.current = null;
+    }
+  };
 
   return (
-    <AnimatePresence mode="wait">
-      <motion.div key={stage} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -18 }} transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}>
+    <>
         {stage === 'splash' && (
           <Shell time={time}>
             <div className="flex min-h-[calc(100vh-5rem)] flex-1 items-center justify-center">
@@ -342,9 +833,18 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
             </div>
           </Shell>
         )}
-        {stage === 'home' && <Home time={time} role={selectedRole} onPickRole={() => setStage('role-picker')} onEnter={openEntry} />}
+        {(stage === 'home' || stage === 'entry') && (
+          <div className="relative">
+            <HomeV2 time={time} role={selectedRole} onPickRole={() => setStage('role-picker')} onEnter={openEntry} />
+            <AnimatePresence initial={false}>
+              {stage === 'entry' && selectedRole ? (
+                <EntrySheet role={selectedRole} onChoose={chooseMode} onClose={() => setStage('home')} />
+              ) : null}
+            </AnimatePresence>
+          </div>
+        )}
         {stage === 'role-picker' && (
-          <Shell time={time}>
+          <Shell time={time} scrollable>
             <div className="flex flex-1 flex-col">
               <button type="button" onClick={() => setStage('home')} className="self-center border border-[var(--border)] px-6 py-2 text-[11px] tracking-[0.4em] text-[var(--mist)]">返 回</button>
               <div className="mt-10 text-center text-[14px] tracking-[0.36em] text-[var(--mist)]">选择入梦角色</div>
@@ -367,25 +867,23 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
             </div>
           </Shell>
         )}
-        {stage === 'entry' && selectedRole && (
-          <Shell time={time}>
-            <div className="flex flex-1 flex-col">
-              <div className="mt-8 text-center text-[12px] tracking-[0.56em] text-[var(--mist)]">入 梦 方 式</div>
-              <div className="mt-5 text-center text-[13px] leading-[2.2] tracking-[0.18em] text-[var(--paper-60)]">今夜由你决定如何进入这场梦。<br />不是弹出，不是选择框，而是一层一层走进去。</div>
-              <div className="mt-10 flex flex-1 flex-col gap-5">
-                {[{ id: 'quick', title: '一键入梦', detail: '系统自动给出世界观、关系张力、剧情驱动与情绪底色。' }, { id: 'custom', title: '自定义入梦', detail: '你先挑标签，再决定这场梦该往哪里沉。' }, { id: 'character', title: '角色入梦', detail: `这一场梦由 ${selectedRole.name} 来决定。你进入之后，才会渐渐知道自己的位置。` }].map((option) => (
-                  <button key={option.id} type="button" onClick={() => chooseMode(option.id as DreamEntryMode)} className="border px-5 py-6 text-left transition duration-300 hover:border-[rgba(196,169,106,.3)] hover:bg-[rgba(196,169,106,.06)]" style={{ borderColor: 'rgba(196,169,106,.12)', backgroundColor: 'rgba(13,18,32,.72)' }}>
-                    <div className="text-[16px] font-[300] tracking-[0.22em] text-[var(--gold)]">{option.title}</div>
-                    <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.16em] text-[var(--mist)]">{option.detail}</div>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-6 self-center"><button type="button" onClick={() => setStage('home')} className="text-[12px] tracking-[0.32em] text-[var(--mist)]">返 回 今 夜</button></div>
-            </div>
-          </Shell>
-        )}
         {stage === 'tags' && selectedRole && (
-          <Shell time={time}>
+          <TagsStageV2
+            time={time}
+            selectedRole={selectedRole}
+            dreamDepth={dreamDepth}
+            setDreamDepth={setDreamDepth}
+            selectedTags={selectedTags}
+            toggleTag={toggleTag}
+            detailExpanded={detailExpanded}
+            setDetailExpanded={setDetailExpanded}
+            selectedLabels={selectedLabels}
+            onBack={() => setStage('entry')}
+            onConfirm={() => setStage('confirm')}
+          />
+        )}
+        {false && stage === 'tags' && selectedRole && (
+          <Shell time={time} scrollable>
             <div className="flex flex-1 flex-col">
               <div className="mt-7 text-center text-[12px] tracking-[0.56em] text-[var(--mist)]">{resolveDomainName(selectedDomain)} · {dreamDepth === 'deep' ? '深梦' : '浅梦'}</div>
               <div className="mt-8 flex flex-col items-center text-center">
@@ -393,7 +891,41 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
                 <div className="mt-5 text-[22px] font-[200] tracking-[0.18em] text-[var(--paper)]">{selectedRole.name}</div>
                 <div className="mt-2 text-[13px] tracking-[0.18em] text-[var(--mist)]">他正等你</div>
               </div>
-              <div className="mt-9 flex flex-1 flex-col gap-5">
+              <div className="mt-8 border-y border-[var(--border)] py-5">
+                <div className="text-[11px] tracking-[0.38em] text-[var(--mist)]">梦 型</div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {([
+                    {
+                      id: 'shallow',
+                      title: '浅梦',
+                      detail: '4-5 轮，一局一结，更像短篇。',
+                    },
+                    {
+                      id: 'deep',
+                      title: '深梦',
+                      detail: '更长更沉，幕与幕之间会继续往下走。',
+                    },
+                  ] as const).map((item) => {
+                    const active = dreamDepth === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setDreamDepth(item.id)}
+                        className="border px-4 py-4 text-left transition duration-300"
+                        style={{
+                          borderColor: active ? 'rgba(196,169,106,.48)' : 'rgba(196,169,106,.12)',
+                          backgroundColor: active ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.65)',
+                        }}
+                      >
+                        <div className={`text-[15px] tracking-[0.18em] ${active ? 'text-[var(--gold-bright)]' : 'text-[var(--gold)]'}`}>{item.title}</div>
+                        <div className="mt-2 text-[11px] leading-[1.8] tracking-[0.08em] text-[var(--mist)]">{item.detail}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="mt-6 flex flex-1 flex-col gap-5">
                 {dreamTagGroups.map((group) => {
                   const hidden = group.detailed && !detailExpanded;
                   const activeIds = selectedTags[group.category] ?? [];
@@ -414,19 +946,52 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
                   );
                 })}
               </div>
-              <div className="mt-6 flex items-center justify-between">
-                <button type="button" onClick={() => setDetailExpanded((prev) => !prev)} className="text-[12px] tracking-[0.28em] text-[var(--mist)]">{detailExpanded ? '收 起 细 化' : '展 开 细 化'}</button>
-                <button type="button" onClick={() => setStage('entry')} className="text-[12px] tracking-[0.28em] text-[var(--mist)]">返 回 选 择</button>
+              <div className="mt-8 border border-[rgba(196,169,106,.16)] bg-[rgba(13,18,32,.56)] px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[12px] tracking-[0.32em] text-[var(--gold)]">细化规则</div>
+                    <div className="mt-2 text-[11px] leading-[1.8] tracking-[0.12em] text-[var(--mist)]">细化标签已经默认展开，你可以继续控制 NPC / 阵营、角色身份、主导度、互动强度和结局倾向。</div>
+                    <div className="mt-3 text-[11px] tracking-[0.18em] text-[var(--gold-bright)]">已选 {selectedLabels.length} 项</div>
+                  </div>
+                  <button type="button" onClick={() => setDetailExpanded((prev) => !prev)} className="shrink-0 border border-[rgba(196,169,106,.2)] px-3 py-2 text-[12px] tracking-[0.22em] text-[var(--gold)]">
+                    {detailExpanded ? '收起' : '展开'}
+                  </button>
+                </div>
               </div>
-              <div className="mt-5"><SealButton label="前 往 确 认" onClick={() => setStage('confirm')} /></div>
+              <div className="mt-6 border-t border-[var(--border)] pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] tracking-[0.18em] text-[var(--gold-bright)]">
+                    已选 {selectedLabels.length} 项
+                  </div>
+                  <button type="button" onClick={() => setDetailExpanded((prev) => !prev)} className="text-[12px] tracking-[0.28em] text-[var(--mist)]">{detailExpanded ? '收 起 细 化' : '展 开 细 化'}</button>
+                </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <button type="button" onClick={() => setStage('entry')} className="text-[12px] tracking-[0.28em] text-[var(--mist)]">返 回 选 择</button>
+                  <div className="w-[54%]">
+                    <SealButton label="前 往 确 认" onClick={() => setStage('confirm')} />
+                  </div>
+                </div>
+              </div>
             </div>
           </Shell>
         )}
         {stage === 'confirm' && selectedRole && (
-          <Shell time={time}>
+          <ConfirmStageV2
+            time={time}
+            entryMode={entryMode}
+            selectedRole={selectedRole}
+            selectedDomain={selectedDomain}
+            scenario={scenario}
+            selectedLabels={selectedLabels}
+            onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')}
+            onConfirm={() => setStage('loading')}
+          />
+        )}
+        {/* {false && stage === 'confirm' && selectedRole && (
+          <Shell time={time} scrollable>
             <div className="flex flex-1 flex-col">
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{entryMode === 'character' ? '角 色 入 梦' : `${resolveDomainName(selectedDomain)} · ${scenario.coverTitle}`}</div>
-              <div className="mt-10 flex flex-col items-center text-center">
+              <div className={`mt-10 flex flex-col items-center text-center ${entryMode === 'character' ? 'hidden' : ''}`}>
                 <div className="relative px-7">
                   <div className="absolute left-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
                   <div className="absolute right-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
@@ -436,6 +1001,22 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
                 <div className="mt-3 text-[13px] tracking-[0.18em] text-[var(--mist)]">{entryMode === 'character' ? '他的梦，他来决定' : scenario.coverSubtitle}</div>
               </div>
               {entryMode === 'character' ? (
+                <div className="mt-12 flex flex-1 flex-col items-center justify-center text-center">
+                  <div className="relative px-7">
+                    <div className="absolute left-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+                    <div className="absolute right-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
+                    <div className="flex h-[92px] w-[92px] items-center justify-center border border-[var(--border)] text-[44px] text-[var(--gold)]">?</div>
+                  </div>
+                  <div className="mt-10 text-[34px] font-[200] tracking-[0.12em] text-[var(--paper)]">{selectedRole.name}</div>
+                  <div className="mt-4 text-[13px] tracking-[0.2em] text-[var(--jade)]">他的梦，他来决定</div>
+                  <div className="mt-14 flex h-20 w-20 items-center justify-center border border-[rgba(196,169,106,.08)] text-[26px] text-[var(--jade)]">♦</div>
+                  <div className="mt-8 space-y-4 text-[15px] leading-[2.1] tracking-[0.18em] text-[var(--jade)]">
+                    <div>这场梦由他决定</div>
+                    <div>你进入后才会逐渐知道</div>
+                    <div>身份 · 阵营 · 你们之间是什么关系</div>
+                  </div>
+                </div>
+              ) : false && entryMode === 'character' ? (
                 <div className="mt-12 flex flex-1 flex-col items-center justify-center text-center">
                   <div className="flex h-20 w-20 items-center justify-center border border-[var(--border)] text-[28px] text-[var(--mist)]">◊</div>
                   <div className="mt-8 space-y-3 text-[14px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">
@@ -452,21 +1033,52 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
                   <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{scenario.confirmHint}</div>
                 </div>
               )}
+              {entryMode === 'character' ? (
+                <button type="button" onClick={() => setStage('entry')} className="mt-10 text-center text-[13px] tracking-[0.24em] text-[var(--gold)]">← 换一种入梦方式</button>
+              ) : (
+                <>
+                  <div className="mt-10"><SealButton label="确认入梦" onClick={() => setStage('loading')} /></div>
+                  <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-6 text-center text-[12px] tracking-[0.22em] text-[var(--mist)]">← 换一种入梦方式</button>
+                </>
+              )}
+              <div className="hidden">
+              {entryMode === 'character' ? (
+                <button type="button" onClick={() => setStage('entry')} className="mt-10 text-center text-[13px] tracking-[0.24em] text-[var(--gold)]">← 换一种入梦方式</button>
+              ) : (
+                <>
+                  <div className="mt-10"><SealButton label="确认入梦" onClick={() => setStage('loading')} /></div>
+                  <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-6 text-center text-[12px] tracking-[0.22em] text-[var(--mist)]">← 换一种入梦方式</button>
+                </>
+              )}
+              {entryMode === 'character' ? (
+                <>
+                  <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-10 text-center text-[13px] tracking-[0.24em] text-[var(--gold)]">← 换一种入梦方式</button>
+                </>
+              ) : (
+                <>
+                  <div className="mt-10"><SealButton label="确认入梦" onClick={() => setStage('loading')} /></div>
+                  <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-6 text-center text-[12px] tracking-[0.22em] text-[var(--mist)]">← 换一种入梦方式</button>
+                </>
+              )}
+              <div className="mt-10"><SealButton label="确认入梦" onClick={() => setStage('loading')} /></div>
+              <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-6 text-center text-[12px] tracking-[0.3em] text-[var(--mist)]">← 换一种入梦方式</button>
               <div className="mt-10"><SealButton label="确 认 入 梦" onClick={() => setStage('loading')} /></div>
               <button type="button" onClick={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')} className="mt-6 text-center text-[12px] tracking-[0.3em] text-[var(--mist)]">← 换 一 种 入 梦 方 式</button>
             </div>
           </Shell>
-        )}
+        )} */}
         {stage === 'loading' && selectedRole && (
           <Shell time={time} bottomTone={false}>
             <div className="flex flex-1 flex-col items-center justify-center text-center">
               <div className="relative flex h-36 w-36 items-center justify-center">
-                <div className="absolute inset-0 border border-[var(--border)] animate-[spin_18s_linear_infinite]" />
-                <div className="absolute inset-[18%] border border-[rgba(196,169,106,.24)]" />
-                <div className="relative flex h-20 w-20 items-center justify-center border border-[rgba(196,169,106,.28)] bg-[rgba(13,18,32,.9)] text-[34px] font-[200] text-[var(--paper)]" style={{ boxShadow: 'inset 0 0 12px rgba(196,169,106,.08)' }}>梦</div>
+                <div className="absolute h-14 w-14 rounded-full border border-[rgba(196,169,106,.2)] bg-[radial-gradient(circle_at_40%_38%,rgba(196,169,106,.4),transparent_65%)] animate-[pulse_3s_ease-in-out_infinite]" />
+                <div className="absolute inset-[16%] rounded-full bg-[radial-gradient(circle,rgba(196,169,106,.06),transparent_70%)] animate-[pulse_3s_ease-in-out_infinite_reverse]" />
               </div>
               <div className="mt-8 text-[22px] font-[200] tracking-[0.22em] text-[var(--paper)]">正在进入 {selectedRole.name} 的今夜</div>
-              <div className="mt-4 text-[12px] tracking-[0.3em] text-[var(--mist)]">正在生成梦局与梦尾摘录</div>
+              <div className="mt-4 text-[12px] tracking-[0.42em] text-[var(--mist)] animate-[pulse_3s_ease-in-out_infinite]">{loadingLabel}</div>
+              <div className="mt-5 h-px w-20 bg-[rgba(196,169,106,.1)]">
+                <div className="h-px bg-[var(--gold)] transition-[width] duration-300 ease-linear" style={{ width: `${loadingProgress}%` }} />
+              </div>
             </div>
           </Shell>
         )}
@@ -475,9 +1087,11 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
             <div className="flex flex-1 flex-col">
               <div className="mt-5 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{scenario.coverTitle} · {act.label}</div>
               <div className="mt-8 flex items-center justify-center gap-3">{scenario.acts.map((item, index) => <div key={item.id} className="h-[5px] w-[5px] border border-[var(--border)]">{index <= actIndex ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>)}</div>
-              <div className="mt-12 flex-1 border border-[var(--border)] bg-[rgba(13,18,32,.52)] px-6 py-7">
-                <div className="text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper)]">{sceneText}</div>
-                <div className="mt-8 border-t border-[var(--border)] pt-5 text-[12px] leading-[2.1] tracking-[0.18em] text-[var(--mist)]">{act.charState}</div>
+              <div className="mt-12 flex-1 px-6">
+                <div className="mx-auto flex h-full max-w-[360px] flex-col justify-start">
+                  <div className="text-[16px] font-[300] leading-[2.5] tracking-[0.08em] text-[var(--paper)]">{sceneText}</div>
+                  <div className="mt-10 text-[13px] leading-[2.2] tracking-[0.18em] text-[var(--mist)]">{act.charState}</div>
+                </div>
               </div>
               <div className="mt-8"><SealButton label={sceneText.length >= act.scene.length ? '进 入 选 择' : '梦 正 在 展 开'} onClick={() => setStage('choices')} disabled={sceneText.length < act.scene.length} /></div>
             </div>
@@ -486,6 +1100,63 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
         {stage === 'choices' && act && (
           <Shell time={time}>
             <div className="flex flex-1 flex-col">
+              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] tracking-[0.26em] text-[var(--gold)]">
+                <span className="inline-flex border border-[rgba(196,169,106,.18)] px-3 py-1">{resolveDomainName(selectedDomain)}</span>
+                <span className="text-[var(--mist)]">路</span>
+                <span>{scenario.coverTitle}</span>
+              </div>
+              <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{act.label} 路 梦触</div>
+              <div className="mt-6 text-center text-[14px] leading-[2.2] tracking-[0.16em] text-[var(--paper-60)]">
+                梦已经给出方向。<br />
+                现在由你决定，下一步要怎样落下去。
+              </div>
+              <div className="mt-10 flex flex-1 flex-col gap-4">
+                {act.choices.map((choice) => {
+                  const previewing = previewChoiceId === choice.id;
+                  return (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      onPointerDown={() => beginChoicePreview(choice.id)}
+                      onPointerUp={cancelChoicePreview}
+                      onPointerLeave={cancelChoicePreview}
+                      onPointerCancel={cancelChoicePreview}
+                      onClick={() => {
+                        cancelChoicePreview();
+                        setSelectedChoice(choice);
+                        setStage('reaction');
+                      }}
+                      className="w-full border px-5 py-5 text-left transition duration-300"
+                      style={{
+                        borderColor: previewing ? 'rgba(196,169,106,.3)' : 'rgba(196,169,106,.12)',
+                        backgroundColor: previewing ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.72)',
+                        transform: previewing ? 'translateX(6px)' : 'translateX(0px)',
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{choice.icon}</div>
+                        <div className="min-w-0">
+                          <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div>
+                          <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">
+                            {previewing ? `预感：${choice.emotion}。${choice.detail}` : `长按 620ms 预感，轻触提交选择。${choice.detail}`}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </Shell>
+        )}
+        {false && stage === 'choices' && act && (
+          <Shell time={time}>
+            <div className="flex flex-1 flex-col">
+              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] tracking-[0.26em] text-[var(--gold)]">
+                <span className="inline-flex border border-[rgba(196,169,106,.18)] px-3 py-1">{resolveDomainName(selectedDomain)}</span>
+                <span className="text-[var(--mist)]">路</span>
+                <span>{scenario.coverTitle}</span>
+              </div>
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{act.label} · 梦触</div>
               <div className="mt-6 text-center text-[14px] leading-[2.2] tracking-[0.16em] text-[var(--paper-60)]">梦已经给出方向。<br />现在由你决定，下一步要怎样落下去。</div>
               <div className="mt-10 flex flex-1 flex-col gap-4">
@@ -498,17 +1169,60 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
           <Shell time={time}>
             <div className="flex flex-1 flex-col">
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">角 色 反 应</div>
-              <div className="mt-10 flex-1 border border-[var(--border)] bg-[rgba(13,18,32,.54)] px-6 py-7">
-                <div className="text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper)]">{reactionText}</div>
-                <div className={`mt-8 transition duration-500 ${reactionText.length >= selectedChoice.reaction.length ? 'opacity-100' : 'opacity-0'}`}>
-                  <span className="inline-flex rounded-[20px] border border-[rgba(123,168,196,.26)] bg-[rgba(123,168,196,.12)] px-4 py-2 text-[12px] tracking-[0.2em] text-[var(--jade)]">{selectedChoice.emotion}</span>
-                </div>
+              <div className="mt-10 flex items-center gap-4">
+                <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
+                <div className="text-[12px] tracking-[0.18em] text-[var(--jade)]">你选择了 {selectedChoice.title}</div>
+                <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
               </div>
-              <div className="mt-8"><SealButton label={reactionText.length >= selectedChoice.reaction.length ? '继 续 下 沉' : '反 应 正 在 浮 出'} onClick={goNextFromReaction} disabled={reactionText.length < selectedChoice.reaction.length} /></div>
+              <div className="mt-12 flex-1">
+                <div className="text-[16px] font-[300] leading-[2.45] tracking-[0.08em] text-[var(--paper)]">{reactionText}</div>
+              </div>
+              <div className={`mb-8 transition duration-500 ${reactionText.length >= selectedChoice.reaction.length ? 'opacity-100' : 'opacity-0'}`}>
+                <span className="inline-flex rounded-[20px] border border-[rgba(123,168,196,.26)] bg-[rgba(123,168,196,.12)] px-5 py-3 text-[12px] tracking-[0.2em] text-[var(--jade)]">
+                  <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full bg-[var(--jade)]" />
+                  {selectedChoice.emotion}
+                </span>
+              </div>
+              <div className="mt-auto">
+                <SealButton label={reactionText.length >= selectedChoice.reaction.length ? '继 续  →' : '反 应 正 在 浮 出'} onClick={goNextFromReaction} disabled={reactionText.length < selectedChoice.reaction.length} />
+              </div>
             </div>
           </Shell>
         )}
         {stage === 'ending' && (
+          <Shell time={time} bottomTone={false}>
+            <div
+              className="flex flex-1 flex-col justify-center py-8"
+              style={{
+                backgroundImage:
+                  'repeating-linear-gradient(180deg, rgba(196,169,106,.045) 0, rgba(196,169,106,.045) 1px, transparent 1px, transparent 32px)',
+              }}
+            >
+              <div className="px-4 text-center">
+                <div className="text-[11px] tracking-[0.52em] text-[var(--mist)]">结 局</div>
+                <div className="mx-auto mt-5 flex w-[130px] items-center justify-center gap-4">
+                  <div className="h-px flex-1 bg-[rgba(196,169,106,.16)]" />
+                  <div className="h-px w-8 bg-[var(--gold)]" />
+                  <div className="h-px flex-1 bg-[rgba(196,169,106,.16)]" />
+                </div>
+                <div className="mt-12 text-[52px] font-[200] tracking-[0.16em] text-[var(--paper)]">{scenario.ending.title}</div>
+                <div className="mx-auto mt-14 max-w-[360px] text-[15px] font-[300] leading-[2.55] tracking-[0.08em] text-[var(--paper-60)]">
+                  {scenario.ending.excerpt}
+                </div>
+                <div className="mx-auto mt-10 h-px w-16 bg-[rgba(196,169,106,.14)]" />
+                <div className="mt-10 text-right text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
+                <div className="mt-4 text-right text-[12px] tracking-[0.22em] text-[var(--gold)]">{scenario.ending.chapter}</div>
+              </div>
+              <div className="mt-14 grid gap-4 px-4">
+                <SealButton label="分 享 这 一 页" onClick={() => setStage('aftermath')} />
+                <button type="button" onClick={() => setStage('aftermath')} className="text-center text-[12px] tracking-[0.3em] text-[var(--mist)]">
+                  查 看 梦 后 余 响  → 
+                </button>
+              </div>
+            </div>
+          </Shell>
+        )}
+        {false && stage === 'ending' && (
           <Shell time={time} bottomTone={false}>
             <div className="flex flex-1 flex-col justify-center py-8">
               <div className="border-y border-[var(--border)] py-10 text-center">
@@ -522,7 +1236,48 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
           </Shell>
         )}
         {stage === 'aftermath' && (
-          <Shell time={time}>
+          <Shell time={time} scrollable>
+            <div className="flex flex-1 flex-col">
+              <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">余响</div>
+              <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.72)] px-5 py-6">
+                <div className="flex items-center gap-3 border-b border-[var(--border)] pb-4">
+                  <Avatar role={selectedRole} small />
+                  <div className="min-w-0">
+                    <div className="text-[14px] tracking-[0.14em] text-[var(--paper)]">{selectedRole?.name || '角色'}</div>
+                    <div className="mt-1 text-[11px] tracking-[0.18em] text-[var(--mist)]">明日聊天预览</div>
+                  </div>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {scenario.aftermath.previewMessages.map((message, index) => (
+                    <div
+                      key={`${message}-${index}`}
+                      className="max-w-[92%] border px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]"
+                      style={{
+                        marginLeft: index === 1 ? 'auto' : 0,
+                        borderColor: 'rgba(123,168,196,.18)',
+                        backgroundColor: index === 1 ? 'rgba(196,169,106,.08)' : 'rgba(123,168,196,.08)',
+                      }}
+                    >
+                      {message}
+                    </div>
+                  ))}
+                  <div className="max-w-[48%] border border-[rgba(196,169,106,.12)] bg-[rgba(13,18,32,.5)] px-4 py-3 text-[12px] tracking-[0.24em] text-[var(--mist)]">
+                    ……
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
+                <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">余响</div>
+                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{scenario.aftermath.summary}</div>
+                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{scenario.aftermath.detail}</div>
+                <div className="mt-5 border-t border-[rgba(123,168,196,.16)] pt-4 text-[11px] tracking-[0.24em] text-[var(--jade)]">轻微关系温度变化 · 语气漂移</div>
+              </div>
+              <div className="mt-auto pt-8"><SealButton label="再入一梦" onClick={restart} /></div>
+            </div>
+          </Shell>
+        )}
+        {false && stage === 'aftermath' && (
+          <Shell time={time} scrollable>
             <div className="flex flex-1 flex-col">
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">余 响</div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.72)] px-5 py-6">
@@ -538,7 +1293,6 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
             </div>
           </Shell>
         )}
-      </motion.div>
-    </AnimatePresence>
+    </>
   );
 }

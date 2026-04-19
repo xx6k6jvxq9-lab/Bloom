@@ -10,6 +10,8 @@ export type DreamTagCategory =
   | 'tension'
   | 'drive'
   | 'mood'
+  | 'faction'
+  | 'identity'
   | 'lead'
   | 'intensity'
   | 'ending';
