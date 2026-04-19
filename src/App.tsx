@@ -1342,6 +1342,7 @@ export default function App() {
               key="dream"
               onBack={() => setActiveApp('home')}
               characters={appData.characters}
+              userName={appData.userProfile.name}
               activeConfig={activeConfig}
               masks={appData.masks || []}
               worldBooks={appData.worldBooks || []}

@@ -361,13 +361,14 @@ function DreamNarrativeBlocks({
   );
 }
 
-function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string): DreamEndingView {
+function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string, userName: string): DreamEndingView {
   const { storyFrame, endingInput } = scenario;
+  const resolvedUserName = userName.trim() || '你';
   return {
     title: storyFrame.worldTitle || scenario.coverTitle || '今夜',
     excerpt:
       endingInput.keyActionSummary ||
-      `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || '你'} 的这场梦，最终停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
+      `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || resolvedUserName} 的这场梦，最终停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
     chapter: `《${endingInput.endingDirection || storyFrame.dreamRelationship || '梦局未竟'}》`,
   };
 }
@@ -841,12 +842,14 @@ function EntrySheet({
 export function DreamAppPage({
   onBack,
   characters,
+  userName,
   activeConfig,
   masks,
   worldBooks,
 }: {
   onBack: () => void;
   characters: Character[];
+  userName: string;
   activeConfig: ApiConfig;
   masks: Mask[];
   worldBooks: WorldBookEntry[];
@@ -883,7 +886,7 @@ export function DreamAppPage({
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const sceneBlocks = act?.narrative.pages[0]?.blocks ?? [];
-  const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name) : scenario.ending;
+  const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : scenario.ending;
   const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
   const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
   const reactionText = useTypewriter(
