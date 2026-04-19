@@ -16,25 +16,25 @@ export const dreamNarrativeLayouts: DreamNarrativeLayoutPreset[] = [
   {
     id: 'full-bleed-dialogue-card',
     name: '满屏叙述 + 对话框',
-    description: '大段正文铺底，中段插入边框对话卡，适合压迫感与占有欲场景。',
+    description: '大段正文铺底，中段插入边框对话卡，适合压迫感、对峙感和强关系张力。',
     suggestedBlocks: ['narration', 'framed-dialogue', 'narration'],
   },
   {
     id: 'soft-overlay-monologue',
     name: '雾层独白',
-    description: '正文覆盖背景图，角色台词以柔色漂浮覆盖，适合克制和潮湿感。',
+    description: '正文覆盖背景，角色话语以柔色漂浮覆盖，适合克制、潮湿和暧昧场景。',
     suggestedBlocks: ['narration', 'dialogue', 'aside', 'narration'],
   },
   {
     id: 'highlight-line-break',
     name: '高亮断句',
-    description: '正文段落之间插入高亮台词，适合强势、挑逗、危险靠近。',
+    description: '正文之间穿插高亮台词，适合挑衅、危险靠近和强推剧情节点。',
     suggestedBlocks: ['narration', 'highlight-dialogue', 'narration', 'highlight-dialogue'],
   },
   {
     id: 'floating-aside-stack',
-    name: '浮动贴边',
-    description: '正文为主体，角色的短句以贴边悬浮块切入，适合梦里低声耳语感。',
+    name: '贴边耳语',
+    description: '正文为主，角色短句以贴边浮层切入，适合梦里低声、秘密和心隙感。',
     suggestedBlocks: ['narration', 'aside', 'narration', 'aside'],
   },
   {

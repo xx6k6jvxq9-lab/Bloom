@@ -27,10 +27,10 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
    - aside
    - prompt
 4. 一整次梦只使用当前这一套 layout 和 theme，不要混入别的风格。
-5. 这是单幕正文，所以 pages 数量先固定为 1。
+5. 这是单幕正文，所以 pages 数量固定为 1。
 6. 每个 block 的 text 必须是可直接展示的正文。
 7. 如果是 dialogue / highlight-dialogue / framed-dialogue / aside，可以带 speakerName。
-8. 不要生成色情直白内容，不要越界，不要变成聊天记录。
+8. 不要生成越界内容，不要变成聊天记录。
 
 当前角色：
 - 角色名: ${character.remarkName?.trim() || character.name}

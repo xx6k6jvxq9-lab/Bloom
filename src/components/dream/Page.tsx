@@ -168,7 +168,7 @@ function Shell({
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
       <div
-        className={`relative z-10 flex h-[100dvh] min-h-[100dvh] min-w-0 flex-col px-7 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-8 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
+        className={`relative z-10 flex h-[100dvh] min-h-[100dvh] min-w-0 flex-col px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
         style={scrollable ? { WebkitOverflowScrolling: 'touch' } : undefined}
       >
         {children}
@@ -241,6 +241,111 @@ function SecondaryAction({
       <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
       <span className="relative transition duration-500 group-hover:tracking-[0.62em] group-active:tracking-[0.62em]">{label}</span>
     </button>
+  );
+}
+
+type DreamPresentationView = {
+  accent: string;
+  accentSoft: string;
+  dialogueText: string;
+  frameBorder: string;
+  frameFill: string;
+};
+
+function DreamNarrativeBlocks({
+  blocks,
+  presentation,
+}: {
+  blocks: Array<{
+    id: string;
+    type: string;
+    text: string;
+    speakerName?: string;
+    align?: 'left' | 'center' | 'right';
+    emphasis?: 'low' | 'medium' | 'high';
+  }>;
+  presentation: DreamPresentationView;
+}) {
+  return (
+    <div className="space-y-5">
+      {blocks.map((block) => {
+        const alignClass =
+          block.align === 'center' ? 'text-center' : block.align === 'right' ? 'text-right' : 'text-left';
+        const emphasisClass =
+          block.emphasis === 'high' ? 'text-[19px] leading-[2.15]' : block.emphasis === 'low' ? 'text-[14px] leading-[2.35]' : 'text-[16px] leading-[2.3]';
+
+        if (block.type === 'framed-dialogue') {
+          return (
+            <div
+              key={block.id}
+              className="rounded-[26px] border px-5 py-5"
+              style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}
+            >
+              {block.speakerName ? (
+                <div className="mb-3 text-[11px] tracking-[0.24em]" style={{ color: presentation.accent }}>
+                  {block.speakerName}
+                </div>
+              ) : null}
+              <div className={`whitespace-pre-line font-[300] ${alignClass} ${emphasisClass}`} style={{ color: presentation.dialogueText }}>
+                {block.text}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'highlight-dialogue') {
+          return (
+            <div key={block.id} className={`whitespace-pre-line font-[400] ${alignClass} text-[22px] leading-[2]`} style={{ color: presentation.dialogueText }}>
+              {block.text}
+            </div>
+          );
+        }
+
+        if (block.type === 'dialogue') {
+          return (
+            <div key={block.id} className={alignClass}>
+              {block.speakerName ? (
+                <div className="mb-2 text-[11px] tracking-[0.24em]" style={{ color: presentation.accent }}>
+                  {block.speakerName}
+                </div>
+              ) : null}
+              <div className={`whitespace-pre-line font-[300] ${emphasisClass}`} style={{ color: presentation.dialogueText }}>
+                {block.text}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'aside') {
+          return (
+            <div key={block.id} className={`border-l pl-4 ${alignClass}`} style={{ borderColor: presentation.frameBorder }}>
+              {block.speakerName ? (
+                <div className="mb-2 text-[11px] tracking-[0.24em]" style={{ color: presentation.accent }}>
+                  {block.speakerName}
+                </div>
+              ) : null}
+              <div className="whitespace-pre-line text-[15px] font-[300] leading-[2.2] italic" style={{ color: presentation.dialogueText }}>
+                {block.text}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'prompt') {
+          return (
+            <div key={block.id} className="text-center text-[12px] tracking-[0.28em]" style={{ color: presentation.accent }}>
+              {block.text}
+            </div>
+          );
+        }
+
+        return (
+          <div key={block.id} className={`whitespace-pre-line font-[300] text-[17px] leading-[2.35] ${alignClass}`}>
+            {block.text}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -734,8 +839,20 @@ export function DreamAppPage({
   const previewScenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
   const scenario = runtimeScenario ?? previewScenario;
   const act = runtimeScenario?.acts[actIndex] ?? null;
-  const sceneText = useTypewriter(act?.scene || '', stage === 'scene');
-  const reactionText = useTypewriter(selectedChoice?.reaction || '', stage === 'reaction');
+  const presentation = runtimeScenario?.presentation ?? {
+    accent: 'var(--gold)',
+    accentSoft: 'rgba(196,169,106,.12)',
+    dialogueText: 'var(--gold-bright)',
+    frameBorder: 'rgba(196,169,106,.28)',
+    frameFill: 'rgba(13,18,32,.72)',
+  };
+  const storyFrame = runtimeScenario?.storyFrame ?? null;
+  const sceneBlocks = act?.narrative.pages[0]?.blocks ?? [];
+  const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
+  const reactionText = useTypewriter(
+    reactionFullText,
+    stage === 'reaction',
+  );
   const choiceHoldTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1217,13 +1334,34 @@ export function DreamAppPage({
             <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
               <div className="mt-5 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{scenario.coverTitle} · {act.label}</div>
               <div className="mt-8 flex items-center justify-center gap-3">{scenario.acts.map((item, index) => <div key={item.id} className="h-[5px] w-[5px] border border-[var(--border)]">{index <= actIndex ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>)}</div>
-              <div className="mt-10 px-6">
-                <div className="mx-auto max-w-[360px]">
-                  <div className="text-[16px] font-[300] leading-[2.5] tracking-[0.08em] text-[var(--paper)]">{sceneText}</div>
-                  <div className="mt-10 text-[13px] leading-[2.2] tracking-[0.18em] text-[var(--mist)]">{act.charState}</div>
+              <div className="mt-8">
+                <div className="mx-auto w-full max-w-[460px]">
+                  {storyFrame && actIndex === 0 ? (
+                    <div className="mb-7 border px-4 py-4" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft }}>
+                      <div className="text-[11px] tracking-[0.28em]" style={{ color: presentation.accent }}>
+                        {storyFrame.worldTitle} · {storyFrame.dreamRelationship}
+                      </div>
+                      <div className="mt-3 text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)]">{storyFrame.worldSummary}</div>
+                      <div className="mt-4 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
+                        {storyFrame.characterDreamIdentity} / {storyFrame.userDreamIdentity}
+                      </div>
+                      <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
+                        节点：{storyFrame.openingNode}
+                      </div>
+                      <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
+                        主线：{storyFrame.storyObjective}
+                      </div>
+                    </div>
+                  ) : null}
+                  <DreamNarrativeBlocks blocks={sceneBlocks} presentation={presentation} />
+                  <div className="mt-8 border-l pl-4 text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder }}>
+                    <div>{act.charState}</div>
+                    {act.progression.consequence ? <div className="mt-3">变化：{act.progression.consequence}</div> : null}
+                    {act.progression.plotAdvance ? <div className="mt-2">推进：{act.progression.plotAdvance}</div> : null}
+                  </div>
                 </div>
               </div>
-              <div className="mt-10"><SealButton label={sceneText.length >= act.scene.length ? '进 入 选 择' : '梦 正 在 展 开'} onClick={() => setStage('choices')} disabled={sceneText.length < act.scene.length} /></div>
+              <div className="mt-10"><SealButton label="进入选择" onClick={() => setStage('choices')} /></div>
             </div>
           </Shell>
         )}
@@ -1324,17 +1462,29 @@ export function DreamAppPage({
                 <div className="text-[12px] tracking-[0.18em] text-[var(--jade)]">你选择了 {selectedChoice.title}</div>
                 <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
               </div>
-              <div className="mt-12">
-                <div className="text-[16px] font-[300] leading-[2.45] tracking-[0.08em] text-[var(--paper)]">{reactionText}</div>
+              <div className="mt-12 rounded-[26px] border px-5 py-6" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
+                <div className="whitespace-pre-line text-[16px] font-[300] leading-[2.45] tracking-[0.08em] text-[var(--paper)]">{reactionText}</div>
               </div>
-              <div className={`mt-16 transition duration-500 ${reactionText.length >= selectedChoice.reaction.length ? 'opacity-100' : 'opacity-0'}`}>
+              <div className="mt-6 grid gap-3">
+                {act?.progression.plotAdvance ? (
+                  <div className="border px-4 py-4 text-[13px] leading-[2.1] tracking-[0.12em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.dialogueText }}>
+                    主线推进：{act.progression.plotAdvance}
+                  </div>
+                ) : null}
+                {act?.progression.tensionShift ? (
+                  <div className="border px-4 py-4 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]" style={{ borderColor: 'rgba(123,168,196,.16)' }}>
+                    张力变化：{act.progression.tensionShift}
+                  </div>
+                ) : null}
+              </div>
+              <div className={`mt-16 transition duration-500 ${reactionText.length >= reactionFullText.length ? 'opacity-100' : 'opacity-0'}`}>
                 <span className="inline-flex rounded-[20px] border border-[rgba(123,168,196,.26)] bg-[rgba(123,168,196,.12)] px-5 py-3 text-[12px] tracking-[0.2em] text-[var(--jade)]">
                   <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full bg-[var(--jade)]" />
                   {selectedChoice.emotion}
                 </span>
               </div>
               <div className="mt-8">
-                <SealButton label={reactionText.length >= selectedChoice.reaction.length ? '继 续  →' : '反 应 正 在 浮 出'} onClick={goNextFromReaction} disabled={reactionText.length < selectedChoice.reaction.length} />
+                <SealButton label={reactionText.length >= reactionFullText.length ? '继续  →' : '反应正在浮出'} onClick={goNextFromReaction} disabled={reactionText.length < reactionFullText.length} />
               </div>
             </div>
           </Shell>

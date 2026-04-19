@@ -1,3 +1,4 @@
+import type { DreamNarrativeDocument } from './dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from '../../components/dream/types';
 
@@ -14,6 +15,7 @@ export type DreamGeneratedChoice = {
   direction: string;
   detail: string;
   reactionHint: string;
+  storyPush: string;
   emotion: string;
 };
 
@@ -29,12 +31,44 @@ export type DreamRuntimeChoiceSet = {
   custom: DreamCustomChoice;
 };
 
+export type DreamActProgression = {
+  consequence: string;
+  plotAdvance: string;
+  tensionShift: string;
+};
+
 export type DreamRuntimeAct = {
   id: string;
   label: string;
   scene: string;
   charState: string;
+  narrative: DreamNarrativeDocument;
   choiceSet: DreamRuntimeChoiceSet;
+  progression: DreamActProgression;
+};
+
+export type DreamStoryFrame = {
+  worldTitle: string;
+  worldSummary: string;
+  userDreamIdentity: string;
+  characterDreamIdentity: string;
+  dreamRelationship: string;
+  openingNode: string;
+  storyObjective: string;
+  coreConflict: string;
+  realityAnchor: string;
+};
+
+export type DreamPresentation = {
+  themeId: string;
+  themeName: string;
+  accent: string;
+  accentSoft: string;
+  dialogueText: string;
+  frameBorder: string;
+  frameFill: string;
+  layoutId: string;
+  layoutName: string;
 };
 
 export type DreamEndingInput = {
@@ -54,6 +88,8 @@ export type DreamRuntimeScenario = {
   coverTitle: string;
   coverSubtitle: string;
   confirmHint: string;
+  storyFrame: DreamStoryFrame;
+  presentation: DreamPresentation;
   acts: DreamRuntimeAct[];
   endingInput: DreamEndingInput;
   aftermathInput: DreamAftermathInput;
