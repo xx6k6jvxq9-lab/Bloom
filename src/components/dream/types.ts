@@ -10,10 +10,14 @@ export type DreamTagCategory =
   | 'tension'
   | 'drive'
   | 'mood'
+  | 'climate'
+  | 'participants'
   | 'faction'
+  | 'camp'
   | 'identity'
   | 'lead'
   | 'intensity'
+  | 'interaction'
   | 'ending';
 
 export type DreamChoice = {
