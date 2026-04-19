@@ -57,6 +57,11 @@ type DreamEntryOption = {
   advanced?: boolean;
 };
 
+type DreamConfirmPreview = {
+  coverSubtitle: string;
+  confirmHint: string;
+};
+
 const dreamThemeStyle = {
   '--void': '#030509',
   '--ink': '#05080E',
@@ -88,6 +93,76 @@ function buildRoles(characters: Character[]): DreamRole[] {
   }));
 }
 
+function pickRandom<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function pickRandomIds(category: DreamTagCategory, count: number) {
+  const group = dreamTagGroups.find((item) => item.category === category);
+  if (!group) return [];
+  const pool = [...group.options];
+  const picked: string[] = [];
+  while (pool.length > 0 && picked.length < count) {
+    const index = Math.floor(Math.random() * pool.length);
+    picked.push(pool[index].id);
+    pool.splice(index, 1);
+  }
+  return picked;
+}
+
+function buildQuickDreamPreset(): {
+  domainId: DreamDomainId;
+  depth: DreamDepth;
+  selectedTags: Record<DreamTagCategory, string[]>;
+  preview: DreamConfirmPreview;
+} {
+  const domainId = pickRandom(['crowd', 'threshold', 'shared', 'rift'] as const);
+  const genre = pickRandomIds('genre', 1);
+  const tension = pickRandomIds('tension', 1);
+  const drive = pickRandomIds('drive', 1);
+  const mood = pickRandomIds('mood', 1);
+  const climate = pickRandomIds('climate', 1);
+  const participants = pickRandomIds('participants', 1);
+  const faction = pickRandomIds('faction', 1);
+  const camp = pickRandomIds('camp', 1);
+  const identity = pickRandomIds('identity', 1);
+  const lead = pickRandomIds('lead', 1);
+  const intensity = pickRandomIds('intensity', 1);
+  const interaction = pickRandomIds('interaction', 1);
+  const ending = pickRandomIds('ending', 1);
+
+  const selectedTags: Record<DreamTagCategory, string[]> = {
+    ...defaultTagSelection,
+    world: [domainId],
+    genre,
+    tension,
+    drive,
+    mood,
+    climate,
+    participants,
+    faction,
+    camp,
+    identity,
+    lead,
+    intensity,
+    interaction,
+    ending,
+  };
+
+  const subtitle = `${pickRandom(['今夜的门先开了一条缝', '这一次梦会先把你拖进节点里', '有人已经在梦里等你', '这一局从失衡的瞬间开始'])}`;
+  const confirmHint = `${pickRandom(['这场梦不会先解释规则，你要先活过第一幕。', '你们的关系已经被梦改写，进入后再确认谁站在哪一边。', '这一局会先给你一个世界，再逼你做选择。', '梦已经把身份和冲突排好，只等你落进去。'])}`;
+
+  return {
+    domainId,
+    depth: 'shallow',
+    selectedTags,
+    preview: {
+      coverSubtitle: subtitle,
+      confirmHint,
+    },
+  };
+}
+
 function useTypewriter(text: string, active: boolean) {
   const [value, setValue] = useState('');
   useEffect(() => {
@@ -111,6 +186,72 @@ function useTypewriter(text: string, active: boolean) {
     };
   }, [active, text]);
   return value;
+}
+
+function useNarrativeTypewriter(
+  blocks: Array<{
+    id: string;
+    type: string;
+    text: string;
+    speakerName?: string;
+    align?: 'left' | 'center' | 'right';
+    emphasis?: 'low' | 'medium' | 'high';
+  }>,
+  active: boolean,
+  scopeKey: string,
+) {
+  const [visibleBlocks, setVisibleBlocks] = useState<typeof blocks>([]);
+
+  useEffect(() => {
+    if (!active || blocks.length === 0) {
+      setVisibleBlocks((prev) => (prev.length > 0 ? [] : prev));
+      return;
+    }
+
+    let cancelled = false;
+    let blockIndex = 0;
+    let charIndex = 0;
+
+    setVisibleBlocks(
+      blocks.map((block) => ({
+        ...block,
+        text: '',
+      })),
+    );
+
+    const step = () => {
+      if (cancelled || blockIndex >= blocks.length) return;
+      const sourceBlock = blocks[blockIndex];
+      const char = sourceBlock.text[charIndex];
+      if (!char) {
+        blockIndex += 1;
+        charIndex = 0;
+        window.setTimeout(step, 120);
+        return;
+      }
+
+      setVisibleBlocks((prev) =>
+        prev.map((block, index) =>
+          index === blockIndex
+            ? {
+                ...block,
+                text: `${block.text}${char}`,
+              }
+            : block,
+        ),
+      );
+
+      charIndex += 1;
+      window.setTimeout(step, /[，。！？；：]/.test(char) ? 180 : 26);
+    };
+
+    window.setTimeout(step, 120);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, blocks, scopeKey]);
+
+  return visibleBlocks;
 }
 
 function DreamStars() {
@@ -300,7 +441,7 @@ function DreamNarrativeBlocks({
                   {block.speakerName}
                 </div>
               ) : null}
-              <div className={`whitespace-pre-line font-[300] ${alignClass} ${emphasisClass}`} style={{ color: presentation.dialogueText }}>
+              <div className={`whitespace-pre-line font-[300] ${alignClass} ${emphasisClass}`} style={{ color: presentation.accent }}>
                 {block.text}
               </div>
             </div>
@@ -309,7 +450,7 @@ function DreamNarrativeBlocks({
 
         if (block.type === 'highlight-dialogue') {
           return (
-            <div key={block.id} className={`whitespace-pre-line font-[400] ${alignClass} text-[22px] leading-[2]`} style={{ color: presentation.dialogueText }}>
+            <div key={block.id} className={`whitespace-pre-line font-[400] ${alignClass} text-[22px] leading-[2]`} style={{ color: presentation.accent }}>
               {block.text}
             </div>
           );
@@ -323,7 +464,7 @@ function DreamNarrativeBlocks({
                   {block.speakerName}
                 </div>
               ) : null}
-              <div className={`whitespace-pre-line font-[300] ${emphasisClass}`} style={{ color: presentation.dialogueText }}>
+              <div className={`whitespace-pre-line font-[300] ${emphasisClass}`} style={{ color: presentation.accent }}>
                 {block.text}
               </div>
             </div>
@@ -338,7 +479,7 @@ function DreamNarrativeBlocks({
                   {block.speakerName}
                 </div>
               ) : null}
-              <div className="whitespace-pre-line text-[15px] font-[300] leading-[2.2] italic" style={{ color: presentation.dialogueText }}>
+              <div className="whitespace-pre-line text-[15px] font-[300] leading-[2.2] italic" style={{ color: presentation.accent }}>
                 {block.text}
               </div>
             </div>
@@ -698,6 +839,7 @@ function ConfirmStageV2({
   selectedRole,
   selectedDomain,
   scenario,
+  preview,
   selectedLabels,
   onBack,
   onConfirm,
@@ -707,6 +849,7 @@ function ConfirmStageV2({
   selectedRole: DreamRole;
   selectedDomain: DreamDomainId;
   scenario: ReturnType<typeof resolveScenario>;
+  preview?: DreamConfirmPreview | null;
   selectedLabels: string[];
   onBack: () => void;
   onConfirm: () => void;
@@ -746,7 +889,7 @@ function ConfirmStageV2({
                 <Avatar role={selectedRole} small />
               </div>
               <div className="mt-8 text-[28px] font-[200] tracking-[0.18em] text-[var(--paper)]">{selectedRole.name}</div>
-              <div className="mt-3 text-[13px] tracking-[0.18em] text-[var(--mist)]">{scenario.coverSubtitle}</div>
+              <div className="mt-3 text-[13px] tracking-[0.18em] text-[var(--mist)]">{preview?.coverSubtitle || scenario.coverSubtitle}</div>
             </div>
             <div className="mt-10 flex-1">
               <div className="flex flex-wrap justify-center gap-3">
@@ -756,7 +899,7 @@ function ConfirmStageV2({
                   </div>
                 ))}
               </div>
-              <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{scenario.confirmHint}</div>
+              <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{preview?.confirmHint || scenario.confirmHint}</div>
             </div>
             <div className="mt-10 w-full pb-2"><SealButton label="确认入梦" onClick={onConfirm} /></div>
             <div className="w-full">
@@ -871,6 +1014,7 @@ export function DreamAppPage({
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
   const [selectedTags, setSelectedTags] = useState<Record<DreamTagCategory, string[]>>(defaultTagSelection);
+  const [confirmPreview, setConfirmPreview] = useState<DreamConfirmPreview | null>(null);
   const [detailExpanded, setDetailExpanded] = useState(true);
   const [actIndex, setActIndex] = useState(0);
   const [selectedChoice, setSelectedChoice] = useState<ActiveDreamChoice | null>(null);
@@ -900,7 +1044,9 @@ export function DreamAppPage({
     frameFill: 'rgba(13,18,32,.72)',
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
-  const sceneBlocks = act?.narrative.pages[0]?.blocks ?? [];
+  const sceneBlocks = useMemo(() => act?.narrative.pages[0]?.blocks ?? [], [act]);
+  const typedSceneBlocks = useNarrativeTypewriter(sceneBlocks, stage === 'scene', `${runtimeScenario?.id || 'preview'}-${act?.id || 'none'}-scene`);
+  const sceneReady = typedSceneBlocks.length === sceneBlocks.length && typedSceneBlocks.every((block, index) => block.text === sceneBlocks[index]?.text);
   const isDeepDream = runtimeScenario?.depth === 'deep';
   const isClosingAct = Boolean(act && closingActId && act.id === closingActId);
   const isLastGeneratedAct = Boolean(runtimeScenario && actIndex === runtimeScenario.acts.length - 1);
@@ -1014,9 +1160,11 @@ export function DreamAppPage({
   const chooseMode = (mode: DreamEntryMode) => {
     setEntryMode(mode);
     if (mode === 'quick') {
-      setSelectedDomain('threshold');
-      setDreamDepth('shallow');
-      setSelectedTags({ ...defaultTagSelection, world: ['threshold'], drive: ['appointment'], mood: ['restraint'] });
+      const preset = buildQuickDreamPreset();
+      setSelectedDomain(preset.domainId);
+      setDreamDepth(preset.depth);
+      setSelectedTags(preset.selectedTags);
+      setConfirmPreview(preset.preview);
       setStage('confirm');
       return;
     }
@@ -1024,11 +1172,13 @@ export function DreamAppPage({
       setSelectedDomain('rift');
       setDreamDepth('deep');
       setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'], mood: ['secret'], tension: ['forbidden'] });
+      setConfirmPreview(null);
       setStage('confirm');
       return;
     }
     setSelectedDomain('shared');
     setDreamDepth('shallow');
+    setConfirmPreview(null);
     setStage('tags');
   };
 
@@ -1077,15 +1227,15 @@ export function DreamAppPage({
         selectedChoice,
       });
 
-      if (!payload.nextAct) {
-        throw new Error('深梦续写没有返回下一幕。');
+      if (!payload.nextActs || payload.nextActs.length === 0) {
+        throw new Error('深梦续写没有返回新的下沉段。');
       }
 
       setRuntimeScenario((prev) =>
         prev
           ? {
               ...prev,
-              acts: [...prev.acts, payload.nextAct!],
+              acts: [...prev.acts, ...payload.nextActs],
             }
           : prev,
       );
@@ -1231,6 +1381,7 @@ export function DreamAppPage({
     setLoadingProgress(0);
     setCustomInput('');
     setCustomInputOpen(false);
+    setConfirmPreview(null);
     setIsSubmittingCustom(false);
     setIsGeneratingNextAct(false);
     setIsEndingDeepDream(false);
@@ -1439,6 +1590,7 @@ export function DreamAppPage({
             selectedRole={selectedRole}
             selectedDomain={selectedDomain}
             scenario={scenario}
+            preview={confirmPreview}
             selectedLabels={selectedLabels}
             onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')}
             onConfirm={() => setStage('loading')}
@@ -1573,13 +1725,13 @@ export function DreamAppPage({
                       {storyFrame.timeNode ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">时点：{storyFrame.timeNode}</div> : null}
                       {storyFrame.currentCrisis ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">危机：{storyFrame.currentCrisis}</div> : null}
                       {storyFrame.forbiddenRule ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">规则：{storyFrame.forbiddenRule}</div> : null}
-                      {storyFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.dialogueText }}>此幕目标：{storyFrame.immediateGoal}</div> : null}
+                      {storyFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>此幕目标：{storyFrame.immediateGoal}</div> : null}
                       <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
                         主线：{storyFrame.storyObjective}
                       </div>
                     </div>
                   ) : null}
-                  <DreamNarrativeBlocks blocks={sceneBlocks} presentation={presentation} />
+                  <DreamNarrativeBlocks blocks={typedSceneBlocks} presentation={presentation} />
                   <div className="mt-8 border-l pl-4 text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder }}>
                     <div>{act.charState}</div>
                     {act.progression.consequence ? <div className="mt-3">变化：{act.progression.consequence}</div> : null}
@@ -1589,7 +1741,7 @@ export function DreamAppPage({
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-10">
-                <SealButton label={isClosingAct ? '进 入 结 局' : '进 入 选 择'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} />
+                <SealButton label={sceneReady ? (isClosingAct ? '进 入 结 局' : '进 入 选 择') : '正 文 正 在 浮 出'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} disabled={!sceneReady} />
               </div>
               {isDeepDream && !isClosingAct ? (
                 <div className="mt-4">
@@ -1663,7 +1815,7 @@ export function DreamAppPage({
                   }}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--jade)]">四</div>
+                    <div className="pt-1 text-[14px] tracking-[0.18em]" style={{ color: presentation.accent }}>四</div>
                     <div className="min-w-0">
                       <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{act.choiceSet.custom.title}</div>
                       <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{act.choiceSet.custom.guidance}</div>
@@ -1728,7 +1880,7 @@ export function DreamAppPage({
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">角 色 反 应</div>
               <div className="mt-10 flex items-center gap-4">
                 <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
-                <div className="text-[12px] tracking-[0.18em] text-[var(--jade)]">你选择了 {selectedChoice.title}</div>
+                <div className="text-[12px] tracking-[0.18em]" style={{ color: presentation.accent }}>你选择了 {selectedChoice.title}</div>
                 <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
               </div>
               <div className="mt-12 rounded-[26px] border px-5 py-6" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
@@ -1736,7 +1888,7 @@ export function DreamAppPage({
               </div>
               <div className="mt-6 grid gap-3">
                 {act?.progression.plotAdvance ? (
-                  <div className="border px-4 py-4 text-[13px] leading-[2.1] tracking-[0.12em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.dialogueText }}>
+                  <div className="border px-4 py-4 text-[13px] leading-[2.1] tracking-[0.12em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.accent }}>
                     主线推进：{act.progression.plotAdvance}
                   </div>
                 ) : null}
@@ -1747,8 +1899,8 @@ export function DreamAppPage({
                 ) : null}
               </div>
               <div className={`mt-16 transition duration-500 ${reactionText.length >= reactionFullText.length ? 'opacity-100' : 'opacity-0'}`}>
-                <span className="inline-flex rounded-[20px] border border-[rgba(123,168,196,.26)] bg-[rgba(123,168,196,.12)] px-5 py-3 text-[12px] tracking-[0.2em] text-[var(--jade)]">
-                  <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full bg-[var(--jade)]" />
+                <span className="inline-flex rounded-[20px] border px-5 py-3 text-[12px] tracking-[0.2em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.accent }}>
+                  <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full" style={{ backgroundColor: presentation.accent }} />
                   {selectedChoice.emotion}
                 </span>
               </div>
@@ -1862,7 +2014,7 @@ export function DreamAppPage({
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">余响</div>
                 <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{aftermathView.summary}</div>
                 <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{aftermathView.detail}</div>
-                <div className="mt-5 border-t border-[rgba(123,168,196,.16)] pt-4 text-[11px] tracking-[0.24em] text-[var(--jade)]">轻微关系温度变化 · 语气漂移</div>
+                <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>轻微关系温度变化 · 语气漂移</div>
               </div>
               <div className="mt-8"><SealButton label="再入一梦" onClick={restart} /></div>
             </div>

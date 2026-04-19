@@ -8,14 +8,14 @@ function buildPastActSummary(options: GenerateDreamContinuationOptions) {
     .map((act, index) => {
       const choice =
         index === options.actIndex && options.selectedChoice
-          ? `\n- 本幕用户选择: ${options.selectedChoice.title} / ${options.selectedChoice.direction}`
+          ? `\n- 本幕用户选择：${options.selectedChoice.title} / ${options.selectedChoice.direction}`
           : '';
       return [
         `${act.label}`,
-        `- 场景: ${act.scene.slice(0, 160)}`,
-        `- 角色状态: ${act.charState || '未写明'}`,
-        `- 主线推进: ${act.progression.plotAdvance || '未写明'}`,
-        `- 张力变化: ${act.progression.tensionShift || '未写明'}`,
+        `- 场景：${act.scene.slice(0, 160)}`,
+        `- 角色状态：${act.charState || '未写明'}`,
+        `- 主线推进：${act.progression.plotAdvance || '未写明'}`,
+        `- 张力变化：${act.progression.tensionShift || '未写明'}`,
         choice,
       ].join('\n');
     })
@@ -33,10 +33,10 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const modeInstruction =
     options.mode === 'custom'
       ? `用户选择了第 4 个“自定义描述”，用户输入是：${options.userInput?.trim() || '未提供'}。
-请先生成这一输入带来的即时反应，再生成下一幕。下一幕要承接用户输入，不要无视它。`
+请先生成这条输入带来的即时反应，再生成下一幕。下一幕必须承接用户输入，不要无视它。`
       : options.mode === 'deeper'
         ? `当前是深梦，用户没有结束做梦，而是继续往下沉。当前用户刚做出的选择是：${options.selectedChoice?.title || '未提供'}。
-请生成承接这一选择的即时反应，并再生成下一幕，保持还能继续下沉。`
+请生成承接这一选择的即时反应，然后一次性继续生成新的 5 幕“下沉段”。这 5 幕必须是连续剧情，不是 5 个散段。第一幕紧接当前一幕，最后一幕保留还能继续下沉的空间。`
         : `当前是深梦，用户点击了“结束做梦”。
 请生成一幕“最后一幕”，这一幕必须承接前文，把主线推到可进入结局的位置，然后一并输出 endingInput 和 aftermathInput。`;
 
@@ -80,7 +80,48 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     "messagePreviewDirection": "次日聊天预览方向"
   }
 }`
-      : `{
+      : options.mode === 'deeper'
+        ? `{
+  "reactionText": "150-260字的即时反应与推进",
+  "emotion": "一个简短情绪词",
+  "storyPush": "这一轮之后主线会被推向哪里",
+  "nextActs": [
+    {
+      "id": "next-act-1",
+      "label": "下一幕",
+      "scene": "800-1000字完整剧情",
+      "charState": "角色此刻状态",
+      "narrative": {
+        "themeId": "${options.scenario.presentation.themeId}",
+        "layoutId": "${options.scenario.presentation.layoutId}",
+        "pages": [
+          {
+            "id": "page-1",
+            "title": "下一幕",
+            "blocks": []
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "next-choice-1",
+          "title": "短标题",
+          "direction": "方向",
+          "detail": "动作/走向描写",
+          "reactionHint": "角色即时反应",
+          "storyPush": "如何推进主线",
+          "emotion": "情绪词"
+        }
+      ],
+      "progression": {
+        "consequence": "这一幕造成的变化",
+        "plotAdvance": "主线被推进到哪里",
+        "tensionShift": "张力变化"
+      }
+    }
+  ]
+}`
+        : `{
   "reactionText": "150-260字的即时反应与推进",
   "emotion": "一个简短情绪词",
   "storyPush": "这一轮之后主线会被推向哪里",

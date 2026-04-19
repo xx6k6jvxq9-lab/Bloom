@@ -13,6 +13,7 @@ type RawContinuation = {
   emotion?: string;
   storyPush?: string;
   nextAct?: RawAct;
+  nextActs?: RawAct[];
   finalAct?: RawAct;
   endingInput?: Partial<DreamEndingInput>;
   aftermathInput?: Partial<DreamAftermathInput>;
@@ -32,8 +33,8 @@ export async function generateDreamContinuation(options: GenerateDreamContinuati
         content: prompt,
       },
     ],
-    temperature: 0.92,
-    maxOutputTokens: 5200,
+    temperature: 0.94,
+    maxOutputTokens: options.mode === 'deeper' ? 7600 : 5200,
   });
 
   const parsed = parseJsonResponse<RawContinuation>(raw);
@@ -44,6 +45,7 @@ export async function generateDreamContinuation(options: GenerateDreamContinuati
     emotion: parsed.emotion?.trim() || '',
     storyPush: parsed.storyPush?.trim() || '',
     nextAct: parsed.nextAct ? toAct(parsed.nextAct, nextActIndex, options.scenario.presentation) : undefined,
+    nextActs: parsed.nextActs?.map((act, index) => toAct(act, nextActIndex + index, options.scenario.presentation)),
     finalAct: parsed.finalAct ? toAct(parsed.finalAct, nextActIndex, options.scenario.presentation) : undefined,
     endingInput: parsed.endingInput
       ? {

@@ -143,8 +143,9 @@ export function toChoiceSet(choices: RawChoice[] | undefined, actIndex: number):
 
 export function toAct(act: RawAct, actIndex: number, presentation: DreamPresentation): DreamRuntimeAct {
   const label = act.label?.trim() || `第 ${actIndex + 1} 幕`;
+  const normalizedRawId = (act.id?.trim() || 'act').replace(/[^\w-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'act';
   return {
-    id: act.id?.trim() || `act-${actIndex + 1}`,
+    id: `${normalizedRawId}-${actIndex + 1}`,
     label,
     scene: act.scene?.trim() || '',
     charState: act.charState?.trim() || '',

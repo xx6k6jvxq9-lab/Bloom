@@ -125,6 +125,7 @@ export type DreamContinuationPayload = {
   emotion?: string;
   storyPush?: string;
   nextAct?: DreamRuntimeAct;
+  nextActs?: DreamRuntimeAct[];
   finalAct?: DreamRuntimeAct;
   endingInput?: DreamEndingInput;
   aftermathInput?: DreamAftermathInput;
