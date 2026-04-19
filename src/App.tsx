@@ -719,6 +719,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const activeConfig = useMemo(
+    () => settings.configs.find((config) => config.id === settings.activeConfigId) ?? settings.configs[0] ?? DEFAULT_CONFIG,
+    [settings.activeConfigId, settings.configs],
+  );
+
   useEffect(() => {
     const savedSettings = localStorage.getItem('ai_phone_settings');
     if (savedSettings) {
@@ -1333,7 +1338,14 @@ export default function App() {
             />
           )}
           {activeApp === 'dream' && (
-            <DreamAppPage key="dream" onBack={() => setActiveApp('home')} characters={appData.characters} />
+            <DreamAppPage
+              key="dream"
+              onBack={() => setActiveApp('home')}
+              characters={appData.characters}
+              activeConfig={activeConfig}
+              masks={appData.masks || []}
+              worldBooks={appData.worldBooks || []}
+            />
           )}
           {activeApp === 'worldbook' && (
             <WorldBookManager 

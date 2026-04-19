@@ -1,11 +1,17 @@
 ﻿import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
-import type { Character } from '../../types';
+import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
+import type { DreamGeneratedChoice, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
-import type { DreamChoice, DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
+import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
+
+type ActiveDreamChoice = DreamGeneratedChoice & {
+  reaction: string;
+};
 
 type DreamStage =
   | 'splash'
@@ -50,7 +56,7 @@ const dreamThemeStyle = {
   '--border': 'rgba(196,169,106,.1)',
   '--border-mid': 'rgba(196,169,106,.2)',
   fontFamily: "'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif",
-} as React.CSSProperties;
+} as CSSProperties;
 
 const dreamNoise = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E")`;
 
@@ -150,7 +156,7 @@ function Shell({
   contentClassName = '',
 }: {
   time: string;
-  children: React.ReactNode;
+  children: ReactNode;
   bottomTone?: boolean;
   scrollable?: boolean;
   contentClassName?: string;
@@ -381,7 +387,7 @@ function TagsStageV2({
   selectedTags: Record<DreamTagCategory, string[]>;
   toggleTag: (category: DreamTagCategory, optionId: string, max: number) => void;
   detailExpanded: boolean;
-  setDetailExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  setDetailExpanded: Dispatch<SetStateAction<boolean>>;
   selectedLabels: string[];
   onBack: () => void;
   onConfirm: () => void;
@@ -692,7 +698,19 @@ function EntrySheet({
   );
 }
 
-export function DreamAppPage({ onBack, characters }: { onBack: () => void; characters: Character[] }) {
+export function DreamAppPage({
+  onBack,
+  characters,
+  activeConfig,
+  masks,
+  worldBooks,
+}: {
+  onBack: () => void;
+  characters: Character[];
+  activeConfig: ApiConfig;
+  masks: Mask[];
+  worldBooks: WorldBookEntry[];
+}) {
   const roles = useMemo(() => buildRoles(characters), [characters]);
   const [time, setTime] = useState(formatDreamTime);
   const [stage, setStage] = useState<DreamStage>('splash');
@@ -703,12 +721,19 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
   const [selectedTags, setSelectedTags] = useState<Record<DreamTagCategory, string[]>>(defaultTagSelection);
   const [detailExpanded, setDetailExpanded] = useState(true);
   const [actIndex, setActIndex] = useState(0);
-  const [selectedChoice, setSelectedChoice] = useState<DreamChoice | null>(null);
+  const [selectedChoice, setSelectedChoice] = useState<ActiveDreamChoice | null>(null);
   const [previewChoiceId, setPreviewChoiceId] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const selectedCharacter = useMemo(
+    () => characters.find((character) => character.id === selectedRoleId) ?? characters[0] ?? null,
+    [characters, selectedRoleId],
+  );
   const selectedRole = useMemo(() => roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null, [roles, selectedRoleId]);
-  const scenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
-  const act = scenario.acts[actIndex];
+  const previewScenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
+  const scenario = runtimeScenario ?? previewScenario;
+  const act = runtimeScenario?.acts[actIndex] ?? null;
   const sceneText = useTypewriter(act?.scene || '', stage === 'scene');
   const reactionText = useTypewriter(selectedChoice?.reaction || '', stage === 'reaction');
   const choiceHoldTimerRef = useRef<number | null>(null);
@@ -730,8 +755,10 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
   }, [stage]);
 
   useEffect(() => {
-    if (stage !== 'loading' || !selectedRole) return;
-    localStorage.setItem('dream_app_latest_session', JSON.stringify({ mode: entryMode, roleId: selectedRole.id, domain: selectedDomain, depth: dreamDepth, selectedTags, scenario, createdAt: Date.now() }));
+    if (stage !== 'loading' || !selectedRole || !selectedCharacter) return;
+    let cancelled = false;
+    setLoadingError(null);
+    setRuntimeScenario(null);
     setLoadingProgress(12);
     const progressTimer = window.setInterval(() => {
       setLoadingProgress((prev) => {
@@ -739,18 +766,54 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
         return Math.min(92, prev + 1 + Math.random() * 3.5);
       });
     }, 180);
-    const timer = window.setTimeout(() => {
-      window.clearInterval(progressTimer);
-      setLoadingProgress(100);
-      setActIndex(0);
-      setSelectedChoice(null);
-      setStage('scene');
-    }, 1800);
+
+    generateDreamScenario({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+    })
+      .then((generatedScenario) => {
+        if (cancelled) return;
+        window.clearInterval(progressTimer);
+        setRuntimeScenario(generatedScenario);
+        localStorage.setItem(
+          'dream_app_latest_session',
+          JSON.stringify({
+            mode: entryMode,
+            roleId: selectedCharacter.id,
+            domain: selectedDomain,
+            depth: dreamDepth,
+            selectedTags,
+            scenario: generatedScenario,
+            createdAt: Date.now(),
+          }),
+        );
+        setLoadingProgress(100);
+        setActIndex(0);
+        setSelectedChoice(null);
+        window.setTimeout(() => {
+          if (!cancelled) setStage('scene');
+        }, 260);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        window.clearInterval(progressTimer);
+        setLoadingProgress(0);
+        setLoadingError(error instanceof Error ? error.message : '梦境生成失败');
+      });
+
     return () => {
+      cancelled = true;
       window.clearInterval(progressTimer);
-      window.clearTimeout(timer);
     };
-  }, [dreamDepth, entryMode, scenario, selectedDomain, selectedRole, selectedTags, stage]);
+  }, [activeConfig, dreamDepth, entryMode, masks, selectedCharacter, selectedDomain, selectedRole, selectedTags, stage, worldBooks]);
 
   useEffect(() => {
     if (stage !== 'choices') {
@@ -864,6 +927,15 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
       window.clearTimeout(choiceHoldTimerRef.current);
       choiceHoldTimerRef.current = null;
     }
+  };
+
+  const retryDreamGeneration = () => {
+    setLoadingError(null);
+    setLoadingProgress(0);
+    setStage('confirm');
+    window.requestAnimationFrame(() => {
+      setStage('loading');
+    });
   };
 
   return (
@@ -1121,10 +1193,22 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
                 <div className="absolute inset-[16%] rounded-full bg-[radial-gradient(circle,rgba(196,169,106,.06),transparent_70%)] animate-[pulse_3s_ease-in-out_infinite_reverse]" />
               </div>
               <div className="mt-8 text-[22px] font-[200] tracking-[0.22em] text-[var(--paper)]">正在进入 {selectedRole.name} 的今夜</div>
-              <div className="mt-4 text-[12px] tracking-[0.42em] text-[var(--mist)] animate-[pulse_3s_ease-in-out_infinite]">{loadingLabel}</div>
-              <div className="mt-5 h-px w-20 bg-[rgba(196,169,106,.1)]">
-                <div className="h-px bg-[var(--gold)] transition-[width] duration-300 ease-linear" style={{ width: `${loadingProgress}%` }} />
-              </div>
+              {loadingError ? (
+                <>
+                  <div className="mt-4 max-w-[320px] text-[12px] leading-[2.1] tracking-[0.12em] text-[var(--mist)]">{loadingError}</div>
+                  <div className="mt-8 grid w-full max-w-[334px] gap-4">
+                    <SealButton label="重新入梦" onClick={retryDreamGeneration} />
+                    <SecondaryAction label="返回确认" onClick={() => setStage('confirm')} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-4 text-[12px] tracking-[0.42em] text-[var(--mist)] animate-[pulse_3s_ease-in-out_infinite]">{loadingLabel}</div>
+                  <div className="mt-5 h-px w-20 bg-[rgba(196,169,106,.1)]">
+                    <div className="h-px bg-[var(--gold)] transition-[width] duration-300 ease-linear" style={{ width: `${loadingProgress}%` }} />
+                  </div>
+                </>
+              )}
             </div>
           </Shell>
         )}
@@ -1157,7 +1241,7 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
                 现在由你决定，下一步要怎样落下去。
               </div>
               <div className="mt-10 flex flex-1 flex-col gap-4">
-                {act.choices.map((choice) => {
+                {act.choiceSet.generated.map((choice, index) => {
                   const previewing = previewChoiceId === choice.id;
                   return (
                     <button
@@ -1169,7 +1253,10 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
                       onPointerCancel={cancelChoicePreview}
                       onClick={() => {
                         cancelChoicePreview();
-                        setSelectedChoice(choice);
+                        setSelectedChoice({
+                          ...choice,
+                          reaction: choice.reactionHint,
+                        });
                         setStage('reaction');
                       }}
                       className="w-full border px-5 py-5 text-left transition duration-300"
@@ -1180,17 +1267,34 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
                       }}
                     >
                       <div className="flex items-start gap-4">
-                        <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{choice.icon}</div>
+                        <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{['一', '二', '三'][index]}</div>
                         <div className="min-w-0">
                           <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div>
                           <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">
-                            {previewing ? `预感：${choice.emotion}。${choice.detail}` : `长按 620ms 预感，轻触提交选择。${choice.detail}`}
+                            {previewing ? `预感：${choice.emotion}。${choice.detail}` : choice.detail}
                           </div>
                         </div>
                       </div>
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  disabled
+                  className="w-full border px-5 py-5 text-left opacity-70"
+                  style={{
+                    borderColor: 'rgba(123,168,196,.18)',
+                    backgroundColor: 'rgba(12,18,30,.78)',
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--jade)]">四</div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{act.choiceSet.custom.title}</div>
+                      <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{act.choiceSet.custom.guidance}</div>
+                    </div>
+                  </div>
+                </button>
               </div>
             </div>
           </Shell>
@@ -1206,7 +1310,7 @@ export function DreamAppPage({ onBack, characters }: { onBack: () => void; chara
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{act.label} · 梦触</div>
               <div className="mt-6 text-center text-[14px] leading-[2.2] tracking-[0.16em] text-[var(--paper-60)]">梦已经给出方向。<br />现在由你决定，下一步要怎样落下去。</div>
               <div className="mt-10 flex flex-1 flex-col gap-4">
-                {act.choices.map((choice) => <button key={choice.id} type="button" onClick={() => { setSelectedChoice(choice); setStage('reaction'); }} className="w-full border px-5 py-5 text-left transition duration-300" style={{ borderColor: 'rgba(196,169,106,.12)', backgroundColor: 'rgba(13,18,32,.72)' }}><div className="flex items-start gap-4"><div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{choice.icon}</div><div className="min-w-0"><div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div><div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">长按 620ms 预感，轻触提交选择。{choice.detail}</div></div></div></button>)}
+                {act.choiceSet.generated.map((choice, index) => <button key={choice.id} type="button" onClick={() => { setSelectedChoice({ ...choice, reaction: choice.reactionHint }); setStage('reaction'); }} className="w-full border px-5 py-5 text-left transition duration-300" style={{ borderColor: 'rgba(196,169,106,.12)', backgroundColor: 'rgba(13,18,32,.72)' }}><div className="flex items-start gap-4"><div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{['一', '二', '三'][index]}</div><div className="min-w-0"><div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div><div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{choice.detail}</div></div></div></button>)}
               </div>
             </div>
           </Shell>
