@@ -292,7 +292,14 @@ export function DreamAppPage({ onBack: _onBack, characters }: { onBack: () => vo
   const toggleTag = (category: DreamTagCategory, optionId: string, max: number) => {
     setSelectedTags((prev) => {
       const current = prev[category] ?? [];
-      const next = current.includes(optionId) ? current.filter((item) => item !== optionId) : [...current.slice(-(Math.max(max - 1, 0))), optionId];
+      let next: string[];
+      if (category === 'world') {
+        next = [optionId];
+      } else {
+        next = current.includes(optionId)
+          ? current.filter((item) => item !== optionId)
+          : [...current.slice(-(Math.max(max - 1, 0))), optionId];
+      }
       if (category === 'world' && next[0]) setSelectedDomain(next[0] as DreamDomainId);
       return { ...prev, [category]: next };
     });
