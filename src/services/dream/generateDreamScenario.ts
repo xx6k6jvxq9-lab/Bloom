@@ -6,7 +6,9 @@ import type { DreamRuntimeScenario, GenerateDreamScenarioOptions } from './dream
 
 export async function generateDreamScenario(options: GenerateDreamScenarioOptions): Promise<DreamRuntimeScenario> {
   const promptInput = buildDreamPromptInput(options);
-  const seed = `${options.character.id}-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${promptInput.resolvedSelection.entryMode}-${Date.now()}`;
+  const seed = `${options.character.id}-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${promptInput.resolvedSelection.entryMode}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
   const prompt = buildDreamScenarioPrompt(options, seed);
   const expectedActs =
     promptInput.resolvedSelection.depth === 'deep'
@@ -26,7 +28,7 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
         content: prompt,
       },
     ],
-    temperature: 0.95,
+    temperature: 0.98,
     maxOutputTokens: 7800,
   });
 

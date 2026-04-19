@@ -1,6 +1,7 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
 import { buildDreamPromptInput } from './buildDreamPromptInput';
 import { resolveDreamPresentation } from './resolveDreamPresentation';
+import { buildDreamVariation } from './buildDreamVariation';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 
 function computeShallowActCount(seed: string) {
@@ -18,9 +19,9 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
       ? 4
       : computeShallowActCount(`${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.entryMode}`);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
-  const presentation = resolveDreamPresentation(
-    presentationSeed || `${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.depth}-${resolvedSelection.entryMode}`,
-  );
+  const baseSeed = presentationSeed || `${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.depth}-${resolvedSelection.entryMode}`;
+  const presentation = resolveDreamPresentation(baseSeed);
+  const variation = buildDreamVariation(baseSeed);
 
   return `
 你是 Bloom 项目的梦境剧情生成器。你的任务是为“梦境 App”生成一局结构清晰、逻辑完整、可分幕展开的梦中小故事。
@@ -31,9 +32,14 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
 3. 现实语境只保留：角色核心性格、表达风格、边界、情感熟悉度、记忆底色。
 4. 现实里的原职业、原身份、原关系称谓，不要直接搬进梦里，除非与本局标签高度一致。
 5. 如果标签定义了敌对、旧情、阵营、身份、禁忌，本局必须优先遵从标签。
-6. 梦开场必须先带入明确的背景包：什么世界、什么关系、什么节点、要面对什么冲突。
-7. 每一幕都必须推进同一条主线，不要只写氛围和碎片描写。
-8. 一整次梦只使用当前这一个 layout 和这一个 theme，不要混用别的格式和颜色。
+6. 梦开场必须先带入明确背景：世界、关系、节点、冲突、危机。
+7. 每一幕都必须推进同一条主线，不要只写氛围碎片。
+8. 一整次梦只使用当前这一套 layout 和 theme，不要混用别的格式和颜色。
+
+随机规则：
+1. 即使是同角色、同梦域、同标签，也不要每次都写成同一个版本。
+2. 本次必须明确吸收“随机扰动包”，让开场镜头、触发事件、隐藏钩子、压力来源、情绪暗流都和上一次可能不同。
+3. 随机不是乱写，必须建立在标签和梦域规则之内。
 
 重要约束：
 1. 输出必须是 JSON，不要解释，不要写 markdown 代码块。
@@ -51,6 +57,14 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
 
 当前梦域规则：
 ${domainRule}
+
+本次随机扰动包：
+- variationId：${variation.variationId}
+- 开场意象：${variation.openingImage}
+- 触发事件：${variation.triggerEvent}
+- 隐藏钩子：${variation.hiddenHook}
+- 压力来源：${variation.pressureSource}
+- 情绪暗流：${variation.emotionalCurrent}
 
 本次角色现实底色：
 - 角色名：${options.character.remarkName?.trim() || options.character.name}
@@ -178,5 +192,5 @@ ${tagSummary || '未选择标签'}
 - 每幕 narrative.pages 数量固定为 1。
 - 每幕 narrative.pages[0].blocks 数量为 4 到 7 个。
 - 同一局梦里世界观、身份、关系、主线目标要始终一致，不要跳脱。
-  `.trim();
+`.trim();
 }
