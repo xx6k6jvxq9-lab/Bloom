@@ -1,18 +1,12 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
 import { buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildActBeatSummary, buildDreamMemorySummary, compactSummaryText } from './dreamRuntimeSummaries';
 import type { GenerateDreamContinuationOptions } from './dreamRuntimeTypes';
 
 function buildPastActSummary(options: GenerateDreamContinuationOptions) {
   return options.scenario.acts
-    .slice(0, options.actIndex + 1)
-    .map((act) => [
-      act.label,
-      `- scene: ${act.scene.slice(0, 200) || 'n/a'}`,
-      `- charState: ${act.charState || 'n/a'}`,
-      `- plotAdvance: ${act.progression.plotAdvance || 'n/a'}`,
-      `- tensionShift: ${act.progression.tensionShift || 'n/a'}`,
-      `- consequence: ${act.progression.consequence || 'n/a'}`,
-    ].join('\n'))
+    .slice(Math.max(0, options.actIndex - 2), options.actIndex + 1)
+    .map((act) => act.beatSummary || buildActBeatSummary(act))
     .join('\n\n');
 }
 
@@ -20,12 +14,9 @@ function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
   const committedTrail = options.scenario.decisionTrail.map((record, index) => (
     [
       `${index + 1}. ${record.actLabel}`,
-      `- choice: ${record.title}`,
-      `- direction: ${record.direction || 'n/a'}`,
-      `- detail: ${record.detail || 'n/a'}`,
-      `- reaction: ${record.reaction || 'n/a'}`,
-      `- storyPush: ${record.storyPush || 'n/a'}`,
-      `- emotion: ${record.emotion || 'n/a'}`,
+      `- choice: ${compactSummaryText(record.title, 18) || 'n/a'}`,
+      `- direction: ${compactSummaryText(record.direction, 24) || 'n/a'}`,
+      `- storyPush: ${compactSummaryText(record.storyPush, 30) || 'n/a'}`,
       `- source: ${record.fromCustom ? 'custom-input' : 'preset-choice'}`,
     ].join('\n')
   ));
@@ -36,22 +27,16 @@ function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
       ? [
           `${committedTrail.length + 1}. ${currentActLabel}`,
           '- choice: custom-input',
-          `- direction: ${options.userInput?.trim() || 'n/a'}`,
-          `- detail: ${options.userInput?.trim() || 'n/a'}`,
-          '- reaction: pending-current-generation',
-          '- storyPush: pending-current-generation',
-          '- emotion: pending-current-generation',
+          `- direction: ${compactSummaryText(options.userInput?.trim(), 30) || 'n/a'}`,
+          `- storyPush: pending-current-generation`,
           '- source: custom-input',
         ].join('\n')
       : options.selectedChoice
         ? [
             `${committedTrail.length + 1}. ${currentActLabel}`,
-            `- choice: ${options.selectedChoice.title}`,
-            `- direction: ${options.selectedChoice.direction || 'n/a'}`,
-            `- detail: ${options.selectedChoice.detail || 'n/a'}`,
-            `- reaction: ${options.selectedChoice.reaction || options.selectedChoice.reactionHint || 'n/a'}`,
-            `- storyPush: ${options.selectedChoice.storyPush || 'n/a'}`,
-            `- emotion: ${options.selectedChoice.emotion || 'n/a'}`,
+            `- choice: ${compactSummaryText(options.selectedChoice.title, 18) || 'n/a'}`,
+            `- direction: ${compactSummaryText(options.selectedChoice.direction, 24) || 'n/a'}`,
+            `- storyPush: ${compactSummaryText(options.selectedChoice.storyPush, 30) || 'n/a'}`,
             `- source: ${options.selectedChoice.fromCustom ? 'custom-input' : 'preset-choice'}`,
           ].join('\n')
         : '';
@@ -65,6 +50,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
+  const memorySummary = options.scenario.memorySummary || buildDreamMemorySummary(options.scenario);
   const pastActs = buildPastActSummary(options);
   const decisionTrail = buildDecisionTrailSummary(options);
 
@@ -268,19 +254,16 @@ Tag mapping:
 
 Story frame:
 - worldTitle: ${options.scenario.storyFrame.worldTitle}
-- worldSummary: ${options.scenario.storyFrame.worldSummary}
 - userDreamIdentity: ${options.scenario.storyFrame.userDreamIdentity}
 - characterDreamIdentity: ${options.scenario.storyFrame.characterDreamIdentity}
 - dreamRelationship: ${options.scenario.storyFrame.dreamRelationship}
-- openingNode: ${options.scenario.storyFrame.openingNode}
-- timeNode: ${options.scenario.storyFrame.timeNode || 'n/a'}
-- currentCrisis: ${options.scenario.storyFrame.currentCrisis || 'n/a'}
-- forbiddenRule: ${options.scenario.storyFrame.forbiddenRule || 'n/a'}
-- immediateGoal: ${options.scenario.storyFrame.immediateGoal || 'n/a'}
 - storyObjective: ${options.scenario.storyFrame.storyObjective}
 - coreConflict: ${options.scenario.storyFrame.coreConflict}
 
-Past act summary:
+Memory summary:
+${memorySummary}
+
+Recent act beat summary:
 ${pastActs}
 
 Recorded user choice trail:

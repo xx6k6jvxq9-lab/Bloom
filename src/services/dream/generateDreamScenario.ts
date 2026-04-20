@@ -2,6 +2,7 @@ import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildDreamPromptInput } from './buildDreamPromptInput';
 import { buildDreamScenarioPrompt } from './buildDreamScenarioPrompt';
 import { buildPresentation, computeShallowActCount, parseJsonResponse, toAct, type RawScenario } from './dreamRuntimeNormalize';
+import { hydrateDreamRuntimeScenario } from './dreamRuntimeSummaries';
 import type { DreamRuntimeScenario, GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 
 export async function generateDreamScenario(options: GenerateDreamScenarioOptions): Promise<DreamRuntimeScenario> {
@@ -35,7 +36,7 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
   const parsed = parseJsonResponse<RawScenario>(raw);
   const normalizedActs = Array.from({ length: expectedActs }, (_, index) => toAct(parsed.acts?.[index] || {}, index, presentation));
 
-  return {
+  return hydrateDreamRuntimeScenario({
     id: `dream-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${Date.now()}`,
     coverTitle: parsed.coverTitle?.trim() || '今夜',
     coverSubtitle: parsed.coverSubtitle?.trim() || '',
@@ -71,5 +72,5 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
       toneDrift: parsed.aftermathInput?.toneDrift?.trim() || '',
       messagePreviewDirection: parsed.aftermathInput?.messagePreviewDirection?.trim() || '',
     },
-  };
+  });
 }

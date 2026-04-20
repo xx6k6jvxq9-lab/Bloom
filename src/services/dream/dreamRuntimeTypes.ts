@@ -47,6 +47,7 @@ export type DreamRuntimeAct = {
   label: string;
   scene: string;
   charState: string;
+  beatSummary?: string;
   narrative: DreamNarrativeDocument;
   choiceSet: DreamRuntimeChoiceSet;
   progression: DreamActProgression;
@@ -128,6 +129,7 @@ export type DreamRuntimeScenario = {
   domainId: DreamDomainId;
   storyFrame: DreamStoryFrame;
   presentation: DreamPresentation;
+  memorySummary?: string;
   acts: DreamRuntimeAct[];
   decisionTrail: DreamDecisionRecord[];
   endingInput: DreamEndingInput;

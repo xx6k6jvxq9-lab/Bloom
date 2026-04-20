@@ -7,6 +7,7 @@ import { generateDreamAftermath } from '../../services/dream/generateDreamAfterm
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
+import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSummaries';
 import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
@@ -1321,10 +1322,10 @@ export function DreamAppPage({
         if (cancelled) return;
         setRuntimeScenario((prev) => (
           prev
-            ? {
+            ? hydrateDreamRuntimeScenario({
                 ...prev,
                 endingOutput,
-              }
+              })
             : prev
         ));
       })
@@ -1389,10 +1390,10 @@ export function DreamAppPage({
         if (cancelled) return;
         setRuntimeScenario((prev) => (
           prev
-            ? {
+            ? hydrateDreamRuntimeScenario({
                 ...prev,
                 aftermathOutput,
-              }
+              })
             : prev
         ));
       })
@@ -1508,10 +1509,10 @@ export function DreamAppPage({
 
       setRuntimeScenario((prev) =>
         prev
-          ? {
+          ? hydrateDreamRuntimeScenario({
               ...prev,
               acts: [...prev.acts, ...payload.nextActs],
-            }
+            })
           : prev,
       );
       setActIndex((prev) => prev + 1);
@@ -1554,10 +1555,10 @@ export function DreamAppPage({
 
         setRuntimeScenario((prev) =>
           prev
-            ? {
+            ? hydrateDreamRuntimeScenario({
                 ...prev,
                 acts: upsertDreamAct(prev.acts, payload.nextAct!, actIndex + 1),
-              }
+              })
             : prev,
         );
       }
@@ -1575,10 +1576,10 @@ export function DreamAppPage({
       };
       setRuntimeScenario((prev) =>
         prev
-          ? {
+          ? hydrateDreamRuntimeScenario({
               ...prev,
               decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
-            }
+            })
           : prev,
       );
       setSelectedChoice(nextChoice);
@@ -1620,12 +1621,12 @@ export function DreamAppPage({
 
       setRuntimeScenario((prev) =>
         prev
-          ? {
+          ? hydrateDreamRuntimeScenario({
               ...prev,
               acts: [...prev.acts, payload.finalAct!],
               endingInput: payload.endingInput!,
               aftermathInput: payload.aftermathInput!,
-            }
+            })
           : prev,
       );
       setClosingActId(payload.finalAct.id);
@@ -2074,10 +2075,10 @@ export function DreamAppPage({
                         };
                         setRuntimeScenario((prev) => (
                           prev && act
-                            ? {
+                            ? hydrateDreamRuntimeScenario({
                                 ...prev,
                                 decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
-                              }
+                              })
                             : prev
                         ));
                         setSelectedChoice(nextChoice);

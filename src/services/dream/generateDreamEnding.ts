@@ -3,6 +3,7 @@ import type { Character, ApiConfig, Mask, WorldBookEntry } from '../../types';
 import type { DreamEndingOutput, DreamRuntimeScenario, DreamSelection } from './dreamRuntimeTypes';
 import { parseJsonResponse } from './dreamRuntimeNormalize';
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
+import { buildEndingFocusSummary, compactSummaryText } from './dreamRuntimeSummaries';
 
 type GenerateDreamEndingOptions = {
   activeConfig: ApiConfig;
@@ -22,43 +23,11 @@ const endingStyleExamples = [
   '日出未必意味着光明，但当我们仍然醒着时，破晓就已经开始了。',
 ];
 
-function compactText(text: string | undefined, maxLength: number) {
-  const normalized = (text || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'n/a';
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
-}
-
-function buildActsSummary(scenario: DreamRuntimeScenario) {
-  return scenario.acts
-    .slice(-4)
-    .map((act, index, arr) => [
-      `${scenario.acts.length - arr.length + index + 1}. ${act.label}`,
-      `- scene: ${compactText(act.scene, 120)}`,
-      `- consequence: ${compactText(act.progression.consequence, 72)}`,
-      `- plotAdvance: ${compactText(act.progression.plotAdvance, 72)}`,
-    ].join('\n'))
-    .join('\n\n');
-}
-
-function buildDecisionSummary(scenario: DreamRuntimeScenario, userName: string) {
-  return scenario.decisionTrail
-    .slice(-4)
-    .map((record, index, arr) => [
-      `${scenario.decisionTrail.length - arr.length + index + 1}. ${record.actLabel}`,
-      `- ${(userName || '用户').trim()} choice: ${compactText(record.title, 36)}`,
-      `- direction: ${compactText(record.direction, 48)}`,
-      `- detail: ${compactText(record.detail, 64)}`,
-      `- storyPush: ${compactText(record.storyPush, 64)}`,
-    ].join('\n'))
-    .join('\n\n');
-}
-
 function buildEndingPrompt(options: GenerateDreamEndingOptions) {
   const { scenario, selection, character, userName } = options;
   const domain = resolveDreamDomainDisplay(selection.domainId);
   const tagSummary = buildDreamTagSummary(selection.selectedTags);
-  const actSummary = buildActsSummary(scenario);
-  const decisionSummary = buildDecisionSummary(scenario, userName);
+  const endingFocusSummary = buildEndingFocusSummary(scenario);
 
   return `
 你是 Bloom 梦境 App 的结局生成器。你的任务不是总结剧情，而是为这一整场梦写出真正的结尾页文案。
@@ -82,26 +51,23 @@ ${endingStyleExamples.map((example, index) => `${index + 1}. ${example}`).join('
 当前梦信息：
 - domain: ${domain.name}
 - depth: ${scenario.depth}
-- coverTitle: ${compactText(scenario.coverTitle, 32)}
-- worldTitle: ${compactText(scenario.storyFrame.worldTitle, 32)}
-- userDreamIdentity: ${compactText(scenario.storyFrame.userDreamIdentity, 36)}
-- characterDreamIdentity: ${compactText(scenario.storyFrame.characterDreamIdentity, 36)}
-- dreamRelationship: ${compactText(scenario.storyFrame.dreamRelationship, 40)}
-- storyObjective: ${compactText(scenario.storyFrame.storyObjective, 52)}
-- coreConflict: ${compactText(scenario.storyFrame.coreConflict, 52)}
-- endingDirection: ${compactText(scenario.endingInput.endingDirection, 40)}
-- keyActionSummary: ${compactText(scenario.endingInput.keyActionSummary, 96)}
+- coverTitle: ${compactSummaryText(scenario.coverTitle, 32) || 'n/a'}
+- worldTitle: ${compactSummaryText(scenario.storyFrame.worldTitle, 32) || 'n/a'}
+- userDreamIdentity: ${compactSummaryText(scenario.storyFrame.userDreamIdentity, 36) || 'n/a'}
+- characterDreamIdentity: ${compactSummaryText(scenario.storyFrame.characterDreamIdentity, 36) || 'n/a'}
+- dreamRelationship: ${compactSummaryText(scenario.storyFrame.dreamRelationship, 40) || 'n/a'}
+- storyObjective: ${compactSummaryText(scenario.storyFrame.storyObjective, 52) || 'n/a'}
+- coreConflict: ${compactSummaryText(scenario.storyFrame.coreConflict, 52) || 'n/a'}
+- endingDirection: ${compactSummaryText(scenario.endingInput.endingDirection, 40) || 'n/a'}
+- keyActionSummary: ${compactSummaryText(scenario.endingInput.keyActionSummary, 96) || 'n/a'}
 - characterName: ${character.remarkName?.trim() || character.name}
 - userName: ${userName.trim() || '你'}
 
 标签摘要：
-${compactText(tagSummary, 180)}
+${compactSummaryText(tagSummary, 140) || 'n/a'}
 
-最近剧情摘要：
-${actSummary || 'n/a'}
-
-最近选择轨迹：
-${decisionSummary || 'n/a'}
+结局摘要：
+${endingFocusSummary || 'n/a'}
 
 输出 JSON：
 {
