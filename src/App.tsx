@@ -2242,6 +2242,18 @@ function SettingsApp({
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const filteredAvailableModels = useMemo(() => {
+    const keyword = editForm.model.trim().toLowerCase();
+    if (!availableModels.length) return [];
+    if (!keyword) return availableModels.slice(0, 24);
+
+    const startsWithMatches = availableModels.filter((model) => model.toLowerCase().startsWith(keyword));
+    const includesMatches = availableModels.filter(
+      (model) => !model.toLowerCase().startsWith(keyword) && model.toLowerCase().includes(keyword),
+    );
+
+    return [...startsWithMatches, ...includesMatches].slice(0, 24);
+  }, [availableModels, editForm.model]);
 
   // Sync back to parent whenever localSettings changes
   useEffect(() => {
@@ -2606,7 +2618,6 @@ function SettingsApp({
                   value={editForm.model}
                   onChange={e => setEditForm({...editForm, model: e.target.value})}
                   placeholder="例如：gpt-4o"
-                  list="model-list"
                   className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
                 />
                 {availableModels.length > 0 && (
@@ -2620,12 +2631,28 @@ function SettingsApp({
                     </button>
                   </div>
                 )}
-                {availableModels.length > 0 && (
-                  <datalist id="model-list">
-                    {availableModels.map(m => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
+                {filteredAvailableModels.length > 0 && (
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-zinc-100 bg-white p-2 shadow-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {filteredAvailableModels.map((model) => {
+                        const isSelected = editForm.model === model;
+                        return (
+                          <button
+                            key={model}
+                            type="button"
+                            onClick={() => setEditForm((prev) => ({ ...prev, model }))}
+                            className={`rounded-full border px-3 py-1.5 text-left text-[12px] transition-colors ${
+                              isSelected
+                                ? 'border-zinc-900 bg-zinc-900 text-white'
+                                : 'border-zinc-200 bg-zinc-50 text-zinc-700 active:bg-zinc-100'
+                            }`}
+                          >
+                            {model}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
