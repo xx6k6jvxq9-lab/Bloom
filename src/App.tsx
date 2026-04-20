@@ -19,6 +19,7 @@ import { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/WalletApp/moc
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
+import { AppSelect } from './components/shared/AppSelect';
 import { streamTextWithConfig } from './services/ai/runtimeClient';
 import { buildChatPrompt } from './services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from './services/ai/prompts/builders/buildSummaryPrompt';
@@ -2613,13 +2614,26 @@ function SettingsApp({
                 </button>
               </div>
               <div className="relative">
-                <input 
-                  type="text"
-                  value={editForm.model}
-                  onChange={e => setEditForm({...editForm, model: e.target.value})}
-                  placeholder="例如：gpt-4o"
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
-                />
+                {availableModels.length > 0 ? (
+                  <AppSelect
+                    value={editForm.model}
+                    onChange={(model) => setEditForm({ ...editForm, model })}
+                    options={(filteredAvailableModels.length > 0 ? filteredAvailableModels : availableModels).map((model) => ({
+                      value: model,
+                      label: model,
+                    }))}
+                    placeholder="请选择模型"
+                    emptyText="暂无可选模型"
+                  />
+                ) : (
+                  <input 
+                    type="text"
+                    value={editForm.model}
+                    onChange={e => setEditForm({...editForm, model: e.target.value})}
+                    placeholder="例如：gpt-4o"
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+                  />
+                )}
                 {availableModels.length > 0 && (
                   <div className="mt-1 flex justify-between items-center px-1">
                     <span className="text-[11px] text-zinc-400">已拉取 {availableModels.length} 个模型</span>
@@ -2631,28 +2645,14 @@ function SettingsApp({
                     </button>
                   </div>
                 )}
-                {filteredAvailableModels.length > 0 && (
-                  <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-zinc-100 bg-white p-2 shadow-sm">
-                    <div className="flex flex-wrap gap-2">
-                      {filteredAvailableModels.map((model) => {
-                        const isSelected = editForm.model === model;
-                        return (
-                          <button
-                            key={model}
-                            type="button"
-                            onClick={() => setEditForm((prev) => ({ ...prev, model }))}
-                            className={`rounded-full border px-3 py-1.5 text-left text-[12px] transition-colors ${
-                              isSelected
-                                ? 'border-zinc-900 bg-zinc-900 text-white'
-                                : 'border-zinc-200 bg-zinc-50 text-zinc-700 active:bg-zinc-100'
-                            }`}
-                          >
-                            {model}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                {availableModels.length > 0 && (
+                  <input
+                    type="text"
+                    value={editForm.model}
+                    onChange={e => setEditForm({ ...editForm, model: e.target.value })}
+                    placeholder="也可以手动输入模型名"
+                    className="mt-2 w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[14px] text-zinc-900 outline-none focus:border-blue-500 transition-colors placeholder:text-zinc-400"
+                  />
                 )}
               </div>
             </div>
