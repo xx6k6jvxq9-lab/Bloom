@@ -2076,27 +2076,14 @@ export function DreamAppPage({
         )}
         {stage === 'ending' && (
           <Shell time={time} bottomTone={false} contentClassName="pb-[calc(7rem+env(safe-area-inset-bottom))]">
-            <div
-              className="flex flex-1 flex-col justify-start pb-[calc(5rem+env(safe-area-inset-bottom))] pt-14"
-              style={{
-                backgroundImage:
-                  `repeating-linear-gradient(180deg, ${presentation.accentSoft} 0, ${presentation.accentSoft} 1px, transparent 1px, transparent 32px)`,
-              }}
-            >
-              <div className="px-8 text-center">
-                <div className="text-[11px] tracking-[0.52em] text-[var(--mist)]">结 局</div>
-                <div className="mx-auto mt-5 flex w-[130px] items-center justify-center gap-4">
-                  <div className="h-px flex-1" style={{ backgroundColor: presentation.frameBorder }} />
-                  <div className="h-px w-8" style={{ backgroundColor: presentation.accent }} />
-                  <div className="h-px flex-1" style={{ backgroundColor: presentation.frameBorder }} />
-                </div>
-                <div className="mt-10 text-[48px] font-[200] tracking-[0.08em] text-[var(--paper)]">{endingView.title}</div>
-                <div className="mx-auto mt-10 max-w-[420px] text-left text-[15px] font-[300] leading-[2.85] tracking-[0.08em] text-[var(--paper-60)]">
+            <div className="flex flex-1 flex-col justify-center py-8">
+              <div className="border-y py-10 text-center" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
+                <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{endingView.title}</div>
+                <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">
                   {endingView.excerpt}
                 </div>
-                <div className="mx-auto mt-10 h-px w-16" style={{ backgroundColor: presentation.frameBorder }} />
-                <div className="mt-10 text-right text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
-                <div className="mt-4 text-right text-[12px] tracking-[0.22em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
+                <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
+                <div className="mt-3 text-[12px] tracking-[0.26em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
               </div>
               <div className="mt-10 grid gap-4 px-8">
                 <SealButton label="截 图 分 享 这 一 页" onClick={() => setStage('aftermath')} presentation={presentation} />
