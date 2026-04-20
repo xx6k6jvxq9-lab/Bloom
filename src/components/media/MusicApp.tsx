@@ -112,6 +112,11 @@ export default function MusicApp({
   allCharacters,
   audioRef,
 }: MusicAppProps) {
+  const safeCharacter = character ?? {
+    id: "music-fallback-character",
+    name: "TA",
+    avatar: "",
+  } as Character;
   const [activeTab, setActiveTab] = useState<"player" | "playlists" | "me">(
     "player",
   );
@@ -300,11 +305,11 @@ export default function MusicApp({
       },
       {
         id: "p2",
-        name: `${character.name}的歌单`,
-        cover: character.avatar,
+        name: `${safeCharacter.name}的歌单`,
+        cover: safeCharacter.avatar,
         songs: defaultSongs.slice(0, 2),
         type: "character",
-        authorId: character.id,
+        authorId: safeCharacter.id,
       },
       {
         id: "p3",
@@ -326,10 +331,18 @@ export default function MusicApp({
   const currentMusicData: MusicData = {
     ...defaultMusicData,
     ...musicData,
+    currentSong: musicData?.currentSong ?? defaultMusicData.currentSong,
+    playlists: Array.isArray(musicData?.playlists) ? musicData.playlists : defaultMusicData.playlists,
+    likedSongs: Array.isArray(musicData?.likedSongs) ? musicData.likedSongs : defaultMusicData.likedSongs,
+    collectedSongs: Array.isArray(musicData?.collectedSongs) ? musicData.collectedSongs : defaultMusicData.collectedSongs,
+    history: Array.isArray(musicData?.history) ? musicData.history : defaultMusicData.history,
+    recentlyPlayed: Array.isArray(musicData?.recentlyPlayed) ? musicData.recentlyPlayed : defaultMusicData.recentlyPlayed,
+    chatHistory: Array.isArray(musicData?.chatHistory) ? musicData.chatHistory : defaultMusicData.chatHistory,
+    queue: Array.isArray(musicData?.queue) ? musicData.queue : defaultMusicData.queue,
   };
   const activeTogetherCharacter = useMemo(
-    () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || character,
-    [allCharacters, character, currentMusicData.togetherWith],
+    () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
+    [allCharacters, safeCharacter, currentMusicData.togetherWith],
   );
   const filteredPlaylists = currentMusicData.playlists.filter((playlist) => {
     const query = searchQuery.trim().toLowerCase();
