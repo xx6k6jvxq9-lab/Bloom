@@ -2545,16 +2545,16 @@ function SettingsApp({
             <div className="space-y-1.5">
               <label className="text-[13px] text-zinc-500">提供商 (Provider)</label>
               <div className="relative">
-                <select 
+                <AppSelect
                   value={editForm.provider || '自定义 (Custom)'}
-                  onChange={e => setEditForm({...editForm, provider: e.target.value})}
-                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-3 text-[15px] text-zinc-900 appearance-none outline-none focus:border-blue-500 transition-colors"
-                >
-                  <option value="自定义 (Custom)">自定义 (Custom)</option>
-                  <option value="Google Gemini">Google Gemini</option>
-                  <option value="OpenAI">OpenAI</option>
-                </select>
-                <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                  onChange={(provider) => setEditForm({ ...editForm, provider })}
+                  options={[
+                    { value: '自定义 (Custom)', label: '自定义 (Custom)' },
+                    { value: 'Google Gemini', label: 'Google Gemini' },
+                    { value: 'OpenAI', label: 'OpenAI' },
+                  ]}
+                  placeholder="选择提供商"
+                />
               </div>
             </div>
 
