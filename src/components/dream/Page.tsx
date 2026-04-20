@@ -89,6 +89,14 @@ function formatDreamTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+function debugDreamStagePayload(label: string, payload: unknown) {
+  try {
+    console.info(label, payload);
+  } catch {
+    console.info(label);
+  }
+}
+
 function buildRoles(characters: Character[]): DreamRole[] {
   return characters.slice(0, 12).map((character) => ({
     id: character.id,
@@ -1141,6 +1149,8 @@ export function DreamAppPage({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const endingRequestActiveRef = useRef(false);
+  const aftermathRequestActiveRef = useRef(false);
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedRoleId) ?? characters[0] ?? null,
     [characters, selectedRoleId],
@@ -1290,19 +1300,35 @@ export function DreamAppPage({
   }, [dreamDepth, entryMode, runtimeScenario, selectedCharacter, selectedDomain, selectedTags]);
 
   useEffect(() => {
+    endingRequestActiveRef.current = isGeneratingEnding;
+  }, [isGeneratingEnding]);
+
+  useEffect(() => {
+    aftermathRequestActiveRef.current = isGeneratingAftermath;
+  }, [isGeneratingAftermath]);
+
+  useEffect(() => {
     if (
       stage !== 'ending'
       || !runtimeScenario
       || !selectedCharacter
       || runtimeScenario.endingOutput
-      || isGeneratingEnding
+      || endingRequestActiveRef.current
     ) {
       return;
     }
 
     let cancelled = false;
     setLoadingError(null);
+    endingRequestActiveRef.current = true;
     setIsGeneratingEnding(true);
+    debugDreamStagePayload('[dream][ending] request:start', {
+      scenarioId: runtimeScenario.id,
+      stage,
+      actCount: runtimeScenario.acts.length,
+      hasEndingOutput: Boolean(runtimeScenario.endingOutput),
+      endingDirection: runtimeScenario.endingInput?.endingDirection || '',
+    });
 
     generateDreamEnding({
       activeConfig,
@@ -1320,6 +1346,13 @@ export function DreamAppPage({
     })
       .then((endingOutput) => {
         if (cancelled) return;
+        debugDreamStagePayload('[dream][ending] request:resolved', {
+          scenarioId: runtimeScenario.id,
+          title: endingOutput.title,
+          chapter: endingOutput.chapter,
+          bodyLength: endingOutput.body.length,
+          excerptLength: endingOutput.excerpt.length,
+        });
         setRuntimeScenario((prev) => (
           prev
             ? hydrateDreamRuntimeScenario({
@@ -1331,22 +1364,30 @@ export function DreamAppPage({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        console.error('[dream][ending] request:failed', error);
         setLoadingError(error instanceof Error ? error.message : '结局生成失败');
       })
       .finally(() => {
         if (!cancelled) {
+          debugDreamStagePayload('[dream][ending] request:finalized', {
+            scenarioId: runtimeScenario.id,
+            cancelled: false,
+          });
+          endingRequestActiveRef.current = false;
           setIsGeneratingEnding(false);
         }
       });
 
     return () => {
       cancelled = true;
+      debugDreamStagePayload('[dream][ending] request:cleanup', {
+        scenarioId: runtimeScenario.id,
+      });
     };
   }, [
     activeConfig,
     dreamDepth,
     entryMode,
-    isGeneratingEnding,
     masks,
     runtimeScenario,
     selectedCharacter,
@@ -1363,14 +1404,21 @@ export function DreamAppPage({
       || !runtimeScenario
       || !selectedCharacter
       || runtimeScenario.aftermathOutput
-      || isGeneratingAftermath
+      || aftermathRequestActiveRef.current
     ) {
       return;
     }
 
     let cancelled = false;
     setLoadingError(null);
+    aftermathRequestActiveRef.current = true;
     setIsGeneratingAftermath(true);
+    debugDreamStagePayload('[dream][aftermath] request:start', {
+      scenarioId: runtimeScenario.id,
+      stage,
+      hasEndingOutput: Boolean(runtimeScenario.endingOutput),
+      hasAftermathOutput: Boolean(runtimeScenario.aftermathOutput),
+    });
 
     generateDreamAftermath({
       activeConfig,
@@ -1388,6 +1436,12 @@ export function DreamAppPage({
     })
       .then((aftermathOutput) => {
         if (cancelled) return;
+        debugDreamStagePayload('[dream][aftermath] request:resolved', {
+          scenarioId: runtimeScenario.id,
+          summaryLength: aftermathOutput.summary.length,
+          detailLength: aftermathOutput.detail.length,
+          previewCount: aftermathOutput.previewMessages.length,
+        });
         setRuntimeScenario((prev) => (
           prev
             ? hydrateDreamRuntimeScenario({
@@ -1399,22 +1453,30 @@ export function DreamAppPage({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        console.error('[dream][aftermath] request:failed', error);
         setLoadingError(error instanceof Error ? error.message : '余响生成失败');
       })
       .finally(() => {
         if (!cancelled) {
+          debugDreamStagePayload('[dream][aftermath] request:finalized', {
+            scenarioId: runtimeScenario.id,
+            cancelled: false,
+          });
+          aftermathRequestActiveRef.current = false;
           setIsGeneratingAftermath(false);
         }
       });
 
     return () => {
       cancelled = true;
+      debugDreamStagePayload('[dream][aftermath] request:cleanup', {
+        scenarioId: runtimeScenario.id,
+      });
     };
   }, [
     activeConfig,
     dreamDepth,
     entryMode,
-    isGeneratingAftermath,
     masks,
     runtimeScenario,
     selectedCharacter,

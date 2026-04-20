@@ -17,6 +17,10 @@ type GenerateDreamAftermathOptions = {
 
 type RawAftermathOutput = Partial<DreamAftermathOutput>;
 
+function previewDreamRawResponse(raw: string) {
+  return raw.replace(/\s+/g, ' ').slice(0, 280);
+}
+
 function buildAftermathPrompt(options: GenerateDreamAftermathOptions) {
   const { scenario, selection, character, userName } = options;
   const domain = resolveDreamDomainDisplay(selection.domainId);
@@ -70,6 +74,11 @@ ${aftermathFocusSummary || 'n/a'}
 
 export async function generateDreamAftermath(options: GenerateDreamAftermathOptions): Promise<DreamAftermathOutput> {
   const prompt = buildAftermathPrompt(options);
+  console.info('[dream][aftermath] model:start', {
+    scenarioId: options.scenario.id,
+    depth: options.selection.depth,
+    hasEndingOutput: Boolean(options.scenario.endingOutput),
+  });
   const raw = await generateTextFromMessagesWithConfig({
     activeConfig: options.activeConfig,
     messages: [
@@ -86,8 +95,17 @@ export async function generateDreamAftermath(options: GenerateDreamAftermathOpti
     maxOutputTokens: 900,
     timeoutMs: 16000,
   });
+  console.info('[dream][aftermath] model:raw', {
+    scenarioId: options.scenario.id,
+    preview: previewDreamRawResponse(raw),
+    rawLength: raw.length,
+  });
 
   const parsed = parseJsonResponse<RawAftermathOutput>(raw);
+  console.info('[dream][aftermath] model:parsed', {
+    scenarioId: options.scenario.id,
+    keys: Object.keys(parsed || {}),
+  });
   const summary = parsed.summary?.trim() || options.scenario.aftermathInput.relationshipShift || '这场梦会在醒来后留下轻微的关系回响。';
   const detail = parsed.detail?.trim() || options.scenario.aftermathInput.toneDrift || options.scenario.aftermathInput.messagePreviewDirection || '明日的聊天语气会沿着这场梦发生偏移。';
   const previewCandidates = (parsed.previewMessages || [])

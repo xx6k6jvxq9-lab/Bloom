@@ -17,6 +17,10 @@ type GenerateDreamEndingOptions = {
 
 type RawEndingOutput = Partial<DreamEndingOutput>;
 
+function previewDreamRawResponse(raw: string) {
+  return raw.replace(/\s+/g, ' ').slice(0, 280);
+}
+
 const endingStyleExamples = [
   '冬天会周而复始，该重逢的人会再重逢，所以不必总惦记遗憾，而要学会等待。',
   '他转过身去，看着远处那艘亮着灯的船，让沉默替他们把最后一句话说完。',
@@ -81,6 +85,11 @@ ${endingFocusSummary || 'n/a'}
 
 export async function generateDreamEnding(options: GenerateDreamEndingOptions): Promise<DreamEndingOutput> {
   const prompt = buildEndingPrompt(options);
+  console.info('[dream][ending] model:start', {
+    scenarioId: options.scenario.id,
+    depth: options.selection.depth,
+    endingDirection: options.scenario.endingInput.endingDirection || '',
+  });
   const raw = await generateTextFromMessagesWithConfig({
     activeConfig: options.activeConfig,
     messages: [
@@ -97,8 +106,17 @@ export async function generateDreamEnding(options: GenerateDreamEndingOptions): 
     maxOutputTokens: 1100,
     timeoutMs: 20000,
   });
+  console.info('[dream][ending] model:raw', {
+    scenarioId: options.scenario.id,
+    preview: previewDreamRawResponse(raw),
+    rawLength: raw.length,
+  });
 
   const parsed = parseJsonResponse<RawEndingOutput>(raw);
+  console.info('[dream][ending] model:parsed', {
+    scenarioId: options.scenario.id,
+    keys: Object.keys(parsed || {}),
+  });
   const title = parsed.title?.trim() || options.scenario.storyFrame.worldTitle || options.scenario.coverTitle || '今夜';
   const body =
     parsed.body?.trim()
