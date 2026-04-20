@@ -6,6 +6,7 @@ import { useResolvedPersistentValue } from '../../features/persistence/useResolv
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
 import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
@@ -161,31 +162,6 @@ function buildQuickDreamPreset(): {
       confirmHint,
     },
   };
-}
-
-function useTypewriter(text: string, active: boolean) {
-  const [value, setValue] = useState('');
-  useEffect(() => {
-    if (!active) {
-      setValue('');
-      return;
-    }
-    let cancelled = false;
-    let index = 0;
-    setValue('');
-    const step = () => {
-      if (cancelled || index >= text.length) return;
-      const char = text[index];
-      setValue((prev) => prev + char);
-      index += 1;
-      window.setTimeout(step, /[，。！？；：]/.test(char) ? 180 : 34);
-    };
-    window.setTimeout(step, 120);
-    return () => {
-      cancelled = true;
-    };
-  }, [active, text]);
-  return value;
 }
 
 function useNarrativeTypewriter(
@@ -547,6 +523,54 @@ function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAfterma
       scenario.storyFrame.openingNode || '你醒来之后，会先想起哪个瞬间？',
     ],
   };
+}
+
+function buildReactionBlocks(
+  choice: ActiveDreamChoice | null,
+  act: DreamRuntimeAct | null,
+): DreamNarrativeBlock[] {
+  if (!choice) return [];
+
+  const blocks: DreamNarrativeBlock[] = [];
+  const reactionText = choice.reaction?.trim() || '';
+  const storyPushText = choice.storyPush?.trim() || '';
+  const reactionParagraphs = reactionText
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  reactionParagraphs.forEach((paragraph, index) => {
+    const hasQuote = /“[^”]+”|"[^"]+"/.test(paragraph);
+    blocks.push({
+      id: `reaction-block-${index + 1}`,
+      type: hasQuote ? 'dialogue' : index === 0 ? 'highlight-dialogue' : 'narration',
+      text: paragraph,
+      emphasis: hasQuote ? 'medium' : index === 0 ? 'high' : 'medium',
+      align: hasQuote ? 'left' : index === 0 ? 'center' : 'left',
+    });
+  });
+
+  if (storyPushText) {
+    blocks.push({
+      id: 'reaction-story-push',
+      type: 'aside',
+      text: `主线正在偏向：${storyPushText}`,
+      emphasis: 'low',
+      align: 'left',
+    });
+  }
+
+  if (act?.progression.tensionShift) {
+    blocks.push({
+      id: 'reaction-tension-shift',
+      type: 'prompt',
+      text: `张力变化：${act.progression.tensionShift}`,
+      emphasis: 'low',
+      align: 'center',
+    });
+  }
+
+  return blocks;
 }
 
 function createDecisionRecord(act: DreamRuntimeAct, choice: ActiveDreamChoice): DreamDecisionRecord {
@@ -1102,10 +1126,16 @@ export function DreamAppPage({
   const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : scenario.ending;
   const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
   const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
-  const reactionText = useTypewriter(
-    reactionFullText,
+  const reactionBlocks = useMemo(() => buildReactionBlocks(selectedChoice, act), [act, selectedChoice]);
+  const typedReactionBlocks = useNarrativeTypewriter(
+    reactionBlocks,
     stage === 'reaction',
+    `${runtimeScenario?.id || 'preview'}-${act?.id || 'none'}-${selectedChoice?.id || 'choice'}-reaction`,
   );
+  const reactionReady =
+    reactionBlocks.length > 0
+    && typedReactionBlocks.length === reactionBlocks.length
+    && typedReactionBlocks.every((block, index) => block.text === reactionBlocks[index]?.text);
   const choiceHoldTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1968,8 +1998,8 @@ export function DreamAppPage({
                 <div className="text-[12px] tracking-[0.18em]" style={{ color: presentation.accent }}>你选择了 {selectedChoice.title}</div>
                 <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
               </div>
-              <div className="mt-12 rounded-[26px] border px-5 py-6" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
-                <div className="whitespace-pre-line text-[16px] font-[300] leading-[2.45] tracking-[0.08em] text-[var(--paper)]">{reactionText}</div>
+              <div className="mt-12">
+                <DreamNarrativeBlocks blocks={typedReactionBlocks} presentation={presentation} />
               </div>
               <div className="mt-6 grid gap-3">
                 {act?.progression.plotAdvance ? (
@@ -1983,7 +2013,7 @@ export function DreamAppPage({
                   </div>
                 ) : null}
               </div>
-              <div className={`mt-16 transition duration-500 ${reactionText.length >= reactionFullText.length ? 'opacity-100' : 'opacity-0'}`}>
+              <div className={`mt-16 transition duration-500 ${reactionReady ? 'opacity-100' : 'opacity-0'}`}>
                 <span className="inline-flex rounded-[20px] border px-5 py-3 text-[12px] tracking-[0.2em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.accent }}>
                   <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full" style={{ backgroundColor: presentation.accent }} />
                   {selectedChoice.emotion}
@@ -1993,7 +2023,7 @@ export function DreamAppPage({
               <div className="mt-8">
                 <SealButton
                   label={
-                    reactionText.length < reactionFullText.length
+                    !reactionReady
                       ? '反 应 正 在 浮 出'
                       : isDeepDream && isLastGeneratedAct && !isClosingAct
                         ? isGeneratingNextAct
@@ -2004,7 +2034,7 @@ export function DreamAppPage({
                   onClick={() => {
                     void goNextFromReaction();
                   }}
-                  disabled={reactionText.length < reactionFullText.length || isGeneratingNextAct || isEndingDeepDream}
+                  disabled={!reactionReady || isGeneratingNextAct || isEndingDeepDream}
                 />
               </div>
               {isDeepDream && !isClosingAct ? (
