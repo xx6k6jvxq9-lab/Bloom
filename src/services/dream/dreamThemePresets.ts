@@ -29,6 +29,18 @@ export const dreamThemePresets: DreamThemePreset[] = [
   { id: 'opal-rain', name: '雨欧泊', accent: '#A6C1C6', accentSoft: 'rgba(166,193,198,.16)', dialogueText: '#D0E8EC', frameBorder: 'rgba(166,193,198,.42)', frameFill: 'rgba(13,20,22,.54)' },
   { id: 'plum-wine', name: '梅酒', accent: '#B17A97', accentSoft: 'rgba(177,122,151,.16)', dialogueText: '#D8A6C0', frameBorder: 'rgba(177,122,151,.44)', frameFill: 'rgba(24,12,20,.56)' },
   { id: 'sand-lantern', name: '砂灯', accent: '#D4B88A', accentSoft: 'rgba(212,184,138,.16)', dialogueText: '#EED8B3', frameBorder: 'rgba(212,184,138,.46)', frameFill: 'rgba(25,20,13,.56)' },
+  { id: 'cedar-green', name: '杉绿', accent: '#6FA287', accentSoft: 'rgba(111,162,135,.16)', dialogueText: '#9FD1B7', frameBorder: 'rgba(111,162,135,.46)', frameFill: 'rgba(12,23,19,.56)' },
+  { id: 'moss-lantern', name: '苔灯', accent: '#8E9D5C', accentSoft: 'rgba(142,157,92,.16)', dialogueText: '#C3D08E', frameBorder: 'rgba(142,157,92,.44)', frameFill: 'rgba(22,24,12,.56)' },
+  { id: 'forest-ink', name: '林墨', accent: '#5E8A73', accentSoft: 'rgba(94,138,115,.16)', dialogueText: '#8AB79E', frameBorder: 'rgba(94,138,115,.44)', frameFill: 'rgba(10,20,17,.58)' },
+  { id: 'copper-leaf', name: '铜叶', accent: '#C47C4E', accentSoft: 'rgba(196,124,78,.16)', dialogueText: '#E6A679', frameBorder: 'rgba(196,124,78,.46)', frameFill: 'rgba(28,17,11,.58)' },
+  { id: 'burnt-orange', name: '灼橙', accent: '#D58A44', accentSoft: 'rgba(213,138,68,.16)', dialogueText: '#F0B174', frameBorder: 'rgba(213,138,68,.48)', frameFill: 'rgba(30,18,10,.58)' },
+  { id: 'walnut-brown', name: '胡桃褐', accent: '#9E7658', accentSoft: 'rgba(158,118,88,.16)', dialogueText: '#CFA98B', frameBorder: 'rgba(158,118,88,.44)', frameFill: 'rgba(24,17,13,.58)' },
+  { id: 'earth-umber', name: '土赭', accent: '#A56D47', accentSoft: 'rgba(165,109,71,.16)', dialogueText: '#D59A73', frameBorder: 'rgba(165,109,71,.45)', frameFill: 'rgba(26,16,11,.58)' },
+  { id: 'sage-smoke', name: '鼠尾灰绿', accent: '#8AA091', accentSoft: 'rgba(138,160,145,.16)', dialogueText: '#B8D0C2', frameBorder: 'rgba(138,160,145,.42)', frameFill: 'rgba(16,22,19,.54)' },
+  { id: 'river-teal', name: '河青', accent: '#62A7A5', accentSoft: 'rgba(98,167,165,.16)', dialogueText: '#96D4D1', frameBorder: 'rgba(98,167,165,.44)', frameFill: 'rgba(10,23,24,.56)' },
+  { id: 'loden-green', name: '灰呢绿', accent: '#6E8C65', accentSoft: 'rgba(110,140,101,.16)', dialogueText: '#9FBE95', frameBorder: 'rgba(110,140,101,.42)', frameFill: 'rgba(16,21,14,.56)' },
+  { id: 'bronze-dusk', name: '暮铜', accent: '#B27A5B', accentSoft: 'rgba(178,122,91,.16)', dialogueText: '#DCA586', frameBorder: 'rgba(178,122,91,.44)', frameFill: 'rgba(24,16,12,.58)' },
+  { id: 'stone-olive', name: '石橄榄', accent: '#8B8A59', accentSoft: 'rgba(139,138,89,.16)', dialogueText: '#BFBF88', frameBorder: 'rgba(139,138,89,.42)', frameFill: 'rgba(21,21,13,.56)' },
 ];
 
 export function pickDreamThemePreset(seed: string) {
