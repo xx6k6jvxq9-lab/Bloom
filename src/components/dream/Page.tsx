@@ -336,17 +336,30 @@ function Avatar({ role, secret, small = false }: { role?: DreamRole | null; secr
   );
 }
 
-function SealButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+function SealButton({
+  label,
+  onClick,
+  disabled,
+  presentation,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  presentation?: DreamPresentationView;
+}) {
+  const buttonColor = presentation?.accent || 'var(--gold)';
+  const buttonBorder = presentation?.frameBorder || 'rgba(196,169,106,.2)';
+  const buttonFill = presentation?.accentSoft || 'rgba(196,169,106,.14)';
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="group relative w-full overflow-hidden border border-[var(--border-mid)] px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] text-[var(--gold)] transition duration-500 active:scale-[0.99] disabled:opacity-30"
-      style={{ backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: 'var(--gold)' }}
+      className="group relative w-full overflow-hidden border px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] transition duration-500 active:scale-[0.99] disabled:opacity-30"
+      style={{ borderColor: buttonBorder, backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: buttonColor }}
     >
-      <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 bg-[rgba(196,169,106,.14)] transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" />
-      <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
+      <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" style={{ backgroundColor: buttonFill }} />
+      <span className="pointer-events-none absolute inset-[3px] border" style={{ borderColor: buttonBorder }} />
       <span className="relative transition duration-500 group-hover:tracking-[0.62em] group-active:tracking-[0.62em]">{label}</span>
     </button>
   );
@@ -357,22 +370,27 @@ function SecondaryAction({
   onClick,
   className = '',
   disabled = false,
+  presentation,
 }: {
   label: string;
   onClick: () => void;
   className?: string;
   disabled?: boolean;
+  presentation?: DreamPresentationView;
 }) {
+  const buttonColor = presentation?.accent || 'var(--gold)';
+  const buttonBorder = presentation?.frameBorder || 'rgba(196,169,106,.2)';
+  const buttonFill = presentation?.accentSoft || 'rgba(196,169,106,.14)';
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`group relative w-full overflow-hidden border border-[var(--border-mid)] px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] text-[var(--gold)] transition duration-500 active:scale-[0.99] disabled:opacity-30 ${className}`}
-      style={{ backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: 'var(--gold)' }}
+      className={`group relative w-full overflow-hidden border px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] transition duration-500 active:scale-[0.99] disabled:opacity-30 ${className}`}
+      style={{ borderColor: buttonBorder, backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: buttonColor }}
     >
-      <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 bg-[rgba(196,169,106,.14)] transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" />
-      <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
+      <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" style={{ backgroundColor: buttonFill }} />
+      <span className="pointer-events-none absolute inset-[3px] border" style={{ borderColor: buttonBorder }} />
       <span className="relative transition duration-500 group-hover:tracking-[0.62em] group-active:tracking-[0.62em]">{label}</span>
     </button>
   );
@@ -1845,7 +1863,7 @@ export function DreamAppPage({
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-10">
-                <SealButton label={sceneReady ? (isClosingAct ? '进 入 结 局' : '进 入 选 择') : '正 文 正 在 浮 出'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} disabled={!sceneReady} />
+                <SealButton label={sceneReady ? (isClosingAct ? '进 入 结 局' : '进 入 选 择') : '正 文 正 在 浮 出'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} disabled={!sceneReady} presentation={presentation} />
               </div>
               {isDeepDream && !isClosingAct ? (
                 <div className="mt-4">
@@ -1855,6 +1873,7 @@ export function DreamAppPage({
                       void endDeepDream();
                     }}
                     disabled={isEndingDeepDream || isGeneratingNextAct}
+                    presentation={presentation}
                   />
                 </div>
               ) : null}
@@ -1904,8 +1923,8 @@ export function DreamAppPage({
                       }}
                       className="w-full border px-5 py-5 text-left transition duration-300"
                       style={{
-                        borderColor: previewing ? 'rgba(196,169,106,.3)' : 'rgba(196,169,106,.12)',
-                        backgroundColor: previewing ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.72)',
+                        borderColor: previewing ? presentation.frameBorder : 'rgba(255,255,255,.08)',
+                        backgroundColor: previewing ? presentation.accentSoft : presentation.frameFill,
                         transform: previewing ? 'translateX(6px)' : 'translateX(0px)',
                       }}
                     >
@@ -1924,8 +1943,8 @@ export function DreamAppPage({
                   onClick={() => setCustomInputOpen((prev) => !prev)}
                   className="w-full border px-5 py-5 text-left opacity-70"
                   style={{
-                    borderColor: 'rgba(123,168,196,.18)',
-                    backgroundColor: 'rgba(12,18,30,.78)',
+                    borderColor: presentation.frameBorder,
+                    backgroundColor: presentation.frameFill,
                   }}
                 >
                   <div className="flex items-start gap-4">
@@ -1937,7 +1956,7 @@ export function DreamAppPage({
                   </div>
                 </button>
                 {customInputOpen ? (
-                  <div className="border px-5 py-5" style={{ borderColor: 'rgba(123,168,196,.18)', backgroundColor: 'rgba(10,14,24,.82)' }}>
+                  <div className="border px-5 py-5" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                     <textarea
                       value={customInput}
                       onChange={(event) => setCustomInput(event.target.value)}
@@ -1954,8 +1973,9 @@ export function DreamAppPage({
                           void submitCustomChoice();
                         }}
                         disabled={isSubmittingCustom || !customInput.trim()}
+                        presentation={presentation}
                       />
-                      <SecondaryAction label="收 起 输 入" onClick={() => setCustomInputOpen(false)} />
+                      <SecondaryAction label="收 起 输 入" onClick={() => setCustomInputOpen(false)} presentation={presentation} />
                     </div>
                   </div>
                 ) : null}
@@ -1967,6 +1987,7 @@ export function DreamAppPage({
                       void endDeepDream();
                     }}
                     disabled={isEndingDeepDream || isGeneratingNextAct || isSubmittingCustom}
+                    presentation={presentation}
                   />
                 ) : null}
               </div>
@@ -2008,7 +2029,7 @@ export function DreamAppPage({
                   </div>
                 ) : null}
                 {act?.progression.tensionShift ? (
-                  <div className="border px-4 py-4 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]" style={{ borderColor: 'rgba(123,168,196,.16)' }}>
+                  <div className="border px-4 py-4 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                     张力变化：{act.progression.tensionShift}
                   </div>
                 ) : null}
@@ -2035,6 +2056,7 @@ export function DreamAppPage({
                     void goNextFromReaction();
                   }}
                   disabled={!reactionReady || isGeneratingNextAct || isEndingDeepDream}
+                  presentation={presentation}
                 />
               </div>
               {isDeepDream && !isClosingAct ? (
@@ -2045,6 +2067,7 @@ export function DreamAppPage({
                       void endDeepDream();
                     }}
                     disabled={isEndingDeepDream || isGeneratingNextAct}
+                    presentation={presentation}
                   />
                 </div>
               ) : null}
@@ -2057,27 +2080,27 @@ export function DreamAppPage({
               className="flex flex-1 flex-col justify-start pb-[calc(5rem+env(safe-area-inset-bottom))] pt-14"
               style={{
                 backgroundImage:
-                  'repeating-linear-gradient(180deg, rgba(196,169,106,.045) 0, rgba(196,169,106,.045) 1px, transparent 1px, transparent 32px)',
+                  `repeating-linear-gradient(180deg, ${presentation.accentSoft} 0, ${presentation.accentSoft} 1px, transparent 1px, transparent 32px)`,
               }}
             >
               <div className="px-8 text-center">
                 <div className="text-[11px] tracking-[0.52em] text-[var(--mist)]">结 局</div>
                 <div className="mx-auto mt-5 flex w-[130px] items-center justify-center gap-4">
-                  <div className="h-px flex-1 bg-[rgba(196,169,106,.16)]" />
-                  <div className="h-px w-8 bg-[var(--gold)]" />
-                  <div className="h-px flex-1 bg-[rgba(196,169,106,.16)]" />
+                  <div className="h-px flex-1" style={{ backgroundColor: presentation.frameBorder }} />
+                  <div className="h-px w-8" style={{ backgroundColor: presentation.accent }} />
+                  <div className="h-px flex-1" style={{ backgroundColor: presentation.frameBorder }} />
                 </div>
                 <div className="mt-10 text-[48px] font-[200] tracking-[0.08em] text-[var(--paper)]">{endingView.title}</div>
                 <div className="mx-auto mt-10 max-w-[420px] text-left text-[15px] font-[300] leading-[2.85] tracking-[0.08em] text-[var(--paper-60)]">
                   {endingView.excerpt}
                 </div>
-                <div className="mx-auto mt-10 h-px w-16 bg-[rgba(196,169,106,.14)]" />
+                <div className="mx-auto mt-10 h-px w-16" style={{ backgroundColor: presentation.frameBorder }} />
                 <div className="mt-10 text-right text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
-                <div className="mt-4 text-right text-[12px] tracking-[0.22em] text-[var(--gold)]">{endingView.chapter}</div>
+                <div className="mt-4 text-right text-[12px] tracking-[0.22em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
               </div>
               <div className="mt-10 grid gap-4 px-8">
-                <SealButton label="截 图 分 享 这 一 页" onClick={() => setStage('aftermath')} />
-                <SecondaryAction label="查 看 梦 后 余 响  →" onClick={() => setStage('aftermath')} />
+                <SealButton label="截 图 分 享 这 一 页" onClick={() => setStage('aftermath')} presentation={presentation} />
+                <SecondaryAction label="查 看 梦 后 余 响  →" onClick={() => setStage('aftermath')} presentation={presentation} />
               </div>
             </div>
           </Shell>
@@ -2114,14 +2137,14 @@ export function DreamAppPage({
                       className="max-w-[92%] border px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]"
                       style={{
                         marginLeft: index === 1 ? 'auto' : 0,
-                        borderColor: 'rgba(123,168,196,.18)',
-                        backgroundColor: index === 1 ? 'rgba(196,169,106,.08)' : 'rgba(123,168,196,.08)',
+                        borderColor: presentation.frameBorder,
+                        backgroundColor: index === 1 ? presentation.accentSoft : presentation.frameFill,
                       }}
                     >
                       {message}
                     </div>
                   ))}
-                  <div className="max-w-[48%] border border-[rgba(196,169,106,.12)] bg-[rgba(13,18,32,.5)] px-4 py-3 text-[12px] tracking-[0.24em] text-[var(--mist)]">
+                  <div className="max-w-[48%] border px-4 py-3 text-[12px] tracking-[0.24em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                     ……
                   </div>
                 </div>
@@ -2132,7 +2155,7 @@ export function DreamAppPage({
                 <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{aftermathView.detail}</div>
                 <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>轻微关系温度变化 · 语气漂移</div>
               </div>
-              <div className="mt-8"><SealButton label="再入一梦" onClick={restart} /></div>
+              <div className="mt-8"><SealButton label="再入一梦" onClick={restart} presentation={presentation} /></div>
             </div>
           </Shell>
         )}
