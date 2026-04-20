@@ -5,7 +5,6 @@ import type {
   Character,
   ChatHistory,
   CoupleSpaceData,
-  HeartCapsuleMachineHistoryEntry,
   UserProfileExtended,
 } from '../../../types';
 import { HEART_CAPSULE_POOL } from './heartCapsulePool';
@@ -83,6 +82,7 @@ export function HeartCapsuleMachinePage({
   const todayKey = React.useMemo(() => getTodayKey(), []);
   const machineState = coupleSpace.heartCapsuleMachine ?? { todayDraw: null, history: [] };
   const todayDraw = machineState.todayDraw?.date === todayKey ? machineState.todayDraw : null;
+  const hasDrawnToday = Boolean(todayDraw);
   const currentCapsule = React.useMemo(
     () => getCapsuleById(todayDraw?.capsuleId),
     [todayDraw?.capsuleId],
@@ -101,6 +101,10 @@ export function HeartCapsuleMachinePage({
   const handleDraw = React.useCallback(
     (drawnBy: 'self' | 'partner') => {
       if (isTurning) return;
+      if (todayDraw) {
+        setPageState('result');
+        return;
+      }
 
       setIsTurning(true);
       window.setTimeout(() => {
@@ -126,7 +130,7 @@ export function HeartCapsuleMachinePage({
         setPageState('result');
       }, 900);
     },
-    [isTurning, machineState.history, todayKey, updateSpace],
+    [isTurning, machineState.history, todayDraw, todayKey, updateSpace],
   );
 
   const openHistoryEntry = React.useCallback((entryId: string) => {
@@ -304,7 +308,7 @@ export function HeartCapsuleMachinePage({
               ? () => setPageState('relationship_shift_round')
               : currentCapsule.category === 'async_dual_rule'
                 ? () => setPageState('async_dual_rule_round')
-              : undefined
+                : undefined
         }
       />
     );
@@ -384,8 +388,15 @@ export function HeartCapsuleMachinePage({
           )}
         </div>
 
-        <div className="inline-flex rounded-full border border-white/70 bg-white/70 px-4 py-1.5 text-[13px] font-medium text-pink-500 shadow-sm backdrop-blur-md">
-          当前测试阶段不限次数
+        <div className="flex justify-center">
+          <div className="inline-flex max-w-[290px] flex-col items-center rounded-[24px] border border-white/70 bg-white/72 px-5 py-2.5 text-center shadow-sm backdrop-blur-md">
+            <div className="text-[13px] font-semibold text-pink-500">
+              {hasDrawnToday ? '今天已扭 1 次，请明天再来' : '每日限扭 1 次'}
+            </div>
+            <div className="mt-1 text-[11px] leading-4 text-zinc-500">
+              按真实日期刷新次数，到了第二天会自动恢复可扭次数。
+            </div>
+          </div>
         </div>
       </div>
 
@@ -397,27 +408,31 @@ export function HeartCapsuleMachinePage({
         <button
           type="button"
           onClick={() => handleDraw('self')}
-          disabled={isTurning}
-          className="relative overflow-hidden rounded-[30px] border-[4px] border-white/90 bg-[linear-gradient(180deg,#fff8fb_0%,#ffe5ee_100%)] px-4 py-4 text-left shadow-[0_16px_32px_rgba(255,182,202,0.24)] active:scale-[0.98] disabled:opacity-50"
+          disabled={isTurning || hasDrawnToday}
+          className="relative overflow-hidden rounded-[30px] border-[4px] border-white/90 bg-[linear-gradient(180deg,#fff8fb_0%,#ffe5ee_100%)] px-4 py-4 text-left shadow-[0_16px_32px_rgba(255,182,202,0.24)] active:scale-[0.98] disabled:cursor-not-allowed disabled:grayscale-[0.22] disabled:opacity-45"
         >
           <div className="absolute inset-x-5 top-0 h-4 rounded-b-full bg-white/45 blur-sm" />
           <div className="absolute left-3 top-3 h-3 w-3 rounded-full bg-rose-300 shadow-[0_0_0_3px_rgba(255,255,255,0.75)]" />
           <div className="absolute right-3 top-3 h-3 w-3 rounded-full bg-yellow-300 shadow-[0_0_0_3px_rgba(255,255,255,0.75)]" />
           <div className="text-[13px] font-black tracking-[0.16em] text-rose-400">今天这次</div>
-          <div className="mt-1 text-[20px] font-black tracking-tight text-zinc-800">我来扭</div>
+          <div className="mt-1 text-[20px] font-black tracking-tight text-zinc-800">
+            {hasDrawnToday ? '今天已用完' : '我来扭'}
+          </div>
         </button>
 
         <button
           type="button"
           onClick={() => handleDraw('partner')}
-          disabled={isTurning}
-          className="relative overflow-hidden rounded-[30px] border-[4px] border-white/90 bg-[linear-gradient(180deg,#fefcff_0%,#e6f5ff_100%)] px-4 py-4 text-left shadow-[0_16px_32px_rgba(170,212,255,0.22)] active:scale-[0.98] disabled:opacity-50"
+          disabled={isTurning || hasDrawnToday}
+          className="relative overflow-hidden rounded-[30px] border-[4px] border-white/90 bg-[linear-gradient(180deg,#fefcff_0%,#e6f5ff_100%)] px-4 py-4 text-left shadow-[0_16px_32px_rgba(170,212,255,0.22)] active:scale-[0.98] disabled:cursor-not-allowed disabled:grayscale-[0.22] disabled:opacity-45"
         >
           <div className="absolute inset-x-5 top-0 h-4 rounded-b-full bg-white/45 blur-sm" />
           <div className="absolute left-3 top-3 h-3 w-3 rounded-full bg-sky-300 shadow-[0_0_0_3px_rgba(255,255,255,0.75)]" />
           <div className="absolute right-3 top-3 h-3 w-3 rounded-full bg-pink-300 shadow-[0_0_0_3px_rgba(255,255,255,0.75)]" />
           <div className="text-[13px] font-black tracking-[0.16em] text-sky-500">今天这次</div>
-          <div className="mt-1 text-[20px] font-black tracking-tight text-zinc-800">让 TA 扭</div>
+          <div className="mt-1 text-[20px] font-black tracking-tight text-zinc-800">
+            {hasDrawnToday ? '明天再让 TA 扭' : '让 TA 扭'}
+          </div>
         </button>
       </div>
     </div>

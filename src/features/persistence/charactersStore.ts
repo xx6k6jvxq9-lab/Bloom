@@ -4,12 +4,24 @@ import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { STORAGE_KEYS } from './storageKeys';
 
+const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
+const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
+
+function sanitizeCharacterList(value: Character[]): Character[] {
+  return migrateCharacterShapes(value)
+    .filter((character) => (
+      !HIDDEN_CHARACTER_IDS.has(character.id)
+      && !HIDDEN_CHARACTER_NAMES.has(character.name)
+    ))
+    .map((character) => ({
+      ...character,
+      avatar: sanitizeTransientAssetValue(character.avatar),
+    }));
+}
+
 export function sanitizeCharacters(value: unknown, fallback: Character[]): Character[] {
-  if (!Array.isArray(value)) return fallback;
-  return migrateCharacterShapes(value as Character[]).map((character) => ({
-    ...character,
-    avatar: sanitizeTransientAssetValue(character.avatar),
-  }));
+  if (!Array.isArray(value)) return sanitizeCharacterList(fallback);
+  return sanitizeCharacterList(value as Character[]);
 }
 
 export function hydrateCharacters(

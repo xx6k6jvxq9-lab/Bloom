@@ -1067,29 +1067,27 @@ export function ChatSessionScreen({
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userAvatar);
   const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(character.bubbleImage);
   const { resolvedUrl: resolvedUserBubbleImageUrl } = useResolvedPersistentValue(character.userBubbleImage);
-  if (showSettings) {
-    return (
-      <ChatSettingsPanel 
-        character={character} 
-        onUpdate={onUpdateCharacter} 
-        onBack={() => setShowSettings(false)} 
-        history={history}
-        setHistory={setHistory}
-        groups={groups}
-        activeConfig={activeConfig}
-        worldBooks={worldBook}
-        masks={masks}
-        callHistory={callHistory}
-        favorites={favorites}
-        setFavorites={setFavorites}
-        onDeleteCallRecord={onDeleteCallRecord}
-        settings={settings}
-        onUpdateSettings={onUpdateSettings}
-        visualSettings={visualSettings}
-        onUpdateVisualSettings={onUpdateVisualSettings}
-      />
-    );
-  }
+  const settingsPanel = (
+    <ChatSettingsPanel 
+      character={character} 
+      onUpdate={onUpdateCharacter} 
+      onBack={() => setShowSettings(false)} 
+      history={history}
+      setHistory={setHistory}
+      groups={groups}
+      activeConfig={activeConfig}
+      worldBooks={worldBook}
+      masks={masks}
+      callHistory={callHistory}
+      favorites={favorites}
+      setFavorites={setFavorites}
+      onDeleteCallRecord={onDeleteCallRecord}
+      settings={settings}
+      onUpdateSettings={onUpdateSettings}
+      visualSettings={visualSettings}
+      onUpdateVisualSettings={onUpdateVisualSettings}
+    />
+  );
   const activeBackground =
     getDisplayableAssetValue(character.background, resolvedCharacterBackgroundUrl)
     || resolvedChatBackgroundUrl
@@ -1288,6 +1286,10 @@ export function ChatSessionScreen({
   const chatMessageListStyle: React.CSSProperties = {
     paddingBottom: `${chatFooterHeight + 8 + chatFooterLift}px`,
   };
+
+  if (showSettings) {
+    return settingsPanel;
+  }
 
   return (
     <motion.div 

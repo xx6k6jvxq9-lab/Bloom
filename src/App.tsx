@@ -90,6 +90,8 @@ const loadMusicApp = () => import('./components/media/MusicApp');
 const loadForumApp = () => import('./components/social/ForumApp/Page');
 const loadWalletApp = () => import('./components/wallet/WalletApp/Page');
 
+const PANEL_PRELOAD_LOADERS: Array<() => Promise<unknown>> = [];
+
 const MonitorApp = lazy(loadMonitorApp);
 const CustomizationApp = lazy(loadCustomizationApp);
 const CoupleSpaceApp = lazy(loadCoupleSpaceApp);
@@ -317,11 +319,18 @@ const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [
   },
 ];
 
+const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
+const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
 const REMOVED_CHARACTER_IDS = new Set(['gemini-default']);
 const REMOVED_CHARACTER_NAMES = new Set(['阿野']);
 function sanitizePersistedCharacters(characters: Character[] | undefined): Character[] {
   const persistedCharacters = migrateCharacterShapes(characters || [])
-    .filter(character => !REMOVED_CHARACTER_IDS.has(character.id) && !REMOVED_CHARACTER_NAMES.has(character.name))
+    .filter(character => (
+      !REMOVED_CHARACTER_IDS.has(character.id)
+      && !REMOVED_CHARACTER_NAMES.has(character.name)
+      && !HIDDEN_CHARACTER_IDS.has(character.id)
+      && !HIDDEN_CHARACTER_NAMES.has(character.name)
+    ))
     .map(character =>
       character.id === 'char-zhou-jibai'
         ? {
@@ -336,7 +345,11 @@ function sanitizePersistedCharacters(characters: Character[] | undefined): Chara
     );
 
   const existingIds = new Set(persistedCharacters.map(character => character.id));
-  const missingDefaults = DEFAULT_CHARACTERS.filter(character => !existingIds.has(character.id));
+  const missingDefaults = DEFAULT_CHARACTERS.filter(character => (
+    !existingIds.has(character.id)
+    && !HIDDEN_CHARACTER_IDS.has(character.id)
+    && !HIDDEN_CHARACTER_NAMES.has(character.name)
+  ));
 
   return [...persistedCharacters, ...missingDefaults];
 }
@@ -489,7 +502,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>({
-    characters: DEFAULT_CHARACTERS,
+    characters: sanitizePersistedCharacters(DEFAULT_CHARACTERS),
     chatHistory: {},
     userProfile: DEFAULT_USER,
     masks: [],
@@ -594,9 +607,7 @@ export default function App() {
     let fallbackHandle: number | null = null;
 
     const preloadHighTrafficPanels = async () => {
-      const panelLoaders = [loadForumApp, loadMusicApp, loadWalletApp, loadCustomizationApp];
-
-      for (const loadPanel of panelLoaders) {
+      for (const loadPanel of PANEL_PRELOAD_LOADERS) {
         if (cancelled) {
           return;
         }
