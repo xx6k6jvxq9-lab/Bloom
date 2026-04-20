@@ -99,6 +99,12 @@ export type DreamEndingOutput = {
   chapter: string;
 };
 
+export type DreamAftermathOutput = {
+  summary: string;
+  detail: string;
+  previewMessages: [string, string];
+};
+
 export type DreamDecisionRecord = {
   actId: string;
   actLabel: string;
@@ -127,6 +133,7 @@ export type DreamRuntimeScenario = {
   endingInput: DreamEndingInput;
   endingOutput?: DreamEndingOutput;
   aftermathInput: DreamAftermathInput;
+  aftermathOutput?: DreamAftermathOutput;
 };
 
 export type GenerateDreamScenarioOptions = {

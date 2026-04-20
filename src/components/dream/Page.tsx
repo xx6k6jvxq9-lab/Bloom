@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch
 
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { generateDreamAftermath } from '../../services/dream/generateDreamAftermath';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
@@ -548,6 +549,13 @@ function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string
 }
 
 function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAftermathView {
+  if (scenario.aftermathOutput) {
+    return {
+      summary: scenario.aftermathOutput.summary,
+      detail: scenario.aftermathOutput.detail,
+      previewMessages: scenario.aftermathOutput.previewMessages,
+    };
+  }
   return {
     summary: scenario.aftermathInput.relationshipShift || '这场梦会在醒来后留下轻微的关系回响。',
     detail:
@@ -1127,6 +1135,7 @@ export function DreamAppPage({
   const [isGeneratingNextAct, setIsGeneratingNextAct] = useState(false);
   const [isEndingDeepDream, setIsEndingDeepDream] = useState(false);
   const [isGeneratingEnding, setIsGeneratingEnding] = useState(false);
+  const [isGeneratingAftermath, setIsGeneratingAftermath] = useState(false);
   const [closingActId, setClosingActId] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
@@ -1337,6 +1346,74 @@ export function DreamAppPage({
     dreamDepth,
     entryMode,
     isGeneratingEnding,
+    masks,
+    runtimeScenario,
+    selectedCharacter,
+    selectedDomain,
+    selectedTags,
+    stage,
+    userName,
+    worldBooks,
+  ]);
+
+  useEffect(() => {
+    if (
+      stage !== 'aftermath'
+      || !runtimeScenario
+      || !selectedCharacter
+      || runtimeScenario.aftermathOutput
+      || isGeneratingAftermath
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingError(null);
+    setIsGeneratingAftermath(true);
+
+    generateDreamAftermath({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+      scenario: runtimeScenario,
+      userName,
+    })
+      .then((aftermathOutput) => {
+        if (cancelled) return;
+        setRuntimeScenario((prev) => (
+          prev
+            ? {
+                ...prev,
+                aftermathOutput,
+              }
+            : prev
+        ));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadingError(error instanceof Error ? error.message : '余响生成失败');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsGeneratingAftermath(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConfig,
+    dreamDepth,
+    entryMode,
+    isGeneratingAftermath,
     masks,
     runtimeScenario,
     selectedCharacter,
@@ -2217,7 +2294,7 @@ export function DreamAppPage({
                         backgroundColor: index === 1 ? presentation.accentSoft : presentation.frameFill,
                       }}
                     >
-                      {message}
+                      {isGeneratingAftermath ? (index === 0 ? '余响正在回流……' : '次日聊天正在浮出。') : message}
                     </div>
                   ))}
                   <div className="max-w-[48%] border px-4 py-3 text-[12px] tracking-[0.24em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
@@ -2227,10 +2304,15 @@ export function DreamAppPage({
               </div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">余响</div>
-                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{aftermathView.summary}</div>
-                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{aftermathView.detail}</div>
+                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">
+                  {isGeneratingAftermath ? '梦醒后的余响正在整理……' : aftermathView.summary}
+                </div>
+                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">
+                  {isGeneratingAftermath ? '它会沿着这场梦的结尾，慢一点回到现实里。' : aftermathView.detail}
+                </div>
                 <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>轻微关系温度变化 · 语气漂移</div>
               </div>
+              {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-8"><SealButton label="再入一梦" onClick={restart} presentation={presentation} /></div>
             </div>
           </Shell>
