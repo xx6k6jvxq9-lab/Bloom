@@ -1073,7 +1073,11 @@ export function DreamAppPage({
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const sceneBlocks = useMemo(() => act?.narrative.pages[0]?.blocks ?? [], [act]);
   const typedSceneBlocks = useNarrativeTypewriter(sceneBlocks, stage === 'scene', `${runtimeScenario?.id || 'preview'}-${act?.id || 'none'}-scene`);
-  const sceneReady = typedSceneBlocks.length === sceneBlocks.length && typedSceneBlocks.every((block, index) => block.text === sceneBlocks[index]?.text);
+  const hasSceneContent = sceneBlocks.length > 0 && sceneBlocks.some((block) => block.text.trim());
+  const sceneReady =
+    hasSceneContent
+    && typedSceneBlocks.length === sceneBlocks.length
+    && typedSceneBlocks.every((block, index) => block.text === sceneBlocks[index]?.text);
   const isDeepDream = runtimeScenario?.depth === 'deep';
   const isClosingAct = Boolean(act && closingActId && act.id === closingActId);
   const isLastGeneratedAct = Boolean(runtimeScenario && actIndex === runtimeScenario.acts.length - 1);

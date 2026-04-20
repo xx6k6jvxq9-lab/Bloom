@@ -58,6 +58,45 @@ export type RawScenario = {
   aftermathInput?: Partial<DreamAftermathInput>;
 };
 
+function splitSceneParagraphs(scene: string) {
+  return scene
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function inferBlockType(text: string, index: number, total: number): DreamNarrativeBlock['type'] {
+  if (/“[^”]+”|"[^"]+"/.test(text)) {
+    return text.length <= 40 ? 'highlight-dialogue' : 'dialogue';
+  }
+  if (/[？?]$/.test(text)) {
+    return 'prompt';
+  }
+  if (text.length <= 28 && index === total - 1) {
+    return 'aside';
+  }
+  return 'narration';
+}
+
+function buildFallbackBlocks(scene: string) {
+  const paragraphs = splitSceneParagraphs(scene);
+  const sources =
+    paragraphs.length > 0
+      ? paragraphs
+      : scene
+          .split(/(?<=[。！？!?；;])/)
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+
+  return sources.slice(0, 7).map((text, index, array) => ({
+    id: `fallback-block-${index + 1}`,
+    type: inferBlockType(text, index, array.length),
+    text,
+    emphasis: index === 0 ? 'high' : index === array.length - 1 ? 'low' : 'medium',
+    align: 'left' as const,
+  }));
+}
+
 export function computeShallowActCount(seed: string) {
   const total = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return total % 2 === 0 ? 4 : 5;
@@ -97,6 +136,7 @@ export function normalizeNarrativeDocument(
   raw: RawNarrativeDocument | undefined,
   actLabel: string,
   presentation: DreamPresentation,
+  fallbackScene?: string,
 ): DreamNarrativeDocument {
   const normalizeNodeId = (prefix: string, rawId: string | undefined, fallbackIndex: number) => {
     const normalizedRawId = (rawId?.trim() || '')
@@ -106,10 +146,8 @@ export function normalizeNarrativeDocument(
     return normalizedRawId ? `${prefix}-${fallbackIndex + 1}-${normalizedRawId}` : `${prefix}-${fallbackIndex + 1}`;
   };
 
-  const pages: DreamNarrativePage[] = (raw?.pages ?? []).slice(0, 1).map((page, pageIndex) => ({
-    id: normalizeNodeId('page', page.id, pageIndex),
-    title: page.title?.trim() || actLabel,
-    blocks: (page.blocks ?? [])
+  const pages: DreamNarrativePage[] = (raw?.pages ?? []).slice(0, 1).map((page, pageIndex) => {
+    const normalizedBlocks = (page.blocks ?? [])
       .map((block, blockIndex) => ({
         id: normalizeNodeId(`block-${pageIndex + 1}`, block.id, blockIndex),
         type: block.type || 'narration',
@@ -119,13 +157,21 @@ export function normalizeNarrativeDocument(
         emphasis: block.emphasis || 'medium',
         align: block.align || 'left',
       }))
-      .filter((block) => block.text),
-  }));
+      .filter((block) => block.text);
+
+    return {
+      id: normalizeNodeId('page', page.id, pageIndex),
+      title: page.title?.trim() || actLabel,
+      blocks: normalizedBlocks.length > 0 ? normalizedBlocks : buildFallbackBlocks(fallbackScene || ''),
+    };
+  });
+
+  const normalizedPages = pages.length > 0 ? pages : [{ id: 'page-1', title: actLabel, blocks: buildFallbackBlocks(fallbackScene || '') }];
 
   return {
     themeId: raw?.themeId?.trim() || presentation.themeId,
     layoutId: raw?.layoutId?.trim() || presentation.layoutId,
-    pages: pages.length > 0 ? pages : [{ id: 'page-1', title: actLabel, blocks: [] }],
+    pages: normalizedPages,
   };
 }
 
@@ -157,7 +203,7 @@ export function toAct(act: RawAct, actIndex: number, presentation: DreamPresenta
     label,
     scene: act.scene?.trim() || '',
     charState: act.charState?.trim() || '',
-    narrative: normalizeNarrativeDocument(act.narrative, label, presentation),
+    narrative: normalizeNarrativeDocument(act.narrative, label, presentation, act.scene?.trim() || ''),
     choiceSet: toChoiceSet(act.choices, actIndex),
     progression: {
       consequence: act.progression?.consequence?.trim() || '',
