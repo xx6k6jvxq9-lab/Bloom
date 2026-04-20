@@ -84,6 +84,7 @@ export async function generateDreamAftermath(options: GenerateDreamAftermathOpti
     ],
     temperature: 0.82,
     maxOutputTokens: 900,
+    timeoutMs: 16000,
   });
 
   const parsed = parseJsonResponse<RawAftermathOutput>(raw);

@@ -95,6 +95,7 @@ export async function generateDreamEnding(options: GenerateDreamEndingOptions): 
     ],
     temperature: 0.82,
     maxOutputTokens: 1100,
+    timeoutMs: 20000,
   });
 
   const parsed = parseJsonResponse<RawEndingOutput>(raw);

@@ -198,6 +198,45 @@ function buildRawResponsePreview(rawResponse: string, maxLength = 240) {
   return `${normalized.slice(0, maxLength)}...`;
 }
 
+function buildTimeoutError(timeoutMs: number) {
+  return new Error(`Request timed out after ${Math.ceil(timeoutMs / 1000)}s.`);
+}
+
+async function runWithTimeout<T>(
+  run: (signal?: AbortSignal) => Promise<T>,
+  timeoutMs?: number,
+): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return run();
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      timer = setTimeout(() => {
+        controller?.abort();
+        reject(buildTimeoutError(timeoutMs));
+      }, timeoutMs);
+
+      run(controller?.signal)
+        .then(resolve)
+        .catch((error) => {
+          if (error instanceof Error && error.name === 'AbortError') {
+            reject(buildTimeoutError(timeoutMs));
+            return;
+          }
+          reject(error);
+        });
+    });
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function extractTextFromContentValue(value: unknown): string {
   if (typeof value === 'string') {
     return value;
@@ -544,45 +583,49 @@ export async function generateTextWithConfig(options: {
   prompt: string;
   temperature?: number;
   maxOutputTokens?: number;
+  timeoutMs?: number;
 }) {
-  const { activeConfig, prompt, temperature, maxOutputTokens } = options;
+  const { activeConfig, prompt, temperature, maxOutputTokens, timeoutMs } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
 
   if (isGeminiConfig(activeConfig)) {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
+    const response = await runWithTimeout(() => ai.models.generateContent({
       model,
       contents: prompt,
       config: {
         temperature: activeConfig.temperature ?? temperature ?? 1.0,
         maxOutputTokens,
       },
-    });
+    }), timeoutMs);
 
     return sanitizeModelOutput(response.text || '');
   }
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: prompt }],
-      temperature: activeConfig.temperature ?? temperature ?? 0.7,
-      max_tokens: maxOutputTokens,
-      stream: false,
-    }),
-  });
+  return runWithTimeout(async (signal) => {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: prompt }],
+        temperature: activeConfig.temperature ?? temperature ?? 0.7,
+        max_tokens: maxOutputTokens,
+        stream: false,
+      }),
+      signal,
+    });
 
-  if (!res.ok) {
-    await throwApiErrorResponse(res);
-  }
+    if (!res.ok) {
+      await throwApiErrorResponse(res);
+    }
 
-  const rawResponse = await res.text();
-  return parseTextResponse(rawResponse);
+    const rawResponse = await res.text();
+    return parseTextResponse(rawResponse);
+  }, timeoutMs);
 }
 
 export async function generateTextFromMessagesWithConfig(options: {
@@ -590,14 +633,15 @@ export async function generateTextFromMessagesWithConfig(options: {
   messages: RuntimeChatMessage[];
   temperature?: number;
   maxOutputTokens?: number;
+  timeoutMs?: number;
 }) {
-  const { activeConfig, messages, temperature, maxOutputTokens } = options;
+  const { activeConfig, messages, temperature, maxOutputTokens, timeoutMs } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
   const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
 
   if (isGeminiConfig(activeConfig)) {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
+    const response = await runWithTimeout(() => ai.models.generateContent({
       model,
       contents: resolvedMessages.map((message) => ({
         role: message.role === 'assistant' ? 'model' : message.role,
@@ -607,35 +651,38 @@ export async function generateTextFromMessagesWithConfig(options: {
         temperature: activeConfig.temperature ?? temperature ?? 1.0,
         maxOutputTokens,
       },
-    });
+    }), timeoutMs);
 
     return sanitizeModelOutput(response.text || '');
   }
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: resolvedMessages.map((message) => ({
-        role: message.role === 'model' ? 'assistant' : message.role,
-        content: buildOpenAiCompatibleMessageContent(message),
-      })),
-      temperature: activeConfig.temperature ?? temperature ?? 0.7,
-      max_tokens: maxOutputTokens,
-      stream: false,
-    }),
-  });
+  return runWithTimeout(async (signal) => {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: resolvedMessages.map((message) => ({
+          role: message.role === 'model' ? 'assistant' : message.role,
+          content: buildOpenAiCompatibleMessageContent(message),
+        })),
+        temperature: activeConfig.temperature ?? temperature ?? 0.7,
+        max_tokens: maxOutputTokens,
+        stream: false,
+      }),
+      signal,
+    });
 
-  if (!res.ok) {
-    await throwApiErrorResponse(res);
-  }
+    if (!res.ok) {
+      await throwApiErrorResponse(res);
+    }
 
-  const rawResponse = await res.text();
-  return parseTextResponse(rawResponse);
+    const rawResponse = await res.text();
+    return parseTextResponse(rawResponse);
+  }, timeoutMs);
 }
 
 export async function streamTextWithConfig(options: {
