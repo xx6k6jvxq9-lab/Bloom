@@ -60,6 +60,7 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
     },
     presentation,
     acts: normalizedActs,
+    decisionTrail: [],
     endingInput: {
       titlePoolKey: parsed.endingInput?.titlePoolKey?.trim() || 'default',
       endingDirection: parsed.endingInput?.endingDirection?.trim() || '',

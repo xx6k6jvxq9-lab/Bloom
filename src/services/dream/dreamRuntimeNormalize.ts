@@ -98,12 +98,20 @@ export function normalizeNarrativeDocument(
   actLabel: string,
   presentation: DreamPresentation,
 ): DreamNarrativeDocument {
+  const normalizeNodeId = (prefix: string, rawId: string | undefined, fallbackIndex: number) => {
+    const normalizedRawId = (rawId?.trim() || '')
+      .replace(/[^\w-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    return normalizedRawId ? `${prefix}-${fallbackIndex + 1}-${normalizedRawId}` : `${prefix}-${fallbackIndex + 1}`;
+  };
+
   const pages: DreamNarrativePage[] = (raw?.pages ?? []).slice(0, 1).map((page, pageIndex) => ({
-    id: page.id?.trim() || `page-${pageIndex + 1}`,
+    id: normalizeNodeId('page', page.id, pageIndex),
     title: page.title?.trim() || actLabel,
     blocks: (page.blocks ?? [])
       .map((block, blockIndex) => ({
-        id: block.id?.trim() || `block-${blockIndex + 1}`,
+        id: normalizeNodeId(`block-${pageIndex + 1}`, block.id, blockIndex),
         type: block.type || 'narration',
         text: block.text?.trim() || '',
         speakerName: block.speakerName?.trim() || undefined,

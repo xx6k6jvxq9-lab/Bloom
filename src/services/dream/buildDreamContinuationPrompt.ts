@@ -5,21 +5,58 @@ import type { GenerateDreamContinuationOptions } from './dreamRuntimeTypes';
 function buildPastActSummary(options: GenerateDreamContinuationOptions) {
   return options.scenario.acts
     .slice(0, options.actIndex + 1)
-    .map((act, index) => {
-      const choice =
-        index === options.actIndex && options.selectedChoice
-          ? `\n- 本幕用户选择：${options.selectedChoice.title} / ${options.selectedChoice.direction}`
-          : '';
-      return [
-        `${act.label}`,
-        `- 场景：${act.scene.slice(0, 160)}`,
-        `- 角色状态：${act.charState || '未写明'}`,
-        `- 主线推进：${act.progression.plotAdvance || '未写明'}`,
-        `- 张力变化：${act.progression.tensionShift || '未写明'}`,
-        choice,
-      ].join('\n');
-    })
+    .map((act) => [
+      act.label,
+      `- scene: ${act.scene.slice(0, 200) || 'n/a'}`,
+      `- charState: ${act.charState || 'n/a'}`,
+      `- plotAdvance: ${act.progression.plotAdvance || 'n/a'}`,
+      `- tensionShift: ${act.progression.tensionShift || 'n/a'}`,
+      `- consequence: ${act.progression.consequence || 'n/a'}`,
+    ].join('\n'))
     .join('\n\n');
+}
+
+function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
+  const committedTrail = options.scenario.decisionTrail.map((record, index) => (
+    [
+      `${index + 1}. ${record.actLabel}`,
+      `- choice: ${record.title}`,
+      `- direction: ${record.direction || 'n/a'}`,
+      `- detail: ${record.detail || 'n/a'}`,
+      `- reaction: ${record.reaction || 'n/a'}`,
+      `- storyPush: ${record.storyPush || 'n/a'}`,
+      `- emotion: ${record.emotion || 'n/a'}`,
+      `- source: ${record.fromCustom ? 'custom-input' : 'preset-choice'}`,
+    ].join('\n')
+  ));
+
+  const currentActLabel = options.scenario.acts[options.actIndex]?.label || `Act ${options.actIndex + 1}`;
+  const pendingRecord =
+    options.mode === 'custom'
+      ? [
+          `${committedTrail.length + 1}. ${currentActLabel}`,
+          '- choice: custom-input',
+          `- direction: ${options.userInput?.trim() || 'n/a'}`,
+          `- detail: ${options.userInput?.trim() || 'n/a'}`,
+          '- reaction: pending-current-generation',
+          '- storyPush: pending-current-generation',
+          '- emotion: pending-current-generation',
+          '- source: custom-input',
+        ].join('\n')
+      : options.selectedChoice
+        ? [
+            `${committedTrail.length + 1}. ${currentActLabel}`,
+            `- choice: ${options.selectedChoice.title}`,
+            `- direction: ${options.selectedChoice.direction || 'n/a'}`,
+            `- detail: ${options.selectedChoice.detail || 'n/a'}`,
+            `- reaction: ${options.selectedChoice.reaction || options.selectedChoice.reactionHint || 'n/a'}`,
+            `- storyPush: ${options.selectedChoice.storyPush || 'n/a'}`,
+            `- emotion: ${options.selectedChoice.emotion || 'n/a'}`,
+            `- source: ${options.selectedChoice.fromCustom ? 'custom-input' : 'preset-choice'}`,
+          ].join('\n')
+        : '';
+
+  return [...committedTrail, pendingRecord].filter(Boolean).join('\n\n') || 'No previous user choices recorded.';
 }
 
 export function buildDreamContinuationPrompt(options: GenerateDreamContinuationOptions) {
@@ -29,23 +66,21 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
   const pastActs = buildPastActSummary(options);
+  const decisionTrail = buildDecisionTrailSummary(options);
 
   const modeInstruction =
     options.mode === 'custom'
-      ? `用户选择了第 4 个“自定义描述”，用户输入是：${options.userInput?.trim() || '未提供'}。
-请先生成这条输入带来的即时反应，再生成下一幕。下一幕必须承接用户输入，不要无视它。`
+      ? `User picked the custom input path. The custom input is: ${options.userInput?.trim() || 'n/a'}. First generate the immediate reaction to this custom action, then generate the next act. The next act must directly honor the user input.`
       : options.mode === 'deeper'
-        ? `当前是深梦，用户没有结束做梦，而是继续往下沉。当前用户刚做出的选择是：${options.selectedChoice?.title || '未提供'}。
-请生成承接这一选择的即时反应，然后一次性继续生成新的 5 幕“下沉段”。这 5 幕必须是连续剧情，不是 5 个散段。第一幕紧接当前一幕，最后一幕保留还能继续下沉的空间。`
-        : `当前是深梦，用户点击了“结束做梦”。
-请生成一幕“最后一幕”，这一幕必须承接前文，把主线推到可进入结局的位置，然后一并输出 endingInput 和 aftermathInput。`;
+        ? `This is a deep-dream continuation. The user did NOT end the dream. The latest choice is: ${options.selectedChoice?.title || 'n/a'}. First generate the immediate reaction to that choice, then generate exactly 5 new continuous acts in nextActs. These 5 acts must continue the same dream, keep room for another continuation, and must not secretly end the story.`
+        : `This is the deep-dream ending path. The user clicked end dream. Generate one finalAct that naturally continues from the existing acts, pushes the story to the threshold of the ending, and does NOT open a new storyline. Then output endingInput and aftermathInput. finalAct must only serve as the last act before the ending.`;
 
   const outputSchema =
     options.mode === 'deep-end'
       ? `{
-  "reactionText": "可留空",
-  "emotion": "可留空",
-  "storyPush": "可留空",
+  "reactionText": "optional",
+  "emotion": "optional",
+  "storyPush": "optional",
   "finalAct": {
     "id": "final-act",
     "label": "最后一幕",
@@ -62,7 +97,17 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
         }
       ]
     },
-    "choices": [],
+    "choices": [
+      {
+        "id": "enter-ending",
+        "title": "进入结局",
+        "direction": "收束至终局",
+        "detail": "这一幕之后只进入结局，不再给普通三选一。",
+        "reactionHint": "可留空",
+        "storyPush": "主线被推到结局门口",
+        "emotion": "终响"
+      }
+    ],
     "progression": {
       "consequence": "这一幕造成的变化",
       "plotAdvance": "主线已被推到结局门口",
@@ -107,7 +152,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
           "id": "next-choice-1",
           "title": "短标题",
           "direction": "方向",
-          "detail": "动作/走向描写",
+          "detail": "动作/走向描述",
           "reactionHint": "角色即时反应",
           "storyPush": "如何推进主线",
           "emotion": "情绪词"
@@ -146,7 +191,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
         "id": "next-choice-1",
         "title": "短标题",
         "direction": "方向",
-        "detail": "动作/走向描写",
+        "detail": "动作/走向描述",
         "reactionHint": "角色即时反应",
         "storyPush": "如何推进主线",
         "emotion": "情绪词"
@@ -161,58 +206,58 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
 }`;
 
   return `
-你是 Bloom 项目的梦境续写生成器。你的任务是承接已经发生的梦局内容，继续往下生成，而不是重开一局。
+You are the Bloom dream continuation generator.
+Continue the SAME dream runtime. Do not restart the story. Do not change world logic, dream identities, relationship logic, layout, or theme.
 
-总规则：
-1. 必须承接前文，不要跳戏，不要换世界，不要忘记已经确定的梦中新身份、关系和主线。
-2. 一整局梦只使用当前这一套 layout 和 theme，不要改格式。
-3. 用户勾选过的标签必须继续生效。
-4. 如果是深梦继续下沉，不要偷偷收尾。
-5. 如果是深梦结束做梦，最后一幕必须自然承接前文，再进入结局，不要凭空冒出结局。
-6. 输出必须是 JSON，不要解释。
+Hard rules:
+1. Dream identity has priority over real identity.
+2. Dream relationship has priority over real relationship.
+3. Keep the same presentation: themeId=${options.scenario.presentation.themeId}, layoutId=${options.scenario.presentation.layoutId}.
+4. Respect the user's selected tags as structural constraints, not just mood decoration.
+5. If mode is deeper, generate 5 continuous acts and keep continuation space.
+6. If mode is deep-end, generate one real final act before the ending, not a summary and not a new branch.
+7. Output JSON only.
 
-当前梦域：${domain.name}
-梦域规则：${domainRule}
-标签摘要：
-${tagSummary || '未提供'}
+Current domain: ${domain.name}
+Domain rule: ${domainRule}
+Tag summary: ${tagSummary || 'n/a'}
 
-标签分类：
-- 背景层：${tagCategoryContext.background.join(' / ') || '未提供'}
-- 身份层：${tagCategoryContext.identities.join(' / ') || '未提供'}
-- 关系层：${tagCategoryContext.relationships.join(' / ') || '未提供'}
-- 驱动层：${tagCategoryContext.drives.join(' / ') || '未提供'}
-- 氛围层：${tagCategoryContext.moods.join(' / ') || '未提供'}
+Tag mapping:
+- background: ${tagCategoryContext.background.join(' / ') || 'n/a'}
+- identity: ${tagCategoryContext.identities.join(' / ') || 'n/a'}
+- relationship: ${tagCategoryContext.relationships.join(' / ') || 'n/a'}
+- drive: ${tagCategoryContext.drives.join(' / ') || 'n/a'}
+- mood: ${tagCategoryContext.moods.join(' / ') || 'n/a'}
 
-当前梦世界框架：
-- 世界标题：${options.scenario.storyFrame.worldTitle}
-- 世界摘要：${options.scenario.storyFrame.worldSummary}
-- 用户梦中身份：${options.scenario.storyFrame.userDreamIdentity}
-- 角色梦中身份：${options.scenario.storyFrame.characterDreamIdentity}
-- 梦内关系：${options.scenario.storyFrame.dreamRelationship}
-- 开场节点：${options.scenario.storyFrame.openingNode}
-- 时间节点：${options.scenario.storyFrame.timeNode || '未写明'}
-- 当前危机：${options.scenario.storyFrame.currentCrisis || '未写明'}
-- 禁忌或规则：${options.scenario.storyFrame.forbiddenRule || '未写明'}
-- 立即目标：${options.scenario.storyFrame.immediateGoal || '未写明'}
-- 主线目标：${options.scenario.storyFrame.storyObjective}
-- 核心冲突：${options.scenario.storyFrame.coreConflict}
+Story frame:
+- worldTitle: ${options.scenario.storyFrame.worldTitle}
+- worldSummary: ${options.scenario.storyFrame.worldSummary}
+- userDreamIdentity: ${options.scenario.storyFrame.userDreamIdentity}
+- characterDreamIdentity: ${options.scenario.storyFrame.characterDreamIdentity}
+- dreamRelationship: ${options.scenario.storyFrame.dreamRelationship}
+- openingNode: ${options.scenario.storyFrame.openingNode}
+- timeNode: ${options.scenario.storyFrame.timeNode || 'n/a'}
+- currentCrisis: ${options.scenario.storyFrame.currentCrisis || 'n/a'}
+- forbiddenRule: ${options.scenario.storyFrame.forbiddenRule || 'n/a'}
+- immediateGoal: ${options.scenario.storyFrame.immediateGoal || 'n/a'}
+- storyObjective: ${options.scenario.storyFrame.storyObjective}
+- coreConflict: ${options.scenario.storyFrame.coreConflict}
 
-已发生的剧情摘要：
+Past act summary:
 ${pastActs}
 
-当前所处幕：
-- 标题：${currentAct.label}
-- 正文：${currentAct.scene}
-- 角色状态：${currentAct.charState}
+Recorded user choice trail:
+${decisionTrail}
 
-当前固定展示格式：
-- themeId: ${options.scenario.presentation.themeId}
-- layoutId: ${options.scenario.presentation.layoutId}
+Current act:
+- label: ${currentAct.label}
+- scene: ${currentAct.scene}
+- charState: ${currentAct.charState}
 
-本次任务：
+Task:
 ${modeInstruction}
 
-输出 JSON 结构：
+Output JSON schema:
 ${outputSchema}
 `.trim();
 }

@@ -19,6 +19,11 @@ export type DreamGeneratedChoice = {
   emotion: string;
 };
 
+export type DreamContinuationChoice = DreamGeneratedChoice & {
+  reaction?: string;
+  fromCustom?: boolean;
+};
+
 export type DreamCustomChoice = {
   id: 'custom-input';
   title: '自定义描述';
@@ -87,6 +92,19 @@ export type DreamAftermathInput = {
   messagePreviewDirection: string;
 };
 
+export type DreamDecisionRecord = {
+  actId: string;
+  actLabel: string;
+  choiceId: string;
+  title: string;
+  direction: string;
+  detail: string;
+  reaction: string;
+  storyPush: string;
+  emotion: string;
+  fromCustom?: boolean;
+};
+
 export type DreamRuntimeScenario = {
   id: string;
   coverTitle: string;
@@ -98,6 +116,7 @@ export type DreamRuntimeScenario = {
   storyFrame: DreamStoryFrame;
   presentation: DreamPresentation;
   acts: DreamRuntimeAct[];
+  decisionTrail: DreamDecisionRecord[];
   endingInput: DreamEndingInput;
   aftermathInput: DreamAftermathInput;
 };
@@ -117,7 +136,7 @@ export type GenerateDreamContinuationOptions = GenerateDreamScenarioOptions & {
   actIndex: number;
   mode: DreamContinuationMode;
   userInput?: string;
-  selectedChoice?: DreamGeneratedChoice | null;
+  selectedChoice?: DreamContinuationChoice | null;
 };
 
 export type DreamContinuationPayload = {

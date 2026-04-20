@@ -5,7 +5,7 @@ import { getDisplayableAssetValue } from '../../features/persistence/persistentA
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
-import type { DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
@@ -380,17 +380,20 @@ function SecondaryAction({
   label,
   onClick,
   className = '',
+  disabled = false,
 }: {
   label: string;
   onClick: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`group relative w-full overflow-hidden border border-[var(--border-mid)] px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] text-[var(--gold)] transition duration-500 active:scale-[0.99] ${className}`}
-      style={{ backgroundColor: 'transparent', color: 'var(--gold)' }}
+      className={`group relative w-full overflow-hidden border border-[var(--border-mid)] px-6 py-4 text-center text-[13px] font-[400] tracking-[0.48em] text-[var(--gold)] transition duration-500 active:scale-[0.99] disabled:opacity-30 ${className}`}
+      style={{ backgroundColor: disabled ? 'rgba(13,18,32,.45)' : 'transparent', color: 'var(--gold)' }}
     >
       <span className="pointer-events-none absolute inset-0 origin-left scale-x-0 bg-[rgba(196,169,106,.14)] transition duration-500 group-hover:scale-x-100 group-active:scale-x-100" />
       <span className="pointer-events-none absolute inset-[3px] border border-[rgba(196,169,106,.15)]" />
@@ -527,6 +530,30 @@ function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAfterma
       scenario.storyFrame.openingNode || '你醒来之后，会先想起哪个瞬间？',
     ],
   };
+}
+
+function createDecisionRecord(act: DreamRuntimeAct, choice: ActiveDreamChoice): DreamDecisionRecord {
+  return {
+    actId: act.id,
+    actLabel: act.label,
+    choiceId: choice.id,
+    title: choice.title,
+    direction: choice.direction,
+    detail: choice.detail,
+    reaction: choice.reaction,
+    storyPush: choice.storyPush,
+    emotion: choice.emotion,
+    fromCustom: choice.fromCustom,
+  };
+}
+
+function appendDecisionRecord(trail: DreamDecisionRecord[], nextRecord: DreamDecisionRecord | null) {
+  if (!nextRecord) return trail;
+  const existingIndex = trail.findIndex((record) => record.actId === nextRecord.actId);
+  if (existingIndex === -1) return [...trail, nextRecord];
+  const cloned = [...trail];
+  cloned[existingIndex] = nextRecord;
+  return cloned;
 }
 
 function upsertDreamAct(acts: DreamRuntimeAct[], nextAct: DreamRuntimeAct, index: number) {
@@ -1149,6 +1176,22 @@ export function DreamAppPage({
     }
   }, [stage]);
 
+  useEffect(() => {
+    if (!runtimeScenario || !selectedCharacter) return;
+    localStorage.setItem(
+      'dream_app_latest_session',
+      JSON.stringify({
+        mode: entryMode,
+        roleId: selectedCharacter.id,
+        domain: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+        scenario: runtimeScenario,
+        createdAt: Date.now(),
+      }),
+    );
+  }, [dreamDepth, entryMode, runtimeScenario, selectedCharacter, selectedDomain, selectedTags]);
+
   const openEntry = () => {
     if (!selectedRole) {
       setStage('role-picker');
@@ -1206,7 +1249,7 @@ export function DreamAppPage({
   };
 
   const continueDeeper = async () => {
-    if (!runtimeScenario || !selectedCharacter || !selectedChoice) return;
+    if (!runtimeScenario || !selectedCharacter || !selectedChoice || isGeneratingNextAct || isEndingDeepDream) return;
     setLoadingError(null);
     setIsGeneratingNextAct(true);
     try {
@@ -1250,7 +1293,7 @@ export function DreamAppPage({
   };
 
   const submitCustomChoice = async () => {
-    if (!runtimeScenario || !selectedCharacter || !act || !customInput.trim()) return;
+    if (!runtimeScenario || !selectedCharacter || !act || !customInput.trim() || isSubmittingCustom || isGeneratingNextAct || isEndingDeepDream) return;
     const needsNextAct = isDeepDream || actIndex < runtimeScenario.acts.length - 1;
     setLoadingError(null);
     setIsSubmittingCustom(true);
@@ -1287,7 +1330,7 @@ export function DreamAppPage({
         );
       }
 
-      setSelectedChoice({
+      const nextChoice = {
         id: `custom-${Date.now()}`,
         title: '自定义描述',
         direction: '按你的描述推进',
@@ -1297,7 +1340,16 @@ export function DreamAppPage({
         emotion: payload.emotion || '回响',
         reaction: payload.reactionText || '梦按你的描述继续往下走。',
         fromCustom: true,
-      });
+      };
+      setRuntimeScenario((prev) =>
+        prev
+          ? {
+              ...prev,
+              decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
+            }
+          : prev,
+      );
+      setSelectedChoice(nextChoice);
       setCustomInput('');
       setCustomInputOpen(false);
       setStage('reaction');
@@ -1309,7 +1361,7 @@ export function DreamAppPage({
   };
 
   const endDeepDream = async () => {
-    if (!runtimeScenario || !selectedCharacter) return;
+    if (!runtimeScenario || !selectedCharacter || isGeneratingNextAct || isEndingDeepDream) return;
     setLoadingError(null);
     setIsEndingDeepDream(true);
     try {
@@ -1345,7 +1397,7 @@ export function DreamAppPage({
           : prev,
       );
       setClosingActId(payload.finalAct.id);
-      setActIndex(runtimeScenario.acts.length);
+      setActIndex((prev) => prev + 1);
       setSelectedChoice(null);
       setStage('scene');
     } catch (error) {
@@ -1750,6 +1802,7 @@ export function DreamAppPage({
                     onClick={() => {
                       void endDeepDream();
                     }}
+                    disabled={isEndingDeepDream || isGeneratingNextAct}
                   />
                 </div>
               ) : null}
@@ -1782,10 +1835,19 @@ export function DreamAppPage({
                       onPointerCancel={cancelChoicePreview}
                       onClick={() => {
                         cancelChoicePreview();
-                        setSelectedChoice({
+                        const nextChoice = {
                           ...choice,
                           reaction: choice.reactionHint,
-                        });
+                        };
+                        setRuntimeScenario((prev) => (
+                          prev && act
+                            ? {
+                                ...prev,
+                                decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
+                              }
+                            : prev
+                        ));
+                        setSelectedChoice(nextChoice);
                         setStage('reaction');
                       }}
                       className="w-full border px-5 py-5 text-left transition duration-300"
@@ -1852,6 +1914,7 @@ export function DreamAppPage({
                     onClick={() => {
                       void endDeepDream();
                     }}
+                    disabled={isEndingDeepDream || isGeneratingNextAct || isSubmittingCustom}
                   />
                 ) : null}
               </div>
@@ -1919,7 +1982,7 @@ export function DreamAppPage({
                   onClick={() => {
                     void goNextFromReaction();
                   }}
-                  disabled={reactionText.length < reactionFullText.length || isGeneratingNextAct}
+                  disabled={reactionText.length < reactionFullText.length || isGeneratingNextAct || isEndingDeepDream}
                 />
               </div>
               {isDeepDream && !isClosingAct ? (
@@ -1929,6 +1992,7 @@ export function DreamAppPage({
                     onClick={() => {
                       void endDeepDream();
                     }}
+                    disabled={isEndingDeepDream || isGeneratingNextAct}
                   />
                 </div>
               ) : null}
