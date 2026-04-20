@@ -2184,18 +2184,6 @@ export function DreamAppPage({
               <div className="mt-12">
                 <DreamNarrativeBlocks blocks={typedReactionBlocks} presentation={presentation} />
               </div>
-              <div className="mt-6 grid gap-3">
-                {act?.progression.plotAdvance ? (
-                  <div className="border px-4 py-4 text-[13px] leading-[2.1] tracking-[0.12em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.accent }}>
-                    主线推进：{act.progression.plotAdvance}
-                  </div>
-                ) : null}
-                {act?.progression.tensionShift ? (
-                  <div className="border px-4 py-4 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
-                    张力变化：{act.progression.tensionShift}
-                  </div>
-                ) : null}
-              </div>
               <div className={`mt-16 transition duration-500 ${reactionReady ? 'opacity-100' : 'opacity-0'}`}>
                 <span className="inline-flex rounded-[20px] border px-5 py-3 text-[12px] tracking-[0.2em]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft, color: presentation.accent }}>
                   <span className="mr-3 inline-block h-[6px] w-[6px] rounded-full" style={{ backgroundColor: presentation.accent }} />
