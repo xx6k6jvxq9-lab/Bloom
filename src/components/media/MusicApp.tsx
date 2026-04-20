@@ -83,6 +83,25 @@ function ResolvedMusicCover({
   return <img src={resolvedUrl} alt={alt} className={className} />;
 }
 
+function normalizeBuiltinSong(song: Song): Song {
+  if (!song) return song;
+
+  if (song.id === "1" || song.title === "鏅村ぉ" || song.title === "鎌村お") {
+    return { ...song, title: "晴天", artist: "周杰伦" };
+  }
+
+  if (song.id === "3" || song.title === "鍛婄櫧姘旂悆") {
+    return { ...song, title: "告白气球", artist: "周杰伦" };
+  }
+
+  return song;
+}
+
+function normalizeSongList(songs: Song[] | null | undefined): Song[] {
+  if (!Array.isArray(songs)) return [];
+  return songs.map((song) => normalizeBuiltinSong(song));
+}
+
 type MusicAppProps = {
   character: Character;
   userAvatar: string;
@@ -112,11 +131,14 @@ export default function MusicApp({
   allCharacters,
   audioRef,
 }: MusicAppProps) {
-  const safeCharacter = character ?? {
-    id: "music-fallback-character",
-    name: "TA",
-    avatar: "",
-  } as Character;
+  const safeCharacter = useMemo(
+    () => character ?? ({
+      id: "music-fallback-character",
+      name: "TA",
+      avatar: "",
+    } as Character),
+    [character],
+  );
   const [activeTab, setActiveTab] = useState<"player" | "playlists" | "me">(
     "player",
   );
@@ -262,36 +284,10 @@ export default function MusicApp({
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
 
-  // Mock data with real audio URLs
-  const defaultSongs: Song[] = [
-    {
-      id: "1",
-      title: "鏅村ぉ",
-      artist: "周杰伦",
-      albumArt: "https://picsum.photos/seed/music1/300/300",
-      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      duration: 372,
-    },
-    {
-      id: "2",
-      title: "七里香",
-      artist: "周杰伦",
-      albumArt: "https://picsum.photos/seed/music2/300/300",
-      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-      duration: 425,
-    },
-    {
-      id: "3",
-      title: "鍛婄櫧姘旂悆",
-      artist: "周杰伦",
-      albumArt: "https://picsum.photos/seed/music3/300/300",
-      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
-      duration: 312,
-    },
-  ];
+  const defaultSongs = useMemo<Song[]>(() => [], []);
 
-  const defaultMusicData: MusicData = {
-    currentSong: defaultSongs[0],
+  const defaultMusicData = useMemo<MusicData>(() => ({
+    currentSong: null,
     isPlaying: false,
     progress: 0,
     volume: 80,
@@ -299,7 +295,7 @@ export default function MusicApp({
       {
         id: "p1",
         name: "我的最爱",
-        cover: "https://picsum.photos/seed/p1/300/300",
+        cover: "",
         songs: defaultSongs,
         type: "user",
       },
@@ -307,39 +303,45 @@ export default function MusicApp({
         id: "p2",
         name: `${safeCharacter.name}的歌单`,
         cover: safeCharacter.avatar,
-        songs: defaultSongs.slice(0, 2),
+        songs: [],
         type: "character",
         authorId: safeCharacter.id,
       },
       {
         id: "p3",
         name: "共创歌单",
-        cover: "https://picsum.photos/seed/p3/300/300",
+        cover: "",
         songs: [],
         type: "collaborative",
       },
     ],
-    likedSongs: ["1"],
-    history: ["1", "2"],
-    recentlyPlayed: ["1"],
+    likedSongs: [],
+    history: [],
+    recentlyPlayed: [],
     togetherWith: null,
     togetherStartTime: null,
     chatHistory: [],
     queue: defaultSongs,
     collectedSongs: [],
-  };
-  const currentMusicData: MusicData = {
+  }), [defaultSongs, safeCharacter.avatar, safeCharacter.id, safeCharacter.name]);
+
+  const currentMusicData = useMemo<MusicData>(() => ({
     ...defaultMusicData,
     ...musicData,
-    currentSong: musicData?.currentSong ?? defaultMusicData.currentSong,
-    playlists: Array.isArray(musicData?.playlists) ? musicData.playlists : defaultMusicData.playlists,
+    currentSong: normalizeBuiltinSong(musicData?.currentSong ?? defaultMusicData.currentSong),
+    playlists: Array.isArray(musicData?.playlists)
+      ? musicData.playlists.map((playlist) => ({
+          ...playlist,
+          songs: normalizeSongList(playlist.songs),
+        }))
+      : defaultMusicData.playlists,
     likedSongs: Array.isArray(musicData?.likedSongs) ? musicData.likedSongs : defaultMusicData.likedSongs,
     collectedSongs: Array.isArray(musicData?.collectedSongs) ? musicData.collectedSongs : defaultMusicData.collectedSongs,
     history: Array.isArray(musicData?.history) ? musicData.history : defaultMusicData.history,
     recentlyPlayed: Array.isArray(musicData?.recentlyPlayed) ? musicData.recentlyPlayed : defaultMusicData.recentlyPlayed,
     chatHistory: Array.isArray(musicData?.chatHistory) ? musicData.chatHistory : defaultMusicData.chatHistory,
-    queue: Array.isArray(musicData?.queue) ? musicData.queue : defaultMusicData.queue,
-  };
+    queue: Array.isArray(musicData?.queue) ? normalizeSongList(musicData.queue) : defaultMusicData.queue,
+  }), [defaultMusicData, musicData]);
   const activeTogetherCharacter = useMemo(
     () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
     [allCharacters, safeCharacter, currentMusicData.togetherWith],
@@ -661,6 +663,10 @@ export default function MusicApp({
   }, [currentMusicData.currentSong?.id, currentMusicData.isPlaying]);
 
   const togglePlay = async () => {
+    if (!currentMusicData.currentSong) {
+      return;
+    }
+
     if (!currentMusicData.isPlaying && currentMusicData.currentSong) {
       await primePlaybackFromGesture(currentMusicData.currentSong);
     }
@@ -673,6 +679,7 @@ export default function MusicApp({
 
   const skipForward = () => {
     const queue = currentMusicData.queue || defaultSongs;
+    if (!queue.length) return;
     const currentIndex = queue.findIndex(
       (s) => s.id === currentMusicData.currentSong?.id,
     );
@@ -689,6 +696,7 @@ export default function MusicApp({
 
   const skipBack = () => {
     const queue = currentMusicData.queue || defaultSongs;
+    if (!queue.length) return;
     const currentIndex = queue.findIndex(
       (s) => s.id === currentMusicData.currentSong?.id,
     );
@@ -1265,10 +1273,10 @@ export default function MusicApp({
           {/* Song Info */}
           <div className="mb-2 mt-2 shrink-0 text-center sm:mt-4">
             <h1 className="mb-0.5 truncate px-2 text-[17px] font-bold tracking-tight text-zinc-900 sm:px-4 sm:text-xl">
-              {currentMusicData.currentSong?.title}
+              {currentMusicData.currentSong?.title || "还没有歌曲"}
             </h1>
             <p className="truncate px-2 text-[13px] font-medium text-pink-500 sm:px-4 sm:text-[15px]">
-              {currentMusicData.currentSong?.artist}
+              {currentMusicData.currentSong?.artist || "去“我的”里添加本地音乐、音频链接或网易云歌曲"}
             </p>
             {playbackError ? (
               <p className="mt-1.5 text-[11px] font-semibold text-rose-500 sm:mt-2 sm:text-[12px]">
@@ -1298,11 +1306,17 @@ export default function MusicApp({
                   >
                     <div className="absolute inset-0 rounded-full border-[10px] border-zinc-800/50 sm:border-[12px]" />
                     <div className="absolute inset-0 rounded-full border-[1px] border-white/5" />
-                    <div className="w-full h-full rounded-full overflow-hidden">
-                      <img
-                        src={currentMusicData.currentSong?.albumArt}
-                        className="w-full h-full object-cover opacity-80"
-                      />
+                    <div className="w-full h-full rounded-full overflow-hidden bg-[radial-gradient(circle_at_top,#374151,#111827_62%,#09090b)]">
+                      {currentMusicData.currentSong?.albumArt ? (
+                        <img
+                          src={currentMusicData.currentSong.albumArt}
+                          className="w-full h-full object-cover opacity-80"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-white/85">
+                          <MusicIcon size={72} strokeWidth={1.6} />
+                        </div>
+                      )}
                     </div>
                     <div className="absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-zinc-800 bg-zinc-900 shadow-inner sm:h-12 sm:w-12">
                       <div className="h-2 w-2 rounded-full bg-zinc-700" />
@@ -1495,7 +1509,8 @@ export default function MusicApp({
               </button>
               <button
                 onClick={togglePlay}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-xl shadow-zinc-200/40 transition-transform active:scale-95 sm:h-16 sm:w-16"
+                disabled={!currentMusicData.currentSong}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 shadow-xl shadow-zinc-200/40 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 sm:h-16 sm:w-16"
               >
                 {currentMusicData.isPlaying ? (
                   <Pause size={26} fill="currentColor" className="sm:h-[30px] sm:w-[30px]" />

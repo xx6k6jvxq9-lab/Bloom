@@ -235,7 +235,7 @@ export function MePage({
       {/* Profile Edit Modal */}
       <AnimatePresence>
         {editingProfile && (
-          <ProfileEditModal 
+          <FullScreenProfileEditModal 
             userProfile={userProfile} 
             setUserProfile={setUserProfile} 
             onClose={() => setEditingProfile(false)} 
@@ -243,6 +243,120 @@ export function MePage({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfile: UserProfileExtended, setUserProfile: (p: UserProfileExtended) => void, onClose: () => void }) {
+  const [tempProfile, setTempProfile] = useState(userProfile);
+  const [tempUrl, setTempUrl] = useState('');
+  const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
+  const { resolvedUrl: resolvedTempAvatarUrl } = useResolvedPersistentValue(tempProfile.avatar);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
+      className="absolute inset-0 z-[110] flex flex-col bg-white"
+    >
+      <div className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-5 [webkit-overflow-scrolling:touch]">
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-[18px] font-bold text-zinc-900">编辑个人资料</h3>
+            <button
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-zinc-200"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-3">
+            {resolvedTempAvatarUrl ? (
+              <img src={resolvedTempAvatarUrl} className="h-20 w-20 rounded-full border-2 border-zinc-100 object-cover" alt="Avatar" />
+            ) : (
+              <div className="h-20 w-20 rounded-full border-2 border-zinc-100 bg-zinc-50" />
+            )}
+            <div className="flex w-full gap-2">
+              <input
+                type="text"
+                placeholder="支持链接、Markdown 或 HTML 图片"
+                value={tempUrl}
+                onChange={e => setTempUrl(e.target.value)}
+                className="flex-1 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-[12px] outline-none"
+              />
+              <button
+                onClick={async () => {
+                  if (tempUrl) {
+                    const finalUrl = await setRemoteUrl(extractImageUrls(tempUrl)[0] || tempUrl.trim());
+                    setTempProfile({ ...tempProfile, avatar: finalUrl });
+                  }
+                  setTempUrl('');
+                }}
+                className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
+              >
+                确认
+              </button>
+              <label className="cursor-pointer rounded-xl bg-zinc-100 px-3 py-2 text-[12px] text-zinc-600">
+                上传
+                <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const persistedValue = await setUploadedFile(file);
+                    setTempProfile({ ...tempProfile, avatar: persistedValue });
+                    e.currentTarget.value = '';
+                  }
+                }} />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="ml-1 text-[12px] text-zinc-400">昵称</label>
+            <input
+              type="text"
+              value={tempProfile.name}
+              onChange={e => setTempProfile({ ...tempProfile, name: e.target.value })}
+              className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="ml-1 text-[12px] text-zinc-400">个人 ID</label>
+            <input
+              type="text"
+              value={tempProfile.id}
+              onChange={e => setTempProfile({ ...tempProfile, id: e.target.value })}
+              className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 font-mono text-[14px] outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="ml-1 text-[12px] text-zinc-400">一句话简介</label>
+            <textarea
+              value={tempProfile.bio}
+              onChange={e => setTempProfile({ ...tempProfile, bio: e.target.value })}
+              className="min-h-[120px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-2xl bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-600"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => { setUserProfile(tempProfile); onClose(); }}
+              className="flex-1 rounded-2xl border border-zinc-200 bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-700 hover:bg-zinc-200"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -420,17 +534,21 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+      className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end justify-center overflow-y-auto overscroll-contain p-3 [webkit-overflow-scrolling:touch]"
       onClick={onClose}
     >
       <motion.div 
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        className="w-full max-w-[360px] bg-white rounded-t-[40px] p-6 pb-10"
+        className="flex w-full max-w-[360px] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-[32px] bg-white touch-pan-y [webkit-overflow-scrolling:touch]"
         onClick={e => e.stopPropagation()}
       >
+        <div className="shrink-0 px-6 pb-4 pt-6">
         <div className="w-12 h-1.5 bg-zinc-200 rounded-full mx-auto mb-6" />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-10 [webkit-overflow-scrolling:touch]">
         <h3 className="text-[18px] font-bold text-center mb-6">编辑个人资料</h3>
         
         <div className="space-y-5">
@@ -517,6 +635,7 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               保存
             </button>
           </div>
+        </div>
         </div>
       </motion.div>
     </motion.div>

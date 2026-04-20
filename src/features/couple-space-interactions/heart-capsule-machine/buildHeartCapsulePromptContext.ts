@@ -26,7 +26,7 @@ function buildRelationshipSummary(coupleSpace: CoupleSpaceData) {
 
   if (letterCount || noteCount || postCount || messageBoardCount) {
     parts.push(
-      `情侣空间里已有 ${letterCount} 封情书、${noteCount} 条互记、${postCount} 条动态、${messageBoardCount} 条留言。`,
+      `情侣空间里已有 ${letterCount} 封情书、${noteCount} 条共笔、${postCount} 条动态、${messageBoardCount} 条留言。`,
     );
   }
 
