@@ -19,6 +19,19 @@ type RawContinuation = {
   aftermathInput?: Partial<DreamAftermathInput>;
 };
 
+function hasValidChoiceSet(act: RawAct | undefined) {
+  if (!act) return false;
+  if (!act.choices || act.choices.length !== 3) return false;
+  return act.choices.every((choice) => (
+    Boolean(choice?.title?.trim())
+    && Boolean(choice?.direction?.trim())
+    && Boolean(choice?.detail?.trim())
+    && Boolean(choice?.reactionHint?.trim())
+    && Boolean(choice?.storyPush?.trim())
+    && Boolean(choice?.emotion?.trim())
+  ));
+}
+
 export async function generateDreamContinuation(options: GenerateDreamContinuationOptions): Promise<DreamContinuationPayload> {
   const prompt = buildDreamContinuationPrompt(options);
   const raw = await generateTextFromMessagesWithConfig({
@@ -39,6 +52,17 @@ export async function generateDreamContinuation(options: GenerateDreamContinuati
 
   const parsed = parseJsonResponse<RawContinuation>(raw);
   const nextActIndex = options.actIndex + 1;
+
+  if (options.mode === 'deeper') {
+    const acts = parsed.nextActs || [];
+    if (acts.length !== 5 || acts.some((act) => !hasValidChoiceSet(act))) {
+      throw new Error('深梦续写没有稳定返回 5 幕且每幕 3 个有效选项。');
+    }
+  }
+
+  if (options.mode === 'custom' && !hasValidChoiceSet(parsed.nextAct)) {
+    throw new Error('自定义续写没有返回 3 个有效选项。');
+  }
 
   return {
     reactionText: parsed.reactionText?.trim() || '',

@@ -70,9 +70,9 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
 
   const modeInstruction =
     options.mode === 'custom'
-      ? `User picked the custom input path. The custom input is: ${options.userInput?.trim() || 'n/a'}. First generate the immediate reaction to this custom action, then generate the next act. The next act must directly honor the user input.`
+      ? `User picked the custom input path. The custom input is: ${options.userInput?.trim() || 'n/a'}. First generate the immediate reaction to this custom action, then generate the next act. The next act must directly honor the user input and MUST contain exactly 3 valid generated choices with non-empty title, direction, detail, reactionHint, storyPush, and emotion fields.`
       : options.mode === 'deeper'
-        ? `This is a deep-dream continuation. The user did NOT end the dream. The latest choice is: ${options.selectedChoice?.title || 'n/a'}. First generate the immediate reaction to that choice, then generate exactly 5 new continuous acts in nextActs. These 5 acts must continue the same dream, keep room for another continuation, and must not secretly end the story.`
+        ? `This is a deep-dream continuation. The user did NOT end the dream. The latest choice is: ${options.selectedChoice?.title || 'n/a'}. First generate the immediate reaction to that choice, then generate exactly 5 new continuous acts in nextActs. These 5 acts must continue the same dream, keep room for another continuation, and must not secretly end the story. EVERY generated act MUST contain exactly 3 valid generated choices. Do not return 1 choice. Do not return 2 choices. Do not leave placeholder labels.`
         : `This is the deep-dream ending path. The user clicked end dream. Generate one finalAct that naturally continues from the existing acts, pushes the story to the threshold of the ending, and does NOT open a new storyline. Then output endingInput and aftermathInput. finalAct must only serve as the last act before the ending.`;
 
   const outputSchema =
@@ -156,6 +156,24 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
           "reactionHint": "角色即时反应",
           "storyPush": "如何推进主线",
           "emotion": "情绪词"
+        },
+        {
+          "id": "next-choice-2",
+          "title": "短标题",
+          "direction": "方向",
+          "detail": "动作/走向描述",
+          "reactionHint": "角色即时反应",
+          "storyPush": "如何推进主线",
+          "emotion": "情绪词"
+        },
+        {
+          "id": "next-choice-3",
+          "title": "短标题",
+          "direction": "方向",
+          "detail": "动作/走向描述",
+          "reactionHint": "角色即时反应",
+          "storyPush": "如何推进主线",
+          "emotion": "情绪词"
         }
       ],
       "progression": {
@@ -195,6 +213,24 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
         "reactionHint": "角色即时反应",
         "storyPush": "如何推进主线",
         "emotion": "情绪词"
+      },
+      {
+        "id": "next-choice-2",
+        "title": "短标题",
+        "direction": "方向",
+        "detail": "动作/走向描述",
+        "reactionHint": "角色即时反应",
+        "storyPush": "如何推进主线",
+        "emotion": "情绪词"
+      },
+      {
+        "id": "next-choice-3",
+        "title": "短标题",
+        "direction": "方向",
+        "detail": "动作/走向描述",
+        "reactionHint": "角色即时反应",
+        "storyPush": "如何推进主线",
+        "emotion": "情绪词"
       }
     ],
     "progression": {
@@ -216,7 +252,8 @@ Hard rules:
 4. Respect the user's selected tags as structural constraints, not just mood decoration.
 5. If mode is deeper, generate 5 continuous acts and keep continuation space.
 6. If mode is deep-end, generate one real final act before the ending, not a summary and not a new branch.
-7. Output JSON only.
+7. Every non-ending generated act must contain exactly 3 generated choices.
+8. Output JSON only.
 
 Current domain: ${domain.name}
 Domain rule: ${domainRule}
