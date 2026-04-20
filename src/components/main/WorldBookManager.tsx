@@ -231,15 +231,9 @@ export function WorldBookManager({
                 type="text"
                 value={editForm.category ?? ''}
                 onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                list="world-book-category-presets"
                 placeholder="也可以手动填写分类"
                 className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3 text-[14px] outline-none focus:border-blue-500"
               />
-              <datalist id="world-book-category-presets">
-                {WORLD_BOOK_CATEGORY_PRESETS.map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
             </div>
 
             <div className="space-y-1.5">
