@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
+import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
 import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
 import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
@@ -18,7 +19,9 @@ type ActiveDreamChoice = DreamGeneratedChoice & {
 
 type DreamEndingView = {
   title: string;
+  body: string;
   excerpt: string;
+  signature: string;
   chapter: string;
 };
 
@@ -519,14 +522,27 @@ function DreamNarrativeBlocks({
 }
 
 function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string, userName: string): DreamEndingView {
-  const { storyFrame, endingInput } = scenario;
+  const { storyFrame, endingInput, endingOutput } = scenario;
   const resolvedUserName = userName.trim() || '你';
+  if (endingOutput) {
+    return {
+      title: endingOutput.title,
+      body: endingOutput.body,
+      excerpt: endingOutput.excerpt,
+      signature: roleName,
+      chapter: endingOutput.chapter,
+    };
+  }
   const normalizedSummary = (endingInput.keyActionSummary || '').replaceAll('用户', resolvedUserName);
   return {
     title: storyFrame.worldTitle || scenario.coverTitle || '今夜',
+    body:
+      normalizedSummary ||
+      `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || resolvedUserName} 的这场梦，终于停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
     excerpt:
       normalizedSummary ||
       `${storyFrame.characterDreamIdentity || roleName} 与 ${storyFrame.userDreamIdentity || resolvedUserName} 的这场梦，最终停在 ${storyFrame.coreConflict || '尚未说破的冲突'} 前。`,
+    signature: roleName,
     chapter: `《${endingInput.endingDirection || storyFrame.dreamRelationship || '梦局未竟'}》`,
   };
 }
@@ -1110,6 +1126,7 @@ export function DreamAppPage({
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
   const [isGeneratingNextAct, setIsGeneratingNextAct] = useState(false);
   const [isEndingDeepDream, setIsEndingDeepDream] = useState(false);
+  const [isGeneratingEnding, setIsGeneratingEnding] = useState(false);
   const [closingActId, setClosingActId] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
@@ -1261,6 +1278,74 @@ export function DreamAppPage({
       }),
     );
   }, [dreamDepth, entryMode, runtimeScenario, selectedCharacter, selectedDomain, selectedTags]);
+
+  useEffect(() => {
+    if (
+      stage !== 'ending'
+      || !runtimeScenario
+      || !selectedCharacter
+      || runtimeScenario.endingOutput
+      || isGeneratingEnding
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingError(null);
+    setIsGeneratingEnding(true);
+
+    generateDreamEnding({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+      scenario: runtimeScenario,
+      userName,
+    })
+      .then((endingOutput) => {
+        if (cancelled) return;
+        setRuntimeScenario((prev) => (
+          prev
+            ? {
+                ...prev,
+                endingOutput,
+              }
+            : prev
+        ));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadingError(error instanceof Error ? error.message : '结局生成失败');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsGeneratingEnding(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConfig,
+    dreamDepth,
+    entryMode,
+    isGeneratingEnding,
+    masks,
+    runtimeScenario,
+    selectedCharacter,
+    selectedDomain,
+    selectedTags,
+    stage,
+    userName,
+    worldBooks,
+  ]);
 
   const openEntry = () => {
     if (!selectedRole) {
@@ -2079,15 +2164,19 @@ export function DreamAppPage({
             <div className="flex flex-1 flex-col justify-center py-8">
               <div className="border-y py-10 text-center" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                 <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{endingView.title}</div>
-                <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">
-                  {endingView.excerpt}
+                <div className="mx-auto mt-8 max-w-[360px] text-left text-[14px] font-[300] leading-[2.35] tracking-[0.1em] text-[var(--paper)]">
+                  {isGeneratingEnding ? '结局正在收束……' : endingView.body}
                 </div>
-                <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {selectedRole.name}</div>
+                <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">
+                  {isGeneratingEnding ? '梦尾摘录正在浮出。' : endingView.excerpt}
+                </div>
+                <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {endingView.signature}</div>
                 <div className="mt-3 text-[12px] tracking-[0.26em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
               </div>
+              {loadingError ? <div className="mt-6 px-8 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-10 grid gap-4 px-8">
-                <SealButton label="截 图 分 享 这 一 页" onClick={() => setStage('aftermath')} presentation={presentation} />
-                <SecondaryAction label="查 看 梦 后 余 响  →" onClick={() => setStage('aftermath')} presentation={presentation} />
+                <SealButton label={isGeneratingEnding ? '结 局 正 在 收 束' : '截 图 分 享 这 一 页'} onClick={() => setStage('aftermath')} presentation={presentation} disabled={isGeneratingEnding} />
+                <SecondaryAction label="查 看 梦 后 余 响  →" onClick={() => setStage('aftermath')} presentation={presentation} disabled={isGeneratingEnding} />
               </div>
             </div>
           </Shell>

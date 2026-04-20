@@ -92,6 +92,13 @@ export type DreamAftermathInput = {
   messagePreviewDirection: string;
 };
 
+export type DreamEndingOutput = {
+  title: string;
+  body: string;
+  excerpt: string;
+  chapter: string;
+};
+
 export type DreamDecisionRecord = {
   actId: string;
   actLabel: string;
@@ -118,6 +125,7 @@ export type DreamRuntimeScenario = {
   acts: DreamRuntimeAct[];
   decisionTrail: DreamDecisionRecord[];
   endingInput: DreamEndingInput;
+  endingOutput?: DreamEndingOutput;
   aftermathInput: DreamAftermathInput;
 };
 
