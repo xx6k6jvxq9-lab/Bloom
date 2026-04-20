@@ -408,6 +408,7 @@ type DreamPresentationView = {
   dialogueText: string;
   frameBorder: string;
   frameFill: string;
+  layoutId?: string;
 };
 
 function DreamNarrativeBlocks({
@@ -425,18 +426,32 @@ function DreamNarrativeBlocks({
   presentation: DreamPresentationView;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {blocks.map((block) => {
         const alignClass =
           block.align === 'center' ? 'text-center' : block.align === 'right' ? 'text-right' : 'text-left';
         const emphasisClass =
           block.emphasis === 'high' ? 'text-[19px] leading-[2.15]' : block.emphasis === 'low' ? 'text-[14px] leading-[2.35]' : 'text-[16px] leading-[2.3]';
+        const narrativeShellClass =
+          presentation.layoutId === 'cinematic-caption-stream'
+            ? 'px-1'
+            : presentation.layoutId === 'full-bleed-dialogue-card'
+              ? 'border-l pl-5'
+              : presentation.layoutId === 'soft-overlay-monologue'
+                ? 'rounded-[22px] px-4 py-4'
+                : '';
+        const narrativeShellStyle =
+          presentation.layoutId === 'full-bleed-dialogue-card'
+            ? { borderColor: presentation.frameBorder }
+            : presentation.layoutId === 'soft-overlay-monologue'
+              ? { backgroundColor: presentation.accentSoft }
+              : undefined;
 
         if (block.type === 'framed-dialogue') {
           return (
             <div
               key={block.id}
-              className="rounded-[26px] border px-5 py-5"
+              className="rounded-[26px] border px-5 py-5 shadow-[0_18px_40px_rgba(0,0,0,.18)]"
               style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}
             >
               {block.speakerName ? (
@@ -453,21 +468,21 @@ function DreamNarrativeBlocks({
 
         if (block.type === 'highlight-dialogue') {
           return (
-            <div key={block.id} className={`whitespace-pre-line font-[400] ${alignClass} text-[22px] leading-[2]`} style={{ color: presentation.accent }}>
-              {block.text}
+            <div key={block.id} className={`rounded-[20px] px-4 py-3 whitespace-pre-line font-[400] ${alignClass} text-[22px] leading-[2]`} style={{ color: presentation.accent, backgroundColor: presentation.accentSoft }}>
+              <span className="inline-block max-w-[28rem]">{block.text}</span>
             </div>
           );
         }
 
         if (block.type === 'dialogue') {
           return (
-            <div key={block.id} className={alignClass}>
+            <div key={block.id} className={`rounded-[20px] px-4 py-3 ${alignClass}`} style={{ backgroundColor: presentation.frameFill }}>
               {block.speakerName ? (
                 <div className="mb-2 text-[11px] tracking-[0.24em]" style={{ color: presentation.accent }}>
                   {block.speakerName}
                 </div>
               ) : null}
-              <div className={`whitespace-pre-line font-[300] ${emphasisClass}`} style={{ color: presentation.accent }}>
+              <div className={`whitespace-pre-line font-[300] ${emphasisClass}`} style={{ color: presentation.dialogueText || presentation.accent }}>
                 {block.text}
               </div>
             </div>
@@ -491,15 +506,17 @@ function DreamNarrativeBlocks({
 
         if (block.type === 'prompt') {
           return (
-            <div key={block.id} className="text-center text-[12px] tracking-[0.28em]" style={{ color: presentation.accent }}>
+            <div key={block.id} className="rounded-[18px] border px-4 py-3 text-center text-[12px] tracking-[0.28em]" style={{ color: presentation.accent, borderColor: presentation.frameBorder }}>
               {block.text}
             </div>
           );
         }
 
         return (
-          <div key={block.id} className={`whitespace-pre-line font-[300] text-[17px] leading-[2.35] ${alignClass}`}>
-            {block.text}
+          <div key={block.id} className={`${narrativeShellClass}`} style={narrativeShellStyle}>
+            <div className={`whitespace-pre-line font-[300] text-[17px] leading-[2.35] ${alignClass}`}>
+              {block.text}
+            </div>
           </div>
         );
       })}
@@ -1069,6 +1086,7 @@ export function DreamAppPage({
     dialogueText: 'var(--gold-bright)',
     frameBorder: 'rgba(196,169,106,.28)',
     frameFill: 'rgba(13,18,32,.72)',
+    layoutId: 'soft-overlay-monologue',
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const sceneBlocks = useMemo(() => act?.narrative.pages[0]?.blocks ?? [], [act]);

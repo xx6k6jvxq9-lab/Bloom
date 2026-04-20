@@ -65,36 +65,156 @@ function splitSceneParagraphs(scene: string) {
     .filter(Boolean);
 }
 
-function inferBlockType(text: string, index: number, total: number): DreamNarrativeBlock['type'] {
-  if (/“[^”]+”|"[^"]+"/.test(text)) {
-    return text.length <= 40 ? 'highlight-dialogue' : 'dialogue';
-  }
-  if (/[？?]$/.test(text)) {
-    return 'prompt';
-  }
-  if (text.length <= 28 && index === total - 1) {
-    return 'aside';
-  }
-  return 'narration';
+function splitSceneSentences(scene: string) {
+  return scene
+    .split(/(?<=[。！？!?；;：:])/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
 }
 
-function buildFallbackBlocks(scene: string) {
+function splitLongParagraph(paragraph: string) {
+  if (paragraph.length <= 110) {
+    return [paragraph];
+  }
+
+  const sentences = splitSceneSentences(paragraph);
+  if (sentences.length <= 1) {
+    return [paragraph];
+  }
+
+  const chunks: string[] = [];
+  let current = '';
+
+  sentences.forEach((sentence) => {
+    if ((current + sentence).length > 100 && current) {
+      chunks.push(current.trim());
+      current = sentence;
+      return;
+    }
+    current += sentence;
+  });
+
+  if (current.trim()) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.filter(Boolean);
+}
+
+function normalizeSceneFragments(scene: string) {
   const paragraphs = splitSceneParagraphs(scene);
   const sources =
     paragraphs.length > 0
       ? paragraphs
       : scene
-          .split(/(?<=[。！？!?；;])/)
+          .split(/(?<=[。！？!?；;：:])/)
           .map((segment) => segment.trim())
           .filter(Boolean);
 
-  return sources.slice(0, 7).map((text, index, array) => ({
-    id: `fallback-block-${index + 1}`,
-    type: inferBlockType(text, index, array.length),
-    text,
-    emphasis: index === 0 ? 'high' : index === array.length - 1 ? 'low' : 'medium',
-    align: 'left' as const,
-  }));
+  return sources.flatMap((source) => splitLongParagraph(source)).filter(Boolean);
+}
+
+function mergeFragmentsForRange(fragments: string[], minBlocks: number, maxBlocks: number) {
+  if (fragments.length <= maxBlocks) {
+    return fragments;
+  }
+
+  const result = [...fragments];
+  while (result.length > maxBlocks) {
+    let mergeIndex = 0;
+    let shortestLength = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < result.length - 1; index += 1) {
+      const pairLength = result[index].length + result[index + 1].length;
+      if (pairLength < shortestLength) {
+        shortestLength = pairLength;
+        mergeIndex = index;
+      }
+    }
+
+    result.splice(mergeIndex, 2, `${result[mergeIndex]} ${result[mergeIndex + 1]}`.trim());
+  }
+
+  if (result.length < minBlocks && fragments.length >= minBlocks) {
+    return fragments.slice(0, minBlocks);
+  }
+
+  return result;
+}
+
+function inferSpeakerName(text: string) {
+  const chineseQuote = text.match(/^“([^”]{1,12})[：:，,]/);
+  if (chineseQuote) {
+    return chineseQuote[1].trim();
+  }
+
+  const plainPrefix = text.match(/^([^，。！？：:\s]{1,10})[：:]/);
+  if (plainPrefix) {
+    return plainPrefix[1].trim();
+  }
+
+  return undefined;
+}
+
+function inferBlockType(
+  text: string,
+  index: number,
+  total: number,
+  layoutId: string,
+): DreamNarrativeBlock['type'] {
+  const hasQuote = /“[^”]+”|"[^"]+"/.test(text);
+  const endsWithQuestion = /[？?]$/.test(text);
+  const shortLine = text.length <= 34;
+
+  if (layoutId === 'cinematic-caption-stream' && (index === 0 || endsWithQuestion)) {
+    return 'prompt';
+  }
+  if (layoutId === 'highlight-line-break' && shortLine && (hasQuote || index === 1 || index === total - 2)) {
+    return 'highlight-dialogue';
+  }
+  if (layoutId === 'full-bleed-dialogue-card' && hasQuote && text.length > 26) {
+    return 'framed-dialogue';
+  }
+  if (layoutId === 'floating-aside-stack' && shortLine && index % 2 === 1) {
+    return 'aside';
+  }
+  if (layoutId === 'soft-overlay-monologue' && shortLine && index === total - 1) {
+    return 'aside';
+  }
+  if (hasQuote) {
+    return text.length <= 40 ? 'highlight-dialogue' : 'dialogue';
+  }
+  if (endsWithQuestion) {
+    return 'prompt';
+  }
+  if (shortLine && index === total - 1) {
+    return 'aside';
+  }
+  return 'narration';
+}
+
+function buildFallbackBlocks(scene: string, layoutId: string) {
+  const fragments = normalizeSceneFragments(scene);
+  const grouped = mergeFragmentsForRange(fragments, 4, 7);
+
+  return grouped.slice(0, 7).map((text, index, array) => {
+    const type = inferBlockType(text, index, array.length, layoutId);
+    return {
+      id: `fallback-block-${index + 1}`,
+      type,
+      text,
+      speakerName: type === 'dialogue' || type === 'framed-dialogue' ? inferSpeakerName(text) : undefined,
+      emphasis:
+        type === 'highlight-dialogue'
+          ? 'high'
+          : index === 0
+            ? 'high'
+            : index === array.length - 1
+              ? 'low'
+              : 'medium',
+      align: type === 'prompt' || type === 'highlight-dialogue' ? 'center' as const : 'left' as const,
+    };
+  });
 }
 
 export function computeShallowActCount(seed: string) {
@@ -162,11 +282,13 @@ export function normalizeNarrativeDocument(
     return {
       id: normalizeNodeId('page', page.id, pageIndex),
       title: page.title?.trim() || actLabel,
-      blocks: normalizedBlocks.length > 0 ? normalizedBlocks : buildFallbackBlocks(fallbackScene || ''),
+      blocks: normalizedBlocks.length > 0 ? normalizedBlocks : buildFallbackBlocks(fallbackScene || '', raw?.layoutId?.trim() || presentation.layoutId),
     };
   });
 
-  const normalizedPages = pages.length > 0 ? pages : [{ id: 'page-1', title: actLabel, blocks: buildFallbackBlocks(fallbackScene || '') }];
+  const normalizedPages = pages.length > 0
+    ? pages
+    : [{ id: 'page-1', title: actLabel, blocks: buildFallbackBlocks(fallbackScene || '', raw?.layoutId?.trim() || presentation.layoutId) }];
 
   return {
     themeId: raw?.themeId?.trim() || presentation.themeId,
