@@ -60,7 +60,7 @@ export function AppSelect({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3 text-left text-[15px] text-zinc-900 outline-none transition-colors focus:border-blue-500 ${buttonClassName}`}
+        className={`flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-[15px] text-zinc-900 outline-none transition-colors focus:border-zinc-300 ${buttonClassName}`}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -84,7 +84,7 @@ export function AppSelect({
 
       {open ? (
         <div
-          className={`absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)] ${menuClassName}`}
+          className={`absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ${menuClassName}`}
         >
           {options.length ? (
             <div className="max-h-56 overflow-y-auto overscroll-contain p-1.5">
@@ -99,7 +99,7 @@ export function AppSelect({
                       setOpen(false);
                     }}
                     className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
-                      isSelected ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-50'
+                      isSelected ? 'bg-zinc-200 text-zinc-900' : 'text-zinc-700 hover:bg-white'
                     }`}
                     role="option"
                     aria-selected={isSelected}
@@ -109,12 +109,12 @@ export function AppSelect({
                         {option.label}
                       </div>
                       {option.description ? (
-                        <div className={`mt-0.5 truncate text-[12px] ${isSelected ? 'text-white/70' : 'text-zinc-500'}`}>
+                        <div className={`mt-0.5 truncate text-[12px] ${isSelected ? 'text-zinc-500' : 'text-zinc-500'}`}>
                           {option.description}
                         </div>
                       ) : null}
                     </div>
-                    <Check size={16} className={`mt-0.5 shrink-0 ${isSelected ? 'text-white' : 'text-transparent'}`} />
+                    <Check size={16} className={`mt-0.5 shrink-0 ${isSelected ? 'text-zinc-700' : 'text-transparent'}`} />
                   </button>
                 );
               })}
