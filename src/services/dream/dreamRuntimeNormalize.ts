@@ -169,21 +169,34 @@ function inferBlockType(
   const hasQuote = /“[^”]+”|"[^"]+"/.test(text);
   const endsWithQuestion = /[？?]$/.test(text);
   const shortLine = text.length <= 34;
+  const nearFront = index === 1;
+  const nearMiddle = index === Math.max(1, Math.floor(total / 2));
+  const nearBack = index === Math.max(1, total - 2);
 
-  if (layoutId === 'cinematic-caption-stream' && (index === 0 || endsWithQuestion)) {
-    return 'prompt';
+  if (layoutId === 'cinematic-caption-stream') {
+    if (index === 0 && shortLine) return 'prompt';
+    if (hasQuote && nearMiddle) return text.length <= 40 ? 'highlight-dialogue' : 'dialogue';
+    if (endsWithQuestion && nearBack) return 'prompt';
+    return 'narration';
   }
-  if (layoutId === 'highlight-line-break' && shortLine && (hasQuote || index === 1 || index === total - 2)) {
-    return 'highlight-dialogue';
+  if (layoutId === 'highlight-line-break') {
+    if (shortLine && (nearFront || nearBack || index === total - 1)) return 'highlight-dialogue';
+    if (hasQuote && nearMiddle) return 'dialogue';
+    return 'narration';
   }
-  if (layoutId === 'full-bleed-dialogue-card' && hasQuote && text.length > 26) {
-    return 'framed-dialogue';
+  if (layoutId === 'full-bleed-dialogue-card') {
+    if (hasQuote && (nearFront || nearMiddle)) return 'framed-dialogue';
+    return 'narration';
   }
-  if (layoutId === 'floating-aside-stack' && shortLine && index % 2 === 1) {
-    return 'aside';
+  if (layoutId === 'floating-aside-stack') {
+    if (shortLine && (nearFront || nearBack)) return 'aside';
+    if (hasQuote && nearMiddle) return 'dialogue';
+    return 'narration';
   }
-  if (layoutId === 'soft-overlay-monologue' && shortLine && index === total - 1) {
-    return 'aside';
+  if (layoutId === 'soft-overlay-monologue') {
+    if (hasQuote && (nearFront || nearMiddle)) return 'dialogue';
+    if (shortLine && (nearBack || index === total - 1)) return 'aside';
+    return 'narration';
   }
   if (hasQuote) {
     return text.length <= 40 ? 'highlight-dialogue' : 'dialogue';

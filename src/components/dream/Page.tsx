@@ -478,13 +478,17 @@ function DreamNarrativeBlocks({
             : presentation.layoutId === 'full-bleed-dialogue-card'
               ? 'border-l pl-5'
               : presentation.layoutId === 'soft-overlay-monologue'
-                ? 'rounded-[22px] px-4 py-4'
+                ? block.type === 'narration'
+                  ? 'px-1'
+                  : 'rounded-[22px] px-4 py-4'
                 : '';
         const narrativeShellStyle =
           presentation.layoutId === 'full-bleed-dialogue-card'
             ? { borderColor: presentation.frameBorder }
             : presentation.layoutId === 'soft-overlay-monologue'
-              ? { backgroundColor: presentation.accentSoft }
+              ? block.type === 'narration'
+                ? undefined
+                : { backgroundColor: presentation.accentSoft }
               : undefined;
 
         if (block.type === 'framed-dialogue') {
