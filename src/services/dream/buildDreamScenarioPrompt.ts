@@ -11,7 +11,7 @@ function computeShallowActCount(seed: string) {
 
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, presentationSeed?: string) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
+  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext, variationTone } = promptInput;
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -21,13 +21,14 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
   const baseSeed = presentationSeed || `${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.depth}-${resolvedSelection.entryMode}`;
   const presentation = resolveDreamPresentation(baseSeed);
-  const variation = buildDreamVariation(baseSeed);
+  const variation = buildDreamVariation(baseSeed, variationTone);
   const novelQualityRules = [
     'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
     'Write each act as a natural 1500-1800 Chinese character novel scene, not as a checklist, outline, lyrical dream summary, or abstract mood note.',
     'Let the scene grow from character action, dialogue, hesitation, misunderstanding, attraction, pressure, and small discoveries. The structure should be felt, not announced.',
     'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
+    'For custom-entry dreams, the selected tags are the only source of concrete setting. Dream domains are only narrative lenses; they must not add unselected world mechanics, institutions, dangers, rules, factions, identities, or relationship premises.',
     storyFrameGuidance,
     'The first act should open with an on-page moment that makes the chosen hook felt through action, object, or dialogue.',
     'Start scenes from something happening now: a knock, a wound reopening, a message arriving, a lie being caught, a hand being pulled away. Do not spend the opening on static explanation.',
@@ -61,7 +62,7 @@ ${novelQualityRules}
 3. 现实语境只保留：角色核心性格、表达风格、边界、情感熟悉度、记忆底色。
 4. 现实里的原职业、原身份、原关系称谓，不要直接搬进梦里，除非与本局标签高度一致。
 5. 如果标签定义了敌对、旧情、阵营、身份、禁忌，本局必须优先遵从标签。
-6. 梦开场必须先带入明确背景：世界、关系、节点、冲突、危机。
+6. 梦开场必须先带入明确背景：世界、关系、节点和即时事件；只有用户选择的标签需要危机、规则、禁忌或阵营时，才生成这些内容。
 7. 每一幕都必须推进同一条主线，不要只写氛围碎片。
 8. 一整次梦只使用当前这一套 layout 和 theme，不要混用别的格式和颜色。
 
@@ -124,7 +125,7 @@ ${tagSummary || '未选择标签'}
 - 氛围层（情绪底色/结局倾向）：${tagCategoryContext.moods.join(' / ') || '未提供'}
 
 分类使用规则：
-1. 背景层决定世界、环境、第三方与规则。
+1. 背景层决定世界、环境和场域；只有标签明确需要时，才生成第三方、规则或大型机制。
 2. 身份层决定用户和角色在梦里的新身份，优先级高于现实原身份。
 3. 关系层决定梦内关系，优先级高于现实关系称谓。
 4. 驱动层决定主线目标、推进方式和每幕选项的差异。

@@ -24,13 +24,13 @@ function resolveActiveWorldBooks(characterId: string, worldBooks: WorldBookEntry
 function buildDomainRule(domainId: GenerateDreamScenarioOptions['selection']['domainId']) {
   switch (domainId) {
     case 'crowd':
-      return '众生梦：强调外部世界、第三方势力、公共事件、群像结构和夜城流动感。选项更偏站队、追查、介入、试探。';
+      return '众生梦：只表示叙事镜头更关注外部场域、旁人存在和公共空间里的关系变化。它不自带夜城、第三方势力、规则、追查或危险设定；具体世界必须由用户选择的标签决定。';
     case 'threshold':
       return '歧境梦：强调现实轻微失真、熟悉中的异常、错位感与规则偏移。选项偏确认异常、维持表面、靠近真相、进入裂缝。';
     case 'shared':
-      return '同梦域：强调双人共同在场、关系拉扯、陪伴、试探与共振。选项偏并肩、靠近、互试、一起进入下一层。';
+      return '同梦域：只表示叙事镜头更关注两个人共同在场、一起经历、一起反应和关系互相牵动。它不自带共振机制、梦境规则或下一层设定；具体世界必须由用户选择的标签决定。';
     case 'rift':
-      return '心隙梦：强调进入角色内层、秘密、执念、无法直说的裂缝。选项偏触碰秘密、保留沉默、逼近真意、看见裂口。';
+      return '心隙梦：只表示叙事镜头更关注角色心里没说出口的情绪、偏爱、犹豫和真实反应。它不自带裂缝、创伤、执念或危险设定；具体世界必须由用户选择的标签决定。';
     default:
       return '围绕当前梦域的叙事职责生成，不要写成普通聊天场景。';
   }
@@ -181,6 +181,52 @@ function buildStoryFrameGuidance(selectedTags: Record<DreamTagCategory, string[]
   return 'Only include storyFrame fields that are truly needed by the selected tags and the immediate opening scene. Leave unnecessary fields empty instead of fabricating extra setting.';
 }
 
+function resolveVariationTone(selectedTags: Record<DreamTagCategory, string[]>) {
+  const groundedTags = new Set([
+    'modern-romance',
+    'healing-life',
+    'urban-life',
+    'campus-youth',
+    'small-town',
+    'workplace',
+    'food-business',
+    'travel-diary',
+    'family-daily',
+    'marriage-life',
+    'variety-show',
+    'dating-show',
+    'broadcast-station',
+    'landlord-tenant',
+    'shop-owner-regular',
+    'neighbors-upstairs',
+    'temporary-roommates',
+    'roommates',
+    'same-desk',
+    'club-partners',
+    'project-teammates',
+    'caregiver',
+  ]);
+  const heightenedTags = new Set([
+    'rules',
+    'folk-horror',
+    'crime-suspense',
+    'closed-mystery',
+    'infinite',
+    'game-world',
+    'apocalypse',
+    'time-loop',
+    'parallel-world',
+    'system-mission',
+    'seven-rules',
+    'one-night-countdown',
+    'forced-live-stream',
+  ]);
+  const selectedIds = Object.values(selectedTags).flat();
+  const hasGrounded = selectedIds.some((id) => groundedTags.has(id));
+  const hasHeightened = selectedIds.some((id) => heightenedTags.has(id));
+  return hasGrounded && !hasHeightened ? 'grounded' : 'heightened';
+}
+
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
@@ -200,6 +246,7 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
     resolvedSelection,
     domainRule: buildDomainRule(resolvedSelection.domainId),
     storyFrameGuidance: buildStoryFrameGuidance(resolvedSelection.selectedTags),
+    variationTone: resolveVariationTone(resolvedSelection.selectedTags),
     characterContext,
     memoryLayers,
     tagCategoryContext,

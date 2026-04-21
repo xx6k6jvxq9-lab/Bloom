@@ -8,10 +8,10 @@ import type {
 } from './types';
 
 export const dreamDomains: DreamDomain[] = [
-  { id: 'crowd', name: '众生梦', subtitle: '公共幻想世界', description: '灯海、人群与暗流并存的夜城。', icon: 'sparkles' },
+  { id: 'crowd', name: '众生梦', subtitle: '公共场域里的梦', description: '更关注外部场景、旁人存在和关系在公共空间里的变化。', icon: 'sparkles' },
   { id: 'threshold', name: '歧境梦', subtitle: '失真边缘', description: '看似现实，却处处偏了一点。', icon: 'scan' },
-  { id: 'shared', name: '同梦域', subtitle: '双人共同长出的梦', description: '不是他的世界，也不是你的世界。', icon: 'heart' },
-  { id: 'rift', name: '心隙梦', subtitle: '进入角色内里', description: '更靠近秘密、执念和不能说出口的部分。', icon: 'coffee' },
+  { id: 'shared', name: '同梦域', subtitle: '双人共同长出的梦', description: '更关注两个人一起经历、一起反应和关系互相牵动。', icon: 'heart' },
+  { id: 'rift', name: '心隙梦', subtitle: '进入角色内里', description: '更关注角色心里没说出口的情绪、偏爱和犹豫。', icon: 'coffee' },
 ];
 
 export const dreamTagGroups: DreamTagGroup[] = [
