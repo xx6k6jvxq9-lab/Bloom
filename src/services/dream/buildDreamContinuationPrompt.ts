@@ -68,6 +68,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'Do not resolve the emotional tension too neatly. Preserve some asymmetry, restraint, embarrassment, suspicion, or unfinished feeling so the act invites the next choice.',
     'Keep cause and effect visible: the user action lands, the character reacts, the scene shifts, and a new dilemma appears.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
+    'Avoid overused visceral romance phrases such as writing feelings into bones/blood or destiny into the body. Prefer specific gestures, exact objects, interrupted dialogue, and practical choices.',
     'Dialogue should be short but information-rich, with Jinjiang/web-novel emotional clarity. Character emotion should be shown through behavior and decisions.',
     'The next three choices should feel like three real emotional continuations from what just happened, not three generic branch labels.',
     'narrative.pages[0].blocks must cover the full scene content in 8-12 blocks. Do not compress the scene into a short summary.',

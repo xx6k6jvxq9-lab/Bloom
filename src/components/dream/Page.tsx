@@ -2433,7 +2433,13 @@ export function DreamAppPage({
                       value={customInput}
                       onChange={(event) => setCustomInput(event.target.value)}
                       placeholder={act.choiceSet.custom.placeholder}
-                      className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-[rgba(255,255,255,.96)] caret-white outline-none placeholder:text-white/65"
+                      className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-white caret-white outline-none placeholder:text-white/65 selection:bg-white/20"
+                      style={{
+                        color: 'rgba(255,255,255,.96)',
+                        WebkitTextFillColor: 'rgba(255,255,255,.96)',
+                        caretColor: '#ffffff',
+                        backgroundColor: 'rgba(255,255,255,.035)',
+                      }}
                     />
                     <div className="mt-4 text-[12px] leading-[2] tracking-[0.12em] text-[var(--mist)]">
                       这里输入的是你这一幕想怎么做、怎么说、想把梦推向哪边。
