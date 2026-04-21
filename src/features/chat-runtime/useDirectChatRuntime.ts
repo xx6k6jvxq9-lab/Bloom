@@ -512,6 +512,27 @@ type DirectSendOverridePayload = {
   forceReply?: boolean;
 };
 
+type DirectGenerationMode = 'reply' | 'proactive';
+
+const DIRECT_PROACTIVE_SPEAKING_PROMPT = [
+  '## 本轮任务：单聊主动开口',
+  '这次不是回复用户刚刚的问题，而是你作为这个角色在单聊里主动给用户发一条自然消息。',
+  '可以基于你的当前生活状态、时间、地点、天气、最近聊天余波、关系记忆、世界书、面具和角色边界来开口。',
+  '时间认知必须以当前语境里的时间来源为准：如果当前时间来源是感知时间/虚拟时间，就按感知时间推进角色状态；如果没有开启感知时间，才按现实时间推进。',
+  '如果距离上一条可见消息已经过了一段时间，你必须把这次开口当作时间真实流逝后的重新出现，不要表现得像上一句话刚刚发生。',
+  '优先像微信联系人一样发来一两句生活感强的消息：此刻在做什么、刚看到什么、突然想到用户、接上次没聊完的话题、轻轻关心一下，或分享一点自己的状态。',
+  '不要复述、改写或延长你上一条已经发出的消息；如果接续上次话题，也必须换一个新的角度、状态或生活细节。',
+  '不要解释“我来主动找你了”，不要写成日记、总结、旁白或长独白，不要编造重大事件、现实见面安排或不符合角色边界的亲密推进。',
+  '如果最近确实没有合适话题，就发一条短的生活碎片或轻微问候。',
+].join('\n');
+
+const DIRECT_PROACTIVE_TRIGGER_MESSAGE = [
+  '用户点击了“让TA说话”。',
+  '请主动发一条新的单聊消息。',
+  '不要重复、改写或延长你上一条已经发出的内容。',
+  '如果时间已经流逝，请像重新拿起手机一样开口，并按当前语境里的时间来源理解现在。',
+].join('\n');
+
 function formatChatApiError(error: unknown): string {
   const rawMessage = error instanceof Error ? error.message : '未知错误';
   const normalized = rawMessage.replace(/\s+/g, ' ').trim();
@@ -572,16 +593,12 @@ export function useDirectChatRuntime({
     setErrorState(value);
   }, []);
 
-  useEffect(() => {
-    const lastMsg = history[history.length - 1];
-    if (lastMsg && lastMsg.role === 'user' && lastMsg.needsReply && !isLoading) {
-      const reply = async () => {
-        await runGeneration(async ({ setRuntimeError: _setRuntimeError }) => {
+  const generateDirectAssistantMessage = useCallback(async (
+    historySnapshot: ChatMessage[],
+    mode: DirectGenerationMode,
+  ) => {
+    await runGeneration(async ({ setRuntimeError: _setRuntimeError }) => {
         setErrorState(null);
-        const historySnapshot = history.map((message, index) => (
-          index === history.length - 1 ? { ...message, needsReply: false } : message
-        ));
-        setHistory(historySnapshot);
 
         if (!activeConfig) {
           setErrorState('Missing API Key. Please configure it in API Center settings.');
@@ -671,7 +688,7 @@ export function useDirectChatRuntime({
           }
 
           const chatSceneInput = buildChatSceneInput({
-            mode: 'autoReply',
+            mode: mode === 'proactive' ? 'chat' : 'autoReply',
             includeProtocolRules: false,
             character,
             userName,
@@ -689,6 +706,7 @@ export function useDirectChatRuntime({
             sections: [
               buildDirectResumeModePrompt(characterTemporalState.continuityMode),
               ...(chatSceneInput.sections || []),
+              mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
@@ -704,6 +722,9 @@ export function useDirectChatRuntime({
                 ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
                 ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
               })),
+              ...(mode === 'proactive'
+                ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
+                : []),
             ],
             onTextChunk: (chunkText) => {
               currentResponseText += chunkText;
@@ -716,14 +737,25 @@ export function useDirectChatRuntime({
 
         } catch (err) {
           console.error(err);
-          setErrorState('Failed to generate auto reply. Please try again later.');
+          setErrorState('Failed to generate reply. Please try again later.');
         }
-        });
+    });
+  }, [activeConfig, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
+
+  useEffect(() => {
+    const lastMsg = history[history.length - 1];
+    if (lastMsg && lastMsg.role === 'user' && lastMsg.needsReply && !isLoading) {
+      const reply = async () => {
+        const historySnapshot = history.map((message, index) => (
+          index === history.length - 1 ? { ...message, needsReply: false } : message
+        ));
+        setHistory(historySnapshot);
+        await generateDirectAssistantMessage(historySnapshot, 'reply');
       };
 
       void reply();
     }
-  }, [activeConfig, character, chatGroups, coupleSpace, directChatHistory, history, isLoading, masks, perception, runGeneration, setHistory, userName, worldBook]);
+  }, [generateDirectAssistantMessage, history, isLoading, setHistory]);
 
   useEffect(() => {
     const translateHistory = async () => {
@@ -1770,6 +1802,7 @@ export function useDirectChatRuntime({
     ))?.index;
 
     if (latestUserIndex === undefined) {
+      void generateDirectAssistantMessage(latestHistory, 'proactive');
       return;
     }
 
@@ -1778,13 +1811,14 @@ export function useDirectChatRuntime({
     ));
 
     if (hasNewerModelReply) {
+      void generateDirectAssistantMessage(latestHistory, 'proactive');
       return;
     }
 
     setHistory(latestHistory.map((message, index) => (
       index === latestUserIndex ? { ...message, needsReply: true } : message
     )));
-  }, [isLoading, setHistory]);
+  }, [generateDirectAssistantMessage, isLoading, setHistory]);
 
   const handleRejectTransfer = useCallback((index: number) => {
     const msg = history[index];

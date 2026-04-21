@@ -537,10 +537,8 @@ export function ChatSessionScreen({
   const latestUserMessageIndex = [...history].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
     message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
   ))?.index;
-  const hasPendingManualReply = latestUserMessageIndex !== undefined && !history.slice(latestUserMessageIndex + 1).some((message) => (
-    message.role === 'model' && !message.isSystem && !message.isRecalled
-  ));
   const showManualReplyButton = !character.autoReplyEnabled;
+  const canUseManualSpeakButton = !isLoading;
 
   const drawBlocksRuntimeContext = useMemo<DrawBlocksCharacterRuntimeContext>(() => {
     const temporalState = buildCharacterTemporalState({
@@ -2198,12 +2196,12 @@ export function ChatSessionScreen({
             </button>
           </div>
         )}
-        <div className="chat-footer-controls flex items-end gap-2">
+        <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
             onClick={() => setIsVoiceMode(!isVoiceMode)}
-            className={`chat-footer-voice-toggle-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
+            className={`chat-footer-voice-toggle-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
           >
-            {isVoiceMode ? <Keyboard size={24} className="chat-footer-voice-toggle-icon" /> : <Mic size={24} className="chat-footer-voice-toggle-icon" />}
+            {isVoiceMode ? <Keyboard size={20} className="chat-footer-voice-toggle-icon" /> : <Mic size={20} className="chat-footer-voice-toggle-icon" />}
           </button>
 
           {showManualReplyButton && (
@@ -2214,16 +2212,16 @@ export function ChatSessionScreen({
                 if (showStickerPanel) setShowStickerPanel(false);
                 if (showFunPanel) setShowFunPanel(false);
               }}
-              disabled={!hasPendingManualReply || isLoading}
-              title="让TA回复"
-              aria-label="让TA回复"
-              className={`chat-footer-manual-reply-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                hasPendingManualReply && !isLoading
+              disabled={!canUseManualSpeakButton}
+              title="让TA说话"
+              aria-label="让TA说话"
+              className={`chat-footer-manual-reply-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                canUseManualSpeakButton
                   ? `${footerControlTone.iconButton} active:scale-90`
                   : 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
               }`}
             >
-              <MessageCircle size={21} className="chat-footer-manual-reply-icon" />
+              <MessageCircle size={19} className="chat-footer-manual-reply-icon" />
             </button>
           )}
 
@@ -2274,9 +2272,9 @@ export function ChatSessionScreen({
           {!isVoiceMode && input.trim() ? (
             <button 
               onClick={sendText}
-              className="chat-footer-send-button w-10 h-10 rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
+              className="chat-footer-send-button w-9 h-9 rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
             >
-              <Send size={18} className="chat-footer-send-icon" />
+              <Send size={17} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button 
@@ -2284,9 +2282,9 @@ export function ChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`chat-footer-plus-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
+              className={`chat-footer-plus-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
             >
-              <Plus size={24} className="chat-footer-plus-icon" />
+              <Plus size={21} className="chat-footer-plus-icon" />
             </button>
           )}
         </div>
