@@ -852,8 +852,8 @@ function HomeV2({
   onExit: () => void;
 }) {
   return (
-    <Shell time={time}>
-      <div className="flex flex-1 flex-col pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+    <Shell time={time} contentClassName="pb-[calc(8rem+env(safe-area-inset-bottom))]">
+      <div className="flex flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
@@ -885,7 +885,7 @@ function HomeV2({
             <div className="pt-2 text-[14px] font-[300] tracking-[0.22em] text-[var(--mist)]">点击头像，选择今夜入梦的角色</div>
           )}
         </div>
-        <div className="mt-auto border-t border-[var(--border)] pt-4">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
           <div className="grid grid-cols-3 text-center text-[12px] tracking-[0.28em] text-[var(--mist)]">
             {['今夜', '残响', '深层'].map((tab, index) => (
               <div key={tab} className="space-y-2">
