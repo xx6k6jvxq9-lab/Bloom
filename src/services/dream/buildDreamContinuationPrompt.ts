@@ -56,10 +56,11 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const novelQualityRules = [
     'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
     'The selected choice must cause the next on-page event. Do not treat it as a loose mood suggestion.',
-    'Continue with concrete action, object, dialogue, and consequence. Do not reset, summarize, or write only atmosphere.',
+    'Continue with a 1500-1800 Chinese character scene built from concrete action, object, dialogue, and consequence. Do not reset, summarize, or write only atmosphere.',
     'Every generated act must include a visible event, a relationship movement, a new clue or obstacle, and a small irreversible turn.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
     'Dialogue should be short but information-rich. Character emotion should be shown through behavior and decisions.',
+    'narrative.pages[0].blocks must cover the full scene content in 8-12 blocks. Do not compress the scene into a short summary.',
     'For every act, progression.consequence must name the irreversible change, plotAdvance must name the mainline advancement, and tensionShift must name the relationship or conflict shift.',
     'For deep-end, finalAct must resolve or press on an existing object, promise, secret, conflict, or relationship debt. It must not become a generic ending summary.',
   ].join('\n');
@@ -80,7 +81,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   "finalAct": {
     "id": "final-act",
     "label": "最后一幕",
-    "scene": "800-1000字完整剧情",
+    "scene": "1500-1800字完整剧情",
     "charState": "角色此刻状态",
     "narrative": {
       "themeId": "${options.scenario.presentation.themeId}",
@@ -130,7 +131,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     {
       "id": "next-act-1",
       "label": "下一幕",
-      "scene": "800-1000字完整剧情",
+      "scene": "1500-1800字完整剧情",
       "charState": "角色此刻状态",
       "narrative": {
         "themeId": "${options.scenario.presentation.themeId}",
@@ -187,7 +188,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   "nextAct": {
     "id": "next-act",
     "label": "下一幕",
-    "scene": "800-1000字完整剧情",
+    "scene": "1500-1800字完整剧情",
     "charState": "角色此刻状态",
     "narrative": {
       "themeId": "${options.scenario.presentation.themeId}",

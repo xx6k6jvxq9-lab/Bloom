@@ -15,6 +15,7 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
   const narrativeQualityRules = [
     'Preserve the original scene event, conflict, and turning point. Do not rewrite it into vague lyrical fragments.',
     'Each block should keep concrete actions, objects, dialogue, and consequence visible.',
+    'Return 8-12 blocks and cover the full scene text. Do not shorten a 1500-character scene into a 300-character display summary.',
     'Use a readable short-novel rhythm: action, reaction, dialogue, pressure, turn.',
     'Avoid making every block an atmosphere line. At least half of the blocks should move the event or relationship forward.',
     'Do not add new plot branches that were not present in the scene. This step is layout and prose shaping, not a new generation pass.',

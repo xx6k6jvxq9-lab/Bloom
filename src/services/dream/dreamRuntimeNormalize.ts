@@ -142,6 +142,10 @@ function mergeFragmentsForRange(fragments: string[], minBlocks: number, maxBlock
   return result;
 }
 
+function getBlocksTextLength(blocks: Array<{ text?: string }>) {
+  return blocks.reduce((sum, block) => sum + (block.text?.trim().length || 0), 0);
+}
+
 function inferSpeakerName(text: string) {
   const chineseQuote = text.match(/^“([^”]{1,12})[：:，,]/);
   if (chineseQuote) {
@@ -195,9 +199,9 @@ function inferBlockType(
 
 function buildFallbackBlocks(scene: string, layoutId: string) {
   const fragments = normalizeSceneFragments(scene);
-  const grouped = mergeFragmentsForRange(fragments, 4, 7);
+  const grouped = mergeFragmentsForRange(fragments, 8, 12);
 
-  return grouped.slice(0, 7).map((text, index, array) => {
+  return grouped.slice(0, 12).map((text, index, array) => {
     const type = inferBlockType(text, index, array.length, layoutId);
     return {
       id: `fallback-block-${index + 1}`,
@@ -278,11 +282,20 @@ export function normalizeNarrativeDocument(
         align: block.align || 'left',
       }))
       .filter((block) => block.text);
+    const sceneTextLength = fallbackScene?.trim().length || 0;
+    const blockTextLength = getBlocksTextLength(normalizedBlocks);
+    const shouldUseFullScene =
+      sceneTextLength >= 700
+      && blockTextLength > 0
+      && blockTextLength < Math.floor(sceneTextLength * 0.75);
 
     return {
       id: normalizeNodeId('page', page.id, pageIndex),
       title: page.title?.trim() || actLabel,
-      blocks: normalizedBlocks.length > 0 ? normalizedBlocks : buildFallbackBlocks(fallbackScene || '', raw?.layoutId?.trim() || presentation.layoutId),
+      blocks:
+        normalizedBlocks.length > 0 && !shouldUseFullScene
+          ? normalizedBlocks
+          : buildFallbackBlocks(fallbackScene || '', raw?.layoutId?.trim() || presentation.layoutId),
     };
   });
 

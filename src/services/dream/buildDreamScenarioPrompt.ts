@@ -24,12 +24,13 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   const variation = buildDreamVariation(baseSeed);
   const novelQualityRules = [
     'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
-    'Write each act as an actual scene from a short novel, not as a lyrical dream summary or abstract mood note.',
+    'Write each act as an actual 1500-1800 Chinese character scene from a short novel, not as a lyrical dream summary or abstract mood note.',
     'Every act must contain a visible event, a concrete object or action, a relationship movement, a new piece of information or obstacle, and one small irreversible turn.',
     'The first act must enact at least one selected drive tag as an on-page event. Do not leave the hook as background explanation.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
     'Use character behavior, choices, and short high-information dialogue to show emotion. Do not explain the relationship only through exposition.',
     'Choices must be meaningfully different: one relationship-facing choice, one plot/truth-facing choice, and one risk/reversal-facing choice.',
+    'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
     'For every act, progression.consequence must name the irreversible change, plotAdvance must name the mainline advancement, and tensionShift must name the relationship or conflict shift.',
   ].join('\n');
 
@@ -58,8 +59,8 @@ ${novelQualityRules}
 1. 输出必须是 JSON，不要解释，不要写 markdown 代码块。
 2. 浅梦必须生成 ${actCount} 幕，并在这 ${actCount} 幕里完成“开场 - 推进 - 加压/转折 - 收束前一幕”的完整短篇结构。
 3. 深梦当前先输出 4 幕展开段，但仍要保留“还能继续下沉”的空间，不要直接写成已经结束。
-4. 每一幕 scene 必须是 800-1000 字的完整剧情正文。
-5. 每一幕 narrative.pages[0].blocks 必须把正文拆成 4-7 个 block。
+4. 每一幕 scene 必须是 1500-1800 字的完整剧情正文。
+5. 每一幕 narrative.pages[0].blocks 必须把完整 scene 拆成 8-12 个 block，不能只写摘要。
 6. block.type 只能使用 narration / dialogue / highlight-dialogue / framed-dialogue / aside / prompt。
 7. 每一幕的 3 个系统选项必须与当幕剧情同步生成，而且方向明显不同。
 8. choice.detail 必须是动作/走向描写，不是系统提示。
@@ -147,7 +148,7 @@ ${tagSummary || '未选择标签'}
     {
       "id": "act-1",
       "label": "第一幕",
-      "scene": "800-1000字完整剧情",
+      "scene": "1500-1800字完整剧情",
       "charState": "角色此刻状态",
       "narrative": {
         "themeId": "${presentation.theme.id}",
@@ -203,7 +204,7 @@ ${tagSummary || '未选择标签'}
 - acts 数量必须正好是 ${actCount}。
 - 每幕 choices 必须正好是 3 个。
 - 每幕 narrative.pages 数量固定为 1。
-- 每幕 narrative.pages[0].blocks 数量为 4 到 7 个。
+- 每幕 narrative.pages[0].blocks 数量为 8 到 12 个，并且必须覆盖完整 scene。
 - 同一局梦里世界观、身份、关系、主线目标要始终一致，不要跳脱。
 `.trim();
 }
