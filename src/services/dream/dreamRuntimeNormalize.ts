@@ -242,15 +242,20 @@ function buildFallbackBlocks(scene: string, layoutId: string) {
 
   return grouped.slice(0, 12).map((text, index, array) => {
     let type = inferBlockType(text, index, array.length, layoutId);
-    if (layoutId === 'full-bleed-dialogue-card' && index === array.length - 1 && text.length <= 80) {
+    const nearFront = index === 1;
+    const nearMiddle = index === Math.max(1, Math.floor(array.length / 2));
+    const nearBack = index === Math.max(1, array.length - 2);
+    const isLast = index === array.length - 1;
+
+    if (layoutId === 'full-bleed-dialogue-card' && ((nearBack && text.length <= 80) || (isLast && text.length <= 64))) {
       type = 'verdict';
-    } else if (layoutId === 'soft-overlay-monologue' && index === array.length - 2 && text.length <= 84) {
+    } else if (layoutId === 'soft-overlay-monologue' && ((nearBack && text.length <= 84) || (nearMiddle && text.length <= 72))) {
       type = 'annotation';
-    } else if (layoutId === 'highlight-line-break' && index === array.length - 1 && text.length <= 54) {
+    } else if (layoutId === 'highlight-line-break' && ((isLast && text.length <= 54) || (nearMiddle && text.length <= 42))) {
       type = 'echo-line';
-    } else if (layoutId === 'floating-aside-stack' && index === 1 && text.length <= 64) {
+    } else if (layoutId === 'floating-aside-stack' && ((nearFront && text.length <= 64) || (nearBack && text.length <= 52))) {
       type = 'strikethrough';
-    } else if (layoutId === 'cinematic-caption-stream' && index === array.length - 2 && text.length <= 90) {
+    } else if (layoutId === 'cinematic-caption-stream' && ((nearBack && text.length <= 90) || (nearFront && text.length <= 56))) {
       type = 'redacted';
     }
     const renderedText = decorateFallbackText(text, type, index, array.length);

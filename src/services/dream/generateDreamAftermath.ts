@@ -93,7 +93,7 @@ export async function generateDreamAftermath(options: GenerateDreamAftermathOpti
     ],
     temperature: 0.82,
     maxOutputTokens: 900,
-    timeoutMs: 16000,
+    timeoutMs: 22000,
   });
   console.info('[dream][aftermath] model:raw', {
     scenarioId: options.scenario.id,

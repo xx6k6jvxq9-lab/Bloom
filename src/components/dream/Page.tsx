@@ -1523,6 +1523,7 @@ export function DreamAppPage({
       stage !== 'aftermath'
       || !runtimeScenario
       || !selectedCharacter
+      || !runtimeScenario.endingOutput
       || runtimeScenario.aftermathOutput
       || aftermathRequestActiveRef.current
     ) {
@@ -2433,8 +2434,28 @@ export function DreamAppPage({
               </div>
               {loadingError ? <div className="mt-6 px-8 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-10 grid gap-4 px-8">
-                <SealButton label={isGeneratingEnding ? '结 局 正 在 收 束' : '截 图 分 享 这 一 页'} onClick={() => setStage('aftermath')} presentation={presentation} disabled={isGeneratingEnding} />
-                <SecondaryAction label="查 看 梦 后 余 响  →" onClick={() => setStage('aftermath')} presentation={presentation} disabled={isGeneratingEnding} />
+                <SealButton
+                  label={
+                    isGeneratingEnding
+                      ? '结 局 正 在 收 束'
+                      : runtimeScenario?.endingOutput
+                        ? '截 图 分 享 这 一 页'
+                        : '结 局 尚 未 生 成'
+                  }
+                  onClick={() => {
+                    if (runtimeScenario?.endingOutput) setStage('aftermath');
+                  }}
+                  presentation={presentation}
+                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput}
+                />
+                <SecondaryAction
+                  label={isGeneratingEnding ? '结 局 正 在 收 束' : runtimeScenario?.endingOutput ? '查 看 梦 后 余 响  →' : '请 先 等 结 局 完 成'}
+                  onClick={() => {
+                    if (runtimeScenario?.endingOutput) setStage('aftermath');
+                  }}
+                  presentation={presentation}
+                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput}
+                />
               </div>
             </div>
           </Shell>

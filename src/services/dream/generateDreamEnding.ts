@@ -104,7 +104,7 @@ export async function generateDreamEnding(options: GenerateDreamEndingOptions): 
     ],
     temperature: 0.82,
     maxOutputTokens: 1100,
-    timeoutMs: 20000,
+    timeoutMs: 35000,
   });
   console.info('[dream][ending] model:raw', {
     scenarioId: options.scenario.id,
