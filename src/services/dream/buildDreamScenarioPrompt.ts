@@ -49,6 +49,8 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'The three choices should not only differ in plot direction, but also in relationship temperature: one can push closer, one can create distance or friction, and one can force a practical risk or reveal.',
     'StoryFrame is allowed to be sparse. If the chosen tags do not require a rule, countdown, forbidden law, or heavy world mechanic, leave the corresponding fields empty.',
     'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
+    'Treat narrative blocks as a formatted split of the full scene, not as extra decorative excerpts. The sum of block text should be close to scene length.',
+    'Special blocks are wrappers around real plot paragraphs or dialogue turns. They must not replace the scene with short aesthetic fragments.',
     'Each act should use 2-3 non-narration narrative blocks that fit the current layout, such as dialogue, aside, highlight-dialogue, framed-dialogue, prompt, annotation, verdict, redacted, strikethrough, or echo-line. Most blocks must remain novel-like narration; do not make the page dense with design blocks.',
     'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
   ].join('\n');

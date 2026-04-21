@@ -74,6 +74,8 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'Dialogue should be short but information-rich, with Jinjiang/web-novel emotional clarity. Character emotion should be shown through behavior and decisions.',
     'The next three choices should feel like three real emotional continuations from what just happened, not three generic branch labels.',
     'narrative.pages[0].blocks must cover the full scene content in 8-12 blocks. Do not compress the scene into a short summary.',
+    'Treat narrative blocks as a formatted split of the full scene, not as extra decorative excerpts. The sum of block text should be close to scene length.',
+    'Special blocks are wrappers around real plot paragraphs or dialogue turns. They must not replace the scene with short aesthetic fragments.',
     'Each generated act should use 2-3 non-narration narrative blocks that fit the existing layout. Keep most blocks novel-like narration; do not turn every paragraph into a bubble or design card.',
     'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
     'For deep-end, finalAct should naturally press on an existing object, promise, secret, conflict, or relationship debt. It must not become a generic ending summary.',

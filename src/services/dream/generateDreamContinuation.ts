@@ -47,7 +47,7 @@ export async function generateDreamContinuation(options: GenerateDreamContinuati
       },
     ],
     temperature: 0.94,
-    maxOutputTokens: options.mode === 'deeper' ? 7600 : 5200,
+    maxOutputTokens: options.mode === 'deeper' ? 18000 : 9000,
   });
 
   const parsed = parseJsonResponse<RawContinuation>(raw);

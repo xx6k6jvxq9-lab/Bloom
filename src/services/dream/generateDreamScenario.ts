@@ -30,7 +30,7 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
       },
     ],
     temperature: 0.98,
-    maxOutputTokens: 7800,
+    maxOutputTokens: 16000,
   });
 
   const parsed = parseJsonResponse<RawScenario>(raw);

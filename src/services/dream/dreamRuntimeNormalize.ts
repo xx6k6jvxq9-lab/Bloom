@@ -379,10 +379,49 @@ function trimExcessSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string
   ));
 }
 
+function pickFormatTypeForLayout(layoutId: string, block: DreamNarrativeBlock, index: number): DreamNarrativeBlock['type'] {
+  const quoted = hasQuotedText(block.text);
+  if (layoutId === 'full-bleed-dialogue-card') return quoted ? 'framed-dialogue' : 'verdict';
+  if (layoutId === 'soft-overlay-monologue') return quoted ? 'dialogue' : 'annotation';
+  if (layoutId === 'highlight-line-break') return quoted ? 'highlight-dialogue' : 'echo-line';
+  if (layoutId === 'floating-aside-stack') return index % 2 === 0 ? 'aside' : 'strikethrough';
+  if (layoutId === 'cinematic-caption-stream') return index % 2 === 0 ? 'prompt' : 'redacted';
+  return quoted ? 'dialogue' : 'aside';
+}
+
+function ensureMinimumSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string, minSpecialBlocks = 2) {
+  const currentSpecialCount = blocks.filter((block) => isSpecialBlock(block.type)).length;
+  if (blocks.length < 4 || currentSpecialCount >= minSpecialBlocks) {
+    return blocks;
+  }
+
+  const nextBlocks = [...blocks];
+  const used = new Set(
+    nextBlocks
+      .map((block, index) => (isSpecialBlock(block.type) ? index : -1))
+      .filter((index) => index >= 0),
+  );
+  const preferredIndexes = [
+    Math.max(1, Math.floor(nextBlocks.length * 0.38)),
+    Math.max(1, Math.floor(nextBlocks.length * 0.68)),
+    Math.max(1, nextBlocks.length - 2),
+  ];
+
+  for (const preferredIndex of preferredIndexes) {
+    if (nextBlocks.filter((block) => isSpecialBlock(block.type)).length >= minSpecialBlocks) break;
+    if (used.has(preferredIndex) || !nextBlocks[preferredIndex]) continue;
+    const block = nextBlocks[preferredIndex];
+    nextBlocks[preferredIndex] = applyBlockType(block, pickFormatTypeForLayout(layoutId, block, preferredIndex));
+    used.add(preferredIndex);
+  }
+
+  return trimExcessSpecialBlocks(nextBlocks, layoutId);
+}
+
 function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: string) {
   const trimmedBlocks = trimExcessSpecialBlocks(blocks, layoutId);
   if (blocks.length < 4 || trimmedBlocks.filter((block) => isSpecialBlock(block.type)).length >= 2) {
-    return trimmedBlocks;
+    return ensureMinimumSpecialBlocks(trimmedBlocks, layoutId);
   }
 
   const nextBlocks = [...trimmedBlocks];
@@ -422,7 +461,7 @@ function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: s
     addType('aside', (block, index) => index >= nextBlocks.length - 3 && isShort(block));
   }
 
-  return trimExcessSpecialBlocks(nextBlocks, layoutId);
+  return ensureMinimumSpecialBlocks(trimExcessSpecialBlocks(nextBlocks, layoutId), layoutId);
 }
 
 function inferBlockType(
@@ -505,7 +544,7 @@ function buildFallbackBlocks(scene: string, layoutId: string) {
   const fragments = normalizeSceneFragments(scene);
   const grouped = mergeFragmentsForRange(fragments, 8, 12);
 
-  return grouped.slice(0, 12).map((text, index, array) => {
+  const blocks = grouped.slice(0, 12).map((text, index, array) => {
     let type = inferBlockType(text, index, array.length, layoutId);
     const nearFront = index === 1;
     const nearMiddle = index === Math.max(1, Math.floor(array.length / 2));
@@ -543,6 +582,8 @@ function buildFallbackBlocks(scene: string, layoutId: string) {
           : 'left' as const,
     };
   });
+
+  return ensureMinimumSpecialBlocks(blocks, layoutId);
 }
 
 export function computeShallowActCount(seed: string) {
