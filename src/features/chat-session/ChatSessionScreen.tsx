@@ -1208,10 +1208,11 @@ export function ChatSessionScreen({
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
-  let headerClasses = `relative z-10 ${layoutConfig.headerPaddingClass} flex items-center shrink-0 `;
+  const directFooterClassName = 'relative z-10 px-3 pt-1.5 border-t backdrop-blur-md flex flex-col gap-1.5';
+  let headerClasses = `relative z-10 px-4 pt-3 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
-  let footerClassName = layoutConfig.inputContainerClass;
+  let footerClassName = directFooterClassName;
   let footerControlTone = {
     iconButton: character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
     inputShell: character.background ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100',
@@ -1244,13 +1245,13 @@ export function ChatSessionScreen({
   }
 
   if (footerStyleType === 'default') {
-    footerClassName = layoutConfig.inputContainerClass;
+    footerClassName = directFooterClassName;
     footerStyleObj = {
       backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
       borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
     };
   } else if (footerStyleType === 'glass') {
-    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', 'backdrop-blur-xl');
+    footerClassName = directFooterClassName.replace('backdrop-blur-md', 'backdrop-blur-xl');
     footerStyleObj = {
       backgroundColor: 'rgba(255, 255, 255, 0.42)',
       borderColor: 'rgba(255, 255, 255, 0.34)'
@@ -1261,7 +1262,7 @@ export function ChatSessionScreen({
       voiceButton: 'bg-white/72 text-zinc-800 border border-white/45 active:bg-white/85',
     };
   } else if (footerStyleType === 'solid') {
-    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', '');
+    footerClassName = directFooterClassName.replace('backdrop-blur-md', '');
     footerStyleObj = {
       backgroundColor: '#f4f4f5',
       borderColor: '#e4e4e7'
@@ -1272,7 +1273,7 @@ export function ChatSessionScreen({
       voiceButton: 'bg-white text-zinc-800 border border-zinc-200 active:bg-zinc-100',
     };
   } else if (footerStyleType === 'transparent') {
-    footerClassName = layoutConfig.inputContainerClass.replace('backdrop-blur-md', '');
+    footerClassName = directFooterClassName.replace('backdrop-blur-md', '');
     footerStyleObj = {
       backgroundColor: 'transparent',
       borderColor: 'transparent'
@@ -1286,7 +1287,7 @@ export function ChatSessionScreen({
 
   const chatFooterLift = keyboardInset;
   const chatFooterStyle: React.CSSProperties = {
-    ...layoutConfig.inputContainerStyle,
+    paddingBottom: '0.55rem',
     ...footerStyleObj,
     transform: chatFooterLift > 0 ? `translateY(-${chatFooterLift}px)` : undefined,
     transition: 'transform 180ms ease',
@@ -1362,13 +1363,13 @@ export function ChatSessionScreen({
               className="chat-header-avatar-button ml-1 rounded-full active:scale-95 transition-transform cursor-pointer p-0.5"
               aria-label="打开角色主页"
             >
-              <PersistentImage value={character.avatar} alt={character.name} className="chat-header-avatar w-9 h-9 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
+              <PersistentImage value={character.avatar} alt={character.name} className="chat-header-avatar w-8 h-8 rounded-full object-cover bg-zinc-100 border border-zinc-200/50" />
             </button>
           </div>
           
-          <div className="chat-header-title-block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pt-1.5 pointer-events-none">
-            <h1 className="chat-header-title text-[17px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{headerState.title}</h1>
-            <p className="chat-header-subtitle text-[11px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
+          <div className="chat-header-title-block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <h1 className="chat-header-title text-[16px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{headerState.title}</h1>
+            <p className="chat-header-subtitle text-[10px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
           </div>
 
           <div className="chat-header-actions z-10">
@@ -2199,9 +2200,9 @@ export function ChatSessionScreen({
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
             onClick={() => setIsVoiceMode(!isVoiceMode)}
-            className={`chat-footer-voice-toggle-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
+            className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
           >
-            {isVoiceMode ? <Keyboard size={20} className="chat-footer-voice-toggle-icon" /> : <Mic size={20} className="chat-footer-voice-toggle-icon" />}
+            {isVoiceMode ? <Keyboard size={19} className="chat-footer-voice-toggle-icon" /> : <Mic size={19} className="chat-footer-voice-toggle-icon" />}
           </button>
 
           {showManualReplyButton && (
@@ -2215,13 +2216,13 @@ export function ChatSessionScreen({
               disabled={!canUseManualSpeakButton}
               title="让TA说话"
               aria-label="让TA说话"
-              className={`chat-footer-manual-reply-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+              className={`chat-footer-manual-reply-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${
                 canUseManualSpeakButton
                   ? `${footerControlTone.iconButton} active:scale-90`
                   : 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
               }`}
             >
-              <MessageCircle size={19} className="chat-footer-manual-reply-icon" />
+              <MessageCircle size={18} className="chat-footer-manual-reply-icon" />
             </button>
           )}
 
@@ -2231,7 +2232,7 @@ export function ChatSessionScreen({
               onPointerUp={audioRecordInteraction.onPointerUp}
               onPointerCancel={audioRecordInteraction.onPointerCancel}
               onPointerLeave={audioRecordInteraction.onPointerLeave}
-              className={`chat-footer-voice-button flex-1 h-10 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
+              className={`chat-footer-voice-button flex-1 h-9 rounded-2xl font-medium text-[15px] transition-all active:scale-[0.98] select-none ${
                 isAudioRecording 
                   ? 'bg-zinc-200 text-zinc-800' 
                   : footerControlTone.voiceButton
@@ -2240,7 +2241,7 @@ export function ChatSessionScreen({
               {isRecording ? '松开 发送' : '按住 说话'}
             </button>
           ) : (
-            <div className={`chat-footer-input-shell flex-1 border rounded-2xl px-4 py-2.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
+            <div className={`chat-footer-input-shell flex-1 min-h-9 border rounded-2xl px-3 py-1.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
               footerControlTone.inputShell
             }`}>
               <textarea 
@@ -2254,7 +2255,7 @@ export function ChatSessionScreen({
                   }
                 }}
                 placeholder="发送消息..."
-                className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
+                className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
                 rows={1}
               />
               <button 
@@ -2272,9 +2273,9 @@ export function ChatSessionScreen({
           {!isVoiceMode && input.trim() ? (
             <button 
               onClick={sendText}
-              className="chat-footer-send-button w-9 h-9 rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
+              className="chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
             >
-              <Send size={17} className="chat-footer-send-icon" />
+              <Send size={16} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button 
@@ -2282,9 +2283,9 @@ export function ChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`chat-footer-plus-button w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
+              className={`chat-footer-plus-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
             >
-              <Plus size={21} className="chat-footer-plus-icon" />
+              <Plus size={20} className="chat-footer-plus-icon" />
             </button>
           )}
         </div>
