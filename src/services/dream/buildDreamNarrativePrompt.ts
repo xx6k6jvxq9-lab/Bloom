@@ -20,6 +20,9 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
     'Avoid making every block an atmosphere line. At least half of the blocks should move the event or relationship forward.',
     'Keep adjacent blocks causally connected so the scene reads like one continuous passage, not isolated pretty sentences.',
     'Trim redundant setting explanation. Prioritize what the characters are doing, noticing, hiding, and risking right now.',
+    'When shaping dialogue blocks, preserve conversational turns and subtext. Do not flatten flirtation, awkwardness, protectiveness, suspicion, or restraint into generic statements.',
+    'Keep micro-actions attached to feeling: glances, pauses, breath, hand movement, posture change, fingers on fabric or skin, and voice dropping lower should stay visible when present in the scene.',
+    'Do not over-highlight every emotional line. Let ordinary narration carry tension too, so the scene still feels like a novel passage rather than a quote wall.',
     'Do not add new plot branches that were not present in the scene. This step is layout and prose shaping, not a new generation pass.',
   ].join('\n');
 
