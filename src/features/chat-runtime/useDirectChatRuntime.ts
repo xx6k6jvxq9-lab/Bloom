@@ -533,6 +533,24 @@ const DIRECT_PROACTIVE_TRIGGER_MESSAGE = [
   '如果时间已经流逝，请像重新拿起手机一样开口，并按当前语境里的时间来源理解现在。',
 ].join('\n');
 
+function buildDirectActionDescriptionPrompt(enabled?: boolean): string {
+  if (enabled) {
+    return [
+      '## 场景动作描述格式',
+      '用户可能会用中文全角括号“（）”描述动作、神态、环境或场景，括号外是说出口的话。',
+      '你必须同时理解括号内的动作/场景和括号外的对话内容。',
+      '你也可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
+      '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
+    ].join('\n');
+  }
+
+  return [
+    '## 场景动作描述格式',
+    '如果用户消息里出现中文全角括号“（）”，括号内代表动作、神态、环境或场景，括号外代表说出口的话，你需要理解两部分。',
+    '当前未开启角色主动场景动作描述，所以除非用户明显使用这种写法并需要你短暂配合，否则不要主动用“（）”输出动作或旁白。',
+  ].join('\n');
+}
+
 function formatChatApiError(error: unknown): string {
   const rawMessage = error instanceof Error ? error.message : '未知错误';
   const normalized = rawMessage.replace(/\s+/g, ' ').trim();
@@ -707,6 +725,7 @@ export function useDirectChatRuntime({
               buildDirectResumeModePrompt(characterTemporalState.continuityMode),
               ...(chatSceneInput.sections || []),
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
+              buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
@@ -1082,6 +1101,7 @@ export function useDirectChatRuntime({
         sections: [
           buildDirectResumeModePrompt(characterTemporalState.continuityMode),
           ...(chatSceneInput.sections || []),
+          buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
           buildAssistantStickerPromptSection(character.stickers || []),
         ].filter(Boolean),

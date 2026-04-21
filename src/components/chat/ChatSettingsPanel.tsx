@@ -1262,6 +1262,24 @@ export function ChatSettingsPanel({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Smile size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">场景动作描述</span>
+                    <span className="text-[10px] text-zinc-400">开启后，可用（）描写动作、神态和场景</span>
+                  </div>
+                </div>
+                <div
+                  onClick={() => onUpdate({ ...character, actionDescriptionEnabled: !character.actionDescriptionEnabled })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.actionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.actionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
                     <Languages size={18} />
                   </div>
                   <span className="text-[14px] text-zinc-700">自动翻译</span>

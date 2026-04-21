@@ -385,6 +385,8 @@ export function ChatSessionScreen({
   const [showSettings, setShowSettings] = useState(false);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showStickerPanel, setShowStickerPanel] = useState(false);
+  const [showActionInput, setShowActionInput] = useState(false);
+  const [actionInput, setActionInput] = useState('');
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [transferType, setTransferType] = useState<'toUser' | 'toCharacter'>('toCharacter');
@@ -468,6 +470,12 @@ export function ChatSessionScreen({
   useEffect(() => {
     setIsRecording(isAudioRecording);
   }, [isAudioRecording]);
+  useEffect(() => {
+    if (!character.actionDescriptionEnabled) {
+      setShowActionInput(false);
+      setActionInput('');
+    }
+  }, [character.actionDescriptionEnabled]);
   const audioRecordInteraction = usePressToRecordInteraction({
     isRecording: isAudioRecording,
     startRecording: startAudioRecording,
@@ -484,7 +492,6 @@ export function ChatSessionScreen({
     isLoading,
     error,
     setError,
-    sendText,
     handleSend,
     requestManualReply,
     handleVoiceCallAIResponse,
@@ -539,6 +546,22 @@ export function ChatSessionScreen({
   ))?.index;
   const showManualReplyButton = !character.autoReplyEnabled;
   const canUseManualSpeakButton = !isLoading;
+  const showActionDescriptionButton = !!character.actionDescriptionEnabled;
+  const sendCurrentText = useCallback(async () => {
+    const speechText = input.trim();
+    const actionText = actionInput.trim();
+    if (!speechText && !actionText) {
+      return;
+    }
+
+    const textToSend = actionText ? `（${actionText}）${speechText}` : speechText;
+    await handleSend(textToSend);
+    if (activeConfig) {
+      setInput('');
+      setActionInput('');
+      setShowActionInput(false);
+    }
+  }, [actionInput, activeConfig, handleSend, input]);
 
   const drawBlocksRuntimeContext = useMemo<DrawBlocksCharacterRuntimeContext>(() => {
     const temporalState = buildCharacterTemporalState({
@@ -1204,7 +1227,7 @@ export function ChatSessionScreen({
       observer.disconnect();
       window.removeEventListener('resize', updateFooterHeight);
     };
-  }, [replyingTo, isVoiceMode, input, visualSettings?.chat?.uiScale]);
+  }, [replyingTo, isVoiceMode, input, actionInput, showActionInput, visualSettings?.chat?.uiScale]);
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
@@ -2197,6 +2220,26 @@ export function ChatSessionScreen({
             </button>
           </div>
         )}
+        {showActionDescriptionButton && showActionInput && !isVoiceMode && (
+          <div className={`chat-footer-action-input-shell flex items-start gap-2 rounded-2xl border px-3 py-2 ${
+            footerControlTone.inputShell
+          }`}>
+            <span className="mt-0.5 shrink-0 text-[13px] font-medium text-zinc-500">（）</span>
+            <textarea
+              value={actionInput}
+              onChange={e => setActionInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendCurrentText();
+                }
+              }}
+              placeholder="动作、神态或场景..."
+              className="chat-footer-action-textarea min-h-[22px] max-h-24 w-full resize-none bg-transparent text-[14px] leading-5 text-zinc-800 outline-none placeholder:text-zinc-400"
+              rows={1}
+            />
+          </div>
+        )}
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
             onClick={() => setIsVoiceMode(!isVoiceMode)}
@@ -2244,6 +2287,19 @@ export function ChatSessionScreen({
             <div className={`chat-footer-input-shell flex-1 min-h-9 border rounded-2xl px-3 py-1.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
               footerControlTone.inputShell
             }`}>
+              {showActionDescriptionButton && (
+                <button
+                  type="button"
+                  onClick={() => setShowActionInput(prev => !prev)}
+                  className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[12px] font-medium transition-colors ${
+                    showActionInput ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-100'
+                  }`}
+                  title="场景动作描述"
+                  aria-label="场景动作描述"
+                >
+                  （）
+                </button>
+              )}
               <textarea 
                 ref={inputTextareaRef}
                 value={input}
@@ -2251,7 +2307,7 @@ export function ChatSessionScreen({
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    sendText();
+                    void sendCurrentText();
                   }
                 }}
                 placeholder="发送消息..."
@@ -2270,9 +2326,9 @@ export function ChatSessionScreen({
             </div>
           )}
 
-          {!isVoiceMode && input.trim() ? (
+          {!isVoiceMode && (input.trim() || actionInput.trim()) ? (
             <button 
-              onClick={sendText}
+              onClick={() => void sendCurrentText()}
               className="chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
             >
               <Send size={16} className="chat-footer-send-icon" />
