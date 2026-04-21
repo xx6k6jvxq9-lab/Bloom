@@ -1,7 +1,7 @@
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildDreamPromptInput } from './buildDreamPromptInput';
 import { buildDreamScenarioPrompt } from './buildDreamScenarioPrompt';
-import { buildPresentation, computeShallowActCount, parseJsonResponse, toAct, type RawScenario } from './dreamRuntimeNormalize';
+import { buildPresentation, computeShallowActCount, parseJsonResponse, sanitizeCustomAct, sanitizeCustomStoryFrame, toAct, type RawScenario } from './dreamRuntimeNormalize';
 import { hydrateDreamRuntimeScenario } from './dreamRuntimeSummaries';
 import type { DreamRuntimeScenario, GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 
@@ -34,7 +34,24 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
   });
 
   const parsed = parseJsonResponse<RawScenario>(raw);
-  const normalizedActs = Array.from({ length: expectedActs }, (_, index) => toAct(parsed.acts?.[index] || {}, index, presentation));
+  const normalizedActs = Array.from({ length: expectedActs }, (_, index) =>
+    sanitizeCustomAct(toAct(parsed.acts?.[index] || {}, index, presentation), promptInput.resolvedSelection),
+  );
+  const storyFrame = sanitizeCustomStoryFrame({
+    worldTitle: parsed.storyFrame?.worldTitle?.trim() || '',
+    worldSummary: parsed.storyFrame?.worldSummary?.trim() || '',
+    userDreamIdentity: parsed.storyFrame?.userDreamIdentity?.trim() || '',
+    characterDreamIdentity: parsed.storyFrame?.characterDreamIdentity?.trim() || '',
+    dreamRelationship: parsed.storyFrame?.dreamRelationship?.trim() || '',
+    openingNode: parsed.storyFrame?.openingNode?.trim() || '',
+    storyObjective: parsed.storyFrame?.storyObjective?.trim() || '',
+    coreConflict: parsed.storyFrame?.coreConflict?.trim() || '',
+    realityAnchor: parsed.storyFrame?.realityAnchor?.trim() || '',
+    timeNode: parsed.storyFrame?.timeNode?.trim() || '',
+    currentCrisis: parsed.storyFrame?.currentCrisis?.trim() || '',
+    forbiddenRule: parsed.storyFrame?.forbiddenRule?.trim() || '',
+    immediateGoal: parsed.storyFrame?.immediateGoal?.trim() || '',
+  }, promptInput.resolvedSelection);
 
   return hydrateDreamRuntimeScenario({
     id: `dream-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${Date.now()}`,
@@ -44,21 +61,7 @@ export async function generateDreamScenario(options: GenerateDreamScenarioOption
     depth: promptInput.resolvedSelection.depth,
     entryMode: promptInput.resolvedSelection.entryMode,
     domainId: promptInput.resolvedSelection.domainId,
-    storyFrame: {
-      worldTitle: parsed.storyFrame?.worldTitle?.trim() || '',
-      worldSummary: parsed.storyFrame?.worldSummary?.trim() || '',
-      userDreamIdentity: parsed.storyFrame?.userDreamIdentity?.trim() || '',
-      characterDreamIdentity: parsed.storyFrame?.characterDreamIdentity?.trim() || '',
-      dreamRelationship: parsed.storyFrame?.dreamRelationship?.trim() || '',
-      openingNode: parsed.storyFrame?.openingNode?.trim() || '',
-      storyObjective: parsed.storyFrame?.storyObjective?.trim() || '',
-      coreConflict: parsed.storyFrame?.coreConflict?.trim() || '',
-      realityAnchor: parsed.storyFrame?.realityAnchor?.trim() || '',
-      timeNode: parsed.storyFrame?.timeNode?.trim() || '',
-      currentCrisis: parsed.storyFrame?.currentCrisis?.trim() || '',
-      forbiddenRule: parsed.storyFrame?.forbiddenRule?.trim() || '',
-      immediateGoal: parsed.storyFrame?.immediateGoal?.trim() || '',
-    },
+    storyFrame,
     presentation,
     acts: normalizedActs,
     decisionTrail: [],

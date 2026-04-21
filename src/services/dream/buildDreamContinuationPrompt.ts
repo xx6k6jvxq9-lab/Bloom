@@ -46,7 +46,7 @@ function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
 
 export function buildDreamContinuationPrompt(options: GenerateDreamContinuationOptions) {
   const promptInput = buildDreamPromptInput(options);
-  const { resolvedSelection, domainRule, tagCategoryContext, customModeDiscipline } = promptInput;
+  const { resolvedSelection, domainRule, tagCategoryContext } = promptInput;
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
@@ -59,10 +59,6 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'Continue with a natural 1500-1800 Chinese character novel scene built from action, object, dialogue, hesitation, pressure, and emotional subtext. Do not reset, summarize, or write only atmosphere.',
     'Let new information and relationship movement emerge from the scene instead of announcing them as required beats.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
-    customModeDiscipline || '',
-    resolvedSelection.entryMode === 'custom'
-      ? 'Custom entry mode is user-controlled. Continue only from the user-selected tag categories and the recorded choice trail. Do not add new mechanics, factions, rules, crises, secret identities, or supernatural explanations from unselected categories.'
-      : '',
     'Open the next act from the direct after-effect of the chosen action. Do not jump to a distant summary or restart the room from zero.',
     'In the first paragraph of the new act, make the chosen action physically land in the scene: someone answers it, resists it, leans into it, hides from it, or pays a price for it.',
     'Do not spend more than two consecutive sentences purely explaining worldbuilding. If a setting term appears, make it change what the characters can do right now.',

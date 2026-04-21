@@ -8,6 +8,7 @@ import type {
   DreamPresentation,
   DreamRuntimeAct,
   DreamRuntimeChoiceSet,
+  DreamSelection,
   DreamStoryFrame,
 } from './dreamRuntimeTypes';
 
@@ -57,6 +58,134 @@ export type RawScenario = {
   endingInput?: Partial<DreamEndingInput>;
   aftermathInput?: Partial<DreamAftermathInput>;
 };
+
+function hasSelected(selection: DreamSelection, categories: string[]) {
+  return categories.some((category) => (selection.selectedTags[category as keyof typeof selection.selectedTags] ?? []).length > 0);
+}
+
+function allowsExtraMechanics(selection: DreamSelection) {
+  const selectedIds = Object.values(selection.selectedTags).flat();
+  const mechanicTags = new Set([
+    'rules',
+    'folk-horror',
+    'crime-suspense',
+    'closed-mystery',
+    'infinite',
+    'game-world',
+    'apocalypse',
+    'urban-fantasy',
+    'spiritual-revival',
+    'time-loop',
+    'parallel-world',
+    'dream-therapy',
+    'body-swap',
+    'book-transmigration',
+    'rebirth-line',
+    'system-mission',
+    'seven-rules',
+    'one-night-countdown',
+    'hidden-permission',
+    'script-rewrites',
+    'vote-to-survive',
+    'door-after-midnight',
+    'shop-trades-memory',
+    'sealed-memory',
+    'swapped-memory',
+    'dream-leaks',
+    'phone-from-future',
+    'photo-changed',
+    'calendar-missing-day',
+    'mirror-message',
+    'name-erased',
+    'forced-live-stream',
+    'quiet-creepy',
+    'absurd-rule',
+    'not-touch',
+    'not-admit',
+    'identity-reveal',
+    'everyone-secret',
+    'familiar-suspicious',
+    'truth-barb',
+    'world-offline',
+  ]);
+  return selectedIds.some((id) => mechanicTags.has(id));
+}
+
+const extraMechanicPattern = /规则|禁忌|倒计时|契约|审判|预言|试炼|阵营|身份壳|隐藏身份|秘密身份|观众|视线|学生壳子|都市囚笼|时间流速|流速|不稳定|共享记忆|记忆共享|梦境稳定|稳定世界|世界机制|回溯|系统|权限|诅咒|法则|异变|无限流|末日|深空|神明|神权|副本|投票|直播|剧本|惩罚|封印|污染|怪谈/u;
+
+function stripExtraMechanicSentences(text: string, selection: DreamSelection) {
+  const trimmed = text.trim();
+  if (!trimmed || selection.entryMode !== 'custom' || allowsExtraMechanics(selection)) {
+    return trimmed;
+  }
+
+  const sentences = trimmed
+    .split(/(?<=[。！？；.!?;])/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  if (sentences.length === 0) {
+    return extraMechanicPattern.test(trimmed) ? '' : trimmed;
+  }
+
+  const kept = sentences.filter((sentence) => !extraMechanicPattern.test(sentence));
+  return kept.join('');
+}
+
+export function sanitizeCustomStoryFrame(storyFrame: DreamStoryFrame, selection: DreamSelection): DreamStoryFrame {
+  if (selection.entryMode !== 'custom') return storyFrame;
+
+  const backgroundSelected = hasSelected(selection, ['world', 'genre', 'climate', 'camp', 'faction']);
+  const identitySelected = hasSelected(selection, ['identity', 'participants']);
+  const relationshipSelected = hasSelected(selection, ['tension', 'lead']);
+  const driveSelected = hasSelected(selection, ['drive', 'interaction', 'intensity']);
+
+  return {
+    worldTitle: backgroundSelected ? stripExtraMechanicSentences(storyFrame.worldTitle, selection) : '',
+    worldSummary: backgroundSelected ? stripExtraMechanicSentences(storyFrame.worldSummary, selection) : '',
+    userDreamIdentity: identitySelected ? stripExtraMechanicSentences(storyFrame.userDreamIdentity, selection) : '',
+    characterDreamIdentity: identitySelected ? stripExtraMechanicSentences(storyFrame.characterDreamIdentity, selection) : '',
+    dreamRelationship: relationshipSelected ? stripExtraMechanicSentences(storyFrame.dreamRelationship, selection) : '',
+    openingNode: driveSelected ? stripExtraMechanicSentences(storyFrame.openingNode, selection) : '',
+    storyObjective: driveSelected ? stripExtraMechanicSentences(storyFrame.storyObjective, selection) : '',
+    coreConflict: '',
+    realityAnchor: '',
+    timeNode: '',
+    currentCrisis: '',
+    forbiddenRule: '',
+    immediateGoal: driveSelected ? stripExtraMechanicSentences(storyFrame.immediateGoal, selection) : '',
+  };
+}
+
+export function sanitizeCustomAct(act: DreamRuntimeAct, selection: DreamSelection): DreamRuntimeAct {
+  if (selection.entryMode !== 'custom' || allowsExtraMechanics(selection)) return act;
+
+  const scene = stripExtraMechanicSentences(act.scene, selection);
+  const charState = stripExtraMechanicSentences(act.charState, selection);
+  const narrative = {
+    ...act.narrative,
+    pages: act.narrative.pages.map((page) => ({
+      ...page,
+      blocks: page.blocks
+        .map((block) => ({
+          ...block,
+          text: stripExtraMechanicSentences(block.text, selection),
+        }))
+        .filter((block) => block.text.trim()),
+    })),
+  };
+
+  return {
+    ...act,
+    scene,
+    charState,
+    narrative,
+    progression: {
+      consequence: stripExtraMechanicSentences(act.progression.consequence, selection),
+      plotAdvance: stripExtraMechanicSentences(act.progression.plotAdvance, selection),
+      tensionShift: stripExtraMechanicSentences(act.progression.tensionShift, selection),
+    },
+  };
+}
 
 function splitSceneParagraphs(scene: string) {
   return scene

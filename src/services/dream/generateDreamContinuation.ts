@@ -1,6 +1,6 @@
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildDreamContinuationPrompt } from './buildDreamContinuationPrompt';
-import { parseJsonResponse, toAct, type RawAct } from './dreamRuntimeNormalize';
+import { parseJsonResponse, sanitizeCustomAct, toAct, type RawAct } from './dreamRuntimeNormalize';
 import type {
   DreamAftermathInput,
   DreamContinuationPayload,
@@ -68,9 +68,9 @@ export async function generateDreamContinuation(options: GenerateDreamContinuati
     reactionText: parsed.reactionText?.trim() || '',
     emotion: parsed.emotion?.trim() || '',
     storyPush: parsed.storyPush?.trim() || '',
-    nextAct: parsed.nextAct ? toAct(parsed.nextAct, nextActIndex, options.scenario.presentation) : undefined,
-    nextActs: parsed.nextActs?.map((act, index) => toAct(act, nextActIndex + index, options.scenario.presentation)),
-    finalAct: parsed.finalAct ? toAct(parsed.finalAct, nextActIndex, options.scenario.presentation) : undefined,
+    nextAct: parsed.nextAct ? sanitizeCustomAct(toAct(parsed.nextAct, nextActIndex, options.scenario.presentation), options.selection) : undefined,
+    nextActs: parsed.nextActs?.map((act, index) => sanitizeCustomAct(toAct(act, nextActIndex + index, options.scenario.presentation), options.selection)),
+    finalAct: parsed.finalAct ? sanitizeCustomAct(toAct(parsed.finalAct, nextActIndex, options.scenario.presentation), options.selection) : undefined,
     endingInput: parsed.endingInput
       ? {
           titlePoolKey: parsed.endingInput.titlePoolKey?.trim() || 'default',

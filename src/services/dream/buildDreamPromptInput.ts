@@ -181,31 +181,6 @@ function buildStoryFrameGuidance(selectedTags: Record<DreamTagCategory, string[]
   return 'Only include storyFrame fields that are truly needed by the selected tags and the immediate opening scene. Leave unnecessary fields empty instead of fabricating extra setting.';
 }
 
-function buildCustomModeDiscipline(selectedTags: Record<DreamTagCategory, string[]>) {
-  const selectedCategories = Object.entries(selectedTags)
-    .filter(([, ids]) => ids.length > 0)
-    .map(([category]) => category as DreamTagCategory);
-
-  if (selectedCategories.length === 0) {
-    return '';
-  }
-
-  const selectedList = selectedCategories.join(', ');
-  const backgroundSelected = selectedCategories.some((category) => ['world', 'genre', 'climate', 'camp', 'faction'].includes(category));
-  const identitySelected = selectedCategories.some((category) => ['identity', 'participants'].includes(category));
-  const relationshipSelected = selectedCategories.some((category) => ['tension', 'lead'].includes(category));
-  const driveSelected = selectedCategories.some((category) => ['drive', 'interaction', 'intensity'].includes(category));
-
-  const allowedFields = [
-    backgroundSelected ? 'worldTitle/worldSummary' : null,
-    identitySelected ? 'userDreamIdentity/characterDreamIdentity' : null,
-    relationshipSelected ? 'dreamRelationship' : null,
-    driveSelected ? 'openingNode/storyObjective/immediateGoal' : null,
-  ].filter(Boolean).join(', ');
-
-  return `Custom mode strict boundary: the user selected only these tag categories: ${selectedList}. Do not invent content from any unselected category. Do not auto-add rules, countdowns, forbidden laws, hidden factions, secret identities, supernatural mechanics, memory-sharing systems, dream stability systems, prophecy, trials, or extra lore unless the selected tags explicitly require them. This applies to scene, acts, choices, progression, endingInput, aftermathInput, and storyFrame. In storyFrame, only fill fields that belong to the selected categories. Allowed storyFrame fields for this request: ${allowedFields || 'none'}. All other storyFrame fields must be empty strings. The scene must stay inside the user's selected world/relationship/event instead of explaining why the dream world works.`;
-}
-
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
@@ -225,10 +200,6 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
     resolvedSelection,
     domainRule: buildDomainRule(resolvedSelection.domainId),
     storyFrameGuidance: buildStoryFrameGuidance(resolvedSelection.selectedTags),
-    customModeDiscipline:
-      resolvedSelection.entryMode === 'custom'
-        ? buildCustomModeDiscipline(resolvedSelection.selectedTags)
-        : '',
     characterContext,
     memoryLayers,
     tagCategoryContext,
