@@ -47,6 +47,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'The three choices should not only differ in plot direction, but also in relationship temperature: one can push closer, one can create distance or friction, and one can force a practical risk or reveal.',
     'StoryFrame is allowed to be sparse. If the chosen tags do not require a rule, countdown, forbidden law, or heavy world mechanic, leave the corresponding fields empty.',
     'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
+    'Each act should include at least 2 non-narration narrative blocks that fit the current layout, such as dialogue, aside, highlight-dialogue, framed-dialogue, prompt, annotation, verdict, redacted, strikethrough, or echo-line. Do not make every block a bubble.',
     'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
   ].join('\n');
 
@@ -77,7 +78,7 @@ ${novelQualityRules}
 3. 深梦当前先输出 4 幕展开段，但仍要保留“还能继续下沉”的空间，不要直接写成已经结束。
 4. 每一幕 scene 必须是 1500-1800 字的完整剧情正文。
 5. 每一幕 narrative.pages[0].blocks 必须把完整 scene 拆成 8-12 个 block，不能只写摘要。
-6. block.type 只能使用 narration / dialogue / highlight-dialogue / framed-dialogue / aside / prompt。
+6. block.type 可以使用 narration / dialogue / highlight-dialogue / framed-dialogue / aside / prompt / strikethrough / annotation / verdict / redacted / echo-line。
 7. 每一幕的 3 个系统选项必须与当幕剧情同步生成，而且方向明显不同。
 8. choice.detail 必须是动作/走向描写，不是系统提示。
 9. choice.reactionHint 是角色的即时反应。
