@@ -216,6 +216,46 @@ function getDirectHistoryWindowByTemporalMode(
   return cappedWindow.slice(-Math.min(historyLimit, 6));
 }
 
+function isVisibleDirectUserMessage(message: ChatMessage): boolean {
+  return (
+    message.role === 'user'
+    && !message.isSystem
+    && !message.isRecalled
+    && Boolean(message.text || message.imageUrl || message.audioUrl || message.location)
+  );
+}
+
+function isVisibleDirectModelMessage(message: ChatMessage): boolean {
+  return (
+    message.role === 'model'
+    && !message.isSystem
+    && !message.isRecalled
+  );
+}
+
+function getLatestPendingUserMessageBlock(messages: ChatMessage[]): { start: number; end: number } | null {
+  let index = messages.length - 1;
+
+  while (index >= 0 && !isVisibleDirectUserMessage(messages[index])) {
+    if (isVisibleDirectModelMessage(messages[index])) {
+      return null;
+    }
+    index -= 1;
+  }
+
+  if (index < 0) {
+    return null;
+  }
+
+  const end = index;
+  let start = index;
+  while (start - 1 >= 0 && isVisibleDirectUserMessage(messages[start - 1])) {
+    start -= 1;
+  }
+
+  return { start, end };
+}
+
 function buildDirectResumeModePrompt(
   continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap',
 ): string {
@@ -602,6 +642,7 @@ export function useDirectChatRuntime({
   const lastMomentPublishAtRef = useRef<number | null>(null);
   const { isLoading, error, setError: setErrorState, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const activeAssistantMessageIdRef = useRef<number | null>(null);
+  const activeAssistantRenderCountRef = useRef(0);
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
   const historyRef = useRef(history);
   const inputRef = useRef(input);
@@ -633,6 +674,8 @@ export function useDirectChatRuntime({
         }
 
         const assistantMsgId = Date.now() + 1;
+        activeAssistantMessageIdRef.current = assistantMsgId;
+        activeAssistantRenderCountRef.current = 0;
         let currentResponseText = '';
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
@@ -657,6 +700,7 @@ export function useDirectChatRuntime({
             ? markLatestVisibleModelMessageRecalled(baseMessages)
             : baseMessages;
           renderedAssistantMessageCount = nextAssistantMessages.length;
+          activeAssistantRenderCountRef.current = renderedAssistantMessageCount;
           return [...nextMessages, ...nextAssistantMessages];
         };
 
@@ -762,20 +806,26 @@ export function useDirectChatRuntime({
 
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
           setHistory(latestHistory);
+          activeAssistantMessageIdRef.current = null;
+          activeAssistantRenderCountRef.current = 0;
 
         } catch (err) {
           console.error(err);
           setErrorState('Failed to generate reply. Please try again later.');
+          activeAssistantMessageIdRef.current = null;
+          activeAssistantRenderCountRef.current = 0;
         }
     });
   }, [activeConfig, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
 
   useEffect(() => {
-    const lastMsg = history[history.length - 1];
-    if (lastMsg && lastMsg.role === 'user' && lastMsg.needsReply && !isLoading) {
+    const pendingUserBlock = getLatestPendingUserMessageBlock(history);
+    const pendingReplyIndex = pendingUserBlock?.end;
+    const pendingReplyMessage = typeof pendingReplyIndex === 'number' ? history[pendingReplyIndex] : undefined;
+    if (pendingReplyMessage?.needsReply && !isLoading) {
       const reply = async () => {
         const historySnapshot = history.map((message, index) => (
-          index === history.length - 1 ? { ...message, needsReply: false } : message
+          index === pendingReplyIndex ? { ...message, needsReply: false } : message
         ));
         setHistory(historySnapshot);
         await generateDirectAssistantMessage(historySnapshot, 'reply');
@@ -930,9 +980,13 @@ export function useDirectChatRuntime({
     let baseHistory = history;
     if (activeAssistantMessageIdRef.current !== null) {
       const staleAssistantId = activeAssistantMessageIdRef.current;
-      baseHistory = history.filter(msg => msg.timestamp !== staleAssistantId);
+      const staleAssistantRenderCount = Math.max(1, activeAssistantRenderCountRef.current);
+      baseHistory = history.filter(msg =>
+        !(msg.role === 'model' && msg.timestamp >= staleAssistantId && msg.timestamp < staleAssistantId + staleAssistantRenderCount)
+      );
       setHistory(baseHistory);
       activeAssistantMessageIdRef.current = null;
+      activeAssistantRenderCountRef.current = 0;
     }
 
     const shouldSuppressUserText = !!overridePayload?.suppressUserText && !!effectiveLocationData;
@@ -995,6 +1049,7 @@ export function useDirectChatRuntime({
         ? markLatestVisibleModelMessageRecalled(baseMessages)
         : baseMessages;
       renderedAssistantMessageCount = nextAssistantMessages.length;
+      activeAssistantRenderCountRef.current = renderedAssistantMessageCount;
       return [...nextMessages, ...nextAssistantMessages];
     };
 
@@ -1036,6 +1091,7 @@ export function useDirectChatRuntime({
         }];
         setHistory(historyWithReaction);
         activeAssistantMessageIdRef.current = null;
+        activeAssistantRenderCountRef.current = 0;
 
         onPublishMoment?.({
           authorId: character.id,
@@ -1138,6 +1194,7 @@ export function useDirectChatRuntime({
 
       if (!currentResponseText && effectiveLocationData) {
         activeAssistantMessageIdRef.current = null;
+        activeAssistantRenderCountRef.current = 0;
         setHistory(newHistory);
         return;
       }
@@ -1153,6 +1210,7 @@ export function useDirectChatRuntime({
       const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
       setHistory(finalHistory);
       activeAssistantMessageIdRef.current = null;
+      activeAssistantRenderCountRef.current = 0;
 
       try {
         const autoMomentResult = await maybeAutoPublishMoment({
@@ -1340,6 +1398,7 @@ export function useDirectChatRuntime({
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;
+        activeAssistantRenderCountRef.current = 0;
       }
     }
     });
@@ -1826,26 +1885,15 @@ export function useDirectChatRuntime({
     }
 
     const latestHistory = historyRef.current;
-    const latestUserIndex = [...latestHistory].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
-      message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
-    ))?.index;
+    const pendingUserBlock = getLatestPendingUserMessageBlock(latestHistory);
 
-    if (latestUserIndex === undefined) {
-      void generateDirectAssistantMessage(latestHistory, 'proactive');
-      return;
-    }
-
-    const hasNewerModelReply = latestHistory.slice(latestUserIndex + 1).some((message) => (
-      message.role === 'model' && !message.isSystem && !message.isRecalled
-    ));
-
-    if (hasNewerModelReply) {
+    if (!pendingUserBlock) {
       void generateDirectAssistantMessage(latestHistory, 'proactive');
       return;
     }
 
     setHistory(latestHistory.map((message, index) => (
-      index === latestUserIndex ? { ...message, needsReply: true } : message
+      index === pendingUserBlock.end ? { ...message, needsReply: true } : message
     )));
   }, [generateDirectAssistantMessage, isLoading, setHistory]);
 
