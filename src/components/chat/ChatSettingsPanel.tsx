@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
+import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
@@ -1238,6 +1238,24 @@ export function ChatSettingsPanel({
                     onChange={e => onUpdate({ ...character, maxReplies: Math.min(10, parseInt(e.target.value)) })}
                     className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
                   />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <MessageCircle size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">自动回复</span>
+                    <span className="text-[10px] text-zinc-400">开启后，发送消息会自动触发角色回复</span>
+                  </div>
+                </div>
+                <div
+                  onClick={() => onUpdate({ ...character, autoReplyEnabled: !character.autoReplyEnabled })}
+                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.autoReplyEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                >
+                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.autoReplyEnabled ? 'translate-x-4.5' : ''}`} />
                 </div>
               </div>
 

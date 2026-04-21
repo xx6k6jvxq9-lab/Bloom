@@ -486,6 +486,7 @@ export function ChatSessionScreen({
     setError,
     sendText,
     handleSend,
+    requestManualReply,
     handleVoiceCallAIResponse,
     sendImageMessage,
     sendAudioMessage,
@@ -527,10 +528,19 @@ export function ChatSessionScreen({
     walletData,
     onUpdateWalletData,
     onUpdateCharacter,
+    onPatchCharacter,
     onPublishMoment,
     onAddCallRecord,
     onAcceptCoupleSpaceInvite,
   });
+
+  const latestUserMessageIndex = [...history].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
+    message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
+  ))?.index;
+  const hasPendingManualReply = latestUserMessageIndex !== undefined && !history.slice(latestUserMessageIndex + 1).some((message) => (
+    message.role === 'model' && !message.isSystem && !message.isRecalled
+  ));
+  const showManualReplyButton = !character.autoReplyEnabled;
 
   const drawBlocksRuntimeContext = useMemo<DrawBlocksCharacterRuntimeContext>(() => {
     const temporalState = buildCharacterTemporalState({
@@ -1284,7 +1294,7 @@ export function ChatSessionScreen({
     transition: 'transform 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + 8 + chatFooterLift}px`,
+    paddingBottom: `${8 + chatFooterLift}px`,
   };
 
   if (showSettings) {
@@ -2195,6 +2205,27 @@ export function ChatSessionScreen({
           >
             {isVoiceMode ? <Keyboard size={24} className="chat-footer-voice-toggle-icon" /> : <Mic size={24} className="chat-footer-voice-toggle-icon" />}
           </button>
+
+          {showManualReplyButton && (
+            <button
+              type="button"
+              onClick={() => {
+                requestManualReply();
+                if (showStickerPanel) setShowStickerPanel(false);
+                if (showFunPanel) setShowFunPanel(false);
+              }}
+              disabled={!hasPendingManualReply || isLoading}
+              title="让TA回复"
+              aria-label="让TA回复"
+              className={`chat-footer-manual-reply-button w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                hasPendingManualReply && !isLoading
+                  ? `${footerControlTone.iconButton} active:scale-90`
+                  : 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
+              }`}
+            >
+              <MessageCircle size={21} className="chat-footer-manual-reply-icon" />
+            </button>
+          )}
 
           {isVoiceMode ? (
             <button

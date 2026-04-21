@@ -467,6 +467,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   sendText: () => Promise<void>;
   handleSend: (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
+  requestManualReply: () => void;
   handleVoiceCallAIResponse: (userText: string) => Promise<string | null>;
   sendImageMessage: (base64String: string) => void;
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => void;
@@ -508,6 +509,7 @@ type DirectSendOverridePayload = {
   stickerLabel?: string;
   locationData?: { name: string; address?: string; isVirtual?: boolean };
   isInnerVoice?: boolean;
+  forceReply?: boolean;
 };
 
 function formatChatApiError(error: unknown): string {
@@ -576,7 +578,10 @@ export function useDirectChatRuntime({
       const reply = async () => {
         await runGeneration(async ({ setRuntimeError: _setRuntimeError }) => {
         setErrorState(null);
-        const historySnapshot = history;
+        const historySnapshot = history.map((message, index) => (
+          index === history.length - 1 ? { ...message, needsReply: false } : message
+        ));
+        setHistory(historySnapshot);
 
         if (!activeConfig) {
           setErrorState('Missing API Key. Please configure it in API Center settings.');
@@ -718,7 +723,7 @@ export function useDirectChatRuntime({
 
       void reply();
     }
-  }, [activeConfig, character, history, isLoading, masks, onUpdateCharacter, perception, runGeneration, setHistory, worldBook]);
+  }, [activeConfig, character, chatGroups, coupleSpace, directChatHistory, history, isLoading, masks, perception, runGeneration, setHistory, userName, worldBook]);
 
   useEffect(() => {
     const translateHistory = async () => {
@@ -893,6 +898,10 @@ export function useDirectChatRuntime({
     }
 
     setReplyingTo(null);
+
+    if (!character.autoReplyEnabled && !overridePayload?.forceReply) {
+      return;
+    }
 
     const isInnerVoiceRequest = overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]';
     const assistantMsgId = Date.now() + 1;
@@ -1750,6 +1759,33 @@ export function useDirectChatRuntime({
     }
   }, [activeConfig, character, character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
 
+  const requestManualReply = useCallback(() => {
+    if (isLoading) {
+      return;
+    }
+
+    const latestHistory = historyRef.current;
+    const latestUserIndex = [...latestHistory].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
+      message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
+    ))?.index;
+
+    if (latestUserIndex === undefined) {
+      return;
+    }
+
+    const hasNewerModelReply = latestHistory.slice(latestUserIndex + 1).some((message) => (
+      message.role === 'model' && !message.isSystem && !message.isRecalled
+    ));
+
+    if (hasNewerModelReply) {
+      return;
+    }
+
+    setHistory(latestHistory.map((message, index) => (
+      index === latestUserIndex ? { ...message, needsReply: true } : message
+    )));
+  }, [isLoading, setHistory]);
+
   const handleRejectTransfer = useCallback((index: number) => {
     const msg = history[index];
     if (!msg || msg.role !== 'model' || msg.transferStatus === 'received' || msg.transferStatus === 'rejected') return;
@@ -1784,6 +1820,7 @@ export function useDirectChatRuntime({
     sendText: () => handleSend(),
     handleSend,
     handleSendRef,
+    requestManualReply,
     handleVoiceCallAIResponse,
     sendImageMessage,
     sendAudioMessage,

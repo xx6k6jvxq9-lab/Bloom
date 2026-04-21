@@ -163,6 +163,16 @@ function ResolvedAssetImage({
 
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
+  const trimmedText = text.trim();
+  if (trimmedText === '[COUPLE_SPACE_INVITE]') {
+    return '[情侣空间邀请]';
+  }
+  if (trimmedText === '[COUPLE_SPACE_INVITE_ACCEPTED]') {
+    return '[情侣空间已建立]';
+  }
+  if (/^\[transfer\]/i.test(trimmedText) || /^TRANSFER\|/i.test(trimmedText) || /^\[转账\s*[\d.]+\]/.test(trimmedText)) {
+    return '[转账卡片]';
+  }
   if (text.startsWith('[notice]')) {
     return text.replace(/^\[notice\]\s*/i, '').trim();
   }

@@ -554,6 +554,7 @@ export type Character = {
   showTokenCount?: boolean;
   minReplies?: number;
   maxReplies?: number;
+  autoReplyEnabled?: boolean;
   postFrequency?: 'low' | 'medium' | 'high' | 'none';
   autoTranslate?: boolean;
   showTime?: boolean;

@@ -12,21 +12,40 @@ function projectGroupOrganization(group: ChatGroup): ChatGroup {
   return organization;
 }
 
+function mergeGroups(primary: string[] | undefined, fallback: string[]): string[] {
+  if (!Array.isArray(primary)) {
+    return fallback;
+  }
+
+  return Array.from(new Set([...primary, ...fallback].filter(Boolean)));
+}
+
 export function hydrateChatOrganization(
   source: Partial<ChatOrganizationData> | null | undefined,
   fallback: ChatOrganizationData,
 ): ChatOrganizationData {
+  const fallbackChatGroups = fallback.chatGroups.map(projectGroupOrganization);
+  const sourceChatGroups = Array.isArray(source?.chatGroups)
+    ? source!.chatGroups.map(projectGroupOrganization)
+    : undefined;
+
   return {
-    groups: Array.isArray(source?.groups) ? source!.groups : fallback.groups,
-    chatGroups: Array.isArray(source?.chatGroups)
-      ? source!.chatGroups.map(projectGroupOrganization)
-      : fallback.chatGroups.map(projectGroupOrganization),
+    groups: mergeGroups(source?.groups, fallback.groups),
+    chatGroups: sourceChatGroups
+      ? mergeChatGroupOrganization(sourceChatGroups, fallbackChatGroups)
+      : fallbackChatGroups,
   };
 }
 
 export function loadPersistedChatOrganization(fallback: ChatOrganizationData): ChatOrganizationData {
   const persisted = loadJson<Partial<ChatOrganizationData> | null>(STORAGE_KEYS.chatOrganization, null);
-  return hydrateChatOrganization(persisted ? { ...fallback, ...persisted } : fallback, fallback);
+  const hydrated = hydrateChatOrganization(persisted ?? fallback, fallback);
+
+  if (persisted && JSON.stringify(hydrated) !== JSON.stringify(hydrateChatOrganization(persisted, { groups: [], chatGroups: [] }))) {
+    persistChatOrganization(hydrated);
+  }
+
+  return hydrated;
 }
 
 export function persistChatOrganization(data: ChatOrganizationData): void {
