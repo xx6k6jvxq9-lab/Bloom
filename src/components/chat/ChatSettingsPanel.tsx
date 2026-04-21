@@ -1259,22 +1259,49 @@ export function ChatSettingsPanel({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                    <Smile size={18} />
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                      <Smile size={18} />
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <span className="text-[14px] text-zinc-700">场景动作描述</span>
+                      <span className="text-[10px] text-zinc-400">开启后，输入框显示（）动作场景输入</span>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-start">
-                    <span className="text-[14px] text-zinc-700">场景动作描述</span>
-                    <span className="text-[10px] text-zinc-400">开启后，可用（）描写动作、神态和场景</span>
+                  <div
+                    onClick={() => {
+                      const nextEnabled = !character.actionDescriptionEnabled;
+                      onUpdate({
+                        ...character,
+                        actionDescriptionEnabled: nextEnabled,
+                        characterActionDescriptionEnabled: nextEnabled ? character.characterActionDescriptionEnabled : false,
+                      });
+                    }}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.actionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  >
+                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.actionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
                   </div>
                 </div>
-                <div
-                  onClick={() => onUpdate({ ...character, actionDescriptionEnabled: !character.actionDescriptionEnabled })}
-                  className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.actionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
-                >
-                  <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.actionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
-                </div>
+
+                {character.actionDescriptionEnabled && (
+                  <div className="ml-11 flex items-center justify-between rounded-2xl bg-zinc-50/80 px-3 py-2.5">
+                    <div className="flex flex-col items-start">
+                      <span className="text-[13px] text-zinc-700">角色使用括号</span>
+                      <span className="text-[10px] text-zinc-400">开启后，角色可用（）描述动作和场景</span>
+                    </div>
+                    <div
+                      onClick={() => onUpdate({
+                        ...character,
+                        characterActionDescriptionEnabled: !character.characterActionDescriptionEnabled,
+                      })}
+                      className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.characterActionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                    >
+                      <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.characterActionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between">

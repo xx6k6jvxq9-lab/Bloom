@@ -556,6 +556,7 @@ export type Character = {
   maxReplies?: number;
   autoReplyEnabled?: boolean;
   actionDescriptionEnabled?: boolean;
+  characterActionDescriptionEnabled?: boolean;
   postFrequency?: 'low' | 'medium' | 'high' | 'none';
   autoTranslate?: boolean;
   showTime?: boolean;
