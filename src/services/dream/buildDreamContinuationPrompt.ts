@@ -59,11 +59,13 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'Continue with a natural 1500-1800 Chinese character novel scene built from action, object, dialogue, hesitation, pressure, and emotional subtext. Do not reset, summarize, or write only atmosphere.',
     'Let new information and relationship movement emerge from the scene instead of announcing them as required beats.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
+    'Continue translating tags into behavior, objects, address terms, boundaries, power distance, timing, hesitation, and concrete choices. Do not name the tag as an explanation inside the prose.',
     'Open the next act from the direct after-effect of the chosen action. Do not jump to a distant summary or restart the room from zero.',
     'In the first paragraph of the new act, make the chosen action physically land in the scene: someone answers it, resists it, leans into it, hides from it, or pays a price for it.',
     'Do not spend more than two consecutive sentences purely explaining worldbuilding. If a setting term appears, make it change what the characters can do right now.',
     'Each act should contain at least one short exchange with subtext and one visible action that changes the emotional temperature or practical situation.',
     'Build chemistry through response, not slogans. Let characters interrupt, dodge, test, provoke, comfort, or misread each other in ways that create pull.',
+    'For relationship tags such as age-gap, childhood friends, crush, rivals, caregiver, landlord-tenant, superior-subordinate, or contract partners, show the feeling through care, familiarity, teasing, restraint, practical help, address, room distance, and small exceptions. Do not write direct tag explanations.',
     'Use micro-actions and silence with purpose: a delayed answer, a hand not withdrawn in time, a lowered voice, a gaze avoiding the wound, an object being held too tightly.',
     'Do not resolve the emotional tension too neatly. Preserve some asymmetry, restraint, embarrassment, suspicion, or unfinished feeling so the act invites the next choice.',
     'Keep cause and effect visible: the user action lands, the character reacts, the scene shifts, and a new dilemma appears.',
@@ -262,7 +264,8 @@ Hard rules:
 5. If mode is deeper, generate 5 continuous acts and keep continuation space.
 6. If mode is deep-end, generate one real final act before the ending, not a summary and not a new branch.
 7. Every non-ending generated act must contain exactly 3 generated choices.
-8. Output JSON only.
+8. Do not narrate selected tag names as labels. Make the tag felt through scene behavior and consequences.
+9. Output JSON only.
 
 Novel prose and plot quality rules:
 ${novelQualityRules}

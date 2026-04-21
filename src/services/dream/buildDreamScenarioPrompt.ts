@@ -27,6 +27,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Write each act as a natural 1500-1800 Chinese character novel scene, not as a checklist, outline, lyrical dream summary, or abstract mood note.',
     'Let the scene grow from character action, dialogue, hesitation, misunderstanding, attraction, pressure, and small discoveries. The structure should be felt, not announced.',
     'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
+    'Translate relationship, identity, mood, and drive tags into behavior, objects, address terms, boundaries, power distance, timing, hesitation, and concrete choices. Do not name the tag as an explanation inside the prose.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
     'For custom-entry dreams, the selected tags are the only source of concrete setting. Dream domains are only narrative lenses; they must not add unselected world mechanics, institutions, dangers, rules, factions, identities, or relationship premises.',
     storyFrameGuidance,
@@ -38,6 +39,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Show emotional tension through micro-actions: a hand being pulled away, a pause before answering, a glance that lingers too long, a smile that fails, a breath catching, fingers brushing a wound, clothes, or an object.',
     'Do not make every line overtly romantic. Mix protectiveness, suspicion, annoyance, awkwardness, restraint, and attraction so the chemistry feels alive instead of sugary.',
     'When the relationship changes, let it happen through reaction and behavior first. Avoid directly announcing that the bond deepened, cracked, or shifted unless the scene has already shown it.',
+    'For relationship tags such as age-gap, childhood friends, crush, rivals, caregiver, landlord-tenant, superior-subordinate, or contract partners, show the feeling through care, familiarity, teasing, restraint, practical help, address, room distance, and small exceptions. Do not write lines like "this age-gap stability" or "their childhood-friend familiarity".',
     'Keep cause and effect visible: what just happened, how the other person reacted, and what changed in the room because of it.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
     'Avoid overused visceral romance phrases such as writing feelings into bones/blood or destiny into the body. Prefer specific gestures, exact objects, interrupted dialogue, and practical choices.',
@@ -131,7 +133,8 @@ ${tagSummary || '未选择标签'}
 3. 关系层决定梦内关系，优先级高于现实关系称谓。
 4. 驱动层决定主线目标、推进方式和每幕选项的差异。
 5. 氛围层决定正文质感、台词气味和结局方向。
-6. 用户勾选过的标签必须都被读到，不能只挑一两个。
+6. 用户勾选过的标签必须都被转译进剧情，不能只挑一两个；但正文不要像说明书一样直白念出“年上年下、青梅竹马、暗恋未明、照顾关系、主导权、房东房客”等标签名。
+7. 除非角色在对话中自然称呼身份，否则不要把标签当旁白解释。用行为、物件、语气、距离、边界、误会、照顾和选择后果来表现标签。
 
 本局展示风格：
 - layoutId: ${presentation.layout.id}

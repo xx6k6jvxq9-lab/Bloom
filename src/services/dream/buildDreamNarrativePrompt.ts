@@ -22,6 +22,7 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
     'Trim redundant setting explanation. Prioritize what the characters are doing, noticing, hiding, and risking right now.',
     'When shaping dialogue blocks, preserve conversational turns and subtext. Do not flatten flirtation, awkwardness, protectiveness, suspicion, or restraint into generic statements.',
     'Keep micro-actions attached to feeling: glances, pauses, breath, hand movement, posture change, fingers on fabric or skin, and voice dropping lower should stay visible when present in the scene.',
+    'Do not add explanatory tag labels during layout. If the scene implies age-gap, childhood friends, crush, rivals, care, landlord-tenant, authority, or contract tension, preserve the behavior and subtext instead of naming the tag.',
     'Do not over-highlight every emotional line. Let ordinary narration carry tension too, so the scene still feels like a novel passage rather than a quote wall.',
     'Do not polish the prose by adding visceral cliches about bones, blood, destiny, or feelings entering the body. Keep the original concrete action and dialogue sharper instead.',
     'Use 2-3 non-narration blocks that fit the chosen layout, but keep most blocks as novel-like narration. The page should feel designed, not crowded with bubbles or cards.',
