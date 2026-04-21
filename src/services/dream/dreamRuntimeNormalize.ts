@@ -390,12 +390,11 @@ function pickFormatTypeForLayout(layoutId: string, block: DreamNarrativeBlock, i
 }
 
 function ensureMinimumSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string, minSpecialBlocks = 2) {
-  const currentSpecialCount = blocks.filter((block) => isSpecialBlock(block.type)).length;
-  if (blocks.length < 4 || currentSpecialCount >= minSpecialBlocks) {
+  if (blocks.length < 2) {
     return blocks;
   }
 
-  const nextBlocks = [...blocks];
+  const nextBlocks = trimExcessSpecialBlocks(blocks, layoutId, minSpecialBlocks);
   const used = new Set(
     nextBlocks
       .map((block, index) => (isSpecialBlock(block.type) ? index : -1))
@@ -415,7 +414,7 @@ function ensureMinimumSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: str
     used.add(preferredIndex);
   }
 
-  return trimExcessSpecialBlocks(nextBlocks, layoutId);
+  return trimExcessSpecialBlocks(nextBlocks, layoutId, minSpecialBlocks);
 }
 
 function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: string) {

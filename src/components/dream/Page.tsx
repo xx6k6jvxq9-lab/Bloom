@@ -533,7 +533,7 @@ function DreamNarrativeBlocks({
 
         if (block.type === 'dialogue') {
           return (
-            <div key={block.id} className={`rounded-[20px] px-4 py-3 ${alignClass}`} style={{ backgroundColor: presentation.frameFill }}>
+            <div key={block.id} className={`rounded-[20px] border px-4 py-3 ${alignClass}`} style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft }}>
               {block.speakerName ? (
                 <div className="mb-2 text-[11px] tracking-[0.24em]" style={{ color: presentation.accent }}>
                   {block.speakerName}
@@ -563,7 +563,7 @@ function DreamNarrativeBlocks({
 
         if (block.type === 'prompt') {
           return (
-            <div key={block.id} className="rounded-[18px] border px-4 py-3 text-center text-[12px] tracking-[0.28em]" style={{ color: presentation.accent, borderColor: presentation.frameBorder }}>
+            <div key={block.id} className="rounded-[18px] border px-4 py-3 text-center text-[12px] tracking-[0.28em]" style={{ color: presentation.accent, borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft }}>
               {block.text}
             </div>
           );
@@ -615,7 +615,7 @@ function DreamNarrativeBlocks({
         if (block.type === 'echo-line') {
           const [mainLine, echoLine] = block.text.split('\n');
           return (
-            <div key={block.id} className={`px-1 ${alignClass}`}>
+            <div key={block.id} className={`border-l px-4 py-2 ${alignClass}`} style={{ borderColor: presentation.frameBorder }}>
               <div className="whitespace-pre-line text-[17px] font-[300] leading-[2.25]">{mainLine}</div>
               {echoLine ? (
                 <div className="mt-2 text-[13px] leading-[2] opacity-45" style={{ color: presentation.accent }}>

@@ -37,9 +37,7 @@ const archiveDangerActionStyle = {
 
 const archiveBackButtonStyle = {
   color: '#F0D28C',
-  borderColor: 'rgba(217,192,138,.34)',
-  backgroundColor: 'rgba(196,169,106,.08)',
-  boxShadow: '0 0 18px rgba(196,169,106,.08)',
+  textShadow: '0 0 16px rgba(196,169,106,.35)',
 } as CSSProperties;
 
 export function DreamArchiveStage({
@@ -83,7 +81,7 @@ export function DreamArchiveStage({
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />
         </div>
         <div className="mt-5 flex items-center gap-5 border-b border-[var(--border)] pb-5">
-          <button type="button" onClick={() => onSelect(null)} className="flex h-10 w-10 items-center justify-center rounded-full border text-[30px] font-[500] leading-none transition duration-300 hover:bg-[rgba(196,169,106,.14)]" style={archiveBackButtonStyle}>‹</button>
+          <button type="button" onClick={() => onSelect(null)} className="flex h-10 w-10 items-center justify-center text-[34px] font-[500] leading-none transition duration-300 hover:text-[var(--gold-bright)]" style={archiveBackButtonStyle}>‹</button>
           <div>
             <div className="text-[16px] tracking-[0.24em] text-[var(--gold)]">{title}</div>
             <div className="mt-1 text-[11px] tracking-[0.18em] text-[var(--mist)]">{formatArchiveDate(selectedRecord.updatedAt)}</div>
@@ -153,7 +151,7 @@ export function DreamArchiveStage({
         <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />
       </div>
       <div className="mt-5 flex items-center gap-5 border-b border-[var(--border)] pb-5">
-        <button type="button" onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-full border text-[30px] font-[500] leading-none transition duration-300 hover:bg-[rgba(196,169,106,.14)]" style={archiveBackButtonStyle}>‹</button>
+        <button type="button" onClick={onBack} className="flex h-10 w-10 items-center justify-center text-[34px] font-[500] leading-none transition duration-300 hover:text-[var(--gold-bright)]" style={archiveBackButtonStyle}>‹</button>
         <div>
           <div className="text-[16px] tracking-[0.24em] text-[var(--gold)]">{title}</div>
           <div className="mt-1 text-[11px] tracking-[0.18em] text-[var(--mist)]">{subtitle}</div>
