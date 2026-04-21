@@ -11,6 +11,8 @@ import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSu
 import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
+import { DreamArchiveStage } from './DreamArchiveStage';
+import { buildDreamArchiveRecord, exportDreamArchiveRecords, getSelectedTagLabels, loadDreamArchiveRecords, saveDreamArchiveRecords, upsertDreamArchiveRecord, type DreamArchiveRecord } from './dreamArchive';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
 
@@ -38,6 +40,7 @@ const BASE_TAG_BATCH_SIZE = 12;
 type DreamStage =
   | 'splash'
   | 'home'
+  | 'archive'
   | 'role-picker'
   | 'entry'
   | 'tags'
@@ -860,14 +863,20 @@ function HomeLegacyDeadCode() {
 function HomeV2({
   time,
   role,
+  archiveCount,
+  deepArchiveCount,
   onPickRole,
   onEnter,
+  onOpenArchive,
   onExit,
 }: {
   time: string;
   role: DreamRole | null;
+  archiveCount: number;
+  deepArchiveCount: number;
   onPickRole: () => void;
   onEnter: () => void;
+  onOpenArchive: (view: 'all' | 'deep') => void;
   onExit: () => void;
 }) {
   return (
@@ -904,14 +913,20 @@ function HomeV2({
             <div className="pt-2 text-[14px] font-[300] tracking-[0.22em] text-[var(--mist)]">点击头像，选择今夜入梦的角色</div>
           )}
         </div>
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
-          <div className="grid grid-cols-3 text-center text-[12px] tracking-[0.28em] text-[var(--mist)]">
-            {['今夜', '残响', '深层'].map((tab, index) => (
-              <div key={tab} className="space-y-2">
-                <div className={index === 0 ? 'text-[var(--gold)]' : ''}>{tab}</div>
-                <div className="mx-auto h-[4px] w-[4px] border border-[var(--border)]">{index === 0 ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>
-              </div>
-            ))}
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur-md" style={{ borderColor: 'rgba(196,169,106,.26)', backgroundColor: 'rgba(9,14,25,.68)' }}>
+          <div className="grid grid-cols-3 text-center text-[12px] tracking-[0.28em]">
+            <button type="button" className="space-y-2" style={{ color: '#D9C08A', textShadow: '0 0 14px rgba(196,169,106,.32)' }}>
+              <div>今夜</div>
+              <div className="mx-auto h-[4px] w-[4px] border border-[var(--border)]"><div className="h-full w-full bg-[var(--gold)]" /></div>
+            </button>
+            <button type="button" onClick={() => onOpenArchive('all')} className="space-y-2 transition duration-300" style={{ color: '#9EBEE2' }}>
+              <div>残响{archiveCount > 0 ? ` ${archiveCount}` : ''}</div>
+              <div className="mx-auto h-[4px] w-[4px] border" style={{ borderColor: archiveCount > 0 ? 'rgba(123,168,196,.55)' : 'rgba(123,168,196,.22)' }} />
+            </button>
+            <button type="button" onClick={() => onOpenArchive('deep')} className="space-y-2 transition duration-300" style={{ color: 'rgba(158,190,226,.78)' }}>
+              <div>梦渊{deepArchiveCount > 0 ? ` ${deepArchiveCount}` : ''}</div>
+              <div className="mx-auto h-[4px] w-[4px] border" style={{ borderColor: deepArchiveCount > 0 ? 'rgba(123,168,196,.45)' : 'rgba(123,168,196,.18)' }} />
+            </button>
           </div>
         </div>
       </div>
@@ -1316,6 +1331,9 @@ export function DreamAppPage({
   const [closingActId, setClosingActId] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [runtimeScenario, setRuntimeScenario] = useState<DreamRuntimeScenario | null>(null);
+  const [archiveRecords, setArchiveRecords] = useState<DreamArchiveRecord[]>(() => loadDreamArchiveRecords());
+  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
+  const [archiveView, setArchiveView] = useState<'all' | 'deep'>('all');
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const endingRequestActiveRef = useRef(false);
   const aftermathRequestActiveRef = useRef(false);
@@ -1529,6 +1547,20 @@ export function DreamAppPage({
       }),
     );
   }, [dreamDepth, entryMode, runtimeScenario, selectedCharacter, selectedDomain, selectedTags]);
+
+  useEffect(() => {
+    if (!runtimeScenario?.endingOutput || !selectedCharacter) return;
+    const nextRecord = buildDreamArchiveRecord({
+      character: selectedCharacter,
+      scenario: runtimeScenario,
+      selectedTags,
+    });
+    setArchiveRecords((prev) => {
+      const next = upsertDreamArchiveRecord(prev, nextRecord);
+      saveDreamArchiveRecords(next);
+      return next;
+    });
+  }, [runtimeScenario, selectedCharacter, selectedTags]);
 
   useEffect(() => {
     endingRequestActiveRef.current = isGeneratingEnding;
@@ -1977,7 +2009,31 @@ export function DreamAppPage({
     setStage('home');
   };
 
-  const selectedLabels = dreamTagGroups.flatMap((group) => group.options.filter((option) => (selectedTags[group.category] ?? []).includes(option.id)).map((option) => option.label));
+  const deleteArchiveRecord = (id: string) => {
+    setArchiveRecords((prev) => {
+      const next = prev.filter((record) => record.id !== id);
+      saveDreamArchiveRecords(next);
+      return next;
+    });
+    setSelectedArchiveId(null);
+  };
+
+  const exportCurrentArchiveRecords = () => {
+    const filename = archiveView === 'deep' ? 'dream-yuan-archive.json' : 'dream-echo-archive.json';
+    exportDreamArchiveRecords(visibleArchiveRecords, filename);
+  };
+
+  const exportSingleArchiveRecord = (id: string) => {
+    const record = archiveRecords.find((item) => item.id === id);
+    if (!record) return;
+    exportDreamArchiveRecords([record], `dream-${record.id}.json`);
+  };
+
+  const selectedLabels = getSelectedTagLabels(selectedTags);
+  const visibleArchiveRecords = archiveView === 'deep'
+    ? archiveRecords.filter((record) => record.depth === 'deep')
+    : archiveRecords;
+  const deepArchiveCount = archiveRecords.filter((record) => record.depth === 'deep').length;
   const baseTagGroups = dreamTagGroups.filter((group) => !group.detailed);
   const detailedTagGroups = dreamTagGroups.filter((group) => group.detailed);
 
@@ -2030,13 +2086,45 @@ export function DreamAppPage({
         )}
         {(stage === 'home' || stage === 'entry') && (
           <div className="relative">
-          <HomeV2 time={time} role={selectedRole} onPickRole={() => setStage('role-picker')} onEnter={openEntry} onExit={onBack} />
+          <HomeV2
+            time={time}
+            role={selectedRole}
+            archiveCount={archiveRecords.length}
+            deepArchiveCount={deepArchiveCount}
+            onPickRole={() => setStage('role-picker')}
+            onEnter={openEntry}
+            onOpenArchive={(view) => {
+              setArchiveView(view);
+              setSelectedArchiveId(null);
+              setStage('archive');
+            }}
+            onExit={onBack}
+          />
             <AnimatePresence initial={false}>
               {stage === 'entry' && selectedRole ? (
                 <EntrySheet role={selectedRole} onChoose={chooseMode} onClose={() => setStage('home')} />
               ) : null}
             </AnimatePresence>
           </div>
+        )}
+        {stage === 'archive' && (
+          <DreamArchiveStage
+            time={time}
+            title={archiveView === 'deep' ? '梦渊档案' : '梦境档案'}
+            subtitle={archiveView === 'deep' ? '只收更深处的梦线' : '已经收好的梦会留在这里'}
+            emptyTitle={archiveView === 'deep' ? '暂无梦渊' : '暂无残响'}
+            emptyHint={archiveView === 'deep' ? '深梦完成结局后会收入这里，方便回看更长的梦线。' : '梦完成结局后会自动收入档案，余响生成后也会同步补进来。'}
+            records={visibleArchiveRecords}
+            selectedId={selectedArchiveId}
+            onSelect={setSelectedArchiveId}
+            onBack={() => {
+              setSelectedArchiveId(null);
+              setStage('home');
+            }}
+            onDelete={deleteArchiveRecord}
+            onExportAll={exportCurrentArchiveRecords}
+            onExportRecord={exportSingleArchiveRecord}
+          />
         )}
         {stage === 'role-picker' && (
           <Shell time={time} scrollable contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
