@@ -16,6 +16,25 @@ const archiveThemeStyle = {
   fontFamily: "'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif",
 } as CSSProperties;
 
+const archivePrimaryActionStyle = {
+  color: '#F0D28C',
+  borderColor: 'rgba(217,192,138,.44)',
+  backgroundColor: 'rgba(196,169,106,.075)',
+  textShadow: '0 0 14px rgba(196,169,106,.22)',
+} as CSSProperties;
+
+const archiveSecondaryActionStyle = {
+  color: '#B7D3EE',
+  borderColor: 'rgba(123,168,196,.34)',
+  backgroundColor: 'rgba(123,168,196,.055)',
+} as CSSProperties;
+
+const archiveDangerActionStyle = {
+  color: '#E7A49A',
+  borderColor: 'rgba(231,164,154,.34)',
+  backgroundColor: 'rgba(231,164,154,.045)',
+} as CSSProperties;
+
 export function DreamArchiveStage({
   time,
   title = '梦境档案',
@@ -112,9 +131,9 @@ export function DreamArchiveStage({
         </div>
 
         <div className="mt-8 grid gap-4 pb-10">
-          <button type="button" onClick={() => onExportRecord(selectedRecord.id)} className="border px-6 py-4 text-[12px] tracking-[0.3em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.2)' }}>导 出 这 条 档 案</button>
-          <button type="button" onClick={() => onDelete(selectedRecord.id)} className="border px-6 py-4 text-[12px] tracking-[0.3em] text-[var(--mist)]" style={{ borderColor: 'var(--border)' }}>删 除 这 条 档 案</button>
-          <button type="button" onClick={() => onSelect(null)} className="border px-6 py-4 text-[13px] tracking-[0.42em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.2)' }}>返 回 档 案</button>
+          <button type="button" onClick={() => onExportRecord(selectedRecord.id)} className="border px-6 py-4 text-[12px] tracking-[0.3em] transition duration-300 hover:bg-[rgba(196,169,106,.12)]" style={archivePrimaryActionStyle}>导 出 这 条 档 案</button>
+          <button type="button" onClick={() => onDelete(selectedRecord.id)} className="border px-6 py-4 text-[12px] tracking-[0.3em] transition duration-300 hover:bg-[rgba(231,164,154,.08)]" style={archiveDangerActionStyle}>删 除 这 条 档 案</button>
+          <button type="button" onClick={() => onSelect(null)} className="border px-6 py-4 text-[13px] tracking-[0.42em] transition duration-300 hover:bg-[rgba(123,168,196,.08)]" style={archiveSecondaryActionStyle}>返 回 档 案</button>
         </div>
       </div>
     );
@@ -138,11 +157,11 @@ export function DreamArchiveStage({
         <div className="flex min-h-[60dvh] flex-col items-center justify-center py-24 text-center">
           <div className="text-[28px] font-[200] tracking-[0.2em] text-[var(--paper)]">{emptyTitle}</div>
           <div className="mt-5 max-w-[280px] text-[13px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{emptyHint}</div>
-          <button type="button" onClick={onBack} className="mt-10 w-full max-w-[320px] border px-6 py-4 text-[13px] tracking-[0.42em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.2)' }}>返 回 今 夜</button>
+          <button type="button" onClick={onBack} className="mt-10 w-full max-w-[320px] border px-6 py-4 text-[13px] tracking-[0.42em] transition duration-300 hover:bg-[rgba(123,168,196,.08)]" style={archiveSecondaryActionStyle}>返 回 今 夜</button>
         </div>
       ) : (
         <div className="mt-8 space-y-4 pb-10">
-          <button type="button" onClick={onExportAll} className="w-full border px-5 py-4 text-center text-[12px] tracking-[0.32em] text-[var(--gold)] transition duration-300 hover:bg-[rgba(196,169,106,.04)]" style={{ borderColor: 'rgba(196,169,106,.2)' }}>
+          <button type="button" onClick={onExportAll} className="w-full border px-5 py-4 text-center text-[12px] tracking-[0.32em] transition duration-300 hover:bg-[rgba(196,169,106,.12)]" style={archivePrimaryActionStyle}>
             导 出 当 前 档 案
           </button>
           {records.map((record) => (
