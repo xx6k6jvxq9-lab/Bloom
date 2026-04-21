@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -11,6 +11,7 @@ import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
 import { GameCenter } from '../../components/games/GameCenter';
 import { GameCard } from '../../components/chat/GameCard';
+import { AvatarLibraryPanel } from './AvatarLibraryPanel';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import {
   copyTextContent,
@@ -383,6 +384,7 @@ export function ChatSessionScreen({
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAvatarLibrary, setShowAvatarLibrary] = useState(false);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   const [showActionInput, setShowActionInput] = useState(false);
@@ -1323,6 +1325,25 @@ export function ChatSessionScreen({
     return settingsPanel;
   }
 
+  if (showAvatarLibrary) {
+    return (
+      <AvatarLibraryPanel
+        character={character}
+        onBack={() => setShowAvatarLibrary(false)}
+        onPatchCharacter={(patch) => {
+          if (onPatchCharacter) {
+            onPatchCharacter(patch);
+            return;
+          }
+          onUpdateCharacter({
+            ...character,
+            ...patch,
+          });
+        }}
+      />
+    );
+  }
+
   return (
     <motion.div 
       className="absolute inset-0 bg-zinc-50 flex flex-col z-[60] chat-bubble-theme-scope"
@@ -1395,7 +1416,10 @@ export function ChatSessionScreen({
             <p className="chat-header-subtitle text-[10px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
           </div>
 
-          <div className="chat-header-actions z-10">
+          <div className="chat-header-actions z-10 flex items-center gap-1">
+            <button onClick={() => setShowAvatarLibrary(true)} className="chat-header-action-button p-2 text-zinc-400 active:text-zinc-600" aria-label="打开头像库" title="头像库">
+              <Images size={20} />
+            </button>
             <button onClick={() => setShowSettings(true)} className="chat-header-action-button chat-header-settings-button p-2 text-zinc-400 active:text-zinc-600">
               <Settings size={20} className="chat-header-settings-icon" />
             </button>
@@ -1803,7 +1827,7 @@ export function ChatSessionScreen({
                                     className={`chat-message-image rounded-xl object-contain ${
                                       isStickerMessage(msg)
                                         ? 'max-h-36 max-w-[11rem]'
-                                        : 'max-h-60 max-w-[18rem]'
+                                        : 'max-h-48 max-w-[14rem] sm:max-h-52 sm:max-w-[16rem]'
                                     }`}
                                   />
                                   {visualText ? (

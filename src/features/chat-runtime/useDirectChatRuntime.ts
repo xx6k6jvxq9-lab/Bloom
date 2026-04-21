@@ -39,6 +39,15 @@ import {
 } from '../../services/chat/messageActions';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
+import {
+  buildAutonomousAvatarLibraryPromptSection,
+  buildAvatarActionPromptSection,
+  buildCharacterAvatarPatchFromAction,
+  latestUserMessageHasAvatarIntent,
+  parseAvatarActionBlock,
+  resolveAvatarCandidateFromAction,
+  type ParsedAvatarAction,
+} from '../../services/chat/avatarActions';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
@@ -661,6 +670,55 @@ export function useDirectChatRuntime({
     setErrorState(value);
   }, []);
 
+  const applyAvatarAction = useCallback((
+    action: ParsedAvatarAction | null,
+    sourceHistory: ChatMessage[],
+  ) => {
+    if (!action || (action.type !== 'change' && action.type !== 'save_only' && action.type !== 'reject')) {
+      return;
+    }
+
+    const isAutonomousLibraryChange =
+      action.type === 'change'
+      && /^avatar_library:/i.test(action.source)
+      && !latestUserMessageHasAvatarIntent(sourceHistory);
+    if (isAutonomousLibraryChange) {
+      const latestAvatarUseAt = Math.max(
+        0,
+        ...(character.avatarLibrary?.entries || [])
+          .map((entry) => entry.lastUsedAt || 0),
+      );
+      if (latestAvatarUseAt > 0 && Date.now() - latestAvatarUseAt < 6 * 60 * 60 * 1000) {
+        return;
+      }
+    }
+
+    const candidate = resolveAvatarCandidateFromAction({
+      character,
+      action,
+      messages: sourceHistory,
+    });
+    if (!candidate) {
+      return;
+    }
+
+    const patch = buildCharacterAvatarPatchFromAction({
+      character,
+      action,
+      candidate,
+    });
+
+    if (onPatchCharacter) {
+      onPatchCharacter(patch);
+      return;
+    }
+
+    onUpdateCharacter({
+      ...character,
+      ...patch,
+    });
+  }, [character, onPatchCharacter, onUpdateCharacter]);
+
   const generateDirectAssistantMessage = useCallback(async (
     historySnapshot: ChatMessage[],
     mode: DirectGenerationMode,
@@ -680,11 +738,12 @@ export function useDirectChatRuntime({
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
-          const shouldRecallPrevious = hasDirectRecallCue(text, {
+          const displayText = parseAvatarActionBlock(text).displayText;
+          const shouldRecallPrevious = hasDirectRecallCue(displayText, {
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
           });
-          const nextAssistantMessages = splitStreamingModelResponseIntoMessages(text, assistantMsgId, {
+          const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: character.stickers || [],
@@ -780,6 +839,8 @@ export function useDirectChatRuntime({
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+              buildAvatarActionPromptSection(character, historySnapshot),
+              buildAutonomousAvatarLibraryPromptSection(character),
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
           });
@@ -804,8 +865,11 @@ export function useDirectChatRuntime({
             },
           });
 
+          const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+          currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
           setHistory(latestHistory);
+          applyAvatarAction(avatarActionResult.action, historySnapshot);
           activeAssistantMessageIdRef.current = null;
           activeAssistantRenderCountRef.current = 0;
 
@@ -816,7 +880,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
 
   useEffect(() => {
     const pendingUserBlock = getLatestPendingUserMessageBlock(history);
@@ -1027,7 +1091,7 @@ export function useDirectChatRuntime({
       text.replace(/^\s*(动态|状态|朋友圈说说)[:：]\s*/u, '').trim();
 
     const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
-      const displayText = stripPseudoMomentPrefix(text);
+      const displayText = parseAvatarActionBlock(stripPseudoMomentPrefix(text)).displayText;
       const shouldRecallPrevious = hasDirectRecallCue(displayText, {
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
@@ -1168,6 +1232,8 @@ export function useDirectChatRuntime({
           ...(chatSceneInput.sections || []),
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+          buildAvatarActionPromptSection(character, newHistory),
+          buildAutonomousAvatarLibraryPromptSection(character),
           buildAssistantStickerPromptSection(character.stickers || []),
         ].filter(Boolean),
       });
@@ -1207,8 +1273,11 @@ export function useDirectChatRuntime({
       }
 
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
+      const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+      currentResponseText = avatarActionResult.displayText;
       const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
       setHistory(finalHistory);
+      applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
 
@@ -1402,7 +1471,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, character, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

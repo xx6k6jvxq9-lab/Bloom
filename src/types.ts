@@ -509,6 +509,40 @@ export type MemoryLibraryEntry = {
   charCount: number;
 };
 
+export type CharacterAvatarLibraryEntryStatus =
+  | 'current'
+  | 'candidate'
+  | 'saved'
+  | 'rejected'
+  | 'used';
+
+export type CharacterAvatarLibraryEntrySource =
+  | 'upload'
+  | 'url'
+  | 'chat-image'
+  | 'manual'
+  | 'character-choice';
+
+export type CharacterAvatarLibraryEntry = {
+  id: string;
+  image: string;
+  source: CharacterAvatarLibraryEntrySource;
+  status: CharacterAvatarLibraryEntryStatus;
+  addedAt: number;
+  updatedAt: number;
+  firstMessageTimestamp?: number;
+  lastUsedAt?: number;
+  reaction?: string;
+  reason?: string;
+  label?: string;
+  tags?: string[];
+};
+
+export type CharacterAvatarLibrary = {
+  entries: CharacterAvatarLibraryEntry[];
+  updatedAt: number;
+};
+
 export type Character = {
   id: string;
   name: string;
@@ -545,6 +579,7 @@ export type Character = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
   memoryLibraryEntries?: MemoryLibraryEntry[];
+  avatarLibrary?: CharacterAvatarLibrary;
   stickers?: string[];
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts
