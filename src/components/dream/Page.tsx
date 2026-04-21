@@ -179,6 +179,37 @@ function buildQuickDreamPreset(): {
   };
 }
 
+function buildCharacterDreamPreset(): {
+  domainId: DreamDomainId;
+  depth: DreamDepth;
+  selectedTags: Record<DreamTagCategory, string[]>;
+} {
+  const maybePick = (category: DreamTagCategory, probability: number, count = 1) => (
+    Math.random() < probability ? pickRandomIds(category, count) : []
+  );
+
+  return {
+    domainId: 'rift',
+    depth: 'deep',
+    selectedTags: {
+      ...defaultTagSelection,
+      world: ['rift'],
+      lead: ['character-lead'],
+      tension: maybePick('tension', 0.5),
+      drive: maybePick('drive', 0.65),
+      mood: maybePick('mood', 0.55),
+      climate: maybePick('climate', 0.35),
+      participants: maybePick('participants', 0.3),
+      faction: maybePick('faction', 0.35),
+      camp: maybePick('camp', 0.25),
+      identity: maybePick('identity', 0.45),
+      intensity: maybePick('intensity', 0.4),
+      interaction: maybePick('interaction', 0.4),
+      ending: maybePick('ending', 0.3),
+    },
+  };
+}
+
 function useNarrativeTypewriter(
   blocks: Array<{
     id: string;
@@ -447,13 +478,13 @@ function DreamNarrativeBlocks({
             : presentation.layoutId === 'full-bleed-dialogue-card'
               ? 'border-l pl-5'
               : presentation.layoutId === 'soft-overlay-monologue'
-                ? 'border-l pl-5'
+                ? 'rounded-[22px] px-4 py-4'
                 : '';
         const narrativeShellStyle =
           presentation.layoutId === 'full-bleed-dialogue-card'
             ? { borderColor: presentation.frameBorder }
             : presentation.layoutId === 'soft-overlay-monologue'
-              ? { borderColor: presentation.frameBorder }
+              ? { backgroundColor: presentation.accentSoft }
               : undefined;
 
         if (block.type === 'framed-dialogue') {
@@ -1535,9 +1566,10 @@ export function DreamAppPage({
       return;
     }
     if (mode === 'character') {
-      setSelectedDomain('rift');
-      setDreamDepth('deep');
-      setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'] });
+      const preset = buildCharacterDreamPreset();
+      setSelectedDomain(preset.domainId);
+      setDreamDepth(preset.depth);
+      setSelectedTags(preset.selectedTags);
       setConfirmPreview(null);
       setStage('confirm');
       return;
