@@ -1,6 +1,7 @@
 import type {
   CoupleSpaceData,
   CoupleSpaceInitiativeDraftEntry,
+  LoveLetter,
 } from '../../../../types';
 import { applyCoupleSpaceInitiativeRuntimeResult } from './coupleSpaceInitiativeRuntimePersistence';
 import { appendCoupleSpaceInitiativeDraft, createCoupleSpaceInitiativeDraftEntry } from './coupleSpaceDraftBuffer';
@@ -48,6 +49,55 @@ function getModuleLabel(runResult: RunCoupleSpaceInitiativeCandidateResult | nul
   }
 }
 
+function appendPublishedLoveLetter(
+  coupleSpace: CoupleSpaceData,
+  content: string,
+  now: number,
+): CoupleSpaceData {
+  const normalizedContent = content.trim();
+  if (!normalizedContent) {
+    return coupleSpace;
+  }
+
+  const existingLetters = coupleSpace.loveLetters ?? [];
+  const duplicate = existingLetters.some((letter) => (
+    letter.authorId === coupleSpace.partnerId
+    && letter.content.trim() === normalizedContent
+  ));
+
+  if (duplicate) {
+    return coupleSpace;
+  }
+
+  const nextLetter: LoveLetter = {
+    id: `initiative-love-letter-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    authorId: coupleSpace.partnerId || 'partner',
+    content: normalizedContent,
+    timestamp: now,
+    comments: [],
+  };
+
+  const previousRuntime = coupleSpace.initiativeRuntime ?? {};
+  const previousLoveLetterRuntime = previousRuntime.write_love_letter ?? {
+    lastTriggeredAt: null,
+    lastDraftedAt: null,
+    lastCommittedAt: null,
+  };
+
+  return {
+    ...coupleSpace,
+    loveLetters: [nextLetter, ...existingLetters],
+    initiativeRuntime: {
+      ...previousRuntime,
+      write_love_letter: {
+        ...previousLoveLetterRuntime,
+        lastTriggeredAt: now,
+        lastCommittedAt: now,
+      },
+    },
+  };
+}
+
 export function applyCoupleSpaceInitiativeRunResult(
   baseCoupleSpace: CoupleSpaceData,
   runResult: RunCoupleSpaceInitiativeCandidateResult | null,
@@ -60,12 +110,26 @@ export function applyCoupleSpaceInitiativeRunResult(
     now,
   );
 
-  if (
-    !runResult ||
-    (runResult.actionType !== 'write_love_letter' && runResult.actionType !== 'write_co_note') ||
-    !('draftContent' in runResult) ||
-    !runResult.draftContent
-  ) {
+  if (!runResult || !('draftContent' in runResult) || !runResult.draftContent) {
+    return {
+      nextCoupleSpace: runtimeAppliedSpace,
+      draftSaved: false,
+      updatedModuleLabel:
+        matchesExecutionBoundaryOutcome(runResult, 'direct_write', 'applied')
+          ? getModuleLabel(runResult)
+          : null,
+    };
+  }
+
+  if (runResult.actionType === 'write_love_letter') {
+    return {
+      nextCoupleSpace: appendPublishedLoveLetter(baseCoupleSpace, runResult.draftContent, now),
+      draftSaved: false,
+      updatedModuleLabel: getModuleLabel(runResult),
+    };
+  }
+
+  if (runResult.actionType !== 'write_co_note') {
     return {
       nextCoupleSpace: runtimeAppliedSpace,
       draftSaved: false,
