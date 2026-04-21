@@ -24,7 +24,7 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
     'Keep micro-actions attached to feeling: glances, pauses, breath, hand movement, posture change, fingers on fabric or skin, and voice dropping lower should stay visible when present in the scene.',
     'Do not over-highlight every emotional line. Let ordinary narration carry tension too, so the scene still feels like a novel passage rather than a quote wall.',
     'Do not polish the prose by adding visceral cliches about bones, blood, destiny, or feelings entering the body. Keep the original concrete action and dialogue sharper instead.',
-    'Use 1-3 non-narration blocks that fit the chosen layout, but keep most blocks as novel-like narration. The page should feel designed, not crowded with bubbles or cards.',
+    'Use 2-3 non-narration blocks that fit the chosen layout, but keep most blocks as novel-like narration. The page should feel designed, not crowded with bubbles or cards.',
     'Do not add new plot branches that were not present in the scene. This step is layout and prose shaping, not a new generation pass.',
   ].join('\n');
 
