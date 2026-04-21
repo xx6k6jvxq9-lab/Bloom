@@ -276,6 +276,16 @@ function useNarrativeTypewriter(
   return visibleBlocks;
 }
 
+function buildSimpleTypewriterBlocks(items: Array<{ id: string; text: string }>) {
+  return items.map((item) => ({
+    id: item.id,
+    type: 'narration',
+    text: item.text,
+    align: 'left' as const,
+    emphasis: 'medium' as const,
+  }));
+}
+
 function DreamStars() {
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
@@ -1311,6 +1321,59 @@ export function DreamAppPage({
     reactionBlocks.length > 0
     && typedReactionBlocks.length === reactionBlocks.length
     && typedReactionBlocks.every((block, index) => block.text === reactionBlocks[index]?.text);
+  const endingTextBlocks = useMemo(
+    () => buildSimpleTypewriterBlocks([
+      { id: 'ending-body', text: endingView.body || '' },
+      { id: 'ending-excerpt', text: endingView.excerpt || '' },
+    ]),
+    [endingView.body, endingView.excerpt],
+  );
+  const typedEndingTextBlocks = useNarrativeTypewriter(
+    endingTextBlocks,
+    stage === 'ending' && Boolean(runtimeScenario?.endingOutput) && !isGeneratingEnding,
+    `${runtimeScenario?.id || 'preview'}-${runtimeScenario?.endingOutput?.title || 'ending'}-ending`,
+  );
+  const endingTextReady =
+    Boolean(runtimeScenario?.endingOutput)
+    && typedEndingTextBlocks.length === endingTextBlocks.length
+    && typedEndingTextBlocks.every((block, index) => block.text === endingTextBlocks[index]?.text);
+  const typedEndingBody = typedEndingTextBlocks[0]?.text || '';
+  const typedEndingExcerpt = typedEndingTextBlocks[1]?.text || '';
+  const aftermathMessageBlocks = useMemo(
+    () => buildSimpleTypewriterBlocks(
+      aftermathView.previewMessages.map((message, index) => ({
+        id: `aftermath-message-${index + 1}`,
+        text: message || '',
+      })),
+    ),
+    [aftermathView.previewMessages],
+  );
+  const typedAftermathMessageBlocks = useNarrativeTypewriter(
+    aftermathMessageBlocks,
+    stage === 'aftermath' && Boolean(runtimeScenario?.aftermathOutput) && !isGeneratingAftermath,
+    `${runtimeScenario?.id || 'preview'}-${runtimeScenario?.aftermathOutput?.summary || 'aftermath'}-messages`,
+  );
+  const aftermathTextBlocks = useMemo(
+    () => buildSimpleTypewriterBlocks([
+      { id: 'aftermath-summary', text: aftermathView.summary || '' },
+      { id: 'aftermath-detail', text: aftermathView.detail || '' },
+    ]),
+    [aftermathView.detail, aftermathView.summary],
+  );
+  const typedAftermathTextBlocks = useNarrativeTypewriter(
+    aftermathTextBlocks,
+    stage === 'aftermath' && Boolean(runtimeScenario?.aftermathOutput) && !isGeneratingAftermath,
+    `${runtimeScenario?.id || 'preview'}-${runtimeScenario?.aftermathOutput?.detail || 'aftermath'}-detail`,
+  );
+  const aftermathTextReady =
+    Boolean(runtimeScenario?.aftermathOutput)
+    && typedAftermathMessageBlocks.length === aftermathMessageBlocks.length
+    && typedAftermathMessageBlocks.every((block, index) => block.text === aftermathMessageBlocks[index]?.text)
+    && typedAftermathTextBlocks.length === aftermathTextBlocks.length
+    && typedAftermathTextBlocks.every((block, index) => block.text === aftermathTextBlocks[index]?.text);
+  const typedAftermathMessages = typedAftermathMessageBlocks.map((block) => block.text);
+  const typedAftermathSummary = typedAftermathTextBlocks[0]?.text || '';
+  const typedAftermathDetail = typedAftermathTextBlocks[1]?.text || '';
   const choiceHoldTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -2424,10 +2487,10 @@ export function DreamAppPage({
               <div className="border-y py-10 text-center" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                 <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{endingView.title}</div>
                 <div className="mx-auto mt-8 max-w-[360px] text-left text-[14px] font-[300] leading-[2.35] tracking-[0.1em] text-[var(--paper)]">
-                  {isGeneratingEnding ? '结局正在收束……' : endingView.body}
+                  {isGeneratingEnding ? '结局正在收束……' : typedEndingBody}
                 </div>
                 <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">
-                  {isGeneratingEnding ? '梦尾摘录正在浮出。' : endingView.excerpt}
+                  {isGeneratingEnding ? '梦尾摘录正在浮出。' : typedEndingExcerpt}
                 </div>
                 <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {endingView.signature}</div>
                 <div className="mt-3 text-[12px] tracking-[0.26em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
@@ -2438,7 +2501,9 @@ export function DreamAppPage({
                   label={
                     isGeneratingEnding
                       ? '结 局 正 在 收 束'
-                      : runtimeScenario?.endingOutput
+                      : !endingTextReady
+                        ? '梦 尾 正 在 浮 出'
+                        : runtimeScenario?.endingOutput
                         ? '截 图 分 享 这 一 页'
                         : '结 局 尚 未 生 成'
                   }
@@ -2446,15 +2511,23 @@ export function DreamAppPage({
                     if (runtimeScenario?.endingOutput) setStage('aftermath');
                   }}
                   presentation={presentation}
-                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput}
+                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput || !endingTextReady}
                 />
                 <SecondaryAction
-                  label={isGeneratingEnding ? '结 局 正 在 收 束' : runtimeScenario?.endingOutput ? '查 看 梦 后 余 响  →' : '请 先 等 结 局 完 成'}
+                  label={
+                    isGeneratingEnding
+                      ? '结 局 正 在 收 束'
+                      : !endingTextReady
+                        ? '梦 尾 正 在 浮 出'
+                        : runtimeScenario?.endingOutput
+                          ? '查 看 梦 后 余 响  →'
+                          : '请 先 等 结 局 完 成'
+                  }
                   onClick={() => {
                     if (runtimeScenario?.endingOutput) setStage('aftermath');
                   }}
                   presentation={presentation}
-                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput}
+                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput || !endingTextReady}
                 />
               </div>
             </div>
@@ -2488,7 +2561,7 @@ export function DreamAppPage({
                 <div className="mt-5 space-y-3">
                   {aftermathView.previewMessages.map((message, index) => (
                     <div
-                      key={`${message}-${index}`}
+                      key={`${aftermathView.previewMessages[index]}-${index}`}
                       className="max-w-[92%] border px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]"
                       style={{
                         marginLeft: index === 1 ? 'auto' : 0,
@@ -2496,7 +2569,7 @@ export function DreamAppPage({
                         backgroundColor: index === 1 ? presentation.accentSoft : presentation.frameFill,
                       }}
                     >
-                      {isGeneratingAftermath ? (index === 0 ? '余响正在回流……' : '次日聊天正在浮出。') : message}
+                      {isGeneratingAftermath ? (index === 0 ? '余响正在回流……' : '次日聊天正在浮出。') : typedAftermathMessages[index] || ''}
                     </div>
                   ))}
                   <div className="max-w-[48%] border px-4 py-3 text-[12px] tracking-[0.24em] text-[var(--mist)]" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
@@ -2507,15 +2580,22 @@ export function DreamAppPage({
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">余响</div>
                 <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">
-                  {isGeneratingAftermath ? '梦醒后的余响正在整理……' : aftermathView.summary}
+                  {isGeneratingAftermath ? '梦醒后的余响正在整理……' : typedAftermathSummary}
                 </div>
                 <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">
-                  {isGeneratingAftermath ? '它会沿着这场梦的结尾，慢一点回到现实里。' : aftermathView.detail}
+                  {isGeneratingAftermath ? '它会沿着这场梦的结尾，慢一点回到现实里。' : typedAftermathDetail}
                 </div>
                 <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>轻微关系温度变化 · 语气漂移</div>
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
-              <div className="mt-8"><SealButton label="再入一梦" onClick={restart} presentation={presentation} /></div>
+              <div className="mt-8">
+                <SealButton
+                  label={isGeneratingAftermath ? '余 响 正 在 回 流' : aftermathTextReady ? '再 入 一 梦' : '余 响 正 在 浮 出'}
+                  onClick={restart}
+                  presentation={presentation}
+                  disabled={isGeneratingAftermath || !aftermathTextReady}
+                />
+              </div>
             </div>
           </Shell>
         )}
