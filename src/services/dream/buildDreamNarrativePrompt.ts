@@ -25,7 +25,7 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
     'Do not add explanatory tag labels during layout. If the scene implies age-gap, childhood friends, crush, rivals, care, landlord-tenant, authority, or contract tension, preserve the behavior and subtext instead of naming the tag.',
     'Do not over-highlight every emotional line. Let ordinary narration carry tension too, so the scene still feels like a novel passage rather than a quote wall.',
     'Do not polish the prose by adding visceral cliches about bones, blood, destiny, or feelings entering the body. Keep the original concrete action and dialogue sharper instead.',
-    'Use 2-3 non-narration blocks that fit the chosen layout, but keep most blocks as novel-like narration. The page should feel designed, not crowded with bubbles or cards.',
+    'Use exactly 2 non-narration blocks that fit the chosen layout, but keep most blocks as novel-like narration. The page should feel designed, not crowded with bubbles or cards.',
     'Do not add new plot branches that were not present in the scene. This step is layout and prose shaping, not a new generation pass.',
   ].join('\n');
 

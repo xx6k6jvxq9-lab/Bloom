@@ -51,7 +51,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
     'Treat narrative blocks as a formatted split of the full scene, not as extra decorative excerpts. The sum of block text should be close to scene length.',
     'Special blocks are wrappers around real plot paragraphs or dialogue turns. They must not replace the scene with short aesthetic fragments.',
-    'Each act should use 2-3 non-narration narrative blocks that fit the current layout, such as dialogue, aside, highlight-dialogue, framed-dialogue, prompt, annotation, verdict, redacted, strikethrough, or echo-line. Most blocks must remain novel-like narration; do not make the page dense with design blocks.',
+    'Each act should use exactly 2 non-narration narrative blocks that fit the current layout, such as dialogue, aside, highlight-dialogue, framed-dialogue, prompt, annotation, verdict, redacted, strikethrough, or echo-line. Most blocks must remain novel-like narration; do not make the page dense with design blocks.',
     'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
   ].join('\n');
 
@@ -226,7 +226,7 @@ ${tagSummary || '未选择标签'}
 - acts 数量必须正好是 ${actCount}。
 - 每幕 choices 必须正好是 3 个。
 - 每幕 narrative.pages 数量固定为 1。
-- 每幕 narrative.pages[0].blocks 数量为 8 到 12 个，并且必须覆盖完整 scene。
+- 每幕 narrative.pages[0].blocks 数量为 8 到 12 个，并且必须覆盖完整 scene；其中非 narration 格式块固定为 2 个。
 - 同一局梦里世界观、身份、关系、主线目标要始终一致，不要跳脱。
 `.trim();
 }

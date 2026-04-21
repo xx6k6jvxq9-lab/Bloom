@@ -920,11 +920,11 @@ function HomeV2({
               <div className="mx-auto h-[4px] w-[4px] border border-[var(--border)]"><div className="h-full w-full bg-[var(--gold)]" /></div>
             </button>
             <button type="button" onClick={() => onOpenArchive('all')} className="space-y-2 transition duration-300" style={{ color: '#9EBEE2' }}>
-              <div>残响{archiveCount > 0 ? ` ${archiveCount}` : ''}</div>
+              <div>残响</div>
               <div className="mx-auto h-[4px] w-[4px] border" style={{ borderColor: archiveCount > 0 ? 'rgba(123,168,196,.55)' : 'rgba(123,168,196,.22)' }} />
             </button>
             <button type="button" onClick={() => onOpenArchive('deep')} className="space-y-2 transition duration-300" style={{ color: 'rgba(158,190,226,.78)' }}>
-              <div>梦渊{deepArchiveCount > 0 ? ` ${deepArchiveCount}` : ''}</div>
+              <div>梦渊</div>
               <div className="mx-auto h-[4px] w-[4px] border" style={{ borderColor: deepArchiveCount > 0 ? 'rgba(123,168,196,.45)' : 'rgba(123,168,196,.18)' }} />
             </button>
           </div>

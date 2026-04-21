@@ -357,7 +357,7 @@ function applyBlockType(
   };
 }
 
-function trimExcessSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string, maxSpecialBlocks = 3) {
+function trimExcessSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string, maxSpecialBlocks = 2) {
   const specialIndexes = blocks
     .map((block, index) => ({ index, score: formatFitScore(block, index, blocks.length, layoutId) }))
     .filter((item) => item.score >= 0);
