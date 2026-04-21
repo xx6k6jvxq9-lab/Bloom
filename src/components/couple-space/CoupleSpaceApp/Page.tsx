@@ -16,7 +16,6 @@ import { extractImageUrls, showInAppConfirm } from '../../../utils';
 import { saveUploadedDataUrl } from '../../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
-import { AppSelect } from '../../shared/AppSelect';
 import {
   deletePartnerCoupleSpaceState,
   createDefaultCoupleSpaceData,
@@ -1229,17 +1228,21 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                       {activeModal === 'loveLetterPaperTexture' && (
                         <div className="space-y-4">
                           <p className="text-sm text-zinc-500">选择信纸的质感样式</p>
-                          <AppSelect
-                            value={selectedPaperTexture}
-                            onChange={(value) => setSelectedPaperTexture(value as any)}
-                            options={[
-                              { value: 'default', label: '默认 - 经典信纸' },
-                              { value: 'vintage', label: '复古 - 做旧质感' },
-                              { value: 'grid', label: '网格 - 清新格纹' },
-                              { value: 'floral', label: '花草 - 浪漫碎花' },
-                            ]}
-                            placeholder="选择信纸样式"
-                          />
+                          <div className="relative">
+                            <select 
+                              value={selectedPaperTexture}
+                              onChange={(e) => setSelectedPaperTexture(e.target.value as any)}
+                              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-pink-500 appearance-none"
+                            >
+                              <option value="default">默认 - 经典信纸</option>
+                              <option value="vintage">复古 - 做旧质感</option>
+                              <option value="grid">网格 - 清新格纹</option>
+                              <option value="floral">花草 - 浪漫碎花</option>
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+                              <ChevronLeft size={16} className="-rotate-90" />
+                            </div>
+                          </div>
                           <button 
                             onClick={() => {
                               handleUpdateCoupleSpace({ loveLetterPaperTexture: selectedPaperTexture });
