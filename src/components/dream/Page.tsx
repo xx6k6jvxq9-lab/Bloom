@@ -33,6 +33,8 @@ type DreamAftermathView = {
   previewMessages: [string, string];
 };
 
+const BASE_TAG_BATCH_SIZE = 12;
+
 type DreamStage =
   | 'splash'
   | 'home'
@@ -784,6 +786,8 @@ function TagsStageV2({
   setDreamDepth,
   selectedTags,
   toggleTag,
+  tagBatchIndex,
+  cycleTagBatch,
   detailExpanded,
   setDetailExpanded,
   selectedLabels,
@@ -796,6 +800,8 @@ function TagsStageV2({
   setDreamDepth: (depth: DreamDepth) => void;
   selectedTags: Record<DreamTagCategory, string[]>;
   toggleTag: (category: DreamTagCategory, optionId: string, max: number) => void;
+  tagBatchIndex: Partial<Record<DreamTagCategory, number>>;
+  cycleTagBatch: (category: DreamTagCategory) => void;
   detailExpanded: boolean;
   setDetailExpanded: Dispatch<SetStateAction<boolean>>;
   selectedLabels: string[];
@@ -852,14 +858,35 @@ function TagsStageV2({
             .filter((group) => !group.detailed)
             .map((group) => {
               const activeIds = selectedTags[group.category] ?? [];
+              const batchIndex = tagBatchIndex[group.category] ?? 0;
+              const batchStart = (batchIndex * BASE_TAG_BATCH_SIZE) % Math.max(group.options.length, 1);
+              const batchOptions = [
+                ...group.options.slice(batchStart, batchStart + BASE_TAG_BATCH_SIZE),
+                ...group.options.slice(0, Math.max(0, batchStart + BASE_TAG_BATCH_SIZE - group.options.length)),
+              ].slice(0, Math.min(BASE_TAG_BATCH_SIZE, group.options.length));
+              const visibleOptions = [
+                ...group.options.filter((option) => activeIds.includes(option.id)),
+                ...batchOptions,
+              ].filter((option, index, array) => array.findIndex((item) => item.id === option.id) === index);
+              const canCycle = group.options.length > BASE_TAG_BATCH_SIZE;
               return (
                 <div key={group.category} className="border-b border-[var(--border)] pb-7">
                   <div className="mb-6 flex items-center gap-4">
                     <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">{group.label}</div>
                     <div className="h-px flex-1 bg-[var(--border)]" />
+                    {canCycle ? (
+                      <button
+                        type="button"
+                        onClick={() => cycleTagBatch(group.category)}
+                        className="border px-3 py-2 text-[10px] tracking-[0.22em] transition duration-300"
+                        style={{ borderColor: 'rgba(123,168,196,.2)', color: 'var(--jade)', backgroundColor: 'rgba(123,168,196,.05)' }}
+                      >
+                        换一批
+                      </button>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    {group.options.map((option) => {
+                    {visibleOptions.map((option) => {
                       const active = activeIds.includes(option.id);
                       return (
                         <button
@@ -1133,6 +1160,7 @@ export function DreamAppPage({
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
   const [selectedTags, setSelectedTags] = useState<Record<DreamTagCategory, string[]>>(defaultTagSelection);
+  const [tagBatchIndex, setTagBatchIndex] = useState<Partial<Record<DreamTagCategory, number>>>({});
   const [confirmPreview, setConfirmPreview] = useState<DreamConfirmPreview | null>(null);
   const [detailExpanded, setDetailExpanded] = useState(true);
   const [actIndex, setActIndex] = useState(0);
@@ -1509,7 +1537,7 @@ export function DreamAppPage({
     if (mode === 'character') {
       setSelectedDomain('rift');
       setDreamDepth('deep');
-      setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'], mood: ['secret'], tension: ['forbidden'] });
+      setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'], mood: ['truth-barb'], tension: ['forbidden'] });
       setConfirmPreview(null);
       setStage('confirm');
       return;
@@ -1541,6 +1569,13 @@ export function DreamAppPage({
       if (category === 'world' && next[0]) setSelectedDomain(next[0] as DreamDomainId);
       return { ...prev, [category]: next };
     });
+  };
+
+  const cycleTagBatch = (category: DreamTagCategory) => {
+    setTagBatchIndex((prev) => ({
+      ...prev,
+      [category]: (prev[category] ?? 0) + 1,
+    }));
   };
 
   const continueDeeper = async () => {
@@ -1830,6 +1865,8 @@ export function DreamAppPage({
             setDreamDepth={setDreamDepth}
             selectedTags={selectedTags}
             toggleTag={toggleTag}
+            tagBatchIndex={tagBatchIndex}
+            cycleTagBatch={cycleTagBatch}
             detailExpanded={detailExpanded}
             setDetailExpanded={setDetailExpanded}
             selectedLabels={selectedLabels}

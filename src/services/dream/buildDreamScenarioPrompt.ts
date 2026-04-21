@@ -22,8 +22,21 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   const baseSeed = presentationSeed || `${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.depth}-${resolvedSelection.entryMode}`;
   const presentation = resolveDreamPresentation(baseSeed);
   const variation = buildDreamVariation(baseSeed);
+  const novelQualityRules = [
+    'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
+    'Write each act as an actual scene from a short novel, not as a lyrical dream summary or abstract mood note.',
+    'Every act must contain a visible event, a concrete object or action, a relationship movement, a new piece of information or obstacle, and one small irreversible turn.',
+    'The first act must enact at least one selected drive tag as an on-page event. Do not leave the hook as background explanation.',
+    'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
+    'Use character behavior, choices, and short high-information dialogue to show emotion. Do not explain the relationship only through exposition.',
+    'Choices must be meaningfully different: one relationship-facing choice, one plot/truth-facing choice, and one risk/reversal-facing choice.',
+    'For every act, progression.consequence must name the irreversible change, plotAdvance must name the mainline advancement, and tensionShift must name the relationship or conflict shift.',
+  ].join('\n');
 
   return `
+Novel prose and plot quality rules:
+${novelQualityRules}
+
 你是 Bloom 项目的梦境剧情生成器。你的任务是为“梦境 App”生成一局结构清晰、逻辑完整、可分幕展开的梦中小故事。
 
 核心原则：

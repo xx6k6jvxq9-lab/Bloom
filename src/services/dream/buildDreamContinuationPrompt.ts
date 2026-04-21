@@ -53,6 +53,16 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const memorySummary = options.scenario.memorySummary || buildDreamMemorySummary(options.scenario);
   const pastActs = buildPastActSummary(options);
   const decisionTrail = buildDecisionTrailSummary(options);
+  const novelQualityRules = [
+    'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
+    'The selected choice must cause the next on-page event. Do not treat it as a loose mood suggestion.',
+    'Continue with concrete action, object, dialogue, and consequence. Do not reset, summarize, or write only atmosphere.',
+    'Every generated act must include a visible event, a relationship movement, a new clue or obstacle, and a small irreversible turn.',
+    'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
+    'Dialogue should be short but information-rich. Character emotion should be shown through behavior and decisions.',
+    'For every act, progression.consequence must name the irreversible change, plotAdvance must name the mainline advancement, and tensionShift must name the relationship or conflict shift.',
+    'For deep-end, finalAct must resolve or press on an existing object, promise, secret, conflict, or relationship debt. It must not become a generic ending summary.',
+  ].join('\n');
 
   const modeInstruction =
     options.mode === 'custom'
@@ -240,6 +250,9 @@ Hard rules:
 6. If mode is deep-end, generate one real final act before the ending, not a summary and not a new branch.
 7. Every non-ending generated act must contain exactly 3 generated choices.
 8. Output JSON only.
+
+Novel prose and plot quality rules:
+${novelQualityRules}
 
 Current domain: ${domain.name}
 Domain rule: ${domainRule}
