@@ -9,7 +9,7 @@ function normalizeCueText(text: string): string {
   return text.trim().toLowerCase();
 }
 
-function scoreStickerMatch(cueText: string, cueLabel: string, sticker: string, stickerLabel: string): number {
+function scoreStickerMatch(cueText: string, cueLabel: string, stickerLabel: string): number {
   if (!stickerLabel) return 0;
   if (cueLabel && stickerLabel === cueLabel) return 100;
   if (cueText && stickerLabel && cueText.includes(stickerLabel)) return 80;
@@ -32,7 +32,7 @@ export function pickAssistantSticker(
     if (!sticker?.trim()) continue;
     const stickerLabel = inferStickerSemanticLabel(sticker)?.trim() || '';
     const normalizedStickerLabel = stickerLabel.toLowerCase();
-    const score = scoreStickerMatch(normalizedCueText, cueLabel, sticker, normalizedStickerLabel);
+    const score = scoreStickerMatch(normalizedCueText, cueLabel, normalizedStickerLabel);
     if (score <= bestScore) continue;
     bestScore = score;
     bestMatch = {
@@ -56,9 +56,11 @@ export function buildAssistantStickerPromptSection(availableStickers: string[]):
   }
 
   return [
-    '## 可用表情包',
-    `当前可主动发送的表情包语义只有这些：${labels.join('、')}`,
-    '只有当其中某一种真的很贴合当前情绪时，才允许单独输出一条 `[sticker] 语义`。',
-    '这里的“语义”必须尽量直接使用上面已有的表情包语义，不要自造新标签，不要频繁使用。',
+    '## Available stickers',
+    `You can send one of the imported stickers when it fits the current emotion. Available sticker meanings: ${labels.join(' / ')}`,
+    'To send a sticker, output a separate line exactly like: [sticker] meaning',
+    'You may send only a sticker for a tiny emotional reaction, or send text first and then a sticker on the next line.',
+    'Use stickers sparingly and naturally. Do not use a sticker when the user needs a clear answer, comfort, or important information.',
+    'Prefer one of the listed meanings. Do not invent a new meaning unless it is very close to an available sticker.',
   ].join('\n');
 }

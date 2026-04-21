@@ -735,7 +735,7 @@ export function useDirectChatRuntime({
               ...(chatSceneInput.sections || []),
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
+              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
               buildAssistantStickerPromptSection(character.stickers || []),
             ].filter(Boolean),
           });
@@ -1111,7 +1111,7 @@ export function useDirectChatRuntime({
           buildDirectResumeModePrompt(characterTemporalState.continuityMode),
           ...(chatSceneInput.sections || []),
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or "[sticker] caption". Use them sparingly and only when they help the chat feel more alive.',
+          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
           buildAssistantStickerPromptSection(character.stickers || []),
         ].filter(Boolean),
       });
