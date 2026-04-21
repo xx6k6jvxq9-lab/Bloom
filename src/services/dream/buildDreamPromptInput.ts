@@ -77,6 +77,110 @@ function buildTagCategoryContext(selectedTags: Record<DreamTagCategory, string[]
   };
 }
 
+function buildStoryFrameGuidance(selectedTags: Record<DreamTagCategory, string[]>) {
+  const groundedGenres = new Set([
+    'modern-romance',
+    'healing-life',
+    'urban-life',
+    'campus-youth',
+    'small-town',
+    'workplace',
+    'food-business',
+    'travel-diary',
+    'family-daily',
+    'marriage-life',
+    'broadcast-station',
+    'museum-mystery',
+    'library-fantasy',
+  ]);
+  const heightenedGenres = new Set([
+    'rules',
+    'immortal',
+    'stellar-academy',
+    'court-power',
+    'magic-academy',
+    'folk-horror',
+    'cyberpunk',
+    'ancient-romance',
+    'inner-house',
+    'jianghu',
+    'sect-life',
+    'xuanhuan',
+    'western-fantasy',
+    'fairy-tale-dark',
+    'monster-romance',
+    'urban-fantasy',
+    'spiritual-revival',
+    'crime-suspense',
+    'closed-mystery',
+    'infinite',
+    'game-world',
+    'apocalypse',
+    'safe-house',
+    'stellar-drift',
+    'steampunk',
+    'pirate-port',
+    'dragon-kingdom',
+    'witch-town',
+    'vampire-city',
+    'beastman-tribe',
+    'spirit-world',
+    'underworld-office',
+    'time-loop',
+    'parallel-world',
+    'dream-therapy',
+    'body-swap',
+    'book-transmigration',
+    'rebirth-line',
+    'system-mission',
+  ]);
+  const groundedDrives = new Set([
+    'care-for-cat',
+    'borrowed-coat',
+    'birthday-plan',
+    'cook-late-dinner',
+    'move-house-together',
+    'fix-broken-light',
+    'class-duty',
+    'club-recruit',
+    'sports-partner',
+    'graduation-photo',
+    'library-wrong-book',
+    'exam-eve',
+    'overtime-dawn',
+    'business-trip',
+    'meeting-rescue',
+    'project-switch',
+    'family-dinner',
+    'relative-misunderstands',
+    'variety-mission',
+    'heart-date-card',
+    'stage-pairing',
+    'inherited-shop',
+    'night-duty',
+    'joint-investigation',
+    'business-revival',
+    'save-closing-store',
+    'bring-ta-home',
+    'find-missing-song',
+    'deliver-final-letter',
+  ]);
+
+  const groundedScore =
+    (selectedTags.genre ?? []).filter((id) => groundedGenres.has(id)).length
+    + (selectedTags.drive ?? []).filter((id) => groundedDrives.has(id)).length;
+  const heightenedScore =
+    (selectedTags.genre ?? []).filter((id) => heightenedGenres.has(id)).length
+    + (selectedTags.faction?.length ?? 0)
+    + (selectedTags.camp?.length ?? 0);
+
+  if (groundedScore > 0 && heightenedScore === 0) {
+    return 'This is a grounded or daily-life dream. Keep storyFrame lightweight and close to the selected tags. Do not invent extra distorted physics, dream-stability mechanics, public rules, countdown systems, hidden world lore, or grand danger unless a selected tag directly demands them. storyFrame.currentCrisis, forbiddenRule, realityAnchor, and timeNode may be left empty. worldSummary should stay concrete and everyday.';
+  }
+
+  return 'Only include storyFrame fields that are truly needed by the selected tags and the immediate opening scene. Leave unnecessary fields empty instead of fabricating extra setting.';
+}
+
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
@@ -95,6 +199,7 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   return {
     resolvedSelection,
     domainRule: buildDomainRule(resolvedSelection.domainId),
+    storyFrameGuidance: buildStoryFrameGuidance(resolvedSelection.selectedTags),
     characterContext,
     memoryLayers,
     tagCategoryContext,

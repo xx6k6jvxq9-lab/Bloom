@@ -11,7 +11,7 @@ function computeShallowActCount(seed: string) {
 
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, presentationSeed?: string) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, memoryLayers, resolvedSelection, domainRule, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
+  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -28,6 +28,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Let the scene grow from character action, dialogue, hesitation, misunderstanding, attraction, pressure, and small discoveries. The structure should be felt, not announced.',
     'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
+    storyFrameGuidance,
     'The first act should open with an on-page moment that makes the chosen hook felt through action, object, or dialogue.',
     'Start scenes from something happening now: a knock, a wound reopening, a message arriving, a lie being caught, a hand being pulled away. Do not spend the opening on static explanation.',
     'Do not spend more than two consecutive sentences purely explaining worldbuilding. If a setting term appears, make it matter to the immediate scene.',
@@ -42,6 +43,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Let useful exposition hide inside conflict, tending wounds, lying, teasing, negotiating, or being interrupted. Prefer scene pressure over direct explanation.',
     'Choices must feel like three natural next moves the user might actually take, and each choice should lead to a different emotional or plot direction.',
     'The three choices should not only differ in plot direction, but also in relationship temperature: one can push closer, one can create distance or friction, and one can force a practical risk or reveal.',
+    'StoryFrame is allowed to be sparse. If the chosen tags do not require a rule, countdown, forbidden law, or heavy world mechanic, leave the corresponding fields empty.',
     'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
     'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
   ].join('\n');

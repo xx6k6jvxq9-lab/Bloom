@@ -728,6 +728,25 @@ function buildReactionBlocks(
   return blocks;
 }
 
+function hasStoryFrameContent(storyFrame: DreamRuntimeScenario['storyFrame'] | null) {
+  if (!storyFrame) return false;
+  return [
+    storyFrame.worldTitle,
+    storyFrame.worldSummary,
+    storyFrame.userDreamIdentity,
+    storyFrame.characterDreamIdentity,
+    storyFrame.dreamRelationship,
+    storyFrame.openingNode,
+    storyFrame.storyObjective,
+    storyFrame.coreConflict,
+    storyFrame.realityAnchor,
+    storyFrame.timeNode,
+    storyFrame.currentCrisis,
+    storyFrame.forbiddenRule,
+    storyFrame.immediateGoal,
+  ].some((value) => value?.trim());
+}
+
 function createDecisionRecord(act: DreamRuntimeAct, choice: ActiveDreamChoice): DreamDecisionRecord {
   return {
     actId: act.id,
@@ -1310,6 +1329,12 @@ export function DreamAppPage({
   const isLastGeneratedAct = Boolean(runtimeScenario && actIndex === runtimeScenario.acts.length - 1);
   const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : scenario.ending;
   const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
+  const aftermathMetaLine = useMemo(() => {
+    const relationshipShift = runtimeScenario?.aftermathInput.relationshipShift?.trim() || '';
+    const toneDrift = runtimeScenario?.aftermathInput.toneDrift?.trim() || '';
+    const parts = [relationshipShift, toneDrift].filter(Boolean);
+    return parts.join(' · ');
+  }, [runtimeScenario?.aftermathInput.relationshipShift, runtimeScenario?.aftermathInput.toneDrift]);
   const reactionFullText = selectedChoice ? `${selectedChoice.reaction}\n\n${selectedChoice.storyPush}` : '';
   const reactionBlocks = useMemo(() => buildReactionBlocks(selectedChoice, act), [act, selectedChoice]);
   const typedReactionBlocks = useNarrativeTypewriter(
@@ -2251,25 +2276,33 @@ export function DreamAppPage({
               <div className="mt-8 flex items-center justify-center gap-3">{scenario.acts.map((item, index) => <div key={item.id} className="h-[5px] w-[5px] border border-[var(--border)]">{index <= actIndex ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>)}</div>
               <div className="mt-8">
                 <div className="mx-auto w-full max-w-[460px]">
-                  {storyFrame && actIndex === 0 ? (
+                  {storyFrame && actIndex === 0 && hasStoryFrameContent(storyFrame) ? (
                     <div className="mb-7 border px-4 py-4" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft }}>
-                      <div className="text-[11px] tracking-[0.28em]" style={{ color: presentation.accent }}>
-                        {storyFrame.worldTitle} · {storyFrame.dreamRelationship}
-                      </div>
-                      <div className="mt-3 text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)]">{storyFrame.worldSummary}</div>
-                      <div className="mt-4 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
-                        {storyFrame.characterDreamIdentity} / {storyFrame.userDreamIdentity}
-                      </div>
-                      <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
-                        节点：{storyFrame.openingNode}
-                      </div>
+                      {storyFrame.worldTitle || storyFrame.dreamRelationship ? (
+                        <div className="text-[11px] tracking-[0.28em]" style={{ color: presentation.accent }}>
+                          {[storyFrame.worldTitle, storyFrame.dreamRelationship].filter(Boolean).join(' · ')}
+                        </div>
+                      ) : null}
+                      {storyFrame.worldSummary ? <div className="mt-3 text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)]">{storyFrame.worldSummary}</div> : null}
+                      {storyFrame.characterDreamIdentity || storyFrame.userDreamIdentity ? (
+                        <div className="mt-4 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
+                          {[storyFrame.characterDreamIdentity, storyFrame.userDreamIdentity].filter(Boolean).join(' / ')}
+                        </div>
+                      ) : null}
+                      {storyFrame.openingNode ? (
+                        <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
+                          节点：{storyFrame.openingNode}
+                        </div>
+                      ) : null}
                       {storyFrame.timeNode ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">时点：{storyFrame.timeNode}</div> : null}
                       {storyFrame.currentCrisis ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">危机：{storyFrame.currentCrisis}</div> : null}
                       {storyFrame.forbiddenRule ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">规则：{storyFrame.forbiddenRule}</div> : null}
                       {storyFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>此幕目标：{storyFrame.immediateGoal}</div> : null}
-                      <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
-                        主线：{storyFrame.storyObjective}
-                      </div>
+                      {storyFrame.storyObjective ? (
+                        <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
+                          主线：{storyFrame.storyObjective}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <DreamNarrativeBlocks blocks={typedSceneBlocks} presentation={presentation} />
@@ -2497,22 +2530,6 @@ export function DreamAppPage({
               </div>
               {loadingError ? <div className="mt-6 px-8 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-10 grid gap-4 px-8">
-                <SealButton
-                  label={
-                    isGeneratingEnding
-                      ? '结 局 正 在 收 束'
-                      : !endingTextReady
-                        ? '梦 尾 正 在 浮 出'
-                        : runtimeScenario?.endingOutput
-                        ? '截 图 分 享 这 一 页'
-                        : '结 局 尚 未 生 成'
-                  }
-                  onClick={() => {
-                    if (runtimeScenario?.endingOutput) setStage('aftermath');
-                  }}
-                  presentation={presentation}
-                  disabled={isGeneratingEnding || !runtimeScenario?.endingOutput || !endingTextReady}
-                />
                 <SecondaryAction
                   label={
                     isGeneratingEnding
@@ -2585,7 +2602,11 @@ export function DreamAppPage({
                 <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">
                   {isGeneratingAftermath ? '它会沿着这场梦的结尾，慢一点回到现实里。' : typedAftermathDetail}
                 </div>
-                <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>轻微关系温度变化 · 语气漂移</div>
+                {aftermathMetaLine ? (
+                  <div className="mt-5 border-t pt-4 text-[11px] tracking-[0.24em]" style={{ borderColor: presentation.frameBorder, color: presentation.accent }}>
+                    {aftermathMetaLine}
+                  </div>
+                ) : null}
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
               <div className="mt-8">
