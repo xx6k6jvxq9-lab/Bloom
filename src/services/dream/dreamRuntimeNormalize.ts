@@ -279,6 +279,41 @@ function isSpecialBlock(type: DreamNarrativeBlock['type']) {
   return type !== 'narration';
 }
 
+function formatFitScore(block: DreamNarrativeBlock, index: number, total: number, layoutId: string) {
+  if (!isSpecialBlock(block.type)) return -1;
+  const middleStart = Math.max(1, Math.floor(total / 3));
+  const middleEnd = Math.max(middleStart, Math.floor(total * 0.72));
+  const isMiddle = index >= middleStart && index <= middleEnd;
+  const isBack = index >= total - 3;
+  const quoted = hasQuotedText(block.text);
+  const short = block.text.length <= 90;
+  let score = 1;
+
+  if (layoutId === 'full-bleed-dialogue-card') {
+    if (block.type === 'framed-dialogue' && quoted) score += 5;
+    if (block.type === 'verdict' && isBack && short) score += 4;
+  } else if (layoutId === 'soft-overlay-monologue') {
+    if (block.type === 'dialogue' && quoted) score += 5;
+    if (block.type === 'annotation' && short) score += 4;
+    if (block.type === 'aside' && short) score += 3;
+  } else if (layoutId === 'highlight-line-break') {
+    if (block.type === 'highlight-dialogue' && quoted) score += 5;
+    if (block.type === 'echo-line' && short) score += 4;
+  } else if (layoutId === 'floating-aside-stack') {
+    if (block.type === 'aside' && (quoted || short)) score += 5;
+    if (block.type === 'strikethrough' && short) score += 4;
+  } else if (layoutId === 'cinematic-caption-stream') {
+    if (block.type === 'prompt' && short) score += 5;
+    if (block.type === 'redacted') score += 4;
+  }
+
+  if (isMiddle) score += 2;
+  if (isBack) score += 1;
+  if (quoted) score += 1;
+  if (short) score += 1;
+  return score;
+}
+
 function hasQuotedText(text: string) {
   return /“[^”]+”|"[^"]+"/.test(text);
 }
@@ -322,12 +357,35 @@ function applyBlockType(
   };
 }
 
-function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: string) {
-  if (blocks.length < 4 || blocks.filter((block) => isSpecialBlock(block.type)).length >= 2) {
+function trimExcessSpecialBlocks(blocks: DreamNarrativeBlock[], layoutId: string, maxSpecialBlocks = 3) {
+  const specialIndexes = blocks
+    .map((block, index) => ({ index, score: formatFitScore(block, index, blocks.length, layoutId) }))
+    .filter((item) => item.score >= 0);
+  if (specialIndexes.length <= maxSpecialBlocks) {
     return blocks;
   }
 
-  const nextBlocks = [...blocks];
+  const keep = new Set(
+    specialIndexes
+      .sort((left, right) => right.score - left.score)
+      .slice(0, maxSpecialBlocks)
+      .map((item) => item.index),
+  );
+
+  return blocks.map((block, index) => (
+    isSpecialBlock(block.type) && !keep.has(index)
+      ? { ...block, type: 'narration' as const, speakerName: undefined, align: block.align === 'center' ? 'left' as const : block.align }
+      : block
+  ));
+}
+
+function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: string) {
+  const trimmedBlocks = trimExcessSpecialBlocks(blocks, layoutId);
+  if (blocks.length < 4 || trimmedBlocks.filter((block) => isSpecialBlock(block.type)).length >= 2) {
+    return trimmedBlocks;
+  }
+
+  const nextBlocks = [...trimmedBlocks];
   const used = new Set<number>();
   const addType = (type: DreamNarrativeBlock['type'], predicate: (block: DreamNarrativeBlock, index: number) => boolean) => {
     const index = findCandidateIndex(nextBlocks, used, predicate);
@@ -364,7 +422,7 @@ function ensureNarrativeFormatVariety(blocks: DreamNarrativeBlock[], layoutId: s
     addType('aside', (block, index) => index >= nextBlocks.length - 3 && isShort(block));
   }
 
-  return nextBlocks;
+  return trimExcessSpecialBlocks(nextBlocks, layoutId);
 }
 
 function inferBlockType(
