@@ -11,7 +11,7 @@ function computeShallowActCount(seed: string) {
 
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, presentationSeed?: string) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
+  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, customModeDiscipline, worldBookPrompt, maskPrompt, tagCategoryContext } = promptInput;
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -29,6 +29,10 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
     storyFrameGuidance,
+    customModeDiscipline || '',
+    resolvedSelection.entryMode === 'custom'
+      ? 'Custom entry mode is user-controlled. The scene must not compensate for missing categories by adding extra world logic. If the user did not select a category, keep that layer ordinary, implicit, or absent.'
+      : '',
     'The first act should open with an on-page moment that makes the chosen hook felt through action, object, or dialogue.',
     'Start scenes from something happening now: a knock, a wound reopening, a message arriving, a lie being caught, a hand being pulled away. Do not spend the opening on static explanation.',
     'Do not spend more than two consecutive sentences purely explaining worldbuilding. If a setting term appears, make it matter to the immediate scene.',

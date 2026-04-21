@@ -747,6 +747,25 @@ function hasStoryFrameContent(storyFrame: DreamRuntimeScenario['storyFrame'] | n
   ].some((value) => value?.trim());
 }
 
+function buildCustomVisibleStoryFrame(storyFrame: DreamRuntimeScenario['storyFrame'] | null, selectedTags: Record<DreamTagCategory, string[]>) {
+  if (!storyFrame) return null;
+  const backgroundSelected = ['world', 'genre', 'climate', 'camp', 'faction'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
+  const identitySelected = ['identity', 'participants'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
+  const relationshipSelected = ['tension', 'lead'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
+  const driveSelected = ['drive', 'interaction', 'intensity'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
+
+  return {
+    worldTitle: backgroundSelected ? storyFrame.worldTitle : '',
+    worldSummary: backgroundSelected ? storyFrame.worldSummary : '',
+    userDreamIdentity: identitySelected ? storyFrame.userDreamIdentity : '',
+    characterDreamIdentity: identitySelected ? storyFrame.characterDreamIdentity : '',
+    dreamRelationship: relationshipSelected ? storyFrame.dreamRelationship : '',
+    openingNode: driveSelected ? storyFrame.openingNode : '',
+    storyObjective: driveSelected ? storyFrame.storyObjective : '',
+    immediateGoal: driveSelected ? storyFrame.immediateGoal : '',
+  };
+}
+
 function createDecisionRecord(act: DreamRuntimeAct, choice: ActiveDreamChoice): DreamDecisionRecord {
   return {
     actId: act.id,
@@ -1317,6 +1336,10 @@ export function DreamAppPage({
     layoutId: 'soft-overlay-monologue',
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
+  const displayStoryFrame = useMemo(
+    () => (entryMode === 'custom' ? buildCustomVisibleStoryFrame(storyFrame, selectedTags) : storyFrame),
+    [entryMode, selectedTags, storyFrame],
+  );
   const sceneBlocks = useMemo(() => act?.narrative.pages[0]?.blocks ?? [], [act]);
   const typedSceneBlocks = useNarrativeTypewriter(sceneBlocks, stage === 'scene', `${runtimeScenario?.id || 'preview'}-${act?.id || 'none'}-scene`);
   const hasSceneContent = sceneBlocks.length > 0 && sceneBlocks.some((block) => block.text.trim());
@@ -2276,31 +2299,28 @@ export function DreamAppPage({
               <div className="mt-8 flex items-center justify-center gap-3">{scenario.acts.map((item, index) => <div key={item.id} className="h-[5px] w-[5px] border border-[var(--border)]">{index <= actIndex ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>)}</div>
               <div className="mt-8">
                 <div className="mx-auto w-full max-w-[460px]">
-                  {storyFrame && actIndex === 0 && hasStoryFrameContent(storyFrame) ? (
+                  {displayStoryFrame && actIndex === 0 && hasStoryFrameContent(displayStoryFrame as DreamRuntimeScenario['storyFrame']) ? (
                     <div className="mb-7 border px-4 py-4" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.accentSoft }}>
-                      {storyFrame.worldTitle || storyFrame.dreamRelationship ? (
+                      {displayStoryFrame.worldTitle || displayStoryFrame.dreamRelationship ? (
                         <div className="text-[11px] tracking-[0.28em]" style={{ color: presentation.accent }}>
-                          {[storyFrame.worldTitle, storyFrame.dreamRelationship].filter(Boolean).join(' · ')}
+                          {[displayStoryFrame.worldTitle, displayStoryFrame.dreamRelationship].filter(Boolean).join(' · ')}
                         </div>
                       ) : null}
-                      {storyFrame.worldSummary ? <div className="mt-3 text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)]">{storyFrame.worldSummary}</div> : null}
-                      {storyFrame.characterDreamIdentity || storyFrame.userDreamIdentity ? (
+                      {displayStoryFrame.worldSummary ? <div className="mt-3 text-[14px] leading-[2.1] tracking-[0.08em] text-[var(--paper)]">{displayStoryFrame.worldSummary}</div> : null}
+                      {displayStoryFrame.characterDreamIdentity || displayStoryFrame.userDreamIdentity ? (
                         <div className="mt-4 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
-                          {[storyFrame.characterDreamIdentity, storyFrame.userDreamIdentity].filter(Boolean).join(' / ')}
+                          {[displayStoryFrame.characterDreamIdentity, displayStoryFrame.userDreamIdentity].filter(Boolean).join(' / ')}
                         </div>
                       ) : null}
-                      {storyFrame.openingNode ? (
+                      {displayStoryFrame.openingNode ? (
                         <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">
-                          节点：{storyFrame.openingNode}
+                          节点：{displayStoryFrame.openingNode}
                         </div>
                       ) : null}
-                      {storyFrame.timeNode ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">时点：{storyFrame.timeNode}</div> : null}
-                      {storyFrame.currentCrisis ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">危机：{storyFrame.currentCrisis}</div> : null}
-                      {storyFrame.forbiddenRule ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em] text-[var(--mist)]">规则：{storyFrame.forbiddenRule}</div> : null}
-                      {storyFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>此幕目标：{storyFrame.immediateGoal}</div> : null}
-                      {storyFrame.storyObjective ? (
+                      {displayStoryFrame.immediateGoal ? <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>此幕目标：{displayStoryFrame.immediateGoal}</div> : null}
+                      {displayStoryFrame.storyObjective ? (
                         <div className="mt-2 text-[12px] leading-[2] tracking-[0.08em]" style={{ color: presentation.accent }}>
-                          主线：{storyFrame.storyObjective}
+                          主线：{displayStoryFrame.storyObjective}
                         </div>
                       ) : null}
                     </div>
@@ -2413,7 +2433,7 @@ export function DreamAppPage({
                       value={customInput}
                       onChange={(event) => setCustomInput(event.target.value)}
                       placeholder={act.choiceSet.custom.placeholder}
-                      className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-white caret-white outline-none placeholder:text-white/45"
+                      className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-[rgba(255,255,255,.96)] caret-white outline-none placeholder:text-white/65"
                     />
                     <div className="mt-4 text-[12px] leading-[2] tracking-[0.12em] text-[var(--mist)]">
                       这里输入的是你这一幕想怎么做、怎么说、想把梦推向哪边。
