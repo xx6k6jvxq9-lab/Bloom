@@ -18,6 +18,8 @@ export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOpti
     'Return 8-12 blocks and cover the full scene text. Do not shorten a 1500-character scene into a 300-character display summary.',
     'Use a readable short-novel rhythm: action, reaction, dialogue, pressure, turn.',
     'Avoid making every block an atmosphere line. At least half of the blocks should move the event or relationship forward.',
+    'Keep adjacent blocks causally connected so the scene reads like one continuous passage, not isolated pretty sentences.',
+    'Trim redundant setting explanation. Prioritize what the characters are doing, noticing, hiding, and risking right now.',
     'Do not add new plot branches that were not present in the scene. This step is layout and prose shaping, not a new generation pass.',
   ].join('\n');
 
