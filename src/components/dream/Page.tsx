@@ -1537,7 +1537,7 @@ export function DreamAppPage({
     if (mode === 'character') {
       setSelectedDomain('rift');
       setDreamDepth('deep');
-      setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'], mood: ['truth-barb'], tension: ['forbidden'] });
+      setSelectedTags({ ...defaultTagSelection, world: ['rift'], lead: ['character-lead'] });
       setConfirmPreview(null);
       setStage('confirm');
       return;
@@ -1552,7 +1552,7 @@ export function DreamAppPage({
     setSelectedTags((prev) => {
       const current = prev[category] ?? [];
       const group = dreamTagGroups.find((item) => item.category === category);
-      const isSingleSelect = category === 'world' || category === 'participants';
+      const isSingleSelect = category === 'world';
       const isUnlimitedDetailed = Boolean(group?.detailed);
       let next: string[];
       if (isSingleSelect) {

@@ -608,19 +608,19 @@ export const dreamTagGroups: DreamTagGroup[] = [
 
 export const defaultTagSelection: Record<DreamTagCategory, string[]> = {
   world: ['shared'],
-  genre: ['modern-romance'],
-  tension: ['late-reunion'],
-  drive: ['old-letter'],
-  mood: ['slow-heart'],
-  climate: ['rain-station'],
-  participants: ['double'],
-  faction: ['old-friend'],
-  camp: ['none-camp'],
-  identity: ['temporary-tenant'],
-  lead: ['balanced'],
-  intensity: ['medium'],
-  interaction: ['choice-driven'],
-  ending: ['shared-secret'],
+  genre: [],
+  tension: [],
+  drive: [],
+  mood: [],
+  climate: [],
+  participants: [],
+  faction: [],
+  camp: [],
+  identity: [],
+  lead: [],
+  intensity: [],
+  interaction: [],
+  ending: [],
 };
 
 function makeScenario(domainId: DreamDomainId, depth: DreamDepth): DreamScenario {

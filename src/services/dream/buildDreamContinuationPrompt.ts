@@ -58,6 +58,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'The selected choice must become the seed of the next scene: begin from what the user just did, then let the character react naturally.',
     'Continue with a natural 1500-1800 Chinese character novel scene built from action, object, dialogue, hesitation, pressure, and emotional subtext. Do not reset, summarize, or write only atmosphere.',
     'Let new information and relationship movement emerge from the scene instead of announcing them as required beats.',
+    'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
     'Dialogue should be short but information-rich, with Jinjiang/web-novel emotional clarity. Character emotion should be shown through behavior and decisions.',
     'narrative.pages[0].blocks must cover the full scene content in 8-12 blocks. Do not compress the scene into a short summary.',
