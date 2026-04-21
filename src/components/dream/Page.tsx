@@ -447,13 +447,13 @@ function DreamNarrativeBlocks({
             : presentation.layoutId === 'full-bleed-dialogue-card'
               ? 'border-l pl-5'
               : presentation.layoutId === 'soft-overlay-monologue'
-                ? 'rounded-[22px] px-4 py-4'
+                ? 'border-l pl-5'
                 : '';
         const narrativeShellStyle =
           presentation.layoutId === 'full-bleed-dialogue-card'
             ? { borderColor: presentation.frameBorder }
             : presentation.layoutId === 'soft-overlay-monologue'
-              ? { backgroundColor: presentation.accentSoft }
+              ? { borderColor: presentation.frameBorder }
               : undefined;
 
         if (block.type === 'framed-dialogue') {

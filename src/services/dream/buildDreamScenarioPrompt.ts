@@ -24,14 +24,15 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   const variation = buildDreamVariation(baseSeed);
   const novelQualityRules = [
     'Novel quality target: broad Chinese web-serial readability with Jinjiang-style emotional clarity, but do not imitate any specific living author.',
-    'Write each act as an actual 1500-1800 Chinese character scene from a short novel, not as a lyrical dream summary or abstract mood note.',
-    'Every act must contain a visible event, a concrete object or action, a relationship movement, a new piece of information or obstacle, and one small irreversible turn.',
-    'The first act must enact at least one selected drive tag as an on-page event. Do not leave the hook as background explanation.',
+    'Write each act as a natural 1500-1800 Chinese character novel scene, not as a checklist, outline, lyrical dream summary, or abstract mood note.',
+    'Let the scene grow from character action, dialogue, hesitation, misunderstanding, attraction, pressure, and small discoveries. The structure should be felt, not announced.',
+    'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
+    'The first act should open with an on-page moment that makes the chosen hook felt through action, object, or dialogue.',
     'Avoid empty dream cliches and repeated abstract words such as fate, echo, crack, aftertaste, destined, silence, and quiet air unless tied to a concrete action.',
-    'Use character behavior, choices, and short high-information dialogue to show emotion. Do not explain the relationship only through exposition.',
-    'Choices must be meaningfully different: one relationship-facing choice, one plot/truth-facing choice, and one risk/reversal-facing choice.',
+    'Use character behavior, micro-reactions, and short high-information dialogue to show emotion. Keep the emotional pull readable in a Jinjiang/web-novel way.',
+    'Choices must feel like three natural next moves the user might actually take, and each choice should lead to a different emotional or plot direction.',
     'narrative.pages[0].blocks must cover the full scene content. Do not compress the scene into a short summary.',
-    'For every act, progression.consequence must name the irreversible change, plotAdvance must name the mainline advancement, and tensionShift must name the relationship or conflict shift.',
+    'progression fields are internal summaries only. Do not let the scene read like it is fulfilling progression requirements.',
   ].join('\n');
 
   return `

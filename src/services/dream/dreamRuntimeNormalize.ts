@@ -203,20 +203,21 @@ function buildFallbackBlocks(scene: string, layoutId: string) {
 
   return grouped.slice(0, 12).map((text, index, array) => {
     const type = inferBlockType(text, index, array.length, layoutId);
+    const fallbackType = type === 'dialogue' || type === 'highlight-dialogue' || type === 'framed-dialogue' ? type : 'narration';
     return {
       id: `fallback-block-${index + 1}`,
-      type,
+      type: fallbackType,
       text,
-      speakerName: type === 'dialogue' || type === 'framed-dialogue' ? inferSpeakerName(text) : undefined,
+      speakerName: fallbackType === 'dialogue' || fallbackType === 'framed-dialogue' ? inferSpeakerName(text) : undefined,
       emphasis:
-        type === 'highlight-dialogue'
+        fallbackType === 'highlight-dialogue'
           ? 'high'
           : index === 0
             ? 'high'
             : index === array.length - 1
               ? 'low'
               : 'medium',
-      align: type === 'prompt' || type === 'highlight-dialogue' ? 'center' as const : 'left' as const,
+      align: fallbackType === 'highlight-dialogue' ? 'center' as const : 'left' as const,
     };
   });
 }
