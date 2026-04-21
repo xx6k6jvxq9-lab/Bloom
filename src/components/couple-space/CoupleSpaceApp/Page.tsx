@@ -1208,7 +1208,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                               <button
                                 key={color}
                                 onClick={() => setSelectedEnvelopeColor(color)}
-                                className={`aspect-square rounded-full border-2 transition-all ${selectedEnvelopeColor === color ? 'border-zinc-800 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
+                                className={`aspect-square rounded-full border-2 transition-all ${selectedEnvelopeColor === color ? 'border-zinc-300 scale-110 shadow-md shadow-zinc-200/70' : 'border-transparent hover:scale-105'}`}
                                 style={{ backgroundColor: color }}
                               />
                             ))}
@@ -1218,7 +1218,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                 handleUpdateCoupleSpace({ loveLetterEnvelopeColor: selectedEnvelopeColor });
                                 setActiveModal(null);
                               }}
-                              className="w-full bg-zinc-800 text-white py-3 rounded-xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform"
+                              className="w-full bg-zinc-100 text-zinc-700 py-3 rounded-xl font-bold shadow-sm shadow-zinc-200/60 active:scale-95 transition-transform"
                             >
                               确定
                             </button>
@@ -1232,7 +1232,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                             <select 
                               value={selectedPaperTexture}
                               onChange={(e) => setSelectedPaperTexture(e.target.value as any)}
-                              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-pink-500 appearance-none"
+                              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-zinc-300 appearance-none"
                             >
                               <option value="default">默认 - 经典信纸</option>
                               <option value="vintage">复古 - 做旧质感</option>
@@ -1248,7 +1248,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                               handleUpdateCoupleSpace({ loveLetterPaperTexture: selectedPaperTexture });
                               setActiveModal(null);
                             }}
-                            className="w-full bg-zinc-800 text-white py-3 rounded-xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform"
+                            className="w-full bg-zinc-100 text-zinc-700 py-3 rounded-xl font-bold shadow-sm shadow-zinc-200/60 active:scale-95 transition-transform"
                           >
                             确定
                           </button>
@@ -1261,9 +1261,9 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                             type="date" 
                             value={coupleSpace.anniversaryDate ? new Date(coupleSpace.anniversaryDate).toISOString().split('T')[0] : ''}
                             onChange={(e) => handleUpdateCoupleSpace({ anniversaryDate: e.target.value ? new Date(e.target.value).getTime() : null })}
-                            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-800 outline-none focus:border-pink-500 text-lg"
+                            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-800 outline-none focus:border-zinc-300 text-lg"
                           />
-                          <button onClick={() => setActiveModal(null)} className="w-full bg-zinc-800 text-white py-3 rounded-xl font-bold shadow-lg shadow-zinc-800/20">确定</button>
+                          <button onClick={() => setActiveModal(null)} className="w-full bg-zinc-100 text-zinc-700 py-3 rounded-xl font-bold shadow-sm shadow-zinc-200/60">确定</button>
                         </div>
                       )}
 
@@ -1316,7 +1316,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                       setActiveModal(null);
                                     }
                                   }}
-                                  className="flex-1 bg-zinc-800 text-white py-2.5 rounded-xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform"
+                                  className="flex-1 bg-zinc-100 text-zinc-700 py-2.5 rounded-xl font-bold shadow-sm shadow-zinc-200/60 active:scale-95 transition-transform"
                                 >
                                   完成裁剪
                                 </button>
@@ -1330,7 +1330,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                 value={tempInput}
                                 onChange={e => setTempInput(e.target.value)}
                                 placeholder="支持链接、Markdown或HTML图片"
-                                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-pink-500"
+                                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-zinc-300"
                               />
                               <div className="flex gap-2">
                                 <button 
@@ -1340,7 +1340,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                                     handleUpdateCoupleSpace(buildCoupleSpaceImageUpdates(activeModal, finalUrl));
                                     setActiveModal(null);
                                   }}
-                                  className="flex-1 bg-zinc-800 text-white py-3 rounded-xl font-bold shadow-lg shadow-zinc-800/20 active:scale-95 transition-transform"
+                                  className="flex-1 bg-zinc-100 text-zinc-700 py-3 rounded-xl font-bold shadow-sm shadow-zinc-200/60 active:scale-95 transition-transform"
                                 >
                                   保存
                                 </button>
