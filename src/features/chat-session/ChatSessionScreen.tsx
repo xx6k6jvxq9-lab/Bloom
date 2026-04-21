@@ -2292,7 +2292,7 @@ export function ChatSessionScreen({
                   type="button"
                   onClick={() => setShowActionInput(prev => !prev)}
                   className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[12px] font-medium transition-colors ${
-                    showActionInput ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-100'
+                    showActionInput ? 'bg-zinc-100 text-zinc-700 shadow-inner' : 'text-zinc-500 hover:bg-zinc-100'
                   }`}
                   title="场景动作描述"
                   aria-label="场景动作描述"
