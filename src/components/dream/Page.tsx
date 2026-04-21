@@ -556,6 +556,63 @@ function DreamNarrativeBlocks({
           );
         }
 
+        if (block.type === 'strikethrough') {
+          return (
+            <div key={block.id} className={`border-l pl-4 ${alignClass}`} style={{ borderColor: presentation.frameBorder }}>
+              <div className="whitespace-pre-line text-[16px] font-[300] leading-[2.25] opacity-70 line-through" style={{ color: presentation.accent }}>
+                {block.text.replace(/^~~|~~$/g, '')}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'annotation') {
+          return (
+            <div key={block.id} className="rounded-[16px] border px-4 py-3" style={{ borderColor: presentation.frameBorder, backgroundColor: 'rgba(255,255,255,.02)' }}>
+              <div className="text-[10px] tracking-[0.28em] mb-2" style={{ color: presentation.accent }}>档案批注</div>
+              <div className="whitespace-pre-line text-[14px] font-[300] leading-[2.1]" style={{ color: 'var(--paper-60)' }}>
+                {block.text.replace(/^注：/, '')}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'verdict') {
+          return (
+            <div key={block.id} className="rounded-[18px] border px-4 py-4 text-center" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
+              <div className="text-[10px] tracking-[0.32em] mb-2" style={{ color: presentation.accent }}>裁定</div>
+              <div className="whitespace-pre-line text-[15px] font-[400] leading-[2.1]" style={{ color: presentation.accent }}>
+                {block.text}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'redacted') {
+          return (
+            <div key={block.id} className="rounded-[16px] border px-4 py-4" style={{ borderColor: presentation.frameBorder, backgroundColor: 'rgba(255,255,255,.02)' }}>
+              <div className="text-[10px] tracking-[0.28em] mb-2" style={{ color: presentation.accent }}>遮蔽记录</div>
+              <div className="whitespace-pre-line text-[15px] font-[300] leading-[2.2]" style={{ color: 'var(--paper)' }}>
+                {block.text}
+              </div>
+            </div>
+          );
+        }
+
+        if (block.type === 'echo-line') {
+          const [mainLine, echoLine] = block.text.split('\n');
+          return (
+            <div key={block.id} className={`px-1 ${alignClass}`}>
+              <div className="whitespace-pre-line text-[17px] font-[300] leading-[2.25]">{mainLine}</div>
+              {echoLine ? (
+                <div className="mt-2 text-[13px] leading-[2] opacity-45" style={{ color: presentation.accent }}>
+                  {echoLine}
+                </div>
+              ) : null}
+            </div>
+          );
+        }
+
         return (
           <div key={block.id} className={`${narrativeShellClass}`} style={narrativeShellStyle}>
             <div className={`whitespace-pre-line font-[300] text-[17px] leading-[2.35] ${alignClass}`}>

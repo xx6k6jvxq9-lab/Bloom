@@ -37,6 +37,11 @@ ${narrativeQualityRules}
    - framed-dialogue
    - aside
    - prompt
+   - strikethrough
+   - annotation
+   - verdict
+   - redacted
+   - echo-line
 4. 一整次梦只使用当前这一套 layout 和 theme，不要混入别的风格。
 5. 这是单幕正文，所以 pages 数量固定为 1。
 6. 每个 block 的 text 必须是可直接展示的正文。

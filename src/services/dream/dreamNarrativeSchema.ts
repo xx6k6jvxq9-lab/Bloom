@@ -4,7 +4,12 @@ export type DreamNarrativeBlockType =
   | 'highlight-dialogue'
   | 'framed-dialogue'
   | 'aside'
-  | 'prompt';
+  | 'prompt'
+  | 'strikethrough'
+  | 'annotation'
+  | 'verdict'
+  | 'redacted'
+  | 'echo-line';
 
 export type DreamNarrativeBlock = {
   id: string;

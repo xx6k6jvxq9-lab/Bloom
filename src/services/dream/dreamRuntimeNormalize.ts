@@ -210,26 +210,67 @@ function inferBlockType(
   return 'narration';
 }
 
+function decorateFallbackText(
+  text: string,
+  type: DreamNarrativeBlock['type'],
+  index: number,
+  total: number,
+) {
+  if (type === 'strikethrough') {
+    return `~~${text}~~`;
+  }
+  if (type === 'annotation') {
+    return `注：${text}`;
+  }
+  if (type === 'verdict') {
+    return text.replace(/[。！？]+$/u, '');
+  }
+  if (type === 'redacted') {
+    const cut = Math.max(2, Math.min(8, Math.floor(text.length / 5)));
+    return `${text.slice(0, Math.max(0, text.length - cut))}${'█'.repeat(cut)}`;
+  }
+  if (type === 'echo-line') {
+    const excerpt = text.slice(0, Math.min(22, text.length)).trim();
+    return excerpt ? `${text}\n${excerpt}` : text;
+  }
+  return text;
+}
+
 function buildFallbackBlocks(scene: string, layoutId: string) {
   const fragments = normalizeSceneFragments(scene);
   const grouped = mergeFragmentsForRange(fragments, 8, 12);
 
   return grouped.slice(0, 12).map((text, index, array) => {
-    const type = inferBlockType(text, index, array.length, layoutId);
+    let type = inferBlockType(text, index, array.length, layoutId);
+    if (layoutId === 'full-bleed-dialogue-card' && index === array.length - 1 && text.length <= 80) {
+      type = 'verdict';
+    } else if (layoutId === 'soft-overlay-monologue' && index === array.length - 2 && text.length <= 84) {
+      type = 'annotation';
+    } else if (layoutId === 'highlight-line-break' && index === array.length - 1 && text.length <= 54) {
+      type = 'echo-line';
+    } else if (layoutId === 'floating-aside-stack' && index === 1 && text.length <= 64) {
+      type = 'strikethrough';
+    } else if (layoutId === 'cinematic-caption-stream' && index === array.length - 2 && text.length <= 90) {
+      type = 'redacted';
+    }
+    const renderedText = decorateFallbackText(text, type, index, array.length);
     return {
       id: `fallback-block-${index + 1}`,
       type,
-      text,
+      text: renderedText,
       speakerName: type === 'dialogue' || type === 'framed-dialogue' ? inferSpeakerName(text) : undefined,
       emphasis:
-        type === 'highlight-dialogue'
+        type === 'highlight-dialogue' || type === 'verdict'
           ? 'high'
           : index === 0
             ? 'high'
             : index === array.length - 1
               ? 'low'
               : 'medium',
-      align: type === 'prompt' || type === 'highlight-dialogue' ? 'center' as const : 'left' as const,
+      align:
+        type === 'prompt' || type === 'highlight-dialogue' || type === 'verdict'
+          ? 'center' as const
+          : 'left' as const,
     };
   });
 }
