@@ -72,6 +72,14 @@ function normalizeAvatarLibraryEntries(value: unknown): CharacterAvatarLibraryEn
   return entries.length > 0 ? entries : undefined;
 }
 
+function normalizeReplyLanguageMode(value: unknown): Character['replyLanguageMode'] {
+  return value === 'chinese-with-native-flavor'
+    || value === 'native-first'
+    || value === 'fixed'
+    ? value
+    : 'follow-user';
+}
+
 function createLegacyShortTermMemoryEntry(character: Character, content: string): MemoryLibraryEntry {
   const createdAt = Number.isFinite(character.lastTime) ? Math.max(0, Math.floor(character.lastTime as number)) : Date.now();
   const date = new Date(createdAt);
@@ -101,6 +109,9 @@ export function migrateCharacterShape(character: Character): Character {
     ?? normalizeOptionalText(character.memorySummary);
   const shortTermSummary = normalizeOptionalText(character.shortTermSummary);
   const sceneHints = normalizeSceneHints(character.sceneHints);
+  const replyLanguageMode = normalizeReplyLanguageMode(character.replyLanguageMode);
+  const nativeLanguage = normalizeOptionalText(character.nativeLanguage);
+  const fixedReplyLanguage = normalizeOptionalText(character.fixedReplyLanguage);
   const avatarLibraryEntries = normalizeAvatarLibraryEntries(character.avatarLibrary?.entries);
   let memoryLibraryEntries = normalizeMemoryLibraryEntries(character.memoryLibraryEntries);
   if (
@@ -120,6 +131,9 @@ export function migrateCharacterShape(character: Character): Character {
     boundaryPack,
     extendedLore,
     sceneHints,
+    replyLanguageMode,
+    nativeLanguage,
+    fixedReplyLanguage,
     shortTermSummary,
     longTermMemoryProfile,
     memoryLibraryEntries,

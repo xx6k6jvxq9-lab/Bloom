@@ -1,4 +1,4 @@
-import type { ChatGroup, ChatHistory, ChatMessage } from '../../types';
+import type { ChatGroup, ChatHistory, ChatMessage, GroupTopicState } from '../../types';
 import { buildGroupFactTraceRecords } from '../../services/relationship-context/buildGroupFactTraceRecords';
 import { buildDirectFactTraceRecords } from '../../services/relationship-context/buildDirectFactTraceRecords';
 import { buildDirectRelationshipWaveRecords } from '../../services/relationship-context/buildDirectRelationshipWaveRecords';
@@ -14,6 +14,7 @@ export type PersistedGroupSession = {
   lastTime?: number;
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
+  topicState?: GroupTopicState;
 };
 
 export type PersistedChatHistoryData = {
@@ -186,6 +187,7 @@ export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, Pe
       history,
       lastMessage: group.lastMessage,
       lastTime: group.lastTime,
+      topicState: group.topicState,
       relationshipWaves: buildGroupRelationshipWaveRecords({
         groupId: group.id,
         messages: history,
@@ -241,6 +243,7 @@ export function extractGroupSessionsWithFallback(
         history,
         lastMessage: group.lastMessage,
         lastTime: group.lastTime,
+        topicState: group.topicState,
         relationshipWaves: buildGroupRelationshipWaveRecords({
           groupId: group.id,
           messages: history,
@@ -280,6 +283,7 @@ export function mergeGroupSessionsIntoChatGroups(
       lastTime: session.lastTime,
       relationshipWaves: session.relationshipWaves || [],
       factTraces: session.factTraces || [],
+      topicState: session.topicState,
     };
   });
 }
