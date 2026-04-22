@@ -671,6 +671,7 @@ export type ChatMessage = {
   senderCharacterId?: string;
   isPending?: boolean;
   isRecalled?: boolean;
+  isEdited?: boolean;
   isFavorited?: boolean;
   transferStatus?: 'pending' | 'received' | 'rejected';
   transferId?: string;
@@ -709,10 +710,23 @@ export type GroupTopicState = {
   anchor: string;
   startedBy: 'user' | 'character';
   startedById?: string;
+  lastSpeaker: 'user' | 'character';
+  lastSpeakerId?: string;
+  lastSpeakerName?: string;
+  lastBeat?: string;
+  replyTargetLabel?: string;
+  replyTargetRole?: 'user' | 'model';
   startedAt: number;
   lastUpdatedAt: number;
   heat: 'low' | 'medium' | 'high';
   phase: 'opening' | 'active' | 'cooling' | 'closing';
+};
+
+export type GroupLongTermMemory = {
+  atmosphere?: string;
+  recurringDynamics?: string;
+  sharedHistory?: string;
+  memberRoles?: Record<string, string>;
 };
 
 export type MomentComment = {
@@ -931,6 +945,8 @@ export type ChatGroup = {
   history?: ChatMessage[];
   topicState?: GroupTopicState;
   groupShortTermSummary?: string;
+  groupMemberPerspectiveSummaries?: Record<string, string>;
+  groupLongTermMemory?: GroupLongTermMemory;
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
 };

@@ -1,7 +1,11 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
-import { deriveGroupShortTermSummaryFromHistory } from '../../services/group-chat/groupShortTermMemory';
+import {
+  deriveGroupMemberPerspectiveSummariesFromHistory,
+  deriveGroupShortTermSummaryFromHistory,
+} from '../../services/group-chat/groupShortTermMemory';
+import { deriveGroupLongTermMemoryFromHistory } from '../../services/group-chat/groupLongTermMemory';
 import { deriveGroupTopicStateFromHistory } from '../../services/group-chat/topicState';
 import { GroupChatSessionScreen } from './GroupChatSessionScreen';
 
@@ -71,6 +75,9 @@ export function GroupChatSessionContainer({
               previousHistory: item.history || [],
               nextHistory: resolvedHistory,
             });
+            const memberNames = Object.fromEntries(
+              members.map((member) => [member.id, member.name]),
+            );
 
             return {
               ...item,
@@ -79,6 +86,18 @@ export function GroupChatSessionContainer({
               groupShortTermSummary: deriveGroupShortTermSummaryFromHistory({
                 topicState,
                 nextHistory: resolvedHistory,
+              }),
+              groupMemberPerspectiveSummaries: deriveGroupMemberPerspectiveSummariesFromHistory({
+                memberIds: item.memberIds,
+                nextHistory: resolvedHistory,
+              }),
+              groupLongTermMemory: deriveGroupLongTermMemoryFromHistory({
+                history: resolvedHistory,
+                memberIds: item.memberIds,
+                memberNames,
+                previous: item.groupLongTermMemory,
+                backgroundSummary: item.backgroundSummary,
+                publicFacts: item.publicFacts,
               }),
               lastMessage: resolvedHistory[resolvedHistory.length - 1]?.text || '',
               lastTime: resolvedHistory.length > 0
@@ -101,6 +120,8 @@ export function GroupChatSessionContainer({
                 history: [],
                 topicState: undefined,
                 groupShortTermSummary: undefined,
+                groupMemberPerspectiveSummaries: undefined,
+                groupLongTermMemory: undefined,
                 lastMessage: '',
                 lastTime: item.lastTime || Date.now(),
               }

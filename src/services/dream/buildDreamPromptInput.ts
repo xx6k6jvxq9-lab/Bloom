@@ -181,7 +181,7 @@ function buildStoryFrameGuidance(selectedTags: Record<DreamTagCategory, string[]
   return 'Only include storyFrame fields that are truly needed by the selected tags and the immediate opening scene. Leave unnecessary fields empty instead of fabricating extra setting.';
 }
 
-function resolveVariationTone(selectedTags: Record<DreamTagCategory, string[]>) {
+function resolveVariationTone(selectedTags: Record<DreamTagCategory, string[]>): 'grounded' | 'heightened' {
   const groundedTags = new Set([
     'modern-romance',
     'healing-life',

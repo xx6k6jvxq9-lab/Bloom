@@ -1,4 +1,4 @@
-import { ChevronRight, Palette, Search } from 'lucide-react';
+import { Brain, ChevronRight, Palette, Search } from 'lucide-react';
 import { GROUP_SETTINGS_PLACEHOLDERS, GROUP_SETTINGS_SECTIONS } from '../constants';
 import type { GroupSettingsFormState } from '../types';
 
@@ -8,6 +8,7 @@ type GroupProfileSectionProps = {
   onOpenSearch: () => void;
   onOpenProfile: () => void;
   onOpenCustomization: () => void;
+  onOpenMemory: () => void;
 };
 
 function TextRow({
@@ -44,6 +45,7 @@ export function GroupProfileSection({
   onOpenSearch,
   onOpenProfile,
   onOpenCustomization,
+  onOpenMemory,
 }: GroupProfileSectionProps) {
   return (
     <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
@@ -83,6 +85,24 @@ export function GroupProfileSection({
             <div className="text-[15px] text-zinc-900">群自定义</div>
             <div className="mt-1 line-clamp-2 text-[13px] text-zinc-500">
               管理群聊天背景、群气泡颜色和群头衔设置
+            </div>
+          </div>
+        </div>
+        <ChevronRight size={16} className="text-zinc-300" />
+      </button>
+      <Divider />
+
+      <button
+        type="button"
+        onClick={onOpenMemory}
+        className="flex w-full items-center justify-between px-4 py-4 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <Brain size={16} className="text-zinc-400" />
+          <div className="min-w-0">
+            <div className="text-[15px] text-zinc-900">群聊记忆</div>
+            <div className="mt-1 line-clamp-2 text-[13px] text-zinc-500">
+              查看和清空群短期记忆、角色群内视角与长期群记忆
             </div>
           </div>
         </div>

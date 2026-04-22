@@ -65,6 +65,8 @@ import { evaluateCoupleSpaceInitiativeAutoCheckGate } from './services/ai/couple
 import { applyCoupleSpaceInitiativeRunResult } from './services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
 import { sanitizeGroupMemberBadges } from './features/group-settings/memberBadges';
 import { sanitizeGroupMemberBubbleColors } from './features/group-settings/groupBubbleColors';
+import { sanitizeGroupMemberPerspectiveSummaries } from './services/group-chat/groupShortTermMemory';
+import { sanitizeGroupLongTermMemory } from './services/group-chat/groupLongTermMemory';
 import {
   acceptCoupleSpaceInviteState,
   buildPersistableCoupleSpacePayload,
@@ -429,6 +431,14 @@ function sanitizeChatGroupsWithCharacters(
       groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
         ? group.groupShortTermSummary.trim() || undefined
         : undefined,
+      groupMemberPerspectiveSummaries: sanitizeGroupMemberPerspectiveSummaries(
+        group.groupMemberPerspectiveSummaries,
+        Array.isArray(group.memberIds) ? group.memberIds : [],
+      ),
+      groupLongTermMemory: sanitizeGroupLongTermMemory(
+        group.groupLongTermMemory,
+        Array.isArray(group.memberIds) ? group.memberIds : [],
+      ),
       activeWorldBookIds: Array.isArray(group.activeWorldBookIds)
         ? group.activeWorldBookIds.filter((worldBookId): worldBookId is string => typeof worldBookId === 'string')
         : [],

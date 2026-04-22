@@ -26,6 +26,11 @@ export type GroupChatSceneInput = {
     temporalContext?: string;
     groupSceneHint?: string;
     groupShortTermSummary?: string;
+    groupMemberPerspectiveSummary?: string;
+    groupLongTermAtmosphere?: string;
+    groupRecurringDynamics?: string;
+    groupSharedHistory?: string;
+    speakerLongTermGroupRole?: string;
     backgroundSummary?: string;
     memberRelationshipState?: string;
     currentScene?: string;
@@ -471,6 +476,12 @@ function formatGroupTemporalStatePrompt(
     `[能量状态] ${energyLabelMap[state.energyState]}`,
     `[社交状态] ${socialLabelMap[state.socialState]}`,
     `[注意力状态] ${attentionLabelMap[state.attentionState]}`,
+    `[Light personal presence] ${state.presenceCue.currentActivity}`,
+    `[Presence use] ${state.presenceCue.attentionNote}`,
+    '[Presence boundary] Let this affect length, timing, and tone. Do not mention being busy, just arriving, or checking the group unless it naturally fits the current message; avoid turning group chat into status reporting.',
+    state.interactionGapState.minutesSinceLastGroupChat !== null && state.interactionGapState.minutesSinceLastGroupChat > 90
+      ? '[Group silence handling] The group has been quiet for a while, so do not force a stale topic. Re-enter lightly or shift only if it fits.'
+      : '',
     `[关系牵引] ${pullLabelMap[state.relationshipPull]}`,
     `[场景动量] ${momentumLabelMap[state.sceneMomentum]}`,
     state.topicHeatState.lastTopicAnchor ? `[最近话题锚点] ${state.topicHeatState.lastTopicAnchor}` : '',
@@ -541,6 +552,11 @@ export function buildGroupChatSceneInput(
       temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
       groupSceneHint: characterContext.sceneHints?.groupChat,
       groupShortTermSummary: options.group?.groupShortTermSummary?.trim() || undefined,
+      groupMemberPerspectiveSummary: options.group?.groupMemberPerspectiveSummaries?.[options.speaker.id]?.trim() || undefined,
+      groupLongTermAtmosphere: options.group?.groupLongTermMemory?.atmosphere?.trim() || undefined,
+      groupRecurringDynamics: options.group?.groupLongTermMemory?.recurringDynamics?.trim() || undefined,
+      groupSharedHistory: options.group?.groupLongTermMemory?.sharedHistory?.trim() || undefined,
+      speakerLongTermGroupRole: options.group?.groupLongTermMemory?.memberRoles?.[options.speaker.id]?.trim() || undefined,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,
       currentScene: options.group?.currentScene?.trim() || undefined,

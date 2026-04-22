@@ -427,6 +427,7 @@ export function ChatSessionScreen({
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
@@ -506,6 +507,8 @@ export function ChatSessionScreen({
     sendInnerVoiceProbe,
     sendSpeechTranscript,
     finalizeVoiceCall,
+    editMessageAt,
+    regenerateLatestReplyAt,
     recallMessageAt,
     deleteMessageAt,
     deleteSelectedMessages: deleteSelectedMessagesFromRuntime,
@@ -547,12 +550,60 @@ export function ChatSessionScreen({
   const latestUserMessageIndex = [...history].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
     message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)
   ))?.index;
+  const getLatestDirectModelSegment = useCallback(() => {
+    let end = -1;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const message = history[index];
+      if (message.isSystem || message.isRecalled) continue;
+      if (message.role !== 'model') return null;
+      end = index;
+      break;
+    }
+    if (end < 0) return null;
+    let start = end;
+    for (let index = end - 1; index >= 0; index -= 1) {
+      const message = history[index];
+      if (message.role !== 'model' || message.isSystem || message.isRecalled) break;
+      start = index;
+    }
+    return { start, end };
+  }, [history]);
+  const isEditableMessage = useCallback((message: ChatMessage | null | undefined) => (
+    !!message
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.imageUrl
+    && !message.audioUrl
+    && !message.location
+    && !message.isVoiceCall
+    && !message.sharedPost
+    && !message.text.startsWith('[COUPLE_SPACE_INVITE]')
+    && !!message.text.trim()
+  ), []);
+  const canRegenerateMessage = useCallback((index: number, message: ChatMessage | null | undefined) => {
+    if (!message || message.role !== 'model' || message.isSystem || message.isRecalled || isLoading) {
+      return false;
+    }
+    const segment = getLatestDirectModelSegment();
+    return !!segment && index >= segment.start && index <= segment.end;
+  }, [getLatestDirectModelSegment, isLoading]);
   const showManualReplyButton = !character.autoReplyEnabled;
   const canUseManualSpeakButton = !isLoading;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
   const sendCurrentText = useCallback(async () => {
     const speechText = input.trim();
     const actionText = actionInput.trim();
+    if (editingMessageIndex !== null) {
+      if (!speechText) {
+        return;
+      }
+      editMessageAt(editingMessageIndex, speechText);
+      setEditingMessageIndex(null);
+      setInput('');
+      setActionInput('');
+      setShowActionInput(false);
+      return;
+    }
     if (!speechText && !actionText) {
       return;
     }
@@ -564,7 +615,7 @@ export function ChatSessionScreen({
       setActionInput('');
       setShowActionInput(false);
     }
-  }, [actionInput, activeConfig, handleSend, input]);
+  }, [actionInput, activeConfig, editMessageAt, editingMessageIndex, handleSend, input]);
 
   const drawBlocksRuntimeContext = useMemo<DrawBlocksCharacterRuntimeContext>(() => {
     const temporalState = buildCharacterTemporalState({
@@ -960,6 +1011,38 @@ export function ChatSessionScreen({
 
     quoteReplyAt(contextMenuMessageIndex);
     closeContextMenu();
+  };
+
+  const handleStartEdit = () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !isEditableMessage(contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    setEditingMessageIndex(contextMenuMessageIndex);
+    setInput(contextMenuMessage.text);
+    setActionInput('');
+    setShowActionInput(false);
+    setReplyingTo(null);
+    setIsVoiceMode(false);
+    closeContextMenu();
+    requestAnimationFrame(() => inputTextareaRef.current?.focus());
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageIndex(null);
+    setInput('');
+    setActionInput('');
+  };
+
+  const handleRegenerate = async () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    await regenerateLatestReplyAt(contextMenuMessageIndex);
   };
 
   const handleForward = () => {
@@ -1782,6 +1865,7 @@ export function ChatSessionScreen({
                                     {showChatMessageTime && (
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
+                                    {msg.isEdited && <span className="ml-1">已编辑</span>}
                                     {msg.role === 'user' && (
                                       <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
                                     )}
@@ -1842,6 +1926,7 @@ export function ChatSessionScreen({
                                     {showChatMessageTime && (
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
+                                    {msg.isEdited && <span className="ml-1">已编辑</span>}
                                     {msg.role === 'user' && (
                                       <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
                                     )}
@@ -1948,6 +2033,7 @@ export function ChatSessionScreen({
                                       {showChatMessageTime && (
                                         <span>{formatChatMessageTime(msg.timestamp)}</span>
                                       )}
+                                      {msg.isEdited && <span className="ml-1">已编辑</span>}
                                       {msg.role === 'user' && (
                                         <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
                                       )}
@@ -2245,7 +2331,19 @@ export function ChatSessionScreen({
             </button>
           </div>
         )}
-        {showActionDescriptionButton && showActionInput && !isVoiceMode && (
+        {editingMessageIndex !== null && history[editingMessageIndex] && (
+          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-[13px] text-amber-700 backdrop-blur-sm">
+            <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
+              <Pencil size={14} className="shrink-0" />
+              <span className="shrink-0 font-medium">编辑消息</span>
+              <span className="truncate">{history[editingMessageIndex]?.text}</span>
+            </div>
+            <button onClick={handleCancelEdit} className="chat-footer-reply-close-button p-1 hover:bg-amber-100 rounded-full shrink-0">
+              <X size={14} className="chat-footer-reply-close-icon" />
+            </button>
+          </div>
+        )}
+        {showActionDescriptionButton && editingMessageIndex === null && showActionInput && !isVoiceMode && (
           <div className={`chat-footer-action-input-shell flex items-start gap-2 rounded-2xl border px-3 py-2 ${
             footerControlTone.inputShell
           }`}>
@@ -2312,7 +2410,7 @@ export function ChatSessionScreen({
             <div className={`chat-footer-input-shell flex-1 min-h-9 border rounded-2xl px-3 py-1.5 focus-within:border-blue-500 transition-colors flex items-end gap-2 ${
               footerControlTone.inputShell
             }`}>
-              {showActionDescriptionButton && (
+              {showActionDescriptionButton && editingMessageIndex === null && (
                 <button
                   type="button"
                   onClick={() => setShowActionInput(prev => !prev)}
@@ -2961,6 +3059,24 @@ export function ChatSessionScreen({
                 >
                   <MessageSquarePlus size={20} />
                 </button>
+                {isEditableMessage(contextMenuMessage) && (
+                  <button
+                    onClick={handleStartEdit}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="编辑"
+                  >
+                    <Pencil size={20} />
+                  </button>
+                )}
+                {canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage) && (
+                  <button
+                    onClick={() => void handleRegenerate()}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="重回"
+                  >
+                    <RefreshCw size={20} />
+                  </button>
+                )}
                 {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (
                   <button 
                     onClick={handleRecall}

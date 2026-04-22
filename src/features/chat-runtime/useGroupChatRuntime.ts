@@ -13,10 +13,18 @@ import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
+import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { computeGroupParticipationBonus, shouldUseActivityFloor } from './groupParticipationHeuristics';
+import {
+  buildGroupSpeechActInstruction,
+  computeGroupPresenceParticipationWeight,
+  computePerspectiveReactionWeight,
+  createGroupConversationPlan,
+  getGroupSpeechActForPlanPosition,
+} from './groupConversationPlan';
 import { resolveGroupReplyIntent, type GroupReplyIntent } from './groupIntentResolver';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 
@@ -36,6 +44,8 @@ type UseGroupChatRuntimeArgs = {
     manualReplyEnabled?: ChatGroup['manualReplyEnabled'];
     topicState?: ChatGroup['topicState'];
     groupShortTermSummary?: ChatGroup['groupShortTermSummary'];
+    groupMemberPerspectiveSummaries?: ChatGroup['groupMemberPerspectiveSummaries'];
+    groupLongTermMemory?: ChatGroup['groupLongTermMemory'];
   };
   history: ChatMessage[];
   setHistory: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -66,6 +76,7 @@ type UseGroupChatRuntimeResult = {
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
+  regenerateLatestReplyAt: (index: number) => Promise<boolean>;
   requestManualReply: () => Promise<void>;
   maybeOpenScene: () => Promise<void>;
   reactToNoticeUpdate: (params: {
@@ -256,45 +267,6 @@ function normalizeGeneratedReply(text: string, speaker: Character): string {
 
 function buildFailureText(detail: string): string {
   return `[\u7cfb\u7edf\u63d0\u793a] \u7fa4\u804a\u56de\u590d\u5931\u8d25\uff1a${detail}`;
-}
-
-function getManualReplyTargetCount(memberCount: number): number {
-  if (memberCount <= 1) return memberCount;
-  const totalPeopleIncludingUser = memberCount + 1;
-  if (totalPeopleIncludingUser >= 8) {
-    return Math.min(memberCount, 5);
-  }
-  if (totalPeopleIncludingUser >= 5) {
-    return Math.min(memberCount, 3);
-  }
-  return Math.min(memberCount, 2);
-}
-
-function getManualReplySpeechActInstruction(params: {
-  index: number;
-  totalCount: number;
-  hasExistingTopic: boolean;
-}): string {
-  const actByPosition = params.index === 0
-    ? (params.hasExistingTopic ? 'topic_followup' : 'topic_starter')
-    : params.index === params.totalCount - 1
-      ? 'closing_or_shift'
-      : params.index % 3 === 1
-        ? 'echo_tease_or_side_comment'
-        : 'interrupt_or_add_angle';
-
-  const instructionByAct: Record<string, string> = {
-    topic_starter: 'Speech act: start a small natural group-chat topic from your current state, time, mood, or group context. Do not make it formal.',
-    topic_followup: 'Speech act: continue the current shared topic with one specific angle. Do not answer everything or summarize.',
-    echo_tease_or_side_comment: 'Speech act: react like a real group member: follow the vibe, lightly tease, side-comment, or stir the room if it fits your character.',
-    interrupt_or_add_angle: 'Speech act: cut in briefly with a different angle, pushback, doubt, clarification, or a small personal reaction.',
-    closing_or_shift: 'Speech act: either leave a short hook for others, gently cool the topic, or shift the angle if the current topic is getting thin.',
-  };
-
-  return [
-    instructionByAct[actByPosition],
-    'Keep it short and character-specific. Avoid sounding like you are taking turns to answer a question.',
-  ].join('\n');
 }
 
 function getMessageMainText(message: ChatMessage): string {
@@ -964,6 +936,17 @@ export function useGroupChatRuntime({
     return weightedMembers[weightedMembers.length - 1]?.member ?? null;
   }, []);
 
+  const getPresenceParticipationWeight = useCallback((member: Character, currentHistory: ChatMessage[]): number => {
+    const temporalState = buildCharacterTemporalState({
+      characterId: member.id,
+      perception,
+      directChatHistory,
+      groupMessages: currentHistory,
+    });
+
+    return computeGroupPresenceParticipationWeight(temporalState);
+  }, [directChatHistory, perception]);
+
   const generateMessageForSpeaker = useCallback(async (params: {
     speaker: Character;
     currentHistory: ChatMessage[];
@@ -998,6 +981,8 @@ export function useGroupChatRuntime({
                 publicFacts: groupMeta.publicFacts,
                 topicState: groupMeta.topicState,
                 groupShortTermSummary: groupMeta.groupShortTermSummary,
+                groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
+                groupLongTermMemory: groupMeta.groupLongTermMemory,
               }
             : undefined,
           userName,
@@ -1116,6 +1101,8 @@ export function useGroupChatRuntime({
     groupMeta?.publicFacts,
     groupMeta?.topicState,
     groupMeta?.groupShortTermSummary,
+    groupMeta?.groupMemberPerspectiveSummaries,
+    groupMeta?.groupLongTermMemory,
     members,
     userName,
     directChatHistory,
@@ -1265,6 +1252,7 @@ export function useGroupChatRuntime({
     currentHistory: ChatMessage[],
     interactionId: number,
     forcedReplyTo?: ChatMessage['replyTo'] | null,
+    speechActInstruction?: string,
   ): Promise<ChatMessage[]> => {
     try {
       const response = await generateMessageForSpeaker({
@@ -1272,6 +1260,7 @@ export function useGroupChatRuntime({
         currentHistory,
         mode: 'invited',
         replyTarget: forcedReplyTo,
+        speechActInstruction,
       });
 
       if (
@@ -1480,6 +1469,7 @@ export function useGroupChatRuntime({
     appendSpeakerMessage,
     clearDelayedSpeakerTimer,
     generateMessageForSpeaker,
+    getPresenceParticipationWeight,
     groupMeta?.groupStage,
     hasActiveConfig,
     manualReplyModeEnabled,
@@ -1649,7 +1639,8 @@ export function useGroupChatRuntime({
         ?.senderCharacterId;
 
       const weightedMembers = members.map((member) => {
-        let weight = inferReadableSpeakerWeight(member, userText) * getGroupStageMultiplier(groupMeta?.groupStage);
+        const baseWeight = inferReadableSpeakerWeight(member, userText) * getGroupStageMultiplier(groupMeta?.groupStage);
+        let weight = baseWeight;
         const aliases = getMemberAliases(member);
         const mentionHit = aliases.some((alias) => userText.includes(alias));
         const evidence = buildCharacterEvidence(member);
@@ -1658,7 +1649,7 @@ export function useGroupChatRuntime({
           && replyingTo.role === 'model'
           && replyingTo.authorLabel.trim().toLowerCase() === member.name.trim().toLowerCase();
 
-        weight += computeGroupParticipationBonus({
+        const participationBonus = computeGroupParticipationBonus({
           character: member,
           userText,
           characterEvidence: evidence,
@@ -1669,6 +1660,16 @@ export function useGroupChatRuntime({
           recentCount,
           latestModelSpeakerId,
         });
+        weight += participationBonus;
+        const perspectiveWeight = computePerspectiveReactionWeight({
+          perspectiveSummary: groupMeta?.groupMemberPerspectiveSummaries?.[member.id],
+          latestSpeakerId: latestModelSpeakerId,
+          memberId: member.id,
+          latestText: userText,
+        });
+        weight += perspectiveWeight;
+        const presenceWeight = getPresenceParticipationWeight(member, historyRef.current);
+        weight += presenceWeight;
 
         if (mentionHit) {
           weight += 3;
@@ -1701,6 +1702,16 @@ export function useGroupChatRuntime({
         return {
           member,
           weight: Math.max(weight, 0.2),
+          reasons: {
+            base: baseWeight,
+            participation: participationBonus,
+            perspective: perspectiveWeight,
+            presence: presenceWeight,
+            recentPenalty: -recentCount * 0.45,
+            latestSpeakerPenalty: member.id === latestModelSpeakerId ? (wantsAnotherSpeaker(userText) ? -1.2 : -0.6) : 0,
+            mention: mentionHit ? 3 : 0,
+            preferred: preferredSet.has(member.id) ? 2.6 : 0,
+          },
         };
       });
 
@@ -1759,6 +1770,13 @@ export function useGroupChatRuntime({
           recentCount,
           latestModelSpeakerId: primarySpeaker.id,
         });
+        weight += computePerspectiveReactionWeight({
+          perspectiveSummary: groupMeta?.groupMemberPerspectiveSummaries?.[member.id],
+          latestSpeakerId: primarySpeaker.id,
+          memberId: member.id,
+          latestText: primaryResponse,
+        });
+        weight += getPresenceParticipationWeight(member, historyRef.current);
         weight -= recentCount * 0.4;
 
         if (includesAny(buildCharacterEvidence(member), ['话少', '冷淡', '克制', '沉默']) && !wantsAnotherSpeaker(userText)) {
@@ -1912,13 +1930,14 @@ export function useGroupChatRuntime({
       }
 
       const weightedCandidates = candidateMembers.map((member) => {
-        let weight =
+        const baseWeight =
           inferReadableSpeakerWeight(member, `${followUpParams.contextText}\n${followUpParams.latestResponse}`)
           * getGroupStageMultiplier(groupMeta?.groupStage);
+        let weight = baseWeight;
         const aliases = getMemberAliases(member);
         const evidence = buildCharacterEvidence(member);
         const recentCount = countRecentMessagesBySpeaker(member.id);
-        weight += computeGroupParticipationBonus({
+        const participationBonus = computeGroupParticipationBonus({
           character: member,
           userText: `${followUpParams.contextText}\n${followUpParams.latestResponse}`,
           characterEvidence: evidence,
@@ -1929,10 +1948,33 @@ export function useGroupChatRuntime({
           recentCount,
           latestModelSpeakerId: followUpParams.previousSpeaker.id,
         });
+        weight += participationBonus;
+        const perspectiveWeight = computePerspectiveReactionWeight({
+          perspectiveSummary: groupMeta?.groupMemberPerspectiveSummaries?.[member.id],
+          latestSpeakerId: followUpParams.previousSpeaker.id,
+          memberId: member.id,
+          latestText: followUpParams.latestResponse,
+        });
+        weight += perspectiveWeight;
+        const presenceWeight = getPresenceParticipationWeight(member, historyRef.current);
+        weight += presenceWeight;
         weight -= recentCount * 0.42;
 
         if (member.id === followUpParams.previousSpeaker.id) {
           weight -= 1.8;
+        }
+
+        const topicState = groupMeta?.topicState;
+        if (topicState?.lastSpeaker === 'character' && topicState.lastSpeakerId && member.id !== topicState.lastSpeakerId) {
+          weight += 0.18;
+        }
+
+        if (
+          topicState?.replyTargetRole === 'model'
+          && topicState.replyTargetLabel
+          && getMemberAliases(member).some((alias) => alias.trim().toLowerCase() === topicState.replyTargetLabel?.trim().toLowerCase())
+        ) {
+          weight += 1.15;
         }
 
         if (followUpParams.intent.kind === 'stop_followups' && member.id !== followUpParams.previousSpeaker.id) {
@@ -1975,6 +2017,20 @@ export function useGroupChatRuntime({
         return {
           member,
           weight: Math.max(weight, 0.1),
+          reasons: {
+            base: baseWeight,
+            participation: participationBonus,
+            perspective: perspectiveWeight,
+            presence: presenceWeight,
+            recentPenalty: -recentCount * 0.42,
+            previousSpeakerPenalty: member.id === followUpParams.previousSpeaker.id ? -1.8 : 0,
+            topicReplyTarget: topicState?.replyTargetRole === 'model'
+              && topicState.replyTargetLabel
+              && getMemberAliases(member).some((alias) => alias.trim().toLowerCase() === topicState.replyTargetLabel?.trim().toLowerCase())
+              ? 1.15
+              : 0,
+            unused: !followUpParams.usedSpeakerIds.includes(member.id) ? 1.15 : 0,
+          },
         };
       });
 
@@ -2016,10 +2072,16 @@ export function useGroupChatRuntime({
       const referencesPreviousSpeaker =
         latestResponse.includes(previousSpeaker.name)
         || contextText.includes(previousSpeaker.name);
+      const topicState = groupMeta?.topicState;
+      const shouldKeepLatestCharacterBeat =
+        topicState?.lastSpeaker === 'character'
+        && topicState.lastSpeakerId === previousSpeaker.id
+        && topicState.phase !== 'closing';
       const shouldAttachReply =
         !!explicitReply
         || !!responseReply
         || referencesPreviousSpeaker
+        || shouldKeepLatestCharacterBeat
         || (!isTopicClosing && Math.random() < 0.24);
       if (!shouldAttachReply) {
         return null;
@@ -2139,7 +2201,22 @@ export function useGroupChatRuntime({
           followUpParams.previousSpeaker,
         );
 
-        void triggerAISpeaker(nextSpeaker, followUpParams.latestHistory, followUpParams.interactionId, replyPayload)
+        const speechActInstruction = buildGroupSpeechActInstruction({
+          trigger: 'auto',
+          act: getGroupSpeechActForPlanPosition({
+            index: followUpParams.usedSpeakerIds.length,
+            totalCount: followUpParams.maxFollowUpDepth + 1,
+            hasExistingTopic: true,
+          }),
+        });
+
+        void triggerAISpeaker(
+          nextSpeaker,
+          followUpParams.latestHistory,
+          followUpParams.interactionId,
+          replyPayload,
+          speechActInstruction,
+        )
           .then((appendedMessages) => {
             if (
               appendedMessages.length === 0
@@ -2236,6 +2313,14 @@ export function useGroupChatRuntime({
             currentHistory: newHistory,
             mode: 'reply',
             replyTarget: replyingTo,
+            speechActInstruction: buildGroupSpeechActInstruction({
+              trigger: 'auto',
+              act: getGroupSpeechActForPlanPosition({
+                index: 0,
+                totalCount: 1,
+                hasExistingTopic: true,
+              }),
+            }),
           });
 
           if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
@@ -2254,39 +2339,13 @@ export function useGroupChatRuntime({
 
           const conversationHeat = computeConversationHeat(intent, sanitizedPromptText, response.text);
           const forcedSpeakerIds = preferredSpeakerIds.filter((speakerId) => speakerId !== responder.id);
-          const maxFollowUpDepth = intent.kind === 'force_all_members'
-            ? Math.max(members.length + 1, forcedSpeakerIds.length + 2)
-            : intent.kind === 'force_targets'
-              ? Math.max(forcedSpeakerIds.length, 1)
-              : intent.kind === 'stop_followups'
-                ? 1
-              : intent.kind === 'group_topic'
-                ? Math.max(
-                    2,
-                    Math.min(
-                      members.length >= 9 ? 4 : members.length >= 6 ? 3 : 2,
-                      Math.ceil(members.length / 3) + 1,
-                    ),
-                  )
-              : intent.kind === 'open_floor'
-                ? Math.max(
-                    2,
-                    Math.min(
-                      5,
-                      conversationHeat >= 1.8
-                        ? Math.ceil(members.length / 2) + 1
-                        : Math.ceil(members.length / 3) + 1,
-                    ),
-                  )
-                : Math.max(
-                    1,
-                    Math.min(
-                      4,
-                      conversationHeat >= 1.8
-                        ? Math.ceil(members.length / 2)
-                        : Math.ceil(members.length / 3),
-                    ),
-                  );
+          const conversationPlan = createGroupConversationPlan({
+            trigger: 'auto',
+            intent,
+            memberCount: members.length,
+            conversationHeat,
+            forcedSpeakerCount: forcedSpeakerIds.length,
+          });
           scheduleFollowUpSpeakers({
             intent,
             contextText: sanitizedPromptText,
@@ -2295,7 +2354,7 @@ export function useGroupChatRuntime({
             latestResponse: response.text,
             interactionId,
             chainDepth: 0,
-            maxFollowUpDepth,
+            maxFollowUpDepth: conversationPlan.maxFollowUpDepth,
             usedSpeakerIds: [responder.id],
             conversationHeat,
             forcedSpeakerIds,
@@ -2323,6 +2382,7 @@ export function useGroupChatRuntime({
     appendSystemFailure,
     generateMessageForSpeaker,
     groupMeta?.groupStage,
+    groupMeta?.groupMemberPerspectiveSummaries,
     manualReplyModeEnabled,
     members,
     runGeneration,
@@ -2354,8 +2414,18 @@ export function useGroupChatRuntime({
         let workingHistory = currentHistory;
         let latestReplyText = latestText;
         const selectedSpeakerIds: string[] = [];
-        const targetCount = getManualReplyTargetCount(members.length);
-
+        const manualIntent = resolveGroupReplyIntent({
+          text: latestText,
+          mentionedMemberIds: [],
+          memberIds: members.map((member) => member.id),
+        });
+        const manualPlan = createGroupConversationPlan({
+          trigger: 'manual',
+          intent: manualIntent,
+          memberCount: members.length,
+          conversationHeat: manualIntent.kind === 'group_topic' || manualIntent.kind === 'open_floor' ? 1.4 : 0.7,
+        });
+        const targetCount = manualPlan.targetCount;
         for (let index = 0; index < targetCount; index += 1) {
           const latestSpeakerId = [...workingHistory]
             .reverse()
@@ -2376,6 +2446,13 @@ export function useGroupChatRuntime({
               if (latestSpeakerId === member.id) {
                 weight -= 1.2;
               }
+              weight += computePerspectiveReactionWeight({
+                perspectiveSummary: groupMeta?.groupMemberPerspectiveSummaries?.[member.id],
+                latestSpeakerId,
+                memberId: member.id,
+                latestText: latestReplyText,
+              });
+              weight += getPresenceParticipationWeight(member, workingHistory);
 
               if (index > 0) {
                 weight += 0.65;
@@ -2398,10 +2475,13 @@ export function useGroupChatRuntime({
             currentHistory: workingHistory,
             mode: latestVisibleMessage || index > 0 ? 'reply' : 'opening',
             replyTarget: index === 0 ? replyingTo : null,
-            speechActInstruction: getManualReplySpeechActInstruction({
-              index,
-              totalCount: targetCount,
-              hasExistingTopic: !!latestVisibleMessage,
+            speechActInstruction: buildGroupSpeechActInstruction({
+              trigger: 'manual',
+              act: getGroupSpeechActForPlanPosition({
+                index,
+                totalCount: targetCount,
+                hasExistingTopic: !!latestVisibleMessage,
+              }),
             }),
           });
 
@@ -2439,7 +2519,9 @@ export function useGroupChatRuntime({
     appendSystemFailure,
     clearDelayedSpeakerTimer,
     generateMessageForSpeaker,
+    getPresenceParticipationWeight,
     groupMeta?.groupStage,
+    groupMeta?.groupMemberPerspectiveSummaries,
     hasActiveConfig,
     isLoading,
     members,
@@ -2447,6 +2529,111 @@ export function useGroupChatRuntime({
     pickWeightedMember,
     replyingTo,
     runGeneration,
+  ]);
+
+  const regenerateLatestReplyAt = useCallback(async (index: number) => {
+    if (!hasActiveConfig || isLoading || members.length === 0 || pendingMessage) {
+      return false;
+    }
+
+    const currentHistory = historyRef.current;
+    let end = -1;
+    for (let cursor = currentHistory.length - 1; cursor >= 0; cursor -= 1) {
+      const message = currentHistory[cursor];
+      if (message.isSystem || message.isRecalled) {
+        continue;
+      }
+      if (message.role !== 'model') {
+        return false;
+      }
+      end = cursor;
+      break;
+    }
+    if (end < 0) {
+      return false;
+    }
+
+    const endMessage = currentHistory[end];
+    const speakerId = endMessage.senderCharacterId;
+    if (!speakerId) {
+      return false;
+    }
+
+    let start = end;
+    for (let cursor = end - 1; cursor >= 0; cursor -= 1) {
+      const message = currentHistory[cursor];
+      if (
+        message.role !== 'model'
+        || message.isSystem
+        || message.isRecalled
+        || message.senderCharacterId !== speakerId
+      ) {
+        break;
+      }
+      start = cursor;
+    }
+
+    if (index < start || index > end) {
+      return false;
+    }
+
+    const speaker = members.find((member) => member.id === speakerId);
+    if (!speaker) {
+      return false;
+    }
+
+    clearDelayedSpeakerTimer();
+    const interactionId = activeInteractionIdRef.current + 1;
+    activeInteractionIdRef.current = interactionId;
+    openingRequestIdRef.current += 1;
+    secondarySpeakerRequestIdRef.current += 1;
+
+    const baseHistory = currentHistory.slice(0, start);
+    const replyTarget = currentHistory[start]?.replyTo ?? null;
+
+    try {
+      await runGeneration(async ({ generationId }) => {
+        setHistory(baseHistory);
+        const response = await generateMessageForSpeaker({
+          speaker,
+          currentHistory: baseHistory,
+          mode: replyTarget ? 'reply' : 'invited',
+          replyTarget,
+        });
+
+        if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
+          return;
+        }
+
+        appendSpeakerMessage(
+          speaker,
+          response.text,
+          response.timestamp,
+          baseHistory,
+          replyTarget,
+          true,
+        );
+        setPendingMessage(null);
+      });
+      return true;
+    } catch (runtimeError) {
+      console.error('Regenerate latest group reply error:', runtimeError);
+      setPendingMessage(null);
+      appendSystemFailure(runtimeError instanceof Error ? runtimeError.message : '重回失败');
+      return false;
+    }
+  }, [
+    activeGenerationIdRef,
+    appendSpeakerMessage,
+    appendSystemFailure,
+    clearDelayedSpeakerTimer,
+    generateMessageForSpeaker,
+    hasActiveConfig,
+    isLoading,
+    members,
+    pendingMessage,
+    runGeneration,
+    setHistory,
   ]);
 
   const handleSend = useCallback(async () => {
@@ -2569,6 +2756,7 @@ export function useGroupChatRuntime({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    regenerateLatestReplyAt,
     requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,

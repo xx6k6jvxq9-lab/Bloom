@@ -541,6 +541,8 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
     voiceCallHistory: { role: 'user' | 'model'; text: string }[];
     isRecordingCall: boolean;
   }) => void;
+  editMessageAt: (index: number, text: string) => void;
+  regenerateLatestReplyAt: (index: number) => Promise<boolean>;
   recallMessageAt: (index: number) => void;
   deleteMessageAt: (index: number) => void;
   deleteSelectedMessages: (selectedIndexes: Iterable<number>) => void;
@@ -1787,6 +1789,66 @@ export function useDirectChatRuntime({
     }
   }, [character.id, character.name, onAddCallRecord, setHistory]);
 
+  const getLatestModelReplySegment = useCallback((messages: ChatMessage[]) => {
+    let end = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.isSystem || message.isRecalled) {
+        continue;
+      }
+      if (message.role !== 'model') {
+        return null;
+      }
+      end = index;
+      break;
+    }
+
+    if (end < 0) {
+      return null;
+    }
+
+    let start = end;
+    for (let index = end - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'model' || message.isSystem || message.isRecalled) {
+        break;
+      }
+      start = index;
+    }
+
+    return { start, end };
+  }, []);
+
+  const editMessageAt = useCallback((index: number, text: string) => {
+    const targetMessage = history[index];
+    const nextText = text.trim();
+    if (!targetMessage || !nextText) {
+      return;
+    }
+
+    const nextHistory = [...history];
+    nextHistory[index] = {
+      ...targetMessage,
+      text: nextText,
+      isEdited: true,
+    };
+    setHistory(nextHistory);
+  }, [history, setHistory]);
+
+  const regenerateLatestReplyAt = useCallback(async (index: number) => {
+    const latestHistory = historyRef.current;
+    const segment = getLatestModelReplySegment(latestHistory);
+    if (!segment || index < segment.start || index > segment.end || isLoading) {
+      return false;
+    }
+
+    const baseHistory = latestHistory.slice(0, segment.start);
+    setHistory(baseHistory);
+    setReplyingTo(null);
+    await generateDirectAssistantMessage(baseHistory, 'reply');
+    return true;
+  }, [generateDirectAssistantMessage, getLatestModelReplySegment, isLoading, setHistory, setReplyingTo]);
+
   const recallMessageAt = useCallback((index: number) => {
     const nextHistory = [...history];
     if (!nextHistory[index]) return;
@@ -2030,6 +2092,8 @@ export function useDirectChatRuntime({
     sendInnerVoiceProbe,
     sendSpeechTranscript,
     finalizeVoiceCall,
+    editMessageAt,
+    regenerateLatestReplyAt,
     recallMessageAt,
     deleteMessageAt,
     deleteSelectedMessages,

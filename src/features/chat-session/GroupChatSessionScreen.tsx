@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useCallback } from 'react';
 import {
   Camera,
   ChevronLeft,
@@ -12,8 +13,10 @@ import {
   MessageSquarePlus,
   Mic,
   MoreVertical,
+  Pencil,
   Forward,
   Plus,
+  RefreshCw,
   Reply,
   ScanEye,
   Send,
@@ -611,6 +614,7 @@ export function GroupChatSessionScreen({
     messageRole: ChatMessage['role'];
     messageText: string;
   } | null>(null);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const preservedScrollTopRef = useRef<number | null>(null);
   const didTryOpeningRef = useRef(false);
@@ -824,6 +828,7 @@ export function GroupChatSessionScreen({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    regenerateLatestReplyAt,
     requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,
@@ -844,6 +849,8 @@ export function GroupChatSessionScreen({
       manualReplyEnabled: group.manualReplyEnabled,
       topicState: group.topicState,
       groupShortTermSummary: group.groupShortTermSummary,
+      groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
+      groupLongTermMemory: group.groupLongTermMemory,
     },
     history,
     setHistory,
@@ -892,6 +899,53 @@ export function GroupChatSessionScreen({
     && !isLoading
     && !pendingMessage
     && members.length > 0;
+  const getLatestGroupModelSegment = useCallback(() => {
+    let end = -1;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const message = history[index];
+      if (message.isSystem || message.isRecalled) continue;
+      if (message.role !== 'model') return null;
+      end = index;
+      break;
+    }
+    if (end < 0) return null;
+    const speakerId = history[end]?.senderCharacterId;
+    if (!speakerId) return null;
+    let start = end;
+    for (let index = end - 1; index >= 0; index -= 1) {
+      const message = history[index];
+      if (
+        message.role !== 'model'
+        || message.isSystem
+        || message.isRecalled
+        || message.senderCharacterId !== speakerId
+      ) {
+        break;
+      }
+      start = index;
+    }
+    return { start, end };
+  }, [history]);
+  const isEditableMessage = useCallback((message: ChatMessage | null | undefined) => (
+    !!message
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.imageUrl
+    && !message.audioUrl
+    && !message.location
+    && !message.isVoiceCall
+    && !message.groupPollCard
+    && !message.groupRelayCard
+    && !message.groupTaskCard
+    && !!message.text.trim()
+  ), []);
+  const canRegenerateMessage = useCallback((index: number, message: ChatMessage | null | undefined) => {
+    if (!message || message.role !== 'model' || message.isSystem || message.isRecalled || isLoading) {
+      return false;
+    }
+    const segment = getLatestGroupModelSegment();
+    return !!segment && index >= segment.start && index <= segment.end;
+  }, [getLatestGroupModelSegment, isLoading]);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -1234,6 +1288,54 @@ export function GroupChatSessionScreen({
       modelLabel: authorLabel,
     }));
     closeContextMenu();
+  };
+
+  const handleStartEdit = () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !isEditableMessage(contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    setEditingMessageIndex(contextMenuMessageIndex);
+    setInput(contextMenuMessage.text);
+    setReplyingTo(null);
+    setIsVoiceMode(false);
+    closeContextMenu();
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageIndex(null);
+    setInput('');
+  };
+
+  const handleSaveEdit = () => {
+    if (editingMessageIndex === null) {
+      return;
+    }
+    const targetMessage = history[editingMessageIndex];
+    const nextText = input.trim();
+    if (!targetMessage || !nextText) {
+      return;
+    }
+    preservedScrollTopRef.current = scrollRef.current?.scrollTop ?? null;
+    setHistory((prev) => prev.map((message, index) => (
+      index === editingMessageIndex
+        ? { ...message, text: nextText, isEdited: true }
+        : message
+    )));
+    setEditingMessageIndex(null);
+    setInput('');
+  };
+
+  const handleRegenerate = async () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    await regenerateLatestReplyAt(contextMenuMessageIndex);
   };
 
   const handleFavorite = () => {
@@ -2863,6 +2965,7 @@ export function GroupChatSessionScreen({
                 {showChatMessageTime && (
                   <div className={`mt-1 px-1 text-[10px] text-zinc-400 ${isUser ? 'text-right' : 'text-left'}`}>
                     {formatChatMessageTime(msg.timestamp)}
+                    {msg.isEdited && <span className="ml-1">已编辑</span>}
                     {isUser && groupReadCount > 0 && (
                       <span className="ml-1">{`${groupReadCount}人已读`}</span>
                     )}
@@ -2897,6 +3000,18 @@ export function GroupChatSessionScreen({
               <span className="truncate">{replyingTo.preview}</span>
             </div>
             <button onClick={() => setReplyingTo(null)} className="chat-footer-reply-close-button shrink-0 rounded-full p-1 hover:bg-zinc-200">
+              <X size={14} className="chat-footer-reply-close-icon" />
+            </button>
+          </div>
+        )}
+        {editingMessageIndex !== null && history[editingMessageIndex] && (
+          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-[13px] text-amber-700">
+            <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
+              <Pencil size={14} className="shrink-0" />
+              <span className="shrink-0 font-medium">编辑消息</span>
+              <span className="truncate">{history[editingMessageIndex]?.text}</span>
+            </div>
+            <button onClick={handleCancelEdit} className="chat-footer-reply-close-button shrink-0 rounded-full p-1 hover:bg-amber-100">
               <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
@@ -2957,10 +3072,14 @@ export function GroupChatSessionScreen({
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
-                  void sendText();
+                  if (editingMessageIndex !== null) {
+                    handleSaveEdit();
+                  } else {
+                    void sendText();
+                  }
                 }
               }}
-              placeholder="发送消息..."
+              placeholder={editingMessageIndex !== null ? '编辑消息...' : '发送消息...'}
               className="chat-footer-textarea min-h-[24px] w-full resize-none bg-transparent text-[15px] text-zinc-900 outline-none placeholder:text-zinc-500"
               rows={1}
             />
@@ -2980,7 +3099,13 @@ export function GroupChatSessionScreen({
 
           {!isVoiceMode && input.trim() ? (
             <button
-              onClick={() => void sendText()}
+              onClick={() => {
+                if (editingMessageIndex !== null) {
+                  handleSaveEdit();
+                } else {
+                  void sendText();
+                }
+              }}
               className="chat-footer-send-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
             >
               <Send size={18} className="chat-footer-send-icon" />
@@ -3148,7 +3273,11 @@ export function GroupChatSessionScreen({
                 inviteCandidates={groupSettingsInviteCandidates}
                 worldBooks={worldBooks}
                 messages={history}
+                groupShortTermSummary={group.groupShortTermSummary}
+                groupMemberPerspectiveSummaries={group.groupMemberPerspectiveSummaries}
+                groupLongTermMemory={group.groupLongTermMemory}
                 onChange={(patch) => setGroupSettingsForm((prev) => ({ ...prev, ...patch }))}
+                onClearMemory={(patch) => onUpdateGroup(patch)}
                 onUpdateGroupBackground={handleUpdateGroupBackground}
                 onAvatarPick={() => groupAvatarInputRef.current?.click()}
                 onBack={handleCloseGroupSettings}
@@ -3199,6 +3328,24 @@ export function GroupChatSessionScreen({
               >
                 <MessageSquarePlus size={20} />
               </button>
+              {isEditableMessage(contextMenuMessage) && (
+                <button
+                  onClick={handleStartEdit}
+                  className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
+                  title="编辑"
+                >
+                  <Pencil size={20} />
+                </button>
+              )}
+              {canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage) && (
+                <button
+                  onClick={() => void handleRegenerate()}
+                  className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
+                  title="重回"
+                >
+                  <RefreshCw size={20} />
+                </button>
+              )}
               {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (
                 <button
                   onClick={handleRecall}

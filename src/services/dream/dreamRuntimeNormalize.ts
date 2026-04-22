@@ -543,7 +543,7 @@ function buildFallbackBlocks(scene: string, layoutId: string) {
   const fragments = normalizeSceneFragments(scene);
   const grouped = mergeFragmentsForRange(fragments, 8, 12);
 
-  const blocks = grouped.slice(0, 12).map((text, index, array) => {
+  const blocks: DreamNarrativeBlock[] = grouped.slice(0, 12).map((text, index, array) => {
     let type = inferBlockType(text, index, array.length, layoutId);
     const nearFront = index === 1;
     const nearMiddle = index === Math.max(1, Math.floor(array.length / 2));

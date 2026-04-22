@@ -14,7 +14,7 @@ import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { DreamArchiveStage } from './DreamArchiveStage';
 import { buildDreamArchiveRecord, exportDreamArchiveRecords, getSelectedTagLabels, loadDreamArchiveRecords, saveDreamArchiveRecords, upsertDreamArchiveRecord, type DreamArchiveRecord } from './dreamArchive';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
-import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from './types';
+import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamScenario, DreamTagCategory } from './types';
 
 type ActiveDreamChoice = DreamGeneratedChoice & {
   reaction: string;
@@ -664,6 +664,16 @@ function buildRuntimeEndingView(scenario: DreamRuntimeScenario, roleName: string
   };
 }
 
+function buildPresetEndingView(scenario: DreamScenario): DreamEndingView {
+  return {
+    title: scenario.ending.title,
+    body: scenario.ending.excerpt,
+    excerpt: scenario.ending.excerpt,
+    signature: scenario.ending.signature,
+    chapter: scenario.ending.chapter,
+  };
+}
+
 function buildRuntimeAftermathView(scenario: DreamRuntimeScenario): DreamAftermathView {
   if (scenario.aftermathOutput) {
     return {
@@ -1149,7 +1159,7 @@ function ConfirmStageV2({
   entryMode: DreamEntryMode;
   selectedRole: DreamRole;
   selectedDomain: DreamDomainId;
-  scenario: ReturnType<typeof resolveScenario>;
+  scenario: Pick<DreamScenario, 'coverTitle' | 'coverSubtitle' | 'confirmHint'>;
   preview?: DreamConfirmPreview | null;
   selectedLabels: string[];
   onBack: () => void;
@@ -1368,8 +1378,8 @@ export function DreamAppPage({
   const isDeepDream = runtimeScenario?.depth === 'deep';
   const isClosingAct = Boolean(act && closingActId && act.id === closingActId);
   const isLastGeneratedAct = Boolean(runtimeScenario && actIndex === runtimeScenario.acts.length - 1);
-  const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : scenario.ending;
-  const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : scenario.aftermath;
+  const endingView = runtimeScenario && selectedRole ? buildRuntimeEndingView(runtimeScenario, selectedRole.name, userName) : buildPresetEndingView(previewScenario);
+  const aftermathView = runtimeScenario ? buildRuntimeAftermathView(runtimeScenario) : previewScenario.aftermath;
   const aftermathMetaLine = useMemo(() => {
     const relationshipShift = runtimeScenario?.aftermathInput.relationshipShift?.trim() || '';
     const toneDrift = runtimeScenario?.aftermathInput.toneDrift?.trim() || '';
@@ -2668,10 +2678,10 @@ export function DreamAppPage({
           <Shell time={time} bottomTone={false}>
             <div className="flex flex-1 flex-col justify-center py-8">
               <div className="border-y border-[var(--border)] py-10 text-center">
-                <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{scenario.ending.title}</div>
-                <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">{scenario.ending.excerpt}</div>
-                <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {scenario.ending.signature}</div>
-                <div className="mt-3 text-[12px] tracking-[0.26em] text-[var(--gold)]">{scenario.ending.chapter}</div>
+                <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{endingView.title}</div>
+                <div className="mx-auto mt-10 max-w-[290px] text-[15px] font-[300] leading-[2.35] tracking-[0.08em] text-[var(--paper-60)]">{endingView.excerpt}</div>
+                <div className="mt-8 text-[13px] tracking-[0.18em] text-[var(--mist)]">—— {endingView.signature}</div>
+                <div className="mt-3 text-[12px] tracking-[0.26em] text-[var(--gold)]">{endingView.chapter}</div>
               </div>
               <div className="mt-10"><SealButton label="查 看 余 响" onClick={() => setStage('aftermath')} /></div>
             </div>
@@ -2740,12 +2750,12 @@ export function DreamAppPage({
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">余 响</div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.72)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">明日聊天预览</div>
-                <div className="mt-5 space-y-3">{scenario.aftermath.previewMessages.map((message) => <div key={message} className="border border-[rgba(123,168,196,.18)] bg-[rgba(123,168,196,.08)] px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]">{message}</div>)}</div>
+                <div className="mt-5 space-y-3">{aftermathView.previewMessages.map((message) => <div key={message} className="border border-[rgba(123,168,196,.18)] bg-[rgba(123,168,196,.08)] px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]">{message}</div>)}</div>
               </div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">回流说明</div>
-                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{scenario.aftermath.summary}</div>
-                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{scenario.aftermath.detail}</div>
+                <div className="mt-4 text-[14px] leading-[2.2] tracking-[0.14em] text-[var(--paper)]">{aftermathView.summary}</div>
+                <div className="mt-3 text-[12px] leading-[2] tracking-[0.14em] text-[var(--mist)]">{aftermathView.detail}</div>
               </div>
               <div className="mt-auto pt-8"><SealButton label="再 入 一 梦" onClick={restart} /></div>
             </div>

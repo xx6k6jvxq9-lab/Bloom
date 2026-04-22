@@ -89,6 +89,20 @@ function shouldKeepPreviousTopic(previous: GroupTopicState | undefined, now: num
   return !!previous && now - previous.lastUpdatedAt <= STALE_TOPIC_MS;
 }
 
+function getSpeakerName(message: ChatMessage): string | undefined {
+  if (message.role === 'user') {
+    return undefined;
+  }
+
+  const rawText = message.text || '';
+  const colonIndex = rawText.indexOf(':');
+  if (colonIndex > 0) {
+    return rawText.slice(0, colonIndex).trim() || undefined;
+  }
+
+  return undefined;
+}
+
 export function deriveGroupTopicStateFromHistory(params: {
   previous?: GroupTopicState;
   previousHistory?: ChatMessage[];
@@ -131,6 +145,12 @@ export function deriveGroupTopicStateFromHistory(params: {
     anchor,
     startedBy: latest.role === 'user' ? 'user' : 'character',
     startedById: latest.role === 'model' ? latest.senderCharacterId : undefined,
+    lastSpeaker: latest.role === 'user' ? 'user' : 'character',
+    lastSpeakerId: latest.role === 'model' ? latest.senderCharacterId : undefined,
+    lastSpeakerName: getSpeakerName(latest),
+    lastBeat: anchor,
+    replyTargetLabel: latest.replyTo?.authorLabel,
+    replyTargetRole: latest.replyTo?.role,
     startedAt,
     lastUpdatedAt: latest.timestamp,
     heat,
@@ -148,8 +168,16 @@ export function formatGroupTopicStateForPrompt(topicState?: GroupTopicState): st
     `Anchor: ${topicState.anchor}`,
     `Started by: ${topicState.startedBy}`,
     topicState.startedById ? `Started by id: ${topicState.startedById}` : '',
+    `Latest beat speaker: ${topicState.lastSpeaker}${topicState.lastSpeakerName ? ` (${topicState.lastSpeakerName})` : ''}`,
+    topicState.lastBeat ? `Latest beat: ${topicState.lastBeat}` : '',
+    topicState.replyTargetLabel ? `Reply target: ${topicState.replyTargetLabel}` : '',
     `Heat: ${topicState.heat}`,
     `Phase: ${topicState.phase}`,
+    topicState.replyTargetLabel
+      ? 'Priority: keep the next reply aligned with the reply target first, then the shared topic. Do not drift back to the user unless the user is the reply target or the topic naturally asks for it.'
+      : topicState.lastSpeaker === 'character'
+        ? 'Priority: treat the latest character beat as the thing currently on the table. Other characters may answer, tease, add a side angle, or lightly disagree with that character instead of snapping back to the user.'
+        : 'Priority: the user put this topic on the table. Characters should respond to the topic, not deliver unrelated side monologues.',
     'Use this as the shared conversation center when it still fits. A character may continue it, lightly tease around it, shift angle, or let it cool if that fits the role and timing.',
   ].filter(Boolean).join('\n');
 }

@@ -18,6 +18,7 @@ type GroupSettingsPageProps = {
   onOpenSearch: () => void;
   onOpenProfile: () => void;
   onOpenCustomization: () => void;
+  onOpenMemory: () => void;
   onClearHistory: () => void;
   onLeaveGroup: () => void;
 };
@@ -40,6 +41,7 @@ export function GroupSettingsPage({
   onOpenSearch,
   onOpenProfile,
   onOpenCustomization,
+  onOpenMemory,
   onClearHistory,
   onLeaveGroup,
 }: GroupSettingsPageProps) {
@@ -68,6 +70,7 @@ export function GroupSettingsPage({
           onOpenSearch={onOpenSearch}
           onOpenProfile={onOpenProfile}
           onOpenCustomization={onOpenCustomization}
+          onOpenMemory={onOpenMemory}
         />
 
         <GroupChatPreferencesSection

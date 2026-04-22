@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import type { ChatMessage, WorldBookEntry } from '../../../types';
+import type { ChatGroup, ChatMessage, WorldBookEntry } from '../../../types';
 import type { GroupMemberRole } from '../groupRoles';
 import type { GroupSettingsFormState, GroupSettingsMemberSummary } from '../types';
 import { GroupChatBackgroundPage } from './GroupChatBackgroundPage';
@@ -10,6 +10,7 @@ import { GroupChatSearchPage } from './GroupChatSearchPage';
 import { GroupChatProfilePage } from './GroupChatProfilePage';
 import { GroupInterfaceSettingsPage } from './GroupInterfaceSettingsPage';
 import { GroupMemberManagementPage } from './GroupMemberManagementPage';
+import { GroupMemorySettingsPage } from './GroupMemorySettingsPage';
 import { GroupSettingsPage } from './GroupSettingsPage';
 import { GroupTitleBadgeSettingsPage } from './GroupTitleBadgeSettingsPage';
 import { GroupWorldBookSettingsPage } from './GroupWorldBookSettingsPage';
@@ -23,7 +24,11 @@ type GroupSettingsScreenProps = {
   inviteCandidates: GroupSettingsMemberSummary[];
   worldBooks: WorldBookEntry[];
   messages: ChatMessage[];
+  groupShortTermSummary?: ChatGroup['groupShortTermSummary'];
+  groupMemberPerspectiveSummaries?: ChatGroup['groupMemberPerspectiveSummaries'];
+  groupLongTermMemory?: ChatGroup['groupLongTermMemory'];
   onChange: (patch: Partial<GroupSettingsFormState>) => void;
+  onClearMemory: (patch: Pick<Partial<ChatGroup>, 'groupShortTermSummary' | 'groupMemberPerspectiveSummaries' | 'groupLongTermMemory'>) => void;
   onAvatarPick: () => void;
   onBack: () => void;
   onJumpToMessage: (target: { timestamp: number; text: string }) => void;
@@ -47,6 +52,10 @@ const TEXT = {
   peopleSuffix: ' \u4eba',
 } as const;
 
+function confirmClearMemory(label: string): boolean {
+  return window.confirm(`确认清空${label}吗？这不会删除聊天记录。`);
+}
+
 export function GroupSettingsScreen({
   groupName,
   formState,
@@ -56,7 +65,11 @@ export function GroupSettingsScreen({
   inviteCandidates,
   worldBooks = [],
   messages,
+  groupShortTermSummary,
+  groupMemberPerspectiveSummaries,
+  groupLongTermMemory,
   onChange,
+  onClearMemory,
   onAvatarPick,
   onBack,
   onJumpToMessage,
@@ -75,7 +88,7 @@ export function GroupSettingsScreen({
   onLeaveGroup,
 }: GroupSettingsScreenProps) {
   const [page, setPage] = useState<
-    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges' | 'world-books'
+    'settings' | 'search' | 'member-management' | 'profile' | 'customization' | 'background' | 'interface' | 'bubble-colors' | 'title-badges' | 'world-books' | 'memory'
   >('settings');
 
   return (
@@ -104,6 +117,7 @@ export function GroupSettingsScreen({
           onOpenSearch={() => setPage('search')}
           onOpenProfile={() => setPage('profile')}
           onOpenCustomization={() => setPage('customization')}
+          onOpenMemory={() => setPage('memory')}
           onClearHistory={onClearHistory}
           onLeaveGroup={onLeaveGroup}
         />
@@ -140,6 +154,40 @@ export function GroupSettingsScreen({
           onChange={onChange}
           onOpenWorldBooks={() => setPage('world-books')}
           onBack={() => setPage('settings')}
+        />
+      ) : null}
+
+      {page === 'memory' ? (
+        <GroupMemorySettingsPage
+          groupShortTermSummary={groupShortTermSummary}
+          groupMemberPerspectiveSummaries={groupMemberPerspectiveSummaries}
+          groupLongTermMemory={groupLongTermMemory}
+          members={members}
+          onBack={() => setPage('settings')}
+          onClearShortTermMemory={() => {
+            if (confirmClearMemory('群公开短期记忆')) {
+              onClearMemory({ groupShortTermSummary: undefined });
+            }
+          }}
+          onClearMemberPerspectives={() => {
+            if (confirmClearMemory('角色群内视角')) {
+              onClearMemory({ groupMemberPerspectiveSummaries: undefined });
+            }
+          }}
+          onClearLongTermMemory={() => {
+            if (confirmClearMemory('群长期记忆')) {
+              onClearMemory({ groupLongTermMemory: undefined });
+            }
+          }}
+          onClearAllMemory={() => {
+            if (confirmClearMemory('全部群聊后台记忆')) {
+              onClearMemory({
+                groupShortTermSummary: undefined,
+                groupMemberPerspectiveSummaries: undefined,
+                groupLongTermMemory: undefined,
+              });
+            }
+          }}
         />
       ) : null}
 

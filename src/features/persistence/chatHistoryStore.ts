@@ -3,6 +3,8 @@ import { buildGroupFactTraceRecords } from '../../services/relationship-context/
 import { buildDirectFactTraceRecords } from '../../services/relationship-context/buildDirectFactTraceRecords';
 import { buildDirectRelationshipWaveRecords } from '../../services/relationship-context/buildDirectRelationshipWaveRecords';
 import { buildGroupRelationshipWaveRecords } from '../../services/relationship-context/buildGroupRelationshipWaveRecords';
+import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-chat/groupShortTermMemory';
+import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
 import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
@@ -16,6 +18,8 @@ export type PersistedGroupSession = {
   factTraces?: FactTraceRecord[];
   topicState?: GroupTopicState;
   groupShortTermSummary?: string;
+  groupMemberPerspectiveSummaries?: Record<string, string>;
+  groupLongTermMemory?: ChatGroup['groupLongTermMemory'];
 };
 
 export type PersistedChatHistoryData = {
@@ -124,6 +128,10 @@ function sanitizeGroupSessions(
         groupShortTermSummary: typeof session.groupShortTermSummary === 'string'
           ? session.groupShortTermSummary.trim() || undefined
           : undefined,
+        groupMemberPerspectiveSummaries: sanitizeGroupMemberPerspectiveSummaries(
+          session.groupMemberPerspectiveSummaries,
+        ),
+        groupLongTermMemory: sanitizeGroupLongTermMemory(session.groupLongTermMemory),
       };
     }
   }
@@ -194,6 +202,8 @@ export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, Pe
       lastTime: group.lastTime,
       topicState: group.topicState,
       groupShortTermSummary: group.groupShortTermSummary,
+      groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
+      groupLongTermMemory: group.groupLongTermMemory,
       relationshipWaves: buildGroupRelationshipWaveRecords({
         groupId: group.id,
         messages: history,
@@ -251,6 +261,8 @@ export function extractGroupSessionsWithFallback(
         lastTime: group.lastTime,
         topicState: group.topicState,
         groupShortTermSummary: group.groupShortTermSummary,
+        groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
+        groupLongTermMemory: group.groupLongTermMemory,
         relationshipWaves: buildGroupRelationshipWaveRecords({
           groupId: group.id,
           messages: history,
@@ -292,6 +304,8 @@ export function mergeGroupSessionsIntoChatGroups(
       factTraces: session.factTraces || [],
       topicState: session.topicState,
       groupShortTermSummary: session.groupShortTermSummary,
+      groupMemberPerspectiveSummaries: session.groupMemberPerspectiveSummaries,
+      groupLongTermMemory: session.groupLongTermMemory,
     };
   });
 }

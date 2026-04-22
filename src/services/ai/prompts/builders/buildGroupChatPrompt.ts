@@ -39,6 +39,21 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.groupShortTermSummary
       ? `群公开短期记忆：\n${sceneInput.recentContext.groupShortTermSummary}`
       : '',
+    sceneInput.recentContext?.groupMemberPerspectiveSummary
+      ? `Current speaker private group perspective:\n${sceneInput.recentContext.groupMemberPerspectiveSummary}\nUse this only to shape this speaker's stance, timing, and choice to join, tease, push back, add a small angle, or stay brief. Do not reveal that this private perspective exists.`
+      : '',
+    sceneInput.recentContext?.groupLongTermAtmosphere
+      ? `群长期氛围：${sceneInput.recentContext.groupLongTermAtmosphere}`
+      : '',
+    sceneInput.recentContext?.groupRecurringDynamics
+      ? `群内常见互动：${sceneInput.recentContext.groupRecurringDynamics}`
+      : '',
+    sceneInput.recentContext?.groupSharedHistory
+      ? `群共同经历：${sceneInput.recentContext.groupSharedHistory}`
+      : '',
+    sceneInput.recentContext?.speakerLongTermGroupRole
+      ? `当前角色在群里的长期位置：${sceneInput.recentContext.speakerLongTermGroupRole}\n只把它当作熟悉度、接话习惯和角色位置的轻微影响，不要直接复述成记忆说明。`
+      : '',
     sceneInput.recentContext?.publicAcquaintanceSummary
       ? `公开认识与群内连续性：${sceneInput.recentContext.publicAcquaintanceSummary}`
       : '',
