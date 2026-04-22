@@ -32,7 +32,9 @@ function formatMemoryForDisplay(value?: string): string {
   }
 
   return cleanLegacyGroupMemberPerspectiveText(value)
-    .replace(/\s+([，。！？；：])/g, '$1')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 

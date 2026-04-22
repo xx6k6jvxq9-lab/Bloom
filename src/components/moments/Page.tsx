@@ -420,7 +420,7 @@ export function MomentsApp({
           <button
             onClick={handlePublish}
             disabled={!publishContent.trim() && publishImages.length === 0}
-            className="rounded-full bg-zinc-900 px-4 py-1.5 font-medium text-white shadow-lg shadow-black/20 transition-all hover:bg-black disabled:opacity-50"
+            className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-1.5 font-medium text-zinc-600 shadow-sm transition-all hover:bg-zinc-200 disabled:border-zinc-100 disabled:bg-zinc-50 disabled:text-zinc-300"
           >
             发表
           </button>
