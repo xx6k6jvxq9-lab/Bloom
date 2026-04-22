@@ -23,6 +23,7 @@ import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPro
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
+import { buildAutoSummarySourceLines, sanitizeAutoSummaryText } from '../../services/memory/autoSummaryHygiene';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
@@ -1337,16 +1338,10 @@ export function useDirectChatRuntime({
       ) {
         try {
           const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, character.memoryLimit);
-          const summarySourceLines = summaryHistoryWindow
-            .map((msg) => {
-              const mainText = getMessageMainText(msg).trim();
-              if (!mainText) {
-                return '';
-              }
-
-              return `${msg.role === 'user' ? '用户' : character.name}: ${mainText}`;
-            })
-            .filter(Boolean);
+          const summarySourceLines = buildAutoSummarySourceLines({
+            history: summaryHistoryWindow,
+            assistantName: character.name,
+          });
 
           if (summarySourceLines.length === 0) {
             return;
@@ -1387,18 +1382,20 @@ export function useDirectChatRuntime({
             });
           }
 
-          if (summaryText) {
+          const safeSummaryText = sanitizeAutoSummaryText(summaryText);
+
+          if (safeSummaryText) {
             const shortTermEntry = createMemoryLibraryEntry({
               kind: 'short-term',
               source: 'auto',
-              content: summaryText,
+              content: safeSummaryText,
             });
             let nextMemoryLibraryEntries = appendMemoryLibraryEntry(character, shortTermEntry);
             let nextLongTermMemoryProfile: string | undefined;
 
             const autoLongTermPlan = buildAutoLongTermRefreshPlan({
               memoryLibraryEntries: character.memoryLibraryEntries,
-              latestShortTermSummary: summaryText,
+              latestShortTermSummary: safeSummaryText,
               pendingEntries: nextMemoryLibraryEntries,
             });
 
@@ -1409,7 +1406,7 @@ export function useDirectChatRuntime({
                   characterSetting: characterCorePersona,
                 },
                 memoryContext: {
-                  shortTermSummary: summaryText,
+                  shortTermSummary: safeSummaryText,
                   longTermMemoryProfile,
                 },
                 sections: [summarySourceLines.join('\n')],
@@ -1435,8 +1432,10 @@ export function useDirectChatRuntime({
                 });
               }
 
-              if (longTermSummaryText.trim()) {
-                nextLongTermMemoryProfile = longTermSummaryText.trim();
+              const safeLongTermSummaryText = sanitizeAutoSummaryText(longTermSummaryText);
+
+              if (safeLongTermSummaryText) {
+                nextLongTermMemoryProfile = safeLongTermSummaryText;
                 nextMemoryLibraryEntries = appendMemoryLibraryEntry(
                   { memoryLibraryEntries: nextMemoryLibraryEntries },
                   createMemoryLibraryEntry({
@@ -1449,8 +1448,8 @@ export function useDirectChatRuntime({
             }
 
             const nextShortTermSummary = nextLongTermMemoryProfile
-              ? compressShortTermSummaryAfterLongTerm(summaryText)
-              : summaryText;
+              ? compressShortTermSummaryAfterLongTerm(safeSummaryText)
+              : safeSummaryText;
 
             const patch: Partial<Character> = {
               shortTermSummary: nextShortTermSummary,
