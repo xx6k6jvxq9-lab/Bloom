@@ -823,6 +823,7 @@ export function GroupChatSessionScreen({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,
   } = useGroupChatRuntime({
@@ -839,6 +840,7 @@ export function GroupChatSessionScreen({
       memberRelationshipNote: group.memberRelationshipNote,
       currentScene: group.currentScene,
       publicFacts: group.publicFacts,
+      manualReplyEnabled: group.manualReplyEnabled,
     },
     history,
     setHistory,
@@ -881,6 +883,12 @@ export function GroupChatSessionScreen({
         isPending: true,
       }]
     : history;
+  const manualReplyModeEnabled = group.manualReplyEnabled !== false;
+  const canUseManualReplyButton = manualReplyModeEnabled
+    && hasUsableConfig
+    && !isLoading
+    && !pendingMessage
+    && members.length > 0;
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -2945,6 +2953,27 @@ export function GroupChatSessionScreen({
               </>
             )}
           </div>
+
+          {!isVoiceMode && manualReplyModeEnabled && !input.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                void requestManualReply();
+                if (showEmojiPanel) setShowEmojiPanel(false);
+                if (showFunPanel) setShowFunPanel(false);
+              }}
+              disabled={!canUseManualReplyButton}
+              title="\u624b\u52a8\u56de\u590d"
+              aria-label="\u624b\u52a8\u56de\u590d"
+              className={`chat-footer-manual-reply-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+                canUseManualReplyButton
+                  ? `${groupFooterControlTone.iconButton} active:scale-90`
+                  : 'cursor-not-allowed bg-zinc-100/70 text-zinc-300'
+              }`}
+            >
+              <MessageSquarePlus size={20} className="chat-footer-manual-reply-icon" />
+            </button>
+          )}
 
           {!isVoiceMode && input.trim() ? (
             <button

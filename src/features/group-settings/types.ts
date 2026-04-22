@@ -23,6 +23,7 @@ export type GroupSettingsFormState = {
   allowDirectMemoryInterop: boolean;
   muteNotifications: boolean;
   pinChat: boolean;
+  manualReplyEnabled: boolean;
 };
 
 export type GroupSettingsPatch = Pick<
@@ -47,6 +48,7 @@ export type GroupSettingsPatch = Pick<
   | 'allowDirectMemoryInteropConfigured'
   | 'muteNotifications'
   | 'pinChat'
+  | 'manualReplyEnabled'
 >;
 
 export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remarkName' | 'avatar'> & {

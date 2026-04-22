@@ -32,6 +32,7 @@ type UseGroupChatRuntimeArgs = {
     memberRelationshipNote?: ChatGroup['memberRelationshipNote'];
     currentScene?: ChatGroup['currentScene'];
     publicFacts?: ChatGroup['publicFacts'];
+    manualReplyEnabled?: ChatGroup['manualReplyEnabled'];
   };
   history: ChatMessage[];
   setHistory: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -62,6 +63,7 @@ type UseGroupChatRuntimeResult = {
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
+  requestManualReply: () => Promise<void>;
   maybeOpenScene: () => Promise<void>;
   reactToNoticeUpdate: (params: {
     noticeText: string;
@@ -875,6 +877,7 @@ export function useGroupChatRuntime({
   const openingRequestIdRef = useRef(0);
   const secondarySpeakerRequestIdRef = useRef(0);
   const historyRef = useRef(history);
+  const manualReplyModeEnabled = groupMeta?.manualReplyEnabled !== false;
 
   const clearDelayedSpeakerTimer = useCallback(() => {
     if (delayedSpeakerTimerRef.current) {
@@ -1251,6 +1254,13 @@ export function useGroupChatRuntime({
   }, [appendSpeakerMessage, generateMessageForSpeaker, setHistory]);
 
   const maybeOpenScene = useCallback(async () => {
+    if (manualReplyModeEnabled) {
+      console.info('[group-chat] skip opening scene', {
+        reason: 'manual_reply_mode',
+      });
+      return;
+    }
+
     if (!hasActiveConfig || members.length === 0) {
       console.info('[group-chat] skip opening scene', {
         reason: !hasActiveConfig ? 'missing_active_config' : 'missing_members',
@@ -1321,12 +1331,16 @@ export function useGroupChatRuntime({
         }]);
       }
     }
-  }, [appendSpeakerMessage, generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, members, setHistory]);
+  }, [appendSpeakerMessage, generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, manualReplyModeEnabled, members, setHistory]);
 
   const reactToNoticeUpdate = useCallback(async (params: {
     noticeText: string;
     currentHistory: ChatMessage[];
   }) => {
+    if (manualReplyModeEnabled) {
+      return;
+    }
+
     const trimmedNotice = params.noticeText.trim();
     if (!trimmedNotice || !hasActiveConfig || members.length === 0) {
       return;
@@ -1416,6 +1430,7 @@ export function useGroupChatRuntime({
     generateMessageForSpeaker,
     groupMeta?.groupStage,
     hasActiveConfig,
+    manualReplyModeEnabled,
     members,
     pickWeightedMember,
   ]);
@@ -2141,6 +2156,14 @@ export function useGroupChatRuntime({
       intent: intent.kind,
     });
 
+    if (manualReplyModeEnabled) {
+      console.info('[group-chat] auto response skipped by manual reply mode', {
+        historyLength: newHistory.length,
+        intent: intent.kind,
+      });
+      return;
+    }
+
     try {
       await runGeneration(async ({ generationId }) => {
         const responder = pickPrimaryResponder(sanitizedPromptText, intent, preferredSpeakerIds);
@@ -2248,6 +2271,7 @@ export function useGroupChatRuntime({
     appendSystemFailure,
     generateMessageForSpeaker,
     groupMeta?.groupStage,
+    manualReplyModeEnabled,
     members,
     runGeneration,
     setError,
@@ -2256,6 +2280,85 @@ export function useGroupChatRuntime({
     setPendingMessage,
     setReplyingTo,
     triggerAISpeaker,
+  ]);
+
+  const requestManualReply = useCallback(async () => {
+    if (!hasActiveConfig || isLoading || members.length === 0 || pendingMessage) {
+      return;
+    }
+
+    clearDelayedSpeakerTimer();
+    const interactionId = activeInteractionIdRef.current + 1;
+    activeInteractionIdRef.current = interactionId;
+    openingRequestIdRef.current += 1;
+    secondarySpeakerRequestIdRef.current += 1;
+
+    const currentHistory = historyRef.current;
+    const recentVisibleMessages = currentHistory.filter((message) => !message.isSystem);
+    const latestVisibleMessage = recentVisibleMessages[recentVisibleMessages.length - 1] || null;
+    const latestText = latestVisibleMessage ? getMessageMainText(latestVisibleMessage) : '';
+    const weightedMembers = members.map((member) => {
+      const recentCount = currentHistory
+        .filter((message) => message.role === 'model' && message.senderCharacterId === member.id)
+        .slice(-6)
+        .length;
+      const latestSpeakerId = latestVisibleMessage?.role === 'model'
+        ? latestVisibleMessage.senderCharacterId
+        : undefined;
+      let weight = inferReadableSpeakerWeight(member, latestText || member.sceneHints?.groupChat || member.corePersona || member.name)
+        * getGroupStageMultiplier(groupMeta?.groupStage);
+
+      if (latestSpeakerId === member.id) {
+        weight -= 0.8;
+      }
+
+      weight -= recentCount * 0.35;
+
+      return {
+        member,
+        weight: Math.max(weight, 0.2),
+      };
+    });
+    const responder = pickWeightedMember(weightedMembers);
+    if (!responder) {
+      return;
+    }
+
+    try {
+      await runGeneration(async ({ generationId }) => {
+        const response = await generateMessageForSpeaker({
+          speaker: responder,
+          currentHistory,
+          mode: latestVisibleMessage ? 'reply' : 'opening',
+          replyTarget: replyingTo,
+        });
+
+        if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
+          return;
+        }
+
+        appendSpeakerMessage(responder, response.text, response.timestamp, currentHistory, replyingTo, true);
+        setPendingMessage(null);
+      });
+    } catch (runtimeError) {
+      console.error('Manual group reply error:', runtimeError);
+      setPendingMessage(null);
+      appendSystemFailure(runtimeError instanceof Error ? runtimeError.message : '\u624b\u52a8\u7fa4\u804a\u56de\u590d\u5931\u8d25');
+    }
+  }, [
+    activeGenerationIdRef,
+    appendSpeakerMessage,
+    appendSystemFailure,
+    clearDelayedSpeakerTimer,
+    generateMessageForSpeaker,
+    groupMeta?.groupStage,
+    hasActiveConfig,
+    isLoading,
+    members,
+    pendingMessage,
+    pickWeightedMember,
+    replyingTo,
+    runGeneration,
   ]);
 
   const handleSend = useCallback(async () => {
@@ -2378,6 +2481,7 @@ export function useGroupChatRuntime({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    requestManualReply,
     maybeOpenScene,
     reactToNoticeUpdate,
   };

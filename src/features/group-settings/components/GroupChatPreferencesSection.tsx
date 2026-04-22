@@ -5,11 +5,13 @@ type GroupChatPreferencesSectionProps = {
   groupRemark: string;
   muteNotifications: boolean;
   pinChat: boolean;
+  manualReplyEnabled: boolean;
   onChange: (patch: {
     groupNickname?: string;
     groupRemark?: string;
     muteNotifications?: boolean;
     pinChat?: boolean;
+    manualReplyEnabled?: boolean;
   }) => void;
 };
 
@@ -73,6 +75,7 @@ export function GroupChatPreferencesSection({
   groupRemark,
   muteNotifications,
   pinChat,
+  manualReplyEnabled,
   onChange,
 }: GroupChatPreferencesSectionProps) {
   return (
@@ -92,6 +95,12 @@ export function GroupChatPreferencesSection({
         value={groupRemark}
         placeholder={GROUP_SETTINGS_PLACEHOLDERS.groupRemark}
         onChange={(value) => onChange({ groupRemark: value })}
+      />
+      <div className="border-t border-zinc-100" />
+      <ToggleRow
+        label="\u624b\u52a8\u56de\u590d\u6a21\u5f0f"
+        checked={manualReplyEnabled}
+        onToggle={() => onChange({ manualReplyEnabled: !manualReplyEnabled })}
       />
       <div className="border-t border-zinc-100" />
       <ToggleRow

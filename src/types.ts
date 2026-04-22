@@ -904,6 +904,7 @@ export type ChatGroup = {
   }>;
   muteNotifications?: boolean;
   pinChat?: boolean;
+  manualReplyEnabled?: boolean;
   groupStage?: 'new' | 'warming' | 'familiar';
   memberRelationSeeds?: Array<{
     sourceMemberId: string;

@@ -28,6 +28,7 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     allowDirectMemoryInterop: getEffectiveAllowDirectMemoryInterop(group),
     muteNotifications: !!group.muteNotifications,
     pinChat: !!group.pinChat,
+    manualReplyEnabled: group.manualReplyEnabled !== false,
   };
 }
 
@@ -53,6 +54,7 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     allowDirectMemoryInteropConfigured: true,
     muteNotifications: state.muteNotifications,
     pinChat: state.pinChat,
+    manualReplyEnabled: state.manualReplyEnabled,
   };
 }
 
@@ -76,7 +78,8 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
     || JSON.stringify(patch.activeWorldBookIds || []) !== JSON.stringify(group.activeWorldBookIds || [])
     || patch.allowDirectMemoryInterop !== getEffectiveAllowDirectMemoryInterop(group)
     || patch.muteNotifications !== !!group.muteNotifications
-    || patch.pinChat !== !!group.pinChat;
+    || patch.pinChat !== !!group.pinChat
+    || patch.manualReplyEnabled !== (group.manualReplyEnabled !== false);
 }
 
 function toOptionalTrimmedValue(value: string): string | undefined {
