@@ -30,6 +30,7 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
+import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
@@ -641,7 +642,7 @@ export function ChatSessionScreen({
   const voiceCallEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const memoryLimit = character.memoryLimit || 20;
+    const memoryLimit = getDirectMemoryMessageLimit(character.memoryLimit);
     const shouldShowHint =
       !character.autoSummaryEnabled &&
       history.length > memoryLimit;

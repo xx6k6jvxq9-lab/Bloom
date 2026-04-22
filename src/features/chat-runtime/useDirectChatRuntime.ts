@@ -26,6 +26,7 @@ import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTerm
 import { buildAutoSummarySourceLines, sanitizeAutoSummaryText } from '../../services/memory/autoSummaryHygiene';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
+import { clampDirectMemoryLimit, getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
@@ -775,7 +776,7 @@ export function useDirectChatRuntime({
         };
 
         try {
-          const historyLimit = character.memoryLimit || 20;
+          const historyLimit = getDirectMemoryMessageLimit(character.memoryLimit);
           const characterTemporalState = buildCharacterTemporalState({
             characterId: character.id,
             perception,
@@ -1180,7 +1181,7 @@ export function useDirectChatRuntime({
         return;
       }
 
-      const historyLimit = character.memoryLimit || 20;
+      const historyLimit = getDirectMemoryMessageLimit(character.memoryLimit);
       const characterTemporalState = buildCharacterTemporalState({
         characterId: character.id,
         perception,
@@ -1337,7 +1338,7 @@ export function useDirectChatRuntime({
         finalHistoryLength % character.summaryInterval === 0
       ) {
         try {
-          const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, character.memoryLimit);
+          const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, clampDirectMemoryLimit(character.memoryLimit));
           const summarySourceLines = buildAutoSummarySourceLines({
             history: summaryHistoryWindow,
             assistantName: character.name,

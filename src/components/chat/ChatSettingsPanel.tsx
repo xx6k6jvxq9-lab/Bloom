@@ -9,6 +9,13 @@ import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPro
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { generateTextFromMessagesWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
+import {
+  clampDirectMemoryLimit,
+  DIRECT_MEMORY_LIMIT_DEFAULT,
+  DIRECT_MEMORY_LIMIT_MAX,
+  DIRECT_MEMORY_LIMIT_MIN,
+  getDirectMemoryMessageLimit,
+} from '../../services/memory/memoryWindowLimits';
 import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
 import { appendMemoryLibraryEntries, deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExportFormat, type MemoryExportScope } from '../../services/memory/exportMemory';
@@ -329,6 +336,10 @@ export function ChatSettingsPanel({
   const activeMemoryEntries = activeMemoryDetail === 'long-term' ? longTermMemoryEntries : shortTermMemoryEntries;
   const activeMemoryStats = getMemoryLibraryStats(activeMemoryEntries);
   const activeMemoryYearGroups = groupMemoryLibraryEntriesByYear(activeMemoryEntries);
+  const effectiveMemoryLimit = clampDirectMemoryLimit(character.memoryLimit);
+  const updateMemoryLimit = (value: unknown) => {
+    onUpdate({ ...character, memoryLimit: clampDirectMemoryLimit(value) });
+  };
   const activeMemoryStatCards = [
     {
       label: '总记忆条数',
@@ -443,10 +454,10 @@ export function ChatSettingsPanel({
       return Math.ceil(cjkCount + otherCount * 0.35);
     };
 
-      const historyLimit = character.memoryLimit || 20;
+      const historyLimit = getDirectMemoryMessageLimit(effectiveMemoryLimit);
       const historyWindow = history.slice(-historyLimit);
       const historyWindowText = historyWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
-      const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
+      const summaryHistoryWindow = getSummaryHistoryWindow(history, effectiveMemoryLimit);
       const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
@@ -538,7 +549,7 @@ export function ChatSettingsPanel({
 
     setLoading(true);
     try {
-      const summaryHistoryWindow = getSummaryHistoryWindow(history, character.memoryLimit);
+      const summaryHistoryWindow = getSummaryHistoryWindow(history, effectiveMemoryLimit);
       const summarySourceLines = summaryHistoryWindow
         .map((msg) => {
           const mainText = getMessageMainText(msg).trim();
@@ -1667,22 +1678,24 @@ export function ChatSettingsPanel({
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[15px] text-zinc-700">记忆对话轮数</span>
-                    <span className="text-[11px] text-zinc-400">决定模型每次直接读取的最近聊天范围，更早记录仍会保留，但不会自动进入当前对话。</span>
+                    <span className="text-[11px] text-zinc-400">模型每次最多读取最近 {DIRECT_MEMORY_LIMIT_MIN}-{DIRECT_MEMORY_LIMIT_MAX} 轮；更早内容交给短期/长期记忆延续。</span>
                   </div>
                 </div>
                 <input
                   type="number"
-                  value={character.memoryLimit || 20}
-                  onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                  min={DIRECT_MEMORY_LIMIT_MIN}
+                  max={DIRECT_MEMORY_LIMIT_MAX}
+                  value={effectiveMemoryLimit}
+                  onChange={e => updateMemoryLimit(e.target.value || DIRECT_MEMORY_LIMIT_DEFAULT)}
                   className="w-16 bg-white/50 border border-white/30 rounded-lg px-2 py-1 text-[14px] text-center outline-none focus:border-zinc-900"
                 />
               </div>
               <input
                 type="range"
-                min="0"
-                max="100"
-                value={character.memoryLimit || 20}
-                onChange={e => onUpdate({ ...character, memoryLimit: parseInt(e.target.value) })}
+                min={DIRECT_MEMORY_LIMIT_MIN}
+                max={DIRECT_MEMORY_LIMIT_MAX}
+                value={effectiveMemoryLimit}
+                onChange={e => updateMemoryLimit(e.target.value)}
                 className="w-full accent-zinc-900"
               />
 
