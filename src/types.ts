@@ -594,6 +594,9 @@ export type Character = {
   characterActionDescriptionEnabled?: boolean;
   postFrequency?: 'low' | 'medium' | 'high' | 'none';
   autoTranslate?: boolean;
+  replyLanguageMode?: 'follow-user' | 'chinese-with-native-flavor' | 'native-first' | 'fixed';
+  nativeLanguage?: string;
+  fixedReplyLanguage?: string;
   showTime?: boolean;
 };
 

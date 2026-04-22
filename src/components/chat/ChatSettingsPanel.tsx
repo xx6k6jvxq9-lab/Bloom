@@ -186,6 +186,15 @@ function formatMemoryStatDate(timestamp: number | null): string {
   }).format(timestamp);
 }
 
+const REPLY_LANGUAGE_MODE_OPTIONS = [
+  { value: 'follow-user', label: '跟随用户语言' },
+  { value: 'chinese-with-native-flavor', label: '中文为主，母语点缀' },
+  { value: 'native-first', label: '角色母语为主' },
+  { value: 'fixed', label: '固定指定语言' },
+] as const;
+
+const LANGUAGE_PRESET_OPTIONS = ['自动识别', '中文', '韩语', '日语', '英语', '粤语'];
+
 function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
   if (files.length === 0) return;
 
@@ -1250,6 +1259,58 @@ export function ChatSettingsPanel({
                     className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2 rounded-2xl bg-zinc-50/80 px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Languages size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">角色回复语言</span>
+                    <span className="text-[10px] text-zinc-400">可让外语角色直接使用母语，并配合自动翻译查看中文</span>
+                  </div>
+                </div>
+                <select
+                  value={character.replyLanguageMode || 'follow-user'}
+                  onChange={e => onUpdate({
+                    ...character,
+                    replyLanguageMode: e.target.value as Character['replyLanguageMode'],
+                  })}
+                  className="w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900"
+                >
+                  {REPLY_LANGUAGE_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1 text-[11px] text-zinc-400">
+                    角色母语
+                    <input
+                      list="reply-language-presets"
+                      value={character.nativeLanguage || ''}
+                      placeholder="如：韩语"
+                      onChange={e => onUpdate({ ...character, nativeLanguage: e.target.value })}
+                      className="rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[11px] text-zinc-400">
+                    固定语言
+                    <input
+                      list="reply-language-presets"
+                      value={character.fixedReplyLanguage || ''}
+                      placeholder="如：韩语"
+                      onChange={e => onUpdate({ ...character, fixedReplyLanguage: e.target.value })}
+                      disabled={character.replyLanguageMode !== 'fixed'}
+                      className="rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900 disabled:opacity-45"
+                    />
+                  </label>
+                </div>
+                <datalist id="reply-language-presets">
+                  {LANGUAGE_PRESET_OPTIONS.map((language) => (
+                    <option key={language} value={language} />
+                  ))}
+                </datalist>
               </div>
 
               <div className="flex items-center justify-between">

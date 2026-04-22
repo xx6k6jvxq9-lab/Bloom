@@ -10,6 +10,7 @@ export type GroupChatSceneInput = {
   speakerName: string;
   speakerCorePersona: string;
   speakerSignature?: string;
+  languagePolicy?: Pick<Character, 'replyLanguageMode' | 'nativeLanguage' | 'fixedReplyLanguage'>;
   userName: string;
   memberNames: string[];
   mode: 'reply' | 'invited' | 'opening';
@@ -515,6 +516,7 @@ export function buildGroupChatSceneInput(
     speakerName: options.speaker.name,
     speakerCorePersona: characterContext.corePersona ?? '',
     speakerSignature: options.speaker.signature?.trim() || undefined,
+    languagePolicy: options.speaker,
     userName: options.userName,
     memberNames: options.members.map((member) => member.name),
     mode,

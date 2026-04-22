@@ -1,5 +1,6 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { CHAT_OUTPUT_RULES, COMMON_OUTPUT_RULES } from '../base/outputRules';
+import { buildReplyLanguageRules, type ReplyLanguagePolicyInput } from '../base/languageRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
 import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
 import { buildLongTermMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
@@ -14,6 +15,7 @@ export type BuildChatPromptOptions = {
   };
   characterCore?: CharacterCoreSectionsInput;
   memoryContext?: MemoryContextInput;
+  languagePolicy?: ReplyLanguagePolicyInput;
   userContext?: {
     userName?: string;
   };
@@ -106,6 +108,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
     buildLongTermMemoryContextSection(options.memoryContext ?? {}),
     scenario,
     buildDirectChatRhythmPrompt(options.directReplyConfig),
+    buildReplyLanguageRules(options.languagePolicy),
     COMMON_OUTPUT_RULES,
     CHAT_OUTPUT_RULES,
     ...(includeProtocolRules ? [PROTOCOL_RULES_PROMPT] : []),

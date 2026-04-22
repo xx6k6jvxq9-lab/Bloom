@@ -1,5 +1,6 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { GROUP_CHAT_SCENARIO_PROMPT } from '../scenarios/groupChat';
+import { buildReplyLanguageRules } from '../base/languageRules';
 import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
 
 export type BuildGroupChatPromptOptions = {
@@ -118,6 +119,8 @@ export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions
     EXISTENCE_PROMPT,
     '',
     GROUP_CHAT_SCENARIO_PROMPT,
+    '',
+    buildReplyLanguageRules(sceneInput.languagePolicy),
     '',
     '当前角色资料：',
     `角色名字：${sceneInput.speakerName}`,

@@ -349,6 +349,7 @@ export function buildChatSceneInput(
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile ?? '',
       perceptionPrompt: params.perceptionPrompt,
     },
+    languagePolicy: params.character,
     recentContext: budgetedContext.recentContext,
     sections: budgetedContext.sections,
   };
