@@ -1,3 +1,5 @@
+import { isUsableChatText, normalizeChatPunctuationNoise } from './messageHygiene';
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -257,6 +259,6 @@ export function splitDirectAssistantReplyText(text: string, maxBubbles?: number)
 
   return mergeRhythmParts(resolvedParts, bubbleCap)
     .slice(0, bubbleCap)
-    .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1))
-    .filter(Boolean);
+    .map((part, index, allParts) => normalizeChatPunctuationNoise(normalizeBubbleEnding(part, index === allParts.length - 1)))
+    .filter(isUsableChatText);
 }

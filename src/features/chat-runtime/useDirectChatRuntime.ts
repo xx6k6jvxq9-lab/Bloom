@@ -56,6 +56,7 @@ import {
 } from '../../services/chat/avatarActions';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
@@ -208,10 +209,11 @@ function toPromptHistoryContent(message: ChatMessage): string {
   }
 
   if (message.role === 'user') {
-    return normalizeBracketActionTextForPrompt(message.text || '');
+    const userText = normalizeBracketActionTextForPrompt(message.text || '');
+    return isUsableChatText(userText) ? normalizeChatPunctuationNoise(userText) : '';
   }
 
-  return message.text;
+  return isUsableChatText(message.text || '') ? normalizeChatPunctuationNoise(message.text || '') : '';
 }
 
 function getDirectHistoryWindowByTemporalMode(
@@ -462,7 +464,10 @@ const splitStreamingModelResponseIntoMessages = (
     };
   });
 
-  const visibleMessages = mappedMessages.filter((message) => (message.text || '').trim().length > 0 || !!message.imageUrl);
+  const visibleMessages = mappedMessages.filter((message) => (
+    !!message.imageUrl
+    || isUsableChatText(message.text || '')
+  ));
   return visibleMessages;
 };
 
@@ -858,7 +863,7 @@ export function useDirectChatRuntime({
               content: toPromptHistoryContent(m),
               ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
               ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
-            })),
+            })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
             ...(mode === 'proactive'
               ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
               : []),
@@ -1260,7 +1265,7 @@ export function useDirectChatRuntime({
           content: toPromptHistoryContent(m),
           ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
-        })),
+        })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
       ];
       const qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,

@@ -8,6 +8,7 @@ import {
 } from '../../services/ai/outputQuality';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
@@ -218,7 +219,8 @@ function buildRuntimeMessages(params: {
       content: getPromptTextForMessage(message),
       ...(message.imageUrl ? { imageUrl: message.imageUrl } : {}),
       ...(message.audioUrl ? { audioUrl: message.audioUrl, audioMimeType: message.audioMimeType } : {}),
-    }));
+    }))
+    .filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl);
 
   const latestVisibleMessage = [...params.history]
     .reverse()
@@ -318,7 +320,8 @@ function getPromptTextForMessage(message: ChatMessage): string {
     return '[sent an image]';
   }
 
-  return getMessageMainText(message);
+  const text = getMessageMainText(message);
+  return isUsableChatText(text) ? normalizeChatPunctuationNoise(text) : '';
 }
 
 function buildReplyPreviewPayload(message: ChatMessage, fallbackAuthor: string): NonNullable<ChatMessage['replyTo']> {
@@ -871,7 +874,8 @@ function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimes
     .map((part) => normalizeChatMessageEnding(part))
     .flatMap((part) => normalizeConversationalParticleLead(part))
     .map((part) => part.trim())
-    .filter((part) => part.length > 1)
+    .map(normalizeChatPunctuationNoise)
+    .filter(isUsableChatText)
     .slice(0, 3);
 
   console.info('[group-chat] split reply parts', {
@@ -1236,7 +1240,7 @@ export function useGroupChatRuntime({
       }
 
       const mainText = getMessageMainText(message);
-      return mainText.trim().length > 0;
+      return isUsableChatText(mainText);
     });
 
     console.info('[group-chat] append speaker messages', {
