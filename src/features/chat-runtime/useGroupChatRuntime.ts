@@ -209,6 +209,7 @@ function buildRuntimeMessages(params: {
   history: ChatMessage[];
   mode: 'reply' | 'invited' | 'opening';
   replyTarget?: ChatMessage['replyTo'] | null;
+  speechActInstruction?: string;
 }): RuntimeChatMessage[] {
   const historyMessages = params.history
     .filter((message) => !message.isSystem)
@@ -239,7 +240,7 @@ function buildRuntimeMessages(params: {
   return [
     { role: 'system', content: params.systemPrompt },
     ...historyMessages,
-    { role: 'user', content: [instructionByMode[params.mode], replyTargetInstruction].filter(Boolean).join('\n') },
+    { role: 'user', content: [instructionByMode[params.mode], params.speechActInstruction || '', replyTargetInstruction].filter(Boolean).join('\n') },
   ];
 }
 
@@ -264,6 +265,33 @@ function getManualReplyTargetCount(memberCount: number): number {
     return Math.min(memberCount, 3);
   }
   return Math.min(memberCount, 2);
+}
+
+function getManualReplySpeechActInstruction(params: {
+  index: number;
+  totalCount: number;
+  hasExistingTopic: boolean;
+}): string {
+  const actByPosition = params.index === 0
+    ? (params.hasExistingTopic ? 'topic_followup' : 'topic_starter')
+    : params.index === params.totalCount - 1
+      ? 'closing_or_shift'
+      : params.index % 3 === 1
+        ? 'echo_tease_or_side_comment'
+        : 'interrupt_or_add_angle';
+
+  const instructionByAct: Record<string, string> = {
+    topic_starter: 'Speech act: start a small natural group-chat topic from your current state, time, mood, or group context. Do not make it formal.',
+    topic_followup: 'Speech act: continue the current shared topic with one specific angle. Do not answer everything or summarize.',
+    echo_tease_or_side_comment: 'Speech act: react like a real group member: follow the vibe, lightly tease, side-comment, or stir the room if it fits your character.',
+    interrupt_or_add_angle: 'Speech act: cut in briefly with a different angle, pushback, doubt, clarification, or a small personal reaction.',
+    closing_or_shift: 'Speech act: either leave a short hook for others, gently cool the topic, or shift the angle if the current topic is getting thin.',
+  };
+
+  return [
+    instructionByAct[actByPosition],
+    'Keep it short and character-specific. Avoid sounding like you are taking turns to answer a question.',
+  ].join('\n');
 }
 
 function getMessageMainText(message: ChatMessage): string {
@@ -936,6 +964,7 @@ export function useGroupChatRuntime({
     currentHistory: ChatMessage[];
     mode: 'reply' | 'invited' | 'opening';
     replyTarget?: ChatMessage['replyTo'] | null;
+    speechActInstruction?: string;
   }): Promise<{ text: string; timestamp: number }> => {
     if (!activeConfig) {
       throw new Error('Missing active API config.');
@@ -1009,6 +1038,7 @@ export function useGroupChatRuntime({
       history: params.currentHistory,
       mode: params.mode,
       replyTarget: params.replyTarget,
+      speechActInstruction: params.speechActInstruction,
     });
     const qualityResult = await generateQualityCheckedAssistantReply({
       activeConfig,
@@ -2361,6 +2391,11 @@ export function useGroupChatRuntime({
             currentHistory: workingHistory,
             mode: latestVisibleMessage || index > 0 ? 'reply' : 'opening',
             replyTarget: index === 0 ? replyingTo : null,
+            speechActInstruction: getManualReplySpeechActInstruction({
+              index,
+              totalCount: targetCount,
+              hasExistingTopic: !!latestVisibleMessage,
+            }),
           });
 
           if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
