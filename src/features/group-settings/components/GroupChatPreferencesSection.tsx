@@ -98,7 +98,7 @@ export function GroupChatPreferencesSection({
       />
       <div className="border-t border-zinc-100" />
       <ToggleRow
-        label="\u624b\u52a8\u56de\u590d\u6a21\u5f0f"
+        label="手动回复模式"
         checked={manualReplyEnabled}
         onToggle={() => onChange({ manualReplyEnabled: !manualReplyEnabled })}
       />

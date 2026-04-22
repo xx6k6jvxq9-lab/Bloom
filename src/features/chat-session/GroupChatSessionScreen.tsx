@@ -2919,8 +2919,8 @@ export function GroupChatSessionScreen({
                 if (showFunPanel) setShowFunPanel(false);
               }}
               disabled={!canUseManualReplyButton}
-              title="\u624b\u52a8\u56de\u590d"
-              aria-label="\u624b\u52a8\u56de\u590d"
+              title="手动回复"
+              aria-label="手动回复"
               className={`chat-footer-manual-reply-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
                 canUseManualReplyButton
                   ? `${groupFooterControlTone.iconButton} active:scale-90`
