@@ -15,6 +15,10 @@ import type {
   WorldBookEntry,
 } from '../../types';
 import { generateTextFromMessagesWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
+import {
+  generateQualityCheckedAssistantReply,
+  shouldAllowBracketActions,
+} from '../../services/ai/outputQuality';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -845,26 +849,35 @@ export function useDirectChatRuntime({
             ].filter(Boolean),
           });
 
-          await streamTextWithConfig({
+          const runtimeMessages = [
+            { role: 'system' as const, content: systemPrompt },
+            ...historyWindow.map(m => ({
+              role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+              content: toPromptHistoryContent(m),
+              ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+              ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
+            })),
+            ...(mode === 'proactive'
+              ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
+              : []),
+          ];
+          const qualityResult = await generateQualityCheckedAssistantReply({
             activeConfig,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...historyWindow.map(m => ({
-                role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-                content: toPromptHistoryContent(m),
-                ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
-                ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
-              })),
-              ...(mode === 'proactive'
-                ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
-                : []),
-            ],
-            onTextChunk: (chunkText) => {
-              currentResponseText += chunkText;
-              updateAssistantMessage(currentResponseText);
+            messages: runtimeMessages,
+            allowBracketActions: shouldAllowBracketActions(character),
+            onInvalid: (result) => {
+              console.warn('[direct-chat] invalid generated reply, retrying', {
+                reason: result.reason,
+                preview: result.cleanedText.slice(0, 120),
+              });
             },
           });
 
+          if (!qualityResult.ok) {
+            throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
+          }
+
+          currentResponseText = qualityResult.cleanedText;
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
@@ -1238,40 +1251,42 @@ export function useDirectChatRuntime({
         ].filter(Boolean),
       });
 
-      await streamTextWithConfig({
+      const runtimeMessages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...historyWindow.map(m => ({
+          role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+          content: toPromptHistoryContent(m),
+          ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+          ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
+        })),
+      ];
+      const qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...historyWindow.map(m => ({
-            role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-            content: toPromptHistoryContent(m),
-            ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
-            ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
-          })),
-        ],
-        onTextChunk: (chunkText) => {
-          if (activeGenerationIdRef.current !== generationId) {
-            return;
-          }
-          currentResponseText += chunkText;
-          updateAssistantMessage(currentResponseText);
+        messages: runtimeMessages,
+        allowBracketActions: shouldAllowBracketActions(character),
+        onInvalid: (result) => {
+          console.warn('[direct-chat] invalid generated reply, retrying', {
+            reason: result.reason,
+            preview: result.cleanedText.slice(0, 120),
+          });
         },
       });
 
-      if (!currentResponseText && effectiveLocationData) {
+      if (!qualityResult.ok && effectiveLocationData) {
         activeAssistantMessageIdRef.current = null;
         activeAssistantRenderCountRef.current = 0;
         setHistory(newHistory);
         return;
       }
 
-      if (!currentResponseText) {
-        throw new Error('模型返回为空');
+      if (!qualityResult.ok) {
+        throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
       }
       if (activeGenerationIdRef.current !== generationId) {
         return;
       }
 
+      currentResponseText = qualityResult.cleanedText;
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
