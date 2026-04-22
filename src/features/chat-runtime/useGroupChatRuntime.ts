@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ApiConfig, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
-import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import {
+  generateQualityCheckedAssistantReply,
+  shouldAllowBracketActions,
+} from '../../services/ai/outputQuality';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
@@ -974,7 +978,6 @@ export function useGroupChatRuntime({
       historyLength: params.currentHistory.length,
     });
 
-    let responseText = '';
     const pendingTimestamp = requestTimestamp;
     setPendingMessage({
       speakerId: params.speaker.id,
@@ -983,32 +986,46 @@ export function useGroupChatRuntime({
       timestamp: pendingTimestamp,
       text: '',
     });
-    await streamTextWithConfig({
+
+    const runtimeMessages = buildRuntimeMessages({
+      systemPrompt,
+      history: params.currentHistory,
+      mode: params.mode,
+      replyTarget: params.replyTarget,
+    });
+    const qualityResult = await generateQualityCheckedAssistantReply({
       activeConfig,
-      messages: buildRuntimeMessages({
-        systemPrompt,
-        history: params.currentHistory,
-        mode: params.mode,
-        replyTarget: params.replyTarget,
-      }),
+      messages: runtimeMessages,
       temperature: 0.7,
-      onTextChunk: (chunkText) => {
-        responseText += chunkText;
-        setPendingMessage((previous) => (
-          previous && previous.speakerId === params.speaker.id
-            ? {
-                ...previous,
-                text: responseText,
-              }
-            : previous
-        ));
+      allowBracketActions: shouldAllowBracketActions(params.speaker),
+      onInvalid: (result) => {
+        console.warn('[group-chat] invalid generated reply, retrying', {
+          mode: params.mode,
+          speakerId: params.speaker.id,
+          speakerName: params.speaker.name,
+          reason: result.reason,
+          preview: result.cleanedText.slice(0, 120),
+        });
       },
     });
 
+    if (!qualityResult.ok) {
+      throw new Error(`\u6a21\u578b\u8fd4\u56de\u65e0\u6548\u5185\u5bb9\uff1a${qualityResult.reason || 'unknown'}`);
+    }
+
+    const responseText = qualityResult.cleanedText;
     const normalizedResponse = normalizeGeneratedReply(responseText, params.speaker);
     if (!normalizedResponse) {
       throw new Error('\u6a21\u578b\u8fd4\u56de\u4e3a\u7a7a');
     }
+    setPendingMessage((previous) => (
+      previous && previous.speakerId === params.speaker.id
+        ? {
+            ...previous,
+            text: normalizedResponse,
+          }
+        : previous
+    ));
 
     console.info('[group-chat] raw model output', {
       mode: params.mode,
