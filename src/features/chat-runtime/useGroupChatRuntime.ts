@@ -254,6 +254,18 @@ function buildFailureText(detail: string): string {
   return `[\u7cfb\u7edf\u63d0\u793a] \u7fa4\u804a\u56de\u590d\u5931\u8d25\uff1a${detail}`;
 }
 
+function getManualReplyTargetCount(memberCount: number): number {
+  if (memberCount <= 1) return memberCount;
+  const totalPeopleIncludingUser = memberCount + 1;
+  if (totalPeopleIncludingUser >= 8) {
+    return Math.min(memberCount, 5);
+  }
+  if (totalPeopleIncludingUser >= 5) {
+    return Math.min(memberCount, 3);
+  }
+  return Math.min(memberCount, 2);
+}
+
 function getMessageMainText(message: ChatMessage): string {
   const text = message.text || '';
   if (message.role === 'model') {
@@ -2300,48 +2312,79 @@ export function useGroupChatRuntime({
     const recentVisibleMessages = currentHistory.filter((message) => !message.isSystem);
     const latestVisibleMessage = recentVisibleMessages[recentVisibleMessages.length - 1] || null;
     const latestText = latestVisibleMessage ? getMessageMainText(latestVisibleMessage) : '';
-    const weightedMembers = members.map((member) => {
-      const recentCount = currentHistory
-        .filter((message) => message.role === 'model' && message.senderCharacterId === member.id)
-        .slice(-6)
-        .length;
-      const latestSpeakerId = latestVisibleMessage?.role === 'model'
-        ? latestVisibleMessage.senderCharacterId
-        : undefined;
-      let weight = inferReadableSpeakerWeight(member, latestText || member.sceneHints?.groupChat || member.corePersona || member.name)
-        * getGroupStageMultiplier(groupMeta?.groupStage);
-
-      if (latestSpeakerId === member.id) {
-        weight -= 0.8;
-      }
-
-      weight -= recentCount * 0.35;
-
-      return {
-        member,
-        weight: Math.max(weight, 0.2),
-      };
-    });
-    const responder = pickWeightedMember(weightedMembers);
-    if (!responder) {
-      return;
-    }
-
     try {
       await runGeneration(async ({ generationId }) => {
-        const response = await generateMessageForSpeaker({
-          speaker: responder,
-          currentHistory,
-          mode: latestVisibleMessage ? 'reply' : 'opening',
-          replyTarget: replyingTo,
-        });
+        let workingHistory = currentHistory;
+        let latestReplyText = latestText;
+        const selectedSpeakerIds: string[] = [];
+        const targetCount = getManualReplyTargetCount(members.length);
 
-        if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
-          return;
+        for (let index = 0; index < targetCount; index += 1) {
+          const latestSpeakerId = [...workingHistory]
+            .reverse()
+            .find((message) => message.role === 'model' && !message.isSystem)
+            ?.senderCharacterId;
+          const weightedMembers = members
+            .filter((member) => !selectedSpeakerIds.includes(member.id))
+            .map((member) => {
+              const recentCount = workingHistory
+                .filter((message) => message.role === 'model' && message.senderCharacterId === member.id)
+                .slice(-6)
+                .length;
+              let weight = inferReadableSpeakerWeight(
+                member,
+                latestReplyText || member.sceneHints?.groupChat || member.corePersona || member.name,
+              ) * getGroupStageMultiplier(groupMeta?.groupStage);
+
+              if (latestSpeakerId === member.id) {
+                weight -= 1.2;
+              }
+
+              if (index > 0) {
+                weight += 0.65;
+              }
+
+              weight -= recentCount * 0.35;
+
+              return {
+                member,
+                weight: Math.max(weight, 0.2),
+              };
+            });
+          const responder = pickWeightedMember(weightedMembers);
+          if (!responder) {
+            break;
+          }
+
+          const response = await generateMessageForSpeaker({
+            speaker: responder,
+            currentHistory: workingHistory,
+            mode: latestVisibleMessage || index > 0 ? 'reply' : 'opening',
+            replyTarget: index === 0 ? replyingTo : null,
+          });
+
+          if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId) {
+            return;
+          }
+
+          const appendedMessages = appendSpeakerMessage(
+            responder,
+            response.text,
+            response.timestamp,
+            workingHistory,
+            index === 0 ? replyingTo : null,
+            true,
+          );
+          setPendingMessage(null);
+          if (appendedMessages.length === 0) {
+            break;
+          }
+
+          selectedSpeakerIds.push(responder.id);
+          workingHistory = [...workingHistory, ...appendedMessages];
+          const latestAppendedMessage = appendedMessages[appendedMessages.length - 1];
+          latestReplyText = latestAppendedMessage ? getMessageMainText(latestAppendedMessage) : response.text;
         }
-
-        appendSpeakerMessage(responder, response.text, response.timestamp, currentHistory, replyingTo, true);
-        setPendingMessage(null);
       });
     } catch (runtimeError) {
       console.error('Manual group reply error:', runtimeError);
