@@ -25,6 +25,7 @@ export type GroupChatSceneInput = {
     longTermMemoryProfile?: string;
     temporalContext?: string;
     groupSceneHint?: string;
+    groupShortTermSummary?: string;
     backgroundSummary?: string;
     memberRelationshipState?: string;
     currentScene?: string;
@@ -539,6 +540,7 @@ export function buildGroupChatSceneInput(
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
       temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
       groupSceneHint: characterContext.sceneHints?.groupChat,
+      groupShortTermSummary: options.group?.groupShortTermSummary?.trim() || undefined,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,
       currentScene: options.group?.currentScene?.trim() || undefined,

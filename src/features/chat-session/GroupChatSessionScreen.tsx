@@ -843,6 +843,7 @@ export function GroupChatSessionScreen({
       publicFacts: group.publicFacts,
       manualReplyEnabled: group.manualReplyEnabled,
       topicState: group.topicState,
+      groupShortTermSummary: group.groupShortTermSummary,
     },
     history,
     setHistory,

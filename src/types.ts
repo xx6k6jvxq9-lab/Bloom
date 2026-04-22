@@ -930,6 +930,7 @@ export type ChatGroup = {
   lastTime?: number;
   history?: ChatMessage[];
   topicState?: GroupTopicState;
+  groupShortTermSummary?: string;
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
 };

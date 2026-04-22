@@ -426,6 +426,9 @@ function sanitizeChatGroupsWithCharacters(
       memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
       currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
       publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
+      groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
+        ? group.groupShortTermSummary.trim() || undefined
+        : undefined,
       activeWorldBookIds: Array.isArray(group.activeWorldBookIds)
         ? group.activeWorldBookIds.filter((worldBookId): worldBookId is string => typeof worldBookId === 'string')
         : [],

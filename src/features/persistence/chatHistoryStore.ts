@@ -15,6 +15,7 @@ export type PersistedGroupSession = {
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
   topicState?: GroupTopicState;
+  groupShortTermSummary?: string;
 };
 
 export type PersistedChatHistoryData = {
@@ -119,6 +120,10 @@ function sanitizeGroupSessions(
         lastTime: typeof session.lastTime === 'number' ? session.lastTime : undefined,
         relationshipWaves: isRelationshipWaveArray(session.relationshipWaves) ? session.relationshipWaves : [],
         factTraces: isFactTraceArray(session.factTraces) ? session.factTraces : [],
+        topicState: session.topicState,
+        groupShortTermSummary: typeof session.groupShortTermSummary === 'string'
+          ? session.groupShortTermSummary.trim() || undefined
+          : undefined,
       };
     }
   }
@@ -188,6 +193,7 @@ export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, Pe
       lastMessage: group.lastMessage,
       lastTime: group.lastTime,
       topicState: group.topicState,
+      groupShortTermSummary: group.groupShortTermSummary,
       relationshipWaves: buildGroupRelationshipWaveRecords({
         groupId: group.id,
         messages: history,
@@ -244,6 +250,7 @@ export function extractGroupSessionsWithFallback(
         lastMessage: group.lastMessage,
         lastTime: group.lastTime,
         topicState: group.topicState,
+        groupShortTermSummary: group.groupShortTermSummary,
         relationshipWaves: buildGroupRelationshipWaveRecords({
           groupId: group.id,
           messages: history,
@@ -284,6 +291,7 @@ export function mergeGroupSessionsIntoChatGroups(
       relationshipWaves: session.relationshipWaves || [],
       factTraces: session.factTraces || [],
       topicState: session.topicState,
+      groupShortTermSummary: session.groupShortTermSummary,
     };
   });
 }
