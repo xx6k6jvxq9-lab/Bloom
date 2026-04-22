@@ -702,6 +702,16 @@ export type ChatHistory = {
   [characterId: string]: ChatMessage[];
 };
 
+export type GroupTopicState = {
+  anchor: string;
+  startedBy: 'user' | 'character';
+  startedById?: string;
+  startedAt: number;
+  lastUpdatedAt: number;
+  heat: 'low' | 'medium' | 'high';
+  phase: 'opening' | 'active' | 'cooling' | 'closing';
+};
+
 export type MomentComment = {
   id: string;
   authorId: string;
@@ -916,6 +926,7 @@ export type ChatGroup = {
   lastMessage?: string;
   lastTime?: number;
   history?: ChatMessage[];
+  topicState?: GroupTopicState;
   relationshipWaves?: RelationshipWaveRecord[];
   factTraces?: FactTraceRecord[];
 };

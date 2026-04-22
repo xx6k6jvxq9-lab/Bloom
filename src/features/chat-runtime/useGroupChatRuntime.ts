@@ -33,6 +33,7 @@ type UseGroupChatRuntimeArgs = {
     currentScene?: ChatGroup['currentScene'];
     publicFacts?: ChatGroup['publicFacts'];
     manualReplyEnabled?: ChatGroup['manualReplyEnabled'];
+    topicState?: ChatGroup['topicState'];
   };
   history: ChatMessage[];
   setHistory: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -949,6 +950,7 @@ export function useGroupChatRuntime({
                 memberRelationshipNote: groupMeta.memberRelationshipNote,
                 currentScene: groupMeta.currentScene,
                 publicFacts: groupMeta.publicFacts,
+                topicState: groupMeta.topicState,
               }
             : undefined,
           userName,
@@ -1064,6 +1066,7 @@ export function useGroupChatRuntime({
     groupMeta?.memberRelationshipNote,
     groupMeta?.memberRelationshipState,
     groupMeta?.publicFacts,
+    groupMeta?.topicState,
     members,
     userName,
     directChatHistory,

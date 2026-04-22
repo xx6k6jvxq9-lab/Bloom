@@ -842,6 +842,7 @@ export function GroupChatSessionScreen({
       currentScene: group.currentScene,
       publicFacts: group.publicFacts,
       manualReplyEnabled: group.manualReplyEnabled,
+      topicState: group.topicState,
     },
     history,
     setHistory,

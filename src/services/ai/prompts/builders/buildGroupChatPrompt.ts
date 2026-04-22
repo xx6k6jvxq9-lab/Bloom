@@ -66,6 +66,7 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.publicFacts
       ? `群公开事实：${sceneInput.recentContext.publicFacts}`
       : '',
+    sceneInput.recentContext?.topicStatePrompt || '',
     sceneInput.recentContext?.worldBookPrompt
       ? `群世界书：\n${sceneInput.recentContext.worldBookPrompt}`
       : '',

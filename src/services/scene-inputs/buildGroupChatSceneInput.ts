@@ -4,6 +4,7 @@ import { buildCharacterContext } from '../relationship-context/buildCharacterCon
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
+import { formatGroupTopicStateForPrompt } from '../group-chat/topicState';
 
 export type GroupChatSceneInput = {
   speakerName: string;
@@ -27,6 +28,7 @@ export type GroupChatSceneInput = {
     memberRelationshipState?: string;
     currentScene?: string;
     publicFacts?: string;
+    topicStatePrompt?: string;
     worldBookPrompt?: string;
     expressionStyle?: string;
     boundaryPack?: string;
@@ -539,6 +541,7 @@ export function buildGroupChatSceneInput(
       memberRelationshipState,
       currentScene: options.group?.currentScene?.trim() || undefined,
       publicFacts: options.group?.publicFacts?.trim() || undefined,
+      topicStatePrompt: formatGroupTopicStateForPrompt(options.group?.topicState),
       worldBookPrompt: buildGroupWorldBookPrompt(options.activeWorldBooks),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,

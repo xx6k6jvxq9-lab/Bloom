@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
+import { deriveGroupTopicStateFromHistory } from '../../services/group-chat/topicState';
 import { GroupChatSessionScreen } from './GroupChatSessionScreen';
 
 type GroupChatSessionContainerProps = {
@@ -68,6 +69,11 @@ export function GroupChatSessionContainer({
             return {
               ...item,
               history: resolvedHistory,
+              topicState: deriveGroupTopicStateFromHistory({
+                previous: item.topicState,
+                previousHistory: item.history || [],
+                nextHistory: resolvedHistory,
+              }),
               lastMessage: resolvedHistory[resolvedHistory.length - 1]?.text || '',
               lastTime: resolvedHistory.length > 0
                 ? resolvedHistory[resolvedHistory.length - 1].timestamp
@@ -87,6 +93,7 @@ export function GroupChatSessionContainer({
             ? {
                 ...item,
                 history: [],
+                topicState: undefined,
                 lastMessage: '',
                 lastTime: item.lastTime || Date.now(),
               }
