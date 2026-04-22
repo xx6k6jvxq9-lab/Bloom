@@ -8,6 +8,7 @@ import {
   Keyboard,
   LogOut,
   MapPin,
+  MessageCircle,
   MessageSquarePlus,
   Mic,
   MoreVertical,
@@ -2899,24 +2900,45 @@ export function GroupChatSessionScreen({
           </div>
         )}
 
-        <div className="chat-footer-controls flex items-end gap-2">
+        <div className="chat-footer-controls flex items-end gap-1.5">
           <button
             onClick={() => setIsVoiceMode((prev) => !prev)}
-            className={`chat-footer-voice-toggle-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+            className={`chat-footer-voice-toggle-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
               isVoiceMode ? 'bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
             }`}
           >
-            {isVoiceMode ? <Keyboard size={22} className="chat-footer-voice-toggle-icon" /> : <Mic size={22} className="chat-footer-voice-toggle-icon" />}
+            {isVoiceMode ? <Keyboard size={19} className="chat-footer-voice-toggle-icon" /> : <Mic size={19} className="chat-footer-voice-toggle-icon" />}
           </button>
 
-          <div className={`chat-footer-input-shell flex flex-1 items-end gap-2 rounded-2xl border px-4 py-2.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
+          {manualReplyModeEnabled && (
+            <button
+              type="button"
+              onClick={() => {
+                void requestManualReply();
+                if (showEmojiPanel) setShowEmojiPanel(false);
+                if (showFunPanel) setShowFunPanel(false);
+              }}
+              disabled={!canUseManualReplyButton}
+              title="\u624b\u52a8\u56de\u590d"
+              aria-label="\u624b\u52a8\u56de\u590d"
+              className={`chat-footer-manual-reply-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
+                canUseManualReplyButton
+                  ? `${groupFooterControlTone.iconButton} active:scale-90`
+                  : 'cursor-not-allowed bg-zinc-100/70 text-zinc-300'
+              }`}
+            >
+              <MessageCircle size={18} className="chat-footer-manual-reply-icon" />
+            </button>
+          )}
+
+          <div className={`chat-footer-input-shell flex min-h-9 flex-1 items-end gap-2 rounded-2xl border px-3 py-1.5 focus-within:border-blue-500 ${groupFooterControlTone.inputShell}`}>
             {isVoiceMode ? (
               <button
                 onPointerDown={audioRecordInteraction.onPointerDown}
                 onPointerUp={audioRecordInteraction.onPointerUp}
                 onPointerCancel={audioRecordInteraction.onPointerCancel}
                 onPointerLeave={audioRecordInteraction.onPointerLeave}
-                className={`chat-footer-voice-button flex h-10 w-full items-center justify-center rounded-xl text-[14px] transition-all active:scale-[0.98] select-none ${
+                className={`chat-footer-voice-button flex h-9 w-full items-center justify-center rounded-2xl text-[15px] font-medium transition-all active:scale-[0.98] select-none ${
                   isRecording
                     ? 'bg-zinc-200 text-zinc-800'
                     : groupFooterControlTone.voiceButton
@@ -2954,31 +2976,10 @@ export function GroupChatSessionScreen({
             )}
           </div>
 
-          {!isVoiceMode && manualReplyModeEnabled && !input.trim() && (
-            <button
-              type="button"
-              onClick={() => {
-                void requestManualReply();
-                if (showEmojiPanel) setShowEmojiPanel(false);
-                if (showFunPanel) setShowFunPanel(false);
-              }}
-              disabled={!canUseManualReplyButton}
-              title="\u624b\u52a8\u56de\u590d"
-              aria-label="\u624b\u52a8\u56de\u590d"
-              className={`chat-footer-manual-reply-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
-                canUseManualReplyButton
-                  ? `${groupFooterControlTone.iconButton} active:scale-90`
-                  : 'cursor-not-allowed bg-zinc-100/70 text-zinc-300'
-              }`}
-            >
-              <MessageSquarePlus size={20} className="chat-footer-manual-reply-icon" />
-            </button>
-          )}
-
           {!isVoiceMode && input.trim() ? (
             <button
               onClick={() => void sendText()}
-              className="chat-footer-send-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
+              className="chat-footer-send-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-all hover:bg-zinc-200 active:scale-90"
             >
               <Send size={18} className="chat-footer-send-icon" />
             </button>
@@ -2988,11 +2989,11 @@ export function GroupChatSessionScreen({
                 setShowFunPanel(!showFunPanel);
                 if (showEmojiPanel) setShowEmojiPanel(false);
               }}
-              className={`chat-footer-plus-button flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+              className={`chat-footer-plus-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
                 showFunPanel ? 'rotate-45 bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
               }`}
             >
-              <Plus size={24} className="chat-footer-plus-icon" />
+              <Plus size={22} className="chat-footer-plus-icon" />
             </button>
           )}
         </div>
