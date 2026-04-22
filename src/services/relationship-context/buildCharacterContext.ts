@@ -1,6 +1,6 @@
 import type { Character, Mask, WorldBookEntry } from '../../types';
 import type { CharacterContext } from './types';
-import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
+import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 
 type BuildCharacterContextInput = {
   character: Character;
@@ -28,19 +28,7 @@ function buildMaskPrompt(mask?: Mask | null): string | undefined {
 }
 
 function buildWorldBookPrompt(worldBooks: WorldBookEntry[] | undefined): string | undefined {
-  if (!worldBooks || worldBooks.length === 0) return undefined;
-
-  const sections = sortWorldBooksByPriority(worldBooks)
-    .map((entry) => {
-      const title = normalizeOptionalText(entry.title);
-      const content = normalizeOptionalText(entry.content);
-
-      if (!title || !content) return '';
-      return `[${normalizeWorldBookCategory(entry.category)}] ${title}:\n${content}`;
-    })
-    .filter(Boolean);
-
-  return sections.length > 0 ? sections.join('\n\n') : undefined;
+  return buildBudgetedWorldBookPrompt(worldBooks, 'direct');
 }
 
 function normalizeSceneHints(value: Record<string, string> | undefined): Record<string, string> | undefined {
