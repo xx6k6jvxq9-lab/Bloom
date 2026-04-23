@@ -10,8 +10,7 @@ import { patchChatHistoryRecords } from '../../../features/persistence/chatHisto
 import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
-import { buildFallbackMomentCommentReply, generateMomentCommentReply } from '../../../services/moments/generators';
-import { getRecentMomentReplyContext } from '../../../services/moments/triggers';
+import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
 
 function ResolvedContactsAvatar({
   value,
@@ -608,6 +607,23 @@ export function CharacterMomentsProfile({
     }));
   };
 
+  const toggleCommentComposer = (momentId: string, nextReplyTarget: typeof replyTarget) => {
+    const isSameMoment = commentingOn === momentId;
+    const currentTargetId = replyTarget?.momentId === momentId ? replyTarget.commentId : null;
+    const nextTargetId = nextReplyTarget?.momentId === momentId ? nextReplyTarget.commentId : null;
+    const isSameReplyTarget = currentTargetId === nextTargetId;
+
+    if (isSameMoment && isSameReplyTarget) {
+      setCommentingOn(null);
+      setReplyTarget(null);
+      setCommentText('');
+      return;
+    }
+
+    setCommentingOn(momentId);
+    setReplyTarget(nextReplyTarget);
+  };
+
   const handleComment = async (momentId: string) => {
     if (!commentText.trim()) return;
 
@@ -630,41 +646,14 @@ export function CharacterMomentsProfile({
     const moment = (appData.moments || []).find((item: MomentItem) => item.id === momentId);
     if (!moment || !activeConfig) return;
 
-    try {
-      const replyText = await generateMomentCommentReply({
-        activeConfig,
-        replyCharacter: character,
-        moment,
-        userComment: userComment.content,
-        characters,
-        userName: userProfile.name,
-      });
-      const normalizedReply = replyText.trim();
-      if (!normalizedReply) return;
-      appendCommentToMoment(momentId, {
-        id: `${Date.now()}_${character.id}_reply`,
-        authorId: character.id,
-        content: normalizedReply,
-        timestamp: Date.now(),
-        replyToCommentId: userComment.id,
-        replyToAuthorId: userComment.authorId,
-        replyToAuthorName: userProfile.name,
-      });
-    } catch (error) {
-      console.error('Character moment reply failed', error);
-      const recentCommentReplies = getRecentMomentReplyContext(moment, characters, userProfile.name);
-      const fallback = buildFallbackMomentCommentReply(character, moment, userComment.content, recentCommentReplies).trim();
-      if (!fallback) return;
-      appendCommentToMoment(momentId, {
-        id: `${Date.now()}_${character.id}_reply`,
-        authorId: character.id,
-        content: fallback,
-        timestamp: Date.now(),
-        replyToCommentId: userComment.id,
-        replyToAuthorId: userComment.authorId,
-        replyToAuthorName: userProfile.name,
-      });
-    }
+    void runMomentCommentReplySequence({
+      activeConfig,
+      moment,
+      characters,
+      userName: userProfile.name,
+      triggerComment: userComment,
+      appendComment: (comment) => appendCommentToMoment(momentId, comment),
+    });
   };
 
   return (
@@ -751,8 +740,7 @@ export function CharacterMomentsProfile({
                       </button>
                       <button
                         onClick={() => {
-                          setCommentingOn(moment.id);
-                          setReplyTarget(null);
+                          toggleCommentComposer(moment.id, null);
                         }}
                         className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:bg-white"
                       >
@@ -771,8 +759,7 @@ export function CharacterMomentsProfile({
                               key={comment.id}
                               type="button"
                               onClick={() => {
-                                setCommentingOn(moment.id);
-                                setReplyTarget({
+                                toggleCommentComposer(moment.id, {
                                   momentId: moment.id,
                                   commentId: comment.id,
                                   authorId: comment.authorId,
