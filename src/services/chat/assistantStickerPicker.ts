@@ -5,6 +5,14 @@ type PickedSticker = {
   label: string;
 };
 
+function hashCueText(text: string): number {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 function normalizeCueText(text: string): string {
   return text.trim().toLowerCase();
 }
@@ -24,12 +32,16 @@ export function pickAssistantSticker(
   const normalizedCueText = normalizeCueText(cueText);
   if (!normalizedCueText) return null;
 
+  const stickerCandidates = availableStickers.filter((sticker) => !!sticker?.trim());
+  if (stickerCandidates.length === 0) {
+    return null;
+  }
+
   const cueLabel = inferStickerSemanticLabel(undefined, cueText)?.trim().toLowerCase() || '';
   let bestMatch: PickedSticker | null = null;
   let bestScore = 0;
 
-  for (const sticker of availableStickers) {
-    if (!sticker?.trim()) continue;
+  for (const sticker of stickerCandidates) {
     const stickerLabel = inferStickerSemanticLabel(sticker)?.trim() || '';
     const normalizedStickerLabel = stickerLabel.toLowerCase();
     const score = scoreStickerMatch(normalizedCueText, cueLabel, normalizedStickerLabel);
@@ -41,7 +53,19 @@ export function pickAssistantSticker(
     };
   }
 
-  return bestMatch;
+  if (bestMatch) {
+    return bestMatch;
+  }
+
+  const fallbackSticker = stickerCandidates[hashCueText(normalizedCueText) % stickerCandidates.length];
+  const fallbackLabel = inferStickerSemanticLabel(fallbackSticker, cueText)?.trim()
+    || inferStickerSemanticLabel(undefined, cueText)?.trim()
+    || '表情包';
+
+  return {
+    sticker: fallbackSticker,
+    label: fallbackLabel,
+  };
 }
 
 export function buildAssistantStickerPromptSection(availableStickers: string[]): string {

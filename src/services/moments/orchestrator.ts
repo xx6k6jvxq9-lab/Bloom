@@ -1,5 +1,5 @@
 import type { ApiConfig, Character, ChatMessage, Mask, MomentImageCard, WorldBookEntry } from '../../types';
-import { generateMomentChatReaction, generateMomentPostContent } from './generators';
+import { generateMomentPostContent } from './generators';
 import type { RecentMomentContext } from './triggers';
 import { shouldAutoPublishMomentFromChat, shouldTriggerMomentPublishFromChat } from './triggers';
 
@@ -40,14 +40,6 @@ export async function handleCommandTriggeredMomentPublish(
     return { shouldPublish: false };
   }
 
-  const chatReaction = await generateMomentChatReaction({
-    activeConfig,
-    character,
-    masks,
-    worldBook,
-    requestText: text,
-  });
-
   const momentPost = await generateMomentPostContent({
     activeConfig,
     character,
@@ -58,7 +50,6 @@ export async function handleCommandTriggeredMomentPublish(
 
   return {
     shouldPublish: true,
-    chatReaction,
     momentContent: momentPost.content,
     momentImageCard: momentPost.imageCard,
     triggerType: 'command',

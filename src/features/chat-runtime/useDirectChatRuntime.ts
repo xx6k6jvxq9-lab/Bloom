@@ -79,6 +79,15 @@ const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 
+function createMomentPublishedSystemMessage(characterName: string, timestamp: number): ChatMessage {
+  return {
+    role: 'model',
+    text: `${characterName} 更新了一条动态`,
+    timestamp,
+    isSystem: true,
+  };
+}
+
 function parseDirectActionCue(segment: string): {
   kind: 'normal' | 'sticker' | 'reply' | 'recall';
   content: string;
@@ -1481,14 +1490,12 @@ export function useDirectChatRuntime({
         worldBook,
       });
 
-      if (commandMomentResult.shouldPublish && commandMomentResult.chatReaction && commandMomentResult.momentContent) {
-        const chatReaction = commandMomentResult.chatReaction;
-        const historyWithReaction = [...newHistory, {
-          role: 'model' as const,
-          text: chatReaction.trim(),
-          timestamp: assistantMsgId,
-        }];
-        setHistory(historyWithReaction);
+      if (commandMomentResult.shouldPublish && commandMomentResult.momentContent) {
+        const noticeTimestamp = Date.now();
+        setHistory([
+          ...newHistory,
+          createMomentPublishedSystemMessage(character.name, noticeTimestamp),
+        ]);
         activeAssistantMessageIdRef.current = null;
         activeAssistantRenderCountRef.current = 0;
 
@@ -1661,6 +1668,12 @@ export function useDirectChatRuntime({
         });
 
         if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
+          const noticeTimestamp = Date.now();
+          const finalHistoryWithNotice = [
+            ...finalHistory,
+            createMomentPublishedSystemMessage(character.name, noticeTimestamp),
+          ];
+          setHistory(finalHistoryWithNotice);
           onPublishMoment?.({
             authorId: character.id,
             content: autoMomentResult.momentContent,

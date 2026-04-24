@@ -287,6 +287,67 @@ function hashString(input: string) {
   return Math.abs(value);
 }
 
+function summarizeEnglishMomentVisualCue(content: string): string {
+  const normalized = content.toLowerCase();
+  const subject = /cat|kitten|meow/.test(normalized)
+    ? '一只猫咪'
+    : /dog|puppy/.test(normalized)
+      ? '一只小狗'
+      : /girl|woman|lady/.test(normalized)
+        ? '一个女生'
+        : /boy|man|guy/.test(normalized)
+          ? '一个男生'
+          : /rabbit|bunny/.test(normalized)
+            ? '一只兔子'
+            : /bear/.test(normalized)
+              ? '一只小熊'
+              : '一个带情绪的画面';
+  const mood = /threat|menac|angry|mad|furious|glare|staring|wide eyes/.test(normalized)
+    ? '正盯着镜头，神情有点凶'
+    : /sad|cry|tears?|sob/.test(normalized)
+      ? '眼神委屈，像是快要哭出来'
+      : /happy|smile|laugh|grin|joy/.test(normalized)
+        ? '表情轻松，看起来有点开心'
+        : /shy|blush/.test(normalized)
+          ? '神情有点害羞'
+          : /surpris|shock|wow/.test(normalized)
+            ? '像是被什么突然吓了一跳'
+            : /sleep|tired|yawn/.test(normalized)
+              ? '看起来懒懒的，有点困'
+              : '停在一个很有情绪感的瞬间';
+
+  return `${subject}，${mood}`;
+}
+
+function createChineseMomentPhotoDescription(content: string): string {
+  const cleaned = content
+    .replace(/["'`“”‘’]+/g, '')
+    .replace(/[。！？!?,，、]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) {
+    return '一张安静的生活片段';
+  }
+
+  const containsChinese = /[\u4e00-\u9fff]/.test(cleaned);
+  const containsLatin = /[A-Za-z]/.test(cleaned);
+  if (!containsChinese && containsLatin) {
+    return summarizeEnglishMomentVisualCue(cleaned);
+  }
+
+  const shortened = cleaned.slice(0, 22);
+  if (/(阳光|月光|风|雨|灯|海|街道|晚霞|影子|天台|阳台)/.test(shortened)) {
+    return shortened;
+  }
+
+  if (/(今天|刚刚|现在|这会儿|突然)/.test(shortened)) {
+    return `${shortened}的片刻`;
+  }
+
+  return `像是${shortened}的一瞬`;
+}
+
 function createMomentPhotoDescription(content: string): string {
   const cleaned = content
     .replace(/["'“”‘’]/g, '')
@@ -325,10 +386,10 @@ async function generateMomentImageCard(options: {
 
   return {
     title: `${character.name} 的动态`,
-    description: createMomentPhotoDescription(normalized),
+    description: createChineseMomentPhotoDescription(normalized),
     theme,
     layout: (hashString(`${character.id}:${normalized}`) % 100) < 62 ? 'described-photo' : 'card',
-    overlayText: createMomentPhotoDescription(normalized),
+    overlayText: createChineseMomentPhotoDescription(normalized),
   };
 }
 
