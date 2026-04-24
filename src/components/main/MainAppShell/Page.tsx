@@ -117,6 +117,7 @@ export function MainApp({
   MomentsAppComponent: React.ComponentType<{ appData: AppData; setAppData: React.Dispatch<React.SetStateAction<AppData>>; settings: AppSettings }>;
   formatMessagePreview: (text: string | undefined) => string;
 }) {
+  const tabOrder: Array<'chat' | 'contacts' | 'moments' | 'me'> = ['chat', 'contacts', 'moments', 'me'];
   usePersistedUserProfileBridge(
     appData.userProfile,
     (profile) => setAppData(prev => ({ ...prev, userProfile: profile })),
@@ -160,6 +161,21 @@ export function MainApp({
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
   const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
+  const swipeStateRef = React.useRef<{
+    startX: number;
+    startY: number;
+    deltaX: number;
+    deltaY: number;
+    active: boolean;
+    lockedAxis: 'x' | 'y' | null;
+  }>({
+    startX: 0,
+    startY: 0,
+    deltaX: 0,
+    deltaY: 0,
+    active: false,
+    lockedAxis: null,
+  });
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => ({
@@ -193,6 +209,82 @@ export function MainApp({
       setShowChatQuickActions(false);
     }
   }, [activeTab]);
+
+  const isSwipeNavigationEnabled = !(activeTab === 'me' && meSection !== 'main');
+
+  const updateTabByOffset = (offset: -1 | 1) => {
+    const currentIndex = tabOrder.indexOf(activeTab);
+    if (currentIndex < 0) return;
+    const nextIndex = currentIndex + offset;
+    if (nextIndex < 0 || nextIndex >= tabOrder.length) return;
+    setActiveTab(tabOrder[nextIndex]);
+  };
+
+  const shouldIgnoreSwipeTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(target.closest('input, textarea, select, button, a, [data-swipe-ignore="true"]'));
+  };
+
+  const resetSwipeState = () => {
+    swipeStateRef.current = {
+      startX: 0,
+      startY: 0,
+      deltaX: 0,
+      deltaY: 0,
+      active: false,
+      lockedAxis: null,
+    };
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isSwipeNavigationEnabled || shouldIgnoreSwipeTarget(event.target)) {
+      resetSwipeState();
+      return;
+    }
+
+    const touch = event.touches[0];
+    swipeStateRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      deltaX: 0,
+      deltaY: 0,
+      active: true,
+      lockedAxis: null,
+    };
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current;
+    if (!state.active) return;
+
+    const touch = event.touches[0];
+    state.deltaX = touch.clientX - state.startX;
+    state.deltaY = touch.clientY - state.startY;
+
+    if (!state.lockedAxis) {
+      const absX = Math.abs(state.deltaX);
+      const absY = Math.abs(state.deltaY);
+      if (absX < 10 && absY < 10) return;
+      state.lockedAxis = absX > absY ? 'x' : 'y';
+    }
+
+    if (state.lockedAxis === 'x') {
+      event.preventDefault();
+    }
+  };
+
+  const handleTouchEnd = () => {
+    const state = swipeStateRef.current;
+    if (!state.active) return;
+
+    const absX = Math.abs(state.deltaX);
+    const absY = Math.abs(state.deltaY);
+    if (state.lockedAxis === 'x' && absX > 56 && absX > absY * 1.2) {
+      updateTabByOffset(state.deltaX < 0 ? 1 : -1);
+    }
+
+    resetSwipeState();
+  };
 
   return (
     <motion.div 
@@ -237,7 +329,13 @@ export function MainApp({
       )}
 
       {/* Content */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <div
+        className="flex-1 min-h-0 overflow-hidden flex flex-col touch-pan-y"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+      >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (
             <>
