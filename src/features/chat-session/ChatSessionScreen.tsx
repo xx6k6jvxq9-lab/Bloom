@@ -1321,8 +1321,8 @@ export function ChatSessionScreen({
   let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
-  const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 2.75rem)';
-  const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 2rem)';
+  const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
+  const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   let footerClassName = directFooterClassName;
   let footerControlTone = {
     iconButton: character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
