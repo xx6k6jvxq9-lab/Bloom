@@ -1063,10 +1063,10 @@ export function HomeScreen({
       return;
     }
 
-    if (deltaX > 0 && currentPage < pageCount - 1) {
-      changePage(currentPage + 1);
-    } else if (deltaX < 0 && currentPage > 0) {
+    if (deltaX > 0 && currentPage > 0) {
       changePage(currentPage - 1);
+    } else if (deltaX < 0 && currentPage < pageCount - 1) {
+      changePage(currentPage + 1);
     } else {
       setSwipeOffset(0);
     }
@@ -1463,6 +1463,9 @@ export function HomeScreen({
         if (e.pointerType === 'mouse' || e.pointerType === 'touch') {
           handleSwipeEnd(e.clientX, e.clientY);
         }
+      }}
+      onPointerCancel={() => {
+        resetSwipeInteraction();
       }}
       onClick={e => {
         if (!isArrangeMode || draggingIconId || draggingNavBar) return;
