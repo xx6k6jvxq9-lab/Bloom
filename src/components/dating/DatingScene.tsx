@@ -287,6 +287,7 @@ export function DatingScene({
   const [endingRipple, setEndingRipple] = useState<{ x: number; y: number; key: number } | null>(null);
   const [showUnsavedBackDialog, setShowUnsavedBackDialog] = useState(false);
   const requestedStartTokenRef = useRef<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const endingScreenRef = useRef<HTMLButtonElement | null>(null);
   const endingFlowActiveRef = useRef(false);
@@ -335,6 +336,13 @@ export function DatingScene({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentSession.messages, isLoading]);
+
+  useEffect(() => {
+    const node = inputRef.current;
+    if (!node) return;
+    node.style.height = '0px';
+    node.style.height = `${Math.min(node.scrollHeight, 132)}px`;
+  }, [input]);
 
   useEffect(() => {
     if (endingState !== 'ready' || !endingMonologue) {
@@ -676,8 +684,8 @@ export function DatingScene({
   };
 
   const handleSend = async () => {
-    const nextInput = input.trim();
-    if (!nextInput || isLoading) return;
+    const nextInput = input.replace(/\r\n?/g, '\n');
+    if (!nextInput.trim() || isLoading) return;
     setInput('');
     await generateRound({
       mode: 'continue',
@@ -1041,17 +1049,19 @@ export function DatingScene({
             >
               <Smile size={18} />
             </button>
-            <input
+            <textarea
+              ref={inputRef}
               value={input}
               onChange={event => setInput(event.target.value)}
               onKeyDown={event => {
-                if (event.key === 'Enter') {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   void handleSend();
                 }
               }}
               placeholder={isLoading ? '生成中...' : '说点什么呢...'}
               className="dating-scene__input"
+              rows={1}
             />
             <button
               type="button"

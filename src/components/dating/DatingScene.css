@@ -492,12 +492,19 @@
 .dating-scene__input {
   flex: 1;
   border: none;
-  height: 44px;
-  padding: 0 14px;
+  min-height: 44px;
+  max-height: 132px;
+  padding: 11px 14px;
   background: transparent;
   color: #ffffff;
   font-size: 14px;
+  line-height: 1.5;
   outline: none;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
 }
 
 .dating-scene__input::placeholder {

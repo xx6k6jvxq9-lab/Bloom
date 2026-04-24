@@ -1515,14 +1515,10 @@ function DateRecordsDetailPage({
               ) : null}
 
               <div className="space-y-3">
-                {selectedRecord.messages.map((message, index) => (
+                {selectedRecord.messages.filter((message) => message.role === 'user').map((message, index) => (
                   <div
                     key={`${selectedRecord.id}-${message.id}-${index}`}
-                    className={`rounded-2xl p-4 shadow-sm ${
-                      message.role === 'user'
-                        ? 'ml-8 bg-zinc-900 text-white'
-                        : 'mr-8 border border-zinc-100 bg-white text-zinc-800'
-                    }`}
+                    className="ml-8 rounded-2xl bg-zinc-900 p-4 text-white shadow-sm"
                   >
                     <div className="mb-2 text-[12px] opacity-60">
                       {message.role === 'user' ? '我' : '约会内容'}
@@ -1691,14 +1687,10 @@ function DateRecordsPageV2({
               ) : null}
 
               <div className="space-y-3">
-                {selectedRecord.messages.map((message, index) => (
+                {selectedRecord.messages.filter((message) => message.role === 'user').map((message, index) => (
                   <div
                     key={`${selectedRecord.id}-${message.id}-${index}`}
-                    className={`rounded-2xl p-4 shadow-sm ${
-                      message.role === 'user'
-                        ? 'ml-8 bg-zinc-900 text-white'
-                        : 'mr-8 border border-zinc-100 bg-white text-zinc-800'
-                    }`}
+                    className="ml-8 rounded-2xl bg-zinc-900 p-4 text-white shadow-sm"
                   >
                     <div className="mb-2 text-[12px] opacity-60">
                       {message.role === 'user' ? '我' : '约会内容'}
@@ -1952,14 +1944,10 @@ function DateRecordsPageV3({
               ) : null}
 
               <div className="space-y-3">
-                {selectedRecord.messages.map((message, index) => (
+                {selectedRecord.messages.filter((message) => message.role === 'user').map((message, index) => (
                   <div
                     key={`${selectedRecord.id}-${message.id}-${index}`}
-                    className={`rounded-2xl p-4 shadow-sm ${
-                      message.role === 'user'
-                        ? 'ml-8 bg-zinc-900 text-white'
-                        : 'mr-8 border border-zinc-100 bg-white text-zinc-800'
-                    }`}
+                    className="ml-8 rounded-2xl bg-zinc-900 p-4 text-white shadow-sm"
                   >
                     <div className="mb-2 text-[12px] opacity-60">
                       {message.role === 'user' ? '我' : '约会内容'}
