@@ -1018,7 +1018,7 @@ export function HomeScreen({
     if (isArrangeMode) return;
     if (Date.now() < ignoreSwipeUntilRef.current) return;
     const element = target instanceof HTMLElement ? target : null;
-    if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
+    if (element?.closest('.homeDesktop__pageDots')) {
       swipeEnabledRef.current = false;
       swipeStartRef.current = null;
       return;
@@ -1028,12 +1028,12 @@ export function HomeScreen({
     setIsSwipeDragging(false);
   };
   const handleSwipeMove = (clientX: number, clientY: number) => {
-    if (!swipeEnabledRef.current || draggingIconId || draggingNavBar) return;
+    if (!swipeEnabledRef.current || draggingIconId || draggingNavBar) return false;
     const start = swipeStartRef.current;
-    if (!start) return;
+    if (!start) return false;
     const deltaX = clientX - start.x;
     const deltaY = clientY - start.y;
-    if (Math.abs(deltaY) > Math.abs(deltaX)) return;
+    if (Math.abs(deltaY) > Math.abs(deltaX)) return false;
     let nextOffset = deltaX;
     if ((currentPage === 0 && deltaX > 0) || (currentPage === pageCount - 1 && deltaX < 0)) {
       nextOffset = deltaX * 0.28;
@@ -1041,6 +1041,7 @@ export function HomeScreen({
     const limit = desktopViewport.width * 0.72;
     setIsSwipeDragging(true);
     setSwipeOffset(Math.max(Math.min(nextOffset, limit), -limit));
+    return true;
   };
   const handleSwipeEnd = (clientX: number, clientY: number) => {
     if (!swipeEnabledRef.current) return;
@@ -1450,21 +1451,45 @@ export function HomeScreen({
       ref={desktopRootRef}
       className={`homeDesktop homeDesktop--${sizeTier} ${isTallPhone ? 'homeDesktop--tall' : ''}`}
       onPointerDown={e => {
-        if (e.pointerType === 'mouse' || e.pointerType === 'touch') {
+        if (e.pointerType === 'mouse') {
           handleSwipeStart(e.clientX, e.clientY, e.target);
         }
       }}
       onPointerMove={e => {
-        if (e.pointerType === 'mouse' || e.pointerType === 'touch') {
+        if (e.pointerType === 'mouse') {
           handleSwipeMove(e.clientX, e.clientY);
         }
       }}
       onPointerUp={e => {
-        if (e.pointerType === 'mouse' || e.pointerType === 'touch') {
+        if (e.pointerType === 'mouse') {
           handleSwipeEnd(e.clientX, e.clientY);
         }
       }}
       onPointerCancel={() => {
+        resetSwipeInteraction();
+      }}
+      onTouchStart={e => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        handleSwipeStart(touch.clientX, touch.clientY, e.target);
+      }}
+      onTouchMove={e => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        const isHorizontalSwipe = handleSwipeMove(touch.clientX, touch.clientY);
+        if (isHorizontalSwipe) {
+          e.preventDefault();
+        }
+      }}
+      onTouchEnd={e => {
+        const touch = e.changedTouches[0];
+        if (!touch) {
+          resetSwipeInteraction();
+          return;
+        }
+        handleSwipeEnd(touch.clientX, touch.clientY);
+      }}
+      onTouchCancel={() => {
         resetSwipeInteraction();
       }}
       onClick={e => {

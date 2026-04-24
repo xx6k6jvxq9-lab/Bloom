@@ -620,6 +620,8 @@ export default function App() {
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const isIosLike = /iphone|ipad|ipod/.test(userAgent);
+    const preloadDelayMs = isIosLike && isStandalone ? 3200 : 900;
+    const idleTimeoutMs = isIosLike && isStandalone ? 4000 : 1800;
 
     if (!isStandalone && !isIosLike) {
       return undefined;
@@ -648,12 +650,12 @@ export default function App() {
         if (!cancelled) {
           void preloadHighTrafficPanels();
         }
-      }, 900);
+      }, preloadDelayMs);
     };
 
     let idleHandle: number | null = null;
     if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleHandle = idleWindow.requestIdleCallback(schedulePreload, { timeout: 1800 });
+      idleHandle = idleWindow.requestIdleCallback(schedulePreload, { timeout: idleTimeoutMs });
     } else {
       schedulePreload();
     }
