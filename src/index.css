@@ -32,6 +32,13 @@ body {
   isolation: isolate;
 }
 
+/* Prevent iOS Safari/PWA from auto-zooming focused form fields. */
+.app-phone-container input,
+.app-phone-container textarea,
+.app-phone-container select {
+  font-size: 16px !important;
+}
+
 .app-phone-container.is-dating-scene {
   background: #050608 !important;
 }
@@ -181,12 +188,6 @@ body {
     background-color: #fff;
   }
 
-  /* Prevent iOS Safari/PWA from auto-zooming focused form fields. */
-  .app-phone-container input,
-  .app-phone-container textarea,
-  .app-phone-container select {
-    font-size: 16px !important;
-  }
 }
 
 @media (display-mode: standalone) {

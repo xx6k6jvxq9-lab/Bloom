@@ -276,6 +276,10 @@ export function DatingScene({
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryPayload, setRetryPayload] = useState<{
+    mode: 'start' | 'continue';
+    session: SceneSessionState;
+  } | null>(null);
   const [backgroundBroken, setBackgroundBroken] = useState(false);
   const [statusExpandedMap, setStatusExpandedMap] = useState<Record<string, boolean>>({});
   const [playlistExpandedMap, setPlaylistExpandedMap] = useState<Record<string, boolean>>({});
@@ -331,6 +335,7 @@ export function DatingScene({
     setEndingError('');
     setEndingRipple(null);
     setShowUnsavedBackDialog(false);
+    setRetryPayload(null);
   }, [session]);
 
   useEffect(() => {
@@ -613,6 +618,12 @@ export function DatingScene({
       workingMessages = [...workingMessages, userMessage];
     }
 
+    const retrySession: SceneSessionState = {
+      ...sessionSeed,
+      messages: workingMessages,
+      generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
+    };
+
     const placeholderId = createDateMessageId('scene');
     const placeholderMessage: DateMessage = {
       id: placeholderId,
@@ -666,6 +677,7 @@ export function DatingScene({
         messages: finalMessages,
         generatedContent: normalizedContent,
       });
+      setRetryPayload(null);
     } catch (err) {
       console.error('[dating-scene] generate failed', err);
       const failedMessages = replaceMessage(pendingSession.messages, placeholderId, message => ({
@@ -677,10 +689,22 @@ export function DatingScene({
         ...pendingSession,
         messages: failedMessages,
       });
+      setRetryPayload({
+        mode,
+        session: retrySession,
+      });
       setError(err instanceof Error ? err.message : '正式约会内容生成失败，请稍后重试。');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleManualRetry = async () => {
+    if (!retryPayload || isLoading) return;
+    await generateRound({
+      mode: retryPayload.mode,
+      baseSession: retryPayload.session,
+    });
   };
 
   const handleSend = async () => {
@@ -978,7 +1002,21 @@ export function DatingScene({
             <div ref={messagesEndRef} />
           </div>
 
-          {error ? <div className="dating-scene__error">{error}</div> : null}
+          {error ? (
+            <div className="dating-scene__error">
+              <div className="dating-scene__error-text">{error}</div>
+              {retryPayload ? (
+                <button
+                  type="button"
+                  className="dating-scene__error-retry"
+                  disabled={isLoading}
+                  onClick={() => void handleManualRetry()}
+                >
+                  {isLoading ? '重试中…' : '手动重试本轮'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <AnimatePresence>
