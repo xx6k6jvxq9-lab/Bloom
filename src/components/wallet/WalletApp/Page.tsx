@@ -63,38 +63,7 @@ export const MOCK_CARDS: WalletCard[] = [
   }
 ];
 
-export const MOCK_TRANSACTIONS: WalletTransaction[] = [
-  {
-    id: 't-0',
-    title: '给宝宝买礼物',
-    type: 'expense',
-    amount: 520.00,
-    date: '刚刚',
-    icon: 'heart',
-    category: '恋爱',
-    cardId: 'card-baby'
-  },
-  {
-    id: 't-1',
-    title: '7-Eleven',
-    type: 'expense',
-    amount: 25.50,
-    date: '今天 08:30',
-    icon: 'store',
-    category: '购物',
-    cardId: 'card-1'
-  },
-  {
-    id: 't-2',
-    title: '转账给 阿强',
-    type: 'expense',
-    amount: 200.00,
-    date: '昨天 19:20',
-    icon: 'transfer',
-    category: '转账',
-    cardId: 'card-1'
-  }
-];
+export const MOCK_TRANSACTIONS: WalletTransaction[] = [];
 
 type WalletAppProps = {
   onClose: () => void;
@@ -110,7 +79,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     familyCards: [],
     paymentPassword: '',
     cards: MOCK_CARDS,
-    transactions: MOCK_TRANSACTIONS,
+    transactions: [],
   };
   usePersistedWalletDataBridge(
     walletData,
@@ -124,7 +93,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     },
   );
   const cards = walletData.cards || MOCK_CARDS;
-  const transactions = walletData.transactions || MOCK_TRANSACTIONS;
+  const transactions = walletData.transactions ?? [];
   const balance = walletData.balance ?? 12580.00;
   const yuebaoBalance = walletData.yuebaoBalance ?? 0;
   const yuebaoInterest = walletData.yuebaoInterest ?? 0;
@@ -440,7 +409,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
           familyCards: [],
           paymentPassword: '',
           cards: MOCK_CARDS,
-          transactions: MOCK_TRANSACTIONS,
+          transactions: [],
         },
       });
     }

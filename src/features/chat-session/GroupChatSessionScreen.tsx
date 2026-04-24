@@ -3421,7 +3421,7 @@ export function GroupChatSessionScreen({
                   }
                   alert(result.message);
                 }}
-                className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white"
+                className="rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-4 py-3 text-sm font-medium text-[#4b6788]"
               >
                 复制分享内容
               </button>

@@ -15,7 +15,6 @@ import { ChatSessionMount } from './features/chat-session/ChatSessionMount';
 import { createCharacterDirectory } from './features/character-domain/useCharacterDirectory';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
 import { DreamAppPage } from './components/dream/Page';
-import { MOCK_CARDS, MOCK_TRANSACTIONS } from './components/wallet/WalletApp/mockData';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
@@ -2269,15 +2268,96 @@ function SettingsApp({
   const filteredAvailableModels = useMemo(() => {
     const keyword = editForm.model.trim().toLowerCase();
     if (!availableModels.length) return [];
-    if (!keyword) return availableModels.slice(0, 24);
+    if (!keyword) return availableModels;
 
     const startsWithMatches = availableModels.filter((model) => model.toLowerCase().startsWith(keyword));
     const includesMatches = availableModels.filter(
       (model) => !model.toLowerCase().startsWith(keyword) && model.toLowerCase().includes(keyword),
     );
 
-    return [...startsWithMatches, ...includesMatches].slice(0, 24);
+    return [...startsWithMatches, ...includesMatches];
   }, [availableModels, editForm.model]);
+
+  const extractModelNamesFromResponse = (payload: any): string[] => {
+    const rawList = payload?.data || payload?.models || payload;
+
+    if (Array.isArray(rawList)) {
+      return rawList
+        .map((item: any) => {
+          if (typeof item === 'string') return item;
+          return item?.id || item?.name || item?.model || '';
+        })
+        .filter((item: string) => typeof item === 'string' && item.length > 0);
+    }
+
+    if (typeof rawList === 'object' && rawList !== null) {
+      return Object.keys(rawList).filter((key) => key !== 'object');
+    }
+
+    return [];
+  };
+
+  const resolveNextModelsPageUrl = (payload: any, response: Response, currentUrl: string): string | null => {
+    const linkHeader = response.headers.get('link') || response.headers.get('Link');
+    if (linkHeader) {
+      const nextLinkMatch = linkHeader.match(/<([^>]+)>;\s*rel="?next"?/i);
+      if (nextLinkMatch?.[1]) {
+        return new URL(nextLinkMatch[1], currentUrl).toString();
+      }
+    }
+
+    const nestedCandidates = [
+      payload?.next,
+      payload?.next_page,
+      payload?.nextPage,
+      payload?.next_page_url,
+      payload?.nextPageUrl,
+      payload?.pagination?.next,
+      payload?.pagination?.next_page,
+      payload?.pagination?.nextPage,
+      payload?.pages?.next,
+      payload?.links?.next,
+      payload?.meta?.next,
+    ];
+
+    for (const candidate of nestedCandidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return new URL(candidate, currentUrl).toString();
+      }
+
+      if (candidate && typeof candidate === 'object') {
+        const objectUrl = candidate.url || candidate.href;
+        if (typeof objectUrl === 'string' && objectUrl.trim()) {
+          return new URL(objectUrl, currentUrl).toString();
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const fetchAllPagedModelNames = async (initialUrl: string, headers: HeadersInit): Promise<string[]> => {
+    const collected: string[] = [];
+    const visited = new Set<string>();
+    let nextUrl: string | null = initialUrl;
+    let pageCount = 0;
+
+    while (nextUrl && !visited.has(nextUrl) && pageCount < 20) {
+      visited.add(nextUrl);
+      pageCount += 1;
+
+      const response = await fetch(nextUrl, { headers });
+      if (!response.ok) {
+        throw new Error(`获取失败 (${response.status})，请检查 Base URL 和 API Key`);
+      }
+
+      const payload = await response.json();
+      collected.push(...extractModelNamesFromResponse(payload));
+      nextUrl = resolveNextModelsPageUrl(payload, response, nextUrl);
+    }
+
+    return collected;
+  };
 
   // Sync back to parent whenever localSettings changes
   useEffect(() => {
@@ -2342,6 +2422,8 @@ function SettingsApp({
     setAvailableModels([]);
     try {
       let models: string[] = [];
+      let nextModelsPageUrl: string | null = null;
+      let paginationHeaders: HeadersInit | null = null;
       const isGemini = editForm.provider === 'Google Gemini' || (!editForm.baseUrl && editForm.provider === '自定义 (Custom)');
       
       if (isGemini) {
@@ -2372,8 +2454,10 @@ function SettingsApp({
         if (editForm.apiKey) {
           headers['Authorization'] = `Bearer ${editForm.apiKey}`;
         }
+        paginationHeaders = headers;
         
-        let res = await fetch(`${baseUrl}/models`, { headers });
+        let modelsUrl = `${baseUrl}/models`;
+        let res = await fetch(modelsUrl, { headers });
         let contentType = res.headers.get('content-type');
 
         if ((!res.ok || (contentType && contentType.includes('text/html'))) && !baseUrl.endsWith('/v1')) {
@@ -2384,6 +2468,7 @@ function SettingsApp({
             if (retryRes.ok && retryContentType && retryContentType.includes('application/json')) {
               res = retryRes;
               baseUrl = `${baseUrl}/v1`;
+              modelsUrl = retryUrl;
               setEditForm(prev => ({ ...prev, baseUrl: baseUrl }));
               contentType = retryContentType;
             }
@@ -2406,6 +2491,12 @@ function SettingsApp({
         } else {
           throw new Error('返回的数据格式不正确 (未找到模型列表)');
         }
+
+        nextModelsPageUrl = resolveNextModelsPageUrl(data, res, modelsUrl);
+      }
+
+      if (nextModelsPageUrl && paginationHeaders) {
+        models = [...models, ...(await fetchAllPagedModelNames(nextModelsPageUrl, paginationHeaders))];
       }
 
       // Remove duplicates and sort
@@ -2500,7 +2591,7 @@ function SettingsApp({
               配置大语言模型 API，角色将使用选中的 API 进行回复。
             </p>
             <div className="space-y-3">
-              {localSettings.configs.map(config => (
+              {localSettings.configs.filter(config => config.id !== DEFAULT_CONFIG.id).map(config => (
                 <div 
                   key={config.id}
                   onClick={() => setLocalSettings({...localSettings, activeConfigId: config.id})}

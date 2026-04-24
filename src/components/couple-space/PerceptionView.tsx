@@ -64,7 +64,7 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
         <div className="relative overflow-hidden rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
           <div
             className={`absolute inset-0 opacity-10 transition-colors duration-500 ${
-              settings.enabled ? 'bg-zinc-800' : 'bg-zinc-200'
+              settings.enabled ? 'bg-[#eaf3ff]' : 'bg-zinc-200'
             }`}
           />
 
@@ -73,7 +73,7 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
               <div
                 className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors duration-300 ${
                   settings.enabled
-                    ? 'bg-zinc-800 text-white shadow-lg shadow-zinc-800/30'
+                    ? 'bg-[#eef5ff] text-[#4b6788] shadow-lg shadow-[#dbe7f7]/60'
                     : 'bg-zinc-100 text-zinc-400'
                 }`}
               >
@@ -88,7 +88,7 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
             <button
               onClick={() => updateSettings('enabled', !settings.enabled)}
               className={`h-8 w-14 rounded-full p-1 transition-colors duration-300 ${
-                settings.enabled ? 'bg-zinc-800' : 'bg-zinc-200'
+                settings.enabled ? 'bg-[#dcecff]' : 'bg-zinc-200'
               }`}
             >
               <div
@@ -181,7 +181,7 @@ function SettingItem({
         <div className="flex items-center gap-3">
           <div
             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-              enabled ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-400'
+              enabled ? 'bg-[#eef5ff] text-[#4b6788]' : 'bg-zinc-100 text-zinc-400'
             }`}
           >
             {icon}
@@ -191,7 +191,7 @@ function SettingItem({
         <button
           onClick={onToggle}
           className={`h-6 w-11 rounded-full p-1 transition-colors duration-200 ${
-            enabled ? 'bg-zinc-800' : 'bg-zinc-200'
+            enabled ? 'bg-[#dcecff]' : 'bg-zinc-200'
           }`}
         >
           <div

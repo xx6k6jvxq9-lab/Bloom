@@ -1318,9 +1318,11 @@ export function ChatSessionScreen({
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
   const directFooterClassName = 'relative z-10 px-3 pt-1.5 border-t backdrop-blur-md flex flex-col gap-1.5';
-  let headerClasses = `relative z-10 px-4 pt-3 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
+  let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
+  const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 2.75rem)';
+  const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 2rem)';
   let footerClassName = directFooterClassName;
   let footerControlTone = {
     iconButton: character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
@@ -1331,23 +1333,27 @@ export function ChatSessionScreen({
   if (headerStyleType === 'default') {
     headerClasses += "backdrop-blur-md border-b";
     headerStyleObj = {
+      paddingTop: chatHeaderTopPadding,
       backgroundColor: `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`,
       borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.8) : 1})`
     };
   } else if (headerStyleType === 'glass') {
     headerClasses += "backdrop-blur-xl border-b";
     headerStyleObj = {
+      paddingTop: chatHeaderTopPadding,
       backgroundColor: 'rgba(255, 255, 255, 0.4)',
       borderColor: 'rgba(255, 255, 255, 0.3)'
     };
   } else if (headerStyleType === 'solid') {
     headerClasses += "border-b";
     headerStyleObj = {
+      paddingTop: chatHeaderTopPadding,
       backgroundColor: 'white',
       borderColor: '#e4e4e7'
     };
   } else if (headerStyleType === 'transparent') {
     headerStyleObj = {
+      paddingTop: chatHeaderTopPadding,
       backgroundColor: 'transparent',
       borderColor: 'transparent'
     };
@@ -1495,9 +1501,12 @@ export function ChatSessionScreen({
             </button>
           </div>
           
-          <div className="chat-header-title-block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-            <h1 className="chat-header-title text-[16px] font-bold text-zinc-900 truncate max-w-[180px] text-center">{headerState.title}</h1>
-            <p className="chat-header-subtitle text-[10px] text-zinc-500 text-center mt-0.5 truncate max-w-[220px]">{headerState.subtitle}</p>
+          <div
+            className="chat-header-title-block absolute inset-x-0 bottom-0 flex flex-col items-center justify-center px-20 pointer-events-none"
+            style={{ top: chatHeaderTitleTop }}
+          >
+            <h1 className="chat-header-title text-[16px] font-bold text-zinc-900 truncate max-w-full text-center leading-tight">{headerState.title}</h1>
+            <p className="chat-header-subtitle text-[10px] text-zinc-500 text-center mt-0.5 truncate max-w-full">{headerState.subtitle}</p>
           </div>
 
           <div className="chat-header-actions z-10 flex items-center gap-1">
@@ -1540,60 +1549,6 @@ export function ChatSessionScreen({
             </div>
           </div>
         )}
-        {/* Opening Remark */}
-        <div className="w-full flex justify-start">
-          <div className="flex flex-1 min-w-0 items-start gap-3">
-            <div className="w-10 shrink-0 flex justify-center pt-0.5">
-              <div className="relative">
-                <InlineResolvedImage
-                  src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl)}
-                  className="object-cover"
-                  style={{
-                    width: visualSettings?.chat?.avatarSize ?? 32,
-                    height: visualSettings?.chat?.avatarSize ?? 32,
-                    borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
-                    borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
-                    borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
-                    borderStyle: 'solid'
-                  }}
-                />
-                {resolvedChatAvatarFrameUrl && (
-                  <img 
-                    src={resolvedChatAvatarFrameUrl} 
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
-                    style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
-                  />
-                )}
-              </div>
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col items-start">
-              <div 
-                className="chat-bubble message-bubble bot-bubble left chat-bubble-left inline-block max-w-[min(82%,34rem)] border shadow-sm"
-                style={{
-                  ...(chatTextStyle || {}),
-                  borderRadius: visualSettings?.chat?.messageBorderRadius ?? 16,
-                  borderTopLeftRadius: 0,
-                  padding: '10px 16px',
-                  ...(hasBubbleThemeCss(character.bubbleStyleCss)
-                    ? {}
-                    : {
-                        backgroundColor:
-                          visualSettings?.chat?.messageBackgroundColorModel
-                          ?? `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                        borderColor: `rgba(228, 228, 231, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`,
-                      }),
-                  ...(resolvedChatMessageBackgroundUrl ? { backgroundImage: `url(${resolvedChatMessageBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : {}),
-                  ...(hasBubbleThemeCss(character.bubbleStyleCss) ? {} : sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss))),
-                  ...(resolvedCharacterBubbleImageUrl ? { backgroundImage: `url(${resolvedCharacterBubbleImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', border: 'none' } : character.bubbleColor ? { backgroundColor: character.bubbleColor, borderColor: character.bubbleColor } : {}),
-                  ...sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(character.bubbleStyleCss)),
-                }}
-              >
-                <p className="text-[14px] text-zinc-800 leading-relaxed whitespace-pre-wrap" style={chatTextStyle}>{character.openingRemark}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {history.map((msg, i) => {
           const messageSelectionKey = getMessageSelectionKey(msg);
           const previousMessage = i > 0 ? history[i - 1] : undefined;
@@ -2146,6 +2101,11 @@ export function ChatSessionScreen({
                                   onClick={(e) => {
                                     if (multiSelectMode) {
                                       handleMessageClick(e, i);
+                                      return;
+                                    }
+
+                                    if (msg.role === 'user' && !isLoading) {
+                                      sendInnerVoiceProbe();
                                     }
                                   }}
                                   onContextMenu={(e) => {
@@ -2161,6 +2121,7 @@ export function ChatSessionScreen({
                                       ? 'bg-white border-zinc-200' 
                                       : 'bg-rose-50/95 border-rose-100'
                                   }`}
+                                  aria-disabled={msg.role === 'user' && isLoading}
                                 >
                                   {msg.role === 'user' ? (
                                     <>
@@ -2170,7 +2131,7 @@ export function ChatSessionScreen({
                                         </div>
                                         <div className="flex flex-col min-w-0">
                                           <span className="text-sm font-bold text-zinc-900 truncate">倾听心声</span>
-                                          <span className="text-[10px] text-zinc-500 truncate">正在感知Ta的内心世界...</span>
+                                          <span className="text-[10px] text-zinc-500 truncate">正在感知对方的内心世界...</span>
                                         </div>
                                       </div>
                                       <div className="px-3.5 py-2.5 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
@@ -2182,11 +2143,18 @@ export function ChatSessionScreen({
                                     <div className="px-5 py-[18px] flex flex-col gap-3">
                                       <div className="flex items-center gap-2 text-rose-500/90">
                                         <Heart size={14} fill="currentColor" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Ta的心声</span>
+                                        <span className="text-[10px] font-bold tracking-wider">对方的心声</span>
                                       </div>
                                       <p className="text-[14.5px] text-rose-950/85 leading-7 italic font-medium whitespace-pre-wrap break-normal">
                                         {sanitizePipeMarkers(msg.text, '\n')}
                                       </p>
+                                      {msg.translation?.trim() ? (
+                                        <div className="border-t border-rose-200/70 pt-3">
+                                          <p className="text-[12px] leading-6 text-rose-900/70 whitespace-pre-wrap break-words">
+                                            {sanitizePipeMarkers(msg.translation.trim(), '\n')}
+                                          </p>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   )}
                                 </div>
@@ -2661,7 +2629,7 @@ export function ChatSessionScreen({
                     <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Heart size={28} />
                     </div>
-                    <span className="text-[12px] text-zinc-600">Ta的心声</span>
+                    <span className="text-[12px] text-zinc-600">心声</span>
                   </button>
                 </div>
               </motion.div>
@@ -3168,7 +3136,7 @@ export function ChatSessionScreen({
                     }
                     alert(result.message);
                   }}
-                  className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white"
+                  className="rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-4 py-3 text-sm font-medium text-[#4b6788]"
                 >
                   复制分享内容
                 </button>

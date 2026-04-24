@@ -492,17 +492,6 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
               </div>
 
               <div className="space-y-1.5">
-                <label className="ml-1 text-[13px] text-zinc-500">开场白</label>
-                <textarea
-                  value={openingRemark}
-                  onChange={(e) => setOpeningRemark(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.openingRemark))}
-                  placeholder="角色对你说的第一句话..."
-                  className="min-h-[80px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[15px] outline-none transition-colors focus:border-zinc-900"
-                />
-                <p className="text-right text-[12px] text-zinc-400">{openingRemark.length}/{CHARACTER_FIELD_LIMITS.openingRemark}</p>
-              </div>
-
-              <div className="space-y-1.5">
                 <label className="ml-1 text-[13px] text-zinc-500">分组</label>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -559,7 +548,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
               <textarea
                 value={importJson}
                 onChange={(e) => setImportJson(e.target.value.slice(0, CHARACTER_FIELD_LIMITS.importText))}
-                placeholder={'{"name": "角色名", "setting": "角色设定", ...}\n\n也可以直接粘贴 Markdown 或字段文本：\n角色名：阿白\n性别：男\n角色设定：...\n个性签名：...\n开场白：...'}
+                placeholder={'{"name": "角色名", "setting": "角色设定", ...}\n\n也可以直接粘贴 Markdown 或字段文本：\n角色名：阿白\n性别：男\n角色设定：...\n个性签名：...'}
                 className="min-h-[300px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 font-mono text-[13px] outline-none transition-colors focus:border-blue-500"
               />
             </div>

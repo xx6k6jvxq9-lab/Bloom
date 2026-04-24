@@ -30,34 +30,4 @@ export const MOCK_CARDS: WalletCard[] = [
 ];
 
 export const MOCK_TRANSACTIONS: WalletTransaction[] = [
-  {
-    id: 't-0',
-    type: 'expense',
-    title: '给宝宝买礼物',
-    amount: 520.0,
-    date: '刚刚',
-    category: '恋爱',
-    cardId: 'card-baby',
-    icon: 'shopping-bag',
-  },
-  {
-    id: 't-1',
-    type: 'expense',
-    title: '7-Eleven',
-    amount: 25.5,
-    date: '今天 08:30',
-    category: '购物',
-    cardId: 'card-1',
-    icon: 'store',
-  },
-  {
-    id: 't-2',
-    type: 'expense',
-    title: '转账给阿强',
-    amount: 200.0,
-    date: '昨天 19:20',
-    category: '转账',
-    cardId: 'card-1',
-    icon: 'transfer',
-  },
 ];

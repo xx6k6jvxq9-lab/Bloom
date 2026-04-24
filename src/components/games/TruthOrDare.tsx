@@ -308,7 +308,7 @@ export const TruthOrDare: React.FC<TruthOrDareProps> = ({ character, onClose, on
           className={`flex-[1.5] py-2 rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 shadow-lg h-11 ${
             currentTask.type === 'start' 
               ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed shadow-none'
-              : 'bg-zinc-800 text-white shadow-zinc-500/30 hover:shadow-zinc-500/40 hover:bg-zinc-900'
+              : 'border border-[#d9e6f7] bg-[#eef5ff] text-[#4b6788] shadow-[#dbe7f7]/60 hover:bg-[#e7f1ff]'
           }`}
         >
           <Send size={14} />
@@ -318,4 +318,3 @@ export const TruthOrDare: React.FC<TruthOrDareProps> = ({ character, onClose, on
     </div>
   );
 };
-

@@ -564,7 +564,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 disabled={!selectedPartnerId}
                 className={`mt-8 px-12 py-3 rounded-full font-bold text-lg shadow-lg transition-all ${
                   selectedPartnerId 
-                    ? 'bg-zinc-800 text-white shadow-zinc-800/20 active:scale-95' 
+                    ? 'border border-[#d9e6f7] bg-[#eef5ff] text-[#4b6788] shadow-[#dbe7f7]/60 active:scale-95' 
                     : 'bg-zinc-200 text-white cursor-not-allowed'
                 }`}
               >
@@ -2590,7 +2590,10 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
                             autoFocus
                             onKeyDown={e => e.key === 'Enter' && handleComment(letter.id)}
                           />
-                          <button onClick={() => handleComment(letter.id)} className="bg-zinc-800 text-white p-2.5 rounded-full shadow-lg active:scale-90 transition-transform">
+                          <button
+                            onClick={() => handleComment(letter.id)}
+                            className="rounded-full border border-[#d9e6f7] bg-[#eef5ff] p-2.5 text-[#4b6788] shadow-lg shadow-[#dbe7f7]/60 active:scale-90 transition-transform"
+                          >
                             <Send size={20} />
                           </button>
                         </div>
@@ -2789,7 +2792,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
                 setShowUrlInput(false);
               }
             }}
-            className="w-full bg-zinc-800 text-white py-2 rounded-xl text-sm font-bold active:scale-95"
+            className="w-full rounded-xl border border-[#d9e6f7] bg-[#eef5ff] py-2 text-sm font-bold text-[#4b6788] active:scale-95"
           >
             确认添加
           </button>

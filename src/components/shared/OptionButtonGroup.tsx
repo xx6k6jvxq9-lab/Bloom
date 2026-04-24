@@ -31,12 +31,12 @@ export function OptionButtonGroup({
   const selectedClassName =
     tone === 'pink'
       ? 'border-[#efc7d8] bg-[#f8dde8] text-[#9f5f7a] shadow-sm'
-      : 'border-zinc-900 bg-zinc-900 text-white shadow-sm';
+      : 'border-[#d9e2ec] bg-[#f4f7fb] text-[#4f647c] shadow-sm';
   const unselectedClassName =
     tone === 'pink'
       ? 'border-[#ecd8e0] bg-white text-zinc-700 active:bg-[#fff5f8]'
       : 'border-zinc-200 bg-white text-zinc-700 active:bg-zinc-50';
-  const selectedDescriptionClassName = tone === 'pink' ? 'text-[#a86a84]' : 'text-white/80';
+  const selectedDescriptionClassName = tone === 'pink' ? 'text-[#a86a84]' : 'text-[#7b8da3]';
   const unselectedDescriptionClassName = tone === 'pink' ? 'text-[#b38a9c]' : 'text-zinc-500';
 
   return (

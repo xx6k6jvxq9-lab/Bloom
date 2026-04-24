@@ -172,6 +172,17 @@ export function HomeScreen({
     fontWeight: fontWeight === 'bold' ? 'bold' : fontWeight === 'lighter' ? 'lighter' : 'normal',
     textShadow: '0 1px 2px rgba(0,0,0,0.5)',
   };
+  const topBarTextStrongStyle: React.CSSProperties = {
+    color: fontColor,
+    textShadow: fontColor.toLowerCase() === '#ffffff' || fontColor.toLowerCase() === 'white'
+      ? '0 1px 2px rgba(0,0,0,0.35)'
+      : '0 1px 2px rgba(255,255,255,0.22)',
+  };
+  const topBarTextSoftStyle: React.CSSProperties = {
+    color: fontColor,
+    opacity: 0.72,
+    textShadow: topBarTextStrongStyle.textShadow,
+  };
 
   const [appOrder] = useState<DesktopAppId[]>(() => {
     const order = (visualSettings?.desktop?.appOrder as DesktopAppId[] | undefined) || [
@@ -1185,9 +1196,9 @@ export function HomeScreen({
                 backgroundColor: resolvedNavBarBackgroundUrl ? 'transparent' : undefined,
               }}
             >
-              <div className="flex flex-col items-start" style={{ minWidth: navBarUi.sideMinWidth }}>
-                <span className="text-white font-bold leading-tight" style={{ fontSize: navBarUi.timeFontSize }}>{timeStr}</span>
-                <span className="text-white/80 font-medium" style={{ fontSize: navBarUi.dateFontSize }}>{dateStr}</span>
+                <div className="flex flex-col items-start" style={{ minWidth: navBarUi.sideMinWidth }}>
+                  <span className="font-bold leading-tight" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.timeFontSize }}>{timeStr}</span>
+                  <span className="font-medium" style={{ ...topBarTextSoftStyle, fontSize: navBarUi.dateFontSize }}>{dateStr}</span>
               </div>
 
               <div className="flex flex-col items-center relative">
@@ -1201,7 +1212,7 @@ export function HomeScreen({
                     return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
                   })()}
                 </button>
-                <span className="text-white font-bold mt-1" style={{ fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
+                <span className="font-bold mt-1" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
                 <AnimatePresence>
                   {showAvatarMenu && (
@@ -1293,8 +1304,8 @@ export function HomeScreen({
                   onClick={() => setShowMoodMenu(!showMoodMenu)}
                   className="flex items-center justify-end active:opacity-70 text-[0] [&>span:first-child]:hidden"
                 >
-                  <span className="text-white/60 font-bold uppercase tracking-wider" style={{ fontSize: navBarUi.moodLabelFontSize }}>今日心情</span>
-                  <span className="text-white font-medium" style={{ fontSize: navBarUi.moodFontSize }}>{currentMood}</span>
+                  <span className="font-bold uppercase tracking-wider" style={{ ...topBarTextSoftStyle, fontSize: navBarUi.moodLabelFontSize }}>今日心情</span>
+                  <span className="font-medium" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.moodFontSize }}>{currentMood}</span>
                 </button>
 
                 <AnimatePresence>
@@ -1640,8 +1651,8 @@ export function HomeScreen({
                 }}
               >
                 <div className="flex flex-col items-start" style={{ minWidth: navBarUi.sideMinWidth }}>
-                  <span className="homeDesktop__topBarTextStrong font-bold leading-tight" style={{ fontSize: navBarUi.timeFontSize }}>{timeStr}</span>
-                  <span className="homeDesktop__topBarTextSoft font-semibold" style={{ fontSize: navBarUi.dateFontSize }}>{dateStr}</span>
+                  <span className="font-bold leading-tight" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.timeFontSize }}>{timeStr}</span>
+                  <span className="font-semibold" style={{ ...topBarTextSoftStyle, fontSize: navBarUi.dateFontSize }}>{dateStr}</span>
                 </div>
 
             <div className="flex flex-col items-center relative">
@@ -1655,7 +1666,7 @@ export function HomeScreen({
                   return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
                 })()}
               </button>
-              <span className="homeDesktop__topBarTextStrong font-bold mt-1" style={{ fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
+              <span className="font-bold mt-1" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
               <AnimatePresence>
                 {showAvatarMenu && (
@@ -1747,8 +1758,8 @@ export function HomeScreen({
                 onClick={() => setShowMoodMenu(!showMoodMenu)}
                 className="flex items-center justify-end active:opacity-70 text-[0] [&>span:first-child]:hidden"
               >
-                <span className="homeDesktop__topBarTextSoft font-bold uppercase tracking-wider" style={{ fontSize: navBarUi.moodLabelFontSize }}>今日心情</span>
-                <span className="homeDesktop__topBarTextStrong font-semibold" style={{ fontSize: navBarUi.moodFontSize }}>{currentMood}</span>
+                <span className="font-bold uppercase tracking-wider" style={{ ...topBarTextSoftStyle, fontSize: navBarUi.moodLabelFontSize }}>今日心情</span>
+                <span className="font-semibold" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.moodFontSize }}>{currentMood}</span>
               </button>
 
               <AnimatePresence>

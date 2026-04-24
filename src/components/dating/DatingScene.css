@@ -519,6 +519,76 @@
   opacity: 0.55;
 }
 
+.dating-scene__confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 118;
+  border: none;
+  background: rgba(4, 6, 10, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.dating-scene__confirm-dialog {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 50%;
+  z-index: 119;
+  padding: 18px 16px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(14, 16, 22, 0.92);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  transform: translateY(-50%);
+  backdrop-filter: blur(22px);
+}
+
+.dating-scene__confirm-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #f8f9ff;
+}
+
+.dating-scene__confirm-text {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(236, 240, 255, 0.76);
+}
+
+.dating-scene__confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.dating-scene__confirm-btn {
+  flex: 1;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(245, 246, 251, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dating-scene__confirm-btn--danger {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f6fb;
+}
+
+.dating-scene__confirm-btn--primary {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.08) 100%);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
 .dating-scene__ending-screen {
   position: absolute;
   inset: 0;

@@ -363,7 +363,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
                     <p className="mb-3 text-center text-[13px] font-semibold text-zinc-800">
                       {imageMenuTarget === 'bannerUrl' ? '设置背景图片' : '设置头像图片'}
                     </p>
-                    <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl bg-zinc-900 px-3 py-2.5 text-[12px] font-medium text-white transition-colors hover:bg-zinc-800">
+                    <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-3 py-2.5 text-[12px] font-medium text-[#4b6788] transition-colors hover:bg-[#e7f1ff]">
                       直接上传
                       <input
                         type="file"
@@ -391,7 +391,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
                         <button
                           type="button"
                           onClick={applyImageUrl}
-                          className="flex-1 rounded-2xl bg-zinc-900 px-3 py-2 text-[12px] font-medium text-white"
+                          className="flex-1 rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-3 py-2 text-[12px] font-medium text-[#4b6788]"
                         >
                           链接上传
                         </button>

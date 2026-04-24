@@ -285,6 +285,7 @@ export function DatingScene({
   const [endingReturnText, setEndingReturnText] = useState('');
   const [endingError, setEndingError] = useState('');
   const [endingRipple, setEndingRipple] = useState<{ x: number; y: number; key: number } | null>(null);
+  const [showUnsavedBackDialog, setShowUnsavedBackDialog] = useState(false);
   const requestedStartTokenRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const endingScreenRef = useRef<HTMLButtonElement | null>(null);
@@ -328,6 +329,7 @@ export function DatingScene({
     setEndingReturnText('');
     setEndingError('');
     setEndingRipple(null);
+    setShowUnsavedBackDialog(false);
   }, [session]);
 
   useEffect(() => {
@@ -388,10 +390,11 @@ export function DatingScene({
         resolvedBackgroundImageUrl,
       ) || '';
 
-  const saveSession = (nextSession: SceneSessionState) => {
+  const saveSession = (nextSession: SceneSessionState, options?: { preserveSaved?: boolean }) => {
     const normalizedMessages = normalizeDateSessionMessages(nextSession);
     const merged = {
       ...nextSession,
+      isSaved: options?.preserveSaved ? Boolean(nextSession.isSaved) : false,
       messages: normalizedMessages,
       generatedContent: getLatestGeneratedContent(normalizedMessages, nextSession.generatedContent),
     };
@@ -410,6 +413,34 @@ export function DatingScene({
     };
     setCurrentSession(merged);
     onSaveDate(merged);
+  };
+
+  const hasUnsavedProgress = Boolean(
+    currentSession.messages.length > 0 && (currentSession.status || 'active') === 'active' && !currentSession.isSaved,
+  );
+
+  const handleBackAttempt = () => {
+    if (hasUnsavedProgress) {
+      setMenuOpen(false);
+      setShowStickerPanel(false);
+      setRollbackMode(false);
+      setSelectedRollbackMessageId(null);
+      setShowUnsavedBackDialog(true);
+      return;
+    }
+
+    onBackToPlanner();
+  };
+
+  const handleSaveAndLeave = () => {
+    persistSession(currentSession);
+    setShowUnsavedBackDialog(false);
+    onBackToPlanner();
+  };
+
+  const handleDiscardAndLeave = () => {
+    setShowUnsavedBackDialog(false);
+    onBackToPlanner();
   };
 
   const buildEndingSequencePrompt = (archivedSession: SceneSessionState) => {
@@ -590,7 +621,7 @@ export function DatingScene({
       generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
     };
 
-    setCurrentSession(pendingSession);
+    saveSession(pendingSession);
 
     try {
       const prompt = buildDatingPrompt({
@@ -684,7 +715,7 @@ export function DatingScene({
       isCollected: nextCollected,
     };
 
-    saveSession(nextSession);
+    saveSession(nextSession, { preserveSaved: true });
     if (nextCollected) {
       onCollectDate(nextSession);
     }
@@ -734,7 +765,7 @@ export function DatingScene({
       <div className="dating-scene__shell">
         <div className="dating-scene__topbar">
           <div className="dating-scene__topbar-left">
-            <button type="button" className="dating-scene__icon-btn" onClick={onBackToPlanner}>
+            <button type="button" className="dating-scene__icon-btn" onClick={handleBackAttempt}>
               <ChevronLeft size={16} />
             </button>
             {(() => {
@@ -1034,6 +1065,50 @@ export function DatingScene({
         </div>
       </div>
       <AnimatePresence>
+        {showUnsavedBackDialog ? (
+          <>
+            <motion.button
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="dating-scene__confirm-backdrop"
+              onClick={() => setShowUnsavedBackDialog(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="dating-scene__confirm-dialog"
+            >
+              <div className="dating-scene__confirm-title">保存约会</div>
+              <div className="dating-scene__confirm-text">
+                这段约会还没有保存，返回后可能会丢失当前进度。
+              </div>
+              <div className="dating-scene__confirm-actions">
+                <button type="button" className="dating-scene__confirm-btn" onClick={() => setShowUnsavedBackDialog(false)}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="dating-scene__confirm-btn dating-scene__confirm-btn--danger"
+                  onClick={handleDiscardAndLeave}
+                >
+                  直接返回
+                </button>
+                <button
+                  type="button"
+                  className="dating-scene__confirm-btn dating-scene__confirm-btn--primary"
+                  onClick={handleSaveAndLeave}
+                >
+                  保存并返回
+                </button>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+
         {endingState !== 'idle' ? (
           <motion.button
             ref={endingScreenRef}

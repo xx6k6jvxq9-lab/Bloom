@@ -108,7 +108,7 @@ export function GroupMemberBadgeEditorSheet({
             <button
               type="button"
               onClick={() => onSave({ label: trimmedLabel, color })}
-              className="rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white"
+              className="rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-4 py-3 text-sm font-medium text-[#4b6788]"
             >
               保存头衔
             </button>

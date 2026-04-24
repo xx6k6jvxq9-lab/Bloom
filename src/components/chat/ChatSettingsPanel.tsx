@@ -325,6 +325,8 @@ export function ChatSettingsPanel({
   const [pendingSignature, setPendingSignature] = useState('');
   const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
   const [characterStickerLinksDraft, setCharacterStickerLinksDraft] = useState('');
+  const [minRepliesDraft, setMinRepliesDraft] = useState(String(character?.minReplies || 1));
+  const [maxRepliesDraft, setMaxRepliesDraft] = useState(String(character?.maxReplies || 3));
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
 
   if (!character) return null;
@@ -394,6 +396,14 @@ export function ChatSettingsPanel({
   }, [character.signature]);
 
   useEffect(() => {
+    setMinRepliesDraft(String(character.minReplies || 1));
+  }, [character.minReplies]);
+
+  useEffect(() => {
+    setMaxRepliesDraft(String(character.maxReplies || 3));
+  }, [character.maxReplies]);
+
+  useEffect(() => {
     if (!activeMemoryDetail) {
       return;
     }
@@ -432,6 +442,27 @@ export function ChatSettingsPanel({
       ...stickers,
     ]);
     onUpdate({ ...character, stickers: nextStickers });
+  };
+
+  const commitReplyRange = (field: 'min' | 'max', rawValue: string) => {
+    const fallbackMin = character.minReplies || 1;
+    const fallbackMax = character.maxReplies || 3;
+    const parsed = parseInt(rawValue, 10);
+
+    if (field === 'min') {
+      const nextMin = Number.isNaN(parsed)
+        ? fallbackMin
+        : Math.max(1, Math.min(parsed, fallbackMax || 10));
+      setMinRepliesDraft(String(nextMin));
+      onUpdate({ ...character, minReplies: nextMin });
+      return;
+    }
+
+    const nextMax = Number.isNaN(parsed)
+      ? fallbackMax
+      : Math.min(10, Math.max(parsed, fallbackMin || 1));
+    setMaxRepliesDraft(String(nextMax));
+    onUpdate({ ...character, maxReplies: nextMax });
   };
 
   const handleImportSharedStickerLinks = () => {
@@ -1242,20 +1273,30 @@ export function ChatSettingsPanel({
                 </div>
                 <div className="flex items-center gap-2">
                   <input
-                    type="number"
-                    min="1"
-                    max={character.maxReplies || 10}
-                    value={character.minReplies || 1}
-                    onChange={e => onUpdate({ ...character, minReplies: Math.max(1, parseInt(e.target.value)) })}
+                    type="text"
+                    inputMode="numeric"
+                    value={minRepliesDraft}
+                    onChange={e => setMinRepliesDraft(e.target.value.replace(/[^\d]/g, ''))}
+                    onBlur={() => commitReplyRange('min', minRepliesDraft)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
                     className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
                   />
                   <span className="text-zinc-400">-</span>
                   <input
-                    type="number"
-                    min={character.minReplies || 1}
-                    max="10"
-                    value={character.maxReplies || 3}
-                    onChange={e => onUpdate({ ...character, maxReplies: Math.min(10, parseInt(e.target.value)) })}
+                    type="text"
+                    inputMode="numeric"
+                    value={maxRepliesDraft}
+                    onChange={e => setMaxRepliesDraft(e.target.value.replace(/[^\d]/g, ''))}
+                    onBlur={() => commitReplyRange('max', maxRepliesDraft)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
                     className="w-10 bg-white/50 border border-white/30 rounded-lg px-1 py-1 text-[12px] text-center outline-none focus:border-zinc-900"
                   />
                 </div>
@@ -2039,13 +2080,13 @@ export function ChatSettingsPanel({
                 <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
                   <p className="text-[11px] text-zinc-500 mb-3">优先填写核心人设，避免把所有背景都塞进一个超长大字段里。</p>
                   <textarea
-                    value={resolvedCorePersona}
+                    value={character.corePersona ?? ''}
                     onChange={e => onUpdate({ ...character, corePersona: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.corePersona) })}
                     placeholder="输入核心人设..."
                     className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[320px] resize-none"
                   />
                   <div className="mt-2 text-[11px] text-zinc-400 text-right">
-                    {resolvedCorePersona.length}/{CHARACTER_EDITOR_LIMITS.corePersona}
+                    {(character.corePersona ?? '').length}/{CHARACTER_EDITOR_LIMITS.corePersona}
                   </div>
                 </div>
               </SettingsSection>

@@ -45,7 +45,7 @@ export function LoveLetterReplySection({
             <button
               type="button"
               onClick={handleSubmit}
-              className="mb-1 flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-white shadow-sm transition-transform active:scale-95 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              className="mb-1 flex h-9 w-9 items-center justify-center rounded-full border border-[#d9e6f7] bg-[#eef5ff] text-[#4b6788] shadow-sm shadow-[#dbe7f7]/50 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-300"
               disabled={!replyText.trim()}
               aria-label="发送回复"
             >

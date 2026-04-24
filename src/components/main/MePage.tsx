@@ -277,14 +277,15 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
             ) : (
               <div className="h-20 w-20 rounded-full border-2 border-zinc-100 bg-zinc-50" />
             )}
-            <div className="flex w-full gap-2">
+            <div className="w-full space-y-2">
               <input
                 type="text"
                 placeholder="支持链接、Markdown 或 HTML 图片"
                 value={tempUrl}
                 onChange={e => setTempUrl(e.target.value)}
-                className="flex-1 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-[12px] outline-none"
+                className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-[12px] outline-none"
               />
+              <div className="flex w-full gap-2">
               <button
                 onClick={async () => {
                   if (tempUrl) {
@@ -293,11 +294,11 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
                   }
                   setTempUrl('');
                 }}
-                className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
               >
                 确认
               </button>
-              <label className="cursor-pointer rounded-xl bg-zinc-100 px-3 py-2 text-[12px] text-zinc-600">
+              <label className="flex-1 cursor-pointer rounded-xl bg-zinc-100 px-3 py-2 text-center text-[12px] text-zinc-600">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0];
@@ -308,6 +309,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
                   }
                 }} />
               </label>
+              </div>
             </div>
           </div>
 
@@ -558,14 +560,15 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
             ) : (
               <div className="w-20 h-20 rounded-full border-2 border-zinc-100 bg-zinc-50" />
             )}
-            <div className="flex gap-2 w-full">
+            <div className="w-full space-y-2">
               <input 
                 type="text" 
                 placeholder="支持链接、Markdown或HTML图片"
                 value={tempUrl}
                 onChange={e => setTempUrl(e.target.value)}
-                className="flex-1 bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2 text-[12px] outline-none"
+                className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-3 py-2 text-[12px] outline-none"
               />
+              <div className="flex gap-2 w-full">
               <button 
                 onClick={async () => { 
                   if(tempUrl) {
@@ -574,11 +577,11 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
                   }
                   setTempUrl(''); 
                 }}
-                className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] text-zinc-900 hover:bg-zinc-200"
               >
                 确认
               </button>
-              <label className="bg-zinc-100 text-zinc-600 px-3 py-2 rounded-xl text-[12px] cursor-pointer">
+              <label className="flex-1 bg-zinc-100 text-zinc-600 px-3 py-2 rounded-xl text-center text-[12px] cursor-pointer">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0];
@@ -589,6 +592,7 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
                   }
                 }} />
               </label>
+              </div>
             </div>
           </div>
 
@@ -1009,7 +1013,12 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
 
           <div className="flex gap-2 pt-4">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-600 text-[14px] font-bold">取消</button>
-            <button onClick={() => onSave(temp)} className="flex-1 py-3 rounded-xl bg-zinc-900 text-white text-[14px] font-bold">保存</button>
+            <button
+              onClick={() => onSave(temp)}
+              className="flex-1 py-3 rounded-xl border border-[#d9e6f7] bg-[#eef5ff] text-[14px] font-bold text-[#4b6788]"
+            >
+              保存
+            </button>
           </div>
         </div>
       </motion.div>

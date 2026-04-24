@@ -438,7 +438,7 @@ export function MomentsApp({
                     setShowUrlInput(false);
                   }
                 }}
-                className="mt-2 w-full rounded-lg bg-zinc-900 py-1.5 text-xs font-bold text-white"
+                className="mt-2 w-full rounded-lg border border-[#d9e6f7] bg-[#eef5ff] py-1.5 text-xs font-bold text-[#4b6788]"
               >
                 添加这些链接
               </button>

@@ -43,6 +43,15 @@ import {
   toggleFavoriteMessage,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import {
+  analyzeLatestDirectUserIntent,
+  buildDirectIntentPromptSection,
+} from '../../services/chat/intentAnalysis';
+import {
+  analyzeDirectCharacterDecision,
+  applyDirectTransferBridge,
+  buildDirectCharacterDecisionPromptSection,
+} from '../../services/chat/directCharacterDecision';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import {
@@ -60,13 +69,15 @@ import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
-import { MOCK_CARDS, MOCK_TRANSACTIONS } from '../../components/wallet/WalletApp/mockData';
+import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { BaseSessionRuntimeState } from './types';
 
 const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
 const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
+const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
+const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 
 function parseDirectActionCue(segment: string): {
   kind: 'normal' | 'sticker' | 'reply' | 'recall';
@@ -174,6 +185,14 @@ function markLatestVisibleModelMessageRecalled(messages: ChatMessage[]): ChatMes
       ? { ...message, isRecalled: true }
       : message
   ));
+}
+
+function stripCoupleSpaceTokens(text: string) {
+  return text
+    .replace(/\[COUPLE_SPACE_INVITE_ACCEPTED\]/g, '')
+    .replace(/\[COUPLE_SPACE_INVITE\]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies'>): number {
@@ -331,6 +350,15 @@ const parseTransferProtocol = (text: string) => {
   };
 };
 
+const stripTransferProtocolText = (text: string) => {
+  return text
+    .replace(TRANSFER_BLOCK_REGEX, '')
+    .replace(TRANSFER_BRACKET_REGEX, '')
+    .replace(TRANSFER_PIPE_REGEX, '$2')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number): ChatMessage[] => {
   const normalizedText = sanitizePipeMarkers(text, '\n').trim();
   if (!normalizedText) {
@@ -396,8 +424,33 @@ const splitStreamingModelResponseIntoMessages = (
     modelLabel?: string;
   } = {}
 ): ChatMessage[] => {
+  const trimmedText = text.trim();
+  const transferProtocol = parseTransferProtocol(trimmedText);
+
   if (options.isInnerVoice) {
-    return [{
+    const innerVoiceText = stripTransferProtocolText(text);
+    const messages: ChatMessage[] = [];
+
+    if (innerVoiceText) {
+      messages.push({
+        role: 'model',
+        text: innerVoiceText,
+        timestamp: baseTimestamp,
+        isInnerVoice: true,
+      });
+    }
+
+    if (transferProtocol) {
+      messages.push({
+        role: 'model',
+        text: `[转账 ${transferProtocol.amount}]`,
+        timestamp: baseTimestamp + messages.length,
+        transferStatus: 'pending',
+        transferTargetLabel: options.transferTargetLabel,
+      });
+    }
+
+    return messages.length > 0 ? messages : [{
       role: 'model',
       text,
       timestamp: baseTimestamp,
@@ -405,23 +458,10 @@ const splitStreamingModelResponseIntoMessages = (
     }];
   }
 
-  const trimmedText = text.trim();
-  const transferProtocol = parseTransferProtocol(trimmedText);
   if (
     !trimmedText ||
-    trimmedText.startsWith('[GAME_CARD]') ||
-    transferProtocol
+    trimmedText.startsWith('[GAME_CARD]')
   ) {
-    if (transferProtocol) {
-      return [{
-        role: 'model',
-        text: `[转账 ${transferProtocol.amount}]`,
-        timestamp: baseTimestamp,
-        transferStatus: 'pending',
-        transferTargetLabel: options.transferTargetLabel,
-      }];
-    }
-
     return [{
       role: 'model',
       text,
@@ -429,7 +469,9 @@ const splitStreamingModelResponseIntoMessages = (
     }];
   }
 
-  const legacyTranslationParts = getLegacyTranslationParts(text);
+  const hasCoupleSpaceAcceptedToken = trimmedText.includes(COUPLE_SPACE_INVITE_ACCEPTED_TOKEN);
+  const textWithoutProtocols = stripCoupleSpaceTokens(stripTransferProtocolText(text));
+  const legacyTranslationParts = getLegacyTranslationParts(textWithoutProtocols);
   const mainText = stripAssistantSpeakerPrefix(
     sanitizePipeMarkers(legacyTranslationParts.mainText, '\n'),
     options.assistantAliases || [],
@@ -468,6 +510,38 @@ const splitStreamingModelResponseIntoMessages = (
     !!message.imageUrl
     || isUsableChatText(message.text || '')
   ));
+  if (transferProtocol) {
+    const nextMessages = [
+      ...visibleMessages,
+      {
+        role: 'model',
+        text: `[转账 ${transferProtocol.amount}]`,
+        timestamp: baseTimestamp + visibleMessages.length,
+        transferStatus: 'pending',
+        transferTargetLabel: options.transferTargetLabel,
+      },
+    ];
+    if (hasCoupleSpaceAcceptedToken) {
+      nextMessages.push({
+        role: 'model',
+        text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
+        timestamp: baseTimestamp + nextMessages.length,
+      });
+    }
+    return nextMessages;
+  }
+
+  if (hasCoupleSpaceAcceptedToken) {
+    return [
+      ...visibleMessages,
+      {
+        role: 'model',
+        text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
+        timestamp: baseTimestamp + visibleMessages.length,
+      },
+    ];
+  }
+
   return visibleMessages;
 };
 
@@ -493,6 +567,152 @@ function parseGameCardData(text: string) {
     console.warn('Ignoring invalid runtime game card payload.', error);
     return null;
   }
+}
+
+function resolveGameCardReplyType(gameData: any): string | null {
+  if (!gameData || typeof gameData !== 'object') {
+    return null;
+  }
+
+  if (gameData.game === 'qna') {
+    if (gameData.type === 'question' || gameData.type === 'request_question') {
+      return 'answer';
+    }
+    return null;
+  }
+
+  if (gameData.game === 'tod') {
+    if (gameData.type === 'truth' || gameData.type === 'dare') {
+      return gameData.type;
+    }
+    return null;
+  }
+
+  if (gameData.game === 'blocks') {
+    return 'result';
+  }
+
+  return null;
+}
+
+function applyDirectGameCardBridge(params: {
+  replyText: string;
+  latestUserMessage: ChatMessage | null | undefined;
+}) {
+  const { replyText, latestUserMessage } = params;
+  const trimmedReply = replyText.trim();
+  if (!trimmedReply || trimmedReply.startsWith('[GAME_CARD]') || !latestUserMessage) {
+    return replyText;
+  }
+
+  const gameData = parseGameCardData(latestUserMessage.text || '');
+  const responseType = resolveGameCardReplyType(gameData);
+  if (!gameData || !responseType) {
+    return replyText;
+  }
+
+  const bridgedCard = {
+    game: gameData.game,
+    type: responseType,
+    ...(typeof gameData.question === 'string' && gameData.question.trim()
+      ? { question: gameData.question.trim() }
+      : {}),
+    content: trimmedReply,
+  };
+
+  return `[GAME_CARD] ${JSON.stringify(bridgedCard)}`;
+}
+
+function applyDirectCoupleSpaceBridge(params: {
+  replyText: string;
+  latestUserMessage: ChatMessage | null | undefined;
+}) {
+  const { replyText, latestUserMessage } = params;
+  const trimmedReply = replyText.trim();
+  if (!trimmedReply || !latestUserMessage) {
+    return replyText;
+  }
+
+  if ((latestUserMessage.text || '').trim() !== COUPLE_SPACE_INVITE_TOKEN) {
+    return replyText;
+  }
+
+  if (trimmedReply.includes(COUPLE_SPACE_INVITE_ACCEPTED_TOKEN)) {
+    return replyText;
+  }
+
+  return `${trimmedReply}\n${COUPLE_SPACE_INVITE_ACCEPTED_TOKEN}`;
+}
+
+function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined): string {
+  if (!message || message.role !== 'user' || message.isSystem || message.isRecalled) {
+    return '';
+  }
+
+  if (message.isInnerVoice) {
+    return [
+      '## 本轮特殊回复要求',
+      '用户刚触发的是“倾听心声”卡片。',
+      '这轮回复必须保持心声内容形态，不要退化成普通闲聊气泡。',
+      '如果这轮还伴随其它协议内容，例如转账，允许“心声卡片 + 转账卡”并存，但不要只剩协议本身。',
+    ].join('\n');
+  }
+
+  const gameCard = parseGameCardData(message.text || '');
+  if (gameCard && typeof gameCard.content === 'string') {
+    const cardType = (() => {
+      if (gameCard.game === 'qna') {
+        return gameCard.type === 'question' || gameCard.type === 'request_question'
+          ? {
+              responseType: 'answer',
+              instruction: '这轮应该继续输出 GAME_CARD，并把类型落成 answer。',
+            }
+          : {
+              responseType: 'answer',
+              instruction: '这轮仍然应该优先保持 GAME_CARD 结构，不要退化成普通文字。',
+            };
+      }
+
+      if (gameCard.game === 'tod') {
+        return {
+          responseType: gameCard.type === 'dare' ? 'dare' : 'truth',
+          instruction: '这轮是游戏卡互动，优先继续用 GAME_CARD 协议承载回答，不要退成普通消息。',
+        };
+      }
+
+      return {
+        responseType: gameCard.type === 'result' ? 'result' : gameCard.type,
+        instruction: '这轮是结构化游戏内容，优先保持 GAME_CARD 输出。',
+      };
+    })();
+
+    return [
+      '## 本轮特殊回复要求',
+      '用户最新消息是一张 GAME_CARD 卡片。',
+      cardType.instruction,
+      `建议协议骨架： [GAME_CARD] {"game":"${gameCard.game}","type":"${cardType.responseType}","question":${JSON.stringify(typeof gameCard.question === 'string' ? gameCard.question : '')},"content":"角色真正会说的话"}`,
+      '要求：卡片内容要像这个角色本人说出来的，不要写成系统说明；最终输出优先直接给出可解析的 GAME_CARD，不要先写普通文本再解释。',
+    ].join('\n');
+  }
+
+  if ((message.text || '').trim() === COUPLE_SPACE_INVITE_TOKEN) {
+    return [
+      '## 本轮特殊回复要求',
+      '用户最新消息是情侣空间邀请卡。',
+      `这轮回复如果同意，结尾必须补上 ${COUPLE_SPACE_INVITE_ACCEPTED_TOKEN}，让前端继续显示接受结果卡。`,
+      '不要把这轮回复写成普通闲聊；优先按邀请事件来表态。',
+    ].join('\n');
+  }
+
+  if ((message.text || '').trim() === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN) {
+    return [
+      '## 本轮特殊回复要求',
+      '用户最新消息是情侣空间已接受结果卡。',
+      '这轮如果继续说话，要明确围绕这个结果事件展开，不要退成无关闲聊。',
+    ].join('\n');
+  }
+
+  return '';
 }
 
 type UseDirectChatRuntimeArgs = {
@@ -635,6 +855,23 @@ function formatChatApiError(error: unknown): string {
   return `错误: ${normalized}`;
 }
 
+function buildAutoTranslateInlinePrompt(enabled?: boolean): string {
+  if (!enabled) {
+    return '';
+  }
+
+  return [
+    '## 自动翻译输出规则',
+    '如果这轮主回复不是中文，请在同一次输出里直接附上中文翻译。',
+    '格式必须严格如下：',
+    '原文正文',
+    '---TRANSLATION---',
+    '中文翻译',
+    '如果主回复本身已经是中文，或者协议卡内容本身就是中文，就不要再追加翻译段。',
+    '不要写“Translation:”之类的额外标签，也不要解释规则。',
+  ].join('\n');
+}
+
 export function useDirectChatRuntime({
   character,
   history,
@@ -668,6 +905,8 @@ export function useDirectChatRuntime({
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
   const historyRef = useRef(history);
   const inputRef = useRef(input);
+  const translationWorkerRunningRef = useRef(false);
+  const translationFailureNoticeShownRef = useRef(false);
   const pendingCoupleSpaceInviteRef = useRef(false);
   const pendingTransferDecisionIdsRef = useRef<Set<string>>(new Set());
 
@@ -750,6 +989,11 @@ export function useDirectChatRuntime({
         let currentResponseText = '';
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
+        const latestPendingUserBlock = getLatestPendingUserMessageBlock(historySnapshot);
+        const latestPendingUserMessage = latestPendingUserBlock
+          ? historySnapshot[latestPendingUserBlock.end]
+          : null;
+        const isInnerVoiceRequest = !!latestPendingUserMessage?.isInnerVoice;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
           const displayText = parseAvatarActionBlock(text).displayText;
           const shouldRecallPrevious = hasDirectRecallCue(displayText, {
@@ -757,6 +1001,7 @@ export function useDirectChatRuntime({
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
           });
           const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
+            isInnerVoice: isInnerVoiceRequest,
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: character.stickers || [],
@@ -832,7 +1077,7 @@ export function useDirectChatRuntime({
 
           const chatSceneInput = buildChatSceneInput({
             mode: mode === 'proactive' ? 'chat' : 'autoReply',
-            includeProtocolRules: false,
+            includeProtocolRules: mode !== 'proactive',
             character,
             userName,
             coupleSpace,
@@ -844,12 +1089,29 @@ export function useDirectChatRuntime({
             directChatHistory,
             chatGroups,
           });
+          const directIntentAnalysis = mode === 'proactive'
+            ? null
+            : analyzeLatestDirectUserIntent(historySnapshot);
+          const directCharacterDecision = mode === 'proactive'
+            ? null
+            : analyzeDirectCharacterDecision({
+              character,
+              messages: historySnapshot,
+              intentAnalysis: directIntentAnalysis,
+            });
+          const directSpecialReplyPrompt = mode === 'proactive'
+            ? ''
+            : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
             sections: [
               buildDirectResumeModePrompt(characterTemporalState.continuityMode),
               ...(chatSceneInput.sections || []),
+              buildDirectIntentPromptSection(directIntentAnalysis),
+              buildDirectCharacterDecisionPromptSection(directCharacterDecision),
+              directSpecialReplyPrompt,
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
+              buildAutoTranslateInlinePrompt(character.autoTranslate),
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
               buildAvatarActionPromptSection(character, historySnapshot),
@@ -886,7 +1148,19 @@ export function useDirectChatRuntime({
             throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
           }
 
-          currentResponseText = qualityResult.cleanedText;
+          currentResponseText = applyDirectGameCardBridge({
+            replyText: qualityResult.cleanedText,
+            latestUserMessage: latestPendingUserMessage,
+          });
+          currentResponseText = applyDirectCoupleSpaceBridge({
+            replyText: currentResponseText,
+            latestUserMessage: latestPendingUserMessage,
+          });
+          currentResponseText = applyDirectTransferBridge({
+            replyText: currentResponseText,
+            intentAnalysis: directIntentAnalysis,
+            decision: directCharacterDecision,
+          });
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
@@ -924,6 +1198,7 @@ export function useDirectChatRuntime({
   useEffect(() => {
     const translateHistory = async () => {
       if (!character.autoTranslate || !activeConfig) return;
+      if (translationWorkerRunningRef.current) return;
 
       const isMostlyChinese = (text: string) => {
         const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
@@ -932,41 +1207,62 @@ export function useDirectChatRuntime({
         return textLength > 0 && (chineseChars.length / textLength > 0.5);
       };
 
-      const messagesToTranslate = history
-        .map((msg, index) => ({ msg, index }))
-        .filter(({ msg }) => {
-          if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
-          if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
+      const findNextMessageToTranslate = () => {
+        const latestHistory = historyRef.current;
+        const candidates = latestHistory
+          .map((msg, index) => ({ msg, index }))
+          .filter(({ msg }) => {
+            if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
+            if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
 
-          let textToCheck = msg.text.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '');
-          const gameData = parseGameCardData(msg.text);
-          if (gameData && typeof gameData.content === 'string') {
-            textToCheck = gameData.content;
-          }
+            let textToCheck = msg.text.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '');
+            const gameData = parseGameCardData(msg.text);
+            if (gameData && typeof gameData.content === 'string') {
+              textToCheck = gameData.content;
+            }
 
-          return !isMostlyChinese(textToCheck);
-        })
-        .slice(-10);
+            return !isMostlyChinese(textToCheck);
+          });
 
-      if (messagesToTranslate.length === 0) return;
-
-      const translateText = async (prompt: string) => {
-        let responseText = '';
-        await streamTextWithConfig({
-          activeConfig,
-          temperature: 0.1,
-          messages: [{ role: 'system', content: prompt }],
-          onTextChunk: (chunkText) => {
-            responseText += chunkText;
-          },
-        });
-        return responseText;
+        return candidates[0] || null;
       };
 
-      const newHistory = [...history];
-      let hasUpdates = false;
+      const translateText = async (prompt: string) => {
+        try {
+          let responseText = '';
+          await streamTextWithConfig({
+            activeConfig,
+            temperature: 0.1,
+            messages: [{ role: 'user', content: prompt }],
+            onTextChunk: (chunkText) => {
+              responseText += chunkText;
+            },
+          });
+          return responseText;
+        } catch (streamError) {
+          console.warn('Streaming translation failed, falling back to non-stream request.', streamError);
+          return generateTextFromMessagesWithConfig({
+            activeConfig,
+            temperature: 0.1,
+            messages: [{ role: 'user', content: prompt }],
+          });
+        }
+      };
 
-      await Promise.all(messagesToTranslate.map(async ({ msg, index }) => {
+      translationWorkerRunningRef.current = true;
+      try {
+        while (true) {
+          const candidate = findNextMessageToTranslate();
+          if (!candidate) {
+            break;
+          }
+
+          const { msg, index } = candidate;
+
+          if (historyRef.current[index]?.translation) {
+            continue;
+          }
+
         try {
           let textToTranslate = msg.text;
           let isQnaAnswer = false;
@@ -993,24 +1289,40 @@ export function useDirectChatRuntime({
 
           const translation = await translateText(prompt);
           if (translation) {
-            newHistory[index] = {
-              ...newHistory[index],
-              translation,
-            };
-            hasUpdates = true;
+            const latestHistory = historyRef.current;
+            const liveMessage = latestHistory[index];
+            if (
+              liveMessage
+              && liveMessage.timestamp === msg.timestamp
+              && liveMessage.role === msg.role
+              && liveMessage.text === msg.text
+              && !liveMessage.translation
+            ) {
+              const nextHistory = [...latestHistory];
+              nextHistory[index] = {
+                ...nextHistory[index],
+                translation,
+              };
+              setHistory(nextHistory);
+              translationFailureNoticeShownRef.current = false;
+            }
           }
         } catch (translationError) {
           console.error('Translation failed for message', index, translationError);
+          if (!translationFailureNoticeShownRef.current) {
+            setErrorState('Auto-translation failed for some messages. Please check API/network settings.');
+            translationFailureNoticeShownRef.current = true;
+          }
+          break;
         }
-      }));
-
-      if (hasUpdates) {
-        setHistory(newHistory);
+      }
+      } finally {
+        translationWorkerRunningRef.current = false;
       }
     };
 
     translateHistory();
-  }, [activeConfig, character.autoTranslate, history, setHistory]);
+  }, [activeConfig, character.autoTranslate, error, history, setHistory]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<string | null> => {
     if (!activeConfig) {
@@ -1093,7 +1405,7 @@ export function useDirectChatRuntime({
     const newHistory = [...baseHistory, userMsg];
     setHistory(newHistory);
 
-    if (typeof overrideText !== 'string' && !overridePayload) {
+    if (!overridePayload) {
       setInput('');
     }
 
@@ -1104,6 +1416,7 @@ export function useDirectChatRuntime({
     }
 
     const isInnerVoiceRequest = overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]';
+    const directSpecialReplyPrompt = buildDirectSpecialReplyPrompt(userMsg);
     const assistantMsgId = Date.now() + 1;
     activeAssistantMessageIdRef.current = assistantMsgId;
     let currentResponseText = '';
@@ -1247,11 +1560,21 @@ export function useDirectChatRuntime({
         directChatHistory,
         chatGroups,
       });
+      const directIntentAnalysis = analyzeLatestDirectUserIntent(newHistory);
+      const directCharacterDecision = analyzeDirectCharacterDecision({
+        character,
+        messages: newHistory,
+        intentAnalysis: directIntentAnalysis,
+      });
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
         sections: [
           buildDirectResumeModePrompt(characterTemporalState.continuityMode),
           ...(chatSceneInput.sections || []),
+          buildDirectIntentPromptSection(directIntentAnalysis),
+          buildDirectCharacterDecisionPromptSection(directCharacterDecision),
+          directSpecialReplyPrompt,
+          buildAutoTranslateInlinePrompt(character.autoTranslate),
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
           buildAvatarActionPromptSection(character, newHistory),
@@ -1295,7 +1618,19 @@ export function useDirectChatRuntime({
         return;
       }
 
-      currentResponseText = qualityResult.cleanedText;
+      currentResponseText = applyDirectGameCardBridge({
+        replyText: qualityResult.cleanedText,
+        latestUserMessage: userMsg,
+      });
+      currentResponseText = applyDirectCoupleSpaceBridge({
+        replyText: currentResponseText,
+        latestUserMessage: userMsg,
+      });
+      currentResponseText = applyDirectTransferBridge({
+        replyText: currentResponseText,
+        intentAnalysis: directIntentAnalysis,
+        decision: directCharacterDecision,
+      });
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
@@ -1679,7 +2014,7 @@ export function useDirectChatRuntime({
           category: '转账退款',
           cardId: transferMessage.transferCardId,
         };
-        const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+        const newTransactions = [newTransaction, ...(walletData?.transactions ?? [])];
         onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
       }
     }
@@ -1952,7 +2287,7 @@ export function useDirectChatRuntime({
         category: '转账',
         cardId: selectedCardId,
       };
-      const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+      const newTransactions = [newTransaction, ...(walletData?.transactions ?? [])];
       onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
       const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const transferMessage: ChatMessage = {
@@ -2019,7 +2354,7 @@ export function useDirectChatRuntime({
           category: '转账',
           cardId: targetCardId,
         };
-        const newTransactions = [newTransaction, ...(walletData?.transactions || MOCK_TRANSACTIONS)];
+        const newTransactions = [newTransaction, ...(walletData?.transactions ?? [])];
         onUpdateWalletData?.({ cards: newCards, transactions: newTransactions });
       }
 
