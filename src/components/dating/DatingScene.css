@@ -187,6 +187,7 @@
 }
 
 .dating-scene__user-bubble {
+  display: block;
   position: relative;
   max-width: min(76%, 280px);
   padding: 11px 14px;
@@ -198,6 +199,8 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   white-space: pre-wrap;
+  text-align: left;
+  word-break: break-word;
 }
 
 .dating-scene__user-bubble.is-rollbackable {
