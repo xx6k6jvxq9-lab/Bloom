@@ -506,15 +506,15 @@ const splitStreamingModelResponseIntoMessages = (
     };
   });
 
-  const visibleMessages = mappedMessages.filter((message) => (
+  const visibleMessages: ChatMessage[] = mappedMessages.filter((message) => (
     !!message.imageUrl
     || isUsableChatText(message.text || '')
   ));
   if (transferProtocol) {
-    const nextMessages = [
+    const nextMessages: ChatMessage[] = [
       ...visibleMessages,
       {
-        role: 'model',
+        role: 'model' as const,
         text: `[转账 ${transferProtocol.amount}]`,
         timestamp: baseTimestamp + visibleMessages.length,
         transferStatus: 'pending',
@@ -523,7 +523,7 @@ const splitStreamingModelResponseIntoMessages = (
     ];
     if (hasCoupleSpaceAcceptedToken) {
       nextMessages.push({
-        role: 'model',
+        role: 'model' as const,
         text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
         timestamp: baseTimestamp + nextMessages.length,
       });
@@ -535,7 +535,7 @@ const splitStreamingModelResponseIntoMessages = (
     return [
       ...visibleMessages,
       {
-        role: 'model',
+        role: 'model' as const,
         text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
         timestamp: baseTimestamp + visibleMessages.length,
       },
