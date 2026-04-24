@@ -522,6 +522,7 @@ export function ChatSessionScreen({
     handleRejectTransfer,
   } = useDirectChatRuntime({
     character,
+    sharedStickers: settings.sharedStickers || [],
     history,
     setHistory,
     activeConfig,

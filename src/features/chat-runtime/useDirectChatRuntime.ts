@@ -726,6 +726,7 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
 
 type UseDirectChatRuntimeArgs = {
   character: Character;
+  sharedStickers?: string[];
   history: ChatMessage[];
   setHistory: (history: ChatMessage[]) => void;
   activeConfig?: ApiConfig;
@@ -883,6 +884,7 @@ function buildAutoTranslateInlinePrompt(enabled?: boolean): string {
 
 export function useDirectChatRuntime({
   character,
+  sharedStickers = [],
   history,
   setHistory,
   activeConfig,
@@ -907,6 +909,11 @@ export function useDirectChatRuntime({
   onAddCallRecord,
   onAcceptCoupleSpaceInvite,
 }: UseDirectChatRuntimeArgs): UseDirectChatRuntimeResult {
+  const availableStickers = Array.from(new Set([
+    ...sharedStickers,
+    ...(character.stickers || []),
+  ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
+    .map((sticker) => sticker.trim())));
   const lastMomentPublishAtRef = useRef<number | null>(null);
   const { isLoading, error, setError: setErrorState, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const activeAssistantMessageIdRef = useRef<number | null>(null);
@@ -1013,7 +1020,7 @@ export function useDirectChatRuntime({
             isInnerVoice: isInnerVoiceRequest,
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
-            availableStickers: character.stickers || [],
+            availableStickers,
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
             currentHistory: messages,
             userLabel: userName,
@@ -1125,7 +1132,7 @@ export function useDirectChatRuntime({
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
               buildAvatarActionPromptSection(character, historySnapshot),
               buildAutonomousAvatarLibraryPromptSection(character),
-              buildAssistantStickerPromptSection(character.stickers || []),
+              buildAssistantStickerPromptSection(availableStickers),
             ].filter(Boolean),
           });
 
@@ -1444,7 +1451,7 @@ export function useDirectChatRuntime({
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
-        availableStickers: character.stickers || [],
+        availableStickers,
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
         currentHistory: messages,
         userLabel: userName,
@@ -1586,7 +1593,7 @@ export function useDirectChatRuntime({
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
           buildAvatarActionPromptSection(character, newHistory),
           buildAutonomousAvatarLibraryPromptSection(character),
-          buildAssistantStickerPromptSection(character.stickers || []),
+          buildAssistantStickerPromptSection(availableStickers),
         ].filter(Boolean),
       });
 
