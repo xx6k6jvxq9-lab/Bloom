@@ -80,6 +80,11 @@ function readStoredJson<T>(key: string): T | null {
   }
 }
 
+function hasStoredJson(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(key) != null;
+}
+
 async function loadIndexedDbRecordSafe<T>(key: string): Promise<T | null> {
   try {
     return await loadJsonRecord<T>(key);
@@ -144,6 +149,15 @@ export async function bootstrapLocalAppState({
   let migratedSettings: AppSettings | undefined;
   const defaultAppData = createDefaultAppData();
   let nextAppData = defaultAppData;
+  let legacyAppDataCache: Partial<AppData> | null | undefined;
+
+  const getLegacyAppData = (): Partial<AppData> | null => {
+    if (legacyAppDataCache === undefined) {
+      legacyAppDataCache = readStoredJson<Partial<AppData>>(STORAGE_KEYS.appData);
+    }
+
+    return legacyAppDataCache;
+  };
 
   const [
     indexedDbSettings,
@@ -178,7 +192,38 @@ export async function bootstrapLocalAppState({
     migratedSettings = resolvedSettings.migratedSettings;
   }
 
-  const legacyAppData = readStoredJson<Partial<AppData>>(STORAGE_KEYS.appData);
+  const hasLocalCharacters = hasStoredJson(STORAGE_KEYS.characters);
+  const hasLocalChatHistory = hasStoredJson(STORAGE_KEYS.chatHistory);
+  const hasLocalChatOrganization = hasStoredJson(STORAGE_KEYS.chatOrganization);
+  const hasLocalUserProfile = hasStoredJson(STORAGE_KEYS.userProfile);
+  const hasLocalMeData = hasStoredJson(STORAGE_KEYS.meData);
+  const hasLocalMoments = hasStoredJson(STORAGE_KEYS.moments);
+  const hasLocalForumData = hasStoredJson(STORAGE_KEYS.forumData);
+  const hasLocalFriendRequests = hasStoredJson(STORAGE_KEYS.friendRequests);
+  const hasLocalDatingRecords = hasStoredJson(STORAGE_KEYS.datingRecords);
+  const hasLocalCoupleSpace = hasStoredJson(STORAGE_KEYS.coupleSpace);
+  const hasLocalVisualSettings = hasStoredJson(STORAGE_KEYS.visualSettings);
+  const hasLocalMusicData = hasStoredJson(STORAGE_KEYS.musicData);
+  const hasLocalWalletData = hasStoredJson(STORAGE_KEYS.walletData);
+  const hasLocalCallHistory = hasStoredJson(STORAGE_KEYS.callHistory);
+
+  const needsLegacyAppData = (
+    (!indexedDbCharacters && !hasLocalCharacters)
+    || (!indexedDbChatHistory && !hasLocalChatHistory)
+    || (!indexedDbChatOrganization && !hasLocalChatOrganization)
+    || (!indexedDbUserProfile && !hasLocalUserProfile)
+    || (!indexedDbMeData && !hasLocalMeData)
+    || (!indexedDbMoments && !hasLocalMoments)
+    || (!indexedDbForumData && !hasLocalForumData)
+    || (!indexedDbFriendRequests && !hasLocalFriendRequests)
+    || !hasLocalDatingRecords
+    || (!indexedDbCoupleSpace && !hasLocalCoupleSpace)
+    || !hasLocalVisualSettings
+    || !hasLocalMusicData
+    || (!indexedDbWalletData && !hasLocalWalletData)
+    || !hasLocalCallHistory
+  );
+  const legacyAppData = needsLegacyAppData ? getLegacyAppData() : null;
   const legacyGroups = Array.isArray(legacyAppData?.groups)
     ? legacyAppData.groups
     : ['瀹朵汉', '鏈嬪弸', '鍚屼簨', '鏄熸爣'];
@@ -186,12 +231,22 @@ export async function bootstrapLocalAppState({
   const characters = sanitizePersistedCharactersFromStore(
     Array.isArray(indexedDbCharacters)
       ? indexedDbCharacters
-      : loadCharacters(legacyAppData?.characters || defaultCharacters),
+      : loadCharacters(
+          !hasLocalCharacters ? (legacyAppData?.characters || defaultCharacters) : defaultCharacters,
+        ),
     defaultCharacters,
     defaultZhouJibaiAvatar,
   );
 
-  const localChatHistory = loadChatHistoryRecords();
+  const localChatHistory = loadChatHistoryRecords({
+    directHistory:
+      !indexedDbChatHistory && !hasLocalChatHistory
+        ? legacyAppData?.chatHistory || {}
+        : {},
+    directRelationshipWaves: {},
+    directFactTraces: {},
+    groupSessions: {},
+  });
   const persistedChatHistory = indexedDbChatHistory
     ? hydrateChatHistoryRecords(
         indexedDbChatHistory as Partial<typeof localChatHistory>,
@@ -200,8 +255,10 @@ export async function bootstrapLocalAppState({
     : localChatHistory;
 
   const localChatOrganization = loadPersistedChatOrganization({
-    groups: legacyGroups,
-    chatGroups: sanitizeChatGroupsWithCharactersFromStore(legacyAppData?.chatGroups || [], characters),
+    groups: !indexedDbChatOrganization && !hasLocalChatOrganization ? legacyGroups : [],
+    chatGroups: !indexedDbChatOrganization && !hasLocalChatOrganization
+      ? sanitizeChatGroupsWithCharactersFromStore(legacyAppData?.chatGroups || [], characters)
+      : [],
   });
   const persistedChatOrganization = indexedDbChatOrganization
     ? hydrateChatOrganization(
@@ -211,7 +268,7 @@ export async function bootstrapLocalAppState({
     : localChatOrganization;
 
   const localUserProfile = loadPersistedUserProfile(
-    legacyAppData?.userProfile
+    !indexedDbUserProfile && !hasLocalUserProfile && legacyAppData?.userProfile
       ? {
           ...defaultUser,
           ...legacyAppData.userProfile,
@@ -227,9 +284,15 @@ export async function bootstrapLocalAppState({
     : localUserProfile;
 
   const meDataFallback = {
-    masks: Array.isArray(legacyAppData?.masks) ? legacyAppData.masks : defaultAppData.masks,
-    favorites: Array.isArray(legacyAppData?.favorites) ? legacyAppData.favorites : defaultAppData.favorites,
-    worldBooks: Array.isArray(legacyAppData?.worldBooks) ? legacyAppData.worldBooks : defaultAppData.worldBooks,
+    masks: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.masks)
+      ? legacyAppData.masks
+      : defaultAppData.masks,
+    favorites: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.favorites)
+      ? legacyAppData.favorites
+      : defaultAppData.favorites,
+    worldBooks: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.worldBooks)
+      ? legacyAppData.worldBooks
+      : defaultAppData.worldBooks,
   };
   const localMeData = loadPersistedMeData(meDataFallback);
   const meData = indexedDbMeData
@@ -237,7 +300,9 @@ export async function bootstrapLocalAppState({
     : localMeData;
 
   const localMoments = loadPersistedMoments(
-    sanitizePersistedMomentsFromStore(legacyAppData?.moments),
+    sanitizePersistedMomentsFromStore(
+      !indexedDbMoments && !hasLocalMoments ? legacyAppData?.moments : undefined,
+    ),
   );
   const moments = sanitizePersistedMomentsFromStore(
     indexedDbMoments
@@ -245,13 +310,18 @@ export async function bootstrapLocalAppState({
       : localMoments,
   );
 
-  const forumDataFallback = legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [] };
+  const forumDataFallback =
+    !indexedDbForumData && !hasLocalForumData
+      ? (legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [] })
+      : { posts: [], notifications: [], followedUsers: [] };
   const localForumData = loadPersistedForumData(forumDataFallback);
   const forumData = indexedDbForumData
     ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
     : localForumData;
 
-  const localFriendRequests = loadPersistedFriendRequests(legacyAppData?.friendRequests || []);
+  const localFriendRequests = loadPersistedFriendRequests(
+    !indexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
+  );
   const friendRequests = indexedDbFriendRequests
     ? hydrateFriendRequests(
         indexedDbFriendRequests as typeof localFriendRequests,
@@ -260,29 +330,32 @@ export async function bootstrapLocalAppState({
     : localFriendRequests;
 
   const datingRecords = loadDatingRecords({
-    savedDates: legacyAppData?.savedDates || [],
-    collectedDates: legacyAppData?.collectedDates || [],
+    savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],
+    collectedDates: !hasLocalDatingRecords ? legacyAppData?.collectedDates || [] : [],
   });
 
   const coupleSpacePersistedSource =
     indexedDbCoupleSpace
     ?? loadJson<unknown>(STORAGE_KEYS.coupleSpace, null)
-    ?? legacyAppData?.coupleSpaceState
-    ?? legacyAppData?.coupleSpace
+    ?? (!hasLocalCoupleSpace ? legacyAppData?.coupleSpaceState : null)
+    ?? (!hasLocalCoupleSpace ? legacyAppData?.coupleSpace : null)
     ?? null;
   const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(coupleSpacePersistedSource);
 
   const visualSettings = loadPersistedVisualSettings(
-    legacyAppData?.visualSettings ?? defaultAppData.visualSettings,
+    (!hasLocalVisualSettings ? legacyAppData?.visualSettings : undefined) ?? defaultAppData.visualSettings,
     defaultDesktopWallpaper,
   );
 
-  const fallbackMusicData = legacyAppData?.musicData
+  const fallbackMusicData = !hasLocalMusicData && legacyAppData?.musicData
     ? { ...defaultAppData.musicData!, ...legacyAppData.musicData }
     : defaultAppData.musicData!;
   const musicData = loadPersistedMusicData(fallbackMusicData);
 
-  const walletFallback = legacyAppData?.walletData ?? { cards: [], transactions: [] };
+  const walletFallback =
+    !indexedDbWalletData && !hasLocalWalletData
+      ? (legacyAppData?.walletData ?? { cards: [], transactions: [] })
+      : { cards: [], transactions: [] };
   const localWalletData = loadPersistedWalletData(walletFallback);
   const walletData = indexedDbWalletData
     ? hydrateWalletData(indexedDbWalletData as Partial<typeof localWalletData>, localWalletData)
@@ -295,7 +368,6 @@ export async function bootstrapLocalAppState({
 
   nextAppData = {
     ...defaultAppData,
-    ...legacyAppData,
     characters,
     chatHistory: persistedChatHistory.directHistory,
     userProfile,
@@ -309,7 +381,7 @@ export async function bootstrapLocalAppState({
     coupleSpace,
     friendRequests,
     chatGroups,
-    callHistory: loadCallHistory(legacyAppData?.callHistory || []),
+    callHistory: loadCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
     savedDates: datingRecords.savedDates,
     collectedDates: datingRecords.collectedDates,
     musicData,
