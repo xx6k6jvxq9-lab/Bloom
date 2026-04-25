@@ -2184,13 +2184,38 @@ function DockAppIcon({
   const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || app.icon;
 
   return (
+    <ResilientAppIconImage src={finalIcon} fallbackSrc={app.icon} alt={app.name} />
+  );
+}
+
+function ResilientAppIconImage({
+  src,
+  fallbackSrc,
+  alt,
+}: {
+  src: string;
+  fallbackSrc: string;
+  alt: string;
+}) {
+  const [imageSrc, setImageSrc] = useState(src);
+
+  useEffect(() => {
+    setImageSrc(src);
+  }, [src]);
+
+  return (
     <img
-      src={finalIcon}
+      src={imageSrc}
       className="absolute inset-0 w-full h-full object-cover"
-      alt={app.name}
+      alt={alt}
       referrerPolicy="no-referrer"
       draggable={false}
       onContextMenu={event => event.preventDefault()}
+      onError={() => {
+        if (imageSrc !== fallbackSrc) {
+          setImageSrc(fallbackSrc);
+        }
+      }}
     />
   );
 }
@@ -2271,14 +2296,7 @@ function AppIcon({
           borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14,
         }}
       >
-        <img
-          src={finalIcon}
-          className="absolute inset-0 w-full h-full object-cover"
-          alt={name}
-          referrerPolicy="no-referrer"
-          draggable={false}
-          onContextMenu={event => event.preventDefault()}
-        />
+        <ResilientAppIconImage src={finalIcon} fallbackSrc={icon || APP_ICON_URL} alt={name} />
       </div>
       <span className="homeDesktop__appLabel drop-shadow-md tracking-wide" style={fontStyle}>
         {name}

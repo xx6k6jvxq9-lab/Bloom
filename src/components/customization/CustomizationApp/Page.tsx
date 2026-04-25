@@ -11,6 +11,48 @@ import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFont
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
+const DESKTOP_ICON_ACCEPTED_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+]);
+const MAX_DESKTOP_ICON_FILE_SIZE = 5 * 1024 * 1024;
+
+function validateDesktopIconFile(file: File): Promise<void> {
+  const normalizedType = (file.type || '').toLowerCase();
+
+  if (!DESKTOP_ICON_ACCEPTED_IMAGE_TYPES.has(normalizedType)) {
+    return Promise.reject(new Error('桌面图标仅支持 PNG、JPG、WEBP、GIF 或 BMP 图片。'));
+  }
+
+  if (file.size > MAX_DESKTOP_ICON_FILE_SIZE) {
+    return Promise.reject(new Error('桌面图标图片不能超过 5MB。'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      if ((image.naturalWidth || 0) < 1 || (image.naturalHeight || 0) < 1) {
+        reject(new Error('图片尺寸无效，不能作为桌面图标。'));
+        return;
+      }
+      resolve();
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('这张图片当前无法被浏览器正常解码，换成 PNG 或 JPG 试试。'));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
 type CustomizationAppProps = {
   visualSettings: VisualSettings;
   setVisualSettings: (settings: VisualSettings) => void;
@@ -216,10 +258,12 @@ function PersistentImageUploadControl({
   label,
   value,
   onChange,
+  fileValidator,
 }: {
   label: string,
   value: string,
   onChange: (val: string) => void,
+  fileValidator?: (file: File) => Promise<void>,
 }) {
   const [localValue, setLocalValue] = useState(value);
   const { resolvedUrl, loading, error } = useResolvedPersistentValue(localValue);
@@ -270,6 +314,9 @@ function PersistentImageUploadControl({
               const file = e.target.files?.[0];
               if (file) {
                 try {
+                  if (fileValidator) {
+                    await fileValidator(file);
+                  }
                   const nextValue = await setUploadedFile(file);
                   setLocalValue(nextValue);
                   onChange(nextValue);
@@ -615,7 +662,8 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 <PersistentImageUploadControl 
                   label="图标图片" 
                   value={settings.desktopIcons?.find((i: any) => i.id === selectedAppId)?.iconUrl || ''} 
-                  onChange={(val) => handleIconUpdate(selectedAppId, val)} 
+                  onChange={(val) => handleIconUpdate(selectedAppId, val)}
+                  fileValidator={validateDesktopIconFile}
                 />
               </motion.div>
             )}
