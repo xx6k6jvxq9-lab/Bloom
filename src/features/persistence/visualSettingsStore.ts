@@ -1,4 +1,5 @@
 import type { VisualSettings } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -84,41 +85,76 @@ export function hydrateVisualSettings(
   };
 }
 
+function mergeVisualSettingsSource(
+  persistedVisualSettings: Partial<VisualSettings> | null | undefined,
+  fallbackSource: Partial<VisualSettings> | null | undefined,
+): Partial<VisualSettings> | null | undefined {
+  if (!persistedVisualSettings) {
+    return fallbackSource;
+  }
+
+  return {
+    ...(fallbackSource || {}),
+    ...persistedVisualSettings,
+    navBar: {
+      ...(fallbackSource?.navBar || {}),
+      ...(persistedVisualSettings.navBar || {}),
+    },
+    desktop: {
+      ...(fallbackSource?.desktop || {}),
+      ...(persistedVisualSettings.desktop || {}),
+    },
+    chat: {
+      ...(fallbackSource?.chat || {}),
+      ...(persistedVisualSettings.chat || {}),
+    },
+    dynamics: {
+      ...(fallbackSource?.dynamics || {}),
+      ...(persistedVisualSettings.dynamics || {}),
+    },
+  } as Partial<VisualSettings>;
+}
+
 export function loadPersistedVisualSettings(
   fallbackSource: Partial<VisualSettings> | null | undefined,
   fallbackGlobalBackground: string,
 ): VisualSettings {
   const persistedVisualSettings = loadJson<Partial<VisualSettings> | null>(STORAGE_KEYS.visualSettings, null);
-  const mergedSource = persistedVisualSettings
-    ? {
-        ...(fallbackSource || {}),
-        ...persistedVisualSettings,
-        navBar: {
-          ...(fallbackSource?.navBar || {}),
-          ...(persistedVisualSettings.navBar || {}),
-        },
-        desktop: {
-          ...(fallbackSource?.desktop || {}),
-          ...(persistedVisualSettings.desktop || {}),
-        },
-        chat: {
-          ...(fallbackSource?.chat || {}),
-          ...(persistedVisualSettings.chat || {}),
-        },
-        dynamics: {
-          ...(fallbackSource?.dynamics || {}),
-          ...(persistedVisualSettings.dynamics || {}),
-        },
-      } as Partial<VisualSettings>
-    : fallbackSource;
+  const mergedSource = mergeVisualSettingsSource(persistedVisualSettings, fallbackSource);
 
   return hydrateVisualSettings(mergedSource, fallbackGlobalBackground);
 }
 
-export function persistVisualSettings(settings: VisualSettings): void {
+export async function loadPreferredVisualSettings(
+  fallbackSource: Partial<VisualSettings> | null | undefined,
+  fallbackGlobalBackground: string,
+): Promise<VisualSettings> {
+  try {
+    const persistedVisualSettings = await loadJsonRecord<Partial<VisualSettings>>(STORAGE_KEYS.visualSettings);
+    if (persistedVisualSettings) {
+      return hydrateVisualSettings(
+        mergeVisualSettingsSource(persistedVisualSettings, fallbackSource),
+        fallbackGlobalBackground,
+      );
+    }
+  } catch (error) {
+    console.error('[visualSettingsStore] Failed to load visual settings from IndexedDB', error);
+  }
+
+  return loadPersistedVisualSettings(fallbackSource, fallbackGlobalBackground);
+}
+
+export function persistVisualSettings(settings: VisualSettings): Promise<void> {
   saveJson(STORAGE_KEYS.visualSettings, settings);
+
+  return saveJsonRecord(STORAGE_KEYS.visualSettings, settings).catch((error) => {
+    console.error('[visualSettingsStore] Failed to persist visual settings into IndexedDB', error);
+  });
 }
 
 export function clearPersistedVisualSettings(): void {
   removeStoredJson(STORAGE_KEYS.visualSettings);
+  void removeJsonRecord(STORAGE_KEYS.visualSettings).catch((error) => {
+    console.error('[visualSettingsStore] Failed to remove visual settings from IndexedDB', error);
+  });
 }

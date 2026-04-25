@@ -97,7 +97,7 @@ export function useAppPersistence({
 
   useEffect(() => {
     if (!hasHydratedStorage) return;
-    persistVisualSettings(appData.visualSettings);
+    void persistVisualSettings(appData.visualSettings);
   }, [appData.visualSettings, hasHydratedStorage]);
 
   const hydrateCharacters = useCallback(

@@ -44,7 +44,7 @@ import {
   hydrateUserProfile,
   loadPersistedUserProfile,
 } from './userProfileStore';
-import { loadPersistedVisualSettings } from './visualSettingsStore';
+import { loadPreferredVisualSettings } from './visualSettingsStore';
 import {
   hydrateWalletData,
   loadPersistedWalletData,
@@ -342,7 +342,7 @@ export async function bootstrapLocalAppState({
     ?? null;
   const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(coupleSpacePersistedSource);
 
-  const visualSettings = loadPersistedVisualSettings(
+  const visualSettings = await loadPreferredVisualSettings(
     (!hasLocalVisualSettings ? legacyAppData?.visualSettings : undefined) ?? defaultAppData.visualSettings,
     defaultDesktopWallpaper,
   );
