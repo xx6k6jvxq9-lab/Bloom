@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ChatGroup } from '../../types';
-import { loadPersistedChatOrganization, persistChatOrganization, type ChatOrganizationData } from './chatOrganizationStore';
+import { loadPreferredChatOrganization, persistChatOrganization, type ChatOrganizationData } from './chatOrganizationStore';
 
 function serializeChatOrganization(data: ChatOrganizationData): string {
   return JSON.stringify(data);
@@ -23,20 +23,34 @@ export function usePersistedChatOrganizationBridge(
   }, [setChatOrganization]);
 
   useEffect(() => {
-    const hydrated = loadPersistedChatOrganization(initialDataRef.current);
-    const currentSerialized = serializeChatOrganization(initialDataRef.current);
-    const hydratedSerialized = serializeChatOrganization(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredChatOrganization(initialDataRef.current);
+      const currentSerialized = serializeChatOrganization(initialDataRef.current);
+      const hydratedSerialized = serializeChatOrganization(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setChatOrganizationRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setChatOrganizationRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -60,7 +74,7 @@ export function usePersistedChatOrganizationBridge(
       return;
     }
 
-    persistChatOrganization(currentData);
+    void persistChatOrganization(currentData);
     lastPersistedRef.current = serialized;
   }, [groups, chatGroups]);
 }

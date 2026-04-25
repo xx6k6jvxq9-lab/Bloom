@@ -5,6 +5,7 @@ import {
   extractDirectRelationshipWaves,
   extractGroupSessions,
   loadChatHistoryRecords,
+  loadPreferredChatHistoryRecords,
   saveChatHistoryRecords,
   type PersistedChatHistoryData,
 } from './chatHistoryStore';
@@ -79,11 +80,38 @@ export function usePersistedChatHistoryBridge(
   }, [setChatData]);
 
   useEffect(() => {
-    const currentSerialized = serializeChatHistoryRecords(initialDataRef.current);
-    hydrationTargetRef.current = currentSerialized;
-    lastPersistedRef.current = currentSerialized;
-    hasHydratedRef.current = true;
-  }, []);
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const hydrated = await loadPreferredChatHistoryRecords(initialDataRef.current);
+      const currentSerialized = serializeChatHistoryRecords(initialDataRef.current);
+      const hydratedSerialized = serializeChatHistoryRecords(hydrated);
+
+      if (cancelled) {
+        return;
+      }
+
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setChatDataRef.current({
+          directHistory: hydrated.directHistory,
+          chatGroups,
+        });
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatGroups]);
 
   useEffect(() => {
     const currentData = {
@@ -111,7 +139,7 @@ export function usePersistedChatHistoryBridge(
       return;
     }
 
-    saveChatHistoryRecords(currentData);
+    void saveChatHistoryRecords(currentData);
     lastPersistedRef.current = serialized;
   }, [directHistory, chatGroups]);
 }

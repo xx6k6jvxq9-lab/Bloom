@@ -1,4 +1,5 @@
 import type { ChatGroup } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -42,13 +43,39 @@ export function loadPersistedChatOrganization(fallback: ChatOrganizationData): C
   const hydrated = hydrateChatOrganization(persisted ?? fallback, fallback);
 
   if (persisted && JSON.stringify(hydrated) !== JSON.stringify(hydrateChatOrganization(persisted, { groups: [], chatGroups: [] }))) {
-    persistChatOrganization(hydrated);
+    persistChatOrganizationSync(hydrated);
   }
 
   return hydrated;
 }
 
-export function persistChatOrganization(data: ChatOrganizationData): void {
+export async function loadPreferredChatOrganization(fallback: ChatOrganizationData): Promise<ChatOrganizationData> {
+  try {
+    const persisted = await loadJsonRecord<Partial<ChatOrganizationData>>(STORAGE_KEYS.chatOrganization);
+    if (persisted) {
+      return hydrateChatOrganization(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[chatOrganizationStore] Failed to load chat organization from IndexedDB', error);
+  }
+
+  return loadPersistedChatOrganization(fallback);
+}
+
+export function persistChatOrganization(data: ChatOrganizationData): Promise<void> {
+  const projectedData = {
+    groups: data.groups,
+    chatGroups: data.chatGroups.map(projectGroupOrganization),
+  };
+
+  saveJson(STORAGE_KEYS.chatOrganization, projectedData);
+
+  return saveJsonRecord(STORAGE_KEYS.chatOrganization, projectedData).catch((error) => {
+    console.error('[chatOrganizationStore] Failed to persist chat organization into IndexedDB', error);
+  });
+}
+
+export function persistChatOrganizationSync(data: ChatOrganizationData): void {
   saveJson(STORAGE_KEYS.chatOrganization, {
     groups: data.groups,
     chatGroups: data.chatGroups.map(projectGroupOrganization),
@@ -80,4 +107,7 @@ export function mergeChatGroupOrganization(
 
 export function clearPersistedChatOrganization(): void {
   removeStoredJson(STORAGE_KEYS.chatOrganization);
+  void removeJsonRecord(STORAGE_KEYS.chatOrganization).catch((error) => {
+    console.error('[chatOrganizationStore] Failed to remove chat organization from IndexedDB', error);
+  });
 }

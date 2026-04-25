@@ -7,6 +7,7 @@ import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-ch
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
 import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -171,8 +172,32 @@ export function loadChatHistoryRecords(
   return hydrateChatHistoryRecords(persisted, fallback);
 }
 
-export function saveChatHistoryRecords(value: PersistedChatHistoryData): void {
+export async function loadPreferredChatHistoryRecords(
+  fallback: PersistedChatHistoryData = {
+    directHistory: {},
+    directRelationshipWaves: {},
+    directFactTraces: {},
+    groupSessions: {},
+  },
+): Promise<PersistedChatHistoryData> {
+  try {
+    const persisted = await loadJsonRecord<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
+    if (persisted) {
+      return hydrateChatHistoryRecords(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[chatHistoryStore] Failed to load chat history from IndexedDB', error);
+  }
+
+  return loadChatHistoryRecords(fallback);
+}
+
+export function saveChatHistoryRecords(value: PersistedChatHistoryData): Promise<void> {
   saveJson(STORAGE_KEYS.chatHistory, value);
+
+  return saveJsonRecord(STORAGE_KEYS.chatHistory, value).catch((error) => {
+    console.error('[chatHistoryStore] Failed to persist chat history into IndexedDB', error);
+  });
 }
 
 export function patchChatHistoryRecords(
@@ -183,14 +208,16 @@ export function patchChatHistoryRecords(
     directFactTraces: {},
     groupSessions: {},
   },
-): PersistedChatHistoryData {
+): Promise<PersistedChatHistoryData> {
   const nextValue = updater(loadChatHistoryRecords(fallback));
-  saveChatHistoryRecords(nextValue);
-  return nextValue;
+  return saveChatHistoryRecords(nextValue).then(() => nextValue);
 }
 
 export function resetChatHistoryRecords(): void {
   removeStoredJson(STORAGE_KEYS.chatHistory);
+  void removeJsonRecord(STORAGE_KEYS.chatHistory).catch((error) => {
+    console.error('[chatHistoryStore] Failed to remove chat history from IndexedDB', error);
+  });
 }
 
 export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, PersistedGroupSession> {

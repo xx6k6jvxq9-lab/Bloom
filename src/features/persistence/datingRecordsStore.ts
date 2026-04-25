@@ -1,4 +1,5 @@
 import type { DateSession } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -24,63 +25,82 @@ export function loadDatingRecords(
   return hydrateDatingRecords(persisted, fallback);
 }
 
-export function saveDatingRecords(value: DatingRecordsData): void {
+export async function loadPreferredDatingRecords(
+  fallback: DatingRecordsData = { savedDates: [], collectedDates: [] },
+): Promise<DatingRecordsData> {
+  try {
+    const persisted = await loadJsonRecord<Partial<DatingRecordsData>>(STORAGE_KEYS.datingRecords);
+    if (persisted) {
+      return hydrateDatingRecords(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[datingRecordsStore] Failed to load dating records from IndexedDB', error);
+  }
+
+  return loadDatingRecords(fallback);
+}
+
+export function saveDatingRecords(value: DatingRecordsData): Promise<void> {
   saveJson(STORAGE_KEYS.datingRecords, value);
+
+  return saveJsonRecord(STORAGE_KEYS.datingRecords, value).catch((error) => {
+    console.error('[datingRecordsStore] Failed to persist dating records into IndexedDB', error);
+  });
 }
 
 export function patchDatingRecords(
   updater: (current: DatingRecordsData) => DatingRecordsData,
   fallback: DatingRecordsData = { savedDates: [], collectedDates: [] },
-): DatingRecordsData {
+): Promise<DatingRecordsData> {
   const nextValue = updater(loadDatingRecords(fallback));
-  saveDatingRecords(nextValue);
-  return nextValue;
+  return saveDatingRecords(nextValue).then(() => nextValue);
 }
 
 export function resetDatingRecords(): void {
   removeStoredJson(STORAGE_KEYS.datingRecords);
+  void removeJsonRecord(STORAGE_KEYS.datingRecords).catch((error) => {
+    console.error('[datingRecordsStore] Failed to remove dating records from IndexedDB', error);
+  });
 }
 
 export function loadSavedDates(fallback: DateSession[] = []): DateSession[] {
   return loadDatingRecords({ savedDates: fallback, collectedDates: [] }).savedDates;
 }
 
-export function saveSavedDates(value: DateSession[]): void {
-  saveDatingRecords({ savedDates: value, collectedDates: loadCollectedDates([]) });
+export function saveSavedDates(value: DateSession[]): Promise<void> {
+  return saveDatingRecords({ savedDates: value, collectedDates: loadCollectedDates([]) });
 }
 
 export function patchSavedDates(
   updater: (current: DateSession[]) => DateSession[],
   fallback: DateSession[] = [],
-): DateSession[] {
+): Promise<DateSession[]> {
   const nextValue = updater(loadSavedDates(fallback));
-  saveDatingRecords({ savedDates: nextValue, collectedDates: loadCollectedDates([]) });
-  return nextValue;
+  return saveDatingRecords({ savedDates: nextValue, collectedDates: loadCollectedDates([]) }).then(() => nextValue);
 }
 
 export function resetSavedDates(): void {
   const current = loadDatingRecords();
-  saveDatingRecords({ ...current, savedDates: [] });
+  void saveDatingRecords({ ...current, savedDates: [] });
 }
 
 export function loadCollectedDates(fallback: DateSession[] = []): DateSession[] {
   return loadDatingRecords({ savedDates: [], collectedDates: fallback }).collectedDates;
 }
 
-export function saveCollectedDates(value: DateSession[]): void {
-  saveDatingRecords({ savedDates: loadSavedDates([]), collectedDates: value });
+export function saveCollectedDates(value: DateSession[]): Promise<void> {
+  return saveDatingRecords({ savedDates: loadSavedDates([]), collectedDates: value });
 }
 
 export function patchCollectedDates(
   updater: (current: DateSession[]) => DateSession[],
   fallback: DateSession[] = [],
-): DateSession[] {
+): Promise<DateSession[]> {
   const nextValue = updater(loadCollectedDates(fallback));
-  saveDatingRecords({ savedDates: loadSavedDates([]), collectedDates: nextValue });
-  return nextValue;
+  return saveDatingRecords({ savedDates: loadSavedDates([]), collectedDates: nextValue }).then(() => nextValue);
 }
 
 export function resetCollectedDates(): void {
   const current = loadDatingRecords();
-  saveDatingRecords({ ...current, collectedDates: [] });
+  void saveDatingRecords({ ...current, collectedDates: [] });
 }

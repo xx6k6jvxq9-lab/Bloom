@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { DateSession } from '../../types';
-import { loadDatingRecords, saveDatingRecords, type DatingRecordsData } from './datingRecordsStore';
+import { loadPreferredDatingRecords, saveDatingRecords, type DatingRecordsData } from './datingRecordsStore';
 
 function serializeDatingRecords(data: DatingRecordsData): string {
   return JSON.stringify(data);
@@ -23,20 +23,34 @@ export function usePersistedDatingRecordsBridge(
   }, [setDatingRecords]);
 
   useEffect(() => {
-    const hydrated = loadDatingRecords(initialDataRef.current);
-    const currentSerialized = serializeDatingRecords(initialDataRef.current);
-    const hydratedSerialized = serializeDatingRecords(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredDatingRecords(initialDataRef.current);
+      const currentSerialized = serializeDatingRecords(initialDataRef.current);
+      const hydratedSerialized = serializeDatingRecords(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setDatingRecordsRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setDatingRecordsRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -60,7 +74,7 @@ export function usePersistedDatingRecordsBridge(
       return;
     }
 
-    saveDatingRecords(currentData);
+    void saveDatingRecords(currentData);
     lastPersistedRef.current = serialized;
   }, [savedDates, collectedDates]);
 }

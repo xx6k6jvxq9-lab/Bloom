@@ -9,16 +9,16 @@ import { loadJsonRecord } from './browserJsonStore';
 import { loadPreferredCallHistory } from './callHistoryStore';
 import {
   hydrateChatHistoryRecords,
-  loadChatHistoryRecords,
+  loadPreferredChatHistoryRecords,
   mergeGroupSessionsIntoChatGroups,
 } from './chatHistoryStore';
 import {
   hydrateChatOrganization,
-  loadPersistedChatOrganization,
+  loadPreferredChatOrganization,
 } from './chatOrganizationStore';
 import { loadCharacters } from './charactersStore';
 import { hydratePersistedCoupleSpacePayload } from './coupleSpaceStore';
-import { loadDatingRecords } from './datingRecordsStore';
+import { loadPreferredDatingRecords } from './datingRecordsStore';
 import {
   hydrateForumData,
   loadPersistedForumData,
@@ -238,7 +238,7 @@ export async function bootstrapLocalAppState({
     defaultZhouJibaiAvatar,
   );
 
-  const localChatHistory = loadChatHistoryRecords({
+  const localChatHistory = await loadPreferredChatHistoryRecords({
     directHistory:
       !indexedDbChatHistory && !hasLocalChatHistory
         ? legacyAppData?.chatHistory || {}
@@ -254,7 +254,7 @@ export async function bootstrapLocalAppState({
       )
     : localChatHistory;
 
-  const localChatOrganization = loadPersistedChatOrganization({
+  const localChatOrganization = await loadPreferredChatOrganization({
     groups: !indexedDbChatOrganization && !hasLocalChatOrganization ? legacyGroups : [],
     chatGroups: !indexedDbChatOrganization && !hasLocalChatOrganization
       ? sanitizeChatGroupsWithCharactersFromStore(legacyAppData?.chatGroups || [], characters)
@@ -329,7 +329,7 @@ export async function bootstrapLocalAppState({
       )
     : localFriendRequests;
 
-  const datingRecords = loadDatingRecords({
+  const datingRecords = await loadPreferredDatingRecords({
     savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],
     collectedDates: !hasLocalDatingRecords ? legacyAppData?.collectedDates || [] : [],
   });
