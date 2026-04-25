@@ -13,6 +13,13 @@ import {
   isFullBackupArchive,
   restoreFullBackupArchive,
 } from '../../../features/persistence/backupArchive';
+import { saveJsonRecord } from '../../../features/persistence/browserJsonStore';
+import {
+  evaluateMigrationStatus,
+  loadMigrationMeta,
+  type MigrationCheckResult,
+} from '../../../features/persistence/migrationStatusStore';
+import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
@@ -1611,6 +1618,16 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isExportingFull, setIsExportingFull] = useState(false);
+  const [migrationInfo, setMigrationInfo] = useState<MigrationCheckResult | null>(() => {
+    const meta = loadMigrationMeta();
+    return {
+      ...meta,
+      indexedDbKeyCount: 0,
+      criticalKeyCount: 5,
+      importRecommended: meta.status === 'failed',
+    };
+  });
+  const [isCheckingMigration, setIsCheckingMigration] = useState(false);
 
   const modules = [
     { id: 'characters', label: '角色配置', icon: <Users size={20} />, category: 'chat', data: appData?.characters },
@@ -1715,6 +1732,54 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
+
+        const writeImportedRecord = async (key: string, value: unknown) => {
+          window.localStorage.setItem(key, JSON.stringify(value));
+          await saveJsonRecord(key, value);
+        };
+
+        const persistImportedSnapshot = async (nextAppData: any, nextSettings: any, source: any) => {
+          const writes: Promise<void>[] = [
+            writeImportedRecord(STORAGE_KEYS.settings, nextSettings),
+            writeImportedRecord(STORAGE_KEYS.characters, nextAppData.characters ?? []),
+            writeImportedRecord(STORAGE_KEYS.chatHistory, nextAppData.chatHistory ?? {
+              directHistory: {},
+              directRelationshipWaves: {},
+              directFactTraces: {},
+              groupSessions: {},
+            }),
+            writeImportedRecord(STORAGE_KEYS.chatOrganization, {
+              groups: nextAppData.groups ?? [],
+              chatGroups: nextAppData.chatGroups ?? [],
+            }),
+            writeImportedRecord(STORAGE_KEYS.userProfile, nextAppData.userProfile ?? {}),
+            writeImportedRecord(STORAGE_KEYS.meData, {
+              masks: nextAppData.masks ?? [],
+              favorites: nextAppData.favorites ?? [],
+              worldBooks: nextAppData.worldBooks ?? [],
+            }),
+            writeImportedRecord(STORAGE_KEYS.moments, nextAppData.moments ?? []),
+            writeImportedRecord(STORAGE_KEYS.friendRequests, nextAppData.friendRequests ?? []),
+            writeImportedRecord(STORAGE_KEYS.callHistory, nextAppData.callHistory ?? []),
+            writeImportedRecord(STORAGE_KEYS.datingRecords, {
+              savedDates: nextAppData.savedDates ?? [],
+              collectedDates: nextAppData.collectedDates ?? [],
+            }),
+            writeImportedRecord(STORAGE_KEYS.visualSettings, nextAppData.visualSettings ?? {}),
+            writeImportedRecord(STORAGE_KEYS.forumData, nextAppData.forumData ?? {}),
+            writeImportedRecord(STORAGE_KEYS.coupleSpace, nextAppData.coupleSpace ?? {}),
+            writeImportedRecord(STORAGE_KEYS.musicData, nextAppData.musicData ?? {}),
+            writeImportedRecord(STORAGE_KEYS.walletData, nextAppData.walletData ?? {}),
+          ];
+
+          window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(nextAppData));
+
+          if (source && typeof source === 'object' && 'settings' in source) {
+            window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(nextSettings));
+          }
+
+          await Promise.all(writes);
+        };
         
         if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
           if (isFullBackupArchive(parsed)) {
@@ -1732,6 +1797,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           
           if (parsed.characters && parsed.chatHistory && parsed.userProfile) {
              if (setAppData) setAppData(parsed);
+             await persistImportedSnapshot(parsed, settings, parsed);
              updatedCount = keys.length;
           } else {
             keys.forEach(key => {
@@ -1745,6 +1811,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               }
             });
             if (setAppData) setAppData(newAppData);
+            await persistImportedSnapshot(newAppData, newSettings, parsed);
           }
 
           alert(`成功导入 ${updatedCount} 个功能的数据！手机设置已恢复。`);
@@ -1763,6 +1830,101 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     setSelectedModules(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runCheck = async () => {
+      setIsCheckingMigration(true);
+      try {
+        const result = await evaluateMigrationStatus();
+        if (!cancelled) {
+          setMigrationInfo(result);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingMigration(false);
+        }
+      }
+    };
+
+    void runCheck();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRecheckMigration = async () => {
+    setIsCheckingMigration(true);
+    try {
+      const result = await evaluateMigrationStatus();
+      setMigrationInfo(result);
+    } finally {
+      setIsCheckingMigration(false);
+    }
+  };
+
+  const migrationPresentation = (() => {
+    switch (migrationInfo?.status) {
+      case 'success':
+        return {
+          badge: '已迁移',
+          title: '核心数据已接入新存储',
+          description: '聊天记录、角色资料和设置等关键数据已经通过校验，可以继续正常使用。',
+          tone: 'emerald',
+        } as const;
+      case 'failed':
+        return {
+          badge: '需处理',
+          title: '新存储中的关键数据还不完整',
+          description: '建议立即导入你之前备份的数据，作为这次迁移的兜底恢复。',
+          tone: 'amber',
+        } as const;
+      case 'in_progress':
+        return {
+          badge: '待完成',
+          title: '检测到旧数据，迁移还没完全落稳',
+          description: '当前仍有数据依赖旧存储，建议先保留旧数据并立即备份。',
+          tone: 'sky',
+        } as const;
+      default:
+        return {
+          badge: '未开始',
+          title: '还没有检测到新存储中的关键数据',
+          description: '建议先做一次完整备份，后续我们再继续接迁移流程。',
+          tone: 'zinc',
+        } as const;
+    }
+  })();
+
+  const migrationCardClassName = {
+    emerald: 'border-emerald-200 bg-emerald-50',
+    amber: 'border-amber-200 bg-amber-50',
+    sky: 'border-sky-200 bg-sky-50',
+    zinc: 'border-zinc-200 bg-zinc-50',
+  }[migrationPresentation.tone];
+
+  const migrationBadgeClassName = {
+    emerald: 'bg-emerald-100 text-emerald-700',
+    amber: 'bg-amber-100 text-amber-700',
+    sky: 'bg-sky-100 text-sky-700',
+    zinc: 'bg-zinc-200 text-zinc-700',
+  }[migrationPresentation.tone];
+
+  const formatDateTime = (timestamp: number | null | undefined): string => {
+    if (!timestamp) {
+      return '暂无';
+    }
+
+    return new Date(timestamp).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const renderTabContent = () => {
@@ -1802,6 +1964,51 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
         <h3 className="text-sm font-bold text-zinc-800">数据管理</h3>
         <p className="text-xs text-zinc-500">管理所有应用数据，支持分类导出备份和导入恢复。</p>
+        <div className={`rounded-2xl border p-4 space-y-3 ${migrationCardClassName}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[12px] text-zinc-500">数据迁移状态</div>
+              <div className="mt-1 text-[16px] font-bold text-zinc-900">{migrationPresentation.title}</div>
+            </div>
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${migrationBadgeClassName}`}>
+              {migrationPresentation.badge}
+            </span>
+          </div>
+          <p className="text-[12px] leading-5 text-zinc-600">{migrationPresentation.description}</p>
+          <div className="grid grid-cols-2 gap-3 text-[12px] text-zinc-600">
+            <div className="rounded-xl bg-white/70 px-3 py-2">
+              <div className="text-zinc-500">关键模块校验</div>
+              <div className="mt-1 font-bold text-zinc-900">
+                {migrationInfo?.indexedDbKeyCount ?? 0} / {migrationInfo?.criticalKeyCount ?? 5}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white/70 px-3 py-2">
+              <div className="text-zinc-500">最近校验时间</div>
+              <div className="mt-1 font-bold text-zinc-900">{formatDateTime(migrationInfo?.lastVerifiedAt)}</div>
+            </div>
+          </div>
+          {migrationInfo?.lastError ? (
+            <div className="rounded-xl bg-white/70 px-3 py-2 text-[12px] text-zinc-700">
+              {migrationInfo.lastError}
+            </div>
+          ) : null}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void handleExportFull()}
+              disabled={isExportingFull}
+              className="rounded-xl bg-white px-4 py-2 text-[12px] font-bold text-zinc-900 shadow-sm disabled:opacity-60"
+            >
+              立即备份
+            </button>
+            <button
+              onClick={() => void handleRecheckMigration()}
+              disabled={isCheckingMigration}
+              className="rounded-xl border border-white/80 bg-white/40 px-4 py-2 text-[12px] font-bold text-zinc-700 disabled:opacity-60"
+            >
+              {isCheckingMigration ? '检测中...' : migrationInfo?.importRecommended ? '重新检测迁移状态' : '校验迁移状态'}
+            </button>
+          </div>
+        </div>
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
           <div className="text-[12px] text-zinc-500">总数据统计</div>
           <div className="mt-2 flex items-baseline gap-2">

@@ -1,4 +1,5 @@
 import { listAssets, putAsset, type StoredAssetRecord } from './browserDb';
+import { removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -24,6 +25,10 @@ type FullBackupOverrides = {
   characters?: unknown;
   userProfile?: unknown;
 };
+
+const INDEXED_DB_RESTORE_KEYS = new Set<string>(
+  Object.values(STORAGE_KEYS).filter((key) => key !== STORAGE_KEYS.appData),
+);
 
 function createArchiveAssetId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -228,12 +233,29 @@ export async function restoreFullBackupArchive(archive: FullBackupArchive): Prom
     throw new Error('当前环境不支持恢复本地备份');
   }
 
+  const indexedDbWrites: Promise<void>[] = [];
+
   Object.entries(archive.storage).forEach(([key, value]) => {
     if (value == null) {
       window.localStorage.removeItem(key);
+      if (INDEXED_DB_RESTORE_KEYS.has(key)) {
+        indexedDbWrites.push(
+          removeJsonRecord(key).catch((error) => {
+            console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during restore`, error);
+          }),
+        );
+      }
       return;
     }
+
     window.localStorage.setItem(key, JSON.stringify(value));
+    if (INDEXED_DB_RESTORE_KEYS.has(key)) {
+      indexedDbWrites.push(
+        saveJsonRecord(key, value).catch((error) => {
+          console.error(`[backupArchive] Failed to restore IndexedDB key "${key}"`, error);
+        }),
+      );
+    }
   });
 
   await Promise.all(
@@ -251,4 +273,6 @@ export async function restoreFullBackupArchive(archive: FullBackupArchive): Prom
       }),
     ),
   );
+
+  await Promise.all(indexedDbWrites);
 }
