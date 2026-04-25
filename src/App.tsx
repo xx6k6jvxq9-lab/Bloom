@@ -21,6 +21,9 @@ import {
   DEFAULT_ZHOU_JIBAI_AVATAR,
 } from './features/app-shell/defaultAppConstants';
 import {
+  GlobalStyles,
+} from './features/app-shell/AppShellPrimitives';
+import {
   loadCoupleSpaceApp,
   loadCustomizationApp,
   loadForumApp,
@@ -72,8 +75,6 @@ import {
 } from './features/persistence/appDataSanitizers';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
-import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
-import { getDisplayableAssetValue } from './features/persistence/persistentAssetRef';
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
@@ -107,20 +108,6 @@ const PerceptionView = lazy(loadPerceptionView);
 const MusicApp = lazy(loadMusicApp);
 const ForumApp = lazy(loadForumApp);
 const WalletApp = lazy(loadWalletApp);
-
-// Global styles for hiding scrollbar to make it look more like a native app
-const GlobalStyles = ({ customCss }: { customCss?: string }) => (
-  <style>{`
-    ::-webkit-scrollbar {
-      display: none;
-    }
-    * {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    ${customCss || ''}
-  `}</style>
-);
 
 const AppPanelFallback = ({ label }: { label: string }) => (
   <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 text-zinc-900">
