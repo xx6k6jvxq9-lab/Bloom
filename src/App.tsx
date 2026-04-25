@@ -24,6 +24,7 @@ import { DEFAULT_CHARACTERS } from './features/app-shell/defaultCharacters';
 import {
   DEFAULT_CONFIG,
   DEFAULT_SETTINGS,
+  DEFAULT_USER,
 } from './features/app-shell/defaultSettings';
 import { createDefaultAppData } from './features/app-shell/defaultAppData';
 import {
