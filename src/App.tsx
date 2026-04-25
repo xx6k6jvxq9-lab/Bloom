@@ -33,6 +33,7 @@ import type {
 } from './features/app-shell/appShellTypes';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
+  fetchAllPagedModelNames,
   extractModelNamesFromResponse,
   resolveNextModelsPageUrl,
 } from './features/app-shell/settingsModelHelpers';
@@ -2027,29 +2028,6 @@ function SettingsApp({
 
     return [...startsWithMatches, ...includesMatches];
   }, [availableModels, editForm.model]);
-
-  const fetchAllPagedModelNames = async (initialUrl: string, headers: HeadersInit): Promise<string[]> => {
-    const collected: string[] = [];
-    const visited = new Set<string>();
-    let nextUrl: string | null = initialUrl;
-    let pageCount = 0;
-
-    while (nextUrl && !visited.has(nextUrl) && pageCount < 20) {
-      visited.add(nextUrl);
-      pageCount += 1;
-
-      const response = await fetch(nextUrl, { headers });
-      if (!response.ok) {
-        throw new Error(`获取失败 (${response.status})，请检查 Base URL 和 API Key`);
-      }
-
-      const payload = await response.json();
-      collected.push(...extractModelNamesFromResponse(payload));
-      nextUrl = resolveNextModelsPageUrl(payload, response, nextUrl);
-    }
-
-    return collected;
-  };
 
   // Sync back to parent whenever localSettings changes
   useEffect(() => {
