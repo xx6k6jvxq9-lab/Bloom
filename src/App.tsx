@@ -90,6 +90,7 @@ import {
 import { APP_DIALOG_EVENT, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { loadCharacters, resetCharacters } from './features/persistence/charactersStore';
+import { bootstrapLocalAppState } from './features/persistence/bootstrapLocalAppState';
 import {
   DEFAULT_MOMENTS,
   getPersistableAppData as getPersistableAppDataFromStore,
@@ -342,85 +343,20 @@ export default function App() {
   );
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem('ai_phone_settings');
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        if (parsed.configs && Array.isArray(parsed.configs)) {
-          setSettings({
-            ...DEFAULT_SETTINGS,
-            ...parsed,
-            sharedStickers: Array.isArray(parsed.sharedStickers)
-              ? parsed.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
-              : [],
-          });
-        } else {
-          // Migrate old settings format
-          const migrated: AppSettings = {
-            activeConfigId: 'default',
-            configs: [
-              {
-                ...DEFAULT_CONFIG,
-                apiKey: parsed.apiKey || '',
-                baseUrl: parsed.baseUrl || '',
-                model: parsed.model || 'gemini-3-flash-preview',
-                provider: parsed.provider || '自定义 (Custom)',
-              }
-            ]
-          };
-          setSettings(migrated);
-          localStorage.setItem('ai_phone_settings', JSON.stringify(migrated));
-        }
-      } catch (e) {
-        console.error('Failed to parse settings', e);
-      }
-    }
+    const bootstrapped = bootstrapLocalAppState({
+      createDefaultAppData,
+      defaultCharacters: DEFAULT_CHARACTERS,
+      defaultConfig: DEFAULT_CONFIG,
+      defaultDesktopWallpaper: DEFAULT_DESKTOP_WALLPAPER,
+      defaultSettings: DEFAULT_SETTINGS,
+      defaultUser: DEFAULT_USER,
+      defaultZhouJibaiAvatar: DEFAULT_ZHOU_JIBAI_AVATAR,
+    });
 
-    const savedAppData = localStorage.getItem(STORAGE_KEYS.appData);
-    if (savedAppData) {
-      try {
-        const parsed = JSON.parse(savedAppData);
-        const characters = sanitizePersistedCharactersFromStore(
-          loadCharacters(parsed.characters || DEFAULT_CHARACTERS),
-          DEFAULT_CHARACTERS,
-          DEFAULT_ZHOU_JIBAI_AVATAR,
-        );
-        const persistedChatHistory = loadChatHistoryRecords();
-        const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
-          parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
-        );
-        const chatGroups = mergeGroupSessionsIntoChatGroups(
-          sanitizeChatGroupsWithCharactersFromStore(parsed.chatGroups || [], characters),
-          persistedChatHistory.groupSessions,
-        );
-        setAppData({
-          ...parsed,
-          characters,
-          chatHistory: parsed.chatHistory || {},
-          userProfile: parsed.userProfile
-            ? {
-                ...parsed.userProfile,
-                avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
-              }
-            : parsed.userProfile,
-          worldBooks: parsed.worldBooks || [],
-          moments: sanitizePersistedMomentsFromStore(parsed.moments),
-          groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
-          chatGroups,
-          savedDates: parsed.savedDates || [],
-          collectedDates: parsed.collectedDates || [],
-          coupleSpaceState,
-          coupleSpace,
-          visualSettings: loadPersistedVisualSettings(parsed.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
-        });
-      } catch (e) {
-        console.error('Failed to parse app data', e);
-      }
-    } else {
-      setAppData(prev => ({
-        ...prev,
-        visualSettings: loadPersistedVisualSettings(prev.visualSettings, DEFAULT_DESKTOP_WALLPAPER),
-      }));
+    setSettings(bootstrapped.settings);
+    setAppData(bootstrapped.appData);
+    if (bootstrapped.migratedSettings) {
+      localStorage.setItem('ai_phone_settings', JSON.stringify(bootstrapped.migratedSettings));
     }
 
     setHasHydratedStorage(true);
