@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CallRecord } from '../../types';
-import { loadCallHistory, saveCallHistory } from './callHistoryStore';
+import { loadPreferredCallHistory, saveCallHistory } from './callHistoryStore';
 
 function serializeCallHistory(callHistory: CallRecord[]): string {
   return JSON.stringify(callHistory);
@@ -22,20 +22,34 @@ export function usePersistedCallHistoryBridge(
   }, [setCallHistory]);
 
   useEffect(() => {
-    const hydrated = loadCallHistory(initialDataRef.current);
-    const currentSerialized = serializeCallHistory(initialDataRef.current);
-    const hydratedSerialized = serializeCallHistory(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredCallHistory(initialDataRef.current);
+      const currentSerialized = serializeCallHistory(initialDataRef.current);
+      const hydratedSerialized = serializeCallHistory(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setCallHistoryRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setCallHistoryRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -58,7 +72,7 @@ export function usePersistedCallHistoryBridge(
       return;
     }
 
-    saveCallHistory(callHistory);
+    void saveCallHistory(callHistory);
     lastPersistedRef.current = serialized;
   }, [callHistory]);
 }

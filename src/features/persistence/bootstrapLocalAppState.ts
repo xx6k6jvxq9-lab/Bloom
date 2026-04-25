@@ -6,7 +6,7 @@ import {
   sanitizePersistedMoments as sanitizePersistedMomentsFromStore,
 } from './appDataSanitizers';
 import { loadJsonRecord } from './browserJsonStore';
-import { loadCallHistory } from './callHistoryStore';
+import { loadPreferredCallHistory } from './callHistoryStore';
 import {
   hydrateChatHistoryRecords,
   loadChatHistoryRecords,
@@ -381,7 +381,7 @@ export async function bootstrapLocalAppState({
     coupleSpace,
     friendRequests,
     chatGroups,
-    callHistory: loadCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
+    callHistory: await loadPreferredCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
     savedDates: datingRecords.savedDates,
     collectedDates: datingRecords.collectedDates,
     musicData,
