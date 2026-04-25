@@ -610,6 +610,40 @@ export default function App() {
     return window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)').matches;
   });
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const isAndroid = /Android/i.test(window.navigator.userAgent || '');
+    if (isAndroid) {
+      root.setAttribute('data-android', 'true');
+    } else {
+      root.removeAttribute('data-android');
+    }
+
+    const updateViewportHeight = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      root.style.setProperty('--app-viewport-height', `${Math.round(viewportHeight)}px`);
+    };
+
+    updateViewportHeight();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', updateViewportHeight);
+    viewport?.addEventListener('scroll', updateViewportHeight);
+    window.addEventListener('resize', updateViewportHeight);
+    window.addEventListener('orientationchange', updateViewportHeight);
+
+    return () => {
+      viewport?.removeEventListener('resize', updateViewportHeight);
+      viewport?.removeEventListener('scroll', updateViewportHeight);
+      window.removeEventListener('resize', updateViewportHeight);
+      window.removeEventListener('orientationchange', updateViewportHeight);
+      root.style.removeProperty('--app-viewport-height');
+      root.removeAttribute('data-android');
+    };
+  }, []);
+  useEffect(() => {
     if (typeof window === 'undefined' || hasPrefetchedPanelChunksRef.current) {
       return undefined;
     }

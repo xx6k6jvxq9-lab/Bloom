@@ -1286,6 +1286,27 @@ export function ChatSessionScreen({
   }, [keyboardInset]);
 
   useEffect(() => {
+    if (!isAndroid || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const resetKeyboardInsetIfNeeded = () => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTextInputFocused = activeElement === inputTextareaRef.current || activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
+      if (!isTextInputFocused) {
+        window.setTimeout(() => {
+          setKeyboardInset(0);
+        }, 120);
+      }
+    };
+
+    document.addEventListener('focusout', resetKeyboardInsetIfNeeded, true);
+    return () => {
+      document.removeEventListener('focusout', resetKeyboardInsetIfNeeded, true);
+    };
+  }, [isAndroid]);
+
+  useEffect(() => {
     const footerNode = chatFooterRef.current;
     if (!footerNode || typeof window === 'undefined') {
       return;
@@ -2400,6 +2421,13 @@ export function ChatSessionScreen({
                 ref={inputTextareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
+                onBlur={() => {
+                  if (isAndroid) {
+                    window.setTimeout(() => {
+                      setKeyboardInset(0);
+                    }, 120);
+                  }
+                }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
