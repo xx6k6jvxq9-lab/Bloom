@@ -62,6 +62,14 @@ import {
 import { APP_DIALOG_EVENT, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { loadCharacters, resetCharacters } from './features/persistence/charactersStore';
+import {
+  DEFAULT_MOMENTS,
+  getPersistableAppData as getPersistableAppDataFromStore,
+  hydratePersistedCharacters as hydratePersistedCharactersFromStore,
+  sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore,
+  sanitizePersistedCharacters as sanitizePersistedCharactersFromStore,
+  sanitizePersistedMoments as sanitizePersistedMomentsFromStore,
+} from './features/persistence/appDataSanitizers';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
 import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
@@ -490,7 +498,11 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>({
-    characters: sanitizePersistedCharacters(DEFAULT_CHARACTERS),
+    characters: sanitizePersistedCharactersFromStore(
+      DEFAULT_CHARACTERS,
+      DEFAULT_CHARACTERS,
+      DEFAULT_ZHOU_JIBAI_AVATAR,
+    ),
     chatHistory: {},
     userProfile: DEFAULT_USER,
     masks: [],
@@ -798,13 +810,17 @@ export default function App() {
     if (savedAppData) {
       try {
         const parsed = JSON.parse(savedAppData);
-        const characters = sanitizePersistedCharacters(loadCharacters(parsed.characters || DEFAULT_CHARACTERS));
+        const characters = sanitizePersistedCharactersFromStore(
+          loadCharacters(parsed.characters || DEFAULT_CHARACTERS),
+          DEFAULT_CHARACTERS,
+          DEFAULT_ZHOU_JIBAI_AVATAR,
+        );
         const persistedChatHistory = loadChatHistoryRecords();
         const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(
           parsed.coupleSpaceState ?? parsed.coupleSpace ?? null,
         );
         const chatGroups = mergeGroupSessionsIntoChatGroups(
-          sanitizeChatGroupsWithCharacters(parsed.chatGroups || [], characters),
+          sanitizeChatGroupsWithCharactersFromStore(parsed.chatGroups || [], characters),
           persistedChatHistory.groupSessions,
         );
         setAppData({
@@ -818,7 +834,7 @@ export default function App() {
               }
             : parsed.userProfile,
           worldBooks: parsed.worldBooks || [],
-          moments: sanitizePersistedMoments(parsed.moments),
+          moments: sanitizePersistedMomentsFromStore(parsed.moments),
           groups: parsed.groups || ['家人', '朋友', '同事', '星标'],
           chatGroups,
           savedDates: parsed.savedDates || [],
@@ -847,7 +863,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hasHydratedStorage) return;
-    localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(getPersistableAppData(appData)));
+    localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(getPersistableAppDataFromStore(appData)));
   }, [appData, hasHydratedStorage]);
 
   useEffect(() => {
@@ -856,7 +872,8 @@ export default function App() {
   }, [appData.visualSettings, hasHydratedStorage]);
 
   usePersistedCharactersBridge(appData.characters, setCharacters, {
-    hydrate: hydratePersistedCharacters,
+    hydrate: (source, fallback) =>
+      hydratePersistedCharactersFromStore(source, fallback, DEFAULT_ZHOU_JIBAI_AVATAR),
   });
 
   useEffect(() => {
@@ -1274,7 +1291,7 @@ export default function App() {
 
               return {
                 ...prev,
-                chatGroups: sanitizeChatGroupsWithCharacters(resolvedChatGroups, prev.characters),
+                chatGroups: sanitizeChatGroupsWithCharactersFromStore(resolvedChatGroups, prev.characters),
               };
             })}
             chatHistory={appData.chatHistory}
@@ -1435,7 +1452,11 @@ export default function App() {
                     const parsed = JSON.parse(data);
                     setAppData({
                       ...parsed,
-                      characters: sanitizePersistedCharacters(parsed.characters),
+                      characters: sanitizePersistedCharactersFromStore(
+                        parsed.characters,
+                        DEFAULT_CHARACTERS,
+                        DEFAULT_ZHOU_JIBAI_AVATAR,
+                      ),
                       userProfile: parsed.userProfile
                         ? {
                             ...parsed.userProfile,
