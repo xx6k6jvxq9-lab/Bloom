@@ -2,8 +2,8 @@ import React, { Suspense, lazy, useState, useEffect, useRef, useCallback, useMem
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Moon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  AppData, Mask, FavoriteMessage, MomentItem, VisualSettings, UserProfileExtended, WorldBookEntry,
-  Character, ChatGroup, ChatMessage, PerceptionSettings,
+  AppData, Mask, FavoriteMessage, VisualSettings, UserProfileExtended, WorldBookEntry,
+  Character, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, DateSession, WalletData, WidgetConfig, DesktopIconConfig
 } from './types';
 import { WorldBookManager } from './components/main/WorldBookManager';
@@ -78,7 +78,6 @@ import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
 import { loadChatHistoryRecords, mergeGroupSessionsIntoChatGroups } from './features/persistence/chatHistoryStore';
-import { migrateCharacterShapes } from './features/persistence/migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTransientAssetValue';
 import { AddCharacterSheet } from './components/main/AddCharacterSheet';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
@@ -86,13 +85,8 @@ import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple
 import { runCoupleSpaceInitiativeAutoCheck } from './services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { evaluateCoupleSpaceInitiativeAutoCheckGate } from './services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
 import { applyCoupleSpaceInitiativeRunResult } from './services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
-import { sanitizeGroupMemberBadges } from './features/group-settings/memberBadges';
-import { sanitizeGroupMemberBubbleColors } from './features/group-settings/groupBubbleColors';
-import { sanitizeGroupMemberPerspectiveSummaries } from './services/group-chat/groupShortTermMemory';
-import { sanitizeGroupLongTermMemory } from './services/group-chat/groupLongTermMemory';
 import {
   acceptCoupleSpaceInviteState,
-  buildPersistableCoupleSpacePayload,
   createDefaultCoupleSpaceData,
   createDefaultCoupleSpaceState,
   hydratePersistedCoupleSpacePayload,
@@ -303,187 +297,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   showChatTimeDividers: true,
   showChatMessageTime: true,
 };
-
-const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
-const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
-const REMOVED_CHARACTER_IDS = new Set(['gemini-default']);
-const REMOVED_CHARACTER_NAMES = new Set(['阿野']);
-function sanitizePersistedCharacters(characters: Character[] | undefined): Character[] {
-  const persistedCharacters = migrateCharacterShapes(characters || [])
-    .filter(character => (
-      !REMOVED_CHARACTER_IDS.has(character.id)
-      && !REMOVED_CHARACTER_NAMES.has(character.name)
-      && !HIDDEN_CHARACTER_IDS.has(character.id)
-      && !HIDDEN_CHARACTER_NAMES.has(character.name)
-    ))
-    .map(character =>
-      character.id === 'char-zhou-jibai'
-        ? {
-            ...character,
-            avatar:
-              sanitizeTransientAssetValue(character.avatar) || DEFAULT_ZHOU_JIBAI_AVATAR,
-          }
-        : {
-            ...character,
-            avatar: sanitizeTransientAssetValue(character.avatar),
-          },
-    );
-
-  const existingIds = new Set(persistedCharacters.map(character => character.id));
-  const missingDefaults = DEFAULT_CHARACTERS.filter(character => (
-    !existingIds.has(character.id)
-    && !HIDDEN_CHARACTER_IDS.has(character.id)
-    && !HIDDEN_CHARACTER_NAMES.has(character.name)
-  ));
-
-  return [...persistedCharacters, ...missingDefaults];
-}
-
-function getPersistableAppData(appData: AppData): Omit<AppData, 'characters'> {
-  const { characters: _characters, ...persistableAppData } = appData;
-  const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
-    appData.coupleSpaceState,
-    appData.coupleSpace,
-  );
-  const chatGroups = (persistableAppData.chatGroups || []).map((group) => {
-    const { history: _history, lastMessage: _lastMessage, lastTime: _lastTime, ...organization } = group;
-    return organization;
-  });
-
-  return {
-    ...persistableAppData,
-    chatGroups,
-    coupleSpace,
-    coupleSpaceState,
-  };
-}
-
-function sanitizeChatGroupsWithCharacters(
-  chatGroups: ChatGroup[] | null | undefined,
-  characters: Character[],
-): ChatGroup[] {
-  if (!Array.isArray(chatGroups)) return [];
-
-  const validCharacterIds = new Set(characters.map((character) => character.id));
-  const sanitizeGroupBackgroundValue = (value: unknown): string | undefined => {
-    if (typeof value !== 'string') {
-      return undefined;
-    }
-
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-
-    if (/^data:/i.test(trimmed) && !/^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,.+$/i.test(trimmed)) {
-      return undefined;
-    }
-
-    return trimmed;
-  };
-
-    return chatGroups.map((group) => ({
-      ...group,
-      name: typeof group.name === 'string' ? group.name.trim() : '',
-      groupBackground: sanitizeGroupBackgroundValue(group.groupBackground),
-      groupNickname: typeof group.groupNickname === 'string' ? group.groupNickname.trim() : undefined,
-      groupNotice: typeof group.groupNotice === 'string' ? group.groupNotice.trim() : undefined,
-      groupRemark: typeof group.groupRemark === 'string' ? group.groupRemark.trim() : undefined,
-      backgroundSummary: typeof group.backgroundSummary === 'string' ? group.backgroundSummary.trim() : undefined,
-      memberRelationshipState:
-        group.memberRelationshipState === 'close'
-        || group.memberRelationshipState === 'semi'
-        || group.memberRelationshipState === 'distant'
-      || group.memberRelationshipState === 'mixed'
-        ? group.memberRelationshipState
-        : undefined,
-      memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
-      currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
-      publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
-      groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
-        ? group.groupShortTermSummary.trim() || undefined
-        : undefined,
-      groupMemberPerspectiveSummaries: sanitizeGroupMemberPerspectiveSummaries(
-        group.groupMemberPerspectiveSummaries,
-        Array.isArray(group.memberIds) ? group.memberIds : [],
-      ),
-      groupLongTermMemory: sanitizeGroupLongTermMemory(
-        group.groupLongTermMemory,
-        Array.isArray(group.memberIds) ? group.memberIds : [],
-      ),
-      activeWorldBookIds: Array.isArray(group.activeWorldBookIds)
-        ? group.activeWorldBookIds.filter((worldBookId): worldBookId is string => typeof worldBookId === 'string')
-        : [],
-      allowDirectMemoryInterop:
-        group.allowDirectMemoryInteropConfigured === true
-          ? group.allowDirectMemoryInterop !== false
-          : true,
-      allowDirectMemoryInteropConfigured: group.allowDirectMemoryInteropConfigured === true,
-      adminIds: Array.from(
-        new Set(
-          (Array.isArray(group.adminIds) ? group.adminIds : []).filter((memberId): memberId is string => (
-            typeof memberId === 'string'
-            && memberId !== group.creatorId
-            && (Array.isArray(group.memberIds) ? group.memberIds : []).includes(memberId)
-          )),
-        ),
-      ),
-      memberBadges: sanitizeGroupMemberBadges({
-        memberBadges: group.memberBadges,
-        memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
-        creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
-      }),
-      memberBubbleColors: sanitizeGroupMemberBubbleColors({
-        memberBubbleColors: group.memberBubbleColors,
-        memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
-        creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
-      }),
-      muteNotifications: !!group.muteNotifications,
-      pinChat: !!group.pinChat,
-      groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',
-    memberIds: Array.from(
-      new Set(
-        (Array.isArray(group.memberIds) ? group.memberIds : []).filter((memberId): memberId is string => (
-          typeof memberId === 'string' && validCharacterIds.has(memberId)
-        )),
-      ),
-    ),
-    memberRelationSeeds: Array.isArray(group.memberRelationSeeds)
-      ? group.memberRelationSeeds.filter((seed) => (
-          !!seed
-          && typeof seed.sourceMemberId === 'string'
-          && typeof seed.targetMemberId === 'string'
-          && validCharacterIds.has(seed.sourceMemberId)
-          && validCharacterIds.has(seed.targetMemberId)
-          && seed.sourceMemberId !== seed.targetMemberId
-          && (
-            seed.familiarity === 'strangers'
-            || seed.familiarity === 'aware'
-            || seed.familiarity === 'familiar'
-          )
-        ))
-      : [],
-  }));
-}
-
-function hydratePersistedCharacters(
-  source: Character[] | null | undefined,
-  fallback: Character[],
-): Character[] {
-  return sanitizePersistedCharacters(source || fallback);
-}
-
-
-const DEFAULT_MOMENTS: MomentItem[] = [];
-const REMOVED_DEFAULT_MOMENT_IDS = new Set(['m1', 'm2']);
-
-function sanitizePersistedMoments(moments: MomentItem[] | null | undefined): MomentItem[] {
-  if (!Array.isArray(moments)) {
-    return [];
-  }
-
-  return moments.filter((moment) => !REMOVED_DEFAULT_MOMENT_IDS.has(moment.id));
-}
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
