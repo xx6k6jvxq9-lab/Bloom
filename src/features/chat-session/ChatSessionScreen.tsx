@@ -431,6 +431,7 @@ export function ChatSessionScreen({
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1403,13 +1404,12 @@ export function ChatSessionScreen({
 
   const chatFooterLift = keyboardInset;
   const chatFooterStyle: React.CSSProperties = {
-    paddingBottom: '0.55rem',
+    paddingBottom: chatFooterLift > 0 ? `calc(0.55rem + ${chatFooterLift}px)` : '0.55rem',
     ...footerStyleObj,
-    transform: chatFooterLift > 0 ? `translateY(-${chatFooterLift}px)` : undefined,
-    transition: 'transform 180ms ease',
+    transition: 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${8 + chatFooterLift}px`,
+    paddingBottom: '8px',
   };
 
   if (showSettings) {
@@ -1444,8 +1444,12 @@ export function ChatSessionScreen({
         backgroundPosition: 'center',
         fontSize: visualSettings?.chat?.fontSize ?? 14,
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
-        // @ts-ignore
-        zoom: visualSettings?.chat?.uiScale ?? 1
+        // Android WebView/Chrome is prone to black-screen repaint glitches when
+        // keyboard-driven viewport changes are combined with CSS zoom.
+        ...(!isAndroid ? {
+          // @ts-ignore
+          zoom: visualSettings?.chat?.uiScale ?? 1,
+        } : {}),
       }}
     >
       {(
