@@ -81,6 +81,18 @@ function shouldShowChatTimeDivider(
   return crossedDay || gapMs >= 30 * 60 * 1000;
 }
 
+function resetDatingScenePresentation(): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const phoneContainer = document.getElementById('phone-container');
+  const phoneScreenRoot = phoneContainer?.querySelector('.phone-screen-root');
+
+  phoneContainer?.classList.remove('is-dating-scene');
+  phoneScreenRoot?.classList.remove('is-dating-scene');
+}
+
 function BubbleThemeAnchors() {
   return (
     <>
@@ -711,6 +723,12 @@ export function ChatSessionScreen({
 
     setShowMemoryWindowHint(true);
   }, [character.id, character.autoSummaryEnabled, character.memoryLimit, history.length]);
+
+  useEffect(() => {
+    if (!showDatingModal) {
+      resetDatingScenePresentation();
+    }
+  }, [showDatingModal]);
 
   const handleSendVoiceCallText = () => {
     if (!voiceCallInput.trim()) return;
@@ -2754,8 +2772,12 @@ export function ChatSessionScreen({
       {activeConfig && (
         <DatingModal
           isOpen={showDatingModal}
-          onClose={() => setShowDatingModal(false)}
+          onClose={() => {
+            resetDatingScenePresentation();
+            setShowDatingModal(false);
+          }}
           onEndDateComplete={({ returnChatText }) => {
+            resetDatingScenePresentation();
             setShowDatingModal(false);
             if (!returnChatText.trim()) {
               return;

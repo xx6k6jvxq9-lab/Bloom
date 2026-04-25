@@ -225,7 +225,7 @@ export function extractDirectRelationshipWaves(
   return Object.entries(directHistory).reduce<Record<string, RelationshipWaveRecord[]>>((acc, [characterId, history]) => {
     acc[characterId] = buildDirectRelationshipWaveRecords({
       characterId,
-      messages: history || [],
+      messages: Array.isArray(history) ? history : [],
     });
     return acc;
   }, {});
@@ -237,7 +237,7 @@ export function extractDirectFactTraces(
   return Object.entries(directHistory).reduce<Record<string, FactTraceRecord[]>>((acc, [characterId, history]) => {
     acc[characterId] = buildDirectFactTraceRecords({
       characterId,
-      messages: history || [],
+      messages: Array.isArray(history) ? history : [],
     });
     return acc;
   }, {});

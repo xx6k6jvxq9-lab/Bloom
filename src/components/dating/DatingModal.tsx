@@ -66,6 +66,17 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { setUploadedFile } = usePersistentFieldActions();
   const wasOpenRef = useRef(false);
+  const resetDatingScenePresentation = () => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const phoneContainer = document.getElementById('phone-container');
+    const phoneScreenRoot = phoneContainer?.querySelector('.phone-screen-root');
+
+    phoneContainer?.classList.remove('is-dating-scene');
+    phoneScreenRoot?.classList.remove('is-dating-scene');
+  };
   const recoverableInitialSession = (initialSession as RecoverableDateSession | null) || null;
   const shouldResumeSavedScene = Boolean(
     (recoverableInitialSession?.status || 'active') === 'active' &&
@@ -78,6 +89,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
       wasOpenRef.current = false;
       setActiveSceneSession(null);
       setSceneStartToken(0);
+      resetDatingScenePresentation();
       return;
     }
 
@@ -106,6 +118,12 @@ export const DatingModal: React.FC<DatingModalProps> = ({
       wasOpenRef.current = true;
     }
   }, [character.id, initialSession, isOpen, recoverableInitialSession, shouldResumeSavedScene]);
+
+  useEffect(() => {
+    return () => {
+      resetDatingScenePresentation();
+    };
+  }, []);
 
   const resolvedBackground = useMemo(
     () =>
