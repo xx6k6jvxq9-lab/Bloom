@@ -25,6 +25,12 @@ import {
   GlobalStyles,
   ResolvedAssetImage as ResolvedAssetImagePrimitive,
 } from './features/app-shell/AppShellPrimitives';
+import type {
+  CoupleSpaceUpdateToast,
+  IdleWindow,
+  MomentPublishToast,
+  UserProfile,
+} from './features/app-shell/appShellTypes';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   loadCoupleSpaceApp,
@@ -111,28 +117,6 @@ const PerceptionView = lazy(loadPerceptionView);
 const MusicApp = lazy(loadMusicApp);
 const ForumApp = lazy(loadForumApp);
 const WalletApp = lazy(loadWalletApp);
-
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
-
-type UserProfile = UserProfileExtended;
-type CoupleSpaceUpdateToast = {
-  id: string;
-  partnerId: string;
-  partnerName: string;
-  partnerAvatar?: string;
-  moduleLabel: string;
-};
-
-type MomentPublishToast = {
-  id: string;
-  authorId: string;
-  authorName: string;
-  authorAvatar?: string;
-  preview: string;
-};
 
 const DEFAULT_CHARACTERS: Character[] = [
   {
