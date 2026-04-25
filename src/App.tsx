@@ -55,14 +55,15 @@ import {
   testSettingsConnection,
 } from './features/app-shell/settingsModelHelpers';
 import {
-  loadCoupleSpaceApp,
-  loadCustomizationApp,
-  loadForumApp,
-  loadMonitorApp,
-  loadMusicApp,
-  loadPerceptionView,
-  loadWalletApp,
-} from './features/app-shell/lazyApps';
+  CoupleSpaceApp,
+  CustomizationApp,
+  ForumApp,
+  MonitorApp,
+  MusicApp,
+  PANEL_PRELOAD_LOADERS,
+  PerceptionView,
+  WalletApp,
+} from './features/app-shell/lazyPanels';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
 import { DreamAppPage } from './components/dream/Page';
 import { DatingModal } from './components/dating/DatingModal';
@@ -131,16 +132,6 @@ import {
   updatePartnerCoupleSpaceState,
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
-
-const PANEL_PRELOAD_LOADERS: Array<() => Promise<unknown>> = [];
-
-const MonitorApp = lazy(loadMonitorApp);
-const CustomizationApp = lazy(loadCustomizationApp);
-const CoupleSpaceApp = lazy(loadCoupleSpaceApp);
-const PerceptionView = lazy(loadPerceptionView);
-const MusicApp = lazy(loadMusicApp);
-const ForumApp = lazy(loadForumApp);
-const WalletApp = lazy(loadWalletApp);
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
