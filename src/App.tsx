@@ -45,6 +45,7 @@ import {
   handleCustomizationResetData,
   handleCustomizationUpdateAppData,
 } from './features/app-shell/customizationHandlers';
+import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
@@ -96,7 +97,7 @@ import {
   type ShareActionResult,
   toggleFavoriteMessage,
 } from './services/chat/messageActions';
-import { APP_DIALOG_EVENT, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
+import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
 import { loadCharacters } from './features/persistence/charactersStore';
 import { bootstrapLocalAppState } from './features/persistence/bootstrapLocalAppState';
@@ -148,8 +149,6 @@ export default function App() {
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
   const hasPrefetchedPanelChunksRef = useRef(false);
-  const [appDialog, setAppDialog] = useState<AppDialogRequest | null>(null);
-  const [appDialogInput, setAppDialogInput] = useState('');
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
@@ -381,30 +380,6 @@ export default function App() {
       hydratePersistedCharactersFromStore(source, fallback, DEFAULT_ZHOU_JIBAI_AVATAR),
   });
 
-  useEffect(() => {
-    const handleDialogRequest = (event: Event) => {
-      const detail = (event as CustomEvent<AppDialogRequest>).detail;
-      setAppDialogInput(detail.kind === 'prompt' ? detail.defaultValue || '' : '');
-      setAppDialog(detail);
-    };
-
-    const originalAlert = window.alert;
-    window.alert = (message?: unknown) => {
-      window.dispatchEvent(new CustomEvent(APP_DIALOG_EVENT, {
-        detail: {
-          kind: 'alert',
-          message: String(message ?? ''),
-        } satisfies AppDialogRequest,
-      }));
-    };
-
-    window.addEventListener(APP_DIALOG_EVENT, handleDialogRequest as EventListener);
-    return () => {
-      window.alert = originalAlert;
-      window.removeEventListener(APP_DIALOG_EVENT, handleDialogRequest as EventListener);
-    };
-  }, []);
-
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
 
@@ -512,28 +487,13 @@ export default function App() {
     settings,
   ]);
 
-  const closeAppDialog = () => {
-    if (appDialog?.kind === 'alert') {
-      appDialog.resolve?.();
-    } else if (appDialog?.kind === 'confirm') {
-      appDialog.resolve(false);
-    } else if (appDialog?.kind === 'prompt') {
-      appDialog.resolve(null);
-    }
-    setAppDialog(null);
-  };
-
-  const handleDialogConfirm = () => {
-    if (!appDialog) return;
-    if (appDialog.kind === 'alert') {
-      appDialog.resolve?.();
-    } else if (appDialog.kind === 'confirm') {
-      appDialog.resolve(true);
-    } else if (appDialog.kind === 'prompt') {
-      appDialog.resolve(appDialogInput);
-    }
-    setAppDialog(null);
-  };
+  const {
+    appDialog,
+    appDialogInput,
+    closeAppDialog,
+    handleDialogConfirm,
+    setAppDialogInput,
+  } = useAppDialogBridge();
 
   const { handleAddCharacter, handleOpenApp, handleOpenChat } = createAppShellHandlers({
     handleUpsertCharacter,
