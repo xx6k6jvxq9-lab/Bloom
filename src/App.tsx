@@ -45,6 +45,7 @@ import {
   handleCustomizationResetData,
   handleCustomizationUpdateAppData,
 } from './features/app-shell/customizationHandlers';
+import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   fetchSettingsModels,
@@ -404,33 +405,8 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!coupleSpaceUpdateToast) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setCoupleSpaceUpdateToast(null);
-    }, 4500);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [coupleSpaceUpdateToast]);
-
-  useEffect(() => {
-    if (!momentPublishToast) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setMomentPublishToast(null);
-    }, 4200);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [momentPublishToast]);
+  useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
+  useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
 
   useEffect(() => {
     if (!hasHydratedStorage || activeApp === 'couple-space') {
