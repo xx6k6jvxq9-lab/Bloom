@@ -33,6 +33,7 @@ import type {
 } from './features/app-shell/appShellTypes';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
+  filterAvailableModels,
   fetchAllPagedModelNames,
   extractModelNamesFromResponse,
   resolveNextModelsPageUrl,
@@ -2016,18 +2017,10 @@ function SettingsApp({
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const filteredAvailableModels = useMemo(() => {
-    const keyword = editForm.model.trim().toLowerCase();
-    if (!availableModels.length) return [];
-    if (!keyword) return availableModels;
-
-    const startsWithMatches = availableModels.filter((model) => model.toLowerCase().startsWith(keyword));
-    const includesMatches = availableModels.filter(
-      (model) => !model.toLowerCase().startsWith(keyword) && model.toLowerCase().includes(keyword),
-    );
-
-    return [...startsWithMatches, ...includesMatches];
-  }, [availableModels, editForm.model]);
+  const filteredAvailableModels = useMemo(
+    () => filterAvailableModels(availableModels, editForm.model),
+    [availableModels, editForm.model],
+  );
 
   // Sync back to parent whenever localSettings changes
   useEffect(() => {

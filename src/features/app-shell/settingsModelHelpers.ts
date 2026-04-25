@@ -85,3 +85,23 @@ export const fetchAllPagedModelNames = async (
 
   return collected;
 };
+
+export const filterAvailableModels = (
+  availableModels: string[],
+  keyword: string,
+): string[] => {
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  if (!availableModels.length) return [];
+  if (!normalizedKeyword) return availableModels;
+
+  const startsWithMatches = availableModels.filter((model) =>
+    model.toLowerCase().startsWith(normalizedKeyword),
+  );
+  const includesMatches = availableModels.filter(
+    (model) =>
+      !model.toLowerCase().startsWith(normalizedKeyword)
+      && model.toLowerCase().includes(normalizedKeyword),
+  );
+
+  return [...startsWithMatches, ...includesMatches];
+};
