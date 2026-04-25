@@ -23,16 +23,29 @@ export function loadPersistedUserProfile(fallback: UserProfileExtended): UserPro
 }
 
 export async function loadPreferredUserProfile(fallback: UserProfileExtended): Promise<UserProfileExtended> {
+  const localProfile = loadPersistedUserProfile(fallback);
+
   try {
     const persisted = await loadJsonRecord<Partial<UserProfileExtended>>(STORAGE_KEYS.userProfile);
     if (persisted) {
-      return hydrateUserProfile({ ...fallback, ...persisted }, fallback);
+      const indexedDbProfile = hydrateUserProfile({ ...fallback, ...persisted }, fallback);
+      const localSerialized = JSON.stringify(localProfile);
+      const indexedDbSerialized = JSON.stringify(indexedDbProfile);
+
+      if (localSerialized !== indexedDbSerialized) {
+        void saveJsonRecord(STORAGE_KEYS.userProfile, localProfile).catch((error) => {
+          console.error('[userProfileStore] Failed to reconcile user profile into IndexedDB', error);
+        });
+        return localProfile;
+      }
+
+      return indexedDbProfile;
     }
   } catch (error) {
     console.error('[userProfileStore] Failed to load user profile from IndexedDB', error);
   }
 
-  return loadPersistedUserProfile(fallback);
+  return localProfile;
 }
 
 export function persistUserProfile(profile: UserProfileExtended): Promise<void> {

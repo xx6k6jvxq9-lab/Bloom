@@ -38,16 +38,29 @@ export function loadCharacters(fallback: Character[] = []): Character[] {
 }
 
 export async function loadPreferredCharacters(fallback: Character[] = []): Promise<Character[]> {
+  const localCharacters = loadCharacters(fallback);
+
   try {
     const persisted = await loadJsonRecord<Character[]>(STORAGE_KEYS.characters);
     if (Array.isArray(persisted)) {
-      return hydrateCharacters(persisted, fallback);
+      const indexedDbCharacters = hydrateCharacters(persisted, fallback);
+      const localSerialized = JSON.stringify(localCharacters);
+      const indexedDbSerialized = JSON.stringify(indexedDbCharacters);
+
+      if (localSerialized !== indexedDbSerialized) {
+        void saveJsonRecord(STORAGE_KEYS.characters, localCharacters).catch((error) => {
+          console.error('[charactersStore] Failed to reconcile characters into IndexedDB', error);
+        });
+        return localCharacters;
+      }
+
+      return indexedDbCharacters;
     }
   } catch (error) {
     console.error('[charactersStore] Failed to load characters from IndexedDB', error);
   }
 
-  return loadCharacters(fallback);
+  return localCharacters;
 }
 
 export function saveCharacters(value: Character[]): Promise<void> {

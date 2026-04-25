@@ -50,16 +50,29 @@ export function loadPersistedChatOrganization(fallback: ChatOrganizationData): C
 }
 
 export async function loadPreferredChatOrganization(fallback: ChatOrganizationData): Promise<ChatOrganizationData> {
+  const localOrganization = loadPersistedChatOrganization(fallback);
+
   try {
     const persisted = await loadJsonRecord<Partial<ChatOrganizationData>>(STORAGE_KEYS.chatOrganization);
     if (persisted) {
-      return hydrateChatOrganization(persisted, fallback);
+      const indexedDbOrganization = hydrateChatOrganization(persisted, fallback);
+      const localSerialized = JSON.stringify(localOrganization);
+      const indexedDbSerialized = JSON.stringify(indexedDbOrganization);
+
+      if (localSerialized !== indexedDbSerialized) {
+        void saveJsonRecord(STORAGE_KEYS.chatOrganization, localOrganization).catch((error) => {
+          console.error('[chatOrganizationStore] Failed to reconcile chat organization into IndexedDB', error);
+        });
+        return localOrganization;
+      }
+
+      return indexedDbOrganization;
     }
   } catch (error) {
     console.error('[chatOrganizationStore] Failed to load chat organization from IndexedDB', error);
   }
 
-  return loadPersistedChatOrganization(fallback);
+  return localOrganization;
 }
 
 export function persistChatOrganization(data: ChatOrganizationData): Promise<void> {

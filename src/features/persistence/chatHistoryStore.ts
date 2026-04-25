@@ -180,16 +180,29 @@ export async function loadPreferredChatHistoryRecords(
     groupSessions: {},
   },
 ): Promise<PersistedChatHistoryData> {
+  const localHistory = loadChatHistoryRecords(fallback);
+
   try {
     const persisted = await loadJsonRecord<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
     if (persisted) {
-      return hydrateChatHistoryRecords(persisted, fallback);
+      const indexedDbHistory = hydrateChatHistoryRecords(persisted, fallback);
+      const localSerialized = JSON.stringify(localHistory);
+      const indexedDbSerialized = JSON.stringify(indexedDbHistory);
+
+      if (localSerialized !== indexedDbSerialized) {
+        void saveJsonRecord(STORAGE_KEYS.chatHistory, localHistory).catch((error) => {
+          console.error('[chatHistoryStore] Failed to reconcile chat history into IndexedDB', error);
+        });
+        return localHistory;
+      }
+
+      return indexedDbHistory;
     }
   } catch (error) {
     console.error('[chatHistoryStore] Failed to load chat history from IndexedDB', error);
   }
 
-  return loadChatHistoryRecords(fallback);
+  return localHistory;
 }
 
 export function saveChatHistoryRecords(value: PersistedChatHistoryData): Promise<void> {
