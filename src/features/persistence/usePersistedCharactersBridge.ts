@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Character } from '../../types';
-import { loadCharacters, saveCharacters } from './charactersStore';
+import { loadPreferredCharacters, saveCharacters } from './charactersStore';
 
 type UsePersistedCharactersBridgeOptions = {
   hydrate?: (source: Character[] | null | undefined, fallback: Character[]) => Character[];
@@ -27,23 +27,37 @@ export function usePersistedCharactersBridge(
   }, [setCharacters]);
 
   useEffect(() => {
-    const persisted = loadCharacters(initialCharactersRef.current);
-    const hydrated = options.hydrate
-      ? options.hydrate(persisted, initialCharactersRef.current)
-      : persisted;
-    const currentSerialized = serializeCharacters(initialCharactersRef.current);
-    const hydratedSerialized = serializeCharacters(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const persisted = await loadPreferredCharacters(initialCharactersRef.current);
+      const hydrated = options.hydrate
+        ? options.hydrate(persisted, initialCharactersRef.current)
+        : persisted;
+      const currentSerialized = serializeCharacters(initialCharactersRef.current);
+      const hydratedSerialized = serializeCharacters(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setCharactersRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setCharactersRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, [options.hydrate]);
 
   useEffect(() => {
@@ -66,7 +80,7 @@ export function usePersistedCharactersBridge(
       return;
     }
 
-    saveCharacters(characters);
+    void saveCharacters(characters);
     lastPersistedRef.current = serialized;
   }, [characters]);
 }

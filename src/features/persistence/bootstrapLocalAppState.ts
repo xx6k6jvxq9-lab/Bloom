@@ -16,7 +16,7 @@ import {
   hydrateChatOrganization,
   loadPreferredChatOrganization,
 } from './chatOrganizationStore';
-import { loadCharacters } from './charactersStore';
+import { loadPreferredCharacters } from './charactersStore';
 import { hydratePersistedCoupleSpacePayload } from './coupleSpaceStore';
 import { loadPreferredDatingRecords } from './datingRecordsStore';
 import {
@@ -30,19 +30,19 @@ import {
 import { loadJson } from './localConfigStore';
 import {
   hydrateMeData,
-  loadPersistedMeData,
+  loadPreferredMeData,
 } from './meDataStore';
 import { evaluateMigrationStatus, migrateCriticalRecordsIfNeeded } from './migrationStatusStore';
 import {
   hydrateMoments,
-  loadPersistedMoments,
+  loadPreferredMoments,
 } from './momentsStore';
 import { loadPersistedMusicData } from './musicDataStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import {
   hydrateUserProfile,
-  loadPersistedUserProfile,
+  loadPreferredUserProfile,
 } from './userProfileStore';
 import { loadPreferredVisualSettings } from './visualSettingsStore';
 import {
@@ -231,7 +231,7 @@ export async function bootstrapLocalAppState({
   const characters = sanitizePersistedCharactersFromStore(
     Array.isArray(indexedDbCharacters)
       ? indexedDbCharacters
-      : loadCharacters(
+      : await loadPreferredCharacters(
           !hasLocalCharacters ? (legacyAppData?.characters || defaultCharacters) : defaultCharacters,
         ),
     defaultCharacters,
@@ -267,7 +267,7 @@ export async function bootstrapLocalAppState({
       )
     : localChatOrganization;
 
-  const localUserProfile = loadPersistedUserProfile(
+  const localUserProfile = await loadPreferredUserProfile(
     !indexedDbUserProfile && !hasLocalUserProfile && legacyAppData?.userProfile
       ? {
           ...defaultUser,
@@ -294,12 +294,12 @@ export async function bootstrapLocalAppState({
       ? legacyAppData.worldBooks
       : defaultAppData.worldBooks,
   };
-  const localMeData = loadPersistedMeData(meDataFallback);
+  const localMeData = await loadPreferredMeData(meDataFallback);
   const meData = indexedDbMeData
     ? hydrateMeData(indexedDbMeData as Partial<typeof localMeData>, localMeData)
     : localMeData;
 
-  const localMoments = loadPersistedMoments(
+  const localMoments = await loadPreferredMoments(
     sanitizePersistedMomentsFromStore(
       !indexedDbMoments && !hasLocalMoments ? legacyAppData?.moments : undefined,
     ),

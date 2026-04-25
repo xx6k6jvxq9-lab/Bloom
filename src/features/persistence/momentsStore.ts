@@ -1,3 +1,4 @@
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -75,10 +76,30 @@ export function loadPersistedMoments(fallback: PersistedMoment[]): PersistedMome
   return hydrateMoments(persisted, fallback);
 }
 
-export function persistMoments(moments: PersistedMoment[]): void {
+export async function loadPreferredMoments(fallback: PersistedMoment[]): Promise<PersistedMoment[]> {
+  try {
+    const persisted = await loadJsonRecord<PersistedMoment[]>(STORAGE_KEYS.moments);
+    if (Array.isArray(persisted)) {
+      return hydrateMoments(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[momentsStore] Failed to load moments from IndexedDB', error);
+  }
+
+  return loadPersistedMoments(fallback);
+}
+
+export function persistMoments(moments: PersistedMoment[]): Promise<void> {
   saveJson(STORAGE_KEYS.moments, moments);
+
+  return saveJsonRecord(STORAGE_KEYS.moments, moments).catch((error) => {
+    console.error('[momentsStore] Failed to persist moments into IndexedDB', error);
+  });
 }
 
 export function clearPersistedMoments(): void {
   removeStoredJson(STORAGE_KEYS.moments);
+  void removeJsonRecord(STORAGE_KEYS.moments).catch((error) => {
+    console.error('[momentsStore] Failed to remove moments from IndexedDB', error);
+  });
 }

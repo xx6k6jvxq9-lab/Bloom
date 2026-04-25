@@ -1,4 +1,5 @@
 import type { FavoriteMessage, Mask, WorldBookEntry } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -48,10 +49,30 @@ export function loadPersistedMeData(fallback: MeData): MeData {
   return hydrated;
 }
 
-export function persistMeData(data: MeData): void {
+export async function loadPreferredMeData(fallback: MeData): Promise<MeData> {
+  try {
+    const persisted = await loadJsonRecord<Partial<MeData>>(STORAGE_KEYS.meData);
+    if (persisted) {
+      return hydrateMeData(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[meDataStore] Failed to load meData from IndexedDB', error);
+  }
+
+  return loadPersistedMeData(fallback);
+}
+
+export function persistMeData(data: MeData): Promise<void> {
   saveJson(STORAGE_KEYS.meData, data);
+
+  return saveJsonRecord(STORAGE_KEYS.meData, data).catch((error) => {
+    console.error('[meDataStore] Failed to persist meData into IndexedDB', error);
+  });
 }
 
 export function clearPersistedMeData(): void {
   removeStoredJson(STORAGE_KEYS.meData);
+  void removeJsonRecord(STORAGE_KEYS.meData).catch((error) => {
+    console.error('[meDataStore] Failed to remove meData from IndexedDB', error);
+  });
 }

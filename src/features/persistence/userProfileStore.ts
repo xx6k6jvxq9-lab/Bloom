@@ -1,4 +1,5 @@
 import type { UserProfileExtended } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { STORAGE_KEYS } from './storageKeys';
@@ -21,10 +22,30 @@ export function loadPersistedUserProfile(fallback: UserProfileExtended): UserPro
   return hydrateUserProfile(persisted ? { ...fallback, ...persisted } : fallback, fallback);
 }
 
-export function persistUserProfile(profile: UserProfileExtended): void {
+export async function loadPreferredUserProfile(fallback: UserProfileExtended): Promise<UserProfileExtended> {
+  try {
+    const persisted = await loadJsonRecord<Partial<UserProfileExtended>>(STORAGE_KEYS.userProfile);
+    if (persisted) {
+      return hydrateUserProfile({ ...fallback, ...persisted }, fallback);
+    }
+  } catch (error) {
+    console.error('[userProfileStore] Failed to load user profile from IndexedDB', error);
+  }
+
+  return loadPersistedUserProfile(fallback);
+}
+
+export function persistUserProfile(profile: UserProfileExtended): Promise<void> {
   saveJson(STORAGE_KEYS.userProfile, profile);
+
+  return saveJsonRecord(STORAGE_KEYS.userProfile, profile).catch((error) => {
+    console.error('[userProfileStore] Failed to persist user profile into IndexedDB', error);
+  });
 }
 
 export function clearPersistedUserProfile(): void {
   removeStoredJson(STORAGE_KEYS.userProfile);
+  void removeJsonRecord(STORAGE_KEYS.userProfile).catch((error) => {
+    console.error('[userProfileStore] Failed to remove user profile from IndexedDB', error);
+  });
 }

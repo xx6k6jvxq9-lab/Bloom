@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
@@ -36,19 +37,38 @@ export function loadCharacters(fallback: Character[] = []): Character[] {
   return hydrateCharacters(persisted, fallback);
 }
 
-export function saveCharacters(value: Character[]): void {
+export async function loadPreferredCharacters(fallback: Character[] = []): Promise<Character[]> {
+  try {
+    const persisted = await loadJsonRecord<Character[]>(STORAGE_KEYS.characters);
+    if (Array.isArray(persisted)) {
+      return hydrateCharacters(persisted, fallback);
+    }
+  } catch (error) {
+    console.error('[charactersStore] Failed to load characters from IndexedDB', error);
+  }
+
+  return loadCharacters(fallback);
+}
+
+export function saveCharacters(value: Character[]): Promise<void> {
   saveJson(STORAGE_KEYS.characters, value);
+
+  return saveJsonRecord(STORAGE_KEYS.characters, value).catch((error) => {
+    console.error('[charactersStore] Failed to persist characters into IndexedDB', error);
+  });
 }
 
 export function patchCharacters(
   updater: (current: Character[]) => Character[],
   fallback: Character[] = [],
-): Character[] {
+): Promise<Character[]> {
   const nextValue = updater(loadCharacters(fallback));
-  saveCharacters(nextValue);
-  return nextValue;
+  return saveCharacters(nextValue).then(() => nextValue);
 }
 
 export function resetCharacters(): void {
   removeStoredJson(STORAGE_KEYS.characters);
+  void removeJsonRecord(STORAGE_KEYS.characters).catch((error) => {
+    console.error('[charactersStore] Failed to remove characters from IndexedDB', error);
+  });
 }

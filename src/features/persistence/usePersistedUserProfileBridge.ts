@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { UserProfileExtended } from '../../types';
-import { loadPersistedUserProfile, persistUserProfile } from './userProfileStore';
+import { loadPreferredUserProfile, persistUserProfile } from './userProfileStore';
 
 function serializeUserProfile(profile: UserProfileExtended): string {
   return JSON.stringify(profile);
@@ -22,20 +22,34 @@ export function usePersistedUserProfileBridge(
   }, [setUserProfile]);
 
   useEffect(() => {
-    const hydrated = loadPersistedUserProfile(initialProfileRef.current);
-    const currentSerialized = serializeUserProfile(initialProfileRef.current);
-    const hydratedSerialized = serializeUserProfile(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredUserProfile(initialProfileRef.current);
+      const currentSerialized = serializeUserProfile(initialProfileRef.current);
+      const hydratedSerialized = serializeUserProfile(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setUserProfileRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setUserProfileRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -58,7 +72,7 @@ export function usePersistedUserProfileBridge(
       return;
     }
 
-    persistUserProfile(userProfile);
+    void persistUserProfile(userProfile);
     lastPersistedRef.current = serialized;
   }, [userProfile]);
 }

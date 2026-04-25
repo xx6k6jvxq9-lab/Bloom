@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { FavoriteMessage, Mask, WorldBookEntry } from '../../types';
-import { loadPersistedMeData, persistMeData, type MeData } from './meDataStore';
+import { loadPreferredMeData, persistMeData, type MeData } from './meDataStore';
 
 function serializeMeData(data: MeData): string {
   return JSON.stringify(data);
@@ -24,20 +24,34 @@ export function usePersistedMeDataBridge(
   }, [setMeData]);
 
   useEffect(() => {
-    const hydrated = loadPersistedMeData(initialDataRef.current);
-    const currentSerialized = serializeMeData(initialDataRef.current);
-    const hydratedSerialized = serializeMeData(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredMeData(initialDataRef.current);
+      const currentSerialized = serializeMeData(initialDataRef.current);
+      const hydratedSerialized = serializeMeData(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      skipUntilHydratedRef.current = true;
-      setMeDataRef.current(hydrated);
-      return;
-    }
+      if (cancelled) {
+        return;
+      }
 
-    hasHydratedRef.current = true;
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
+
+      if (currentSerialized !== hydratedSerialized) {
+        skipUntilHydratedRef.current = true;
+        setMeDataRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -61,7 +75,7 @@ export function usePersistedMeDataBridge(
       return;
     }
 
-    persistMeData(currentData);
+    void persistMeData(currentData);
     lastPersistedRef.current = serialized;
   }, [masks, favorites, worldBooks]);
 }

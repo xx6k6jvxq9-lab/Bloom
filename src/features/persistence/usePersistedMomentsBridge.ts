@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { loadPersistedMoments, persistMoments, type PersistedMoment } from './momentsStore';
+import { loadPreferredMoments, persistMoments, type PersistedMoment } from './momentsStore';
 
 function serializeMoments(moments: PersistedMoment[]): string {
   return JSON.stringify(moments);
@@ -28,32 +28,46 @@ export function usePersistedMomentsBridge(
   }, [setMoments]);
 
   useEffect(() => {
-    const hydrated = loadPersistedMoments(initialMomentsRef.current);
-    const currentSerialized = serializeMoments(initialMomentsRef.current);
-    const hydratedSerialized = serializeMoments(hydrated);
-    const currentLatestTimestamp = getLatestMomentTimestamp(initialMomentsRef.current);
-    const hydratedLatestTimestamp = getLatestMomentTimestamp(hydrated);
+    let cancelled = false;
 
-    hydrationTargetRef.current = hydratedSerialized;
-    lastPersistedRef.current = currentSerialized;
+    const hydrate = async () => {
+      const hydrated = await loadPreferredMoments(initialMomentsRef.current);
+      const currentSerialized = serializeMoments(initialMomentsRef.current);
+      const hydratedSerialized = serializeMoments(hydrated);
+      const currentLatestTimestamp = getLatestMomentTimestamp(initialMomentsRef.current);
+      const hydratedLatestTimestamp = getLatestMomentTimestamp(hydrated);
 
-    if (currentSerialized !== hydratedSerialized) {
-      // When MainApp remounts after a chat-triggered publish, in-memory moments can be
-      // newer than the last persisted snapshot. In that case keep the in-memory state
-      // and persist it, instead of hydrating older localStorage data back over it.
-      if (currentLatestTimestamp > hydratedLatestTimestamp) {
-        persistMoments(initialMomentsRef.current);
-        lastPersistedRef.current = currentSerialized;
-        hasHydratedRef.current = true;
+      if (cancelled) {
         return;
       }
 
-      skipUntilHydratedRef.current = true;
-      setMomentsRef.current(hydrated);
-      return;
-    }
+      hydrationTargetRef.current = hydratedSerialized;
+      lastPersistedRef.current = currentSerialized;
 
-    hasHydratedRef.current = true;
+      if (currentSerialized !== hydratedSerialized) {
+        // When MainApp remounts after a chat-triggered publish, in-memory moments can be
+        // newer than the last persisted snapshot. In that case keep the in-memory state
+        // and persist it, instead of hydrating older localStorage data back over it.
+        if (currentLatestTimestamp > hydratedLatestTimestamp) {
+          void persistMoments(initialMomentsRef.current);
+          lastPersistedRef.current = currentSerialized;
+          hasHydratedRef.current = true;
+          return;
+        }
+
+        skipUntilHydratedRef.current = true;
+        setMomentsRef.current(hydrated);
+        return;
+      }
+
+      hasHydratedRef.current = true;
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -76,7 +90,7 @@ export function usePersistedMomentsBridge(
       return;
     }
 
-    persistMoments(moments);
+    void persistMoments(moments);
     lastPersistedRef.current = serialized;
   }, [moments]);
 }
