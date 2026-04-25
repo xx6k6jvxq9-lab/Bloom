@@ -21,7 +21,9 @@ import {
   DEFAULT_ZHOU_JIBAI_AVATAR,
 } from './features/app-shell/defaultAppConstants';
 import {
+  AppPanelFallback as AppPanelFallbackPrimitive,
   GlobalStyles,
+  ResolvedAssetImage as ResolvedAssetImagePrimitive,
 } from './features/app-shell/AppShellPrimitives';
 import {
   loadCoupleSpaceApp,
@@ -947,7 +949,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
                   {coupleSpaceUpdateToast.partnerAvatar ? (
-                    <ResolvedAssetImage
+                    <ResolvedAssetImagePrimitive
                       value={coupleSpaceUpdateToast.partnerAvatar}
                       alt={coupleSpaceUpdateToast.partnerName}
                       className="h-full w-full object-cover"
@@ -983,7 +985,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 overflow-hidden rounded-2xl bg-zinc-100">
                   {momentPublishToast.authorAvatar ? (
-                    <ResolvedAssetImage
+                    <ResolvedAssetImagePrimitive
                       value={momentPublishToast.authorAvatar}
                       alt={momentPublishToast.authorName}
                       className="h-full w-full object-cover"
@@ -1218,7 +1220,7 @@ export default function App() {
             />
           )}
           {activeApp === 'monitor' && (
-            <Suspense fallback={<AppPanelFallback label="监控中心" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="监控中心" />}>
               <MonitorApp 
                 characters={appData.characters}
                 onBack={() => setActiveApp('home')}
@@ -1227,7 +1229,7 @@ export default function App() {
             </Suspense>
           )}
           {activeApp === 'customization' && (
-            <Suspense fallback={<AppPanelFallback label="自定义中心" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="自定义中心" />}>
               <CustomizationApp
                 visualSettings={appData.visualSettings}
                 setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
@@ -1277,7 +1279,7 @@ export default function App() {
             </Suspense>
           )}
           {activeApp === 'couple-space' && (
-            <Suspense fallback={<AppPanelFallback label="情侣空间" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="情侣空间" />}>
               <CoupleSpaceApp
                 appData={appData}
                 setAppData={setAppData}
@@ -1287,7 +1289,7 @@ export default function App() {
             </Suspense>
           )}
           {activeApp === 'perception' && (
-            <Suspense fallback={<AppPanelFallback label="感知视图" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="感知视图" />}>
               <PerceptionView
                 coupleSpace={currentCoupleSpace}
                 updateSpace={handleUpdateCurrentCoupleSpace}
@@ -1303,7 +1305,7 @@ export default function App() {
             aria-hidden="true"
           />
           {activeApp === 'music' && (
-            <Suspense fallback={<AppPanelFallback label="音乐" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="音乐" />}>
               <MusicApp
                 musicData={appData.musicData!}
                 onUpdateMusicData={(data) => setAppData(prev => ({ ...prev, musicData: data }))}
@@ -1321,7 +1323,7 @@ export default function App() {
             </Suspense>
           )}
           {activeApp === 'forum' && (
-            <Suspense fallback={<AppPanelFallback label="论坛" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="论坛" />}>
               <ForumApp
                 appData={appData}
                 onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
@@ -1335,7 +1337,7 @@ export default function App() {
             </Suspense>
           )}
           {activeApp === 'wallet' && (
-            <Suspense fallback={<AppPanelFallback label="钱包" />}>
+            <Suspense fallback={<AppPanelFallbackPrimitive label="钱包" />}>
               <WalletApp
                 appData={appData}
                 onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
@@ -1616,7 +1618,7 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
           <div className="space-y-6">
             {/* Avatar */}
             <div className="bg-white rounded-[28px] border border-zinc-100 shadow-sm p-5 flex flex-col items-center gap-4">
-              <ResolvedAssetImage value={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
+              <ResolvedAssetImagePrimitive value={avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover bg-zinc-100 border-4 border-zinc-50 shadow-sm" />
 
               <div className="w-full max-w-[320px] space-y-3">
                 <p className="text-[12px] text-zinc-400 text-center">支持链接、Markdown或HTML图片</p>
