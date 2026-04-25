@@ -12,6 +12,7 @@ import { usePersistedMeDataBridge } from '../../../features/persistence/usePersi
 import { usePersistedMomentsBridge } from '../../../features/persistence/usePersistedMomentsBridge';
 import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
 
@@ -505,22 +506,34 @@ export function MainApp({
                 ...char,
                 lastTime: Date.now()
               };
-              setAppData(prev => ({
-                ...prev,
-                characters: upsertCharacter(prev.characters, newChar)
-              }));
+              setAppData(prev => {
+                const nextCharacters = upsertCharacter(prev.characters, newChar);
+                void saveCharacters(nextCharacters);
+                return {
+                  ...prev,
+                  characters: nextCharacters
+                };
+              });
             }}
             onDeleteCharacter={(id) => {
-              setAppData(prev => ({
-                ...prev,
-                characters: removeCharacterById(prev.characters, id)
-              }));
+              setAppData(prev => {
+                const nextCharacters = removeCharacterById(prev.characters, id);
+                void saveCharacters(nextCharacters);
+                return {
+                  ...prev,
+                  characters: nextCharacters
+                };
+              });
             }}
             onUpdateCharacter={(char) => {
-              setAppData(prev => ({
-                ...prev,
-                characters: updateCharacterById(prev.characters, char.id, () => char)
-              }));
+              setAppData(prev => {
+                const nextCharacters = updateCharacterById(prev.characters, char.id, () => char);
+                void saveCharacters(nextCharacters);
+                return {
+                  ...prev,
+                  characters: nextCharacters
+                };
+              });
             }}
             onSectionChange={setMeSection}
           />
@@ -598,10 +611,14 @@ export function MainApp({
                   lastMessage: char.openingRemark || `你好，很高兴认识你，我是 ${char.name}。`,
                   lastTime: Date.now(),
                 };
-                setAppData(prev => ({
-                  ...prev,
-                  characters: upsertCharacter(prev.characters, newChar)
-                }));
+                setAppData(prev => {
+                  const nextCharacters = upsertCharacter(prev.characters, newChar);
+                  void saveCharacters(nextCharacters);
+                  return {
+                    ...prev,
+                    characters: nextCharacters
+                  };
+                });
                 setShowAddFriend(false);
                 alert('已添加新好友');
               }}

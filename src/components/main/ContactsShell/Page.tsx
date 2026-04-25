@@ -8,9 +8,11 @@ import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR } from '../../../utils';
 import { patchChatHistoryRecords } from '../../../features/persistence/chatHistoryStore';
 import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
+import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
+import { WechatBindModal } from '../../wechat/WechatBindModal';
 
 function ResolvedContactsAvatar({
   value,
@@ -106,9 +108,12 @@ export function ContactsApp({
               groupId: '朋友'
             };
 
+            const nextCharacters = [...prev.characters, newChar];
+            void saveCharacters(nextCharacters);
+
             return {
               ...prev,
-              characters: [...prev.characters, newChar],
+              characters: nextCharacters,
               friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'accepted' } : r)
             };
           });
@@ -398,6 +403,7 @@ export function CharacterProfile({
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
 }) {
+  const [wechatModalOpen, setWechatModalOpen] = useState(false);
   const displayName = character.remarkName?.trim() || character.name;
   const fallbackSignature = character.openingRemark?.trim()
     || `${(character.corePersona?.trim() || '').slice(0, 36)}${(character.corePersona?.trim() || '').length > 36 ? '...' : ''}`;
@@ -504,6 +510,13 @@ export function CharacterProfile({
           >
             <MessageSquare size={18} />
             主动加你
+          </button>
+          <button
+            onClick={() => setWechatModalOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 py-3.5 text-[15px] font-bold text-emerald-700 shadow-sm transition-transform hover:bg-emerald-100 active:scale-[0.98]"
+          >
+            <RefreshCw size={18} />
+            接入微信
           </button>
           {false && (
             <button 
@@ -814,6 +827,7 @@ export function CharacterMomentsProfile({
           )}
         </div>
       </div>
+      <WechatBindModal character={character} open={wechatModalOpen} onClose={() => setWechatModalOpen(false)} />
     </motion.div>
   );
 }

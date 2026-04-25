@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppData, AppSettings, Character } from '../../types';
 import type { UserProfile } from '../app-shell/appShellTypes';
@@ -6,9 +7,9 @@ import { bootstrapLocalAppState } from './bootstrapLocalAppState';
 import {
   hydratePersistedCharacters as hydratePersistedCharactersFromStore,
 } from './appDataSanitizers';
+import { persistAppDataSnapshot } from './persistAppDataSnapshot';
 import { usePersistedCharactersBridge } from './usePersistedCharactersBridge';
 import { persistSettings } from './settingsStore';
-import { persistVisualSettings } from './visualSettingsStore';
 
 type UseAppPersistenceParams = {
   createDefaultAppData: () => AppData;
@@ -40,6 +41,7 @@ export function useAppPersistence({
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
+  const defaultAppData = useMemo(() => createDefaultAppData(), [createDefaultAppData]);
 
   const setCharacters = useCallback((characters: Character[]) => {
     setAppData((prev) => ({
@@ -97,8 +99,8 @@ export function useAppPersistence({
 
   useEffect(() => {
     if (!hasHydratedStorage) return;
-    void persistVisualSettings(appData.visualSettings);
-  }, [appData.visualSettings, hasHydratedStorage]);
+    void persistAppDataSnapshot(appData, defaultAppData);
+  }, [appData, defaultAppData, hasHydratedStorage]);
 
   const hydrateCharacters = useCallback(
     (source: Character[] | null | undefined, fallback: Character[]) =>
