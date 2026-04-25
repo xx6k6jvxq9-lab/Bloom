@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import React, { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Moon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -31,6 +31,7 @@ import type {
   MomentPublishToast,
   UserProfile,
 } from './features/app-shell/appShellTypes';
+import { createAppShellHandlers } from './features/app-shell/appShellHandlers';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   fetchSettingsModels,
@@ -788,23 +789,12 @@ export default function App() {
     setAppDialog(null);
   };
 
-  const handleOpenChat = (characterId: string) => {
-    setSelectedCharacterId(characterId);
-    setActiveApp('chat-session');
-  };
-
-  const handleAddCharacter = (char: Character) => {
-    handleUpsertCharacter(char);
-    setActiveApp('chat');
-    setActiveTab('chat');
-  };
-
-  const handleOpenApp = (app: any) => {
-    setActiveApp(app);
-    if (app === 'chat') {
-      setActiveTab('chat');
-    }
-  };
+  const { handleAddCharacter, handleOpenApp, handleOpenChat } = createAppShellHandlers({
+    handleUpsertCharacter,
+    setActiveApp,
+    setActiveTab,
+    setSelectedCharacterId,
+  });
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
 
@@ -1745,265 +1735,8 @@ function AddCharacter({ onSave, onBack, groups }: { onSave: (char: Character) =>
   );
 }
 
-/* function DreamApp({ onBack }: { onBack: () => void; key?: string }) {
-  const [activeLayer, setActiveLayer] = useState<'cover' | 'domain' | 'tags' | 'confirm'>('cover');
-  const [selectedDomain, setSelectedDomain] = useState<'众生梦' | '歧境梦' | '同梦域' | '心隙梦'>('同梦域');
-  const [selectedDreamType, setSelectedDreamType] = useState<'浅梦' | '深梦'>('浅梦');
 
-  const dreamDomains = [
-    {
-      name: '众生梦',
-      subtitle: '热门题材与异世界入口',
-      description: '像翻开一本会自己长剧情的幻想小说，世界观先把你裹进去。',
-      icon: Sparkles,
-    },
-    {
-      name: '歧境梦',
-      subtitle: '现实边缘开始失真的地方',
-      description: '你看见熟悉街景，却总有一处光线不对，门后也站着别的秩序。',
-      icon: ScanEye,
-    },
-    {
-      name: '同梦域',
-      subtitle: '你和角色共同长出的双人梦',
-      description: '这里不是他的世界，也不是你的世界，而是关系自己裂开的一层夜。',
-      icon: Heart,
-    },
-    {
-      name: '心隙梦',
-      subtitle: '进入角色不肯说出的心里缝隙',
-      description: '越往里走，越像踩在他没有给任何人看过的记忆表面。',
-      icon: Coffee,
-    },
-  ] as const;
 
-  const labelGroups = [
-    { label: '世界观', values: ['西方魔幻', '未来科技', '古代王朝', '规则怪谈'] },
-    { label: '关系张力', values: ['宿敌失控', '旧情未死', '强制同行', '双双伪装'] },
-    { label: '剧情驱动', values: ['赴约', '追查', '博弈', '未醒'] },
-    { label: '情绪底色', values: ['克制', '危险', '拉扯', '宿命'] },
-  ] as const;
-
-  return (
-    <motion.div
-      className="absolute inset-0 overflow-hidden bg-[#08111f] text-white"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(244,207,150,0.32),transparent_30%),radial-gradient(circle_at_80%_18%,rgba(144,208,221,0.2),transparent_32%),linear-gradient(180deg,#0b1323_0%,#10182e_38%,#17213a_100%)]" />
-      <div className="absolute inset-x-0 top-0 h-[42%] bg-[linear-gradient(180deg,rgba(255,255,255,0.1),transparent)] opacity-35" />
-      <div className="absolute left-[-8%] top-[18%] h-48 w-48 rounded-full bg-[#8dc8d6]/10 blur-3xl" />
-      <div className="absolute right-[-12%] top-[8%] h-56 w-56 rounded-full bg-[#f2c37b]/16 blur-3xl" />
-
-      <div
-        className="relative z-10 flex items-center justify-between px-5 pb-4"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
-      >
-        <button
-          onClick={onBack}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/90 backdrop-blur-md transition hover:bg-white/12"
-        >
-          <ChevronLeft size={22} />
-        </button>
-        <div className="text-center">
-          <p className="text-[10px] uppercase tracking-[0.42em] text-white/45">Dream App</p>
-          <h1 className="mt-1 text-[30px] font-semibold tracking-[0.12em]">梦境</h1>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/70 backdrop-blur-md">
-          <Moon size={18} />
-        </div>
-      </div>
-
-      <div
-        className="relative z-10 flex h-[calc(100%-88px-env(safe-area-inset-top,0px))] flex-col px-5"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)' }}
-      >
-        <motion.div
-          animate={{ y: activeLayer === 'cover' ? 0 : -22, opacity: activeLayer === 'cover' ? 1 : 0.78, scale: activeLayer === 'cover' ? 1 : 0.985 }}
-          transition={{ duration: 0.28, ease: 'easeOut' }}
-          className="relative rounded-[34px] border border-white/10 bg-white/8 px-6 pb-7 pt-7 shadow-[0_26px_100px_rgba(2,8,22,0.4)] backdrop-blur-2xl"
-        >
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)]" />
-          <p className="text-xs tracking-[0.3em] text-white/42">独立入梦应用</p>
-          <h2 className="mt-4 text-[32px] leading-[1.2] text-white">
-            这不是入口，
-            <br />
-            是一层又一层往下沉的夜。
-          </h2>
-          <p className="mt-4 max-w-[18rem] text-sm leading-6 text-white/58">
-            先被气氛困住，再去选梦域、张力和你想进入的那一页。梦境应该像推开门，不像点一排功能。
-          </p>
-          <div className="mt-6 flex gap-3">
-            <button
-              onClick={() => setActiveLayer('domain')}
-              className="rounded-full bg-[#f4d0a1] px-5 py-2.5 text-sm font-medium text-[#27170d] transition hover:opacity-90"
-            >
-              进入梦境
-            </button>
-            <button
-              onClick={() => setActiveLayer('tags')}
-              className="rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-white/72 transition hover:bg-white/12"
-            >
-              直接定制
-            </button>
-          </div>
-        </motion.div>
-
-        <motion.div
-          animate={{
-            y: activeLayer === 'cover' ? 64 : activeLayer === 'domain' ? 4 : -10,
-            opacity: activeLayer === 'cover' ? 0.72 : 1,
-            scale: activeLayer === 'confirm' ? 0.985 : 1,
-          }}
-          transition={{ duration: 0.3, ease: 'easeOut' }}
-          className="relative -mt-6 rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] px-5 pb-5 pt-6 shadow-[0_22px_80px_rgba(4,8,20,0.36)] backdrop-blur-2xl"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] tracking-[0.28em] text-white/40">第一层</p>
-              <h3 className="mt-1 text-xl font-semibold text-white">梦域</h3>
-            </div>
-            <button
-              onClick={() => setActiveLayer('tags')}
-              className="rounded-full border border-white/10 bg-white/7 px-4 py-2 text-xs text-white/68 transition hover:bg-white/12"
-            >
-              下一层
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {dreamDomains.map((item) => {
-              const Icon = item.icon;
-              const selected = selectedDomain === item.name;
-              return (
-                <button
-                  key={item.name}
-                  onClick={() => setSelectedDomain(item.name)}
-                  className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
-                    selected
-                      ? 'border-[#f4d0a1]/50 bg-[#f4d0a1]/14 shadow-[0_18px_36px_rgba(0,0,0,0.18)]'
-                      : 'border-white/10 bg-white/6 hover:bg-white/10'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${selected ? 'bg-[#f4d0a1]/18 text-[#f4d0a1]' : 'bg-white/10 text-white/72'}`}>
-                      <Icon size={18} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[17px] font-semibold text-white">{item.name}</span>
-                        <span className="text-[11px] tracking-[0.18em] text-white/38">{item.subtitle}</span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-white/56">{item.description}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </motion.div>
-
-        <motion.div
-          animate={{
-            y: activeLayer === 'tags' ? -6 : 48,
-            opacity: activeLayer === 'cover' ? 0.4 : activeLayer === 'tags' || activeLayer === 'confirm' ? 1 : 0.75,
-          }}
-          transition={{ duration: 0.32, ease: 'easeOut' }}
-          className="relative -mt-6 flex-1 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.11),rgba(255,255,255,0.05))] px-5 pb-5 pt-5 shadow-[0_20px_60px_rgba(4,8,20,0.34)] backdrop-blur-2xl"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] tracking-[0.28em] text-white/40">第二层</p>
-              <h3 className="mt-1 text-xl font-semibold text-white">梦型与标签</h3>
-            </div>
-            <button
-              onClick={() => setActiveLayer('confirm')}
-              className="rounded-full border border-white/10 bg-white/7 px-4 py-2 text-xs text-white/68 transition hover:bg-white/12"
-            >
-              继续下沉
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {(['浅梦', '深梦'] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setSelectedDreamType(type)}
-                className={`rounded-[22px] border px-4 py-4 text-left transition ${
-                  selectedDreamType === type
-                    ? 'border-[#f4d0a1]/50 bg-[#f4d0a1]/14'
-                    : 'border-white/10 bg-white/6 hover:bg-white/10'
-                }`}
-              >
-                <div className="text-lg font-semibold text-white">{type}</div>
-                <p className="mt-2 text-xs leading-5 text-white/56">
-                  {type === '浅梦' ? '4-5 轮，一局一结，适合先看气味与张力。' : '默认 20 轮，5 轮一幕，可继续沉入也可就此醒来。'}
-                </p>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {labelGroups.map((group) => (
-              <div key={group.label}>
-                <div className="mb-2 text-sm text-white/54">{group.label}</div>
-                <div className="flex flex-wrap gap-2">
-                  {group.values.map((value, index) => (
-                    <button
-                      key={value}
-                      className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                        index === 0
-                          ? 'border-[#f4d0a1]/50 bg-[#f4d0a1]/14 text-white'
-                          : 'border-white/10 bg-white/6 text-white/70 hover:bg-white/10'
-                      }`}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div
-          animate={{
-            y: activeLayer === 'confirm' ? -16 : 44,
-            opacity: activeLayer === 'confirm' ? 1 : 0.58,
-          }}
-          transition={{ duration: 0.28, ease: 'easeOut' }}
-          className="relative -mt-6 rounded-[26px] border border-white/10 bg-[#f4d0a1]/14 px-5 pb-5 pt-4 shadow-[0_18px_54px_rgba(8,12,24,0.34)] backdrop-blur-2xl"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] tracking-[0.28em] text-white/42">最深一层</p>
-              <h3 className="mt-1 text-lg font-semibold text-white">入梦确认</h3>
-            </div>
-            <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-white/70">
-              {selectedDomain} · {selectedDreamType}
-            </span>
-          </div>
-          <p className="max-w-[18rem] text-sm leading-6 text-white/60">
-            今夜会从 {selectedDomain} 开始，先落在一段带着克制和失真的赴约里，然后再看你要不要继续往深处走。
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button className="rounded-full bg-[#f4d0a1] px-5 py-2.5 text-sm font-medium text-[#27170d] transition hover:opacity-90">
-              进入梦境
-            </button>
-            <button
-              onClick={() => setActiveLayer('domain')}
-              className="rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-white/72 transition hover:bg-white/12"
-            >
-              退回上一层
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
-  );
-}
-*/
 function SettingsApp({ 
   onBack, 
   settings, 
