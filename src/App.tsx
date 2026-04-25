@@ -22,6 +22,11 @@ import {
 } from './features/app-shell/defaultAppConstants';
 import { DEFAULT_CHARACTERS } from './features/app-shell/defaultCharacters';
 import {
+  DEFAULT_CONFIG,
+  DEFAULT_SETTINGS,
+  DEFAULT_USER,
+} from './features/app-shell/defaultSettings';
+import {
   AppPanelFallback as AppPanelFallbackPrimitive,
   GlobalStyles,
   ResolvedAssetImage as ResolvedAssetImagePrimitive,
@@ -128,32 +133,6 @@ const PerceptionView = lazy(loadPerceptionView);
 const MusicApp = lazy(loadMusicApp);
 const ForumApp = lazy(loadForumApp);
 const WalletApp = lazy(loadWalletApp);
-
-const DEFAULT_USER: UserProfile = {
-  name: 'AI 用户',
-  avatar: 'https://tu.tuhenmei.com/uploads/allimg/2021090521/s4ljgp4msrd.jpg',
-  id: 'user_8888',
-  bio: '探索 AI 的无限可能',
-  mood: '今天很开心',
-};
-
-const DEFAULT_CONFIG: ApiConfig = {
-  id: 'default',
-  name: 'Google Gemini (默认)',
-  provider: 'Google Gemini',
-  apiKey: '',
-  baseUrl: '',
-  model: 'gemini-3-flash-preview',
-  temperature: 1.0,
-};
-
-const DEFAULT_SETTINGS: AppSettings = {
-  activeConfigId: 'default',
-  configs: [DEFAULT_CONFIG],
-  sharedStickers: [],
-  showChatTimeDividers: true,
-  showChatMessageTime: true,
-};
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
