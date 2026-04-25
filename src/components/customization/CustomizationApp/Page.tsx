@@ -14,12 +14,18 @@ import {
   restoreFullBackupArchive,
 } from '../../../features/persistence/backupArchive';
 import { saveJsonRecord } from '../../../features/persistence/browserJsonStore';
+import { buildPersistableCoupleSpacePayload } from '../../../features/persistence/coupleSpaceStore';
 import {
   evaluateMigrationStatus,
   loadMigrationMeta,
   type MigrationCheckResult,
 } from '../../../features/persistence/migrationStatusStore';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
+import {
+  extractDirectFactTraces,
+  extractDirectRelationshipWaves,
+  extractGroupSessions,
+} from '../../../features/persistence/chatHistoryStore';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
@@ -1738,41 +1744,66 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           await saveJsonRecord(key, value);
         };
 
+        const normalizeImportedAppData = (source: any) => {
+          const normalized = { ...source };
+          const directHistory = normalized.chatHistory && typeof normalized.chatHistory === 'object'
+            ? normalized.chatHistory
+            : {};
+          const chatGroups = Array.isArray(normalized.chatGroups) ? normalized.chatGroups : [];
+          const groups = Array.isArray(normalized.groups) ? normalized.groups : [];
+          const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(
+            normalized.coupleSpaceState,
+            normalized.coupleSpace,
+          );
+
+          return {
+            ...normalized,
+            chatHistory: directHistory,
+            chatGroups,
+            groups,
+            coupleSpaceState,
+            coupleSpace,
+          };
+        };
+
         const persistImportedSnapshot = async (nextAppData: any, nextSettings: any, source: any) => {
+          const normalizedAppData = normalizeImportedAppData(nextAppData);
+          const persistedChatHistory = {
+            directHistory: normalizedAppData.chatHistory ?? {},
+            directRelationshipWaves: extractDirectRelationshipWaves(normalizedAppData.chatHistory ?? {}),
+            directFactTraces: extractDirectFactTraces(normalizedAppData.chatHistory ?? {}),
+            groupSessions: extractGroupSessions(normalizedAppData.chatGroups ?? []),
+          };
+
           const writes: Promise<void>[] = [
             writeImportedRecord(STORAGE_KEYS.settings, nextSettings),
-            writeImportedRecord(STORAGE_KEYS.characters, nextAppData.characters ?? []),
-            writeImportedRecord(STORAGE_KEYS.chatHistory, nextAppData.chatHistory ?? {
-              directHistory: {},
-              directRelationshipWaves: {},
-              directFactTraces: {},
-              groupSessions: {},
-            }),
+            writeImportedRecord(STORAGE_KEYS.characters, normalizedAppData.characters ?? []),
+            writeImportedRecord(STORAGE_KEYS.chatHistory, persistedChatHistory),
             writeImportedRecord(STORAGE_KEYS.chatOrganization, {
-              groups: nextAppData.groups ?? [],
-              chatGroups: nextAppData.chatGroups ?? [],
+              groups: normalizedAppData.groups ?? [],
+              chatGroups: normalizedAppData.chatGroups ?? [],
             }),
-            writeImportedRecord(STORAGE_KEYS.userProfile, nextAppData.userProfile ?? {}),
+            writeImportedRecord(STORAGE_KEYS.userProfile, normalizedAppData.userProfile ?? {}),
             writeImportedRecord(STORAGE_KEYS.meData, {
-              masks: nextAppData.masks ?? [],
-              favorites: nextAppData.favorites ?? [],
-              worldBooks: nextAppData.worldBooks ?? [],
+              masks: normalizedAppData.masks ?? [],
+              favorites: normalizedAppData.favorites ?? [],
+              worldBooks: normalizedAppData.worldBooks ?? [],
             }),
-            writeImportedRecord(STORAGE_KEYS.moments, nextAppData.moments ?? []),
-            writeImportedRecord(STORAGE_KEYS.friendRequests, nextAppData.friendRequests ?? []),
-            writeImportedRecord(STORAGE_KEYS.callHistory, nextAppData.callHistory ?? []),
+            writeImportedRecord(STORAGE_KEYS.moments, normalizedAppData.moments ?? []),
+            writeImportedRecord(STORAGE_KEYS.friendRequests, normalizedAppData.friendRequests ?? []),
+            writeImportedRecord(STORAGE_KEYS.callHistory, normalizedAppData.callHistory ?? []),
             writeImportedRecord(STORAGE_KEYS.datingRecords, {
-              savedDates: nextAppData.savedDates ?? [],
-              collectedDates: nextAppData.collectedDates ?? [],
+              savedDates: normalizedAppData.savedDates ?? [],
+              collectedDates: normalizedAppData.collectedDates ?? [],
             }),
-            writeImportedRecord(STORAGE_KEYS.visualSettings, nextAppData.visualSettings ?? {}),
-            writeImportedRecord(STORAGE_KEYS.forumData, nextAppData.forumData ?? {}),
-            writeImportedRecord(STORAGE_KEYS.coupleSpace, nextAppData.coupleSpace ?? {}),
-            writeImportedRecord(STORAGE_KEYS.musicData, nextAppData.musicData ?? {}),
-            writeImportedRecord(STORAGE_KEYS.walletData, nextAppData.walletData ?? {}),
+            writeImportedRecord(STORAGE_KEYS.visualSettings, normalizedAppData.visualSettings ?? {}),
+            writeImportedRecord(STORAGE_KEYS.forumData, normalizedAppData.forumData ?? {}),
+            writeImportedRecord(STORAGE_KEYS.coupleSpace, normalizedAppData.coupleSpaceState ?? {}),
+            writeImportedRecord(STORAGE_KEYS.musicData, normalizedAppData.musicData ?? {}),
+            writeImportedRecord(STORAGE_KEYS.walletData, normalizedAppData.walletData ?? {}),
           ];
 
-          window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(nextAppData));
+          window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(normalizedAppData));
 
           if (source && typeof source === 'object' && 'settings' in source) {
             window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(nextSettings));
@@ -1796,8 +1827,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           const keys = Object.keys(parsed);
           
           if (parsed.characters && parsed.chatHistory && parsed.userProfile) {
-             if (setAppData) setAppData(parsed);
-             await persistImportedSnapshot(parsed, settings, parsed);
+             const normalizedImportedAppData = normalizeImportedAppData(parsed);
+             if (setAppData) setAppData(normalizedImportedAppData);
+             await persistImportedSnapshot(normalizedImportedAppData, settings, parsed);
              updatedCount = keys.length;
           } else {
             keys.forEach(key => {
@@ -1810,8 +1842,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
                 updatedCount++;
               }
             });
-            if (setAppData) setAppData(newAppData);
-            await persistImportedSnapshot(newAppData, newSettings, parsed);
+            const normalizedImportedAppData = normalizeImportedAppData(newAppData);
+            if (setAppData) setAppData(normalizedImportedAppData);
+            await persistImportedSnapshot(normalizedImportedAppData, newSettings, parsed);
           }
 
           alert(`成功导入 ${updatedCount} 个功能的数据！手机设置已恢复。`);
