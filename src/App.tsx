@@ -47,6 +47,7 @@ import {
 } from './features/app-shell/customizationHandlers';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
+import { useCoupleSpaceAutoChecks } from './features/app-shell/useCoupleSpaceAutoChecks';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   fetchSettingsModels,
@@ -119,19 +120,14 @@ import { sanitizeTransientAssetValue } from './features/persistence/sanitizeTran
 import { AddCharacterSheet } from './components/main/AddCharacterSheet';
 import { patchCharacterById, replaceCharacters, updateCharacterById, upsertCharacter } from './features/character-domain/characterMutations';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
-import { runCoupleSpaceInitiativeAutoCheck } from './services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
-import { evaluateCoupleSpaceInitiativeAutoCheckGate } from './services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
-import { applyCoupleSpaceInitiativeRunResult } from './services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
 import {
   acceptCoupleSpaceInviteState,
   createDefaultCoupleSpaceData,
   createDefaultCoupleSpaceState,
   hydratePersistedCoupleSpacePayload,
   hydrateCoupleSpaceState,
-  resolveCoupleSpaceState,
   resolveCurrentCoupleSpace,
   switchCurrentCoupleSpaceState,
-  updatePartnerCoupleSpaceState,
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
 
@@ -250,7 +246,6 @@ export default function App() {
       }
     };
   }, []);
-  const coupleSpaceAutoGateRef = React.useRef<Record<string, { lastCheckedAt: number | null; lastPartnerId: string | null }>>({});
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
   const selectedCharacter = getCharacterById(selectedCharacterId);
   const currentCoupleSpace = resolveCurrentCoupleSpace(appData.coupleSpaceState, appData.coupleSpace);
@@ -382,110 +377,14 @@ export default function App() {
 
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
-
-  useEffect(() => {
-    if (!hasHydratedStorage || activeApp === 'couple-space') {
-      return;
-    }
-
-    let cancelled = false;
-
-    const runBackgroundCoupleSpaceChecks = async () => {
-      const resolvedState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
-      const spaces = resolvedState.spacesByPartnerId || {};
-
-      for (const [partnerId, coupleSpace] of Object.entries(spaces)) {
-        const partner = getCharacterById(partnerId);
-        if (!partner) {
-          continue;
-        }
-
-        const now = Date.now();
-        const gateResult = evaluateCoupleSpaceInitiativeAutoCheckGate({
-          now,
-          partnerId,
-          previousState: coupleSpaceAutoGateRef.current[partnerId],
-        });
-        coupleSpaceAutoGateRef.current[partnerId] = gateResult.nextState;
-
-        if (!gateResult.allowed) {
-          continue;
-        }
-
-        try {
-          const result = await runCoupleSpaceInitiativeAutoCheck({
-            user: appData.userProfile,
-            partner,
-            coupleSpace,
-            chatHistory: appData.chatHistory,
-            masks: appData.masks,
-            worldBooks: appData.worldBooks,
-            appSettings: settings,
-            now,
-          });
-
-          if (cancelled) {
-            return;
-          }
-
-          const applied = applyCoupleSpaceInitiativeRunResult(
-            result.nextCoupleSpace,
-            result.runResult,
-            'auto_check',
-            now,
-          );
-
-          if (applied.nextCoupleSpace !== coupleSpace) {
-            setAppData((prev) => {
-              const next = updatePartnerCoupleSpaceState(
-                prev.coupleSpaceState,
-                prev.coupleSpace,
-                partnerId,
-                applied.nextCoupleSpace,
-              );
-              return {
-                ...prev,
-                coupleSpaceState: next.coupleSpaceState,
-                coupleSpace: next.coupleSpace,
-              };
-            });
-          }
-
-          if (applied.updatedModuleLabel) {
-            setCoupleSpaceUpdateToast({
-              id: `${partnerId}-${now}`,
-              partnerId,
-              partnerName: partner.name,
-              partnerAvatar: partner.avatar,
-              moduleLabel: applied.updatedModuleLabel,
-            });
-          }
-        } catch (error) {
-          console.error('Background couple-space auto check failed:', error);
-        }
-      }
-    };
-
-    void runBackgroundCoupleSpaceChecks();
-    const intervalId = window.setInterval(() => {
-      void runBackgroundCoupleSpaceChecks();
-    }, 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [
+  useCoupleSpaceAutoChecks({
     activeApp,
-    appData.chatHistory,
-    appData.characters,
-    appData.coupleSpace,
-    appData.coupleSpaceState,
-    appData.userProfile,
-    getCharacterById,
+    appData,
     hasHydratedStorage,
+    setAppData,
+    setCoupleSpaceUpdateToast,
     settings,
-  ]);
+  });
 
   const {
     appDialog,
