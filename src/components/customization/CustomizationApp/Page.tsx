@@ -8,6 +8,11 @@ import { usePersistentFieldActions } from '../../../features/persistence/usePers
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
+import {
+  buildFullBackupArchive,
+  isFullBackupArchive,
+  restoreFullBackupArchive,
+} from '../../../features/persistence/backupArchive';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 
@@ -1605,6 +1610,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const [activeTab, setActiveTab] = useState<'chat' | 'profile' | 'world' | 'apps'>('chat');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExportingFull, setIsExportingFull] = useState(false);
 
   const modules = [
     { id: 'characters', label: '角色配置', icon: <Users size={20} />, category: 'chat', data: appData?.characters },
@@ -1650,6 +1656,37 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const totalDataBytes = modules.reduce((sum, mod) => sum + getModuleSizeBytes(mod.data), 0);
   const totalModuleCount = modules.length;
 
+  const downloadJsonFile = (payload: unknown, fileName: string) => {
+    const dataStr = JSON.stringify(payload, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportFull = async () => {
+    try {
+      setIsExportingFull(true);
+      const archive = await buildFullBackupArchive({
+        appData,
+        settings,
+        visualSettings: appData?.visualSettings,
+        characters: appData?.characters,
+        userProfile: appData?.userProfile,
+      });
+      downloadJsonFile(archive, `full_backup_${Date.now()}.json`);
+      alert(`全量备份导出成功！已打包 ${archive.assets.length} 个本地资源。`);
+    } catch (error) {
+      console.error('Failed to export full backup archive', error);
+      alert('全量备份导出失败，请稍后重试。');
+    } finally {
+      setIsExportingFull(false);
+    }
+  };
+
   const handleExportSelected = () => {
     if (selectedModules.length === 0) {
       alert('请先选择要备份的功能');
@@ -1664,14 +1701,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       }
     });
 
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup_partial_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadJsonFile(exportData, `backup_partial_${Date.now()}.json`);
     alert('备份导出成功！');
   };
 
@@ -1687,6 +1717,13 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         const parsed = JSON.parse(content);
         
         if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
+          if (isFullBackupArchive(parsed)) {
+            await restoreFullBackupArchive(parsed);
+            alert(`完整备份恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
+            window.location.reload();
+            return;
+          }
+
           let newAppData = { ...appData };
           let newSettings = { ...settings };
           let updatedCount = 0;
@@ -1776,29 +1813,11 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
           <button 
-            onClick={() => {
-              const allIds = modules.map(m => m.id);
-              setSelectedModules(allIds);
-              setTimeout(() => {
-                const exportData: any = {};
-                allIds.forEach(id => {
-                  const mod = modules.find(m => m.id === id);
-                  if (mod) exportData[id] = mod.data;
-                });
-                const dataStr = JSON.stringify(exportData, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `full_backup_${Date.now()}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-                alert('全量备份导出成功！');
-              }, 100);
-            }}
+            onClick={() => void handleExportFull()}
+            disabled={isExportingFull}
             className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
           >
-            <Database size={24} />
+            {isExportingFull ? <RefreshCw size={24} className="animate-spin" /> : <Database size={24} />}
             <span className="text-[14px] font-bold">全量备份</span>
           </button>
           <button 
