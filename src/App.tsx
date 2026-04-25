@@ -55,6 +55,7 @@ import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
 import { AppSelect } from './components/shared/AppSelect';
+import { SettingsApp as SettingsAppScreen } from './components/settings/SettingsApp';
 import { streamTextWithConfig } from './services/ai/runtimeClient';
 import { buildChatPrompt } from './services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from './services/ai/prompts/builders/buildSummaryPrompt';
@@ -1111,10 +1112,11 @@ export default function App() {
             />
           )}
           {activeApp === 'settings' && (
-            <SettingsApp 
+            <SettingsAppScreen 
               key="settings" 
               onBack={() => setActiveApp('home')} 
               settings={settings}
+              defaultConfig={DEFAULT_CONFIG}
               setSettings={(s) => {
                 setSettings(s);
                 localStorage.setItem('ai_phone_settings', JSON.stringify(s));
