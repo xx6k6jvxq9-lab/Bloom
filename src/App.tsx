@@ -13,6 +13,13 @@ import { MainApp } from './components/main/MainAppShell/Page';
 import { MomentsApp } from './components/moments/Page';
 import { ChatSessionMount } from './features/chat-session/ChatSessionMount';
 import { createCharacterDirectory } from './features/character-domain/useCharacterDirectory';
+import {
+  DEFAULT_DESKTOP_WALLPAPER,
+  DEFAULT_HOME_ICONS,
+  DEFAULT_HOME_WIDGETS,
+  DEFAULT_NAV_BAR_BACKGROUND,
+  DEFAULT_ZHOU_JIBAI_AVATAR,
+} from './features/app-shell/defaultAppConstants';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
 import { DreamAppPage } from './components/dream/Page';
 import { DatingModal } from './components/dating/DatingModal';
@@ -201,9 +208,6 @@ const formatMessagePreview = (text: string | undefined): string => {
   return text;
 };
 
-const DEFAULT_NAV_BAR_BACKGROUND = '';
-const DEFAULT_ZHOU_JIBAI_AVATAR = 'https://tu.tuhenmei.com/tu2026/2025120917/mklyjkctwie22637.jpeg';
-
 const DEFAULT_CHARACTERS: Character[] = [
   {
     id: 'char-2',
@@ -294,42 +298,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   showChatTimeDividers: true,
   showChatMessageTime: true,
 };
-
-const DEFAULT_DESKTOP_WALLPAPER = 'https://tse3.mm.bing.net/th/id/OIP.GdwwXxbY6ullokoEq_KO2gHaNK?rs=1&pid=ImgDetMain&o=7&rm=3';
-
-const DEFAULT_HOME_ICONS: DesktopIconConfig[] = [
-  { id: 'chat', slotId: 'slot-1-2' },
-  { id: 'settings', slotId: 'slot-1-3' },
-  { id: 'worldbook', slotId: 'slot-2-2' },
-  { id: 'monitor', slotId: 'slot-2-3' },
-  { id: 'couple-space', slotId: 'slot-3-0' },
-  { id: 'perception', slotId: 'slot-3-1' },
-  { id: 'music', slotId: 'slot-4-0' },
-  { id: 'forum', slotId: 'slot-4-1' },
-];
-
-const DEFAULT_HOME_WIDGETS: WidgetConfig[] = [
-  {
-    id: 'blankCardA',
-    type: 'blank',
-    slotId: 'slot-1-0',
-    w: 2,
-    h: 2,
-    background: 'https://tu.tuhenmei.com/tu2026/2025120917/qi35sbin1js22635.jpeg',
-    borderRadius: 32,
-    opacity: 1,
-  },
-  {
-    id: 'blankCardB',
-    type: 'blank',
-    slotId: 'slot-3-2',
-    w: 2,
-    h: 2,
-    background: 'https://tu.tuhenmei.com/uploads/allimg/2021090514/2vzjil1xqkt.jpg',
-    borderRadius: 32,
-    opacity: 1,
-  },
-];
 
 const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
 const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
