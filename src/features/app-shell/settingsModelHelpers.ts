@@ -1,3 +1,5 @@
+import type { ApiConfig } from '../../types';
+
 export const extractModelNamesFromResponse = (payload: any): string[] => {
   const rawList = payload?.data || payload?.models || payload;
 
@@ -104,4 +106,51 @@ export const filterAvailableModels = (
   );
 
   return [...startsWithMatches, ...includesMatches];
+};
+export const testSettingsConnection = async (
+  editForm: ApiConfig,
+): Promise<{ normalizedBaseUrl?: string }> => {
+  const isGemini =
+    editForm.provider === 'Google Gemini'
+    || (!editForm.baseUrl && editForm.provider === '自定义 (Custom)');
+
+  if (isGemini) {
+    const key = editForm.apiKey || process.env.GEMINI_API_KEY;
+    if (!key) throw new Error('需要 API Key');
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+    if (!res.ok) throw new Error('连接失败，请检查 API Key');
+    return {};
+  }
+
+  if (!editForm.baseUrl) throw new Error('请先填写 Base URL');
+  let baseUrl = editForm.baseUrl.replace(/\/$/, '');
+  const headers: HeadersInit = { Accept: 'application/json' };
+  if (editForm.apiKey) {
+    headers.Authorization = `Bearer ${editForm.apiKey}`;
+  }
+
+  let res = await fetch(`${baseUrl}/models`, { headers });
+  let contentType = res.headers.get('content-type');
+
+  if ((!res.ok || (contentType && contentType.includes('text/html'))) && !baseUrl.endsWith('/v1')) {
+    const retryUrl = `${baseUrl}/v1/models`;
+    try {
+      const retryRes = await fetch(retryUrl, { headers });
+      const retryContentType = retryRes.headers.get('content-type');
+      if (retryRes.ok && retryContentType && retryContentType.includes('application/json')) {
+        res = retryRes;
+        baseUrl = `${baseUrl}/v1`;
+        contentType = retryContentType;
+      }
+    } catch {
+      // Ignore retry error and keep the original failure path.
+    }
+  }
+
+  if (!res.ok) throw new Error('连接失败，请检查 Base URL 和 API Key');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('服务器返回了非 JSON 格式的数据，请检查 Base URL 是否正确。');
+  }
+
+  return { normalizedBaseUrl: baseUrl !== editForm.baseUrl ? baseUrl : undefined };
 };

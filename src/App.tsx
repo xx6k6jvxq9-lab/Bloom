@@ -37,6 +37,7 @@ import {
   fetchAllPagedModelNames,
   extractModelNamesFromResponse,
   resolveNextModelsPageUrl,
+  testSettingsConnection,
 } from './features/app-shell/settingsModelHelpers';
 import {
   loadCoupleSpaceApp,
@@ -2180,50 +2181,11 @@ function SettingsApp({
   const handleTestConnection = async () => {
     setIsTesting(true);
     try {
-      const isGemini = editForm.provider === 'Google Gemini' || (!editForm.baseUrl && editForm.provider === '自定义 (Custom)');
-      
-      if (isGemini) {
-        const key = editForm.apiKey || process.env.GEMINI_API_KEY;
-        if (!key) throw new Error('需要 API Key');
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-        if (!res.ok) throw new Error('连接失败，请检查 API Key');
-        alert('连接成功！');
-      } else {
-        if (!editForm.baseUrl) throw new Error('请先填写 Base URL');
-        let baseUrl = editForm.baseUrl.replace(/\/$/, '');
-        const headers: HeadersInit = { 'Accept': 'application/json' };
-        if (editForm.apiKey) {
-          headers['Authorization'] = `Bearer ${editForm.apiKey}`;
-        }
-        
-        let res = await fetch(`${baseUrl}/models`, { headers });
-        let contentType = res.headers.get('content-type');
-
-        // Auto-fix: If HTML response and URL doesn't end with /v1, try appending it
-        if ((!res.ok || (contentType && contentType.includes('text/html'))) && !baseUrl.endsWith('/v1')) {
-          const retryUrl = `${baseUrl}/v1/models`;
-          try {
-            const retryRes = await fetch(retryUrl, { headers });
-            const retryContentType = retryRes.headers.get('content-type');
-            if (retryRes.ok && retryContentType && retryContentType.includes('application/json')) {
-              res = retryRes;
-              baseUrl = `${baseUrl}/v1`;
-              setEditForm(prev => ({ ...prev, baseUrl: baseUrl }));
-              contentType = retryContentType;
-            }
-          } catch (e) {
-            // Ignore retry error
-          }
-        }
-
-        if (!res.ok) throw new Error('连接失败，请检查 Base URL 和 API Key');
-        
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('服务器返回了非 JSON 格式的数据，请检查 Base URL 是否正确。');
-        }
-        
-        alert('连接成功！');
+      const result = await testSettingsConnection(editForm);
+      if (result.normalizedBaseUrl) {
+        setEditForm(prev => ({ ...prev, baseUrl: result.normalizedBaseUrl! }));
       }
+      alert('连接成功！');
     } catch (error: any) {
       alert(`测试连接失败: ${error.message}`);
     } finally {
