@@ -20,6 +20,15 @@ import {
   DEFAULT_NAV_BAR_BACKGROUND,
   DEFAULT_ZHOU_JIBAI_AVATAR,
 } from './features/app-shell/defaultAppConstants';
+import {
+  loadCoupleSpaceApp,
+  loadCustomizationApp,
+  loadForumApp,
+  loadMonitorApp,
+  loadMusicApp,
+  loadPerceptionView,
+  loadWalletApp,
+} from './features/app-shell/lazyApps';
 import { ChatSettingsPanel } from './components/chat/ChatSettingsPanel';
 import { DreamAppPage } from './components/dream/Page';
 import { DatingModal } from './components/dating/DatingModal';
@@ -86,18 +95,6 @@ import {
   updatePartnerCoupleSpaceState,
   updateCurrentCoupleSpaceState,
 } from './features/persistence/coupleSpaceStore';
-
-const loadMonitorApp = () =>
-  import('./components/monitor/MonitorApp/Page').then((module) => ({ default: module.MonitorApp }));
-const loadCustomizationApp = () =>
-  import('./components/customization/CustomizationApp/Page').then((module) => ({ default: module.CustomizationApp }));
-const loadCoupleSpaceApp = () =>
-  import('./components/couple-space/CoupleSpaceApp/Page').then((module) => ({ default: module.CoupleSpaceApp }));
-const loadPerceptionView = () =>
-  import('./components/couple-space/PerceptionView').then((module) => ({ default: module.PerceptionView }));
-const loadMusicApp = () => import('./components/media/MusicApp');
-const loadForumApp = () => import('./components/social/ForumApp/Page');
-const loadWalletApp = () => import('./components/wallet/WalletApp/Page');
 
 const PANEL_PRELOAD_LOADERS: Array<() => Promise<unknown>> = [];
 
