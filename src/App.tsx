@@ -38,6 +38,7 @@ import type {
   UserProfile,
 } from './features/app-shell/appShellTypes';
 import { createAppShellHandlers } from './features/app-shell/appShellHandlers';
+import { handleCustomizationImportData } from './features/app-shell/customizationHandlers';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   fetchSettingsModels,
@@ -943,28 +944,14 @@ export default function App() {
                   a.download = 'ai_phone_backup.json';
                   a.click();
                 }}
-                onImportData={(data) => {
-                  try {
-                    const parsed = JSON.parse(data);
-                    setAppData({
-                      ...parsed,
-                      characters: sanitizePersistedCharactersFromStore(
-                        parsed.characters,
-                        DEFAULT_CHARACTERS,
-                        DEFAULT_ZHOU_JIBAI_AVATAR,
-                      ),
-                      userProfile: parsed.userProfile
-                        ? {
-                            ...parsed.userProfile,
-                            avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
-                          }
-                        : parsed.userProfile,
-                    });
-                    alert('导入成功！');
-                  } catch (e) {
-                    alert('导入失败，请检查数据格式。');
-                  }
-                }}
+                onImportData={(data) =>
+                  handleCustomizationImportData({
+                    data,
+                    defaultCharacters: DEFAULT_CHARACTERS,
+                    defaultZhouJibaiAvatar: DEFAULT_ZHOU_JIBAI_AVATAR,
+                    setAppData,
+                  })
+                }
                 appData={appData}
                 setAppData={setAppData}
                 settings={settings}
