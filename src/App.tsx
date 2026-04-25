@@ -140,23 +140,6 @@ type MomentPublishToast = {
   preview: string;
 };
 
-function ResolvedAssetImage({
-  value,
-  alt,
-  className,
-}: {
-  value?: string | null;
-  alt?: string;
-  className: string;
-}) {
-  const { resolvedUrl } = useResolvedPersistentValue(value);
-  const src = getDisplayableAssetValue(value, resolvedUrl);
-
-  if (!src) return null;
-
-  return <img src={src} alt={alt} className={className} />;
-}
-
 const formatMessagePreview = (text: string | undefined): string => {
   if (!text) return '';
   const trimmedText = text.trim();
