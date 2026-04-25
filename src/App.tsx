@@ -39,7 +39,12 @@ import type {
   UserProfile,
 } from './features/app-shell/appShellTypes';
 import { createAppShellHandlers } from './features/app-shell/appShellHandlers';
-import { handleCustomizationImportData } from './features/app-shell/customizationHandlers';
+import {
+  handleCustomizationExportData,
+  handleCustomizationImportData,
+  handleCustomizationResetData,
+  handleCustomizationUpdateAppData,
+} from './features/app-shell/customizationHandlers';
 import { formatMessagePreview } from './features/app-shell/formatMessagePreview';
 import {
   fetchSettingsModels,
@@ -91,7 +96,7 @@ import {
 } from './services/chat/messageActions';
 import { APP_DIALOG_EVENT, extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm, type AppDialogRequest } from './utils';
 import { STORAGE_KEYS } from './features/persistence/storageKeys';
-import { loadCharacters, resetCharacters } from './features/persistence/charactersStore';
+import { loadCharacters } from './features/persistence/charactersStore';
 import { bootstrapLocalAppState } from './features/persistence/bootstrapLocalAppState';
 import {
   DEFAULT_MOMENTS,
@@ -102,7 +107,7 @@ import {
   sanitizePersistedMoments as sanitizePersistedMomentsFromStore,
 } from './features/persistence/appDataSanitizers';
 import { usePersistedCharactersBridge } from './features/persistence/usePersistedCharactersBridge';
-import { clearPersistedVisualSettings, loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
+import { loadPersistedVisualSettings, persistVisualSettings } from './features/persistence/visualSettingsStore';
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
@@ -930,21 +935,8 @@ export default function App() {
                 visualSettings={appData.visualSettings}
                 setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
                 onBack={() => setActiveApp('home')}
-                onResetData={() => {
-                  localStorage.removeItem(STORAGE_KEYS.appData);
-                  resetCharacters();
-                  clearPersistedVisualSettings();
-                  window.location.reload();
-                }}
-                onExportData={() => {
-                  const data = JSON.stringify(appData);
-                  const blob = new Blob([data], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'ai_phone_backup.json';
-                  a.click();
-                }}
+                onResetData={handleCustomizationResetData}
+                onExportData={() => handleCustomizationExportData(appData)}
                 onImportData={(data) =>
                   handleCustomizationImportData({
                     data,
@@ -1008,7 +1000,7 @@ export default function App() {
             <Suspense fallback={<AppPanelFallbackPrimitive label="论坛" />}>
               <ForumApp
                 appData={appData}
-                onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
+                onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
                 onClose={() => setActiveApp('home')}
                 onOpenChat={(characterId) => {
                   setSelectedCharacterId(characterId);
@@ -1022,7 +1014,7 @@ export default function App() {
             <Suspense fallback={<AppPanelFallbackPrimitive label="钱包" />}>
               <WalletApp
                 appData={appData}
-                onUpdateAppData={(newData) => setAppData(prev => ({ ...prev, ...newData }))}
+                onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
                 onClose={() => setActiveApp('home')}
               />
             </Suspense>

@@ -1,6 +1,9 @@
 import type { AppData } from '../../types';
 import { sanitizePersistedCharacters as sanitizePersistedCharactersFromStore } from '../persistence/appDataSanitizers';
 import { sanitizeTransientAssetValue } from '../persistence/sanitizeTransientAssetValue';
+import { STORAGE_KEYS } from '../persistence/storageKeys';
+import { resetCharacters } from '../persistence/charactersStore';
+import { clearPersistedVisualSettings } from '../persistence/visualSettingsStore';
 
 type HandleCustomizationImportDataParams = {
   data: string;
@@ -35,4 +38,28 @@ export function handleCustomizationImportData({
   } catch {
     alert('导入失败，请检查数据格式。');
   }
+}
+
+export function handleCustomizationResetData() {
+  localStorage.removeItem(STORAGE_KEYS.appData);
+  resetCharacters();
+  clearPersistedVisualSettings();
+  window.location.reload();
+}
+
+export function handleCustomizationExportData(appData: AppData) {
+  const data = JSON.stringify(appData);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'ai_phone_backup.json';
+  anchor.click();
+}
+
+export function handleCustomizationUpdateAppData(
+  newData: Partial<AppData>,
+  setAppData: React.Dispatch<React.SetStateAction<AppData>>,
+) {
+  setAppData((prev) => ({ ...prev, ...newData }));
 }
