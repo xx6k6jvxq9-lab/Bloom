@@ -42,27 +42,38 @@ export function useAppPersistence({
     let cancelled = false;
 
     const runBootstrap = async () => {
-      const bootstrapped = await bootstrapLocalAppState({
-        createDefaultAppData,
-        defaultCharacters,
-        defaultConfig,
-        defaultDesktopWallpaper,
-        defaultSettings,
-        defaultUser,
-        defaultZhouJibaiAvatar,
-      });
+      try {
+        const bootstrapped = await bootstrapLocalAppState({
+          createDefaultAppData,
+          defaultCharacters,
+          defaultConfig,
+          defaultDesktopWallpaper,
+          defaultSettings,
+          defaultUser,
+          defaultZhouJibaiAvatar,
+        });
 
-      if (cancelled) {
-        return;
+        if (cancelled) {
+          return;
+        }
+
+        setSettings(bootstrapped.settings);
+        setAppData(bootstrapped.appData);
+        if (bootstrapped.migratedSettings) {
+          void persistSettings(bootstrapped.migratedSettings);
+        }
+      } catch (error) {
+        console.error('[useAppPersistence] Failed to bootstrap persisted state', error);
+        if (cancelled) {
+          return;
+        }
+        setSettings(defaultSettings);
+        setAppData(defaultAppData);
+      } finally {
+        if (!cancelled) {
+          setHasHydratedStorage(true);
+        }
       }
-
-      setSettings(bootstrapped.settings);
-      setAppData(bootstrapped.appData);
-      if (bootstrapped.migratedSettings) {
-        void persistSettings(bootstrapped.migratedSettings);
-      }
-
-      setHasHydratedStorage(true);
     };
 
     void runBootstrap();

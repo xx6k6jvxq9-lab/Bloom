@@ -7,6 +7,7 @@ import {
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 const INDEXED_DB_OPEN_TIMEOUT_MS = 8000;
+let persistenceDbUnavailableError: Error | null = null;
 
 function ensurePersistenceStores(db: IDBDatabase) {
   if (!db.objectStoreNames.contains(PERSISTENCE_ASSETS_STORE)) {
@@ -83,10 +84,17 @@ export function openPersistenceDb(): Promise<IDBDatabase> {
     return Promise.reject(new Error('Current browser does not support IndexedDB'));
   }
 
+  if (persistenceDbUnavailableError) {
+    return Promise.reject(persistenceDbUnavailableError);
+  }
+
   if (!dbPromise) {
     dbPromise = openPersistenceDbWithRecovery().catch((error) => {
+      persistenceDbUnavailableError = error instanceof Error
+        ? error
+        : new Error(typeof error === 'string' ? error : 'IndexedDB is unavailable');
       dbPromise = null;
-      throw error;
+      throw persistenceDbUnavailableError;
     });
   }
 
