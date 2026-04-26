@@ -154,6 +154,7 @@ export default function App() {
   });
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
+  const isStorageReady = hasHydratedStorage;
 
   return (
     <div
@@ -202,42 +203,52 @@ export default function App() {
         )}
         
         {/* Screen Content */}
-        <AppScreenContent
-          activeApp={activeApp}
-          activeConfig={activeConfig}
-          activeTab={activeTab}
-          appData={appData}
-          audioRef={audioRef}
-          characterMomentsBackApp={characterMomentsBackApp}
-          couplePartnerCharacter={couplePartnerCharacter}
-          coupleSpaceUpdateToast={coupleSpaceUpdateToast}
-          currentCoupleSpace={currentCoupleSpace}
-          handleAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
-          handleAddCharacter={handleAddCharacter}
-          handleMergeCharacter={handleMergeCharacter}
-          handleOpenApp={handleOpenApp}
-          handleOpenChat={handleOpenChat}
-          handlePatchCharacterById={handlePatchCharacterById}
-          handleUpdateCurrentCoupleSpace={handleUpdateCurrentCoupleSpace}
-          handleUpsertCharacter={handleUpsertCharacter}
-          momentPublishToast={momentPublishToast}
-          selectedCharacter={selectedCharacter}
-          selectedCharacterId={selectedCharacterId}
-          selectedForumPostId={selectedForumPostId}
-          selectedGroupId={selectedGroupId}
-          setActiveApp={setActiveApp}
-          setActiveTab={setActiveTab}
-          setAppData={setAppData}
-          setCharacterMomentsBackApp={setCharacterMomentsBackApp}
-          setCoupleSpaceUpdateToast={setCoupleSpaceUpdateToast}
-          setMomentPublishToast={setMomentPublishToast}
-          setSelectedCharacterId={setSelectedCharacterId}
-          setSelectedForumPostId={setSelectedForumPostId}
-          setSelectedGroupId={setSelectedGroupId}
-          setSettings={setSettings}
-          setStatusBarVisible={setStatusBarVisible}
-          settings={settings}
-        />
+        {isStorageReady ? (
+          <AppScreenContent
+            activeApp={activeApp}
+            activeConfig={activeConfig}
+            activeTab={activeTab}
+            appData={appData}
+            audioRef={audioRef}
+            characterMomentsBackApp={characterMomentsBackApp}
+            couplePartnerCharacter={couplePartnerCharacter}
+            coupleSpaceUpdateToast={coupleSpaceUpdateToast}
+            currentCoupleSpace={currentCoupleSpace}
+            handleAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
+            handleAddCharacter={handleAddCharacter}
+            handleMergeCharacter={handleMergeCharacter}
+            handleOpenApp={handleOpenApp}
+            handleOpenChat={handleOpenChat}
+            handlePatchCharacterById={handlePatchCharacterById}
+            handleUpdateCurrentCoupleSpace={handleUpdateCurrentCoupleSpace}
+            handleUpsertCharacter={handleUpsertCharacter}
+            momentPublishToast={momentPublishToast}
+            selectedCharacter={selectedCharacter}
+            selectedCharacterId={selectedCharacterId}
+            selectedForumPostId={selectedForumPostId}
+            selectedGroupId={selectedGroupId}
+            setActiveApp={setActiveApp}
+            setActiveTab={setActiveTab}
+            setAppData={setAppData}
+            setCharacterMomentsBackApp={setCharacterMomentsBackApp}
+            setCoupleSpaceUpdateToast={setCoupleSpaceUpdateToast}
+            setMomentPublishToast={setMomentPublishToast}
+            setSelectedCharacterId={setSelectedCharacterId}
+            setSelectedForumPostId={setSelectedForumPostId}
+            setSelectedGroupId={setSelectedGroupId}
+            setSettings={setSettings}
+            setStatusBarVisible={setStatusBarVisible}
+            settings={settings}
+          />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center bg-zinc-50 px-8 text-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
+            <div className="mt-5 text-[16px] font-semibold text-zinc-900">正在读取本地数据</div>
+            <div className="mt-2 text-[13px] leading-6 text-zinc-500">
+              请稍等片刻，等历史角色和聊天记录恢复后再继续操作。
+            </div>
+          </div>
+        )}
 
         <AnimatePresence>
           {appDialog && (

@@ -21,6 +21,6 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const PERSISTENCE_DB_NAME = 'app-persistence-db';
-export const PERSISTENCE_DB_VERSION = 2;
+export const PERSISTENCE_DB_VERSION = 4;
 export const PERSISTENCE_ASSETS_STORE = 'assets';
 export const PERSISTENCE_JSON_STORE = 'json';

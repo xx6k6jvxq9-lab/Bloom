@@ -827,7 +827,6 @@ export function CharacterMomentsProfile({
           )}
         </div>
       </div>
-      <WechatBindModal character={character} open={wechatModalOpen} onClose={() => setWechatModalOpen(false)} />
     </motion.div>
   );
 }

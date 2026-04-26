@@ -1,4 +1,3 @@
-import type { AppData } from '../../types';
 import type { AppData, ForumData, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
 import {

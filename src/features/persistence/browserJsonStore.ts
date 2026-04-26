@@ -1,4 +1,5 @@
-import { PERSISTENCE_DB_NAME, PERSISTENCE_DB_VERSION, PERSISTENCE_JSON_STORE } from './storageKeys';
+import { PERSISTENCE_JSON_STORE } from './storageKeys';
+import { openPersistenceDb } from './persistenceDb';
 
 type JsonRecord = {
   key: string;
@@ -6,37 +7,11 @@ type JsonRecord = {
   updatedAt: number;
 };
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (typeof indexedDB === 'undefined') {
-    return Promise.reject(new Error('Current browser does not support IndexedDB'));
-  }
-
-  if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(PERSISTENCE_DB_NAME, PERSISTENCE_DB_VERSION);
-
-      request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'));
-      request.onsuccess = () => resolve(request.result);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(PERSISTENCE_JSON_STORE)) {
-          const store = db.createObjectStore(PERSISTENCE_JSON_STORE, { keyPath: 'key' });
-          store.createIndex('updatedAt', 'updatedAt', { unique: false });
-        }
-      };
-    });
-  }
-
-  return dbPromise;
-}
-
 function runTransaction<T>(
   mode: IDBTransactionMode,
   executor: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
 ): Promise<T> {
-  return openDb().then(
+  return openPersistenceDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
         const tx = db.transaction(PERSISTENCE_JSON_STORE, mode);

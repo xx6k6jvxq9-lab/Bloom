@@ -1,5 +1,5 @@
 import type { AppData, AppSettings } from '../../types';
-import { listAssets, putAsset, type StoredAssetRecord } from './browserDb';
+import { clearAssets, listAssets, putAsset, type StoredAssetRecord } from './browserDb';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
