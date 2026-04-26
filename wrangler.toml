@@ -6,7 +6,3 @@ pages_build_output_dir = "dist"
 name = "WECHAT_BRIDGE_DO"
 class_name = "WechatBridgeDurableObject"
 script_name = "bloom-wechat-bridge-do"
-
-[[kv_namespaces]]
-binding = "WECHAT_BRIDGE_KV"
-id = "replace-with-your-kv-namespace-id"
