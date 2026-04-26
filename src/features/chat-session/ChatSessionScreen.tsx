@@ -37,6 +37,7 @@ import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
+import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from './InnerVoiceUnlockCard';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
 import { getMessageMainText } from '../../utils';
@@ -388,7 +389,7 @@ export function ChatSessionScreen({
   savedDates?: DateSession[];
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -396,6 +397,7 @@ export function ChatSessionScreen({
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
+  const [activeInnerVoiceIndex, setActiveInnerVoiceIndex] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAvatarLibrary, setShowAvatarLibrary] = useState(false);
   const [showFunPanel, setShowFunPanel] = useState(false);
@@ -604,6 +606,10 @@ export function ChatSessionScreen({
   const showManualReplyButton = !character.autoReplyEnabled;
   const canUseManualSpeakButton = !isLoading;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
+  const activeInnerVoiceMessage = activeInnerVoiceIndex !== null ? history[activeInnerVoiceIndex] : null;
+  const activeInnerVoiceCard = activeInnerVoiceMessage?.isInnerVoice && activeInnerVoiceMessage.role === 'model'
+    ? parseInnerVoiceCardContent(sanitizePipeMarkers(activeInnerVoiceMessage.text, '\n'))
+    : null;
   const sendCurrentText = useCallback(async () => {
     const speechText = input.trim();
     const actionText = actionInput.trim();
@@ -1088,6 +1094,47 @@ export function ChatSessionScreen({
     closeContextMenu();
   };
 
+  const openInnerVoiceCard = (messageIndex: number) => {
+    setActiveInnerVoiceIndex(messageIndex);
+  };
+
+  const closeInnerVoiceCard = () => {
+    setActiveInnerVoiceIndex(null);
+  };
+
+  const shareInnerVoiceToMoment = (message: ChatMessage) => {
+    if (!onPublishMoment) {
+      return;
+    }
+
+    const parsedCard = parseInnerVoiceCardContent(sanitizePipeMarkers(message.text, '\n'));
+    const content = [
+      parsedCard.headline,
+      '',
+      parsedCard.body,
+      parsedCard.ps ? `P.S. ${parsedCard.ps}` : '',
+    ].filter(Boolean).join('\n\n');
+
+    onPublishMoment({
+      authorId: character.id,
+      content,
+      isCollected: !!message.isFavorited,
+      sourceChatMessage: {
+        characterId: character.id,
+        timestamp: message.timestamp,
+      },
+      imageCard: {
+        title: `${character.name} 的心声`,
+        description: parsedCard.body.slice(0, 80),
+        theme: 'note',
+        layout: 'inner-voice',
+        overlayText: parsedCard.headline.split('\n')[0] || '心声',
+      },
+    });
+
+    setActiveInnerVoiceIndex(null);
+  };
+
   const canSetImageAsCharacterAvatar = !!(
     contextMenuMessage
     && contextMenuMessage.role === 'user'
@@ -1101,25 +1148,14 @@ export function ChatSessionScreen({
       return;
     }
 
-    const avatarPatch = { avatar: contextMenuMessage.imageUrl };
-    if (onPatchCharacter) {
-      onPatchCharacter(avatarPatch);
-    } else {
-      onUpdateCharacter({
-        ...character,
-        ...avatarPatch,
-      });
-    }
-
-    setHistory([
-      ...history,
-      {
-        role: 'model',
-        text: `我先换上你刚发的这张头像。要是你之后还想给我换新的，再发我就行。`,
-        timestamp: Date.now(),
-      },
-    ]);
     closeContextMenu();
+
+    void handleSend({
+      promptText: '[sent an image]',
+      userText: '\u628a\u8fd9\u5f20\u6362\u6210\u4f60\u7684\u5934\u50cf\u5427',
+      imageUrl: contextMenuMessage.imageUrl,
+      forceReply: true,
+    });
   };
 
   const deleteSelectedMessages = () => {
@@ -1442,6 +1478,8 @@ export function ChatSessionScreen({
   }
 
   const chatFooterLift = keyboardInset;
+  const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const emptyChatPrompt = character.openingRemark?.trim() || character.signature?.trim() || `和 ${character.name} 说点什么吧`;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: chatFooterLift > 0 ? `calc(0.55rem + ${chatFooterLift}px)` : '0.55rem',
     ...footerStyleObj,
@@ -1565,10 +1603,28 @@ export function ChatSessionScreen({
       )}
 
       {/* Messages */}
-      <div className={layoutConfig.messageListClass} style={chatMessageListStyle}>
+      <div
+        className={`${layoutConfig.messageListClass}${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
+        style={chatMessageListStyle}
+      >
         {error && (
           <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
             {error}
+          </div>
+        )}
+        {!hasVisibleMessages && (
+          <div className="flex justify-start pb-2">
+            <div className="flex items-end gap-2.5">
+              <PersistentImage
+                value={character.avatar}
+                alt={character.name}
+                className="mt-0.5 h-8 w-8 shrink-0 rounded-full border border-zinc-200/60 object-cover bg-zinc-100"
+              />
+              <div className="max-w-[82%] rounded-2xl rounded-tl-md border border-zinc-200 bg-white/92 px-4 py-3 text-zinc-800 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-6">{emptyChatPrompt}</p>
+                <div className="mt-2 text-[10px] text-zinc-400">开始和 TA 对话</div>
+              </div>
+            </div>
           </div>
         )}
         {showMemoryWindowHint && (
@@ -2139,76 +2195,101 @@ export function ChatSessionScreen({
                               </div>
                             )}
 
-                            {msg.isInnerVoice && (
-                              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                                <div 
-                                  onClick={(e) => {
-                                    if (multiSelectMode) {
-                                      handleMessageClick(e, i);
-                                      return;
-                                    }
+                            {msg.isInnerVoice && (() => {
+                              const parsedCard = parseInnerVoiceCardContent(sanitizePipeMarkers(msg.text, '\n'));
+                              const teaserLines = parsedCard.headline.split('\n').filter(Boolean).slice(0, 2);
 
-                                    if (msg.role === 'user' && !isLoading) {
-                                      sendInnerVoiceProbe();
-                                    }
-                                  }}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleMessageClick(e, i);
-                                  }}
-                                  className={`chat-inner-voice-card inline-block rounded-[24px] overflow-hidden shadow-sm border cursor-pointer hover:opacity-95 transition-all ${
-                                    msg.role === 'user'
-                                      ? 'w-[min(66vw,18rem)] max-w-[min(66vw,18rem)]'
-                                      : 'max-w-[min(82vw,24rem)]'
-                                  } ${
-                                    msg.role === 'user' 
-                                      ? 'bg-white border-zinc-200' 
-                                      : 'bg-rose-50/95 border-rose-100'
-                                  }`}
-                                  aria-disabled={msg.role === 'user' && isLoading}
-                                >
-                                  {msg.role === 'user' ? (
-                                    <>
-                                      <div className="px-3.5 py-3.5 flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center shrink-0">
-                                          <Heart size={19} fill="currentColor" />
+                              return (
+                                <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                  <div 
+                                    onClick={(e) => {
+                                      if (multiSelectMode) {
+                                        handleMessageClick(e, i);
+                                        return;
+                                      }
+
+                                      if (msg.role === 'model') {
+                                        openInnerVoiceCard(i);
+                                        return;
+                                      }
+
+                                      handleMessageClick(e, i);
+                                    }}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      handleMessageClick(e, i);
+                                    }}
+                                    className={`chat-inner-voice-card inline-block overflow-hidden border cursor-pointer transition-all hover:opacity-95 ${
+                                      msg.role === 'user'
+                                        ? 'w-[min(66vw,18rem)] max-w-[min(66vw,18rem)] rounded-[24px] bg-white border-zinc-200 shadow-sm'
+                                        : 'w-[min(72vw,18.5rem)] max-w-[min(72vw,18.5rem)] rounded-[22px] border-[rgba(200,120,128,0.14)] bg-[#FAF8F4] shadow-[0_2px_6px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]'
+                                    }`}
+                                    aria-disabled={msg.role === 'user' && isLoading}
+                                  >
+                                    {msg.role === 'user' ? (
+                                      <>
+                                        <div className="px-3.5 py-3.5 flex items-center gap-3">
+                                          <div className="w-10 h-10 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center shrink-0">
+                                            <Heart size={19} fill="currentColor" />
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="text-sm font-bold text-zinc-900 truncate">{'倾听心声'}</span>
+                                            <span className="text-[10px] text-zinc-500 truncate">{'正在感知对方此刻藏起来的话...'}</span>
+                                          </div>
                                         </div>
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="text-sm font-bold text-zinc-900 truncate">倾听心声</span>
-                                          <span className="text-[10px] text-zinc-500 truncate">正在感知对方的内心世界...</span>
+                                        <div className="px-3.5 py-2.5 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                                          <span className="text-[10px] text-zinc-400">{'道具使用中'}</span>
+                                          <ChevronRight size={12} className="text-zinc-400" />
                                         </div>
-                                      </div>
-                                      <div className="px-3.5 py-2.5 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-400">道具使用</span>
-                                        <ChevronRight size={12} className="text-zinc-400" />
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <div className="px-5 py-[18px] flex flex-col gap-3">
-                                      <div className="flex items-center gap-2 text-rose-500/90">
-                                        <Heart size={14} fill="currentColor" />
-                                        <span className="text-[10px] font-bold tracking-wider">对方的心声</span>
-                                      </div>
-                                      <p className="text-[14.5px] text-rose-950/85 leading-7 italic font-medium whitespace-pre-wrap break-normal">
-                                        {sanitizePipeMarkers(msg.text, '\n')}
-                                      </p>
-                                      {msg.translation?.trim() ? (
-                                        <div className="border-t border-rose-200/70 pt-3">
-                                          <p className="text-[12px] leading-6 text-rose-900/70 whitespace-pre-wrap break-words">
-                                            {sanitizePipeMarkers(msg.translation.trim(), '\n')}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className="flex items-center justify-between gap-3 border-b border-[rgba(160,140,120,0.1)] px-4 py-3">
+                                          <div className="flex min-w-0 items-center gap-2.5">
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#FEF0F2] text-[#C87880]">
+                                              <Heart size={14} fill="currentColor" />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="truncate text-[12px] font-semibold text-[#1E1610]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>{'对方的心声'}</div>
+                                              <div className="mt-0.5 text-[10px] text-[#B0A090]">{'已解锁 · 点击展开'}</div>
+                                            </div>
+                                          </div>
+                                          <div className="rounded-full border border-[rgba(200,120,128,0.18)] bg-[#FEF0F2] px-2.5 py-1 text-[10px] font-medium text-[#C87880]">{'已解锁'}</div>
+                                        </div>
+                                        <div className="px-4 py-3.5">
+                                          <div className="space-y-1">
+                                            {teaserLines.map((line, lineIndex) => (
+                                              <div
+                                                key={`${line}-${lineIndex}`}
+                                                className={`text-[15px] leading-6 ${lineIndex === teaserLines.length - 1 ? 'text-[#C87880]' : 'text-[#1E1610]'}`}
+                                                style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif', fontWeight: 600 }}
+                                              >
+                                                {line}
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <p className="mt-3 line-clamp-2 whitespace-pre-wrap break-words text-[12px] leading-6 text-[#7A6A5A]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>
+                                            {parsedCard.body}
                                           </p>
                                         </div>
-                                      ) : null}
-                                    </div>
+                                        <div className="flex items-center justify-between border-t border-[rgba(160,140,120,0.1)] px-4 py-2.5 text-[10px] text-[#B0A090]">
+                                          <span>{`- ${character.name}`}</span>
+                                          <span className="inline-flex items-center gap-1">
+                                            <span>{'查看完整卡片'}</span>
+                                            <ChevronRight size={12} />
+                                          </span>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                  {showChatMessageTime && (
+                                    <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                      {formatChatMessageTime(msg.timestamp)}
+                                    </span>
                                   )}
                                 </div>
-                                {showChatMessageTime && (
-                                  <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                    {formatChatMessageTime(msg.timestamp)}
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {transferMatch && (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -3163,6 +3244,44 @@ export function ChatSessionScreen({
                 >
                   <Trash2 size={20} />
                 </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeInnerVoiceMessage && activeInnerVoiceCard && (
+          <>
+            <div
+              className="absolute inset-0 z-[96] bg-[#2F241C]/28 backdrop-blur-[2px]"
+              onClick={closeInnerVoiceCard}
+            />
+            <div className="absolute inset-0 z-[97] flex items-center justify-center px-4 py-8">
+              <div className="relative max-h-full overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={closeInnerVoiceCard}
+                  className="absolute right-2 top-3 z-10 flex h-7 w-7 items-center justify-center text-zinc-500 active:scale-95"
+                  aria-label="关闭心声卡片"
+                >
+                  <X size={16} />
+                </button>
+                <InnerVoiceUnlockCard
+                  characterName={character.name}
+                  date={new Date(activeInnerVoiceMessage.timestamp).toLocaleDateString([], {
+                    month: '2-digit',
+                    day: '2-digit',
+                  })}
+                  headline={activeInnerVoiceCard.headline}
+                  body={activeInnerVoiceCard.body}
+                  ps={activeInnerVoiceCard.ps}
+                  isSaved={!!activeInnerVoiceMessage.isFavorited}
+                  onSave={() => {
+                    if (activeInnerVoiceIndex !== null) {
+                      toggleFavoriteAt(activeInnerVoiceIndex);
+                    }
+                  }}
+                  onShare={() => shareInnerVoiceToMoment(activeInnerVoiceMessage)}
+                />
               </div>
             </div>
           </>

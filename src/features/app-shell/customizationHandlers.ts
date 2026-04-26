@@ -1,11 +1,7 @@
 import type { AppData } from '../../types';
 import { sanitizePersistedCharacters as sanitizePersistedCharactersFromStore } from '../persistence/appDataSanitizers';
-import { clearAssets } from '../persistence/browserDb';
-import { clearJsonRecords } from '../persistence/browserJsonStore';
+import { clearAllPersistentData } from '../persistence/backupArchive';
 import { sanitizeTransientAssetValue } from '../persistence/sanitizeTransientAssetValue';
-import { STORAGE_KEYS } from '../persistence/storageKeys';
-import { resetCharacters } from '../persistence/charactersStore';
-import { clearPersistedVisualSettings } from '../persistence/visualSettingsStore';
 
 type HandleCustomizationImportDataParams = {
   data: string;
@@ -43,20 +39,10 @@ export function handleCustomizationImportData({
 }
 
 export async function handleCustomizationResetData() {
-  Object.values(STORAGE_KEYS).forEach((key) => {
-    localStorage.removeItem(key);
-  });
-
-  resetCharacters();
-  clearPersistedVisualSettings();
-
   try {
-    await Promise.all([
-      clearJsonRecords(),
-      clearAssets(),
-    ]);
+    await clearAllPersistentData();
   } catch (error) {
-    console.error('[customizationHandlers] Failed to clear IndexedDB during reset', error);
+    console.error('[customizationHandlers] Failed to clear persistent data during reset', error);
   }
 
   window.location.reload();

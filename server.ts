@@ -2,6 +2,87 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { Readable } from "stream";
 import os from "os";
+import {
+  createWechatBindSession,
+  disableWechatBindingByCharacterId,
+  enqueueWechatIncomingMessage,
+  getWechatBindingsOverview,
+  getWechatBindingByCharacterId,
+  getWechatBindSessionByCharacterId,
+  getWechatBindSessionByToken,
+  markWechatBindSessionBound,
+  pullWechatIncomingMessages,
+} from "./wechatBridgeStore";
+
+function pickFirstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resolveWebhookMessagePayload(input: unknown): {
+  conversationId?: string;
+  text?: string;
+  senderDisplayName?: string;
+} {
+  const root = asRecord(input) ?? {};
+  const event = asRecord(root.event);
+  const message = asRecord(root.message) ?? asRecord(root.msg);
+  const sender = asRecord(root.sender) ?? asRecord(message?.sender) ?? asRecord(event?.sender);
+  const chat = asRecord(root.chat) ?? asRecord(event?.chat) ?? asRecord(message?.chat);
+
+  return {
+    conversationId: pickFirstString(
+      root.conversationId,
+      root.chatId,
+      root.sessionId,
+      root.roomId,
+      root.talker,
+      event?.conversationId,
+      event?.chatId,
+      event?.sessionId,
+      event?.roomId,
+      event?.talker,
+      chat?.id,
+      chat?.conversationId,
+      chat?.chatId,
+      message?.conversationId,
+      message?.chatId,
+      message?.sessionId,
+      message?.talker,
+      message?.from,
+    ),
+    text: pickFirstString(
+      root.text,
+      root.content,
+      root.messageText,
+      message?.text,
+      message?.content,
+      message?.message,
+      event?.text,
+      event?.content,
+    ),
+    senderDisplayName: pickFirstString(
+      root.senderDisplayName,
+      root.nickname,
+      sender?.displayName,
+      sender?.nickname,
+      sender?.name,
+      sender?.remark,
+      message?.senderDisplayName,
+      event?.senderDisplayName,
+    ),
+  };
+}
 
 function getLocalNetworkIp() {
   const interfaces = os.networkInterfaces();
@@ -25,6 +106,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   const HOST = "0.0.0.0";
+
+  app.use(express.json());
 
   const resolveNeteasePlayableUrl = async (id: string | number) => {
     let finalUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
@@ -58,6 +141,163 @@ async function startServer() {
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/wechat/bind-session", async (req, res) => {
+    const characterId = String(req.body?.characterId || "").trim();
+    if (!characterId) {
+      return res.status(400).json({ error: "Missing characterId" });
+    }
+
+    try {
+      const appOrigin = `${req.protocol}://${req.get("host") || `127.0.0.1:${PORT}`}`;
+      const session = await createWechatBindSession(characterId, appOrigin);
+      res.json(session);
+    } catch (error) {
+      console.error("Error creating WeChat bind session:", error);
+      res.status(500).json({ error: "Failed to create WeChat bind session" });
+    }
+  });
+
+  app.get("/api/wechat/bind-session/by-character/:characterId", async (req, res) => {
+    try {
+      const session = await getWechatBindSessionByCharacterId(String(req.params.characterId || "").trim());
+      res.json({ session });
+    } catch (error) {
+      console.error("Error reading WeChat bind session by character:", error);
+      res.status(500).json({ error: "Failed to load WeChat bind session" });
+    }
+  });
+
+  app.get("/api/wechat/bind-session/:token", async (req, res) => {
+    try {
+      const session = await getWechatBindSessionByToken(String(req.params.token || "").trim());
+      res.json({ session });
+    } catch (error) {
+      console.error("Error reading WeChat bind session:", error);
+      res.status(500).json({ error: "Failed to load WeChat bind session" });
+    }
+  });
+
+  app.get("/api/wechat/binding/by-character/:characterId", async (req, res) => {
+    try {
+      const binding = await getWechatBindingByCharacterId(String(req.params.characterId || "").trim());
+      res.json({ binding });
+    } catch (error) {
+      console.error("Error reading WeChat binding by character:", error);
+      res.status(500).json({ error: "Failed to load WeChat binding" });
+    }
+  });
+
+  app.get("/api/wechat/bindings", async (_req, res) => {
+    try {
+      const overview = await getWechatBindingsOverview();
+      res.json(overview);
+    } catch (error) {
+      console.error("Error reading WeChat bindings overview:", error);
+      res.status(500).json({ error: "Failed to load WeChat bindings overview" });
+    }
+  });
+
+  app.post("/api/wechat/bind-session/:token/bind", async (req, res) => {
+    const conversationId = String(req.body?.conversationId || "").trim();
+    if (!conversationId) {
+      return res.status(400).json({ error: "Missing conversationId" });
+    }
+
+    try {
+      const result = await markWechatBindSessionBound(String(req.params.token || "").trim(), {
+        conversationId,
+        displayName: typeof req.body?.displayName === "string" ? req.body.displayName.trim() : undefined,
+        avatarUrl: typeof req.body?.avatarUrl === "string" ? req.body.avatarUrl.trim() : undefined,
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: "Bind session not found" });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error binding WeChat session:", error);
+      res.status(500).json({ error: "Failed to bind WeChat session" });
+    }
+  });
+
+  app.post("/api/wechat/binding/by-character/:characterId/disable", async (req, res) => {
+    try {
+      const binding = await disableWechatBindingByCharacterId(String(req.params.characterId || "").trim());
+      res.json({ binding });
+    } catch (error) {
+      console.error("Error disabling WeChat binding:", error);
+      res.status(500).json({ error: "Failed to disable WeChat binding" });
+    }
+  });
+
+  app.post("/api/wechat/messages", async (req, res) => {
+    const conversationId = String(req.body?.conversationId || "").trim();
+    const text = String(req.body?.text || "").trim();
+    if (!conversationId || !text) {
+      return res.status(400).json({ error: "Missing conversationId or text" });
+    }
+
+    try {
+      const message = await enqueueWechatIncomingMessage({
+        conversationId,
+        text,
+        senderDisplayName: typeof req.body?.senderDisplayName === "string" ? req.body.senderDisplayName.trim() : undefined,
+      });
+      if (!message) {
+        return res.status(404).json({ error: "No enabled binding for this conversationId" });
+      }
+      res.json({ message });
+    } catch (error) {
+      console.error("Error enqueueing WeChat incoming message:", error);
+      res.status(500).json({ error: "Failed to enqueue WeChat incoming message" });
+    }
+  });
+
+  app.post("/api/wechat/clawbot/callback", async (req, res) => {
+    const payload = resolveWebhookMessagePayload(req.body);
+    if (!payload.conversationId || !payload.text) {
+      return res.status(400).json({
+        error: "Unable to resolve conversationId or text from callback payload",
+        resolved: payload,
+      });
+    }
+
+    try {
+      const message = await enqueueWechatIncomingMessage({
+        conversationId: payload.conversationId,
+        text: payload.text,
+        senderDisplayName: payload.senderDisplayName,
+      });
+
+      if (!message) {
+        return res.status(202).json({
+          accepted: false,
+          reason: "No enabled binding for this conversationId",
+          resolved: payload,
+        });
+      }
+
+      res.json({
+        accepted: true,
+        message,
+      });
+    } catch (error) {
+      console.error("Error handling Clawbot callback:", error);
+      res.status(500).json({ error: "Failed to handle Clawbot callback" });
+    }
+  });
+
+  app.post("/api/wechat/messages/pull", async (_req, res) => {
+    try {
+      const messages = await pullWechatIncomingMessages();
+      res.json({ messages });
+    } catch (error) {
+      console.error("Error pulling WeChat incoming messages:", error);
+      res.status(500).json({ error: "Failed to pull WeChat incoming messages" });
+    }
   });
 
   app.get("/api/netease/song", async (req, res) => {

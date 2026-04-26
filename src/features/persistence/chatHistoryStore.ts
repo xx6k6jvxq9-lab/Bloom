@@ -190,10 +190,7 @@ export async function loadPreferredChatHistoryRecords(
       const indexedDbSerialized = JSON.stringify(indexedDbHistory);
 
       if (localSerialized !== indexedDbSerialized) {
-        void saveJsonRecord(STORAGE_KEYS.chatHistory, localHistory).catch((error) => {
-          console.error('[chatHistoryStore] Failed to reconcile chat history into IndexedDB', error);
-        });
-        return localHistory;
+        saveJson(STORAGE_KEYS.chatHistory, indexedDbHistory);
       }
 
       return indexedDbHistory;

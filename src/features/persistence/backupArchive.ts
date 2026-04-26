@@ -1,10 +1,19 @@
+import type { AppData, AppSettings } from '../../types';
 import { listAssets, putAsset, type StoredAssetRecord } from './browserDb';
-import { removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
+import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
+import {
+  extractDirectFactTraces,
+  extractDirectRelationshipWaves,
+  extractGroupSessions,
+} from './chatHistoryStore';
 
 export const FULL_BACKUP_ARCHIVE_FORMAT = 'bloom-full-backup';
 export const FULL_BACKUP_ARCHIVE_VERSION = 1;
+export const MODULAR_BACKUP_ARCHIVE_SCHEMA = 'modular-persistence';
+export const MODULAR_BACKUP_ARCHIVE_VERSION = 2;
 
 export type SerializedAssetRecord = Omit<StoredAssetRecord, 'blob'> & {
   dataUrl: string;
@@ -18,6 +27,34 @@ export type FullBackupArchive = {
   assets: SerializedAssetRecord[];
 };
 
+export type ModularBackupModules = {
+  settings: unknown;
+  characters: unknown;
+  chatHistory: unknown;
+  chatOrganization: unknown;
+  userProfile: unknown;
+  moments: unknown;
+  forumData: unknown;
+  coupleSpace: unknown;
+  datingRecords: unknown;
+  friendRequests: unknown;
+  meData: unknown;
+  musicData: unknown;
+  walletData: unknown;
+  callHistory: unknown;
+  visualSettings: unknown;
+  wechatRoleBindings: unknown;
+  wechatBindSessions: unknown;
+};
+
+export type ModularBackupArchive = {
+  version: typeof MODULAR_BACKUP_ARCHIVE_VERSION;
+  schema: typeof MODULAR_BACKUP_ARCHIVE_SCHEMA;
+  exportedAt: number;
+  modules: ModularBackupModules;
+  assets: SerializedAssetRecord[];
+};
+
 type FullBackupOverrides = {
   appData?: unknown;
   settings?: unknown;
@@ -26,9 +63,23 @@ type FullBackupOverrides = {
   userProfile?: unknown;
 };
 
+type ModularBackupOverrides = {
+  appData: Partial<AppData> | null | undefined;
+  settings: AppSettings | unknown;
+  modules?: Partial<ModularBackupModules>;
+};
+
 const INDEXED_DB_RESTORE_KEYS = new Set<string>(
   Object.values(STORAGE_KEYS).filter((key) => key !== STORAGE_KEYS.appData),
 );
+const EXTRA_LOCAL_RESET_KEYS = new Set([
+  'dream_app_archive_records_v1',
+  'monitor_characters',
+]);
+const EXTRA_LOCAL_RESET_PREFIXES = [
+  'memory_window_hint_dismissed_',
+  'group_notice_dismissed:',
+] as const;
 
 function createArchiveAssetId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -124,6 +175,67 @@ async function collectSerializedAssets(): Promise<SerializedAssetRecord[]> {
   );
 }
 
+function buildModularBackupModules({ appData, settings, modules }: ModularBackupOverrides): ModularBackupModules {
+  const resolvedAppData = (appData || {}) as Partial<AppData>;
+  const { coupleSpaceState } = buildPersistableCoupleSpacePayload(
+    resolvedAppData.coupleSpaceState,
+    resolvedAppData.coupleSpace,
+  );
+  const directHistory = resolvedAppData.chatHistory ?? {};
+  const chatGroups = resolvedAppData.chatGroups ?? [];
+
+  return {
+    settings,
+    characters: resolvedAppData.characters ?? [],
+    chatHistory: {
+      directHistory,
+      directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
+      directFactTraces: extractDirectFactTraces(directHistory),
+      groupSessions: extractGroupSessions(chatGroups),
+    },
+    chatOrganization: {
+      groups: resolvedAppData.groups ?? [],
+      chatGroups,
+    },
+    userProfile: resolvedAppData.userProfile ?? {},
+    moments: resolvedAppData.moments ?? [],
+    forumData: resolvedAppData.forumData ?? {},
+    coupleSpace: coupleSpaceState ?? {},
+    datingRecords: {
+      savedDates: resolvedAppData.savedDates ?? [],
+      collectedDates: resolvedAppData.collectedDates ?? [],
+    },
+    friendRequests: resolvedAppData.friendRequests ?? [],
+    meData: {
+      masks: resolvedAppData.masks ?? [],
+      favorites: resolvedAppData.favorites ?? [],
+      worldBooks: resolvedAppData.worldBooks ?? [],
+    },
+    musicData: resolvedAppData.musicData ?? {},
+    walletData: resolvedAppData.walletData ?? {},
+    callHistory: resolvedAppData.callHistory ?? [],
+    visualSettings: resolvedAppData.visualSettings ?? {},
+    wechatRoleBindings: modules?.wechatRoleBindings ?? [],
+    wechatBindSessions: modules?.wechatBindSessions ?? [],
+  };
+}
+
+async function collectIndexedDbModules(): Promise<Partial<ModularBackupModules>> {
+  const keys = [
+    STORAGE_KEYS.wechatRoleBindings,
+    STORAGE_KEYS.wechatBindSessions,
+  ] as const;
+
+  const [wechatRoleBindings, wechatBindSessions] = await Promise.all(
+    keys.map((key) => loadJsonRecord<unknown>(key).catch(() => null)),
+  );
+
+  return {
+    wechatRoleBindings: wechatRoleBindings ?? [],
+    wechatBindSessions: wechatBindSessions ?? [],
+  };
+}
+
 async function normalizeBlobUrlsInValue(
   value: unknown,
   remappedAssets: SerializedAssetRecord[],
@@ -214,6 +326,28 @@ export async function buildFullBackupArchive(overrides?: FullBackupOverrides): P
   };
 }
 
+export async function buildModularBackupArchive(overrides: ModularBackupOverrides): Promise<ModularBackupArchive> {
+  const indexedDbModules = await collectIndexedDbModules();
+  const baseModules = buildModularBackupModules({
+    ...overrides,
+    modules: {
+      ...indexedDbModules,
+      ...(overrides.modules || {}),
+    },
+  });
+  const existingAssets = await collectSerializedAssets();
+  const remappedAssets: SerializedAssetRecord[] = [];
+  const normalized = await normalizeBlobUrlsInValue(baseModules, remappedAssets, new Map<string, string>());
+
+  return {
+    version: MODULAR_BACKUP_ARCHIVE_VERSION,
+    schema: MODULAR_BACKUP_ARCHIVE_SCHEMA,
+    exportedAt: Date.now(),
+    modules: normalized as ModularBackupModules,
+    assets: [...existingAssets, ...remappedAssets],
+  };
+}
+
 export function isFullBackupArchive(value: unknown): value is FullBackupArchive {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -228,6 +362,100 @@ export function isFullBackupArchive(value: unknown): value is FullBackupArchive 
     && Array.isArray(candidate.assets);
 }
 
+export function isModularBackupArchive(value: unknown): value is ModularBackupArchive {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<ModularBackupArchive>;
+  return candidate.schema === MODULAR_BACKUP_ARCHIVE_SCHEMA
+    && candidate.version === MODULAR_BACKUP_ARCHIVE_VERSION
+    && !!candidate.modules
+    && typeof candidate.modules === 'object'
+    && !Array.isArray(candidate.modules);
+}
+
+function writeStorageValue(key: string, value: unknown | null, indexedDbWrites: Promise<void>[]) {
+  if (value == null) {
+    window.localStorage.removeItem(key);
+    if (INDEXED_DB_RESTORE_KEYS.has(key)) {
+      indexedDbWrites.push(
+        removeJsonRecord(key).catch((error) => {
+          console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during restore`, error);
+        }),
+      );
+    }
+    return;
+  }
+
+  window.localStorage.setItem(key, JSON.stringify(value));
+  if (INDEXED_DB_RESTORE_KEYS.has(key)) {
+    indexedDbWrites.push(
+      saveJsonRecord(key, value).catch((error) => {
+        console.error(`[backupArchive] Failed to restore IndexedDB key "${key}"`, error);
+      }),
+    );
+  }
+}
+
+export async function clearAllPersistentData(): Promise<void> {
+  if (typeof window === 'undefined') {
+    throw new Error('Current environment does not support persistence reset');
+  }
+
+  const keysToRemove: string[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key) continue;
+
+    if (
+      Object.values(STORAGE_KEYS).includes(key as (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS])
+      || EXTRA_LOCAL_RESET_KEYS.has(key)
+      || EXTRA_LOCAL_RESET_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach((key) => {
+    window.localStorage.removeItem(key);
+  });
+
+  await Promise.all([
+    clearAssets(),
+    Promise.all(
+      Object.values(STORAGE_KEYS).map((key) =>
+        removeJsonRecord(key).catch((error) => {
+          console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during reset`, error);
+        }),
+      ),
+    ),
+  ]);
+}
+
+function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<string, unknown> {
+  return {
+    characters: modules.characters,
+    chatHistory: (modules.chatHistory as { directHistory?: unknown } | null | undefined)?.directHistory ?? {},
+    groups: (modules.chatOrganization as { groups?: unknown } | null | undefined)?.groups ?? [],
+    chatGroups: (modules.chatOrganization as { chatGroups?: unknown } | null | undefined)?.chatGroups ?? [],
+    userProfile: modules.userProfile,
+    moments: modules.moments,
+    forumData: modules.forumData,
+    coupleSpaceState: modules.coupleSpace,
+    friendRequests: modules.friendRequests,
+    masks: (modules.meData as { masks?: unknown } | null | undefined)?.masks ?? [],
+    favorites: (modules.meData as { favorites?: unknown } | null | undefined)?.favorites ?? [],
+    worldBooks: (modules.meData as { worldBooks?: unknown } | null | undefined)?.worldBooks ?? [],
+    callHistory: modules.callHistory,
+    savedDates: (modules.datingRecords as { savedDates?: unknown } | null | undefined)?.savedDates ?? [],
+    collectedDates: (modules.datingRecords as { collectedDates?: unknown } | null | undefined)?.collectedDates ?? [],
+    visualSettings: modules.visualSettings,
+    musicData: modules.musicData,
+    walletData: modules.walletData,
+  };
+}
+
 export async function restoreFullBackupArchive(archive: FullBackupArchive): Promise<void> {
   if (typeof window === 'undefined') {
     throw new Error('当前环境不支持恢复本地备份');
@@ -236,27 +464,54 @@ export async function restoreFullBackupArchive(archive: FullBackupArchive): Prom
   const indexedDbWrites: Promise<void>[] = [];
 
   Object.entries(archive.storage).forEach(([key, value]) => {
-    if (value == null) {
-      window.localStorage.removeItem(key);
-      if (INDEXED_DB_RESTORE_KEYS.has(key)) {
-        indexedDbWrites.push(
-          removeJsonRecord(key).catch((error) => {
-            console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during restore`, error);
-          }),
-        );
-      }
-      return;
-    }
-
-    window.localStorage.setItem(key, JSON.stringify(value));
-    if (INDEXED_DB_RESTORE_KEYS.has(key)) {
-      indexedDbWrites.push(
-        saveJsonRecord(key, value).catch((error) => {
-          console.error(`[backupArchive] Failed to restore IndexedDB key "${key}"`, error);
-        }),
-      );
-    }
+    writeStorageValue(key, value, indexedDbWrites);
   });
+
+  await Promise.all(
+    archive.assets.map((asset) =>
+      putAsset({
+        id: asset.id,
+        kind: asset.kind,
+        mimeType: asset.mimeType,
+        blob: dataUrlToBlob(asset.dataUrl),
+        fileName: asset.fileName,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+        source: asset.source,
+        originalUrl: asset.originalUrl,
+      }),
+    ),
+  );
+
+  await Promise.all(indexedDbWrites);
+}
+
+export async function restoreModularBackupArchive(archive: ModularBackupArchive): Promise<void> {
+  if (typeof window === 'undefined') {
+    throw new Error('Current environment does not support restore');
+  }
+
+  const indexedDbWrites: Promise<void>[] = [];
+  const { modules } = archive;
+
+  writeStorageValue(STORAGE_KEYS.settings, modules.settings, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.characters, modules.characters, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.chatHistory, modules.chatHistory, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.chatOrganization, modules.chatOrganization, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.userProfile, modules.userProfile, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.moments, modules.moments, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.forumData, modules.forumData, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.coupleSpace, modules.coupleSpace, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.datingRecords, modules.datingRecords, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.friendRequests, modules.friendRequests, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.meData, modules.meData, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.musicData, modules.musicData, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.walletData, modules.walletData, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.callHistory, modules.callHistory, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.visualSettings, modules.visualSettings, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.wechatRoleBindings, modules.wechatRoleBindings, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.wechatBindSessions, modules.wechatBindSessions, indexedDbWrites);
+  writeStorageValue(STORAGE_KEYS.appData, buildLegacyAppDataFromModules(modules), indexedDbWrites);
 
   await Promise.all(
     archive.assets.map((asset) =>

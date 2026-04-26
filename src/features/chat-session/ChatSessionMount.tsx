@@ -17,7 +17,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
-import { usePersistedChatHistoryBridge } from '../persistence/usePersistedChatHistoryBridge';
 import { GroupChatSessionContainer } from './GroupChatSessionContainer';
 
 type ChatSessionMountProps = {
@@ -53,7 +52,7 @@ type ChatSessionMountProps = {
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -102,11 +101,6 @@ export function ChatSessionMount({
   const selectedGroup = selectedGroupId
     ? chatGroups.find(group => group.id === selectedGroupId) || null
     : null;
-
-  usePersistedChatHistoryBridge(chatHistory, chatGroups, ({ directHistory, chatGroups: nextChatGroups }) => {
-    setChatHistory(directHistory);
-    setChatGroups(nextChatGroups);
-  });
 
   return (
     <>

@@ -1,6 +1,6 @@
 import type { Character } from '../../types';
 
-type AppScreen =
+export type AppScreen =
   | 'home'
   | 'chat'
   | 'settings'
@@ -19,7 +19,7 @@ type AppScreen =
   | 'wallet'
   | 'group-chat-session';
 
-type AppTab = 'chat' | 'contacts' | 'moments' | 'me';
+export type AppTab = 'chat' | 'contacts' | 'moments' | 'me';
 
 type CreateAppShellHandlersParams = {
   handleUpsertCharacter: (character: Character) => void;

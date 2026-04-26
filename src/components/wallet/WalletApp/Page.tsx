@@ -6,7 +6,6 @@ import {
   ChevronLeft, Bell, X, Heart, Coins, Users, Lock
 } from 'lucide-react';
 import { AppDataExtended, ChatHistory, WalletCard, WalletTransaction, WalletData } from '../../../types';
-import { usePersistedWalletDataBridge } from '../../../features/persistence/usePersistedWalletDataBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 
 function ResolvedWalletAvatar({
@@ -81,17 +80,6 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
     cards: MOCK_CARDS,
     transactions: [],
   };
-  usePersistedWalletDataBridge(
-    walletData,
-    (nextWalletData) => {
-      if (onUpdateAppData) {
-        onUpdateAppData({
-          ...appData,
-          walletData: nextWalletData,
-        });
-      }
-    },
-  );
   const cards = walletData.cards || MOCK_CARDS;
   const transactions = walletData.transactions ?? [];
   const balance = walletData.balance ?? 12580.00;

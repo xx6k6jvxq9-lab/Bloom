@@ -9,14 +9,18 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
-  buildFullBackupArchive,
+  buildModularBackupArchive,
   isFullBackupArchive,
+  isModularBackupArchive,
+  restoreModularBackupArchive,
   restoreFullBackupArchive,
 } from '../../../features/persistence/backupArchive';
 import { saveJsonRecord } from '../../../features/persistence/browserJsonStore';
 import { buildPersistableCoupleSpacePayload } from '../../../features/persistence/coupleSpaceStore';
 import {
+  clearLegacyCompatibilityCopy,
   evaluateMigrationStatus,
+  LEGACY_CLEANUP_SUCCESS_THRESHOLD,
   loadMigrationMeta,
   type MigrationCheckResult,
 } from '../../../features/persistence/migrationStatusStore';
@@ -1631,6 +1635,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       indexedDbKeyCount: 0,
       criticalKeyCount: 5,
       importRecommended: meta.status === 'failed',
+      hasLegacyPayload: false,
+      hasLegacyCompatibilityCopy: false,
+      canSafelyCleanupLegacy: false,
     };
   });
   const [isCheckingMigration, setIsCheckingMigration] = useState(false);
@@ -1693,12 +1700,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const handleExportFull = async () => {
     try {
       setIsExportingFull(true);
-      const archive = await buildFullBackupArchive({
+      const archive = await buildModularBackupArchive({
         appData,
         settings,
-        visualSettings: appData?.visualSettings,
-        characters: appData?.characters,
-        userProfile: appData?.userProfile,
       });
       downloadJsonFile(archive, `full_backup_${Date.now()}.json`);
       alert(`全量备份导出成功！已打包 ${archive.assets.length} 个本地资源。`);
@@ -1716,7 +1720,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       return;
     }
 
-    const exportData: any = {};
+    const exportData: Record<string, unknown> = {};
     selectedModules.forEach(id => {
       const mod = modules.find(m => m.id === id);
       if (mod) {
@@ -1766,6 +1770,19 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           };
         };
 
+        const shouldWriteLegacyAppDataCompat = (source: unknown) => {
+          if (!source || typeof source !== 'object' || Array.isArray(source)) {
+            return false;
+          }
+
+          const candidate = source as Record<string, unknown>;
+          return (
+            Array.isArray(candidate.characters)
+            && candidate.chatHistory != null
+            && candidate.userProfile != null
+          );
+        };
+
         const persistImportedSnapshot = async (nextAppData: any, nextSettings: any, source: any) => {
           const normalizedAppData = normalizeImportedAppData(nextAppData);
           const persistedChatHistory = {
@@ -1803,7 +1820,25 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             writeImportedRecord(STORAGE_KEYS.walletData, normalizedAppData.walletData ?? {}),
           ];
 
-          window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(normalizedAppData));
+          if (source && typeof source === 'object') {
+            const sourceRecord = source as Record<string, unknown>;
+            if (Array.isArray(sourceRecord[STORAGE_KEYS.wechatRoleBindings])) {
+              writes.push(writeImportedRecord(
+                STORAGE_KEYS.wechatRoleBindings,
+                sourceRecord[STORAGE_KEYS.wechatRoleBindings],
+              ));
+            }
+            if (Array.isArray(sourceRecord[STORAGE_KEYS.wechatBindSessions])) {
+              writes.push(writeImportedRecord(
+                STORAGE_KEYS.wechatBindSessions,
+                sourceRecord[STORAGE_KEYS.wechatBindSessions],
+              ));
+            }
+          }
+
+          if (shouldWriteLegacyAppDataCompat(source)) {
+            window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(normalizedAppData));
+          }
 
           if (source && typeof source === 'object' && 'settings' in source) {
             window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(nextSettings));
@@ -1813,6 +1848,13 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         };
         
         if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
+          if (isModularBackupArchive(parsed)) {
+            await restoreModularBackupArchive(parsed);
+            alert(`模块化备份恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
+            window.location.reload();
+            return;
+          }
+
           if (isFullBackupArchive(parsed)) {
             await restoreFullBackupArchive(parsed);
             alert(`完整备份恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
@@ -1899,9 +1941,35 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     }
   };
 
+  const handleClearLegacyCompatibility = async () => {
+    if (!migrationInfo?.canSafelyCleanupLegacy || migrationInfo.legacyCleanupCompleted) {
+      return;
+    }
+
+    const confirmed = await showInAppConfirm(
+      '这只会清理旧 ai_phone_app_data 兼容副本，不会删除 IndexedDB 主数据。建议先完成一次完整备份。确定继续吗？',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    clearLegacyCompatibilityCopy();
+    const result = await evaluateMigrationStatus();
+    setMigrationInfo(result);
+    alert('旧兼容副本已清理完成。当前主数据仍保存在 IndexedDB 中。');
+  };
+
   const migrationPresentation = (() => {
     switch (migrationInfo?.status) {
       case 'success':
+        if (migrationInfo.hasLegacyCompatibilityCopy && !migrationInfo.legacyCleanupCompleted) {
+          return {
+            badge: '兼容期',
+            title: '新存储已经稳定，旧整包仅保留兼容副本',
+            description: '当前主读主写已经在 IndexedDB，旧 ai_phone_app_data 只作为兼容副本保留，不再参与主链路。',
+            tone: 'emerald',
+          } as const;
+        }
         return {
           badge: '已迁移',
           title: '核心数据已接入新存储',
@@ -2020,6 +2088,36 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               <div className="mt-1 font-bold text-zinc-900">{formatDateTime(migrationInfo?.lastVerifiedAt)}</div>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3 text-[12px] text-zinc-600">
+            <div className="rounded-xl bg-white/70 px-3 py-2">
+              <div className="text-zinc-500">稳定启动次数</div>
+              <div className="mt-1 font-bold text-zinc-900">
+                {migrationInfo?.successfulLaunchCount ?? 0} / {LEGACY_CLEANUP_SUCCESS_THRESHOLD}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white/70 px-3 py-2">
+              <div className="text-zinc-500">旧整包状态</div>
+              <div className="mt-1 font-bold text-zinc-900">
+                {migrationInfo?.legacyCleanupCompleted
+                  ? '已完成清理'
+                  : migrationInfo?.hasLegacyCompatibilityCopy
+                    ? '兼容副本保留中'
+                    : migrationInfo?.hasLegacyPayload
+                      ? '检测到旧数据'
+                      : '未检测到旧整包'}
+              </div>
+            </div>
+          </div>
+          {migrationInfo?.status === 'success' && migrationInfo.hasLegacyCompatibilityCopy && !migrationInfo.legacyCleanupCompleted ? (
+            <div className="rounded-xl bg-white/70 px-3 py-2 text-[12px] text-zinc-700">
+              现在已经是 IndexedDB 主链路。旧整包仍保留在浏览器里，只是为了兼容老备份和过渡恢复，不会再覆盖新数据。
+            </div>
+          ) : null}
+          {migrationInfo?.canSafelyCleanupLegacy && !migrationInfo.legacyCleanupCompleted ? (
+            <div className="rounded-xl bg-white/70 px-3 py-2 text-[12px] text-zinc-700">
+              已连续稳定启动 {migrationInfo.successfulLaunchCount} 次，后续可以考虑正式下线旧整包兼容副本。
+            </div>
+          ) : null}
           {migrationInfo?.lastError ? (
             <div className="rounded-xl bg-white/70 px-3 py-2 text-[12px] text-zinc-700">
               {migrationInfo.lastError}
@@ -2040,6 +2138,14 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             >
               {isCheckingMigration ? '检测中...' : migrationInfo?.importRecommended ? '重新检测迁移状态' : '校验迁移状态'}
             </button>
+            {migrationInfo?.canSafelyCleanupLegacy && !migrationInfo.legacyCleanupCompleted ? (
+              <button
+                onClick={() => void handleClearLegacyCompatibility()}
+                className="rounded-xl border border-white/80 bg-white/40 px-4 py-2 text-[12px] font-bold text-zinc-700"
+              >
+                清理旧兼容副本
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">

@@ -14,8 +14,6 @@ import type {
   WorldBookEntry,
 } from '../../types';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
-import { usePersistedCallHistoryBridge } from '../persistence/usePersistedCallHistoryBridge';
-import { usePersistedDatingRecordsBridge } from '../persistence/usePersistedDatingRecordsBridge';
 import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
@@ -47,7 +45,7 @@ type DirectChatSessionContainerProps = {
   setDatingRecords: (data: DatingRecordsData) => void;
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -87,9 +85,6 @@ export function DirectChatSessionContainer({
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
 }: DirectChatSessionContainerProps) {
-  usePersistedCallHistoryBridge(callHistory, setCallHistory);
-  usePersistedDatingRecordsBridge(savedDates, collectedDates, setDatingRecords);
-
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
 

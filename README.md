@@ -68,6 +68,35 @@ npm run preview
 npm run lint
 ```
 
+## Cloudflare 备用部署
+
+如果你要把当前项目先作为 Cloudflare Pages 备用入口使用：
+
+1. 在 Cloudflare Pages 里连接仓库
+2. 构建命令填 `npm run build`
+3. 输出目录填 `dist`
+4. 如果只是先做联调或轻量备用，可以创建一个 KV namespace，并绑定成 `WECHAT_BRIDGE_KV`
+5. 如果你准备承接更高并发，优先部署 `cloudflare/wechat-bridge-do` 这个 Durable Object Worker，再把 Pages 项目的 `WECHAT_BRIDGE_DO` 绑定到它
+
+当前仓库已经补了 Pages Functions 版微信桥接接口，覆盖：
+
+- `POST /api/wechat/bind-session`
+- `GET /api/wechat/bind-session/by-character/:characterId`
+- `GET /api/wechat/bind-session/:token`
+- `POST /api/wechat/bind-session/:token/bind`
+- `GET /api/wechat/binding/by-character/:characterId`
+- `POST /api/wechat/binding/by-character/:characterId/disable`
+- `GET /api/wechat/bindings`
+- `POST /api/wechat/messages`
+- `POST /api/wechat/clawbot/callback`
+- `POST /api/wechat/messages/pull`
+
+注意：
+
+- 这套 Cloudflare 版微信桥接状态现在存到 KV，不再依赖本地 `.codex-wechat-bridge.json`
+- KV 适合先做备用站联调，但不是强一致存储；后续如果你要把微信桥接做成正式主链路，更推荐迁到 D1 或 Durable Objects
+- Pages 项目本身不能直接创建和部署 Durable Object；你需要先单独部署 [cloudflare/wechat-bridge-do/wrangler.toml](./cloudflare/wechat-bridge-do/wrangler.toml)，再在 Pages 项目里绑定 `WECHAT_BRIDGE_DO`
+
 ## 目录概览
 
 ```text

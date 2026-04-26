@@ -30,7 +30,7 @@ import {
   hydrateMeData,
   loadPreferredMeData,
 } from './meDataStore';
-import { evaluateMigrationStatus, migrateCriticalRecordsIfNeeded } from './migrationStatusStore';
+import { evaluateMigrationStatusWithOptions, migrateCriticalRecordsIfNeeded } from './migrationStatusStore';
 import {
   loadPreferredMoments,
 } from './momentsStore';
@@ -214,23 +214,33 @@ export async function bootstrapLocalAppState({
   const hasLocalWalletData = hasStoredJson(STORAGE_KEYS.walletData);
   const hasLocalCallHistory = hasStoredJson(STORAGE_KEYS.callHistory);
 
-  const needsLegacyAppData = (
-    (!hasIndexedDbCharacters && !hasLocalCharacters)
-    || (!hasIndexedDbChatHistory && !hasLocalChatHistory)
-    || (!hasIndexedDbChatOrganization && !hasLocalChatOrganization)
-    || (!hasIndexedDbUserProfile && !hasLocalUserProfile)
-    || (!hasIndexedDbMeData && !hasLocalMeData)
-    || (!hasIndexedDbMoments && !hasLocalMoments)
-    || (!hasIndexedDbForumData && !hasLocalForumData)
-    || (!hasIndexedDbFriendRequests && !hasLocalFriendRequests)
-    || !hasLocalDatingRecords
-    || (!hasIndexedDbCoupleSpace && !hasLocalCoupleSpace)
-    || !hasLocalVisualSettings
-    || !hasLocalMusicData
-    || (!hasIndexedDbWalletData && !hasLocalWalletData)
-    || !hasLocalCallHistory
+  const hasAnyModernBusinessData = (
+    hasIndexedDbCharacters
+    || hasIndexedDbChatHistory
+    || hasIndexedDbChatOrganization
+    || hasIndexedDbUserProfile
+    || hasIndexedDbMoments
+    || hasIndexedDbForumData
+    || hasIndexedDbCoupleSpace
+    || hasIndexedDbFriendRequests
+    || hasIndexedDbMeData
+    || hasIndexedDbWalletData
+    || hasLocalCharacters
+    || hasLocalChatHistory
+    || hasLocalChatOrganization
+    || hasLocalUserProfile
+    || hasLocalMeData
+    || hasLocalMoments
+    || hasLocalForumData
+    || hasLocalFriendRequests
+    || hasLocalDatingRecords
+    || hasLocalCoupleSpace
+    || hasLocalVisualSettings
+    || hasLocalMusicData
+    || hasLocalWalletData
+    || hasLocalCallHistory
   );
-  const legacyAppData = needsLegacyAppData ? getLegacyAppData() : null;
+  const legacyAppData = hasAnyModernBusinessData ? null : getLegacyAppData();
   const legacyGroups = Array.isArray(legacyAppData?.groups)
     ? legacyAppData.groups
     : ['瀹朵汉', '鏈嬪弸', '鍚屼簨', '鏄熸爣'];
@@ -383,7 +393,7 @@ export async function bootstrapLocalAppState({
     [STORAGE_KEYS.userProfile]: nextAppData.userProfile,
   });
 
-  await evaluateMigrationStatus();
+  await evaluateMigrationStatusWithOptions({ countSuccessfulLaunch: true });
 
   return {
     appData: nextAppData,

@@ -28,6 +28,7 @@ import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import { WechatBindModal } from '../wechat/WechatBindModal';
 
 function SettingsSection({
   title,
@@ -311,6 +312,7 @@ export function ChatSettingsPanel({
   const [showSettingEditor, setShowSettingEditor] = useState(false);
   const [showRemarkEditor, setShowRemarkEditor] = useState(false);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
+  const [showWechatBindModal, setShowWechatBindModal] = useState(false);
   const [activeMemoryDetail, setActiveMemoryDetail] = useState<null | 'short-term' | 'long-term'>(null);
   const [activeMemoryHomeTab, setActiveMemoryHomeTab] = useState<'library' | 'stats'>('library');
   const [activeMemoryYear, setActiveMemoryYear] = useState<MemoryLibraryYearGroup | null>(null);
@@ -989,6 +991,18 @@ export function ChatSettingsPanel({
               <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'basic' ? '' : '-rotate-90'}`} />
             </button>
             <button
+              onClick={() => setShowWechatBindModal(true)}
+              className="order-2 w-full rounded-2xl border border-white/40 bg-white/60 px-4 py-4 text-left shadow-sm backdrop-blur-md transition-colors active:bg-white/70"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-[15px] font-semibold text-zinc-800">微信接入</h2>
+                  <p className="mt-1 text-[11px] text-zinc-500">扫码绑定当前角色到微信 Clawbot，消息会回流到统一语境。</p>
+                </div>
+                <ChevronRight size={18} className="text-zinc-400" />
+              </div>
+            </button>
+            <button
               onClick={() => setExpandedSection(prev => (prev === 'chat' ? null : 'chat'))}
               className="order-3 w-full bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm px-4 py-4 flex items-center justify-between text-left active:bg-white/70 transition-colors"
             >
@@ -1149,7 +1163,7 @@ export function ChatSettingsPanel({
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => onUpdate({ ...character, groupId: undefined })}
-                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${!character.groupId ? 'bg-sky-50 border-sky-200 text-sky-700 shadow-sm' : 'bg-white/50 border-white/30 text-zinc-600'}`}
                     >
                       无分组
                     </button>
@@ -1157,7 +1171,7 @@ export function ChatSettingsPanel({
                       <button
                         key={g}
                         onClick={() => onUpdate({ ...character, groupId: g })}
-                        className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white/50 border-white/30 text-zinc-600'}`}
+                        className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${character.groupId === g ? 'bg-sky-50 border-sky-200 text-sky-700 shadow-sm' : 'bg-white/50 border-white/30 text-zinc-600'}`}
                       >
                         {g}
                       </button>
@@ -2050,6 +2064,7 @@ export function ChatSettingsPanel({
         )}
         </div>
       </div>
+      <WechatBindModal character={character} open={showWechatBindModal} onClose={() => setShowWechatBindModal(false)} />
 
       <AnimatePresence>
         {showSettingEditor && (

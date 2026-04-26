@@ -5,7 +5,6 @@ import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicD
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
-import { usePersistedUserProfileBridge } from '../../../features/persistence/usePersistedUserProfileBridge';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import { getDisplayableAssetValue } from '../../../features/persistence/persistentAssetRef';
@@ -125,8 +124,6 @@ export function HomeScreen({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   key?: string;
 }) {
-  usePersistedUserProfileBridge(userProfile, setUserProfile);
-
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [tempUrl, setTempUrl] = useState('');

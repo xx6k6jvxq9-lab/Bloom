@@ -36,7 +36,6 @@ import {
   VisualSettings,
   AppSettings,
 } from "../../types";
-import { usePersistedMusicDataBridge } from "../../features/persistence/usePersistedMusicDataBridge";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
@@ -356,7 +355,6 @@ export default function MusicApp({
       )
     );
   });
-  usePersistedMusicDataBridge(currentMusicData, onUpdateMusicData);
 
   useEffect(() => {
     currentMusicDataRef.current = currentMusicData;

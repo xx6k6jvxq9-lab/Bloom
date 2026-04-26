@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
+import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
@@ -9,7 +10,7 @@ import {
   runMomentPublishCommentSequence,
 } from '../../services/moments/commentOrchestrator';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
-import { AppData, AppSettings, Character, MomentComment, MomentItem, UserProfileExtended } from '../../types';
+import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, MomentItem, UserProfileExtended } from '../../types';
 
 type UserProfile = UserProfileExtended;
 type Comment = MomentComment;
@@ -66,6 +67,42 @@ function getMomentDescriptionOverlayText(moment: Moment) {
     || '一些安静的光影停在眼前';
 }
 
+function isInnerVoiceMomentCard(moment: Moment) {
+  return moment.imageCard?.layout === 'inner-voice';
+}
+
+function getInnerVoiceMomentSourceText(moment: Moment) {
+  const normalized = (moment.content || '').replace(/\r/g, '').trim();
+  if (!normalized) {
+    return [
+      moment.imageCard?.overlayText || '',
+      '',
+      moment.imageCard?.description || '',
+    ].filter(Boolean).join('\n');
+  }
+
+  const lines = normalized.split('\n');
+  const firstLine = lines[0]?.trim() || '';
+  const withoutMarker = /^["'「『]?\s*对方的心声\s*["'」』]?$/u.test(firstLine)
+    ? lines.slice(1).join('\n').trim()
+    : normalized;
+
+  const blocks = withoutMarker.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  if (blocks.length > 0 && blocks[0].includes(' / ')) {
+    blocks[0] = blocks[0].split(' / ').map((item) => item.trim()).filter(Boolean).join('\n');
+  }
+
+  return blocks.join('\n\n').trim() || withoutMarker;
+}
+
+function getLinkedChatFavoriteState(appData: AppData, moment: Moment) {
+  const source = moment.sourceChatMessage;
+  if (!source) return undefined;
+  const history = appData.chatHistory?.[source.characterId] || [];
+  const linkedMessage = history.find((message) => message.timestamp === source.timestamp);
+  return linkedMessage?.isFavorited;
+}
+
 export function MomentsApp({
   appData,
   setAppData,
@@ -90,6 +127,7 @@ export function MomentsApp({
   const [publishImages, setPublishImages] = useState<string[]>([]);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
 
   const { userProfile, moments, characters } = appData;
   const { getCharacterById, getCharacterDisplayName } = createCharacterDirectory({ characters });
@@ -306,16 +344,65 @@ export function MomentsApp({
   };
 
   const handleCollect = (momentId: string) => {
-    setAppData((prev) => ({
-      ...prev,
-      moments: prev.moments.map((m) => {
-        if (m.id === momentId) {
-          const isCollected = !m.isCollected;
-          return { ...m, isCollected };
+    setAppData((prev) => {
+      const targetMoment = (prev.moments || []).find((moment) => moment.id === momentId);
+      if (!targetMoment) {
+        return prev;
+      }
+
+      const linkedFavoriteState = getLinkedChatFavoriteState(prev, targetMoment);
+      const nextCollected = !(linkedFavoriteState ?? targetMoment.isCollected);
+      const linkedSource = targetMoment.sourceChatMessage;
+
+      let nextFavorites = prev.favorites || [];
+      let nextChatHistory = prev.chatHistory;
+
+      if (linkedSource) {
+        const linkedCharacter = characters.find((character) => character.id === linkedSource.characterId);
+        const sourceHistory = prev.chatHistory?.[linkedSource.characterId] || [];
+        const linkedMessage = sourceHistory.find((message) => message.timestamp === linkedSource.timestamp);
+
+        nextChatHistory = {
+          ...prev.chatHistory,
+          [linkedSource.characterId]: sourceHistory.map((message) => (
+            message.timestamp === linkedSource.timestamp
+              ? { ...message, isFavorited: nextCollected }
+              : message
+          )),
+        };
+
+        if (linkedMessage && linkedCharacter) {
+          const exists = nextFavorites.some((favorite) => (
+            favorite.timestamp === linkedMessage.timestamp && favorite.characterId === linkedCharacter.id
+          ));
+
+          if (nextCollected && !exists) {
+            const nextFavorite: FavoriteMessage = {
+              id: `${linkedCharacter.id}-${linkedMessage.timestamp}`,
+              characterId: linkedCharacter.id,
+              characterName: linkedCharacter.name,
+              text: linkedMessage.text,
+              timestamp: linkedMessage.timestamp,
+              category: 'chat',
+            };
+            nextFavorites = [...nextFavorites, nextFavorite];
+          } else if (!nextCollected && exists) {
+            nextFavorites = nextFavorites.filter((favorite) => !(
+              favorite.timestamp === linkedMessage.timestamp && favorite.characterId === linkedCharacter.id
+            ));
+          }
         }
-        return m;
-      }),
-    }));
+      }
+
+      return {
+        ...prev,
+        chatHistory: nextChatHistory,
+        favorites: nextFavorites,
+        moments: prev.moments.map((m) => (
+          m.id === momentId ? { ...m, isCollected: nextCollected } : m
+        )),
+      };
+    });
     setActiveMenuId(null);
   };
 
@@ -328,6 +415,9 @@ export function MomentsApp({
     }
     setActiveMenuId(null);
   };
+
+  const activeInnerVoiceMoment = (moments || []).find((moment) => moment.id === activeInnerVoiceMomentId) || null;
+  const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
 
   const handleComment = async (momentId: string) => {
     if (!commentText.trim()) return;
@@ -502,6 +592,7 @@ export function MomentsApp({
         {(moments || []).map((moment) => {
           const author = resolveMomentAuthor(moment.authorId);
           if (!author) return null;
+          const effectiveCollected = getLinkedChatFavoriteState(appData, moment) ?? !!moment.isCollected;
 
           return (
             <div
@@ -520,10 +611,91 @@ export function MomentsApp({
                     {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
+                {!isInnerVoiceMomentCard(moment) && (
+                  <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
+                )}
 
                 {moment.imageCard && (
-                  ((moment.imageCard.layout === 'described-photo') || shouldRenderMomentDescriptionPhoto(moment.imageCard.theme)) ? (
+                  isInnerVoiceMomentCard(moment) ? (() => {
+                    const sharedCard = parseInnerVoiceCardContent(
+                      getInnerVoiceMomentSourceText(moment),
+                    );
+                    const titleLines = sharedCard.headline.split('\n').filter(Boolean).slice(0, 3);
+                    const previewParagraphs = sharedCard.body.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean).slice(0, 2);
+
+                    return (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setActiveInnerVoiceMomentId(moment.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setActiveInnerVoiceMomentId(moment.id);
+                          }
+                        }}
+                        className="mt-3 overflow-hidden rounded-[22px] border border-[rgba(160,140,120,0.12)]"
+                        style={{
+                          backgroundColor: '#FAF8F4',
+                          backgroundImage: 'repeating-linear-gradient(transparent 31px, rgba(160,140,120,0.055) 31px, rgba(160,140,120,0.055) 32px)',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3 border-b border-[rgba(160,140,120,0.1)] px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#FEF0F2] text-[#C87880]">
+                              <Heart size={14} fill="currentColor" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="truncate text-[12px] font-semibold text-[#1E1610]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>对方的心声</div>
+                              <div className="mt-0.5 text-[10px] text-[#B0A090]">分享自心声卡片</div>
+                            </div>
+                          </div>
+                          <div className="rounded-full border border-[rgba(200,120,128,0.18)] bg-[#FEF0F2] px-2.5 py-1 text-[10px] font-medium text-[#C87880]">心声</div>
+                        </div>
+
+                        <div className="px-5 pb-5 pt-5">
+                          <div className="space-y-0.5">
+                            {titleLines.map((line, lineIndex) => (
+                              <div
+                                key={`${line}-${lineIndex}`}
+                                className={`text-[18px] font-semibold leading-[1.55] ${lineIndex === titleLines.length - 1 ? 'text-[#C87880]' : 'text-[#1E1610]'}`}
+                                style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}
+                              >
+                                {line}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            {previewParagraphs.map((paragraph, paragraphIndex) => (
+                              <p
+                                key={`${paragraph}-${paragraphIndex}`}
+                                className="whitespace-pre-wrap break-words text-[13px] leading-[1.95] text-[#7A6A5A]"
+                                style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}
+                              >
+                                {paragraph.trim()}
+                              </p>
+                            ))}
+                          </div>
+
+                          {sharedCard.ps ? (
+                            <p
+                              className="mt-3 text-[12px] italic text-[#C0B0A0]"
+                              style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}
+                            >
+                              P.S. {sharedCard.ps}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-[rgba(160,140,120,0.1)] px-5 pb-4 pt-3 text-[11px] text-[#B0A090]">
+                          <span style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>- {author.name} · {new Date(moment.timestamp).toLocaleDateString([], { month: '2-digit', day: '2-digit' })}</span>
+                          <span>点击展开查看</span>
+                        </div>
+                      </div>
+                    );
+                  })() : ((moment.imageCard.layout === 'described-photo') || shouldRenderMomentDescriptionPhoto(moment.imageCard.theme)) ? (
                     <div className="mt-3 overflow-hidden rounded-[24px] border border-zinc-200/80 bg-white p-2 shadow-sm">
                       <div className={`relative aspect-[4/5] overflow-hidden rounded-[18px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] ${getMomentDescriptionPhotoStyle(moment.imageCard.theme)}`}>
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.42),transparent_46%),linear-gradient(180deg,transparent,rgba(255,255,255,0.2))]" />
@@ -592,8 +764,8 @@ export function MomentsApp({
                           onClick={() => handleCollect(moment.id)}
                           className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
-                          <Star size={14} className={moment.isCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
-                          {moment.isCollected ? '已收藏' : '收藏'}
+                          <Star size={14} className={effectiveCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
+                          {effectiveCollected ? '已收藏' : '收藏'}
                         </button>
                         {moment.authorId === 'user' && (
                           <button
@@ -691,6 +863,49 @@ export function MomentsApp({
 
         <div className="h-4" />
       </div>
+
+      {activeInnerVoiceMoment && activeInnerVoiceAuthor && (
+        (() => {
+          const expandedCard = parseInnerVoiceCardContent(
+            getInnerVoiceMomentSourceText(activeInnerVoiceMoment),
+          );
+
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-[40] bg-white/42 backdrop-blur-[6px]"
+                onClick={() => setActiveInnerVoiceMomentId(null)}
+              />
+              <div className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8">
+                <div className="relative max-h-full overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveInnerVoiceMomentId(null)}
+                    className="absolute right-2 top-3 z-10 flex h-7 w-7 items-center justify-center text-zinc-500 active:scale-95"
+                    aria-label="关闭心声动态卡片"
+                  >
+                    <X size={16} />
+                  </button>
+                  <InnerVoiceUnlockCard
+                    showShareButton={false}
+                    characterName={activeInnerVoiceAuthor.name}
+                    date={new Date(activeInnerVoiceMoment.timestamp).toLocaleDateString([], {
+                      month: '2-digit',
+                      day: '2-digit',
+                    })}
+                    headline={expandedCard.headline}
+                    body={expandedCard.body}
+                    ps={expandedCard.ps}
+                    isSaved={(activeInnerVoiceMoment ? (getLinkedChatFavoriteState(appData, activeInnerVoiceMoment) ?? !!activeInnerVoiceMoment.isCollected) : false)}
+                    onSave={() => handleCollect(activeInnerVoiceMoment.id)}
+                    onShare={() => setActiveInnerVoiceMomentId(null)}
+                  />
+                </div>
+              </div>
+            </>
+          );
+        })()
+      )}
     </div>
   );
 }

@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character, ForumData } from '../../../types';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
-import { usePersistedForumDataBridge } from '../../../features/persistence/usePersistedForumDataBridge';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
@@ -404,14 +403,6 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
     notifications: [],
     followedUsers: [],
   };
-  usePersistedForumDataBridge(
-    forumData,
-    (nextForumData) =>
-      onUpdateAppData({
-        ...appData,
-        forumData: nextForumData,
-      }),
-  );
   const posts = forumData.posts || MOCK_POSTS;
   const notifications = forumData.notifications || [];
   const followedUsers = forumData.followedUsers || [];

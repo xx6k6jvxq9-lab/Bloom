@@ -1,3 +1,5 @@
+import { mirrorStorageRemoval, mirrorStorageValue } from './persistenceMirror';
+
 export function loadJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
 
@@ -19,6 +21,8 @@ export function saveJson<T>(key: string, value: T): void {
   } catch (error) {
     console.error(`[localConfigStore] Failed to save key "${key}"`, error);
   }
+
+  mirrorStorageValue(key, value);
 }
 
 export function remove(key: string): void {
@@ -29,4 +33,6 @@ export function remove(key: string): void {
   } catch (error) {
     console.error(`[localConfigStore] Failed to remove key "${key}"`, error);
   }
+
+  mirrorStorageRemoval(key);
 }

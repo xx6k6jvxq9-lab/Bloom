@@ -1,0 +1,12 @@
+name = "bloom-pages"
+compatibility_date = "2026-04-26"
+pages_build_output_dir = "dist"
+
+[[durable_objects.bindings]]
+name = "WECHAT_BRIDGE_DO"
+class_name = "WechatBridgeDurableObject"
+script_name = "bloom-wechat-bridge-do"
+
+[[kv_namespaces]]
+binding = "WECHAT_BRIDGE_KV"
+id = "replace-with-your-kv-namespace-id"

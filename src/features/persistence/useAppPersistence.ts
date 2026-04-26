@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { AppData, AppSettings, Character } from '../../types';
+import type { AppData, AppSettings } from '../../types';
 import type { UserProfile } from '../app-shell/appShellTypes';
 import { bootstrapLocalAppState } from './bootstrapLocalAppState';
-import {
-  hydratePersistedCharacters as hydratePersistedCharactersFromStore,
-} from './appDataSanitizers';
 import { persistAppDataSnapshot } from './persistAppDataSnapshot';
-import { usePersistedCharactersBridge } from './usePersistedCharactersBridge';
 import { persistSettings } from './settingsStore';
 
 type UseAppPersistenceParams = {
@@ -42,13 +37,6 @@ export function useAppPersistence({
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
   const defaultAppData = useMemo(() => createDefaultAppData(), [createDefaultAppData]);
-
-  const setCharacters = useCallback((characters: Character[]) => {
-    setAppData((prev) => ({
-      ...prev,
-      characters,
-    }));
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,16 +89,6 @@ export function useAppPersistence({
     if (!hasHydratedStorage) return;
     void persistAppDataSnapshot(appData, defaultAppData);
   }, [appData, defaultAppData, hasHydratedStorage]);
-
-  const hydrateCharacters = useCallback(
-    (source: Character[] | null | undefined, fallback: Character[]) =>
-      hydratePersistedCharactersFromStore(source, fallback, defaultZhouJibaiAvatar),
-    [defaultZhouJibaiAvatar],
-  );
-
-  usePersistedCharactersBridge(appData.characters, setCharacters, {
-    hydrate: hydrateCharacters,
-  });
 
   return {
     appData,

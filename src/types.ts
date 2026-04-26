@@ -666,6 +666,9 @@ export type GroupTaskCard = {
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
+  source?: 'app' | 'wechat';
+  channel?: 'app' | 'wechat-clawbot';
+  channelConversationId?: string;
   translation?: string;
   timestamp: number;
   senderCharacterId?: string;
@@ -743,8 +746,13 @@ export type MomentImageCard = {
   title: string;
   description: string;
   theme: 'polaroid' | 'film' | 'note' | 'poster';
-  layout?: 'card' | 'described-photo';
+  layout?: 'card' | 'described-photo' | 'inner-voice';
   overlayText?: string;
+};
+
+export type MomentSourceChatMessageRef = {
+  characterId: string;
+  timestamp: number;
 };
 
 export type MomentItem = {
@@ -753,6 +761,7 @@ export type MomentItem = {
   content: string;
   images?: string[];
   imageCard?: MomentImageCard;
+  sourceChatMessage?: MomentSourceChatMessageRef;
   timestamp: number;
   likes: number;
   likedBy?: string[];

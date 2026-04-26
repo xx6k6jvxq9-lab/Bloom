@@ -17,6 +17,17 @@ export type PersistedMoment = {
   authorId: string;
   content: string;
   images?: string[];
+  imageCard?: {
+    title: string;
+    description: string;
+    theme: 'polaroid' | 'film' | 'note' | 'poster';
+    layout?: 'card' | 'described-photo' | 'inner-voice';
+    overlayText?: string;
+  };
+  sourceChatMessage?: {
+    characterId: string;
+    timestamp: number;
+  };
   timestamp: number;
   likes: number;
   likedBy?: string[];
@@ -50,6 +61,35 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
     authorId: normalizeLegacyActorId(moment.authorId) || moment.authorId,
     content: moment.content,
     images: Array.isArray(moment.images) ? moment.images : undefined,
+    imageCard: moment.imageCard && typeof moment.imageCard === 'object'
+      ? {
+          title: typeof moment.imageCard.title === 'string' ? moment.imageCard.title : '',
+          description: typeof moment.imageCard.description === 'string' ? moment.imageCard.description : '',
+          theme:
+            moment.imageCard.theme === 'film'
+            || moment.imageCard.theme === 'note'
+            || moment.imageCard.theme === 'poster'
+              ? moment.imageCard.theme
+              : 'polaroid',
+          layout:
+            moment.imageCard.layout === 'described-photo'
+            || moment.imageCard.layout === 'inner-voice'
+            || moment.imageCard.layout === 'card'
+              ? moment.imageCard.layout
+              : undefined,
+          overlayText: typeof moment.imageCard.overlayText === 'string' ? moment.imageCard.overlayText : undefined,
+        }
+      : undefined,
+    sourceChatMessage:
+      moment.sourceChatMessage
+      && typeof moment.sourceChatMessage === 'object'
+      && typeof moment.sourceChatMessage.characterId === 'string'
+      && typeof moment.sourceChatMessage.timestamp === 'number'
+        ? {
+            characterId: moment.sourceChatMessage.characterId,
+            timestamp: moment.sourceChatMessage.timestamp,
+          }
+        : undefined,
     timestamp: moment.timestamp,
     likes: moment.likes ?? 0,
     likedBy: Array.isArray(moment.likedBy)

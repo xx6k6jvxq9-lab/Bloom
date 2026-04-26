@@ -33,10 +33,7 @@ export async function loadPreferredUserProfile(fallback: UserProfileExtended): P
       const indexedDbSerialized = JSON.stringify(indexedDbProfile);
 
       if (localSerialized !== indexedDbSerialized) {
-        void saveJsonRecord(STORAGE_KEYS.userProfile, localProfile).catch((error) => {
-          console.error('[userProfileStore] Failed to reconcile user profile into IndexedDB', error);
-        });
-        return localProfile;
+        saveJson(STORAGE_KEYS.userProfile, indexedDbProfile);
       }
 
       return indexedDbProfile;

@@ -60,10 +60,7 @@ export async function loadPreferredChatOrganization(fallback: ChatOrganizationDa
       const indexedDbSerialized = JSON.stringify(indexedDbOrganization);
 
       if (localSerialized !== indexedDbSerialized) {
-        void saveJsonRecord(STORAGE_KEYS.chatOrganization, localOrganization).catch((error) => {
-          console.error('[chatOrganizationStore] Failed to reconcile chat organization into IndexedDB', error);
-        });
-        return localOrganization;
+        persistChatOrganizationSync(indexedDbOrganization);
       }
 
       return indexedDbOrganization;

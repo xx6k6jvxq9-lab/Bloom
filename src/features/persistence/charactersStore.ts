@@ -48,10 +48,7 @@ export async function loadPreferredCharacters(fallback: Character[] = []): Promi
       const indexedDbSerialized = JSON.stringify(indexedDbCharacters);
 
       if (localSerialized !== indexedDbSerialized) {
-        void saveJsonRecord(STORAGE_KEYS.characters, localCharacters).catch((error) => {
-          console.error('[charactersStore] Failed to reconcile characters into IndexedDB', error);
-        });
-        return localCharacters;
+        saveJson(STORAGE_KEYS.characters, indexedDbCharacters);
       }
 
       return indexedDbCharacters;

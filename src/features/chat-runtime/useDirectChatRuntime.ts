@@ -663,6 +663,9 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
       '## 本轮特殊回复要求',
       '用户刚触发的是“倾听心声”卡片。',
       '这轮回复必须保持心声内容形态，不要退化成普通闲聊气泡。',
+      '默认使用适合卡片展示的写法：先给 1 到 3 行短标题，每行单独换行；空一行后再写 1 到 3 段散文式正文。',
+      '如果有很轻的尾注，可以最后单独一行以“PS:”开头。',
+      '标题应该像被解锁的一瞬间浮出来的话，短、准、带情绪，不要写成普通称呼或开场白。',
       '如果这轮还伴随其它协议内容，例如转账，允许“心声卡片 + 转账卡”并存，但不要只剩协议本身。',
     ].join('\n');
   }
@@ -865,21 +868,68 @@ function formatChatApiError(error: unknown): string {
   return `错误: ${normalized}`;
 }
 
-function buildAutoTranslateInlinePrompt(enabled?: boolean): string {
-  if (!enabled) {
+function cleanAutoTranslationResult(rawTranslation: string, sourceText: string): string {
+  const normalized = sanitizePipeMarkers(rawTranslation, '\n')
+    .replace(/\r/g, '')
+    .trim();
+  if (!normalized) {
     return '';
   }
 
-  return [
-    '## 自动翻译输出规则',
-    '如果这轮主回复不是中文，请在同一次输出里直接附上中文翻译。',
-    '格式必须严格如下：',
-    '原文正文',
-    '---TRANSLATION---',
-    '中文翻译',
-    '如果主回复本身已经是中文，或者协议卡内容本身就是中文，就不要再追加翻译段。',
-    '不要写“Translation:”之类的额外标签，也不要解释规则。',
-  ].join('\n');
+  const sourceLines = new Set(
+    sanitizePipeMarkers(sourceText, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+
+  const cleanedLines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^---+\s*translation\s*---+$/i.test(line))
+    .filter((line) => !/^(translation|translated text|中文翻译|翻译)[:：]?\s*$/i.test(line))
+    .filter((line) => !/^text\s*[:：]/i.test(line))
+    .filter((line) => !sourceLines.has(line));
+
+  const cleaned = cleanedLines.join('\n').trim();
+  if (!cleaned) {
+    return '';
+  }
+
+  return cleaned === sanitizePipeMarkers(sourceText, '\n').trim()
+    ? ''
+    : cleaned;
+}
+
+function parseBatchTranslationResult(rawTranslation: string, expectedCount: number): string[] {
+  const normalized = sanitizePipeMarkers(rawTranslation, '\n')
+    .replace(/\r/g, '')
+    .trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const exactDelimiter = '<<<ITEM_BREAK>>>';
+  if (normalized.includes(exactDelimiter)) {
+    return normalized
+      .split(exactDelimiter)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .slice(0, expectedCount);
+  }
+
+  const taggedMatches = Array.from(
+    normalized.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi),
+  );
+  if (taggedMatches.length > 0) {
+    return taggedMatches
+      .map((match) => match[1]?.trim() || '')
+      .filter(Boolean)
+      .slice(0, expectedCount);
+  }
+
+  return [];
 }
 
 export function useDirectChatRuntime({
@@ -1127,7 +1177,6 @@ export function useDirectChatRuntime({
               buildDirectCharacterDecisionPromptSection(directCharacterDecision),
               directSpecialReplyPrompt,
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
-              buildAutoTranslateInlinePrompt(character.autoTranslate),
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
               buildAvatarActionPromptSection(character, historySnapshot),
@@ -1223,24 +1272,80 @@ export function useDirectChatRuntime({
         return textLength > 0 && (chineseChars.length / textLength > 0.5);
       };
 
-      const findNextMessageToTranslate = () => {
+      const getMessageTranslationSource = (msg: ChatMessage) => {
+        let textToTranslate = msg.text;
+        let isQnaAnswer = false;
+        let questionToTranslate = '';
+        const gameData = parseGameCardData(msg.text);
+
+        if (gameData) {
+          if (typeof gameData.content === 'string') {
+            textToTranslate = gameData.content;
+          }
+          if (
+            gameData.game === 'qna'
+            && gameData.type === 'answer'
+            && typeof gameData.question === 'string'
+          ) {
+            isQnaAnswer = true;
+            questionToTranslate = gameData.question;
+          }
+        }
+
+        return {
+          textToTranslate,
+          isQnaAnswer,
+          questionToTranslate,
+          isGameCard: !!gameData,
+        };
+      };
+
+      const canTranslateMessage = (msg: ChatMessage) => {
+        if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
+        if (msg.imageUrl || msg.audioUrl || msg.isInnerVoice) return false;
+        if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
+
+        const { textToTranslate } = getMessageTranslationSource(msg);
+        const textToCheck = textToTranslate.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '').trim();
+        return !!textToCheck && !isMostlyChinese(textToCheck);
+      };
+
+      const isBatchableWithNeighbors = (msg: ChatMessage) => {
+        const { isGameCard, isQnaAnswer } = getMessageTranslationSource(msg);
+        return !isGameCard && !isQnaAnswer;
+      };
+
+      const findNextTranslationBatch = () => {
         const latestHistory = historyRef.current;
-        const candidates = latestHistory
-          .map((msg, index) => ({ msg, index }))
-          .filter(({ msg }) => {
-            if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
-            if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
 
-            let textToCheck = msg.text.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '');
-            const gameData = parseGameCardData(msg.text);
-            if (gameData && typeof gameData.content === 'string') {
-              textToCheck = gameData.content;
+        for (let index = latestHistory.length - 1; index >= 0; index -= 1) {
+          const msg = latestHistory[index];
+          if (!canTranslateMessage(msg)) {
+            continue;
+          }
+
+          const batch = [{ msg, index }];
+          if (!isBatchableWithNeighbors(msg)) {
+            return batch;
+          }
+
+          let cursor = index - 1;
+          while (cursor >= 0) {
+            const candidate = latestHistory[cursor];
+            if (!canTranslateMessage(candidate) || candidate.role !== 'model' || candidate.isSystem) {
+              break;
             }
+            if (!isBatchableWithNeighbors(candidate)) {
+              break;
+            }
+            batch.unshift({ msg: candidate, index: cursor });
+            cursor -= 1;
+          }
 
-            return !isMostlyChinese(textToCheck);
-          });
+          return batch;
+        }
 
-        return candidates[0] || null;
+        return [];
       };
 
       const translateText = async (prompt: string) => {
@@ -1268,70 +1373,103 @@ export function useDirectChatRuntime({
       translationWorkerRunningRef.current = true;
       try {
         while (true) {
-          const candidate = findNextMessageToTranslate();
-          if (!candidate) {
+          const batch = findNextTranslationBatch();
+          if (batch.length === 0) {
             break;
           }
 
-          const { msg, index } = candidate;
+          try {
+            const singleSource = batch.length === 1
+              ? getMessageTranslationSource(batch[0].msg)
+              : null;
 
-          if (historyRef.current[index]?.translation) {
-            continue;
-          }
+            let translations: string[] = [];
+            if (batch.length === 1 && singleSource) {
+              const sourcePayload = singleSource.isQnaAnswer && singleSource.questionToTranslate
+                ? `<question>\n${singleSource.questionToTranslate}\n</question>\n<answer>\n${singleSource.textToTranslate}\n</answer>`
+                : `<source>\n${singleSource.textToTranslate}\n</source>`;
+              const prompt = singleSource.isQnaAnswer && singleSource.questionToTranslate
+                ? [
+                    'Translate the content below into Simplified Chinese.',
+                    'Return ONLY the Chinese translation.',
+                    'Do not include the original text, labels, explanations, or code fences.',
+                    'Translate the question first and the answer second, separated by a single line containing only ---.',
+                    '',
+                    sourcePayload,
+                  ].join('\n')
+                : [
+                    'Translate the content below into Simplified Chinese.',
+                    'Return ONLY the Chinese translation.',
+                    'Do not include the original text, labels, explanations, or code fences.',
+                    '',
+                    sourcePayload,
+                  ].join('\n');
 
-        try {
-          let textToTranslate = msg.text;
-          let isQnaAnswer = false;
-          let questionToTranslate = '';
+              const translation = cleanAutoTranslationResult(
+                await translateText(prompt),
+                singleSource.isQnaAnswer && singleSource.questionToTranslate
+                  ? `${singleSource.questionToTranslate}\n---\n${singleSource.textToTranslate}`
+                  : singleSource.textToTranslate,
+              );
+              translations = translation ? [translation] : [];
+            } else {
+              const batchPrompt = [
+                'Translate each item below into Simplified Chinese.',
+                'Keep the original order exactly.',
+                'Return ONLY the translations.',
+                'Separate each translated item with a line containing exactly <<<ITEM_BREAK>>>.',
+                'Do not include numbering, labels, explanations, the original text, or code fences.',
+                '',
+                ...batch.map(({ msg }, idx) => {
+                  const source = getMessageTranslationSource(msg);
+                  return `<item index="${idx + 1}">\n${source.textToTranslate}\n</item>`;
+                }),
+              ].join('\n');
 
-          const gameData = parseGameCardData(msg.text);
-          if (gameData) {
-            if (typeof gameData.content === 'string') {
-              textToTranslate = gameData.content;
-            }
-            if (
-              gameData.game === 'qna'
-              && gameData.type === 'answer'
-              && typeof gameData.question === 'string'
-            ) {
-              isQnaAnswer = true;
-              questionToTranslate = gameData.question;
-            }
-          }
-
-          const prompt = isQnaAnswer && questionToTranslate
-            ? `Translate the following text to Chinese. Output ONLY the translation, no other text.\n\nText: ${questionToTranslate}\n\n---\n\nText: ${textToTranslate}`
-            : `Translate the following text to Chinese. Output ONLY the translation, no other text.\n\nText: ${textToTranslate}`;
-
-          const translation = await translateText(prompt);
-          if (translation) {
-            const latestHistory = historyRef.current;
-            const liveMessage = latestHistory[index];
-            if (
-              liveMessage
-              && liveMessage.timestamp === msg.timestamp
-              && liveMessage.role === msg.role
-              && liveMessage.text === msg.text
-              && !liveMessage.translation
-            ) {
-              const nextHistory = [...latestHistory];
-              nextHistory[index] = {
-                ...nextHistory[index],
+              const rawBatchTranslation = await translateText(batchPrompt);
+              const parsedTranslations = parseBatchTranslationResult(rawBatchTranslation, batch.length);
+              translations = parsedTranslations.map((translation, idx) => cleanAutoTranslationResult(
                 translation,
-              };
-              setHistory(nextHistory);
-              translationFailureNoticeShownRef.current = false;
+                getMessageTranslationSource(batch[idx].msg).textToTranslate,
+              ));
             }
+
+            if (translations.length > 0) {
+              const latestHistory = historyRef.current;
+              const allMessagesStillMatch = batch.every(({ msg, index }) => {
+                const liveMessage = latestHistory[index];
+                return !!liveMessage
+                  && liveMessage.timestamp === msg.timestamp
+                  && liveMessage.role === msg.role
+                  && liveMessage.text === msg.text
+                  && !liveMessage.translation;
+              });
+
+              if (allMessagesStillMatch) {
+                const nextHistory = [...latestHistory];
+                batch.forEach(({ index }, idx) => {
+                  const translation = translations[idx]?.trim();
+                  if (!translation) {
+                    return;
+                  }
+                  nextHistory[index] = {
+                    ...nextHistory[index],
+                    translation,
+                  };
+                });
+                setHistory(nextHistory);
+                translationFailureNoticeShownRef.current = false;
+              }
+            }
+          } catch (translationError) {
+            console.error('Translation failed for message batch', batch.map(item => item.index), translationError);
+            if (!translationFailureNoticeShownRef.current) {
+              setErrorState('Auto-translation failed for some messages. Please check API/network settings.');
+              translationFailureNoticeShownRef.current = true;
+            }
+            break;
           }
-        } catch (translationError) {
-          console.error('Translation failed for message', index, translationError);
-          if (!translationFailureNoticeShownRef.current) {
-            setErrorState('Auto-translation failed for some messages. Please check API/network settings.');
-            translationFailureNoticeShownRef.current = true;
-          }
-          break;
         }
-      }
       } finally {
         translationWorkerRunningRef.current = false;
       }
@@ -1588,7 +1726,6 @@ export function useDirectChatRuntime({
           buildDirectIntentPromptSection(directIntentAnalysis),
           buildDirectCharacterDecisionPromptSection(directCharacterDecision),
           directSpecialReplyPrompt,
-          buildAutoTranslateInlinePrompt(character.autoTranslate),
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
           buildAvatarActionPromptSection(character, newHistory),
@@ -1963,6 +2100,7 @@ export function useDirectChatRuntime({
       promptText: '[倾听心声]',
       userText: '[使用道具：倾听Ta的心声]',
       isInnerVoice: true,
+      forceReply: true,
     });
   }, []);
 
