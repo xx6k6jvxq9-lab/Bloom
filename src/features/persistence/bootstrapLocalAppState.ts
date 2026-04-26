@@ -8,12 +8,10 @@ import {
 import { loadJsonRecord } from './browserJsonStore';
 import { loadPreferredCallHistory } from './callHistoryStore';
 import {
-  hydrateChatHistoryRecords,
   loadPreferredChatHistoryRecords,
   mergeGroupSessionsIntoChatGroups,
 } from './chatHistoryStore';
 import {
-  hydrateChatOrganization,
   loadPreferredChatOrganization,
 } from './chatOrganizationStore';
 import { loadPreferredCharacters } from './charactersStore';
@@ -34,14 +32,12 @@ import {
 } from './meDataStore';
 import { evaluateMigrationStatus, migrateCriticalRecordsIfNeeded } from './migrationStatusStore';
 import {
-  hydrateMoments,
   loadPreferredMoments,
 } from './momentsStore';
 import { loadPersistedMusicData } from './musicDataStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import {
-  hydrateUserProfile,
   loadPreferredUserProfile,
 } from './userProfileStore';
 import { loadPreferredVisualSettings } from './visualSettingsStore';
@@ -192,6 +188,17 @@ export async function bootstrapLocalAppState({
     migratedSettings = resolvedSettings.migratedSettings;
   }
 
+  const hasIndexedDbCharacters = Array.isArray(indexedDbCharacters);
+  const hasIndexedDbChatHistory = indexedDbChatHistory != null;
+  const hasIndexedDbChatOrganization = indexedDbChatOrganization != null;
+  const hasIndexedDbUserProfile = indexedDbUserProfile != null;
+  const hasIndexedDbMoments = indexedDbMoments != null;
+  const hasIndexedDbForumData = indexedDbForumData != null;
+  const hasIndexedDbCoupleSpace = indexedDbCoupleSpace != null;
+  const hasIndexedDbFriendRequests = indexedDbFriendRequests != null;
+  const hasIndexedDbMeData = indexedDbMeData != null;
+  const hasIndexedDbWalletData = indexedDbWalletData != null;
+
   const hasLocalCharacters = hasStoredJson(STORAGE_KEYS.characters);
   const hasLocalChatHistory = hasStoredJson(STORAGE_KEYS.chatHistory);
   const hasLocalChatOrganization = hasStoredJson(STORAGE_KEYS.chatOrganization);
@@ -208,19 +215,19 @@ export async function bootstrapLocalAppState({
   const hasLocalCallHistory = hasStoredJson(STORAGE_KEYS.callHistory);
 
   const needsLegacyAppData = (
-    (!indexedDbCharacters && !hasLocalCharacters)
-    || (!indexedDbChatHistory && !hasLocalChatHistory)
-    || (!indexedDbChatOrganization && !hasLocalChatOrganization)
-    || (!indexedDbUserProfile && !hasLocalUserProfile)
-    || (!indexedDbMeData && !hasLocalMeData)
-    || (!indexedDbMoments && !hasLocalMoments)
-    || (!indexedDbForumData && !hasLocalForumData)
-    || (!indexedDbFriendRequests && !hasLocalFriendRequests)
+    (!hasIndexedDbCharacters && !hasLocalCharacters)
+    || (!hasIndexedDbChatHistory && !hasLocalChatHistory)
+    || (!hasIndexedDbChatOrganization && !hasLocalChatOrganization)
+    || (!hasIndexedDbUserProfile && !hasLocalUserProfile)
+    || (!hasIndexedDbMeData && !hasLocalMeData)
+    || (!hasIndexedDbMoments && !hasLocalMoments)
+    || (!hasIndexedDbForumData && !hasLocalForumData)
+    || (!hasIndexedDbFriendRequests && !hasLocalFriendRequests)
     || !hasLocalDatingRecords
-    || (!indexedDbCoupleSpace && !hasLocalCoupleSpace)
+    || (!hasIndexedDbCoupleSpace && !hasLocalCoupleSpace)
     || !hasLocalVisualSettings
     || !hasLocalMusicData
-    || (!indexedDbWalletData && !hasLocalWalletData)
+    || (!hasIndexedDbWalletData && !hasLocalWalletData)
     || !hasLocalCallHistory
   );
   const legacyAppData = needsLegacyAppData ? getLegacyAppData() : null;
@@ -229,46 +236,34 @@ export async function bootstrapLocalAppState({
     : ['瀹朵汉', '鏈嬪弸', '鍚屼簨', '鏄熸爣'];
 
   const characters = sanitizePersistedCharactersFromStore(
-    Array.isArray(indexedDbCharacters)
-      ? indexedDbCharacters
-      : await loadPreferredCharacters(
-          !hasLocalCharacters ? (legacyAppData?.characters || defaultCharacters) : defaultCharacters,
-        ),
+    await loadPreferredCharacters(
+      !hasIndexedDbCharacters && !hasLocalCharacters
+        ? (legacyAppData?.characters || defaultCharacters)
+        : defaultCharacters,
+    ),
     defaultCharacters,
     defaultZhouJibaiAvatar,
   );
 
-  const localChatHistory = await loadPreferredChatHistoryRecords({
+  const persistedChatHistory = await loadPreferredChatHistoryRecords({
     directHistory:
-      !indexedDbChatHistory && !hasLocalChatHistory
+      !hasIndexedDbChatHistory && !hasLocalChatHistory
         ? legacyAppData?.chatHistory || {}
         : {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
   });
-  const persistedChatHistory = indexedDbChatHistory
-    ? hydrateChatHistoryRecords(
-        indexedDbChatHistory as Partial<typeof localChatHistory>,
-        localChatHistory,
-      )
-    : localChatHistory;
 
-  const localChatOrganization = await loadPreferredChatOrganization({
-    groups: !indexedDbChatOrganization && !hasLocalChatOrganization ? legacyGroups : [],
-    chatGroups: !indexedDbChatOrganization && !hasLocalChatOrganization
+  const persistedChatOrganization = await loadPreferredChatOrganization({
+    groups: !hasIndexedDbChatOrganization && !hasLocalChatOrganization ? legacyGroups : [],
+    chatGroups: !hasIndexedDbChatOrganization && !hasLocalChatOrganization
       ? sanitizeChatGroupsWithCharactersFromStore(legacyAppData?.chatGroups || [], characters)
       : [],
   });
-  const persistedChatOrganization = indexedDbChatOrganization
-    ? hydrateChatOrganization(
-        indexedDbChatOrganization as Partial<typeof localChatOrganization>,
-        localChatOrganization,
-      )
-    : localChatOrganization;
 
-  const localUserProfile = await loadPreferredUserProfile(
-    !indexedDbUserProfile && !hasLocalUserProfile && legacyAppData?.userProfile
+  const userProfile = await loadPreferredUserProfile(
+    !hasIndexedDbUserProfile && !hasLocalUserProfile && legacyAppData?.userProfile
       ? {
           ...defaultUser,
           ...legacyAppData.userProfile,
@@ -276,53 +271,41 @@ export async function bootstrapLocalAppState({
         }
       : defaultUser,
   );
-  const userProfile = indexedDbUserProfile
-    ? hydrateUserProfile(
-        indexedDbUserProfile as Partial<typeof localUserProfile>,
-        localUserProfile,
-      )
-    : localUserProfile;
 
   const meDataFallback = {
-    masks: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.masks)
+    masks: !hasIndexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.masks)
       ? legacyAppData.masks
       : defaultAppData.masks,
-    favorites: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.favorites)
+    favorites: !hasIndexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.favorites)
       ? legacyAppData.favorites
       : defaultAppData.favorites,
-    worldBooks: !indexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.worldBooks)
+    worldBooks: !hasIndexedDbMeData && !hasLocalMeData && Array.isArray(legacyAppData?.worldBooks)
       ? legacyAppData.worldBooks
       : defaultAppData.worldBooks,
   };
-  const localMeData = await loadPreferredMeData(meDataFallback);
-  const meData = indexedDbMeData
-    ? hydrateMeData(indexedDbMeData as Partial<typeof localMeData>, localMeData)
-    : localMeData;
+  const meData = await loadPreferredMeData(meDataFallback);
 
-  const localMoments = await loadPreferredMoments(
-    sanitizePersistedMomentsFromStore(
-      !indexedDbMoments && !hasLocalMoments ? legacyAppData?.moments : undefined,
-    ),
-  );
   const moments = sanitizePersistedMomentsFromStore(
-    indexedDbMoments
-      ? hydrateMoments(indexedDbMoments as typeof localMoments, localMoments)
-      : localMoments,
+    await loadPreferredMoments(
+      sanitizePersistedMomentsFromStore(
+        !hasIndexedDbMoments && !hasLocalMoments ? legacyAppData?.moments : undefined,
+      ),
+    ),
   );
 
   const forumDataFallback =
-    !indexedDbForumData && !hasLocalForumData
+    !hasIndexedDbForumData && !hasLocalForumData
       ? (legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [] })
       : { posts: [], notifications: [], followedUsers: [] };
   const localForumData = loadPersistedForumData(forumDataFallback);
-  const forumData = indexedDbForumData
+  const forumData = hasIndexedDbForumData
     ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
     : localForumData;
 
   const localFriendRequests = loadPersistedFriendRequests(
-    !indexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
+    !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
   );
-  const friendRequests = indexedDbFriendRequests
+  const friendRequests = hasIndexedDbFriendRequests
     ? hydrateFriendRequests(
         indexedDbFriendRequests as typeof localFriendRequests,
         localFriendRequests,
@@ -353,11 +336,11 @@ export async function bootstrapLocalAppState({
   const musicData = loadPersistedMusicData(fallbackMusicData);
 
   const walletFallback =
-    !indexedDbWalletData && !hasLocalWalletData
+    !hasIndexedDbWalletData && !hasLocalWalletData
       ? (legacyAppData?.walletData ?? { cards: [], transactions: [] })
       : { cards: [], transactions: [] };
   const localWalletData = loadPersistedWalletData(walletFallback);
-  const walletData = indexedDbWalletData
+  const walletData = hasIndexedDbWalletData
     ? hydrateWalletData(indexedDbWalletData as Partial<typeof localWalletData>, localWalletData)
     : localWalletData;
 
