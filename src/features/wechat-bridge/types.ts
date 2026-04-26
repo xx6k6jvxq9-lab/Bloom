@@ -44,6 +44,18 @@ export type WechatIncomingBridgeMessage = {
   createdAt: number;
 };
 
+export type WechatOutgoingBridgeMessage = {
+  id: string;
+  channel: WechatBridgeChannel;
+  characterId: string;
+  conversationId: string;
+  text: string;
+  createdAt: number;
+  replyToMessageId?: string;
+  characterName?: string;
+  avatarUrl?: string;
+};
+
 export type WechatBindingsOverview = {
   enabledCount: number;
   bindings: WechatRoleBinding[];

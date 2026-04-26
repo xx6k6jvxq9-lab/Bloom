@@ -32,6 +32,7 @@ type WechatBridgeState = {
   sessions: WechatBindSession[];
   bindings: WechatRoleBinding[];
   pendingMessages: WechatIncomingBridgeMessage[];
+  pendingOutgoingMessages: WechatOutgoingBridgeMessage[];
 };
 
 export type WechatBindingsOverview = {
@@ -49,6 +50,18 @@ export type WechatIncomingBridgeMessage = {
   createdAt: number;
 };
 
+export type WechatOutgoingBridgeMessage = {
+  id: string;
+  channel: WechatBridgeChannel;
+  characterId: string;
+  conversationId: string;
+  text: string;
+  createdAt: number;
+  replyToMessageId?: string;
+  characterName?: string;
+  avatarUrl?: string;
+};
+
 const STORE_PATH = path.resolve(process.cwd(), ".codex-wechat-bridge.json");
 const BIND_SESSION_LIFETIME_MS = 1000 * 60 * 10;
 
@@ -63,6 +76,7 @@ function getEmptyState(): WechatBridgeState {
     sessions: [],
     bindings: [],
     pendingMessages: [],
+    pendingOutgoingMessages: [],
   };
 }
 
@@ -74,6 +88,7 @@ async function readState(): Promise<WechatBridgeState> {
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       bindings: Array.isArray(parsed.bindings) ? parsed.bindings : [],
       pendingMessages: Array.isArray(parsed.pendingMessages) ? parsed.pendingMessages : [],
+      pendingOutgoingMessages: Array.isArray(parsed.pendingOutgoingMessages) ? parsed.pendingOutgoingMessages : [],
     };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code;
@@ -251,6 +266,52 @@ export async function pullWechatIncomingMessages(): Promise<WechatIncomingBridge
     return messages;
   }
   state.pendingMessages = [];
+  await writeState(state);
+  return messages;
+}
+
+export async function enqueueWechatOutgoingMessage(payload: {
+  conversationId: string;
+  characterId: string;
+  text: string;
+  replyToMessageId?: string;
+  characterName?: string;
+  avatarUrl?: string;
+}): Promise<WechatOutgoingBridgeMessage | null> {
+  const state = await readState();
+  const binding = state.bindings.find(
+    (item) =>
+      item.conversationId === payload.conversationId
+      && item.characterId === payload.characterId
+      && item.enabled,
+  );
+  if (!binding) return null;
+
+  const message: WechatOutgoingBridgeMessage = {
+    id: createToken(),
+    channel: 'wechat-clawbot',
+    characterId: payload.characterId,
+    conversationId: payload.conversationId,
+    text: payload.text,
+    createdAt: Date.now(),
+    replyToMessageId: payload.replyToMessageId,
+    characterName: payload.characterName,
+    avatarUrl: payload.avatarUrl,
+  };
+
+  state.pendingOutgoingMessages = [...state.pendingOutgoingMessages, message];
+  await writeState(state);
+  return message;
+}
+
+export async function pullWechatOutgoingMessages(): Promise<WechatOutgoingBridgeMessage[]> {
+  const state = await readState();
+  const messages = [...state.pendingOutgoingMessages].sort((left, right) => left.createdAt - right.createdAt);
+  if (!messages.length) {
+    return messages;
+  }
+
+  state.pendingOutgoingMessages = [];
   await writeState(state);
   return messages;
 }

@@ -135,6 +135,8 @@ export default function App() {
     settings,
   });
   useWechatBridgeRuntime({
+    activeConfig,
+    appData,
     hasHydratedStorage,
     setAppData,
   });

@@ -45,6 +45,7 @@ function getEmptyState() {
     sessions: [],
     bindings: [],
     pendingMessages: [],
+    pendingOutgoingMessages: [],
   };
 }
 
@@ -74,6 +75,7 @@ export async function readWechatBridgeState(env) {
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       bindings: Array.isArray(parsed.bindings) ? parsed.bindings : [],
       pendingMessages: Array.isArray(parsed.pendingMessages) ? parsed.pendingMessages : [],
+      pendingOutgoingMessages: Array.isArray(parsed.pendingOutgoingMessages) ? parsed.pendingOutgoingMessages : [],
     };
   } catch (error) {
     console.error("Failed to parse WECHAT_BRIDGE_KV state, resetting to empty state.", error);
@@ -237,6 +239,47 @@ export async function pullWechatIncomingMessages(env) {
   }
 
   state.pendingMessages = [];
+  await writeWechatBridgeState(env, state);
+  return messages;
+}
+
+export async function enqueueWechatOutgoingMessage(env, payload) {
+  const state = await readWechatBridgeState(env);
+  const binding = state.bindings.find(
+    (item) =>
+      item.conversationId === payload.conversationId
+      && item.characterId === payload.characterId
+      && item.enabled,
+  );
+  if (!binding) {
+    return null;
+  }
+
+  const message = {
+    id: createToken(),
+    channel: "wechat-clawbot",
+    characterId: payload.characterId,
+    conversationId: payload.conversationId,
+    text: payload.text,
+    createdAt: Date.now(),
+    replyToMessageId: payload.replyToMessageId,
+    characterName: payload.characterName,
+    avatarUrl: payload.avatarUrl,
+  };
+
+  state.pendingOutgoingMessages = [...state.pendingOutgoingMessages, message];
+  await writeWechatBridgeState(env, state);
+  return message;
+}
+
+export async function pullWechatOutgoingMessages(env) {
+  const state = await readWechatBridgeState(env);
+  const messages = [...state.pendingOutgoingMessages].sort((left, right) => left.createdAt - right.createdAt);
+  if (!messages.length) {
+    return messages;
+  }
+
+  state.pendingOutgoingMessages = [];
   await writeWechatBridgeState(env, state);
   return messages;
 }

@@ -6,12 +6,14 @@ import {
   createWechatBindSession,
   disableWechatBindingByCharacterId,
   enqueueWechatIncomingMessage,
+  enqueueWechatOutgoingMessage,
   getWechatBindingsOverview,
   getWechatBindingByCharacterId,
   getWechatBindSessionByCharacterId,
   getWechatBindSessionByToken,
   markWechatBindSessionBound,
   pullWechatIncomingMessages,
+  pullWechatOutgoingMessages,
 } from "./wechatBridgeStore";
 
 function pickFirstString(...values: unknown[]): string | undefined {
@@ -297,6 +299,45 @@ async function startServer() {
     } catch (error) {
       console.error("Error pulling WeChat incoming messages:", error);
       res.status(500).json({ error: "Failed to pull WeChat incoming messages" });
+    }
+  });
+
+  app.post("/api/wechat/messages/outgoing", async (req, res) => {
+    const conversationId = String(req.body?.conversationId || "").trim();
+    const characterId = String(req.body?.characterId || "").trim();
+    const text = String(req.body?.text || "").trim();
+    if (!conversationId || !characterId || !text) {
+      return res.status(400).json({ error: "Missing conversationId, characterId or text" });
+    }
+
+    try {
+      const message = await enqueueWechatOutgoingMessage({
+        conversationId,
+        characterId,
+        text,
+        replyToMessageId: typeof req.body?.replyToMessageId === "string" ? req.body.replyToMessageId.trim() : undefined,
+        characterName: typeof req.body?.characterName === "string" ? req.body.characterName.trim() : undefined,
+        avatarUrl: typeof req.body?.avatarUrl === "string" ? req.body.avatarUrl.trim() : undefined,
+      });
+
+      if (!message) {
+        return res.status(404).json({ error: "No enabled binding for this conversationId and characterId" });
+      }
+
+      res.json({ message });
+    } catch (error) {
+      console.error("Error enqueueing WeChat outgoing message:", error);
+      res.status(500).json({ error: "Failed to enqueue WeChat outgoing message" });
+    }
+  });
+
+  app.post("/api/wechat/messages/outgoing/pull", async (_req, res) => {
+    try {
+      const messages = await pullWechatOutgoingMessages();
+      res.json({ messages });
+    } catch (error) {
+      console.error("Error pulling WeChat outgoing messages:", error);
+      res.status(500).json({ error: "Failed to pull WeChat outgoing messages" });
     }
   });
 

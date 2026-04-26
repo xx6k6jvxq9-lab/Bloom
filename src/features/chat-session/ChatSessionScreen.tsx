@@ -1479,7 +1479,6 @@ export function ChatSessionScreen({
 
   const chatFooterLift = keyboardInset;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const emptyChatPrompt = character.openingRemark?.trim() || character.signature?.trim() || `和 ${character.name} 说点什么吧`;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: chatFooterLift > 0 ? `calc(0.55rem + ${chatFooterLift}px)` : '0.55rem',
     ...footerStyleObj,
@@ -1610,21 +1609,6 @@ export function ChatSessionScreen({
         {error && (
           <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
             {error}
-          </div>
-        )}
-        {!hasVisibleMessages && (
-          <div className="flex justify-start pb-2">
-            <div className="flex items-end gap-2.5">
-              <PersistentImage
-                value={character.avatar}
-                alt={character.name}
-                className="mt-0.5 h-8 w-8 shrink-0 rounded-full border border-zinc-200/60 object-cover bg-zinc-100"
-              />
-              <div className="max-w-[82%] rounded-2xl rounded-tl-md border border-zinc-200 bg-white/92 px-4 py-3 text-zinc-800 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-                <p className="whitespace-pre-wrap break-words text-[14px] leading-6">{emptyChatPrompt}</p>
-                <div className="mt-2 text-[10px] text-zinc-400">开始和 TA 对话</div>
-              </div>
-            </div>
           </div>
         )}
         {showMemoryWindowHint && (

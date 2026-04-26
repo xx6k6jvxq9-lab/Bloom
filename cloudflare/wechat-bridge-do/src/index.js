@@ -94,6 +94,7 @@ function getEmptyState() {
     sessions: [],
     bindings: [],
     pendingMessages: [],
+    pendingOutgoingMessages: [],
   };
 }
 
@@ -160,6 +161,14 @@ export class WechatBridgeDurableObject {
       return this.handlePullMessages();
     }
 
+    if (request.method === "POST" && pathname === "/api/wechat/messages/outgoing") {
+      return this.handleEnqueueOutgoingMessage(request);
+    }
+
+    if (request.method === "POST" && pathname === "/api/wechat/messages/outgoing/pull") {
+      return this.handlePullOutgoingMessages();
+    }
+
     if (request.method === "GET" && pathname === "/health") {
       return json({ status: "ok", service: "wechat-bridge-do" });
     }
@@ -177,6 +186,7 @@ export class WechatBridgeDurableObject {
       sessions: Array.isArray(state.sessions) ? state.sessions : [],
       bindings: Array.isArray(state.bindings) ? state.bindings : [],
       pendingMessages: Array.isArray(state.pendingMessages) ? state.pendingMessages : [],
+      pendingOutgoingMessages: Array.isArray(state.pendingOutgoingMessages) ? state.pendingOutgoingMessages : [],
     };
     return this.cache;
   }
@@ -413,6 +423,55 @@ export class WechatBridgeDurableObject {
     }
 
     state.pendingMessages = [];
+    await this.writeState(state);
+    return json({ messages });
+  }
+
+  async handleEnqueueOutgoingMessage(request) {
+    const body = await this.readJsonBody(request);
+    const conversationId = String(body?.conversationId || "").trim();
+    const characterId = String(body?.characterId || "").trim();
+    const text = String(body?.text || "").trim();
+    if (!conversationId || !characterId || !text) {
+      return badRequest("Missing conversationId, characterId or text");
+    }
+
+    const state = await this.readState();
+    const binding = state.bindings.find(
+      (item) =>
+        item.conversationId === conversationId
+        && item.characterId === characterId
+        && item.enabled,
+    );
+    if (!binding) {
+      return json({ error: "No enabled binding for this conversationId and characterId" }, { status: 404 });
+    }
+
+    const message = {
+      id: createToken(),
+      channel: "wechat-clawbot",
+      characterId,
+      conversationId,
+      text,
+      createdAt: Date.now(),
+      replyToMessageId: typeof body?.replyToMessageId === "string" ? body.replyToMessageId.trim() : undefined,
+      characterName: typeof body?.characterName === "string" ? body.characterName.trim() : undefined,
+      avatarUrl: typeof body?.avatarUrl === "string" ? body.avatarUrl.trim() : undefined,
+    };
+
+    state.pendingOutgoingMessages = [...state.pendingOutgoingMessages, message];
+    await this.writeState(state);
+    return json({ message });
+  }
+
+  async handlePullOutgoingMessages() {
+    const state = await this.readState();
+    const messages = [...state.pendingOutgoingMessages].sort((left, right) => left.createdAt - right.createdAt);
+    if (!messages.length) {
+      return json({ messages });
+    }
+
+    state.pendingOutgoingMessages = [];
     await this.writeState(state);
     return json({ messages });
   }

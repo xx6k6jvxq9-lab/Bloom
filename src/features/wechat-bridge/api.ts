@@ -1,4 +1,10 @@
-import type { WechatBindSession, WechatBindingsOverview, WechatIncomingBridgeMessage, WechatRoleBinding } from "./types";
+import type {
+  WechatBindSession,
+  WechatBindingsOverview,
+  WechatIncomingBridgeMessage,
+  WechatOutgoingBridgeMessage,
+  WechatRoleBinding,
+} from "./types";
 import {
   disableWechatBindingByCharacterId,
   getWechatBindingByCharacterId,
@@ -126,6 +132,23 @@ export async function pullWechatIncomingMessagesRequest(): Promise<WechatIncomin
   } catch {
     return [];
   }
+}
+
+export async function enqueueWechatOutgoingMessageRequest(payload: {
+  conversationId: string;
+  characterId: string;
+  text: string;
+  replyToMessageId?: string;
+  characterName?: string;
+  avatarUrl?: string;
+}): Promise<WechatOutgoingBridgeMessage> {
+  return readJson<{ message: WechatOutgoingBridgeMessage }>(
+    await fetch('/api/wechat/messages/outgoing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  ).then((response) => response.message);
 }
 
 export async function getWechatBindingsOverviewRequest(): Promise<WechatBindingsOverview> {

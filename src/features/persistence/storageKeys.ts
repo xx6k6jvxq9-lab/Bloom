@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
   chatHistory: 'persistence:chat-history',
   wechatRoleBindings: 'persistence:wechat-role-bindings',
   wechatBindSessions: 'persistence:wechat-bind-sessions',
+  wechatConversationState: 'persistence:wechat-conversation-state',
 } as const;
 
 export const PERSISTENCE_DB_NAME = 'app-persistence-db';
