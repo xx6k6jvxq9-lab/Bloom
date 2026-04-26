@@ -31,8 +31,22 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function tryParseUrl(value: unknown): URL | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 function resolveWebhookMessagePayload(input: unknown): {
   conversationId?: string;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
   text?: string;
   senderDisplayName?: string;
 } {
@@ -63,6 +77,36 @@ function resolveWebhookMessagePayload(input: unknown): {
       message?.talker,
       message?.from,
     ),
+    wechatIdentity: pickFirstString(
+      root.wechatIdentity,
+      root.wechatId,
+      root.senderId,
+      event?.wechatIdentity,
+      event?.wechatId,
+      event?.senderId,
+      sender?.id,
+      sender?.wechatId,
+      sender?.identity,
+      sender?.senderId,
+      message?.senderId,
+      message?.fromUser,
+    ),
+    channelAccountId: pickFirstString(
+      root.channelAccountId,
+      root.accountId,
+      event?.channelAccountId,
+      event?.accountId,
+      chat?.accountId,
+      message?.accountId,
+    ),
+    channelPeerId: pickFirstString(
+      root.channelPeerId,
+      root.peerId,
+      event?.channelPeerId,
+      event?.peerId,
+      chat?.peerId,
+      message?.peerId,
+    ),
     text: pickFirstString(
       root.text,
       root.content,
@@ -82,6 +126,125 @@ function resolveWebhookMessagePayload(input: unknown): {
       sender?.remark,
       message?.senderDisplayName,
       event?.senderDisplayName,
+    ),
+  };
+}
+
+function resolveOpenClawConnectPayload(input: unknown, requestUrl?: string): {
+  token?: string;
+  conversationId?: string;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
+  displayName?: string;
+  avatarUrl?: string;
+} {
+  const root = asRecord(input) ?? {};
+  const event = asRecord(root.event);
+  const message = asRecord(root.message) ?? asRecord(root.msg);
+  const sender = asRecord(root.sender) ?? asRecord(message?.sender) ?? asRecord(event?.sender);
+  const chat = asRecord(root.chat) ?? asRecord(event?.chat) ?? asRecord(message?.chat);
+  const callbackUrl = pickFirstString(
+    root.callbackUrl,
+    root.bindCallbackUrl,
+    event?.callbackUrl,
+    event?.bindCallbackUrl,
+    message?.callbackUrl,
+  );
+  const parsedCallbackUrl = tryParseUrl(callbackUrl);
+  const parsedRequestUrl = tryParseUrl(requestUrl);
+
+  return {
+    token: pickFirstString(
+      root.token,
+      root.bindToken,
+      root.state,
+      event?.token,
+      event?.bindToken,
+      event?.state,
+      message?.token,
+      parsedRequestUrl?.searchParams.get("token") || undefined,
+      parsedRequestUrl?.searchParams.get("bindToken") || undefined,
+      parsedCallbackUrl?.searchParams.get("token") || undefined,
+      parsedCallbackUrl?.searchParams.get("bindToken") || undefined,
+    ),
+    conversationId: pickFirstString(
+      root.conversationId,
+      root.chatId,
+      root.sessionId,
+      root.roomId,
+      root.talker,
+      event?.conversationId,
+      event?.chatId,
+      event?.sessionId,
+      event?.roomId,
+      event?.talker,
+      chat?.id,
+      chat?.conversationId,
+      chat?.chatId,
+      message?.conversationId,
+      message?.chatId,
+      message?.sessionId,
+      message?.talker,
+      message?.from,
+    ),
+    wechatIdentity: pickFirstString(
+      root.wechatIdentity,
+      root.wechatId,
+      root.senderId,
+      event?.wechatIdentity,
+      event?.wechatId,
+      event?.senderId,
+      sender?.id,
+      sender?.wechatId,
+      sender?.identity,
+      sender?.senderId,
+      message?.senderId,
+      message?.fromUser,
+    ),
+    channelAccountId: pickFirstString(
+      root.channelAccountId,
+      root.accountId,
+      event?.channelAccountId,
+      event?.accountId,
+      chat?.accountId,
+      message?.accountId,
+    ),
+    channelPeerId: pickFirstString(
+      root.channelPeerId,
+      root.peerId,
+      event?.channelPeerId,
+      event?.peerId,
+      chat?.peerId,
+      message?.peerId,
+    ),
+    openClawPairingId: pickFirstString(
+      root.openClawPairingId,
+      root.pairingId,
+      event?.openClawPairingId,
+      event?.pairingId,
+      message?.pairingId,
+    ),
+    displayName: pickFirstString(
+      root.displayName,
+      root.nickname,
+      sender?.displayName,
+      sender?.nickname,
+      sender?.name,
+      sender?.remark,
+      message?.senderDisplayName,
+      event?.senderDisplayName,
+    ),
+    avatarUrl: pickFirstString(
+      root.avatarUrl,
+      root.avatar,
+      root.headImgUrl,
+      sender?.avatarUrl,
+      sender?.avatar,
+      sender?.headImgUrl,
+      message?.avatarUrl,
+      event?.avatarUrl,
     ),
   };
 }
@@ -147,13 +310,23 @@ async function startServer() {
 
   app.post("/api/wechat/bind-session", async (req, res) => {
     const characterId = String(req.body?.characterId || "").trim();
+    const bloomUserId = String(req.body?.bloomUserId || "").trim();
     if (!characterId) {
       return res.status(400).json({ error: "Missing characterId" });
+    }
+    if (!bloomUserId) {
+      return res.status(400).json({ error: "Missing bloomUserId" });
     }
 
     try {
       const appOrigin = `${req.protocol}://${req.get("host") || `127.0.0.1:${PORT}`}`;
-      const session = await createWechatBindSession(characterId, appOrigin);
+      const session = await createWechatBindSession({
+        characterId,
+        bloomUserId,
+        characterName: typeof req.body?.characterName === "string" ? req.body.characterName.trim() : undefined,
+        characterAvatarUrl: typeof req.body?.characterAvatarUrl === "string" ? req.body.characterAvatarUrl.trim() : undefined,
+        appOrigin,
+      });
       res.json(session);
     } catch (error) {
       console.error("Error creating WeChat bind session:", error);
@@ -163,7 +336,10 @@ async function startServer() {
 
   app.get("/api/wechat/bind-session/by-character/:characterId", async (req, res) => {
     try {
-      const session = await getWechatBindSessionByCharacterId(String(req.params.characterId || "").trim());
+      const session = await getWechatBindSessionByCharacterId(
+        String(req.params.characterId || "").trim(),
+        typeof req.query?.bloomUserId === "string" ? req.query.bloomUserId.trim() : undefined,
+      );
       res.json({ session });
     } catch (error) {
       console.error("Error reading WeChat bind session by character:", error);
@@ -183,7 +359,10 @@ async function startServer() {
 
   app.get("/api/wechat/binding/by-character/:characterId", async (req, res) => {
     try {
-      const binding = await getWechatBindingByCharacterId(String(req.params.characterId || "").trim());
+      const binding = await getWechatBindingByCharacterId(
+        String(req.params.characterId || "").trim(),
+        typeof req.query?.bloomUserId === "string" ? req.query.bloomUserId.trim() : undefined,
+      );
       res.json({ binding });
     } catch (error) {
       console.error("Error reading WeChat binding by character:", error);
@@ -201,15 +380,21 @@ async function startServer() {
     }
   });
 
-  app.post("/api/wechat/bind-session/:token/bind", async (req, res) => {
+  const handleWechatBindSessionConnect = async (req: express.Request, res: express.Response) => {
     const conversationId = String(req.body?.conversationId || "").trim();
-    if (!conversationId) {
-      return res.status(400).json({ error: "Missing conversationId" });
+    const channelPeerId = String(req.body?.channelPeerId || "").trim();
+    const wechatIdentity = String(req.body?.wechatIdentity || "").trim();
+    if (!conversationId && !channelPeerId && !wechatIdentity) {
+      return res.status(400).json({ error: "Missing conversationId or WeChat identity" });
     }
 
     try {
       const result = await markWechatBindSessionBound(String(req.params.token || "").trim(), {
-        conversationId,
+        conversationId: conversationId || undefined,
+        wechatIdentity: wechatIdentity || undefined,
+        channelAccountId: typeof req.body?.channelAccountId === "string" ? req.body.channelAccountId.trim() : undefined,
+        channelPeerId: channelPeerId || undefined,
+        openClawPairingId: typeof req.body?.openClawPairingId === "string" ? req.body.openClawPairingId.trim() : undefined,
         displayName: typeof req.body?.displayName === "string" ? req.body.displayName.trim() : undefined,
         avatarUrl: typeof req.body?.avatarUrl === "string" ? req.body.avatarUrl.trim() : undefined,
       });
@@ -223,11 +408,17 @@ async function startServer() {
       console.error("Error binding WeChat session:", error);
       res.status(500).json({ error: "Failed to bind WeChat session" });
     }
-  });
+  };
+
+  app.post("/api/wechat/bind-session/:token/bind", handleWechatBindSessionConnect);
+  app.post("/api/wechat/bind-session/:token/connect", handleWechatBindSessionConnect);
 
   app.post("/api/wechat/binding/by-character/:characterId/disable", async (req, res) => {
     try {
-      const binding = await disableWechatBindingByCharacterId(String(req.params.characterId || "").trim());
+      const binding = await disableWechatBindingByCharacterId(
+        String(req.params.characterId || "").trim(),
+        typeof req.query?.bloomUserId === "string" ? req.query.bloomUserId.trim() : undefined,
+      );
       res.json({ binding });
     } catch (error) {
       console.error("Error disabling WeChat binding:", error);
@@ -237,19 +428,24 @@ async function startServer() {
 
   app.post("/api/wechat/messages", async (req, res) => {
     const conversationId = String(req.body?.conversationId || "").trim();
+    const wechatIdentity = String(req.body?.wechatIdentity || "").trim();
+    const channelPeerId = String(req.body?.channelPeerId || "").trim();
     const text = String(req.body?.text || "").trim();
-    if (!conversationId || !text) {
-      return res.status(400).json({ error: "Missing conversationId or text" });
+    if ((!conversationId && !wechatIdentity && !channelPeerId) || !text) {
+      return res.status(400).json({ error: "Missing WeChat identity or text" });
     }
 
     try {
       const message = await enqueueWechatIncomingMessage({
-        conversationId,
+        conversationId: conversationId || undefined,
+        wechatIdentity: wechatIdentity || undefined,
+        channelAccountId: typeof req.body?.channelAccountId === "string" ? req.body.channelAccountId.trim() : undefined,
+        channelPeerId: channelPeerId || undefined,
         text,
         senderDisplayName: typeof req.body?.senderDisplayName === "string" ? req.body.senderDisplayName.trim() : undefined,
       });
       if (!message) {
-        return res.status(404).json({ error: "No enabled binding for this conversationId" });
+        return res.status(404).json({ error: "No enabled binding for this WeChat identity" });
       }
       res.json({ message });
     } catch (error) {
@@ -260,9 +456,9 @@ async function startServer() {
 
   app.post("/api/wechat/clawbot/callback", async (req, res) => {
     const payload = resolveWebhookMessagePayload(req.body);
-    if (!payload.conversationId || !payload.text) {
+    if ((!payload.conversationId && !payload.wechatIdentity && !payload.channelPeerId) || !payload.text) {
       return res.status(400).json({
-        error: "Unable to resolve conversationId or text from callback payload",
+        error: "Unable to resolve WeChat identity or text from callback payload",
         resolved: payload,
       });
     }
@@ -270,6 +466,9 @@ async function startServer() {
     try {
       const message = await enqueueWechatIncomingMessage({
         conversationId: payload.conversationId,
+        wechatIdentity: payload.wechatIdentity,
+        channelAccountId: payload.channelAccountId,
+        channelPeerId: payload.channelPeerId,
         text: payload.text,
         senderDisplayName: payload.senderDisplayName,
       });
@@ -277,7 +476,7 @@ async function startServer() {
       if (!message) {
         return res.status(202).json({
           accepted: false,
-          reason: "No enabled binding for this conversationId",
+          reason: "No enabled binding for this WeChat identity",
           resolved: payload,
         });
       }
@@ -289,6 +488,37 @@ async function startServer() {
     } catch (error) {
       console.error("Error handling Clawbot callback:", error);
       res.status(500).json({ error: "Failed to handle Clawbot callback" });
+    }
+  });
+
+  app.post("/api/wechat/openclaw/connect-callback", async (req, res) => {
+    const payload = resolveOpenClawConnectPayload(req.body, `${req.protocol}://${req.get("host") || `127.0.0.1:${PORT}`}${req.originalUrl}`);
+    if (!payload.token) {
+      return res.status(400).json({ error: "Missing bind token in OpenClaw callback", resolved: payload });
+    }
+    if (!payload.conversationId && !payload.wechatIdentity && !payload.channelPeerId) {
+      return res.status(400).json({ error: "Missing WeChat identity in OpenClaw callback", resolved: payload });
+    }
+
+    try {
+      const result = await markWechatBindSessionBound(payload.token, {
+        conversationId: payload.conversationId,
+        wechatIdentity: payload.wechatIdentity,
+        channelAccountId: payload.channelAccountId,
+        channelPeerId: payload.channelPeerId,
+        openClawPairingId: payload.openClawPairingId,
+        displayName: payload.displayName,
+        avatarUrl: payload.avatarUrl,
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: "Bind session not found", resolved: payload });
+      }
+
+      res.json({ connected: true, ...result });
+    } catch (error) {
+      console.error("Error handling OpenClaw connect callback:", error);
+      res.status(500).json({ error: "Failed to handle OpenClaw connect callback" });
     }
   });
 

@@ -11,6 +11,10 @@ type BindFlowState = 'loading' | 'waiting' | 'binding' | 'success' | 'expired' |
 
 type ResolvedWechatPayload = {
   conversationId?: string;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
   displayName?: string;
   avatarUrl?: string;
 };
@@ -28,6 +32,10 @@ function pickFirstSearchParam(searchParams: URLSearchParams, keys: string[]): st
 function resolveWechatPayload(searchParams: URLSearchParams): ResolvedWechatPayload {
   return {
     conversationId: pickFirstSearchParam(searchParams, ['conversationId', 'chatId', 'sessionId', 'roomId', 'talker']),
+    wechatIdentity: pickFirstSearchParam(searchParams, ['wechatIdentity', 'wechatId', 'senderId', 'peerIdentity']),
+    channelAccountId: pickFirstSearchParam(searchParams, ['channelAccountId', 'accountId']),
+    channelPeerId: pickFirstSearchParam(searchParams, ['channelPeerId', 'peerId']),
+    openClawPairingId: pickFirstSearchParam(searchParams, ['openClawPairingId', 'pairingId']),
     displayName: pickFirstSearchParam(searchParams, ['displayName', 'nickname', 'name', 'remark', 'senderDisplayName']),
     avatarUrl: pickFirstSearchParam(searchParams, ['avatarUrl', 'avatar', 'headImgUrl']),
   };
@@ -90,7 +98,7 @@ export function WechatBindPage() {
           return;
         }
 
-        if (!payload.conversationId) {
+        if (!payload.conversationId && !payload.wechatIdentity && !payload.channelPeerId) {
           setFlowState('waiting');
           setMessage('已识别到绑定任务，等待微信侧带着会话信息再次打开这个链接。');
           return;
@@ -101,6 +109,10 @@ export function WechatBindPage() {
 
         const result = await markWechatBindSessionBoundRequest(token, {
           conversationId: payload.conversationId,
+          wechatIdentity: payload.wechatIdentity,
+          channelAccountId: payload.channelAccountId,
+          channelPeerId: payload.channelPeerId,
+          openClawPairingId: payload.openClawPairingId,
           displayName: payload.displayName,
           avatarUrl: payload.avatarUrl,
         });
@@ -121,7 +133,16 @@ export function WechatBindPage() {
     return () => {
       cancelled = true;
     };
-  }, [payload.avatarUrl, payload.conversationId, payload.displayName, token]);
+  }, [
+    payload.avatarUrl,
+    payload.channelAccountId,
+    payload.channelPeerId,
+    payload.conversationId,
+    payload.displayName,
+    payload.openClawPairingId,
+    payload.wechatIdentity,
+    token,
+  ]);
 
   const handleRetry = async () => {
     setFlowState('loading');

@@ -13,7 +13,11 @@ export async function onRequestGet(context) {
   }
 
   try {
-    const binding = await getWechatBindingByCharacterId(context.env, String(context.params.characterId || "").trim());
+    const binding = await getWechatBindingByCharacterId(
+      context.env,
+      String(context.params.characterId || "").trim(),
+      context.request.url ? new URL(context.request.url).searchParams.get("bloomUserId")?.trim() : undefined,
+    );
     return json({ binding });
   } catch (error) {
     return serverError("Failed to load WeChat binding", error);
@@ -32,7 +36,11 @@ export async function onRequestPost(context) {
   }
 
   try {
-    const binding = await disableWechatBindingByCharacterId(context.env, String(context.params.characterId || "").trim());
+    const binding = await disableWechatBindingByCharacterId(
+      context.env,
+      String(context.params.characterId || "").trim(),
+      context.request.url ? new URL(context.request.url).searchParams.get("bloomUserId")?.trim() : undefined,
+    );
     return json({ binding });
   } catch (error) {
     return serverError("Failed to disable WeChat binding", error);

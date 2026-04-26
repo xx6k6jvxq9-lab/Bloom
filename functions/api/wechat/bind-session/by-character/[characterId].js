@@ -12,7 +12,11 @@ export async function onRequestGet(context) {
   }
 
   try {
-    const session = await getWechatBindSessionByCharacterId(context.env, String(context.params.characterId || "").trim());
+    const session = await getWechatBindSessionByCharacterId(
+      context.env,
+      String(context.params.characterId || "").trim(),
+      context.request.url ? new URL(context.request.url).searchParams.get("bloomUserId")?.trim() : undefined,
+    );
     return json({ session });
   } catch (error) {
     return serverError("Failed to load WeChat bind session", error);

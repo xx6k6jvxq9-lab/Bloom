@@ -1,6 +1,48 @@
 const STORE_KEY = "wechat-bridge-state";
 const BIND_SESSION_LIFETIME_MS = 1000 * 60 * 10;
 
+function buildBloomBindCallbackUrl(appOrigin, token, characterId, bloomUserId) {
+  return `${String(appOrigin).replace(/\/$/, "")}/wechat/bind?token=${encodeURIComponent(token)}&characterId=${encodeURIComponent(characterId)}&bloomUserId=${encodeURIComponent(bloomUserId)}`;
+}
+
+function buildWechatConnectUrl(env, payload) {
+  const bindCallbackUrl = buildBloomBindCallbackUrl(
+    payload.appOrigin,
+    payload.token,
+    payload.characterId,
+    payload.bloomUserId,
+  );
+  const configuredConnectUrl = typeof env?.OPENCLAW_WECHAT_CONNECT_URL === "string"
+    ? env.OPENCLAW_WECHAT_CONNECT_URL.trim()
+    : "";
+
+  if (!configuredConnectUrl) {
+    return {
+      qrText: bindCallbackUrl,
+      bindCallbackUrl,
+    };
+  }
+
+  try {
+    const url = new URL(configuredConnectUrl);
+    url.searchParams.set("token", payload.token);
+    url.searchParams.set("bloomUserId", payload.bloomUserId);
+    url.searchParams.set("characterId", payload.characterId);
+    url.searchParams.set("callbackUrl", bindCallbackUrl);
+    return {
+      qrText: url.toString(),
+      bindCallbackUrl,
+      openClawConnectUrl: configuredConnectUrl,
+    };
+  } catch (error) {
+    console.error("Invalid OPENCLAW_WECHAT_CONNECT_URL, falling back to Bloom bind page.", error);
+    return {
+      qrText: bindCallbackUrl,
+      bindCallbackUrl,
+    };
+  }
+}
+
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -88,18 +130,30 @@ export async function writeWechatBridgeState(env, state) {
   await kv.put(STORE_KEY, JSON.stringify(state));
 }
 
-export async function createWechatBindSession(env, characterId, appOrigin) {
+export async function createWechatBindSession(env, payload, appOrigin) {
   const state = await readWechatBridgeState(env);
+  const bindTaskId = createToken();
   const token = createToken();
   const createdAt = Date.now();
   const expiresAt = createdAt + BIND_SESSION_LIFETIME_MS;
-  const qrText = `${String(appOrigin).replace(/\/$/, "")}/wechat/bind?token=${encodeURIComponent(token)}&characterId=${encodeURIComponent(characterId)}`;
+  const connectTarget = buildWechatConnectUrl(env, {
+    appOrigin,
+    token,
+    bloomUserId: payload.bloomUserId,
+    characterId: payload.characterId,
+  });
 
   const session = {
+    bindTaskId,
     token,
     channel: "wechat-clawbot",
-    characterId,
-    qrText,
+    bloomUserId: payload.bloomUserId,
+    characterId: payload.characterId,
+    characterName: payload.characterName,
+    characterAvatarUrl: payload.characterAvatarUrl,
+    qrText: connectTarget.qrText,
+    bindCallbackUrl: connectTarget.bindCallbackUrl,
+    openClawConnectUrl: connectTarget.openClawConnectUrl,
     status: "pending",
     createdAt,
     expiresAt,
@@ -107,16 +161,20 @@ export async function createWechatBindSession(env, characterId, appOrigin) {
 
   state.sessions = [
     session,
-    ...normalizeSessions(state.sessions).filter((item) => item.characterId !== characterId),
+    ...normalizeSessions(state.sessions).filter(
+      (item) => !(item.characterId === payload.characterId && item.bloomUserId === payload.bloomUserId),
+    ),
   ];
   await writeWechatBridgeState(env, state);
   return session;
 }
 
-export async function getWechatBindSessionByCharacterId(env, characterId) {
+export async function getWechatBindSessionByCharacterId(env, characterId, bloomUserId) {
   const state = await readWechatBridgeState(env);
   const sessions = normalizeSessions(state.sessions);
-  const target = sessions.find((session) => session.characterId === characterId) || null;
+  const target = sessions.find(
+    (session) => session.characterId === characterId && (!bloomUserId || session.bloomUserId === bloomUserId),
+  ) || null;
   if (JSON.stringify(sessions) !== JSON.stringify(state.sessions)) {
     state.sessions = sessions;
     await writeWechatBridgeState(env, state);
@@ -135,9 +193,11 @@ export async function getWechatBindSessionByToken(env, token) {
   return target;
 }
 
-export async function getWechatBindingByCharacterId(env, characterId) {
+export async function getWechatBindingByCharacterId(env, characterId, bloomUserId) {
   const state = await readWechatBridgeState(env);
-  return state.bindings.find((binding) => binding.characterId === characterId && binding.enabled) || null;
+  return state.bindings.find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  ) || null;
 }
 
 export async function getWechatBindingsOverview(env) {
@@ -157,19 +217,38 @@ export async function markWechatBindSessionBound(env, token, payload) {
     return null;
   }
 
+  const resolvedConversationId = pickFirstString(
+    payload.conversationId,
+    payload.channelPeerId,
+    payload.wechatIdentity,
+  );
+  if (!resolvedConversationId) {
+    return null;
+  }
+
   const session = {
     ...target,
     status: "bound",
-    boundConversationId: payload.conversationId,
+    connectedAt: Date.now(),
+    wechatIdentity: pickFirstString(payload.wechatIdentity, target.wechatIdentity),
+    channelAccountId: pickFirstString(payload.channelAccountId, target.channelAccountId),
+    channelPeerId: pickFirstString(payload.channelPeerId, target.channelPeerId),
+    openClawPairingId: pickFirstString(payload.openClawPairingId, target.openClawPairingId),
+    boundConversationId: resolvedConversationId,
     boundDisplayName: payload.displayName,
   };
 
   const binding = {
-    id: `wxbind_${target.characterId}`,
+    id: `wxbind_${target.bloomUserId}_${target.characterId}`,
     channel: "wechat-clawbot",
-    conversationId: payload.conversationId,
+    conversationId: resolvedConversationId,
+    bloomUserId: target.bloomUserId,
     characterId: target.characterId,
     enabled: true,
+    wechatIdentity: pickFirstString(payload.wechatIdentity),
+    channelAccountId: pickFirstString(payload.channelAccountId),
+    channelPeerId: pickFirstString(payload.channelPeerId),
+    openClawPairingId: pickFirstString(payload.openClawPairingId),
     displayName: payload.displayName,
     avatarUrl: payload.avatarUrl,
     createdAt: target.createdAt,
@@ -182,7 +261,7 @@ export async function markWechatBindSessionBound(env, token, payload) {
     ...state.bindings.filter(
       (item) =>
         item.id !== binding.id &&
-        item.characterId !== binding.characterId &&
+        !(item.bloomUserId === binding.bloomUserId && item.characterId === binding.characterId) &&
         item.conversationId !== binding.conversationId,
     ),
   ];
@@ -191,9 +270,11 @@ export async function markWechatBindSessionBound(env, token, payload) {
   return { session, binding };
 }
 
-export async function disableWechatBindingByCharacterId(env, characterId) {
+export async function disableWechatBindingByCharacterId(env, characterId, bloomUserId) {
   const state = await readWechatBridgeState(env);
-  const target = state.bindings.find((binding) => binding.characterId === characterId && binding.enabled);
+  const target = state.bindings.find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  );
   if (!target) {
     return null;
   }
@@ -211,8 +292,22 @@ export async function disableWechatBindingByCharacterId(env, characterId) {
 
 export async function enqueueWechatIncomingMessage(env, payload) {
   const state = await readWechatBridgeState(env);
-  const binding = state.bindings.find((item) => item.conversationId === payload.conversationId && item.enabled);
+  const conversationId = pickFirstString(payload.conversationId, payload.channelPeerId, payload.wechatIdentity);
+  const binding = state.bindings.find((item) => {
+    if (!item.enabled) {
+      return false;
+    }
+    return (
+      (payload.conversationId && item.conversationId === payload.conversationId)
+      || (payload.wechatIdentity && item.wechatIdentity === payload.wechatIdentity)
+      || (payload.channelPeerId && item.channelPeerId === payload.channelPeerId)
+      || (payload.channelAccountId && item.channelAccountId === payload.channelAccountId)
+    );
+  });
   if (!binding) {
+    return null;
+  }
+  if (!conversationId) {
     return null;
   }
 
@@ -220,7 +315,7 @@ export async function enqueueWechatIncomingMessage(env, payload) {
     id: createToken(),
     channel: "wechat-clawbot",
     characterId: binding.characterId,
-    conversationId: payload.conversationId,
+    conversationId,
     text: payload.text,
     senderDisplayName: payload.senderDisplayName,
     createdAt: Date.now(),
@@ -297,6 +392,17 @@ function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function tryParseUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 export function resolveWebhookMessagePayload(input) {
   const root = asRecord(input) ?? {};
   const event = asRecord(root.event);
@@ -325,6 +431,36 @@ export function resolveWebhookMessagePayload(input) {
       message?.talker,
       message?.from,
     ),
+    wechatIdentity: pickFirstString(
+      root.wechatIdentity,
+      root.wechatId,
+      root.senderId,
+      event?.wechatIdentity,
+      event?.wechatId,
+      event?.senderId,
+      sender?.id,
+      sender?.wechatId,
+      sender?.identity,
+      sender?.senderId,
+      message?.senderId,
+      message?.fromUser,
+    ),
+    channelAccountId: pickFirstString(
+      root.channelAccountId,
+      root.accountId,
+      event?.channelAccountId,
+      event?.accountId,
+      chat?.accountId,
+      message?.accountId,
+    ),
+    channelPeerId: pickFirstString(
+      root.channelPeerId,
+      root.peerId,
+      event?.channelPeerId,
+      event?.peerId,
+      chat?.peerId,
+      message?.peerId,
+    ),
     text: pickFirstString(
       root.text,
       root.content,
@@ -344,6 +480,116 @@ export function resolveWebhookMessagePayload(input) {
       sender?.remark,
       message?.senderDisplayName,
       event?.senderDisplayName,
+    ),
+  };
+}
+
+export function resolveOpenClawConnectPayload(input, requestUrl) {
+  const root = asRecord(input) ?? {};
+  const event = asRecord(root.event);
+  const message = asRecord(root.message) ?? asRecord(root.msg);
+  const sender = asRecord(root.sender) ?? asRecord(message?.sender) ?? asRecord(event?.sender);
+  const chat = asRecord(root.chat) ?? asRecord(event?.chat) ?? asRecord(message?.chat);
+  const callbackUrl = pickFirstString(
+    root.callbackUrl,
+    root.bindCallbackUrl,
+    event?.callbackUrl,
+    event?.bindCallbackUrl,
+    message?.callbackUrl,
+  );
+  const parsedCallbackUrl = tryParseUrl(callbackUrl);
+  const parsedRequestUrl = tryParseUrl(requestUrl);
+
+  return {
+    token: pickFirstString(
+      root.token,
+      root.bindToken,
+      root.state,
+      event?.token,
+      event?.bindToken,
+      event?.state,
+      message?.token,
+      parsedRequestUrl?.searchParams.get("token"),
+      parsedRequestUrl?.searchParams.get("bindToken"),
+      parsedCallbackUrl?.searchParams.get("token"),
+      parsedCallbackUrl?.searchParams.get("bindToken"),
+    ),
+    conversationId: pickFirstString(
+      root.conversationId,
+      root.chatId,
+      root.sessionId,
+      root.roomId,
+      root.talker,
+      event?.conversationId,
+      event?.chatId,
+      event?.sessionId,
+      event?.roomId,
+      event?.talker,
+      chat?.id,
+      chat?.conversationId,
+      chat?.chatId,
+      message?.conversationId,
+      message?.chatId,
+      message?.sessionId,
+      message?.talker,
+      message?.from,
+    ),
+    wechatIdentity: pickFirstString(
+      root.wechatIdentity,
+      root.wechatId,
+      root.senderId,
+      event?.wechatIdentity,
+      event?.wechatId,
+      event?.senderId,
+      sender?.id,
+      sender?.wechatId,
+      sender?.identity,
+      sender?.senderId,
+      message?.senderId,
+      message?.fromUser,
+    ),
+    channelAccountId: pickFirstString(
+      root.channelAccountId,
+      root.accountId,
+      event?.channelAccountId,
+      event?.accountId,
+      chat?.accountId,
+      message?.accountId,
+    ),
+    channelPeerId: pickFirstString(
+      root.channelPeerId,
+      root.peerId,
+      event?.channelPeerId,
+      event?.peerId,
+      chat?.peerId,
+      message?.peerId,
+    ),
+    openClawPairingId: pickFirstString(
+      root.openClawPairingId,
+      root.pairingId,
+      event?.openClawPairingId,
+      event?.pairingId,
+      message?.pairingId,
+    ),
+    displayName: pickFirstString(
+      root.displayName,
+      root.nickname,
+      sender?.displayName,
+      sender?.nickname,
+      sender?.name,
+      sender?.remark,
+      message?.senderDisplayName,
+      event?.senderDisplayName,
+    ),
+    avatarUrl: pickFirstString(
+      root.avatarUrl,
+      root.avatar,
+      root.headImgUrl,
+      sender?.avatarUrl,
+      sender?.avatar,
+      sender?.headImgUrl,
+      message?.avatarUrl,
+      event?.avatarUrl,
     ),
   };
 }

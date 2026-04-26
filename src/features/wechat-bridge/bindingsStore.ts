@@ -46,17 +46,44 @@ export function saveWechatRoleBindings(bindings: WechatRoleBinding[]): void {
   });
 }
 
-export function getWechatBindingByCharacterId(characterId: string): WechatRoleBinding | null {
-  return loadWechatRoleBindings().find((binding) => binding.characterId === characterId && binding.enabled) || null;
+export function getWechatBindingByCharacterId(characterId: string, bloomUserId?: string): WechatRoleBinding | null {
+  return loadWechatRoleBindings().find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  ) || null;
 }
 
 export function getWechatBindingByConversationId(conversationId: string): WechatRoleBinding | null {
   return loadWechatRoleBindings().find((binding) => binding.conversationId === conversationId && binding.enabled) || null;
 }
 
+export function resolveWechatBinding(input: {
+  conversationId?: string;
+  wechatIdentity?: string;
+  channelPeerId?: string;
+  channelAccountId?: string;
+}): WechatRoleBinding | null {
+  const conversationId = input.conversationId?.trim();
+  const wechatIdentity = input.wechatIdentity?.trim();
+  const channelPeerId = input.channelPeerId?.trim();
+  const channelAccountId = input.channelAccountId?.trim();
+
+  return loadWechatRoleBindings().find((binding) => {
+    if (!binding.enabled) return false;
+    return (
+      (!!conversationId && binding.conversationId === conversationId)
+      || (!!wechatIdentity && binding.wechatIdentity === wechatIdentity)
+      || (!!channelPeerId && binding.channelPeerId === channelPeerId)
+      || (!!channelAccountId && binding.channelAccountId === channelAccountId)
+    );
+  }) || null;
+}
+
 export function upsertWechatRoleBinding(binding: WechatRoleBinding): WechatRoleBinding[] {
   const currentBindings = loadWechatRoleBindings().filter(
-    (item) => item.id !== binding.id && item.characterId !== binding.characterId && item.conversationId !== binding.conversationId,
+    (item) =>
+      item.id !== binding.id
+      && !(item.bloomUserId === binding.bloomUserId && item.characterId === binding.characterId)
+      && item.conversationId !== binding.conversationId,
   );
   const nextBindings = [binding, ...currentBindings];
   saveWechatRoleBindings(nextBindings);
@@ -77,8 +104,10 @@ export function disableWechatBinding(bindingId: string): WechatRoleBinding[] {
   return nextBindings;
 }
 
-export function disableWechatBindingByCharacterId(characterId: string): WechatRoleBinding | null {
-  const target = loadWechatRoleBindings().find((binding) => binding.characterId === characterId && binding.enabled);
+export function disableWechatBindingByCharacterId(characterId: string, bloomUserId?: string): WechatRoleBinding | null {
+  const target = loadWechatRoleBindings().find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  );
   if (!target) {
     return null;
   }

@@ -28,29 +28,43 @@ async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function createWechatBindSessionRequest(characterId: string): Promise<WechatBindSession> {
+export async function createWechatBindSessionRequest(payload: {
+  characterId: string;
+  bloomUserId: string;
+  characterName?: string;
+  characterAvatarUrl?: string;
+}): Promise<WechatBindSession> {
   try {
     return await readJson<WechatBindSession>(
       await fetch("/api/wechat/bind-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId }),
+        body: JSON.stringify(payload),
       }),
     );
   } catch {
-    return createWechatBindSession(characterId);
+    return createWechatBindSession(payload);
   }
 }
 
-export async function getWechatBindSessionByCharacterIdRequest(characterId: string): Promise<WechatBindSession | null> {
+export async function getWechatBindSessionByCharacterIdRequest(
+  characterId: string,
+  bloomUserId?: string,
+): Promise<WechatBindSession | null> {
   try {
+    const search = new URLSearchParams();
+    if (bloomUserId?.trim()) {
+      search.set("bloomUserId", bloomUserId.trim());
+    }
     const payload = await readJson<{ session: WechatBindSession | null }>(
-      await fetch(`/api/wechat/bind-session/by-character/${encodeURIComponent(characterId)}`),
+      await fetch(
+        `/api/wechat/bind-session/by-character/${encodeURIComponent(characterId)}${search.size ? `?${search.toString()}` : ""}`,
+      ),
     );
     return payload.session;
   } catch {
     await loadPreferredWechatBindSessions();
-    return getWechatBindSessionByCharacterId(characterId);
+    return getWechatBindSessionByCharacterId(characterId, bloomUserId);
   }
 }
 
@@ -66,22 +80,35 @@ export async function getWechatBindSessionByTokenRequest(token: string): Promise
   }
 }
 
-export async function getWechatBindingByCharacterIdRequest(characterId: string): Promise<WechatRoleBinding | null> {
+export async function getWechatBindingByCharacterIdRequest(
+  characterId: string,
+  bloomUserId?: string,
+): Promise<WechatRoleBinding | null> {
   try {
+    const search = new URLSearchParams();
+    if (bloomUserId?.trim()) {
+      search.set("bloomUserId", bloomUserId.trim());
+    }
     const payload = await readJson<{ binding: WechatRoleBinding | null }>(
-      await fetch(`/api/wechat/binding/by-character/${encodeURIComponent(characterId)}`),
+      await fetch(
+        `/api/wechat/binding/by-character/${encodeURIComponent(characterId)}${search.size ? `?${search.toString()}` : ""}`,
+      ),
     );
     return payload.binding;
   } catch {
     await loadPreferredWechatRoleBindings();
-    return getWechatBindingByCharacterId(characterId);
+    return getWechatBindingByCharacterId(characterId, bloomUserId);
   }
 }
 
 export async function markWechatBindSessionBoundRequest(
   token: string,
   payload: {
-    conversationId: string;
+    conversationId?: string;
+    wechatIdentity?: string;
+    channelAccountId?: string;
+    channelPeerId?: string;
+    openClawPairingId?: string;
     displayName?: string;
     avatarUrl?: string;
   },
@@ -108,16 +135,23 @@ export async function markWechatBindSessionBoundRequest(
   }
 }
 
-export async function disableWechatBindingByCharacterIdRequest(characterId: string): Promise<WechatRoleBinding | null> {
+export async function disableWechatBindingByCharacterIdRequest(
+  characterId: string,
+  bloomUserId?: string,
+): Promise<WechatRoleBinding | null> {
   try {
+    const search = new URLSearchParams();
+    if (bloomUserId?.trim()) {
+      search.set("bloomUserId", bloomUserId.trim());
+    }
     const payload = await readJson<{ binding: WechatRoleBinding | null }>(
-      await fetch(`/api/wechat/binding/by-character/${encodeURIComponent(characterId)}/disable`, {
+      await fetch(`/api/wechat/binding/by-character/${encodeURIComponent(characterId)}/disable${search.size ? `?${search.toString()}` : ""}`, {
         method: "POST",
       }),
     );
     return payload.binding;
   } catch {
-    return disableWechatBindingByCharacterId(characterId);
+    return disableWechatBindingByCharacterId(characterId, bloomUserId);
   }
 }
 

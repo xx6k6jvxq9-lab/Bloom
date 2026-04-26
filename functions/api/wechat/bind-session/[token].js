@@ -29,19 +29,25 @@ export async function onRequestPost(context) {
   }
 
   const url = new URL(context.request.url);
-  if (!url.pathname.endsWith("/bind")) {
+  if (!url.pathname.endsWith("/bind") && !url.pathname.endsWith("/connect")) {
     return new Response("Not Found", { status: 404 });
   }
 
   const body = await readRequestJson(context.request);
   const conversationId = String(body?.conversationId || "").trim();
-  if (!conversationId) {
-    return badRequest("Missing conversationId");
+  const channelPeerId = String(body?.channelPeerId || "").trim();
+  const wechatIdentity = String(body?.wechatIdentity || "").trim();
+  if (!conversationId && !channelPeerId && !wechatIdentity) {
+    return badRequest("Missing conversationId or WeChat identity");
   }
 
   try {
     const result = await markWechatBindSessionBound(context.env, String(context.params.token || "").trim(), {
-      conversationId,
+      conversationId: conversationId || undefined,
+      wechatIdentity: wechatIdentity || undefined,
+      channelAccountId: typeof body?.channelAccountId === "string" ? body.channelAccountId.trim() : undefined,
+      channelPeerId: channelPeerId || undefined,
+      openClawPairingId: typeof body?.openClawPairingId === "string" ? body.openClawPairingId.trim() : undefined,
       displayName: typeof body?.displayName === "string" ? body.displayName.trim() : undefined,
       avatarUrl: typeof body?.avatarUrl === "string" ? body.avatarUrl.trim() : undefined,
     });

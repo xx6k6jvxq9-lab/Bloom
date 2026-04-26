@@ -16,8 +16,8 @@ export async function onRequestPost(context) {
 
   const body = await readRequestJson(context.request);
   const payload = resolveWebhookMessagePayload(body);
-  if (!payload.conversationId || !payload.text) {
-    return badRequest("Unable to resolve conversationId or text from callback payload", {
+  if ((!payload.conversationId && !payload.wechatIdentity && !payload.channelPeerId) || !payload.text) {
+    return badRequest("Unable to resolve WeChat identity or text from callback payload", {
       resolved: payload,
     });
   }
@@ -25,6 +25,9 @@ export async function onRequestPost(context) {
   try {
     const message = await enqueueWechatIncomingMessage(context.env, {
       conversationId: payload.conversationId,
+      wechatIdentity: payload.wechatIdentity,
+      channelAccountId: payload.channelAccountId,
+      channelPeerId: payload.channelPeerId,
       text: payload.text,
       senderDisplayName: payload.senderDisplayName,
     });
@@ -33,7 +36,7 @@ export async function onRequestPost(context) {
       return json(
         {
           accepted: false,
-          reason: "No enabled binding for this conversationId",
+          reason: "No enabled binding for this WeChat identity",
           resolved: payload,
         },
         { status: 202 },

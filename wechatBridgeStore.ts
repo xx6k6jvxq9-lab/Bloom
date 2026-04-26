@@ -8,8 +8,13 @@ export type WechatRoleBinding = {
   id: string;
   channel: WechatBridgeChannel;
   conversationId: string;
+  bloomUserId: string;
   characterId: string;
   enabled: boolean;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
   displayName?: string;
   avatarUrl?: string;
   createdAt: number;
@@ -17,13 +22,24 @@ export type WechatRoleBinding = {
 };
 
 export type WechatBindSession = {
+  bindTaskId: string;
   token: string;
   channel: WechatBridgeChannel;
+  bloomUserId: string;
   characterId: string;
+  characterName?: string;
+  characterAvatarUrl?: string;
   qrText: string;
+  bindCallbackUrl?: string;
+  openClawConnectUrl?: string;
   status: WechatBindingStatus;
   createdAt: number;
   expiresAt: number;
+  connectedAt?: number;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
   boundConversationId?: string;
   boundDisplayName?: string;
 };
@@ -64,6 +80,51 @@ export type WechatOutgoingBridgeMessage = {
 
 const STORE_PATH = path.resolve(process.cwd(), ".codex-wechat-bridge.json");
 const BIND_SESSION_LIFETIME_MS = 1000 * 60 * 10;
+
+function buildBloomBindCallbackUrl(appOrigin: string, token: string, characterId: string, bloomUserId: string): string {
+  return `${appOrigin.replace(/\/$/, "")}/wechat/bind?token=${encodeURIComponent(token)}&characterId=${encodeURIComponent(characterId)}&bloomUserId=${encodeURIComponent(bloomUserId)}`;
+}
+
+function buildWechatConnectUrl(payload: {
+  appOrigin: string;
+  token: string;
+  bloomUserId: string;
+  characterId: string;
+}): { qrText: string; bindCallbackUrl: string; openClawConnectUrl?: string } {
+  const bindCallbackUrl = buildBloomBindCallbackUrl(
+    payload.appOrigin,
+    payload.token,
+    payload.characterId,
+    payload.bloomUserId,
+  );
+  const configuredConnectUrl = process.env.OPENCLAW_WECHAT_CONNECT_URL?.trim() || '';
+
+  if (!configuredConnectUrl) {
+    return {
+      qrText: bindCallbackUrl,
+      bindCallbackUrl,
+    };
+  }
+
+  try {
+    const url = new URL(configuredConnectUrl);
+    url.searchParams.set('token', payload.token);
+    url.searchParams.set('bloomUserId', payload.bloomUserId);
+    url.searchParams.set('characterId', payload.characterId);
+    url.searchParams.set('callbackUrl', bindCallbackUrl);
+    return {
+      qrText: url.toString(),
+      bindCallbackUrl,
+      openClawConnectUrl: configuredConnectUrl,
+    };
+  } catch (error) {
+    console.error('[wechatBridgeStore] Invalid OPENCLAW_WECHAT_CONNECT_URL, falling back to Bloom bind page', error);
+    return {
+      qrText: bindCallbackUrl,
+      bindCallbackUrl,
+    };
+  }
+}
 
 function createToken() {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -116,17 +177,35 @@ function normalizeSessions(sessions: WechatBindSession[]): WechatBindSession[] {
   });
 }
 
-export async function createWechatBindSession(characterId: string, appOrigin: string): Promise<WechatBindSession> {
+export async function createWechatBindSession(params: {
+  characterId: string;
+  bloomUserId: string;
+  characterName?: string;
+  characterAvatarUrl?: string;
+  appOrigin: string;
+}): Promise<WechatBindSession> {
   const state = await readState();
+  const bindTaskId = createToken();
   const token = createToken();
   const createdAt = Date.now();
   const expiresAt = createdAt + BIND_SESSION_LIFETIME_MS;
-  const qrText = `${appOrigin.replace(/\/$/, "")}/wechat/bind?token=${encodeURIComponent(token)}&characterId=${encodeURIComponent(characterId)}`;
+  const connectTarget = buildWechatConnectUrl({
+    appOrigin: params.appOrigin,
+    token,
+    bloomUserId: params.bloomUserId,
+    characterId: params.characterId,
+  });
   const session: WechatBindSession = {
+    bindTaskId,
     token,
     channel: "wechat-clawbot",
-    characterId,
-    qrText,
+    bloomUserId: params.bloomUserId,
+    characterId: params.characterId,
+    characterName: params.characterName,
+    characterAvatarUrl: params.characterAvatarUrl,
+    qrText: connectTarget.qrText,
+    bindCallbackUrl: connectTarget.bindCallbackUrl,
+    openClawConnectUrl: connectTarget.openClawConnectUrl,
     status: "pending",
     createdAt,
     expiresAt,
@@ -134,16 +213,23 @@ export async function createWechatBindSession(characterId: string, appOrigin: st
 
   state.sessions = [
     session,
-    ...normalizeSessions(state.sessions).filter((item) => item.characterId !== characterId),
+    ...normalizeSessions(state.sessions).filter(
+      (item) => !(item.characterId === params.characterId && item.bloomUserId === params.bloomUserId),
+    ),
   ];
   await writeState(state);
   return session;
 }
 
-export async function getWechatBindSessionByCharacterId(characterId: string): Promise<WechatBindSession | null> {
+export async function getWechatBindSessionByCharacterId(
+  characterId: string,
+  bloomUserId?: string,
+): Promise<WechatBindSession | null> {
   const state = await readState();
   const sessions = normalizeSessions(state.sessions);
-  const target = sessions.find((session) => session.characterId === characterId) || null;
+  const target = sessions.find(
+    (session) => session.characterId === characterId && (!bloomUserId || session.bloomUserId === bloomUserId),
+  ) || null;
   if (JSON.stringify(sessions) !== JSON.stringify(state.sessions)) {
     state.sessions = sessions;
     await writeState(state);
@@ -162,9 +248,11 @@ export async function getWechatBindSessionByToken(token: string): Promise<Wechat
   return target;
 }
 
-export async function getWechatBindingByCharacterId(characterId: string): Promise<WechatRoleBinding | null> {
+export async function getWechatBindingByCharacterId(characterId: string, bloomUserId?: string): Promise<WechatRoleBinding | null> {
   const state = await readState();
-  return state.bindings.find((binding) => binding.characterId === characterId && binding.enabled) || null;
+  return state.bindings.find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  ) || null;
 }
 
 export async function getWechatBindingsOverview(): Promise<WechatBindingsOverview> {
@@ -179,7 +267,11 @@ export async function getWechatBindingsOverview(): Promise<WechatBindingsOvervie
 export async function markWechatBindSessionBound(
   token: string,
   payload: {
-    conversationId: string;
+    conversationId?: string;
+    wechatIdentity?: string;
+    channelAccountId?: string;
+    channelPeerId?: string;
+    openClawPairingId?: string;
     displayName?: string;
     avatarUrl?: string;
   },
@@ -189,19 +281,36 @@ export async function markWechatBindSessionBound(
   const target = sessions.find((session) => session.token === token);
   if (!target) return null;
 
+  const resolvedConversationId = payload.conversationId?.trim()
+    || payload.channelPeerId?.trim()
+    || payload.wechatIdentity?.trim();
+  if (!resolvedConversationId) {
+    return null;
+  }
+
   const session: WechatBindSession = {
     ...target,
     status: "bound",
-    boundConversationId: payload.conversationId,
+    connectedAt: Date.now(),
+    wechatIdentity: payload.wechatIdentity?.trim() || target.wechatIdentity,
+    channelAccountId: payload.channelAccountId?.trim() || target.channelAccountId,
+    channelPeerId: payload.channelPeerId?.trim() || target.channelPeerId,
+    openClawPairingId: payload.openClawPairingId?.trim() || target.openClawPairingId,
+    boundConversationId: resolvedConversationId,
     boundDisplayName: payload.displayName,
   };
 
   const binding: WechatRoleBinding = {
-    id: `wxbind_${target.characterId}`,
+    id: `wxbind_${target.bloomUserId}_${target.characterId}`,
     channel: "wechat-clawbot",
-    conversationId: payload.conversationId,
+    conversationId: resolvedConversationId,
+    bloomUserId: target.bloomUserId,
     characterId: target.characterId,
     enabled: true,
+    wechatIdentity: payload.wechatIdentity?.trim(),
+    channelAccountId: payload.channelAccountId?.trim(),
+    channelPeerId: payload.channelPeerId?.trim(),
+    openClawPairingId: payload.openClawPairingId?.trim(),
     displayName: payload.displayName,
     avatarUrl: payload.avatarUrl,
     createdAt: target.createdAt,
@@ -212,16 +321,21 @@ export async function markWechatBindSessionBound(
   state.bindings = [
     binding,
     ...state.bindings.filter(
-      (item) => item.id !== binding.id && item.characterId !== binding.characterId && item.conversationId !== binding.conversationId,
+      (item) =>
+        item.id !== binding.id
+        && !(item.bloomUserId === binding.bloomUserId && item.characterId === binding.characterId)
+        && item.conversationId !== binding.conversationId,
     ),
   ];
   await writeState(state);
   return { session, binding };
 }
 
-export async function disableWechatBindingByCharacterId(characterId: string): Promise<WechatRoleBinding | null> {
+export async function disableWechatBindingByCharacterId(characterId: string, bloomUserId?: string): Promise<WechatRoleBinding | null> {
   const state = await readState();
-  const target = state.bindings.find((binding) => binding.characterId === characterId && binding.enabled);
+  const target = state.bindings.find(
+    (binding) => binding.characterId === characterId && (!bloomUserId || binding.bloomUserId === bloomUserId) && binding.enabled,
+  );
   if (!target) return null;
 
   const nextBinding: WechatRoleBinding = {
@@ -236,19 +350,34 @@ export async function disableWechatBindingByCharacterId(characterId: string): Pr
 }
 
 export async function enqueueWechatIncomingMessage(payload: {
-  conversationId: string;
+  conversationId?: string;
+  wechatIdentity?: string;
+  channelPeerId?: string;
+  channelAccountId?: string;
   text: string;
   senderDisplayName?: string;
 }): Promise<WechatIncomingBridgeMessage | null> {
   const state = await readState();
-  const binding = state.bindings.find((item) => item.conversationId === payload.conversationId && item.enabled);
+  const resolvedConversationId = payload.conversationId?.trim()
+    || payload.channelPeerId?.trim()
+    || payload.wechatIdentity?.trim();
+  const binding = state.bindings.find((item) => {
+    if (!item.enabled) return false;
+    return (
+      (!!payload.conversationId?.trim() && item.conversationId === payload.conversationId.trim())
+      || (!!payload.wechatIdentity?.trim() && item.wechatIdentity === payload.wechatIdentity.trim())
+      || (!!payload.channelPeerId?.trim() && item.channelPeerId === payload.channelPeerId.trim())
+      || (!!payload.channelAccountId?.trim() && item.channelAccountId === payload.channelAccountId.trim())
+    );
+  });
   if (!binding) return null;
+  if (!resolvedConversationId) return null;
 
   const message: WechatIncomingBridgeMessage = {
     id: createToken(),
     channel: "wechat-clawbot",
     characterId: binding.characterId,
-    conversationId: payload.conversationId,
+    conversationId: resolvedConversationId,
     text: payload.text,
     senderDisplayName: payload.senderDisplayName,
     createdAt: Date.now(),

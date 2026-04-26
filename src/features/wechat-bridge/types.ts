@@ -6,8 +6,13 @@ export type WechatRoleBinding = {
   id: string;
   channel: WechatBridgeChannel;
   conversationId: string;
+  bloomUserId: string;
   characterId: string;
   enabled: boolean;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
   displayName?: string;
   avatarUrl?: string;
   createdAt: number;
@@ -15,13 +20,24 @@ export type WechatRoleBinding = {
 };
 
 export type WechatBindSession = {
+  bindTaskId: string;
   token: string;
   channel: WechatBridgeChannel;
+  bloomUserId: string;
   characterId: string;
+  characterName?: string;
+  characterAvatarUrl?: string;
   qrText: string;
+  bindCallbackUrl?: string;
+  openClawConnectUrl?: string;
   status: WechatBindingStatus;
   createdAt: number;
   expiresAt: number;
+  connectedAt?: number;
+  wechatIdentity?: string;
+  channelAccountId?: string;
+  channelPeerId?: string;
+  openClawPairingId?: string;
   boundConversationId?: string;
   boundDisplayName?: string;
 };

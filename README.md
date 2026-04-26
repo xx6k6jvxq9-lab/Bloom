@@ -115,6 +115,7 @@ npm run lint
 - [完整 PRD](./docs/full-ai-product-prd.md)
 - [项目架构说明](./docs/project-architecture.md)
 - [求职版项目介绍](./docs/job-product-introduction.md)
+- [WeChat + OpenClaw Cloudflare Deploy](./docs/wechat-openclaw-cloudflare-deploy.md)
 
 ## 当前工程判断
 

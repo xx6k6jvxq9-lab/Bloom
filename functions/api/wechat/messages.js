@@ -15,20 +15,25 @@ export async function onRequestPost(context) {
 
   const body = await readRequestJson(context.request);
   const conversationId = String(body?.conversationId || "").trim();
+  const wechatIdentity = String(body?.wechatIdentity || "").trim();
+  const channelPeerId = String(body?.channelPeerId || "").trim();
   const text = String(body?.text || "").trim();
-  if (!conversationId || !text) {
-    return badRequest("Missing conversationId or text");
+  if ((!conversationId && !wechatIdentity && !channelPeerId) || !text) {
+    return badRequest("Missing WeChat identity or text");
   }
 
   try {
     const message = await enqueueWechatIncomingMessage(context.env, {
-      conversationId,
+      conversationId: conversationId || undefined,
+      wechatIdentity: wechatIdentity || undefined,
+      channelAccountId: typeof body?.channelAccountId === "string" ? body.channelAccountId.trim() : undefined,
+      channelPeerId: channelPeerId || undefined,
       text,
       senderDisplayName: typeof body?.senderDisplayName === "string" ? body.senderDisplayName.trim() : undefined,
     });
 
     if (!message) {
-      return json({ error: "No enabled binding for this conversationId" }, { status: 404 });
+      return json({ error: "No enabled binding for this WeChat identity" }, { status: 404 });
     }
 
     return json({ message });

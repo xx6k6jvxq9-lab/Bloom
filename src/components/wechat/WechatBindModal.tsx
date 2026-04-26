@@ -4,6 +4,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { Character } from '../../types';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { loadPersistedUserProfile } from '../../features/persistence/userProfileStore';
+import { DEFAULT_USER } from '../../features/app-shell/defaultSettings';
 import type { WechatBindSession, WechatRoleBinding } from '../../features/wechat-bridge/types';
 import {
   createWechatBindSessionRequest,
@@ -26,6 +28,7 @@ function ResolvedCharacterAvatar({ value, alt }: { value?: string | null; alt: s
 
 type WechatBindModalProps = {
   character: Character;
+  bloomUserId?: string;
   open: boolean;
   onClose: () => void;
 };
@@ -35,7 +38,15 @@ function notifyWechatBindingChanged() {
   window.dispatchEvent(new CustomEvent('wechat-binding-changed'));
 }
 
-export function WechatBindModal({ character, open, onClose }: WechatBindModalProps) {
+export function WechatBindModal({ character, bloomUserId, open, onClose }: WechatBindModalProps) {
+  const resolvedBloomUserId = useMemo(() => {
+    const trimmed = bloomUserId?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+    return loadPersistedUserProfile(DEFAULT_USER).id || DEFAULT_USER.id;
+  }, [bloomUserId]);
+
   const [session, setSession] = useState<WechatBindSession | null>(null);
   const [binding, setBinding] = useState<WechatRoleBinding | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,13 +59,18 @@ export function WechatBindModal({ character, open, onClose }: WechatBindModalPro
     setLoading(true);
     try {
       const [nextBinding, existingSession] = await Promise.all([
-        getWechatBindingByCharacterIdRequest(character.id),
-        getWechatBindSessionByCharacterIdRequest(character.id),
+        getWechatBindingByCharacterIdRequest(character.id, resolvedBloomUserId),
+        getWechatBindSessionByCharacterIdRequest(character.id, resolvedBloomUserId),
       ]);
 
       let nextSession = existingSession;
       if (options?.forceCreateSession || !nextSession || nextSession.status === 'expired') {
-        nextSession = await createWechatBindSessionRequest(character.id);
+        nextSession = await createWechatBindSessionRequest({
+          characterId: character.id,
+          bloomUserId: resolvedBloomUserId,
+          characterName: character.remarkName?.trim() || character.name,
+          characterAvatarUrl: character.avatar,
+        });
       }
 
       setBinding(nextBinding);
@@ -67,7 +83,7 @@ export function WechatBindModal({ character, open, onClose }: WechatBindModalPro
   useEffect(() => {
     if (!open) return;
     void loadState();
-  }, [character.id, open]);
+  }, [character.avatar, character.id, character.name, character.remarkName, open, resolvedBloomUserId]);
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -106,7 +122,7 @@ export function WechatBindModal({ character, open, onClose }: WechatBindModalPro
     if (!binding) return;
     const confirmed = await showInAppConfirm(`确定要解绑角色 "${displayName}" 的微信接入吗？`);
     if (!confirmed) return;
-    await disableWechatBindingByCharacterIdRequest(character.id);
+    await disableWechatBindingByCharacterIdRequest(character.id, resolvedBloomUserId);
     notifyWechatBindingChanged();
     await loadState();
   };
