@@ -1739,13 +1739,24 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     setIsImporting(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
+      let parsed: any;
       try {
         const content = event.target?.result as string;
-        const parsed = JSON.parse(content);
+        parsed = JSON.parse(content);
+      } catch (error) {
+        alert('解析备份文件失败，请确保文件内容是有效的 JSON。');
+        setIsImporting(false);
+        e.target.value = '';
+        return;
+      }
+
+      try {
 
         const writeImportedRecord = async (key: string, value: unknown) => {
           window.localStorage.setItem(key, JSON.stringify(value));
-          await saveJsonRecord(key, value);
+          await saveJsonRecord(key, value).catch((error) => {
+            console.error(`[CustomizationApp] Failed to mirror imported key "${key}" into IndexedDB`, error);
+          });
         };
 
         const normalizeImportedAppData = (source: any) => {
@@ -1891,8 +1902,9 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
 
           alert(`成功导入 ${updatedCount} 个功能的数据！手机设置已恢复。`);
         }
-      } catch (err) {
-        alert('解析备份文件失败，请确保是有效的 JSON 文件');
+      } catch (error) {
+        console.error('[CustomizationApp] Failed to restore imported backup', error);
+        alert('备份文件已读取成功，但恢复数据时失败了。当前更像是浏览器本地存储环境异常，不是 JSON 文件本身无效。');
       } finally {
         setIsImporting(false);
       }

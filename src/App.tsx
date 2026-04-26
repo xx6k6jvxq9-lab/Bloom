@@ -98,6 +98,7 @@ export default function App() {
   const {
     appData,
     hasHydratedStorage,
+    shouldShowHydrationFallback,
     setAppData,
     setSettings,
     settings,
@@ -203,7 +204,7 @@ export default function App() {
         )}
         
         {/* Screen Content */}
-        {isStorageReady ? (
+        {isStorageReady || !shouldShowHydrationFallback ? (
           <AppScreenContent
             activeApp={activeApp}
             activeConfig={activeConfig}

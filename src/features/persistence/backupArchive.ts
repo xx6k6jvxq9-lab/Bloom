@@ -159,7 +159,14 @@ function collectStorageSnapshot(overrides?: FullBackupOverrides): Record<string,
 }
 
 async function collectSerializedAssets(): Promise<SerializedAssetRecord[]> {
-  const assets = await listAssets();
+  let assets: StoredAssetRecord[] = [];
+  try {
+    assets = await listAssets();
+  } catch (error) {
+    console.warn('[backupArchive] Failed to list IndexedDB assets during export, continuing with JSON-only backup', error);
+    return [];
+  }
+
   return Promise.all(
     assets.map(async (asset) => ({
       id: asset.id,
@@ -422,7 +429,9 @@ export async function clearAllPersistentData(): Promise<void> {
   });
 
   await Promise.all([
-    clearAssets(),
+    clearAssets().catch((error) => {
+      console.error('[backupArchive] Failed to clear IndexedDB assets during reset', error);
+    }),
     Promise.all(
       Object.values(STORAGE_KEYS).map((key) =>
         removeJsonRecord(key).catch((error) => {
@@ -479,6 +488,8 @@ export async function restoreFullBackupArchive(archive: FullBackupArchive): Prom
         updatedAt: asset.updatedAt,
         source: asset.source,
         originalUrl: asset.originalUrl,
+      }).catch((error) => {
+        console.error('[backupArchive] Failed to restore asset into IndexedDB', error);
       }),
     ),
   );
@@ -525,6 +536,8 @@ export async function restoreModularBackupArchive(archive: ModularBackupArchive)
         updatedAt: asset.updatedAt,
         source: asset.source,
         originalUrl: asset.originalUrl,
+      }).catch((error) => {
+        console.error('[backupArchive] Failed to restore asset into IndexedDB', error);
       }),
     ),
   );

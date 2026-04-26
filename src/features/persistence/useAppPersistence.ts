@@ -19,6 +19,7 @@ type UseAppPersistenceParams = {
 type UseAppPersistenceResult = {
   appData: AppData;
   hasHydratedStorage: boolean;
+  shouldShowHydrationFallback: boolean;
   setAppData: Dispatch<SetStateAction<AppData>>;
   setSettings: Dispatch<SetStateAction<AppSettings>>;
   settings: AppSettings;
@@ -35,6 +36,7 @@ export function useAppPersistence({
 }: UseAppPersistenceParams): UseAppPersistenceResult {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
+  const [shouldShowHydrationFallback, setShouldShowHydrationFallback] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
   const defaultAppData = useMemo(() => createDefaultAppData(), [createDefaultAppData]);
 
@@ -101,9 +103,25 @@ export function useAppPersistence({
     void persistAppDataSnapshot(appData, defaultAppData);
   }, [appData, defaultAppData, hasHydratedStorage]);
 
+  useEffect(() => {
+    if (hasHydratedStorage) {
+      setShouldShowHydrationFallback(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShouldShowHydrationFallback(true);
+    }, 600);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [hasHydratedStorage]);
+
   return {
     appData,
     hasHydratedStorage,
+    shouldShowHydrationFallback,
     setAppData,
     setSettings,
     settings,
