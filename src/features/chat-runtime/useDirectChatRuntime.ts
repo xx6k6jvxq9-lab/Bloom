@@ -26,6 +26,7 @@ import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTerm
 import { buildAutoSummarySourceLines, sanitizeAutoSummaryText } from '../../services/memory/autoSummaryHygiene';
 import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
 import { compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
+import { findNearestChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
 import { clampDirectMemoryLimit, getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
@@ -775,6 +776,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
     isRecordingCall: boolean;
   }) => void;
   editMessageAt: (index: number, text: string) => void;
+  backtrackToMessageAt: (index: number) => void;
   regenerateLatestReplyAt: (index: number) => Promise<boolean>;
   recallMessageAt: (index: number) => void;
   deleteMessageAt: (index: number) => void;
@@ -2328,6 +2330,45 @@ export function useDirectChatRuntime({
     setHistory(nextHistory);
   }, [history, setHistory]);
 
+  const backtrackToMessageAt = useCallback((index: number) => {
+    const latestHistory = historyRef.current;
+    const targetMessage = latestHistory[index];
+    if (!targetMessage || targetMessage.isSystem || isLoading) {
+      return;
+    }
+
+    const nextHistory = latestHistory.slice(0, index + 1);
+    const memorySnapshot = findNearestChatMemorySnapshot(latestHistory, index);
+    const patch: Partial<Character> = {
+      shortTermSummary: memorySnapshot?.shortTermSummary,
+      longTermMemoryProfile: memorySnapshot?.longTermMemoryProfile,
+      memoryLibraryEntries: memorySnapshot?.memoryLibraryEntries ?? [],
+    };
+
+    setHistory(nextHistory);
+    setReplyingTo(null);
+    setInput('');
+    setError(null);
+
+    if (onPatchCharacter) {
+      onPatchCharacter(patch);
+    } else {
+      onUpdateCharacter({
+        ...character,
+        ...patch,
+      });
+    }
+  }, [
+    character,
+    isLoading,
+    onPatchCharacter,
+    onUpdateCharacter,
+    setError,
+    setHistory,
+    setInput,
+    setReplyingTo,
+  ]);
+
   const regenerateLatestReplyAt = useCallback(async (index: number) => {
     const latestHistory = historyRef.current;
     const segment = getLatestModelReplySegment(latestHistory);
@@ -2586,6 +2627,7 @@ export function useDirectChatRuntime({
     sendSpeechTranscript,
     finalizeVoiceCall,
     editMessageAt,
+    backtrackToMessageAt,
     regenerateLatestReplyAt,
     recallMessageAt,
     deleteMessageAt,

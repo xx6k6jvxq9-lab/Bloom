@@ -509,6 +509,12 @@ export type MemoryLibraryEntry = {
   charCount: number;
 };
 
+export type ChatMemorySnapshot = {
+  shortTermSummary?: string;
+  longTermMemoryProfile?: string;
+  memoryLibraryEntries?: MemoryLibraryEntry[];
+};
+
 export type CharacterAvatarLibraryEntryStatus =
   | 'current'
   | 'candidate'
@@ -666,8 +672,8 @@ export type GroupTaskCard = {
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
-  source?: 'app' | 'wechat';
-  channel?: 'app' | 'wechat-clawbot';
+  source?: 'app';
+  channel?: 'app';
   channelConversationId?: string;
   translation?: string;
   timestamp: number;
@@ -703,6 +709,7 @@ export type ChatMessage = {
   groupPollCard?: GroupPollCard;
   groupRelayCard?: GroupRelayCard;
   groupTaskCard?: GroupTaskCard;
+  memorySnapshot?: ChatMemorySnapshot;
 };
 
 export type ChatHistory = {

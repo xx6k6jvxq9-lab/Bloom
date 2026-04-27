@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -523,6 +523,7 @@ export function ChatSessionScreen({
     sendSpeechTranscript,
     finalizeVoiceCall,
     editMessageAt,
+    backtrackToMessageAt,
     regenerateLatestReplyAt,
     recallMessageAt,
     deleteMessageAt,
@@ -603,6 +604,12 @@ export function ChatSessionScreen({
     const segment = getLatestDirectModelSegment();
     return !!segment && index >= segment.start && index <= segment.end;
   }, [getLatestDirectModelSegment, isLoading]);
+  const canBacktrackMessage = useCallback((message: ChatMessage | null | undefined) => (
+    !!message
+    && !message.isSystem
+    && !message.isRecalled
+    && !isLoading
+  ), [isLoading]);
   const showManualReplyButton = !character.autoReplyEnabled;
   const canUseManualSpeakButton = !isLoading;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
@@ -1071,6 +1078,16 @@ export function ChatSessionScreen({
     await regenerateLatestReplyAt(contextMenuMessageIndex);
   };
 
+  const handleBacktrack = () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canBacktrackMessage(contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    backtrackToMessageAt(contextMenuMessageIndex);
+    closeContextMenu();
+  };
+
   const handleForward = () => {
     if (!contextMenuMessage) {
       closeContextMenu();
@@ -1316,7 +1333,20 @@ export function ChatSessionScreen({
     const updateViewportMetrics = () => {
       const layoutHeight = window.innerHeight;
       const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      setKeyboardInset(inset > 120 ? inset : 0);
+      const rootViewportHeight = typeof document !== 'undefined'
+        ? Number.parseFloat(
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--app-viewport-height')
+            .trim()
+            .replace('px', ''),
+        )
+        : 0;
+      const rootTracksVisualViewport = rootViewportHeight > 0
+        && Math.abs(rootViewportHeight - viewport.height) <= 2;
+
+      // When the root already shrinks with the keyboard, adding the inset again
+      // double-lifts the footer and creates a visible gap above the keyboard.
+      setKeyboardInset(!rootTracksVisualViewport && inset > 120 ? inset : 0);
     };
 
     updateViewportMetrics();
@@ -3154,6 +3184,15 @@ export function ChatSessionScreen({
                     title="编辑"
                   >
                     <Pencil size={20} />
+                  </button>
+                )}
+                {canBacktrackMessage(contextMenuMessage) && (
+                  <button
+                    onClick={handleBacktrack}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="回溯"
+                  >
+                    <RotateCcw size={20} />
                   </button>
                 )}
                 {canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage) && (

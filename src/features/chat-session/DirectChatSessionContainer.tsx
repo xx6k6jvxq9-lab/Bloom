@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type {
   AppSettings,
   CallRecord,
@@ -14,6 +15,7 @@ import type {
   WorldBookEntry,
 } from '../../types';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
+import { areChatMemorySnapshotsEqual, createChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
 import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
@@ -87,6 +89,41 @@ export function DirectChatSessionContainer({
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
+
+  useEffect(() => {
+    let lastMessageIndex = -1;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (!history[index]?.isSystem) {
+        lastMessageIndex = index;
+        break;
+      }
+    }
+    if (lastMessageIndex < 0) {
+      return;
+    }
+    const lastMessage = history[lastMessageIndex];
+
+    const nextSnapshot = createChatMemorySnapshot(character);
+    if (areChatMemorySnapshotsEqual(lastMessage.memorySnapshot, nextSnapshot)) {
+      return;
+    }
+
+    const nextHistory = [...history];
+    nextHistory[lastMessageIndex] = {
+      ...lastMessage,
+      memorySnapshot: nextSnapshot,
+    };
+
+    setChatHistory({
+      ...chatHistory,
+      [character.id]: nextHistory,
+    });
+  }, [
+    character,
+    chatHistory,
+    history,
+    setChatHistory,
+  ]);
 
   return (
     <ChatSessionScreen
