@@ -1,6 +1,6 @@
 import type { Character, ChatHistory, ChatMessage, WorldBookEntry } from '../../types';
 
-export type UnifiedChannel = 'app' | 'wechat-clawbot';
+export type UnifiedChannel = 'app';
 
 export type UnifiedContextInput = {
   channel: UnifiedChannel;

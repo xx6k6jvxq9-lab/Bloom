@@ -12,7 +12,6 @@ import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
-import { WechatBindModal } from '../../wechat/WechatBindModal';
 
 function ResolvedContactsAvatar({
   value,

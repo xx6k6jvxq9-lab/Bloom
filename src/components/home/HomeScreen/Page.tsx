@@ -326,7 +326,27 @@ export function HomeScreen({
 
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
-      const nextSafeAreaBottom = computed ? Math.round(parseFloat(computed.paddingBottom) || 0) : 0;
+      const safeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom')?.trim() || '0';
+      const resolvedSafeAreaBottom = (() => {
+        if (!phoneContainer || !computed) return 0;
+        if (safeAreaVar.endsWith('px')) {
+          return parseFloat(safeAreaVar) || 0;
+        }
+        if (safeAreaVar && safeAreaVar !== '0') {
+          const probe = document.createElement('div');
+          probe.style.position = 'absolute';
+          probe.style.visibility = 'hidden';
+          probe.style.pointerEvents = 'none';
+          probe.style.inset = 'auto';
+          probe.style.height = safeAreaVar;
+          phoneContainer.appendChild(probe);
+          const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
+          phoneContainer.removeChild(probe);
+          return measured;
+        }
+        return parseFloat(computed.paddingBottom) || 0;
+      })();
+      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 

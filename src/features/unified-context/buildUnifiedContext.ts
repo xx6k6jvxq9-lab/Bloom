@@ -4,7 +4,7 @@ import type { UnifiedContextInput, UnifiedContextResult } from './types';
 function normalizeMessageForChannel(message: ChatMessage, input: UnifiedContextInput): ChatMessage {
   return {
     ...message,
-    source: message.source || (input.channel === 'app' ? 'app' : 'wechat'),
+    source: message.source || 'app',
     channel: message.channel || input.channel,
     channelConversationId: message.channelConversationId || input.conversationId,
   };

@@ -23,7 +23,12 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     }
 
     const root = document.documentElement;
+    const userAgent = window.navigator.userAgent.toLowerCase();
     const isAndroid = /Android/i.test(window.navigator.userAgent || '');
+    const isIosLike = /iphone|ipad|ipod/.test(userAgent);
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     if (isAndroid) {
       root.setAttribute('data-android', 'true');
     } else {
@@ -31,7 +36,12 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     }
 
     const updateViewportHeight = () => {
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const visualViewportHeight = window.visualViewport?.height ?? 0;
+      const layoutViewportHeight = window.innerHeight;
+      const viewportHeight =
+        isIosLike && isStandalone
+          ? Math.max(layoutViewportHeight, visualViewportHeight)
+          : (visualViewportHeight || layoutViewportHeight);
       root.style.setProperty('--app-viewport-height', `${Math.round(viewportHeight)}px`);
     };
 

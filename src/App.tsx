@@ -76,7 +76,6 @@ import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
-import { useWechatBridgeRuntime } from './features/wechat-bridge/useWechatBridgeRuntime';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
   hydrateCoupleSpaceState,
@@ -134,13 +133,6 @@ export default function App() {
     setCoupleSpaceUpdateToast,
     settings,
   });
-  useWechatBridgeRuntime({
-    activeConfig,
-    appData,
-    hasHydratedStorage,
-    setAppData,
-  });
-
   const {
     appDialog,
     appDialogInput,
