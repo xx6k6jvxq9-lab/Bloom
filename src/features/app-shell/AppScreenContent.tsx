@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+﻿import React, { Suspense } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Heart, Image as ImageIcon } from 'lucide-react';
 import type { AppData, AppSettings, Character, CoupleSpaceData } from '../../types';
@@ -39,6 +39,7 @@ import type { CoupleSpaceUpdateToast, MomentPublishToast } from './appShellTypes
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
+import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -115,6 +116,10 @@ export function AppScreenContent({
   setStatusBarVisible,
   settings,
 }: AppScreenContentProps) {
+  const forumConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'forum',
+  }).runtimeConfig;
   const appendLikeToMoment = (momentId: string, likerId: string) => {
     setAppData((prev) => ({
       ...prev,
@@ -402,9 +407,9 @@ export function AppScreenContent({
             })();
           }
 
-          if (replyCount > 0) {
+          if (forumConfig && replyCount > 0) {
             void runMomentPublishCommentSequence({
-              activeConfig,
+              activeConfig: forumConfig,
               moment: newMoment,
               characters: appData.characters,
               userName: appData.userProfile.name,
@@ -444,6 +449,7 @@ export function AppScreenContent({
           settings={settings}
           defaultConfig={DEFAULT_CONFIG}
           setSettings={setSettings}
+          characters={appData.characters}
         />
       )}
       {activeApp === 'dream' && (

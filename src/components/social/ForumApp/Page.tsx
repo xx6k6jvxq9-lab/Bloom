@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, Bell, User, PenSquare, Heart, MessageCircle, Share2, 
@@ -29,100 +29,6 @@ function ResolvedImage({
   return <img src={resolvedUrl} alt={alt} className={className} />;
 }
 
-// Mock Users
-const MOCK_USERS: Record<string, { name: string; avatar: string }> = {
-  'user_8888': { name: '瓜田守望者', avatar: 'https://picsum.photos/seed/gua1/100' },
-  'user_9999': { name: '娱乐圈纪检委', avatar: 'https://picsum.photos/seed/gua2/100' },
-  'user_7777': { name: '吃瓜群众小王', avatar: 'https://picsum.photos/seed/gua3/100' },
-  'user_6666': { name: '前线记者李', avatar: 'https://picsum.photos/seed/gua4/100' },
-  'user_5555': { name: '路人甲', avatar: 'https://picsum.photos/seed/gua5/100' },
-  'user_4444': { name: '深扒君', avatar: 'https://picsum.photos/seed/gua6/100' },
-  'user_3333': { name: '内幕爆料人', avatar: 'https://picsum.photos/seed/gua7/100' },
-  'user_2222': { name: '理智粉', avatar: 'https://picsum.photos/seed/gua8/100' },
-};
-
-// Mock Data for initial state
-const MOCK_POSTS: ForumPost[] = [
-  {
-    id: 'post-1',
-    authorId: 'user_4444',
-    title: '【独家】某顶流恋情曝光？多图预警！',
-    content: '昨天在三里屯偶遇某顶流和一神秘女子逛街，举止亲密。看图！这要是真的，微博又要瘫痪了吧？大家怎么看？',
-    images: ['https://picsum.photos/seed/gossip1/500/300', 'https://picsum.photos/seed/gossip2/500/300'],
-    category: '全部',
-    timestamp: Date.now() - 1000 * 60 * 30,
-    viewCount: 12050,
-    likes: ['user_8888', 'user_9999', 'user_7777', 'user_6666'],
-    collections: ['user_8888'],
-    comments: [
-      {
-        id: 'c1',
-        postId: 'post-1',
-        authorId: 'user_8888',
-        content: '卧槽！真的假的？房子塌了啊！',
-        timestamp: Date.now() - 1000 * 60 * 25,
-        likes: ['user_7777'],
-        rootCommentId: 'c1'
-      },
-      {
-        id: 'c2',
-        postId: 'post-1',
-        authorId: 'user_2222',
-        content: '非官宣不约，抱走我家哥哥。',
-        timestamp: Date.now() - 1000 * 60 * 20,
-        likes: [],
-        rootCommentId: 'c2'
-      }
-    ]
-  },
-  {
-    id: 'post-2',
-    authorId: 'user_3333',
-    title: '理性讨论，最近那个很火的剧是不是注水了？',
-    content: '看了前几集还行，后面剧情越来越拖沓，配角戏份比主角还多。编剧是江郎才尽了吗？',
-    category: '全部',
-    timestamp: Date.now() - 1000 * 60 * 60 * 2,
-    viewCount: 5600,
-    likes: ['user_9999', 'user_5555'],
-    collections: [],
-    comments: [
-      {
-        id: 'c3',
-        postId: 'post-2',
-        authorId: 'user_9999',
-        content: '确实，我也觉得后面有点崩。',
-        timestamp: Date.now() - 1000 * 60 * 50,
-        likes: ['user_3333'],
-        rootCommentId: 'c3'
-      }
-    ]
-  },
-  {
-    id: 'post-3',
-    authorId: 'user_8888',
-    title: '818那些年我们追过的意难平CP',
-    content: '既然都在吃瓜，不如来聊聊那些让你意难平的CP。我先来：仙剑一的逍遥灵儿！',
-    images: ['https://picsum.photos/seed/cp/500/300'],
-    category: '全部',
-    timestamp: Date.now() - 1000 * 60 * 60 * 5,
-    viewCount: 3420,
-    likes: ['user_5555', 'user_6666', 'user_7777'],
-    collections: ['user_5555'],
-    comments: []
-  },
-  {
-    id: 'post-4',
-    authorId: 'user_6666',
-    title: '某网红店排队3小时，就这？',
-    content: '今天去打卡了那家很火的火锅店，排队排到腿软，结果味道也就那样，服务还一般。避雷避雷！',
-    category: '全部',
-    timestamp: Date.now() - 1000 * 60 * 60 * 24,
-    viewCount: 1280,
-    likes: ['user_7777'],
-    collections: [],
-    comments: []
-  }
-];
 
 type ForumAppProps = {
   appData: AppDataExtended;
@@ -399,11 +305,11 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
 
   const currentUser = appData.userProfile;
   const forumData: ForumData = appData.forumData || {
-    posts: MOCK_POSTS,
+    posts: [],
     notifications: [],
     followedUsers: [],
   };
-  const posts = forumData.posts || MOCK_POSTS;
+  const posts = forumData.posts || [];
   const notifications = forumData.notifications || [];
   const followedUsers = forumData.followedUsers || [];
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
@@ -423,9 +329,6 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, onOpenChat
       };
     }
     
-    const mockUser = MOCK_USERS[id];
-    if (mockUser) return { id, ...mockUser };
-
     return {
       id,
       name: `用户${id.slice(-4)}`,

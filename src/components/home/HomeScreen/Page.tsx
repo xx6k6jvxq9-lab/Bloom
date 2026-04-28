@@ -224,7 +224,7 @@ export function HomeScreen({
         icon: APP_ICON_URL,
         onClick: () => onOpenApp('music'),
       },
-      { id: 'forum', name: '论坛', icon: APP_ICON_URL, onClick: () => onOpenApp('forum') },
+      { id: 'forum', name: '界隙', icon: APP_ICON_URL, onClick: () => onOpenApp('forum') },
       { id: 'wallet', name: '钱包', icon: APP_ICON_URL, onClick: () => onOpenApp('wallet') },
       { id: 'dream', name: '梦境', icon: APP_ICON_URL, onClick: () => onOpenApp('dream') },
       { id: 'customization', name: '自定义', icon: APP_ICON_URL, onClick: () => onOpenApp('customization') },

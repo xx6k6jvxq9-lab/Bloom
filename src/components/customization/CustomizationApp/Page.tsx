@@ -534,7 +534,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
     { id: 'couple-space', name: '情侣空间', icon: 'Heart' },
     { id: 'perception', name: '感知', icon: 'Eye' },
     { id: 'music', name: '音乐', icon: 'Music' },
-    { id: 'forum', name: '论坛', icon: 'MessageCircle' },
+    { id: 'forum', name: '界隙', icon: 'MessageCircle' },
     { id: 'wallet', name: '钱包', icon: 'Wallet' },
   ];
 
