@@ -20,3 +20,6 @@ export * from './builders/buildCoupleLoveLetterPrompt';
 export * from './builders/buildCoupleLoveLetterReplyPrompt';
 export * from './builders/buildCoupleMessageBoardPrompt';
 export * from './builders/buildCoupleCoNotePrompt';
+export * from './scenarios/forum';
+export * from './builders/buildForumThreadPrompt';
+export * from './builders/buildForumReplyPrompt';
