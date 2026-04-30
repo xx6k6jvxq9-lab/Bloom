@@ -491,12 +491,24 @@ export function ChatSessionScreen({
         fileName: `voice-message-${Date.now()}.wav`,
         mimeType: 'audio/wav',
       });
+      const actionText = actionInput.trim();
+      const spokenText = transcript?.trim() || '';
       sendAudioMessage(
         audioRef,
         'audio/wav',
         Math.max(1, Math.round(durationMs / 1000)),
-        transcript,
+        spokenText,
+        actionText
+          ? {
+              promptText: `${`（${actionText}）`}${spokenText}`,
+              displayTranscript: `（${actionText}）`,
+            }
+          : undefined,
       );
+      if (actionText) {
+        setActionInput('');
+        setShowActionInput(false);
+      }
       setShowFunPanel(false);
     },
   });

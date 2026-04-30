@@ -795,7 +795,17 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
     audioMimeType?: string;
   } | null>;
   sendImageMessage: (base64String: string) => void;
-  sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => void;
+  sendAudioMessage: (
+    audioUrl: string,
+    audioMimeType: string,
+    durationSeconds?: number,
+    audioTranscript?: string,
+    options?: {
+      promptText?: string;
+      userText?: string;
+      displayTranscript?: string;
+    },
+  ) => void;
   sendStickerMessage: (sticker: string) => void;
   sendLocationMessage: (text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => void;
   sendCoupleSpaceInvitation: () => void;
@@ -933,6 +943,21 @@ function cleanAutoTranslationResult(rawTranslation: string, sourceText: string):
   return cleaned === sanitizePipeMarkers(sourceText, '\n').trim()
     ? ''
     : cleaned;
+}
+
+function extractSpeechTextForAudio(text: string): string {
+  const normalized = text.trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .replace(/（[^（）\n]{0,80}）/gu, ' ')
+    .replace(/\([^()\n]{0,80}\)/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function parseBatchTranslationResult(rawTranslation: string, expectedCount: number): string[] {
@@ -1084,9 +1109,11 @@ export function useDirectChatRuntime({
   ): Promise<{
     audioUrl: string;
     audioMimeType: string;
+    spokenText: string;
   } | null> => {
     const cleanText = text.trim();
-    if (!cleanText || !shouldApplyCharacterTts(character) || !voiceRuntimeConfig) {
+    const spokenText = extractSpeechTextForAudio(cleanText);
+    if (!cleanText || !spokenText || !shouldApplyCharacterTts(character) || !voiceRuntimeConfig) {
       return null;
     }
 
@@ -1096,13 +1123,17 @@ export function useDirectChatRuntime({
     }
 
     try {
-      return await synthesizeTtsAudio({
+      const audioResult = await synthesizeTtsAudio({
         config: voiceRuntimeConfig,
-        text: cleanText,
+        text: spokenText,
         preferredVoiceId,
         fallbackVoiceId: defaultTtsVoiceId,
         fileNameBase,
       });
+      return {
+        ...audioResult,
+        spokenText,
+      };
     } catch (ttsError) {
       console.error('Character TTS synthesis failed', ttsError);
       return null;
@@ -1138,7 +1169,7 @@ export function useDirectChatRuntime({
         ...message,
         audioUrl: audioResult.audioUrl,
         audioMimeType: audioResult.audioMimeType,
-        audioTranscript: cleanText,
+        audioTranscript: audioResult.spokenText,
       };
     }
 
@@ -2232,15 +2263,28 @@ export function useDirectChatRuntime({
     });
   }, []);
 
-  const sendAudioMessage = useCallback((audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => {
+  const sendAudioMessage = useCallback((
+    audioUrl: string,
+    audioMimeType: string,
+    durationSeconds?: number,
+    audioTranscript?: string,
+    options?: {
+      promptText?: string;
+      userText?: string;
+      displayTranscript?: string;
+    },
+  ) => {
+    const promptTranscript = audioTranscript?.trim() || '';
+    const displayTranscript = options?.displayTranscript?.trim() || promptTranscript;
     void handleSendRef.current({
-      promptText: audioTranscript?.trim()
-        ? `[sent a voice message; transcript: ${audioTranscript.trim()}]`
-        : '[sent a voice message]',
-      userText: '[audio]',
+      promptText: options?.promptText?.trim()
+        || (promptTranscript
+          ? `[sent a voice message; transcript: ${promptTranscript}]`
+          : '[sent a voice message]'),
+      userText: options?.userText?.trim() || '[audio]',
       audioUrl,
       audioMimeType,
-      ...(audioTranscript?.trim() ? { audioTranscript: audioTranscript.trim() } : {}),
+      ...(displayTranscript ? { audioTranscript: displayTranscript } : {}),
       ...(typeof durationSeconds === 'number' ? { duration: durationSeconds } : {}),
     });
   }, []);
