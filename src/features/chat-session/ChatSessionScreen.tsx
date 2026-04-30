@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -43,6 +43,7 @@ import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from './InnerVoiceUn
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
 import { getMessageMainText } from '../../utils';
+import { ExpandedInputSheet } from './ExpandedInputSheet';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
@@ -410,6 +411,8 @@ export function ChatSessionScreen({
   const [showAvatarLibrary, setShowAvatarLibrary] = useState(false);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showStickerPanel, setShowStickerPanel] = useState(false);
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
   const [showActionInput, setShowActionInput] = useState(false);
   const [actionInput, setActionInput] = useState('');
   const [stickerTab, setStickerTab] = useState<'basic' | 'custom'>('basic');
@@ -1503,6 +1506,30 @@ export function ChatSessionScreen({
       window.removeEventListener('resize', updateFooterHeight);
     };
   }, [replyingTo, isVoiceMode, input, actionInput, showActionInput, visualSettings?.chat?.uiScale]);
+
+  useEffect(() => {
+    const textarea = inputTextareaRef.current;
+    if (!textarea || isVoiceMode) {
+      return;
+    }
+
+    const collapsedMaxHeight = 88;
+    const expandedMaxHeight = 176;
+    const toggleThreshold = 62;
+
+    textarea.style.height = '0px';
+    const nextScrollHeight = textarea.scrollHeight;
+    const nextMaxHeight = isInputExpanded ? expandedMaxHeight : collapsedMaxHeight;
+    textarea.style.height = `${Math.min(nextScrollHeight, nextMaxHeight)}px`;
+    textarea.style.overflowY = nextScrollHeight > nextMaxHeight ? 'auto' : 'hidden';
+
+    const shouldShowToggle = input.trim().length > 0 && nextScrollHeight > toggleThreshold;
+    setShowExpandInputToggle(shouldShowToggle);
+
+    if (!shouldShowToggle && isInputExpanded) {
+      setIsInputExpanded(false);
+    }
+  }, [input, isInputExpanded, isVoiceMode]);
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
@@ -2585,7 +2612,10 @@ export function ChatSessionScreen({
         )}
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
-            onClick={() => setIsVoiceMode(!isVoiceMode)}
+            onClick={() => {
+              setIsVoiceMode(!isVoiceMode);
+              setIsInputExpanded(false);
+            }}
             className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
           >
             {isVoiceMode ? <Keyboard size={19} className="chat-footer-voice-toggle-icon" /> : <Mic size={19} className="chat-footer-voice-toggle-icon" />}
@@ -2653,6 +2683,9 @@ export function ChatSessionScreen({
                       setKeyboardInset(0);
                     }, 120);
                   }
+                  if (!input.trim()) {
+                    setIsInputExpanded(false);
+                  }
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -2661,9 +2694,20 @@ export function ChatSessionScreen({
                   }
                 }}
                 placeholder="发送消息..."
-                className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-500 resize-none max-h-32 min-h-[24px]"
+                className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-500 resize-none min-h-[24px]"
                 rows={1}
               />
+              <button
+                type="button"
+                onClick={() => {
+                  setIsInputExpanded(prev => !prev);
+                }}
+                className={`chat-footer-expand-button shrink-0 p-1 transition-colors ${showExpandInputToggle ? 'text-zinc-400 hover:text-zinc-700' : 'hidden'}`}
+                aria-label="展开完整输入"
+                title="展开完整输入"
+              >
+                {isInputExpanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+              </button>
               <button 
                 onClick={() => {
                   setShowStickerPanel(!showStickerPanel);
@@ -2896,6 +2940,17 @@ export function ChatSessionScreen({
           </AnimatePresence>
         </div>
       </div>
+
+      <ExpandedInputSheet
+        open={false}
+        value={input}
+        onChange={setInput}
+        onClose={() => undefined}
+        onSend={() => undefined}
+        canSend={!!input.trim() || !!actionInput.trim()}
+        placeholder="发送消息..."
+        style={chatTextStyle}
+      />
 
       <GroupLocationPickerSheet
         isOpen={showLocationPicker}

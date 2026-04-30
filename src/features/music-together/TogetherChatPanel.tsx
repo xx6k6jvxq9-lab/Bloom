@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import { motion } from "motion/react";
-import { ChevronLeft, Keyboard, Mic, Send, Smile } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Keyboard, Mic, Send, Smile } from "lucide-react";
 import type { AppSettings, Character, ChatMessage, VisualSettings } from "../../types";
 import { useResolvedPersistentValue } from "../persistence/useResolvedPersistentValue";
 import { saveUploadedBlob } from "../persistence/persistentAssetService";
@@ -15,6 +15,7 @@ import {
 import { getThemeSelectedFontStack } from "../theme/themeTypography";
 import { AudioMessageCard } from "../chat-session/AudioMessageCard";
 import { useAudioMessageRecorder } from "../chat-session/useAudioMessageRecorder";
+import { ExpandedInputSheet } from "../chat-session/ExpandedInputSheet";
 
 function BubbleThemeAnchors() {
   return (
@@ -110,8 +111,11 @@ export function TogetherChatPanel({
   onSendAudio,
 }: TogetherChatPanelProps) {
   const [showStickerPanel, setShowStickerPanel] = React.useState(false);
+  const [isInputExpanded, setIsInputExpanded] = React.useState(false);
+  const [showExpandInputToggle, setShowExpandInputToggle] = React.useState(false);
   const [stickerTab, setStickerTab] = React.useState<"basic" | "custom">("basic");
   const [isVoiceMode, setIsVoiceMode] = React.useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const { resolvedUrl: resolvedCharacterBubbleImageUrl } = useResolvedPersistentValue(
     activeTogetherCharacter.bubbleImage,
   );
@@ -323,6 +327,30 @@ export function TogetherChatPanel({
     };
   };
 
+  React.useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || isVoiceMode) {
+      return;
+    }
+
+    const collapsedMaxHeight = 80;
+    const expandedMaxHeight = 168;
+    const toggleThreshold = 56;
+
+    textarea.style.height = "0px";
+    const nextScrollHeight = textarea.scrollHeight;
+    const nextMaxHeight = isInputExpanded ? expandedMaxHeight : collapsedMaxHeight;
+    textarea.style.height = `${Math.min(nextScrollHeight, nextMaxHeight)}px`;
+    textarea.style.overflowY = nextScrollHeight > nextMaxHeight ? "auto" : "hidden";
+
+    const shouldShowToggle = chatInput.trim().length > 0 && nextScrollHeight > toggleThreshold;
+    setShowExpandInputToggle(shouldShowToggle);
+
+    if (!shouldShowToggle && isInputExpanded) {
+      setIsInputExpanded(false);
+    }
+  }, [chatInput, isInputExpanded, isVoiceMode]);
+
   return (
     <motion.div
       initial={{ x: "100%" }}
@@ -477,6 +505,7 @@ export function TogetherChatPanel({
           <button
             onClick={() => {
               setIsVoiceMode((prev) => !prev);
+              setIsInputExpanded(false);
               if (showStickerPanel) setShowStickerPanel(false);
             }}
             disabled={isSendingTogetherChat}
@@ -500,17 +529,34 @@ export function TogetherChatPanel({
               {isRecording ? "松开发送" : "按住说话"}
             </button>
           ) : (
-            <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-[28px] px-4 py-2.5 flex items-center gap-2">
-              <input
-                type="text"
+            <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-[28px] px-4 py-2.5 flex items-end gap-2">
+              <textarea
+                ref={textareaRef}
                 value={chatInput}
                 onChange={(e) => onInputChange(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSend()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    onSend();
+                  }
+                }}
                 disabled={isSendingTogetherChat}
                 placeholder="说点什么..."
-                className="flex-1 bg-transparent outline-none text-[14px]"
+                className="min-h-[24px] flex-1 resize-none bg-transparent text-[14px] leading-6 outline-none"
                 style={chatTextStyle}
+                rows={1}
               />
+              <button
+                onClick={() => setIsInputExpanded((prev) => !prev)}
+                disabled={isSendingTogetherChat}
+                className={`shrink-0 transition-colors disabled:opacity-50 ${
+                  showExpandInputToggle ? "text-zinc-400 hover:text-zinc-700" : "hidden"
+                }`}
+                aria-label={isInputExpanded ? "收起输入框" : "展开输入框"}
+                title={isInputExpanded ? "收起输入框" : "展开输入框"}
+              >
+                {isInputExpanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+              </button>
               <button
                 onClick={() => setShowStickerPanel((prev) => !prev)}
                 disabled={isSendingTogetherChat}
@@ -603,6 +649,17 @@ export function TogetherChatPanel({
           </div>
         )}
       </div>
+
+      <ExpandedInputSheet
+        open={false}
+        value={chatInput}
+        onChange={onInputChange}
+        onClose={() => undefined}
+        onSend={() => undefined}
+        canSend={!isSendingTogetherChat && !!chatInput.trim()}
+        placeholder="说点什么..."
+        style={chatTextStyle}
+      />
     </motion.div>
   );
 }

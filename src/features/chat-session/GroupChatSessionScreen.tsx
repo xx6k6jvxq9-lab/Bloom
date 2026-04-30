@@ -3,7 +3,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCallback } from 'react';
 import {
   Camera,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Copy,
   Image as ImageIcon,
   Keyboard,
@@ -92,6 +94,7 @@ import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
+import { ExpandedInputSheet } from './ExpandedInputSheet';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 const getGroupMessageSelectionKey = (message: ChatMessage) => (
@@ -589,6 +592,8 @@ export function GroupChatSessionScreen({
   const [pendingShare, setPendingShare] = useState<ShareActionResult['payload'] | null>(null);
   const [showFunPanel, setShowFunPanel] = useState(false);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [activeGroupFeatureComposer, setActiveGroupFeatureComposer] = useState<'poll' | 'relay' | 'task' | null>(null);
   const [groupPollTitleDraft, setGroupPollTitleDraft] = useState('');
@@ -713,6 +718,30 @@ export function GroupChatSessionScreen({
     badgeColor: undefined,
     bubbleColor: undefined,
   }));
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || isVoiceMode) {
+      return;
+    }
+
+    const collapsedMaxHeight = 88;
+    const expandedMaxHeight = 176;
+    const toggleThreshold = 62;
+
+    textarea.style.height = '0px';
+    const nextScrollHeight = textarea.scrollHeight;
+    const nextMaxHeight = isInputExpanded ? expandedMaxHeight : collapsedMaxHeight;
+    textarea.style.height = `${Math.min(nextScrollHeight, nextMaxHeight)}px`;
+    textarea.style.overflowY = nextScrollHeight > nextMaxHeight ? 'auto' : 'hidden';
+
+    const shouldShowToggle = input.trim().length > 0 && nextScrollHeight > toggleThreshold;
+    setShowExpandInputToggle(shouldShowToggle);
+
+    if (!shouldShowToggle && isInputExpanded) {
+      setIsInputExpanded(false);
+    }
+  }, [input, isInputExpanded, isVoiceMode]);
+
   const mentionMatch = input.match(/(?:^|\s)@([^\s@]*)$/);
   const mentionQuery = mentionMatch?.[1] ?? '';
   const mentionCandidates = mentionMatch
@@ -3054,7 +3083,10 @@ export function GroupChatSessionScreen({
 
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button
-            onClick={() => setIsVoiceMode((prev) => !prev)}
+            onClick={() => {
+              setIsVoiceMode((prev) => !prev);
+              setIsInputExpanded(false);
+            }}
             className={`chat-footer-voice-toggle-button flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full transition-all ${
               isVoiceMode ? 'bg-zinc-100 text-zinc-800' : groupFooterControlTone.iconButton
             }`}
@@ -3118,6 +3150,23 @@ export function GroupChatSessionScreen({
               className="chat-footer-textarea min-h-[24px] w-full resize-none bg-transparent text-[15px] text-zinc-900 outline-none placeholder:text-zinc-500"
               rows={1}
             />
+            <button
+              type="button"
+              onClick={() => {
+                setIsInputExpanded((prev) => !prev);
+              }}
+              className={`chat-footer-expand-button shrink-0 p-1 transition-colors ${
+                showExpandInputToggle
+                  ? footerStyleType === 'transparent' || footerStyleType === 'glass'
+                    ? 'text-zinc-500 hover:text-zinc-700'
+                    : 'text-zinc-400 hover:text-zinc-600'
+                  : 'hidden'
+              }`}
+              aria-label={isInputExpanded ? '收起输入框' : '展开输入框'}
+              title={isInputExpanded ? '收起输入框' : '展开输入框'}
+            >
+              {isInputExpanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+            </button>
             <button
 	              onClick={() => {
 	                setShowEmojiPanel(!showEmojiPanel);
@@ -3282,6 +3331,24 @@ export function GroupChatSessionScreen({
           <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
         </div>
       </div>
+
+      <ExpandedInputSheet
+        open={false}
+        value={input}
+        onChange={setInput}
+        onClose={() => undefined}
+        onSend={() => {
+          if (editingMessageIndex !== null) {
+            handleSaveEdit();
+          } else {
+            void sendText();
+          }
+          return;
+        }}
+        canSend={!!input.trim()}
+        placeholder={editingMessageIndex !== null ? '编辑消息...' : '发送消息...'}
+        style={chatTextStyle}
+      />
 
       <GroupLocationPickerSheet
         isOpen={showLocationPicker}
