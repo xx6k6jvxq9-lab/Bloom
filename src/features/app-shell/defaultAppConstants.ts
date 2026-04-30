@@ -1,4 +1,5 @@
 import type { ApiConfig, AppSettings, DesktopIconConfig, WidgetConfig } from '../../types';
+import { createDefaultApiCenterConfig } from '../../services/ai/apiCenter/defaults';
 
 export const DEFAULT_NAV_BAR_BACKGROUND = '';
 
@@ -18,6 +19,7 @@ export const DEFAULT_CONFIG: ApiConfig = {
 export const DEFAULT_SETTINGS: AppSettings = {
   activeConfigId: 'default',
   configs: [DEFAULT_CONFIG],
+  apiCenterConfig: createDefaultApiCenterConfig(),
   sharedStickers: [],
   showChatTimeDividers: true,
   showChatMessageTime: true,

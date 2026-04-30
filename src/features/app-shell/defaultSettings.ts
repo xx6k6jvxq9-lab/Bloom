@@ -1,5 +1,6 @@
 import type { ApiConfig, AppSettings } from '../../types';
 import type { UserProfile } from './appShellTypes';
+import { createDefaultApiCenterConfig } from '../../services/ai/apiCenter/defaults';
 
 export const DEFAULT_USER: UserProfile = {
   name: 'AI 用户',
@@ -22,6 +23,7 @@ export const DEFAULT_CONFIG: ApiConfig = {
 export const DEFAULT_SETTINGS: AppSettings = {
   activeConfigId: 'default',
   configs: [DEFAULT_CONFIG],
+  apiCenterConfig: createDefaultApiCenterConfig(),
   sharedStickers: [],
   showChatTimeDividers: true,
   showChatMessageTime: true,

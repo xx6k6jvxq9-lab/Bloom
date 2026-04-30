@@ -38,10 +38,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const updateViewportHeight = () => {
       const visualViewportHeight = window.visualViewport?.height ?? 0;
       const layoutViewportHeight = window.innerHeight;
-      const viewportHeight =
-        isIosLike && isStandalone
-          ? Math.max(layoutViewportHeight, visualViewportHeight)
-          : (visualViewportHeight || layoutViewportHeight);
+
+      // Always prefer the live visual viewport when it is available so iOS
+      // keyboard and browser chrome changes shrink the app with the visible area
+      // instead of leaving an unpainted gap below the current screen.
+      const viewportHeight = visualViewportHeight || layoutViewportHeight;
       root.style.setProperty('--app-viewport-height', `${Math.round(viewportHeight)}px`);
     };
 

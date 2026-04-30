@@ -17,6 +17,7 @@ import {
   Forward,
   Plus,
   RefreshCw,
+  RotateCcw,
   Reply,
   ScanEye,
   Send,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { AppSettings, Character, ChatGroup, ChatHistory, ChatMessage, FavoriteMessage, GroupPollOption, GroupRelayEntry, GroupTaskEntry, PerceptionSettings, WorldBookEntry } from '../../types';
 import { generateTextFromMessagesWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import {
   copyTextContent,
@@ -628,7 +630,10 @@ export function GroupChatSessionScreen({
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
-  const activeConfig = settings.configs.find((config) => config.id === settings.activeConfigId) || settings.configs[0];
+  const activeConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'group-chat',
+  }).runtimeConfig;
   const hasUsableConfig = !!activeConfig?.apiKey?.trim();
   const layoutConfig = getChatLayoutConfig();
   const inputContainerClass = layoutConfig.inputContainerClass.replace('border-t', '').trim();
@@ -685,7 +690,7 @@ export function GroupChatSessionScreen({
     ...extractBubbleTextStyle(parseBubbleStyleCss(params.senderBubbleStyleCss)),
   });
   const groupSettingsMembers = [
-    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole },
+    { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole, voiceEnabled: false },
     ...members.map((member) => ({
       id: member.id,
       name: member.name,
@@ -695,6 +700,7 @@ export function GroupChatSessionScreen({
       badgeLabel: getGroupMemberBadge(group, member.id)?.label,
       badgeColor: getGroupMemberBadge(group, member.id)?.color,
       bubbleColor: getGroupMemberBubbleColor(group, member.id) || undefined,
+      voiceEnabled: member.voiceProfile?.enabled === true,
     })),
   ];
   const groupSettingsInviteCandidates = inviteableCharacters.map((character) => ({
@@ -847,6 +853,8 @@ export function GroupChatSessionScreen({
       currentScene: group.currentScene,
       publicFacts: group.publicFacts,
       manualReplyEnabled: group.manualReplyEnabled,
+      voiceRepliesEnabled: group.voiceRepliesEnabled,
+      voiceReplyMemberIds: group.voiceReplyMemberIds,
       topicState: group.topicState,
       groupShortTermSummary: group.groupShortTermSummary,
       groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
@@ -861,7 +869,7 @@ export function GroupChatSessionScreen({
     userName: groupUserDisplayName,
     directChatHistory,
     perception,
-    activeConfig,
+    settings,
   });
   const { isRecording, startRecording, stopRecording, cancelRecording } = useAudioMessageRecorder({
     onRecorded: async ({ blob, durationMs, transcript }) => {
@@ -946,6 +954,12 @@ export function GroupChatSessionScreen({
     const segment = getLatestGroupModelSegment();
     return !!segment && index >= segment.start && index <= segment.end;
   }, [getLatestGroupModelSegment, isLoading]);
+  const canBacktrackMessage = useCallback((message: ChatMessage | null | undefined) => (
+    !!message
+    && !message.isSystem
+    && !message.isRecalled
+    && !isLoading
+  ), [isLoading]);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -1336,6 +1350,19 @@ export function GroupChatSessionScreen({
 
     closeContextMenu();
     await regenerateLatestReplyAt(contextMenuMessageIndex);
+  };
+
+  const handleBacktrack = () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canBacktrackMessage(contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    setHistory(history.slice(0, contextMenuMessageIndex + 1));
+    setReplyingTo(null);
+    setEditingMessageIndex(null);
+    setInput('');
+    closeContextMenu();
   };
 
   const handleFavorite = () => {
@@ -2192,6 +2219,7 @@ export function GroupChatSessionScreen({
     onUpdateGroup({
       memberIds: group.memberIds.filter((id) => id !== memberId),
       adminIds: (group.adminIds || []).filter((id) => id !== memberId),
+      voiceReplyMemberIds: (group.voiceReplyMemberIds || []).filter((id) => id !== memberId),
     });
 
     setHistory((prev) => [
@@ -2343,6 +2371,7 @@ export function GroupChatSessionScreen({
 
     return content
       .replace(/^\[(?:sticker|notice)\]\s*/i, '')
+      .replace(/^\[(?:quote|reply|reply to|回复)\s*[:：]\s*[^\]]+\]\s*/i, '')
       .trim();
   };
 
@@ -2794,13 +2823,17 @@ export function GroupChatSessionScreen({
                   </div>
                 )}
                 {msg.replyTo && (
-                  <div className="chat-reply-preview mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 backdrop-blur-sm">
-                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                  <div className={`chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 backdrop-blur-sm ${
+                    isUser
+                      ? 'border-white/18 bg-white/16 text-white'
+                      : 'border-zinc-200/80 bg-white/70 text-zinc-700'
+                  }`}>
+                    <Reply size={13} className={`mt-0.5 shrink-0 ${isUser ? 'text-white/72' : 'text-zinc-400'}`} />
                     <div className="min-w-0">
-                      <div className="text-[11px] font-medium text-zinc-500">
+                      <div className={`text-[11px] font-medium ${isUser ? 'text-white/72' : 'text-zinc-500'}`}>
                         回复 {msg.replyTo.authorLabel}
                       </div>
-                      <div className="mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words">
+                      <div className={`mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 break-words ${isUser ? 'text-white/82' : 'text-zinc-600'}`}>
                         {getReplyPreviewText(msg)}
                       </div>
                     </div>
@@ -2911,7 +2944,9 @@ export function GroupChatSessionScreen({
                       value={msg.audioUrl}
                       durationSeconds={msg.duration}
                       transcript={msg.audioTranscript || null}
+                      translation={msg.translation || null}
                       showTranscript={!!msg.audioTranscript}
+                      autoPlay={msg.role === 'model' && !!senderCharacter?.voiceProfile?.autoPlay}
                       isUser={isUser}
                       className="shadow-none"
                     />
@@ -2952,7 +2987,7 @@ export function GroupChatSessionScreen({
                     </div>
                   ) : !msg.isRecalled && !msg.imageUrl && !msg.audioUrl ? (
                     <span className={`whitespace-pre-wrap break-words ${visualKind === 'sticker' ? 'text-[16px] leading-7' : ''}`} style={{ ...chatTextStyle, ...groupBubbleTextStyle }}>
-                      {renderTextWithMentions(content.replace(/^\[sticker\]\s*/i, ''), isUser ? 'outgoing' : 'incoming')}
+                      {renderTextWithMentions(getReadableMessageBody(msg, content), isUser ? 'outgoing' : 'incoming')}
                     </span>
                   ) : null
                   }
@@ -3335,6 +3370,15 @@ export function GroupChatSessionScreen({
                   title="编辑"
                 >
                   <Pencil size={20} />
+                </button>
+              )}
+              {canBacktrackMessage(contextMenuMessage) && (
+                <button
+                  onClick={handleBacktrack}
+                  className="rounded-lg p-2 text-zinc-900 transition-colors hover:bg-zinc-100"
+                  title="回溯"
+                >
+                  <RotateCcw size={20} />
                 </button>
               )}
               {canRegenerateMessage(contextMenuMessageIndex, contextMenuMessage) && (

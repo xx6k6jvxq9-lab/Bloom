@@ -151,6 +151,16 @@ export function sanitizeChatGroupsWithCharacters(
     }),
     muteNotifications: !!group.muteNotifications,
     pinChat: !!group.pinChat,
+    voiceRepliesEnabled: !!group.voiceRepliesEnabled,
+    voiceReplyMemberIds: Array.from(
+      new Set(
+        (Array.isArray(group.voiceReplyMemberIds) ? group.voiceReplyMemberIds : []).filter((memberId): memberId is string => (
+          typeof memberId === 'string'
+          && (Array.isArray(group.memberIds) ? group.memberIds : []).includes(memberId)
+          && validCharacterIds.has(memberId)
+        )),
+      ),
+    ),
     groupStage: group.groupStage === 'warming' || group.groupStage === 'familiar' ? group.groupStage : 'new',
     memberIds: Array.from(
       new Set(

@@ -10,6 +10,21 @@ export function hydrateForumData(
     posts: Array.isArray(source?.posts) ? source!.posts : fallback.posts,
     notifications: Array.isArray(source?.notifications) ? source!.notifications : fallback.notifications,
     followedUsers: Array.isArray(source?.followedUsers) ? source!.followedUsers : fallback.followedUsers,
+    followerMap: source?.followerMap && typeof source.followerMap === 'object'
+      ? source.followerMap
+      : fallback.followerMap,
+    tempChats: source?.tempChats && typeof source.tempChats === 'object'
+      ? source.tempChats
+      : fallback.tempChats,
+    runtimeAuthorProfiles: source?.runtimeAuthorProfiles && typeof source.runtimeAuthorProfiles === 'object'
+      ? source.runtimeAuthorProfiles
+      : fallback.runtimeAuthorProfiles,
+    composerDraft: source?.composerDraft && typeof source.composerDraft === 'object'
+      ? source.composerDraft
+      : fallback.composerDraft,
+    spectatorSettings: source?.spectatorSettings && typeof source.spectatorSettings === 'object'
+      ? source.spectatorSettings
+      : fallback.spectatorSettings,
   };
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ApiConfig, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import {
@@ -27,6 +27,8 @@ import {
 } from './groupConversationPlan';
 import { resolveGroupReplyIntent, type GroupReplyIntent } from './groupIntentResolver';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
+import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 
 type UseGroupChatRuntimeArgs = {
   members: Character[];
@@ -42,6 +44,8 @@ type UseGroupChatRuntimeArgs = {
     currentScene?: ChatGroup['currentScene'];
     publicFacts?: ChatGroup['publicFacts'];
     manualReplyEnabled?: ChatGroup['manualReplyEnabled'];
+    voiceRepliesEnabled?: ChatGroup['voiceRepliesEnabled'];
+    voiceReplyMemberIds?: ChatGroup['voiceReplyMemberIds'];
     topicState?: ChatGroup['topicState'];
     groupShortTermSummary?: ChatGroup['groupShortTermSummary'];
     groupMemberPerspectiveSummaries?: ChatGroup['groupMemberPerspectiveSummaries'];
@@ -57,7 +61,7 @@ type UseGroupChatRuntimeArgs = {
   directChatHistory: ChatHistory;
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
-  activeConfig?: ApiConfig;
+  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
 };
 
 type UseGroupChatRuntimeResult = {
@@ -98,6 +102,28 @@ const MENTION_REGEX = new RegExp('@([^\\s@,\\uFF0C\\u3002\\uFF01\\uFF1F!?]+)', '
 
 function wantsAnotherSpeaker(text: string): boolean {
   return EXTRA_SPEAKER_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
+function resolveCharacterTtsVoiceId(
+  character: Character,
+  fallbackVoiceId?: string,
+) {
+  if (character.voiceProfile?.enabled && (
+    character.voiceProfile.mode === 'library'
+    || character.voiceProfile.mode === 'voiceId'
+    || character.voiceProfile.mode === 'cloned'
+  )) {
+    const customVoiceId = character.voiceProfile.voiceId?.trim();
+    if (customVoiceId) {
+      return customVoiceId;
+    }
+  }
+
+  return fallbackVoiceId?.trim() || undefined;
+}
+
+function buildGroupAudioMessageKey(message: Pick<ChatMessage, 'timestamp' | 'senderCharacterId' | 'text'>) {
+  return `${message.timestamp}::${message.senderCharacterId || ''}::${message.text}`;
 }
 
 function buildCharacterEvidence(character: Character): string {
@@ -272,8 +298,12 @@ function buildFailureText(detail: string): string {
 function getMessageMainText(message: ChatMessage): string {
   const text = message.text || '';
   if (message.role === 'model') {
-    const senderPrefix = /^[^:]+:\s*/;
-    return text.replace(senderPrefix, '').trim();
+    let normalized = text.trim();
+    const senderPrefix = /^[^:：\n]+[:：]\s*/;
+    while (senderPrefix.test(normalized)) {
+      normalized = normalized.replace(senderPrefix, '').trim();
+    }
+    return normalized;
   }
   return text.trim();
 }
@@ -347,7 +377,7 @@ function parseActionCue(segment: string): {
 } {
   const trimmed = segment.trim();
   const normalized = trimmed.replace(/^[\s"'`“”‘’?!？！,，。.…·:：;；]+/, '');
-  const replyMatch = normalized.match(/^\[(?:quote|reply|reply to)\s*:\s*([^\]]+)\]\s*(.*)$/i);
+  const replyMatch = normalized.match(/^\[(?:quote|reply|reply to|回复)\s*[:：]\s*([^\]]+)\]\s*(.*)$/i);
   if (replyMatch) {
     return {
       kind: 'reply',
@@ -372,7 +402,7 @@ function parseActionCue(segment: string): {
     };
   }
 
-  const stickerMatch = normalized.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
+  const stickerMatch = normalized.match(/^\[(?:sticker|image|表情包|图片)\]\s*(.*)$/i);
   if (stickerMatch) {
     return {
       kind: 'sticker',
@@ -884,8 +914,18 @@ export function useGroupChatRuntime({
   directChatHistory,
   worldBooks = [],
   perception,
-  activeConfig,
+  settings,
 }: UseGroupChatRuntimeArgs): UseGroupChatRuntimeResult {
+  const activeConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'group-chat',
+  }).runtimeConfig;
+  const resolvedVoiceConfig = resolveSceneVoiceApiConfig({
+    settings,
+    mode: 'tts',
+  });
+  const voiceRuntimeConfig = resolvedVoiceConfig.runtimeConfig;
+  const defaultTtsVoiceId = resolvedVoiceConfig.defaultVoiceId;
   const { isLoading, error, setError, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const hasActiveConfig = !!activeConfig?.apiKey?.trim();
   const [pendingMessage, setPendingMessage] = useState<UseGroupChatRuntimeResult['pendingMessage']>(null);
@@ -1155,6 +1195,97 @@ export function useGroupChatRuntime({
     return null;
   }, [members, userName]);
 
+  const synthesizeSpeakerReplyAudio = useCallback(async (
+    speaker: Character,
+    text: string,
+    fileNameBase: string,
+  ): Promise<{
+    audioUrl: string;
+    audioMimeType: string;
+  } | null> => {
+    const cleanText = text.trim();
+    if (!cleanText || !voiceRuntimeConfig || groupMeta?.voiceRepliesEnabled !== true) {
+      return null;
+    }
+
+    if (speaker.voiceProfile?.enabled !== true) {
+      return null;
+    }
+
+    const enabledMemberIds = groupMeta?.voiceReplyMemberIds || [];
+    if (enabledMemberIds.length > 0 && !enabledMemberIds.includes(speaker.id)) {
+      return null;
+    }
+
+    const preferredVoiceId = resolveCharacterTtsVoiceId(speaker, defaultTtsVoiceId);
+    if (!preferredVoiceId) {
+      return null;
+    }
+
+    try {
+      return await synthesizeTtsAudio({
+        config: voiceRuntimeConfig,
+        text: cleanText,
+        preferredVoiceId,
+        fallbackVoiceId: defaultTtsVoiceId,
+        fileNameBase,
+      });
+    } catch (ttsError) {
+      console.error('[group-chat] speaker TTS synthesis failed', {
+        speakerId: speaker.id,
+        speakerName: speaker.name,
+        error: ttsError,
+      });
+      return null;
+    }
+  }, [defaultTtsVoiceId, groupMeta?.voiceRepliesEnabled, groupMeta?.voiceReplyMemberIds, voiceRuntimeConfig]);
+
+  const attachAudioToSpeakerMessages = useCallback(async (
+    speaker: Character,
+    messages: ChatMessage[],
+  ) => {
+    const nextMessages = [...messages];
+    let hasAudioUpdate = false;
+
+    for (let index = 0; index < nextMessages.length; index += 1) {
+      const message = nextMessages[index];
+      const cleanText = message?.isSystem ? '' : getMessageMainText(message).trim();
+      if (!message || message.role !== 'model' || !cleanText || message.audioUrl || message.imageUrl) {
+        continue;
+      }
+
+      const audioResult = await synthesizeSpeakerReplyAudio(
+        speaker,
+        cleanText,
+        `group-voice-${speaker.id}-${message.timestamp}-${index + 1}`,
+      );
+      if (!audioResult) {
+        continue;
+      }
+
+      nextMessages[index] = {
+        ...message,
+        audioUrl: audioResult.audioUrl,
+        audioMimeType: audioResult.audioMimeType,
+        audioTranscript: cleanText,
+      };
+      hasAudioUpdate = true;
+    }
+
+    if (!hasAudioUpdate) {
+      return;
+    }
+
+    const updatedMessagesByKey = new Map(
+      nextMessages.map((message) => [buildGroupAudioMessageKey(message), message]),
+    );
+
+    setHistory((prevHistory) => prevHistory.map((message) => {
+      const key = buildGroupAudioMessageKey(message);
+      return updatedMessagesByKey.get(key) || message;
+    }));
+  }, [setHistory, synthesizeSpeakerReplyAudio]);
+
   const appendSpeakerMessage = useCallback((
     speaker: Character,
     text: string,
@@ -1244,8 +1375,9 @@ export function useGroupChatRuntime({
       })),
     });
     setHistory(() => [...historyAfterRecall, ...structuredMessages]);
+    void attachAudioToSpeakerMessages(speaker, structuredMessages);
     return structuredMessages;
-  }, [resolveReplyTarget, setHistory]);
+  }, [attachAudioToSpeakerMessages, resolveReplyTarget, setHistory]);
 
   const triggerAISpeaker = useCallback(async (
     speaker: Character,

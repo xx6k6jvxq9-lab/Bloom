@@ -54,6 +54,7 @@ import { LoveLetterDetailPage } from '../loveletters/LoveLetterDetailPage';
 import { CoupleSpaceArchiveCenter } from '../archive/CoupleSpaceArchiveCenter';
 import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
 import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
+import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -213,6 +214,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const initiativeSettings = normalizeCoupleSpaceInitiativeSettings(coupleSpace.initiativeSettings);
   const initiativeDraftEntries = coupleSpace.initiativeDrafts || [];
   const { getCharacterById, getCharactersByIds } = createCharacterDirectory({ characters: appData.characters });
+  const coupleSpaceConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'default',
+  }).runtimeConfig;
   const partner = getCharacterById(coupleSpace.partnerId);
   const addedPartners = getCharactersByIds(addedPartnerIds);
   const selectedLoveLetter = (coupleSpace.loveLetters || []).find((letter: LoveLetter) => letter.id === selectedLoveLetterId) || null;
@@ -1560,7 +1565,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                 partner={partner}
                 coupleSpace={coupleSpace}
                 chatHistory={appData.chatHistory}
-                activeConfig={settings?.configs?.find((c: any) => c.id === settings?.activeConfigId) || settings?.configs?.[0]}
+                activeConfig={coupleSpaceConfig || undefined}
                 updateSpace={handleUpdateCoupleSpace}
               />
           )}

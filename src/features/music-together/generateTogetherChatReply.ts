@@ -1,6 +1,7 @@
 import type { ApiConfig, AppSettings, Character, ChatMessage, Song } from "../../types";
 import { buildChatPrompt } from "../../services/ai/prompts/builders/buildChatPrompt";
 import { generateTextFromMessagesWithConfig } from "../../services/ai/runtimeClient";
+import { resolveSceneTextApiConfig } from "../../services/ai/apiCenter/resolveSceneApiConfig";
 import {
   buildMusicTogetherSceneInput,
   type MusicTogetherLyricLine,
@@ -14,9 +15,10 @@ function resolveActiveMusicConfig(): ApiConfig | null {
     const raw = window.localStorage.getItem("ai_phone_settings");
     if (!raw) return null;
     const settings = JSON.parse(raw) as AppSettings;
-    const configs = settings?.configs || [];
-    if (!Array.isArray(configs) || configs.length === 0) return null;
-    return configs.find((config) => config.id === settings.activeConfigId) || configs[0] || null;
+    return resolveSceneTextApiConfig({
+      settings,
+      scene: "default",
+    }).runtimeConfig;
   } catch (error) {
     console.error("Failed to resolve music chat config:", error);
     return null;

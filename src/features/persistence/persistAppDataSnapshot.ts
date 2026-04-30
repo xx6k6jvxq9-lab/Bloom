@@ -25,6 +25,17 @@ const EMPTY_FORUM_DATA: ForumData = {
   posts: [],
   notifications: [],
   followedUsers: [],
+  followerMap: {},
+  tempChats: {},
+  runtimeAuthorProfiles: {},
+  composerDraft: null,
+  spectatorSettings: {
+    subjectName: '',
+    relationshipSummary: '',
+    tone: '吃瓜围观',
+    autoGenerate: false,
+    selectedCharacterIds: [],
+  },
 };
 
 const EMPTY_WALLET_DATA: WalletData = {

@@ -29,12 +29,18 @@ export function pickAssistantSticker(
   cueText: string,
   availableStickers: string[],
 ): PickedSticker | null {
-  const normalizedCueText = normalizeCueText(cueText);
-  if (!normalizedCueText) return null;
-
   const stickerCandidates = availableStickers.filter((sticker) => !!sticker?.trim());
   if (stickerCandidates.length === 0) {
     return null;
+  }
+
+  const normalizedCueText = normalizeCueText(cueText);
+  if (!normalizedCueText) {
+    const fallbackSticker = stickerCandidates[0];
+    return {
+      sticker: fallbackSticker,
+      label: inferStickerSemanticLabel(fallbackSticker)?.trim() || '表情包',
+    };
   }
 
   const cueLabel = inferStickerSemanticLabel(undefined, cueText)?.trim().toLowerCase() || '';

@@ -79,6 +79,9 @@ export function GroupSettingsPage({
           muteNotifications={formState.muteNotifications}
           pinChat={formState.pinChat}
           manualReplyEnabled={formState.manualReplyEnabled}
+          voiceRepliesEnabled={formState.voiceRepliesEnabled}
+          voiceReplyMemberIds={formState.voiceReplyMemberIds}
+          members={members}
           onChange={onChange}
         />
 

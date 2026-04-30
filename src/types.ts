@@ -1,4 +1,6 @@
 ﻿
+import type { ForumThreadType } from './features/forum-domain/types';
+
 export type Mask = {
   id: string;
   name: string;
@@ -604,6 +606,7 @@ export type Character = {
   nativeLanguage?: string;
   fixedReplyLanguage?: string;
   showTime?: boolean;
+  voiceProfile?: CharacterVoiceProfile;
 };
 
 import type { FactTraceRecord } from './services/relationship-context/factTypes';
@@ -865,26 +868,39 @@ export type ForumComment = {
   id: string;
   postId: string;
   authorId: string;
+  authorIdentity?: 'self' | 'anonymous' | 'character';
+  ownerUserId?: string;
+  authorCharacterId?: string;
   content: string;
   timestamp: number;
   likes: string[]; // User IDs
   replyToId?: string; // For nested replies
   rootCommentId?: string; // To group threads
+  isAiGenerated?: boolean;
 };
 
 export type ForumPost = {
   id: string;
   authorId: string;
+  authorIdentity?: 'self' | 'anonymous' | 'character';
+  ownerUserId?: string;
+  authorCharacterId?: string;
+  board?: 'public' | 'spectator';
   title: string;
   content: string; // Summary or full content
   images?: string[];
   category: string; // New field
+  threadType?: ForumThreadType;
   timestamp: number;
   viewCount: number;
   likes: string[]; // User IDs
   collections: string[]; // User IDs
   comments: ForumComment[];
   isReported?: boolean;
+  source?: 'seed' | 'generated' | 'user';
+  aiDetailExpanded?: boolean;
+  aiLastExpandedAt?: number;
+  aiLastReplyAt?: number;
 };
 
 export type ForumNotification = {
@@ -898,10 +914,73 @@ export type ForumNotification = {
   read: boolean;
 };
 
+export type ForumTempChatMessage = {
+  id: string;
+  role: 'user' | 'npc';
+  text: string;
+  timestamp: number;
+  readAt?: number;
+};
+
+export type ForumTempChatPendingReply = {
+  userMessageId: string;
+  userText: string;
+  readAt: number;
+  replyAt?: number;
+  behavior: 'instant' | 'delayed' | 'ghost';
+  status: 'waiting' | 'typing' | 'ghosted';
+  relatedPostId?: string | null;
+};
+
+export type ForumTempChatSession = {
+  authorId: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ForumTempChatMessage[];
+  canAddFriend?: boolean;
+  addedAsFriend?: boolean;
+  pendingReply?: ForumTempChatPendingReply;
+  viewerLastSeenAt?: number;
+};
+
+export type ForumRuntimeAuthorProfile = {
+  id: string;
+  name: string;
+  handle: string;
+  avatar: string;
+  bio: string;
+  persona?: string;
+  speakingStyle?: string;
+  preferredMove?: string;
+};
+
+export type ForumComposerDraft = {
+  title: string;
+  content: string;
+  images: string[];
+  identity: 'self' | 'anonymous';
+  channel: string;
+  board?: 'public' | 'spectator';
+  updatedAt: number;
+};
+
+export type ForumSpectatorSettings = {
+  subjectName: string;
+  relationshipSummary: string;
+  tone: '吃瓜围观' | '认真分析' | '暧昧起哄';
+  autoGenerate: boolean;
+  selectedCharacterIds: string[];
+};
+
 export type ForumData = {
   posts: ForumPost[];
   notifications: ForumNotification[];
   followedUsers?: string[];
+  followerMap?: Record<string, string[]>;
+  tempChats?: Record<string, ForumTempChatSession>;
+  runtimeAuthorProfiles?: Record<string, ForumRuntimeAuthorProfile>;
+  composerDraft?: ForumComposerDraft | null;
+  spectatorSettings?: ForumSpectatorSettings;
 };
 
 export type FriendRequest = {
@@ -948,6 +1027,8 @@ export type ChatGroup = {
   muteNotifications?: boolean;
   pinChat?: boolean;
   manualReplyEnabled?: boolean;
+  voiceRepliesEnabled?: boolean;
+  voiceReplyMemberIds?: string[];
   groupStage?: 'new' | 'warming' | 'familiar';
   memberRelationSeeds?: Array<{
     sourceMemberId: string;
@@ -1040,9 +1121,79 @@ export type ApiConfig = {
   temperature: number;
 };
 
+export type ApiCenterProvider = 'gemini' | 'openai-compatible' | 'custom';
+
+export type AiProviderConfig = {
+  provider: ApiCenterProvider;
+  apiKey?: string;
+  baseUrl?: string;
+  model: string;
+  temperature?: number;
+};
+
+export type TextCallConfig = {
+  enabled: boolean;
+  config: AiProviderConfig;
+};
+
+export type SingleChatCallConfig = {
+  id: string;
+  enabled: boolean;
+  name?: string;
+  roleScope: {
+    mode: 'all' | 'include' | 'exclude';
+    characterIds?: string[];
+  };
+  config: AiProviderConfig;
+  priority: number;
+};
+
+export type VoiceCallConfig = {
+  enabled: boolean;
+  tts?: {
+    enabled: boolean;
+    config: AiProviderConfig;
+    defaultVoiceId?: string;
+    defaultSampleAssetId?: string;
+    defaultSampleName?: string;
+    supportsVoiceClone?: boolean;
+    voiceLibraryRecords?: SavedTtsVoiceRecord[];
+  };
+};
+
+export type SavedTtsVoiceRecord = {
+  voiceId: string;
+  voiceName: string;
+  source: 'voice_cloning' | 'voice_generation';
+  previewAudioUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CharacterVoiceProfile = {
+  enabled: boolean;
+  mode: 'default' | 'library' | 'voiceId' | 'cloned';
+  voiceId?: string;
+  voiceName?: string;
+  voiceSource?: 'system' | 'voice_cloning' | 'voice_generation';
+  sampleAssetId?: string;
+  sampleName?: string;
+  autoPlay?: boolean;
+};
+
+export type ApiCenterConfig = {
+  defaultTextCall: TextCallConfig;
+  singleChatCalls: SingleChatCallConfig[];
+  groupChatCall?: TextCallConfig;
+  forumCall?: TextCallConfig;
+  datingCall?: TextCallConfig;
+  voiceCall?: VoiceCallConfig;
+};
+
 export type AppSettings = {
   activeConfigId: string;
   configs: ApiConfig[];
+  apiCenterConfig?: ApiCenterConfig;
   sharedStickers?: string[];
   visualSettings?: VisualSettings;
   showChatTimeDividers?: boolean;

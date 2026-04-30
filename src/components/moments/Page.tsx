@@ -9,6 +9,7 @@ import {
   runMomentCommentReplySequence,
   runMomentPublishCommentSequence,
 } from '../../services/moments/commentOrchestrator';
+import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, MomentItem, UserProfileExtended } from '../../types';
 
@@ -130,6 +131,10 @@ export function MomentsApp({
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
 
   const { userProfile, moments, characters } = appData;
+  const forumConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'forum',
+  }).runtimeConfig;
   const { getCharacterById, getCharacterDisplayName } = createCharacterDirectory({ characters });
   const { resolvedUrl: resolvedMomentsBackgroundUrl } = useResolvedPersistentValue(appData.visualSettings?.momentsBackground);
   const isKnownMomentActorId = (actorId: string | undefined) =>
@@ -278,7 +283,7 @@ export function MomentsApp({
     setPublishContent('');
     setPublishImages([]);
 
-    const activeConfig = settings.configs.find((c) => c.id === settings.activeConfigId) || settings.configs[0];
+    const activeConfig = forumConfig;
     const shuffledCharacters = [...characters].sort(() => Math.random() - 0.5);
     const replyCount = Math.min(
       shuffledCharacters.length,
@@ -303,7 +308,7 @@ export function MomentsApp({
       })();
     }
 
-    if (replyCharacters.length > 0) {
+    if (activeConfig && replyCharacters.length > 0) {
       void runMomentPublishCommentSequence({
         activeConfig,
         moment: newMoment,
@@ -442,15 +447,16 @@ export function MomentsApp({
     const moment = moments.find((m) => m.id === momentId);
     if (!moment) return;
 
-    const activeConfig = settings.configs.find((c) => c.id === settings.activeConfigId) || settings.configs[0];
-    void runMomentCommentReplySequence({
-      activeConfig,
-      moment,
-      characters,
-      userName: userProfile.name,
-      triggerComment: newComment,
-      appendComment: (comment) => appendCommentToMoment(momentId, comment),
-    });
+    if (forumConfig) {
+      void runMomentCommentReplySequence({
+        activeConfig: forumConfig,
+        moment,
+        characters,
+        userName: userProfile.name,
+        triggerComment: newComment,
+        appendComment: (comment) => appendCommentToMoment(momentId, comment),
+      });
+    }
   };
 
   if (showPublish) {

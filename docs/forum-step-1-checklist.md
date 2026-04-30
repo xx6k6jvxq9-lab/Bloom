@@ -1,52 +1,155 @@
-# Forum Step 1 Checklist
+# Forum Implementation Roadmap v2
 
 ## Goal
 
-Build the forum foundation for "界隙" without breaking the current forum page.
+Reorder forum work into a product-first sequence:
 
-## Scope
+1. make the forum feel alive
+2. make it fun
+3. add the new-world spectator mode
+4. complete identity rules
+5. only then wire forum memory write-back
 
-- Create a dedicated forum domain area instead of continuing to grow everything inside the old page component.
-- Define the v2 forum data model for worlds, thread lifecycle, NPC identity, and user masks.
-- Add prompt builders for forum thread generation and forum reply generation.
-- Keep the current runnable forum UI intact for now.
+This checklist replaces the old “foundation first, memory soon after” ordering.
 
-## Deliverables
+---
 
-### 1. Domain Structure
+## Phase 1: Forum Must First Feel Real
 
-- [x] Create `src/features/forum-domain/`
-- [x] Define forum channels, thread types, lifecycle stages, NPC tiers, and relationship stages
-- [x] Add reusable labels and theme presets for each world
+### Goal
 
-### 2. Data Model
+Make the current forum page feel like a real, inhabited forum before expanding system depth.
 
-- [x] Create `ForumThreadV2`
-- [x] Create `ForumCommentV2`
-- [x] Create `ForumNpcProfile`
-- [x] Create `ForumUserIdentity`
-- [x] Keep these types isolated from current `src/types.ts` for now
+### Required Deliverables
 
-### 3. Prompt Base
+- [x] Seed-based opening flow stays static on first entry
+- [x] World-channel structure exists
+- [x] Thread generation uses forum-specific prompt builders
+- [x] Reply generation uses forum-specific prompt builders
+- [x] Dynamic forum users persist across refresh / reload
+- [x] Dynamic avatars move toward a unified anime-like style
+- [x] Dynamic handle display avoids raw system ids
+- [x] User posting is supported
+- [x] User post now triggers initial AI audience replies
+- [x] User comment triggers follow-up AI replies
+- [x] Comment view is flattened instead of infinitely nested narrow threads
+- [ ] AI replies should more reliably respond to the user’s actual latest comment
+- [ ] Dynamic nicknames and `@ID` should become more consistently human and less template-like
+- [ ] Dynamic bios should feel more like user-written signatures across batches
 
-- [x] Add forum scenario prompt
-- [x] Add thread-generation prompt builder
-- [x] Add reply-generation prompt builder
-- [x] Make prompt builders aware of world tone and forum interaction style
+### Experience Rules That Must Not Regress
 
-### 4. Next Step Entry
+- [x] First-entry feed should still come from static seed selection
+- [x] Dynamic generated users must not expose machine-like ids
+- [x] Comment cards should stay full width
+- [x] User post should not feel unanswered
+- [x] Buttons should avoid “all black admin panel” styling
 
-- [ ] Migrate current forum mock data into the new v2 shape
-- [ ] Replace old `category: "全部"` with real world channels
-- [ ] Upgrade comment view from generic nested replies to floor-based presentation
-- [ ] Add first batch of world-specific seed threads
-- [ ] Wire `forumCall` to actual generation entry points
+---
 
-## Notes
+## Phase 2: Forum Must Become Fun
 
-- Yes, forum generation should have its own prompt layer.
-- It should not reuse chat prompts directly, because the output target is different:
-  - forum thread = public post
-  - forum reply = short, public, in-character floor reply
-  - same-topic rewrite = cross-world reformulation
-- The current step only builds the foundation so we can wire generation cleanly in the next step.
+### Goal
+
+Move from “a working feed” to “a place where things are happening”.
+
+### Planned Deliverables
+
+- [ ] Add stable post types: rant / confession / help / gossip / update / poll
+- [ ] Add hot-thread continuation logic
+- [ ] Add faction feeling in replies: defend / mock / watch / suspect / ship
+- [ ] Add recognizable repeat forum personalities
+- [ ] Add stronger downstream consequences when the user says something memorable in-thread
+
+### Fun Test
+
+- [ ] A user should want to keep watching a thread after reading the first few replies
+- [ ] A user comment should sometimes change the tone or direction of the thread
+- [ ] The forum should feel like it grows stories, not just isolated posts
+
+---
+
+## Phase 3: New-World Spectator Mode
+
+### Goal
+
+Add a second forum mode where forum users actively discuss the user and characters from an outside perspective.
+
+### Planned Deliverables
+
+- [ ] Add a separate entry for `新世界` / spectator mode
+- [ ] Add world-shell selection
+- [ ] Launch v1 with 3 world shells
+  - [ ] campus forum
+  - [ ] workplace board
+  - [ ] cultivation sect forum
+- [ ] Generate spectator-style threads about character aura, favoritism, romance speculation, danger, chemistry
+- [ ] Allow the user to reply inside these spectator threads
+- [ ] Let forum users continue reacting around the user + character relationship
+
+### Mode Rules
+
+- [ ] Public forum remains public-world discussion
+- [ ] Spectator mode becomes “people discussing the user and characters”
+- [ ] These two modes should not collapse into one undifferentiated feed
+
+---
+
+## Phase 4: Identity System Completion
+
+### Goal
+
+Turn current identity handling into a full forum identity system.
+
+### Current State
+
+- [x] self posting
+- [x] anonymous posting
+- [ ] character posting
+- [ ] anonymous commenting
+- [ ] channel masks
+- [ ] persistent hidden real identity mapping
+- [ ] reveal-ready anonymous history
+
+### Required Deliverables
+
+- [ ] Posting supports self / anonymous / character
+- [ ] Commenting supports self / anonymous / character
+- [ ] Frontstage identity and backstage real identity are separated
+- [ ] Anonymous interactions are still attributable in-system
+
+---
+
+## Phase 5: Forum Relationship Memory Write-Back
+
+### Goal
+
+Only after the above phases are stable, connect forum events to relationship / memory systems.
+
+### Planned Deliverables
+
+- [ ] Define forum event evidence schema
+- [ ] Track meaningful public interactions
+- [ ] Preserve hidden identity attribution for anonymous events
+- [ ] Allow later chat references to forum events
+- [ ] Let forum interactions contribute to relationship context
+
+### Important Note
+
+- [ ] Do not prioritize this phase before spectator mode + identity completion
+- [ ] No memory write-back should ship on top of unstable interaction primitives
+
+---
+
+## Summary
+
+The correct order is:
+
+1. alive forum
+2. fun forum
+3. spectator mode
+4. identity completion
+5. memory write-back
+
+This is now the authoritative forum implementation order.
+

@@ -9,6 +9,7 @@ import {
 } from '../../types';
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
+import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { GameCenter } from '../../components/games/GameCenter';
 import { GameCard } from '../../components/chat/GameCard';
 import { AvatarLibraryPanel } from './AvatarLibraryPanel';
@@ -27,6 +28,7 @@ import {
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
+import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
@@ -47,12 +49,18 @@ const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
 
-function getDirectReplyPreviewClass() {
-  return 'chat-reply-preview mb-1 inline-flex max-w-[min(82%,34rem)] items-start gap-2 rounded-xl border border-zinc-200/80 bg-white/65 px-3 py-2 text-zinc-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm';
+function getDirectReplyPreviewClass(isUser: boolean) {
+  return `chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 text-zinc-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] backdrop-blur-sm ${
+    isUser
+      ? 'border-white/18 bg-white/16 text-white'
+      : 'border-zinc-200/85 bg-white/72 text-zinc-700'
+  }`;
 }
 
-function getDirectReplyPreviewTextClass() {
-  return 'mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 text-zinc-600 break-words';
+function getDirectReplyPreviewTextClass(isUser: boolean) {
+  return `mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 break-words ${
+    isUser ? 'text-white/82' : 'text-zinc-600'
+  }`;
 }
 
 function formatChatMessageTime(timestamp: number): string {
@@ -409,6 +417,7 @@ export function ChatSessionScreen({
   const [transferType, setTransferType] = useState<'toUser' | 'toCharacter'>('toCharacter');
   const [transferAmount, setTransferAmount] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const sessionEnteredAtRef = useRef(Date.now());
   const availableCustomStickers = Array.from(new Set([
     ...(settings.sharedStickers || []),
     ...(character.stickers || []),
@@ -427,6 +436,8 @@ export function ChatSessionScreen({
   const [voiceCallDuration, setVoiceCallDuration] = useState(0);
   const [voiceCallInput, setVoiceCallInput] = useState('');
   const [isRecordingCall, setIsRecordingCall] = useState(false);
+  const [isVoiceCallResponding, setIsVoiceCallResponding] = useState(false);
+  const [voiceCallAudioNotice, setVoiceCallAudioNotice] = useState('');
   const voiceCallTimerRef = useRef<NodeJS.Timeout | null>(null);
   const voiceCallRecognitionRef = useRef<any>(null);
 
@@ -503,6 +514,11 @@ export function ChatSessionScreen({
   });
 
   const activeConfig = settings?.configs?.find(c => c.id === settings.activeConfigId);
+  const datingConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'dating',
+    characterId: character.id,
+  }).runtimeConfig;
   const activeSavedDate =
     savedDates?.find(
       session => session.characterId === character.id && (session.status || 'active') === 'active',
@@ -541,7 +557,7 @@ export function ChatSessionScreen({
     sharedStickers: settings.sharedStickers || [],
     history,
     setHistory,
-    activeConfig,
+    settings,
     input,
     setInput,
     replyingTo,
@@ -714,10 +730,81 @@ export function ChatSessionScreen({
   
   const showVoiceCallRef = useRef(false);
   const voiceCallSessionIdRef = useRef(0);
-  const [voiceCallHistory, setVoiceCallHistory] = useState<{role: 'user' | 'model', text: string}[]>([]);
+  const [voiceCallHistory, setVoiceCallHistory] = useState<{role: 'user' | 'model', text: string, translation?: string}[]>([]);
   const [currentInterimSpeech, setCurrentInterimSpeech] = useState('');
-  const voiceCallHistoryRef = useRef<{role: 'user' | 'model', text: string}[]>([]);
+  const voiceCallHistoryRef = useRef<{role: 'user' | 'model', text: string, translation?: string}[]>([]);
   const voiceCallEndRef = useRef<HTMLDivElement>(null);
+  const voiceCallAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const formatVoiceCallDuration = useCallback((seconds: number) => {
+    const safeSeconds = Math.max(0, seconds);
+    const minutes = Math.floor(safeSeconds / 60).toString().padStart(2, '0');
+    const remainSeconds = (safeSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${remainSeconds}`;
+  }, []);
+
+  const formatVoiceCallSecondsLabel = useCallback((seconds: number) => {
+    if (seconds < 60) {
+      return `${seconds} 秒`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainSeconds = seconds % 60;
+    return remainSeconds > 0 ? `${minutes} 分 ${remainSeconds} 秒` : `${minutes} 分钟`;
+  }, []);
+
+  const playVoiceCallAudio = useCallback(async (audioUrl?: string) => {
+    if (!audioUrl) {
+      return;
+    }
+
+    try {
+      const resolvedAudioUrl = await resolveValueToDisplayUrl(audioUrl);
+      if (!resolvedAudioUrl) {
+        setVoiceCallAudioNotice('语音已经生成，但当前没拿到可播放地址，所以没有成功播出来。');
+        return;
+      }
+      voiceCallAudioRef.current?.pause();
+      const nextAudio = new Audio(resolvedAudioUrl);
+      nextAudio.play().catch((error) => {
+        console.error('Voice call audio autoplay failed', error);
+        setVoiceCallAudioNotice('语音已经生成，但浏览器拦截了自动播放。可以再试一次或手动交互后重试。');
+      });
+      voiceCallAudioRef.current = nextAudio;
+    } catch (error) {
+      console.error('Failed to play voice call audio', error);
+      setVoiceCallAudioNotice('语音已经生成，但播放阶段失败了。');
+    }
+  }, []);
+
+  const requestVoiceCallReply = useCallback((text: string, activeSessionId: number) => {
+    setIsVoiceCallResponding(true);
+    setVoiceCallAudioNotice('');
+    void handleVoiceCallAIResponse(text).then((response) => {
+      if (!showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) return;
+      if (!response) {
+        setVoiceCallAudioNotice('这次没有拿到角色回复，请检查当前文本模型配置或网络状态。');
+        return;
+      }
+      const aiMsg = {
+        role: 'model' as const,
+        text: response.text,
+        ...(response.translation ? { translation: response.translation } : {}),
+      };
+      setVoiceCallHistory(prev => {
+        const newHistory = [...prev, aiMsg];
+        voiceCallHistoryRef.current = newHistory;
+        return newHistory;
+      });
+      if (!response.audioUrl && character.voiceProfile?.enabled) {
+        setVoiceCallAudioNotice('这次只回了文字，语音没有成功播报。请检查 MiniMax 额度、TTS Key 和当前绑定音色。');
+      }
+      playVoiceCallAudio(response.audioUrl);
+    }).finally(() => {
+      if (voiceCallSessionIdRef.current === activeSessionId) {
+        setIsVoiceCallResponding(false);
+      }
+    });
+  }, [character.voiceProfile?.enabled, handleVoiceCallAIResponse, playVoiceCallAudio]);
 
   useEffect(() => {
     const memoryLimit = getDirectMemoryMessageLimit(character.memoryLimit);
@@ -757,15 +844,7 @@ export function ChatSessionScreen({
       return newHistory;
     });
     
-    handleVoiceCallAIResponse(text).then((responseText) => {
-      if (!responseText || !showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) return;
-      const aiMsg = { role: 'model' as const, text: responseText };
-      setVoiceCallHistory(prev => {
-        const newHistory = [...prev, aiMsg];
-        voiceCallHistoryRef.current = newHistory;
-        return newHistory;
-      });
-    });
+    requestVoiceCallReply(text, activeSessionId);
   };
 
   const startVoiceCall = () => {
@@ -774,6 +853,8 @@ export function ChatSessionScreen({
     voiceCallSessionIdRef.current += 1;
     setVoiceCallDuration(0);
     setVoiceCallHistory([]);
+    setIsVoiceCallResponding(false);
+    setVoiceCallAudioNotice('');
     setCurrentInterimSpeech('');
     voiceCallHistoryRef.current = [];
     setShowFunPanel(false);
@@ -827,15 +908,7 @@ export function ChatSessionScreen({
            // Standard voice call behavior: AI always listens and responds. "Recording" is for saving the call.
            // So I will trigger AI response always.
            
-           handleVoiceCallAIResponse(finalTranscript).then((responseText) => {
-             if (!responseText || !showVoiceCallRef.current || voiceCallSessionIdRef.current !== activeSessionId) return;
-             const aiMsg = { role: 'model' as const, text: responseText };
-             setVoiceCallHistory(prev => {
-               const newHistory = [...prev, aiMsg];
-               voiceCallHistoryRef.current = newHistory;
-               return newHistory;
-             });
-           });
+           requestVoiceCallReply(finalTranscript, activeSessionId);
         }
 
         setCurrentInterimSpeech(interimTranscript);
@@ -881,8 +954,12 @@ export function ChatSessionScreen({
     if (voiceCallRecognitionRef.current) {
       voiceCallRecognitionRef.current.stop();
     }
+    voiceCallAudioRef.current?.pause();
+    voiceCallAudioRef.current = null;
     
     setShowVoiceCall(false);
+    setIsVoiceCallResponding(false);
+    setVoiceCallAudioNotice('');
 
     finalizeVoiceCall({
       duration: voiceCallDuration,
@@ -899,6 +976,11 @@ export function ChatSessionScreen({
       voiceCallEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [voiceCallHistory, currentInterimSpeech, showVoiceCall]);
+
+  useEffect(() => () => {
+    voiceCallAudioRef.current?.pause();
+    voiceCallAudioRef.current = null;
+  }, []);
 
   const getContextMenuMessageIndex = () => {
     if (!contextMenu) {
@@ -1884,6 +1966,31 @@ export function ChatSessionScreen({
                             );
                         }
 
+                        if (msg.isVoiceCall) {
+                          return (
+                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div
+                                onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  handleMessageClick(e, i);
+                                }}
+                                className={`chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} inline-flex max-w-[min(84%,16rem)] cursor-pointer flex-col gap-1 rounded-2xl border border-zinc-200 bg-white/95 px-3.5 py-3 shadow-sm transition-all active:scale-[0.98]`}
+                              >
+                                <div className="text-[14px] font-semibold text-zinc-800">[语音通话]</div>
+                                <div className="text-[12px] text-zinc-500">
+                                  通话时长 {formatVoiceCallDuration(msg.duration || 0)}
+                                </div>
+                              </div>
+                              {showChatMessageTime && (
+                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                  {formatChatMessageTime(msg.timestamp)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
+
                         const transferBracketRegex = /\[转账\s*([\d.]+)\]/i;
                         const transferBlockRegex = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
                         const transferPipeRegex = /TRANSFER\|([\d.]+)\|([\s\S]*)/i;
@@ -1904,13 +2011,13 @@ export function ChatSessionScreen({
                             {msg.audioUrl && !msg.isInnerVoice && (
                               <>
                                 {msg.replyTo && (
-                                  <div className={getDirectReplyPreviewClass()}>
+                                  <div className={getDirectReplyPreviewClass(msg.role === 'user')}>
                                     <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                                     <div className="min-w-0">
                                       <div className="text-[11px] font-medium text-zinc-500">
                                         回复 {msg.replyTo.authorLabel}
                                       </div>
-                                      <div className={getDirectReplyPreviewTextClass()}>
+                                      <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
                                         {getReplyPreviewText(msg)}
                                       </div>
                                     </div>
@@ -1921,7 +2028,13 @@ export function ChatSessionScreen({
                                   value={msg.audioUrl}
                                   durationSeconds={msg.duration}
                                   transcript={msg.audioTranscript || null}
+                                  translation={msg.translation || null}
                                   showTranscript={!!msg.audioTranscript}
+                                  autoPlay={
+                                    msg.role === 'model'
+                                    && !!character.voiceProfile?.autoPlay
+                                    && msg.timestamp >= sessionEnteredAtRef.current
+                                  }
                                   isUser={msg.role === 'user'}
                                   onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
                                   onContextMenu={(e) => {
@@ -1947,14 +2060,14 @@ export function ChatSessionScreen({
                               <>
                                 {msg.replyTo && (
                                   <div
-                                    className={getDirectReplyPreviewClass()}
+                                    className={getDirectReplyPreviewClass(msg.role === 'user')}
                                   >
                                     <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                                     <div className="min-w-0">
                                       <div className="text-[11px] font-medium text-zinc-500">
                                         回复 {msg.replyTo.authorLabel}
                                       </div>
-                                      <div className={getDirectReplyPreviewTextClass()}>
+                                      <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
                                         {getReplyPreviewText(msg)}
                                       </div>
                                     </div>
@@ -2012,14 +2125,14 @@ export function ChatSessionScreen({
                                 <>
                                   {msg.replyTo && (
                                     <div
-                                      className={getDirectReplyPreviewClass()}
+                                      className={getDirectReplyPreviewClass(msg.role === 'user')}
                                     >
                                       <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
                                       <div className="min-w-0">
                                         <div className="text-[11px] font-medium text-zinc-500">
                                           回复 {msg.replyTo.authorLabel}
                                         </div>
-                                        <div className={getDirectReplyPreviewTextClass()}>
+                                        <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
                                           {getReplyPreviewText(msg)}
                                         </div>
                                       </div>
@@ -2710,7 +2823,7 @@ export function ChatSessionScreen({
 
                   <button 
                     onClick={() => {
-                      if (!activeConfig) {
+                      if (!datingConfig) {
                         setError('当前未选择有效的 API 配置。');
                         setShowFunPanel(false);
                         return;
@@ -2864,7 +2977,7 @@ export function ChatSessionScreen({
         )}
       </AnimatePresence>
 
-      {activeConfig && (
+      {datingConfig && (
         <DatingModal
           isOpen={showDatingModal}
           onClose={() => {
@@ -2888,7 +3001,7 @@ export function ChatSessionScreen({
           }}
           character={character}
           userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
-          activeConfig={activeConfig}
+          activeConfig={datingConfig}
           chatHistory={history}
           perception={perception}
           onSaveDate={onSaveDate || (() => {})}
@@ -2905,11 +3018,11 @@ export function ChatSessionScreen({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="absolute inset-0 z-[100] bg-zinc-900 flex flex-col items-center justify-between pb-12 overflow-hidden"
+            className="absolute inset-0 z-[100] overflow-hidden bg-[#0f1115] flex flex-col"
           >
             {/* Background Blur */}
             <div 
-              className="absolute inset-0 opacity-40 scale-110 blur-2xl"
+              className="absolute inset-0 opacity-70 scale-105"
               style={{
                 backgroundImage: (() => {
                   const avatarSrc = getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl);
@@ -2920,41 +3033,64 @@ export function ChatSessionScreen({
               }}
             />
             
-            {/* Header */}
-            <div className="relative z-10 w-full pt-16 flex flex-col items-center">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 mb-4 shadow-2xl">
-                <PersistentImage value={character.avatar} className="w-full h-full object-cover" />
-              </div>
-              <h2 className="text-white text-2xl font-medium mb-2">{character.name}</h2>
-              <p className="text-white/60 text-sm font-mono">
-                {Math.floor(voiceCallDuration / 60).toString().padStart(2, '0')}:
-                {(voiceCallDuration % 60).toString().padStart(2, '0')}
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,10,18,0.12),rgba(7,10,16,0.34)_48%,rgba(7,10,16,0.52)_100%)]" />
+
+            <div className="relative z-10 flex w-full flex-col items-center justify-center gap-2 px-6 pt-[92px] text-white/80">
+              <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] tracking-[0.18em]">
+                语音通话
+              </span>
+              <p className="text-[13px] text-white/66">
+                {isVoiceCallResponding ? '对方正在说话...' : currentInterimSpeech ? '正在听你说...' : '通话中'}
+              </p>
+              {voiceCallAudioNotice ? (
+                <div className="mt-4 max-w-[78%] rounded-2xl border border-amber-200/18 bg-amber-50/10 px-4 py-2.5 text-center text-[12px] leading-5 text-amber-100">
+                  {voiceCallAudioNotice}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="relative z-10 w-full pt-10 flex flex-col items-center">
+              <h2 className="text-white text-[34px] font-semibold tracking-[0.04em] mb-2">{character.name}</h2>
+              <p className="rounded-full border border-white/10 bg-white/8 px-4 py-1.5 text-[12px] text-white/70">
+                {formatVoiceCallDuration(voiceCallDuration)} · {formatVoiceCallSecondsLabel(voiceCallDuration)}
               </p>
             </div>
 
-            {/* Transcription Area */}
             <div className="relative z-10 w-full flex-1 flex flex-col justify-end px-6 pb-4 overflow-hidden">
               <div 
-                className="w-full h-[360px] overflow-y-auto flex flex-col gap-4 pr-2"
-                style={{ maskImage: 'linear-gradient(to bottom, transparent, black 10%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 10%)' }}
+                className="w-full h-[420px] overflow-y-auto flex flex-col gap-3 px-2 py-2"
+                style={{ maskImage: 'linear-gradient(to bottom, transparent, black 7%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 7%)' }}
               >
                 <div className="flex-1" /> {/* Spacer to push content down initially */}
                 {voiceCallHistory.map((msg, idx) => (
                   <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`
-                      px-4 py-3 rounded-2xl max-w-[85%] text-[15px] leading-relaxed backdrop-blur-md shadow-sm
+                      px-4 py-3 rounded-[22px] max-w-[85%] text-[15px] leading-7 shadow-sm
                       ${msg.role === 'user' 
-                        ? 'bg-white/20 text-white rounded-br-sm' 
-                        : 'bg-black/40 text-white rounded-bl-sm border border-white/10'}
+                        ? 'bg-white text-zinc-900 rounded-br-md' 
+                        : 'bg-white/12 text-white rounded-bl-md border border-white/10 backdrop-blur-md'}
                     `}>
-                      {msg.text}
+                      <div>{msg.text}</div>
+                      {msg.role === 'model' && msg.translation ? (
+                        <div className="mt-2 border-t border-white/10 pt-2 text-[13px] leading-6 text-white/84">
+                          翻译：{msg.translation}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
                 {currentInterimSpeech && (
                   <div className="flex justify-end">
-                    <div className="bg-white/10 backdrop-blur-md text-white/70 px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] text-[15px] leading-relaxed animate-pulse">
+                    <div className="bg-white/10 border border-dashed border-white/20 text-white/74 px-4 py-3 rounded-[22px] rounded-br-md max-w-[85%] text-[15px] leading-7">
                       {currentInterimSpeech}
+                    </div>
+                  </div>
+                )}
+                {isVoiceCallResponding && (
+                  <div className="flex justify-start">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-[12px] text-white/70">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" />
+                      正在回复...
                     </div>
                   </div>
                 )}
@@ -2963,7 +3099,7 @@ export function ChatSessionScreen({
             </div>
 
             {/* Text Input for Voice Call */}
-            <div className="relative z-10 w-full px-8 pb-8 flex gap-3 items-center">
+            <div className="relative z-10 w-full px-6 pb-8 flex gap-3 items-center">
                <div className="flex-1 relative">
                 <input
                   type="text"
@@ -2971,12 +3107,12 @@ export function ChatSessionScreen({
                   onChange={(e) => setVoiceCallInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendVoiceCallText()}
                   placeholder="输入文字回复..."
-                  className="w-full bg-white/10 backdrop-blur-md text-white placeholder-white/50 pl-4 pr-10 py-3 rounded-2xl outline-none border border-white/10 focus:bg-white/20 transition-all shadow-lg shadow-black/10"
+                  className="w-full bg-white/10 text-white placeholder-white/50 pl-4 pr-10 py-3 rounded-[22px] outline-none border border-white/12 focus:bg-white/14 transition-all"
                 />
                 {voiceCallInput && (
                   <button 
                     onClick={() => setVoiceCallInput('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors"
                   >
                     <X size={16} />
                   </button>
@@ -2985,28 +3121,28 @@ export function ChatSessionScreen({
               <button 
                 onClick={handleSendVoiceCallText}
                 disabled={!voiceCallInput.trim()}
-                className="bg-white/20 hover:bg-white/30 text-white p-3 rounded-2xl disabled:opacity-50 transition-all backdrop-blur-md border border-white/10 shadow-lg shadow-black/10 active:scale-95"
+                className="bg-white/12 text-white p-4 rounded-full disabled:opacity-45 transition-all border border-white/12 active:scale-95"
               >
                 <Send size={20} />
               </button>
             </div>
 
             {/* Controls */}
-            <div className="relative z-10 w-full flex justify-center gap-8 px-8">
+            <div className="relative z-10 w-full flex justify-center gap-7 px-6">
               <button 
                 onClick={() => setIsRecordingCall(!isRecordingCall)}
-                className={`w-16 h-16 rounded-full flex items-center justify-center text-white active:scale-95 transition-all ${isRecordingCall ? 'bg-red-500 shadow-lg shadow-red-500/30' : 'bg-white/10 backdrop-blur-md'}`}
+                className={`w-[72px] h-[72px] rounded-full flex items-center justify-center text-white active:scale-95 transition-all ${isRecordingCall ? 'bg-[#ff5f57] shadow-[0_14px_34px_rgba(255,95,87,0.28)]' : 'bg-white/12'}`}
               >
-                {isRecordingCall ? <div className="w-6 h-6 bg-white rounded-sm animate-pulse" /> : <div className="w-6 h-6 bg-red-500 rounded-full" />}
+                {isRecordingCall ? <div className="w-6 h-6 bg-white rounded-sm animate-pulse" /> : <div className="w-5 h-5 bg-[#ff5f57] rounded-full" />}
               </button>
               <button 
                 onClick={endVoiceCall}
-                className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg shadow-red-500/30 active:scale-95 transition-transform"
+                className="w-[84px] h-[84px] rounded-full bg-[#ff4d4f] flex items-center justify-center text-white shadow-[0_16px_40px_rgba(255,77,79,0.34)] active:scale-95 transition-transform"
               >
-                <PhoneOff size={28} />
+                <PhoneOff size={32} />
               </button>
-              <button className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-transform">
-                <Settings size={28} />
+              <button className="w-[72px] h-[72px] rounded-full bg-white/12 flex items-center justify-center text-white active:scale-95 transition-transform">
+                <Settings size={30} />
               </button>
             </div>
           </motion.div>

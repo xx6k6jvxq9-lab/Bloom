@@ -24,6 +24,8 @@ export type GroupSettingsFormState = {
   muteNotifications: boolean;
   pinChat: boolean;
   manualReplyEnabled: boolean;
+  voiceRepliesEnabled: boolean;
+  voiceReplyMemberIds: string[];
 };
 
 export type GroupSettingsPatch = Pick<
@@ -49,6 +51,8 @@ export type GroupSettingsPatch = Pick<
   | 'muteNotifications'
   | 'pinChat'
   | 'manualReplyEnabled'
+  | 'voiceRepliesEnabled'
+  | 'voiceReplyMemberIds'
 >;
 
 export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remarkName' | 'avatar'> & {
@@ -56,4 +60,5 @@ export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remark
   badgeLabel?: string;
   badgeColor?: string;
   bubbleColor?: string;
+  voiceEnabled?: boolean;
 };

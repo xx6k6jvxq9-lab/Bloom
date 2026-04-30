@@ -12,6 +12,7 @@ import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
+import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 
 function ResolvedContactsAvatar({
   value,
@@ -583,7 +584,10 @@ export function CharacterMomentsProfile({
       ? 'from-zinc-200 via-sky-200 to-zinc-500'
       : 'from-zinc-200 via-zinc-400 to-zinc-600';
   const activeConfig = useMemo(
-    () => settings.configs.find((config) => config.id === settings.activeConfigId) || settings.configs[0],
+    () => resolveSceneTextApiConfig({
+      settings,
+      scene: 'forum',
+    }).runtimeConfig,
     [settings],
   );
 

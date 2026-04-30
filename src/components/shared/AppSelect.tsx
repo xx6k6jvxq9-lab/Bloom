@@ -55,6 +55,17 @@ export function AppSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !rootRef.current) {
+      return;
+    }
+
+    const selectedNode = rootRef.current.querySelector<HTMLElement>('[data-app-select-selected="true"]');
+    selectedNode?.scrollIntoView({
+      block: 'nearest',
+    });
+  }, [open, value]);
+
   return (
     <div ref={rootRef} className={`relative ${className}`}>
       <button
@@ -87,7 +98,7 @@ export function AppSelect({
           className={`absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ${menuClassName}`}
         >
           {options.length ? (
-            <div className="max-h-56 overflow-y-auto overscroll-contain p-1.5">
+            <div className="max-h-72 overflow-y-auto overscroll-contain p-1.5">
               {options.map((option) => {
                 const isSelected = option.value === value;
                 return (
@@ -103,6 +114,7 @@ export function AppSelect({
                     }`}
                     role="option"
                     aria-selected={isSelected}
+                    data-app-select-selected={isSelected ? 'true' : 'false'}
                   >
                     <div className="min-w-0 flex-1">
                       <div className={`truncate text-[14px] ${isSelected ? 'font-semibold' : 'font-medium'}`}>

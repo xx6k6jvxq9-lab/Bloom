@@ -109,6 +109,7 @@ function pickRecordingMimeType(): string {
 }
 
 type UseAudioMessageRecorderArgs = {
+  transcribeAudio?: (blob: Blob) => Promise<string | undefined>;
   onRecorded: (payload: { blob: Blob; durationMs: number; transcript?: string }) => void | Promise<void>;
 };
 
@@ -117,6 +118,7 @@ type FinishRecordingOptions = {
 };
 
 export function useAudioMessageRecorder({
+  transcribeAudio,
   onRecorded,
 }: UseAudioMessageRecorderArgs) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -310,7 +312,20 @@ export function useAudioMessageRecorder({
 
         try {
           const wavBlob = await normalizeRecordedAudioToWav(rawBlob);
-          await onRecorded({ blob: wavBlob, durationMs, transcript: transcript || undefined });
+          let resolvedTranscript = transcript || undefined;
+
+          if (transcribeAudio) {
+            try {
+              const serviceTranscript = await transcribeAudio(wavBlob);
+              if (serviceTranscript?.trim()) {
+                resolvedTranscript = serviceTranscript.trim();
+              }
+            } catch (error) {
+              console.warn('STT transcription failed, falling back to browser transcript.', error);
+            }
+          }
+
+          await onRecorded({ blob: wavBlob, durationMs, transcript: resolvedTranscript });
         } finally {
           discardRequestedRef.current = false;
         }
@@ -330,7 +345,7 @@ export function useAudioMessageRecorder({
       setIsRecording(false);
       stopStream();
     }
-  }, [isRecording, onRecorded, startRecognition, stopRecognition, stopStream]);
+  }, [isRecording, onRecorded, startRecognition, stopRecognition, stopStream, transcribeAudio]);
 
   useEffect(() => () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {

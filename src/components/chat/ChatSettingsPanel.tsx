@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, X } from 'lucide-react';
+import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
@@ -28,6 +28,9 @@ import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
+import { copyTextContent } from '../../services/chat/messageActions';
+import { fetchMinimaxVoices, type MinimaxVoiceRecord } from '../../services/ai/apiCenter/fetchMinimaxVoices';
 
 function SettingsSection({
   title,
@@ -327,12 +330,28 @@ export function ChatSettingsPanel({
   const [characterStickerLinksDraft, setCharacterStickerLinksDraft] = useState('');
   const [minRepliesDraft, setMinRepliesDraft] = useState(String(character?.minReplies || 1));
   const [maxRepliesDraft, setMaxRepliesDraft] = useState(String(character?.maxReplies || 3));
+  const [isCloningVoice, setIsCloningVoice] = useState(false);
+  const [voiceClonePreviewUrl, setVoiceClonePreviewUrl] = useState('');
+  const [voiceLibrary, setVoiceLibrary] = useState<MinimaxVoiceRecord[]>([]);
+  const [isFetchingVoiceLibrary, setIsFetchingVoiceLibrary] = useState(false);
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
+  const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
 
   if (!character) return null;
 
+  const voiceProfile = {
+    enabled: character.voiceProfile?.enabled !== false,
+    mode: character.voiceProfile?.mode || 'default',
+    voiceId: character.voiceProfile?.voiceId || '',
+    voiceName: character.voiceProfile?.voiceName || '',
+    voiceSource: character.voiceProfile?.voiceSource,
+    sampleAssetId: character.voiceProfile?.sampleAssetId,
+    sampleName: character.voiceProfile?.sampleName,
+    autoPlay: !!character.voiceProfile?.autoPlay,
+  } as NonNullable<Character['voiceProfile']>;
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
   const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
+  const { resolvedUrl: resolvedVoiceSampleUrl } = useResolvedPersistentValue(voiceProfile.sampleAssetId);
 
   const currentGroupLabel = character.groupId || '无分组';
   const remarkName = character.remarkName?.trim() || '';
@@ -386,6 +405,10 @@ export function ChatSettingsPanel({
   const settingSummary = resolvedCorePersona
     ? `${resolvedCorePersona.slice(0, 48)}${resolvedCorePersona.length > 48 ? '...' : ''}`
     : '还没有填写角色设定。';
+  const voiceSampleDisplayUrl = getDisplayableAssetValue(voiceProfile.sampleAssetId, resolvedVoiceSampleUrl);
+  const apiCenterDefaultVoiceId = settings.apiCenterConfig?.voiceCall?.tts?.defaultVoiceId?.trim() || '';
+  const apiCenterDefaultSampleName = settings.apiCenterConfig?.voiceCall?.tts?.defaultSampleName?.trim() || '';
+  const selectedLibraryVoice = voiceLibrary.find((voice) => voice.voiceId === voiceProfile.voiceId?.trim()) || null;
 
   useEffect(() => {
     setPendingRemarkName(character.remarkName ?? '');
@@ -442,6 +465,161 @@ export function ChatSettingsPanel({
       ...stickers,
     ]);
     onUpdate({ ...character, stickers: nextStickers });
+  };
+
+  const handleVoiceSampleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('audio/')) {
+      await showInAppAlert('请上传音频文件，例如 mp3、wav、m4a。');
+      event.currentTarget.value = '';
+      return;
+    }
+
+    try {
+      const assetRef = await setUploadedFile(file);
+      onUpdate({
+        ...character,
+        voiceProfile: {
+          ...voiceProfile,
+          enabled: true,
+          mode: 'cloned',
+          sampleAssetId: assetRef,
+          sampleName: file.name,
+        },
+      });
+      setVoiceClonePreviewUrl('');
+    } finally {
+      event.currentTarget.value = '';
+    }
+  };
+
+  const handleRemoveVoiceSample = async () => {
+    if (!voiceProfile.sampleAssetId) {
+      return;
+    }
+
+    if (!(await showInAppConfirm('确定要移除这个语音样本吗？'))) {
+      return;
+    }
+
+    onUpdate({
+      ...character,
+      voiceProfile: {
+        ...voiceProfile,
+        sampleAssetId: undefined,
+        sampleName: undefined,
+        ...(voiceProfile.mode === 'cloned' ? { voiceId: '' } : {}),
+      },
+    });
+  };
+
+  const handleCloneCharacterVoice = async () => {
+    if (!voiceProfile.sampleAssetId) {
+      await showInAppAlert('请先上传语音样本。');
+      return;
+    }
+
+    const ttsConfig = settings.apiCenterConfig?.voiceCall?.tts;
+    if (!ttsConfig?.enabled) {
+      await showInAppAlert('请先在 API 中心启用语音合成 TTS。');
+      return;
+    }
+
+    setIsCloningVoice(true);
+    try {
+      const voiceIdSeed = voiceProfile.voiceId?.trim()
+        || character.name.trim()
+        || voiceProfile.sampleName?.replace(/\.[^.]+$/, '').trim()
+        || 'BloomCharacterVoice';
+      const result = await cloneTtsVoice({
+        config: {
+          id: 'api-center-tts-clone',
+          name: 'API Center TTS Clone',
+          provider: ttsConfig.config.provider === 'gemini'
+            ? 'Google Gemini'
+            : ttsConfig.config.provider === 'openai-compatible'
+              ? 'OpenAI Compatible'
+              : 'Custom',
+          apiKey: ttsConfig.config.apiKey || '',
+          baseUrl: ttsConfig.config.baseUrl || '',
+          model: ttsConfig.config.model || '',
+          temperature: typeof ttsConfig.config.temperature === 'number' ? ttsConfig.config.temperature : 0.7,
+        },
+        sampleAssetRef: voiceProfile.sampleAssetId,
+        voiceId: voiceIdSeed,
+        promptText: `${character.name}，你好，很高兴见到你。`,
+      });
+
+      onUpdate({
+        ...character,
+        voiceProfile: {
+          ...voiceProfile,
+          enabled: true,
+          mode: 'cloned',
+          voiceId: result.voiceId,
+          voiceName: `${character.name} 专属音色`,
+          voiceSource: 'voice_cloning',
+        },
+      });
+      setVoiceClonePreviewUrl(result.demoAudioUrl || '');
+
+      if (result.demoAudioUrl) {
+        void new Audio(result.demoAudioUrl).play().catch((error) => {
+          console.warn('Unable to autoplay cloned character voice demo.', error);
+        });
+      }
+
+      await showInAppAlert(`角色声音已生成并回填 voiceId：${result.voiceId}`);
+    } catch (error: any) {
+      await showInAppAlert(`生成角色声音失败：${error?.message || 'unknown error'}`);
+    } finally {
+      setIsCloningVoice(false);
+    }
+  };
+
+  const handleFetchVoiceLibrary = async () => {
+    if (isFetchingVoiceLibrary) {
+      return;
+    }
+
+    const ttsConfig = settings.apiCenterConfig?.voiceCall?.tts;
+    if (!ttsConfig?.enabled) {
+      await showInAppAlert('请先在 API 中心启用语音合成 TTS。');
+      return;
+    }
+
+    setIsFetchingVoiceLibrary(true);
+    try {
+      const voices = await fetchMinimaxVoices({
+        id: 'api-center-tts-library',
+        name: 'API Center TTS Library',
+        provider: ttsConfig.config.provider === 'gemini'
+          ? 'Google Gemini'
+          : ttsConfig.config.provider === 'openai-compatible'
+            ? 'OpenAI Compatible'
+            : 'Custom',
+        apiKey: ttsConfig.config.apiKey || '',
+        baseUrl: ttsConfig.config.baseUrl || '',
+        model: ttsConfig.config.model || '',
+        temperature: typeof ttsConfig.config.temperature === 'number' ? ttsConfig.config.temperature : 0.7,
+      }, 'all');
+      setVoiceLibrary(voices);
+      await showInAppAlert(`已拉取 ${voices.length} 条音色，可直接绑定给这个角色。`);
+    } catch (error: any) {
+      await showInAppAlert(`拉取音色库失败：${error?.message || 'unknown error'}`);
+    } finally {
+      setIsFetchingVoiceLibrary(false);
+    }
+  };
+
+  const librarySourceLabelMap: Record<NonNullable<MinimaxVoiceRecord['source']>, string> = {
+    system: '系统音色',
+    voice_cloning: '克隆音色',
+    voice_generation: '设计音色',
   };
 
   const commitReplyRange = (field: 'min' | 'max', rawValue: string) => {
@@ -1429,6 +1607,258 @@ export function ChatSettingsPanel({
                   className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.autoTranslate ? 'bg-zinc-900' : 'bg-zinc-200'}`}
                 >
                   <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.autoTranslate ? 'translate-x-4.5' : ''}`} />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl bg-zinc-50/80 px-3 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                      <Volume2 size={18} />
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <span className="text-[14px] text-zinc-700">角色语音</span>
+                      <span className="text-[10px] text-zinc-400">启用后，角色可优先使用 API 中心的 TTS 配置生成语音</span>
+                    </div>
+                  </div>
+                  <div
+                    onClick={() => onUpdate({
+                      ...character,
+                      voiceProfile: {
+                        ...voiceProfile,
+                        enabled: !voiceProfile.enabled,
+                      },
+                    })}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${voiceProfile.enabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  >
+                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${voiceProfile.enabled ? 'translate-x-4.5' : ''}`} />
+                  </div>
+                </div>
+
+                <div className="ml-11 space-y-2">
+                  <select
+                    value={voiceProfile.mode}
+                    onChange={e => onUpdate({
+                      ...character,
+                      voiceProfile: {
+                        ...voiceProfile,
+                        mode: e.target.value as NonNullable<Character['voiceProfile']>['mode'],
+                      },
+                    })}
+                    className="w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900"
+                  >
+                    <option value="default">使用 API 中心默认声音</option>
+                    <option value="library">从音色库选择</option>
+                    <option value="voiceId">手动填写 voiceId</option>
+                    <option value="cloned">预留克隆 voiceId</option>
+                  </select>
+
+                  {voiceProfile.mode === 'default' && (
+                    <div className="rounded-2xl border border-white/50 bg-white/70 px-3 py-3 text-[12px] leading-5 text-zinc-600">
+                      {apiCenterDefaultVoiceId
+                        ? `当前默认声音：${apiCenterDefaultVoiceId}${apiCenterDefaultSampleName ? `（样本：${apiCenterDefaultSampleName}）` : ''}`
+                        : '尚未在 API 中心生成默认声音。请先到 API 中心的语音合成 TTS 中上传默认语音样本并生成默认声音。'}
+                    </div>
+                  )}
+
+                  {voiceProfile.mode === 'library' && (
+                    <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-zinc-700">角色音色库</div>
+                          <div className="mt-1 text-[10px] leading-5 text-zinc-400">
+                            这里会读取 API 中心当前账号下可用的系统音色、克隆音色和设计音色。角色只做绑定，不在这里做复杂调音。
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleFetchVoiceLibrary()}
+                          disabled={isFetchingVoiceLibrary}
+                          className="shrink-0 rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
+                        >
+                          {isFetchingVoiceLibrary ? '拉取中...' : '拉取音色库'}
+                        </button>
+                      </div>
+
+                      {voiceLibrary.length > 0 ? (
+                        <>
+                          <select
+                            value={voiceProfile.voiceId}
+                            onChange={(e) => {
+                              const nextVoice = voiceLibrary.find((voice) => voice.voiceId === e.target.value) || null;
+                              onUpdate({
+                                ...character,
+                                voiceProfile: {
+                                  ...voiceProfile,
+                                  mode: 'library',
+                                  voiceId: e.target.value,
+                                  voiceName: nextVoice?.voiceName || '',
+                                  voiceSource: nextVoice?.source,
+                                },
+                              });
+                            }}
+                            className="w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900"
+                          >
+                            <option value="">选择一个系统音色 / 我的音色</option>
+                            {voiceLibrary.map((voice) => (
+                              <option key={voice.voiceId} value={voice.voiceId}>
+                                [{librarySourceLabelMap[voice.source]}] {voice.voiceName}
+                              </option>
+                            ))}
+                          </select>
+
+                          {selectedLibraryVoice ? (
+                            <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-[11px] text-zinc-500">当前绑定音色</div>
+                                  <div className="truncate text-[13px] font-medium text-zinc-900">
+                                    {selectedLibraryVoice.voiceName}
+                                  </div>
+                                </div>
+                                <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-white">
+                                  {librarySourceLabelMap[selectedLibraryVoice.source]}
+                                </span>
+                              </div>
+                              <div className="text-[12px] text-zinc-600">
+                                voiceId：{selectedLibraryVoice.voiceId}
+                              </div>
+                              {selectedLibraryVoice.description ? (
+                                <div className="text-[12px] text-zinc-500">
+                                  {selectedLibraryVoice.description}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-[12px] leading-5 text-zinc-500">
+                              先拉取音色库，再从系统音色、克隆音色或设计音色里挑一个绑定给这个角色。
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-[12px] leading-5 text-zinc-500">
+                          这里会显示你当前账号下的系统音色、克隆音色和设计音色。点击上方按钮即可加载。
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(voiceProfile.mode === 'voiceId' || voiceProfile.mode === 'cloned') && (
+                    <input
+                      type="text"
+                      value={voiceProfile.voiceId}
+                      onChange={e => onUpdate({
+                        ...character,
+                        voiceProfile: {
+                          ...voiceProfile,
+                          voiceId: e.target.value,
+                          voiceName: '',
+                          voiceSource: undefined,
+                        },
+                      })}
+                      placeholder={voiceProfile.mode === 'cloned' ? '填写克隆得到的 voiceId' : '填写该角色专属 voiceId'}
+                      className="w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-[13px] text-zinc-700 outline-none focus:border-zinc-900"
+                    />
+                  )}
+
+                  {voiceProfile.mode === 'cloned' && (
+                    <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
+                      <input
+                        ref={voiceSampleInputRef}
+                        type="file"
+                        accept="audio/*"
+                        onChange={(event) => void handleVoiceSampleUpload(event)}
+                        className="hidden"
+                      />
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-zinc-700">语音样本</div>
+                          <div className="mt-1 text-[10px] leading-5 text-zinc-400">
+                            建议上传 10-30 秒、环境安静、只有一个人声的音频样本。
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => voiceSampleInputRef.current?.click()}
+                          className="shrink-0 rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-900 hover:bg-zinc-200"
+                        >
+                          {voiceProfile.sampleAssetId ? '更换样本' : '上传样本'}
+                        </button>
+                      </div>
+
+                      {voiceProfile.sampleAssetId ? (
+                        <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                          <div className="text-[12px] text-zinc-600">
+                            当前样本：{voiceProfile.sampleName || '未命名音频样本'}
+                          </div>
+                          {voiceSampleDisplayUrl ? (
+                            <audio controls src={voiceSampleDisplayUrl} className="w-full" />
+                          ) : null}
+                          {voiceProfile.voiceId ? (
+                            <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-[11px] text-zinc-500">当前角色 voiceId</div>
+                                <div className="truncate text-[13px] font-medium text-zinc-900">{voiceProfile.voiceId}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const result = await copyTextContent(voiceProfile.voiceId || '');
+                                  await showInAppAlert(result.success ? '角色 voiceId 已复制。' : '复制失败，请手动复制。');
+                                }}
+                                className="shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-700 hover:bg-zinc-100"
+                                title="复制 voiceId"
+                              >
+                                <Copy size={16} />
+                              </button>
+                            </div>
+                          ) : null}
+                          {voiceClonePreviewUrl ? (
+                            <div className="space-y-1">
+                              <div className="text-[11px] text-zinc-500">最新试听</div>
+                              <audio controls src={voiceClonePreviewUrl} className="w-full" />
+                            </div>
+                          ) : null}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleCloneCharacterVoice()}
+                              disabled={isCloningVoice}
+                              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              {isCloningVoice ? '生成中...' : '生成声音'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleRemoveVoiceSample()}
+                              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-medium text-red-600 hover:bg-red-100"
+                            >
+                              删除样本
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/70 px-3 py-2.5">
+                    <div className="flex flex-col items-start">
+                      <span className="text-[13px] text-zinc-700">自动播放</span>
+                      <span className="text-[10px] text-zinc-400">收到带语音的角色回复时自动开始播放</span>
+                    </div>
+                    <div
+                      onClick={() => onUpdate({
+                        ...character,
+                        voiceProfile: {
+                          ...voiceProfile,
+                          autoPlay: !voiceProfile.autoPlay,
+                        },
+                      })}
+                      className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${voiceProfile.autoPlay ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                    >
+                      <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${voiceProfile.autoPlay ? 'translate-x-4.5' : ''}`} />
+                    </div>
+                  </div>
                 </div>
               </div>
 

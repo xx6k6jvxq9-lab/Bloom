@@ -562,6 +562,7 @@ export function AppScreenContent({
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
             onClose={() => setActiveApp('home')}
+            settings={settings}
             onOpenChat={(characterId) => {
               setSelectedCharacterId(characterId);
               setActiveApp('chat-session');

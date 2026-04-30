@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useRef } from 'react';
 import type {
   ApiConfig,
+  AppSettings,
   CallRecord,
   Character,
   ChatGroup,
@@ -21,6 +22,7 @@ import {
 } from '../../services/ai/outputQuality';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
+import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
 import { buildAutoSummarySourceLines, sanitizeAutoSummaryText } from '../../services/memory/autoSummaryHygiene';
@@ -69,6 +71,8 @@ import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitiz
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
+import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
@@ -87,6 +91,28 @@ function createMomentPublishedSystemMessage(characterName: string, timestamp: nu
     timestamp,
     isSystem: true,
   };
+}
+
+function shouldApplyCharacterTts(character: Character) {
+  return character.voiceProfile?.enabled === true;
+}
+
+function resolveCharacterTtsVoiceId(
+  character: Character,
+  fallbackVoiceId?: string,
+) {
+  if (character.voiceProfile?.enabled && (
+    character.voiceProfile.mode === 'library'
+    || character.voiceProfile.mode === 'voiceId'
+    || character.voiceProfile.mode === 'cloned'
+  )) {
+    const customVoiceId = character.voiceProfile.voiceId?.trim();
+    if (customVoiceId) {
+      return customVoiceId;
+    }
+  }
+
+  return fallbackVoiceId?.trim() || undefined;
 }
 
 function parseDirectActionCue(segment: string): {
@@ -113,7 +139,7 @@ function parseDirectActionCue(segment: string): {
     };
   }
 
-  const stickerMatch = trimmed.match(/^\[(?:sticker|image)\]\s*(.*)$/i);
+  const stickerMatch = trimmed.match(/^\[(?:sticker|image|表情包|图片)\]\s*(.*)$/i);
   if (stickerMatch) {
     return {
       kind: 'sticker',
@@ -733,7 +759,7 @@ type UseDirectChatRuntimeArgs = {
   sharedStickers?: string[];
   history: ChatMessage[];
   setHistory: (history: ChatMessage[]) => void;
-  activeConfig?: ApiConfig;
+  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
   input: string;
   setInput: (value: string) => void;
   replyingTo: ChatMessage['replyTo'] | null;
@@ -762,7 +788,12 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSend: (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   requestManualReply: () => void;
-  handleVoiceCallAIResponse: (userText: string) => Promise<string | null>;
+  handleVoiceCallAIResponse: (userText: string) => Promise<{
+    text: string;
+    translation?: string;
+    audioUrl?: string;
+    audioMimeType?: string;
+  } | null>;
   sendImageMessage: (base64String: string) => void;
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => void;
   sendStickerMessage: (sticker: string) => void;
@@ -772,7 +803,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   sendSpeechTranscript: (transcript: string) => void;
   finalizeVoiceCall: (params: {
     duration: number;
-    voiceCallHistory: { role: 'user' | 'model'; text: string }[];
+    voiceCallHistory: { role: 'user' | 'model'; text: string; translation?: string }[];
     isRecordingCall: boolean;
   }) => void;
   editMessageAt: (index: number, text: string) => void;
@@ -934,12 +965,23 @@ function parseBatchTranslationResult(rawTranslation: string, expectedCount: numb
   return [];
 }
 
+function shouldTranslateVoiceCallReply(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const hasCjk = /[\u3400-\u9fff]/.test(trimmed);
+  const hasLatin = /[A-Za-z]/.test(trimmed);
+  return hasLatin && !hasCjk;
+}
+
 export function useDirectChatRuntime({
   character,
   sharedStickers = [],
   history,
   setHistory,
-  activeConfig,
+  settings,
   input,
   setInput,
   replyingTo,
@@ -961,6 +1003,22 @@ export function useDirectChatRuntime({
   onAddCallRecord,
   onAcceptCoupleSpaceInvite,
 }: UseDirectChatRuntimeArgs): UseDirectChatRuntimeResult {
+  const activeConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'single-chat',
+    characterId: character.id,
+  }).runtimeConfig;
+  const resolvedVoiceConfig = resolveSceneVoiceApiConfig({
+    settings,
+    mode: 'tts',
+    character,
+  });
+  const voiceRuntimeConfig = resolvedVoiceConfig.runtimeConfig;
+  const defaultTtsVoiceId = resolvedVoiceConfig.defaultVoiceId;
+  const forumConfig = resolveSceneTextApiConfig({
+    settings,
+    scene: 'forum',
+  }).runtimeConfig;
   const availableStickers = Array.from(new Set([
     ...sharedStickers,
     ...(character.stickers || []),
@@ -989,6 +1047,103 @@ export function useDirectChatRuntime({
   const setError = useCallback((value: string | null) => {
     setErrorState(value);
   }, []);
+
+  const getLatestModelReplySegment = useCallback((messages: ChatMessage[]) => {
+    let end = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.isSystem || message.isRecalled) {
+        continue;
+      }
+      if (message.role !== 'model') {
+        return null;
+      }
+      end = index;
+      break;
+    }
+
+    if (end < 0) {
+      return null;
+    }
+
+    let start = end;
+    for (let index = end - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'model' || message.isSystem || message.isRecalled) {
+        break;
+      }
+      start = index;
+    }
+
+    return { start, end };
+  }, []);
+
+  const synthesizeCharacterReplyAudio = useCallback(async (
+    text: string,
+    fileNameBase: string,
+  ): Promise<{
+    audioUrl: string;
+    audioMimeType: string;
+  } | null> => {
+    const cleanText = text.trim();
+    if (!cleanText || !shouldApplyCharacterTts(character) || !voiceRuntimeConfig) {
+      return null;
+    }
+
+    const preferredVoiceId = resolveCharacterTtsVoiceId(character, defaultTtsVoiceId);
+    if (!preferredVoiceId) {
+      return null;
+    }
+
+    try {
+      return await synthesizeTtsAudio({
+        config: voiceRuntimeConfig,
+        text: cleanText,
+        preferredVoiceId,
+        fallbackVoiceId: defaultTtsVoiceId,
+        fileNameBase,
+      });
+    } catch (ttsError) {
+      console.error('Character TTS synthesis failed', ttsError);
+      return null;
+    }
+  }, [character, defaultTtsVoiceId, voiceRuntimeConfig]);
+
+  const attachAudioToLatestModelReply = useCallback(async (
+    messages: ChatMessage[],
+    fileNamePrefix: string,
+  ) => {
+    const latestReplySegment = getLatestModelReplySegment(messages);
+    if (!latestReplySegment) {
+      return messages;
+    }
+
+    const nextMessages = [...messages];
+    for (let index = latestReplySegment.start; index <= latestReplySegment.end; index += 1) {
+      const message = nextMessages[index];
+      const cleanText = message?.text?.trim();
+      if (!message || message.role !== 'model' || !cleanText || message.audioUrl) {
+        continue;
+      }
+
+      const audioResult = await synthesizeCharacterReplyAudio(
+        cleanText,
+        `${fileNamePrefix}-${index - latestReplySegment.start + 1}`,
+      );
+      if (!audioResult) {
+        continue;
+      }
+
+      nextMessages[index] = {
+        ...message,
+        audioUrl: audioResult.audioUrl,
+        audioMimeType: audioResult.audioMimeType,
+        audioTranscript: cleanText,
+      };
+    }
+
+    return nextMessages;
+  }, [getLatestModelReplySegment, synthesizeCharacterReplyAudio]);
 
   const applyAvatarAction = useCallback((
     action: ParsedAvatarAction | null,
@@ -1231,6 +1386,10 @@ export function useDirectChatRuntime({
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
+          latestHistory = await attachAudioToLatestModelReply(
+            latestHistory,
+            `direct-generate-${character.id}-${assistantMsgId}`,
+          );
           setHistory(latestHistory);
           applyAvatarAction(avatarActionResult.action, historySnapshot);
           activeAssistantMessageIdRef.current = null;
@@ -1243,7 +1402,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
 
   useEffect(() => {
     const pendingUserBlock = getLatestPendingUserMessageBlock(history);
@@ -1275,7 +1434,7 @@ export function useDirectChatRuntime({
       };
 
       const getMessageTranslationSource = (msg: ChatMessage) => {
-        let textToTranslate = msg.text;
+        let textToTranslate = msg.audioTranscript?.trim() || msg.text;
         let isQnaAnswer = false;
         let questionToTranslate = '';
         const gameData = parseGameCardData(msg.text);
@@ -1304,7 +1463,8 @@ export function useDirectChatRuntime({
 
       const canTranslateMessage = (msg: ChatMessage) => {
         if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
-        if (msg.imageUrl || msg.audioUrl || msg.isInnerVoice) return false;
+        if (msg.imageUrl || msg.isInnerVoice) return false;
+        if (msg.audioUrl && !msg.audioTranscript?.trim()) return false;
         if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
 
         const { textToTranslate } = getMessageTranslationSource(msg);
@@ -1480,7 +1640,12 @@ export function useDirectChatRuntime({
     translateHistory();
   }, [activeConfig, character.autoTranslate, error, history, setHistory]);
 
-  const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<string | null> => {
+  const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
+    text: string;
+    translation?: string;
+    audioUrl?: string;
+    audioMimeType?: string;
+  } | null> => {
     if (!activeConfig) {
       setErrorState('Missing active API config.');
       return null;
@@ -1490,26 +1655,88 @@ export function useDirectChatRuntime({
       const characterCorePersona = buildCharacterContext({
         character,
       }).corePersona ?? '';
-      const prompt = `你正在与用户进行语音通话。你的核心人设是：${characterCorePersona}
-用户的上一句话是："${userText}"
-请以口语化的方式简短回应（50字以内）。`;
-
-      let responseText = '';
-      await streamTextWithConfig({
+      const languageRules = buildReplyLanguageRules({
+        replyLanguageMode: character.replyLanguageMode,
+        nativeLanguage: character.nativeLanguage,
+        fixedReplyLanguage: character.fixedReplyLanguage,
+      });
+      const qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,
-        temperature: 0.7,
-        messages: [{ role: 'system', content: prompt }],
-        onTextChunk: (chunkText) => {
-          responseText += chunkText;
-        },
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你正在与用户进行实时语音通话。',
+              `你的核心人设是：${characterCorePersona || '自然、口语化、像真人聊天一样回复。'}`,
+              languageRules,
+              '请像电话里说话一样自然回应，尽量简短，控制在 50 字以内。',
+              '不要输出动作括号、舞台提示、解释说明，也不要分点。',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: userText,
+          },
+        ],
+        allowBracketActions: false,
       });
 
-      return responseText || null;
+      if (!qualityResult.ok) {
+        throw new Error(`语音通话模型返回无效内容：${qualityResult.reason || 'unknown'}`);
+      }
+
+      const cleanResponseText = qualityResult.cleanedText.trim();
+      if (!cleanResponseText) {
+        return null;
+      }
+
+      let translation = '';
+      if (shouldTranslateVoiceCallReply(cleanResponseText)) {
+        try {
+          const translationPrompt = [
+            'Translate the content below into Simplified Chinese.',
+            'Return ONLY the Chinese translation.',
+            'Do not include the original text, labels, explanations, or code fences.',
+            '',
+            `<source>\n${cleanResponseText}\n</source>`,
+          ].join('\n');
+
+          translation = cleanAutoTranslationResult(
+            await generateTextFromMessagesWithConfig({
+              activeConfig,
+              temperature: 0.1,
+              messages: [{ role: 'user', content: translationPrompt }],
+            }),
+            cleanResponseText,
+          );
+        } catch (translationError) {
+          console.warn('Voice call translation failed', translationError);
+        }
+      }
+
+      let audioResult: Awaited<ReturnType<typeof synthesizeCharacterReplyAudio>> = null;
+      try {
+        audioResult = await synthesizeCharacterReplyAudio(
+          cleanResponseText,
+          `voice-call-${character.id}-${Date.now()}`,
+        );
+      } catch (ttsError) {
+        console.error('Voice call TTS synthesis failed', ttsError);
+      }
+
+      return {
+        text: cleanResponseText,
+        ...(translation ? { translation } : {}),
+        ...(audioResult ? {
+          audioUrl: audioResult.audioUrl,
+          audioMimeType: audioResult.audioMimeType,
+        } : {}),
+      };
     } catch (voiceCallError) {
       console.error('Voice call AI generation failed', voiceCallError);
       return null;
     }
-  }, [activeConfig, character]);
+  }, [activeConfig, character, synthesizeCharacterReplyAudio]);
 
   const handleSend = useCallback(async (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => {
     const overridePayload: DirectSendOverridePayload | null =
@@ -1631,7 +1858,7 @@ export function useDirectChatRuntime({
       const commandMomentResult = await handleCommandTriggeredMomentPublish({
         text: userMsg.text,
         recentContext: recentMomentContext,
-        activeConfig,
+        activeConfig: forumConfig || activeConfig,
         character,
         masks,
         worldBook,
@@ -1787,7 +2014,11 @@ export function useDirectChatRuntime({
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
-      const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
+      let finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
+      finalHistory = await attachAudioToLatestModelReply(
+        finalHistory,
+        `direct-send-${character.id}-${assistantMsgId}`,
+      );
       setHistory(finalHistory);
       applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
@@ -1807,7 +2038,7 @@ export function useDirectChatRuntime({
             recentMomentPublishedAt: lastMomentPublishAtRef.current,
             now: Date.now(),
           },
-          activeConfig,
+          activeConfig: forumConfig || activeConfig,
           character,
           masks,
           worldBook,
@@ -1987,7 +2218,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
@@ -2254,7 +2485,7 @@ export function useDirectChatRuntime({
 
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
-    voiceCallHistory: { role: 'user' | 'model'; text: string }[];
+    voiceCallHistory: { role: 'user' | 'model'; text: string; translation?: string }[];
     isRecordingCall: boolean;
   }) => {
     const { duration, voiceCallHistory, isRecordingCall } = params;
@@ -2283,36 +2514,6 @@ export function useDirectChatRuntime({
       onAddCallRecord(newRecord);
     }
   }, [character.id, character.name, onAddCallRecord, setHistory]);
-
-  const getLatestModelReplySegment = useCallback((messages: ChatMessage[]) => {
-    let end = -1;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message.isSystem || message.isRecalled) {
-        continue;
-      }
-      if (message.role !== 'model') {
-        return null;
-      }
-      end = index;
-      break;
-    }
-
-    if (end < 0) {
-      return null;
-    }
-
-    let start = end;
-    for (let index = end - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message.role !== 'model' || message.isSystem || message.isRecalled) {
-        break;
-      }
-      start = index;
-    }
-
-    return { start, end };
-  }, []);
 
   const editMessageAt = useCallback((index: number, text: string) => {
     const targetMessage = history[index];

@@ -8,6 +8,13 @@ function getEffectiveAllowDirectMemoryInterop(group: ChatGroup): boolean {
 }
 
 export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFormState {
+  const groupMemberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
+  const voiceReplyMemberIds = Array.isArray(group.voiceReplyMemberIds)
+    ? group.voiceReplyMemberIds.filter((memberId): memberId is string => (
+        typeof memberId === 'string' && groupMemberIds.includes(memberId)
+      ))
+    : groupMemberIds;
+
   return {
     name: group.name,
     avatar: group.avatar,
@@ -29,6 +36,8 @@ export function createGroupSettingsFormState(group: ChatGroup): GroupSettingsFor
     muteNotifications: !!group.muteNotifications,
     pinChat: !!group.pinChat,
     manualReplyEnabled: group.manualReplyEnabled !== false,
+    voiceRepliesEnabled: !!group.voiceRepliesEnabled,
+    voiceReplyMemberIds,
   };
 }
 
@@ -55,6 +64,8 @@ export function buildGroupSettingsPatch(state: GroupSettingsFormState): GroupSet
     muteNotifications: state.muteNotifications,
     pinChat: state.pinChat,
     manualReplyEnabled: state.manualReplyEnabled,
+    voiceRepliesEnabled: state.voiceRepliesEnabled,
+    voiceReplyMemberIds: state.voiceReplyMemberIds,
   };
 }
 
@@ -79,7 +90,13 @@ export function hasGroupSettingsChanges(group: ChatGroup, state: GroupSettingsFo
     || patch.allowDirectMemoryInterop !== getEffectiveAllowDirectMemoryInterop(group)
     || patch.muteNotifications !== !!group.muteNotifications
     || patch.pinChat !== !!group.pinChat
-    || patch.manualReplyEnabled !== (group.manualReplyEnabled !== false);
+    || patch.manualReplyEnabled !== (group.manualReplyEnabled !== false)
+    || patch.voiceRepliesEnabled !== !!group.voiceRepliesEnabled
+    || JSON.stringify(patch.voiceReplyMemberIds || []) !== JSON.stringify(
+      Array.isArray(group.voiceReplyMemberIds)
+        ? group.voiceReplyMemberIds
+        : (group.voiceRepliesEnabled ? group.memberIds || [] : []),
+    );
 }
 
 function toOptionalTrimmedValue(value: string): string | undefined {

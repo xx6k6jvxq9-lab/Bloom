@@ -45,6 +45,7 @@ import {
   hydrateWalletData,
   loadPersistedWalletData,
 } from './walletDataStore';
+import { ensureApiCenterConfig } from '../../services/ai/apiCenter/defaults';
 
 type BootstrapLocalAppStateParams = {
   createDefaultAppData: () => AppData;
@@ -101,14 +102,18 @@ function resolveSettingsState(
 
   if ('configs' in parsed && Array.isArray((parsed as { configs?: unknown[] }).configs)) {
     const normalized = parsed as Partial<AppSettings> & { sharedStickers?: unknown };
+    const settings: AppSettings = {
+      ...defaultSettings,
+      ...normalized,
+      apiCenterConfig: normalized.apiCenterConfig,
+      sharedStickers: Array.isArray(normalized.sharedStickers)
+        ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
+        : [],
+    };
+    settings.apiCenterConfig = ensureApiCenterConfig(settings);
+
     return {
-      settings: {
-        ...defaultSettings,
-        ...normalized,
-        sharedStickers: Array.isArray(normalized.sharedStickers)
-          ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
-          : [],
-      },
+      settings,
     };
   }
 
@@ -125,6 +130,7 @@ function resolveSettingsState(
       },
     ],
   };
+  migratedSettings.apiCenterConfig = ensureApiCenterConfig(migratedSettings);
 
   return {
     migratedSettings,
@@ -305,8 +311,8 @@ export async function bootstrapLocalAppState({
 
   const forumDataFallback =
     !hasIndexedDbForumData && !hasLocalForumData
-      ? (legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [] })
-      : { posts: [], notifications: [], followedUsers: [] };
+      ? (legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [], followerMap: {}, tempChats: {}, runtimeAuthorProfiles: {}, composerDraft: null, spectatorSettings: { subjectName: '', relationshipSummary: '', tone: '吃瓜围观', autoGenerate: false, selectedCharacterIds: [] } })
+      : { posts: [], notifications: [], followedUsers: [], followerMap: {}, tempChats: {}, runtimeAuthorProfiles: {}, composerDraft: null, spectatorSettings: { subjectName: '', relationshipSummary: '', tone: '吃瓜围观', autoGenerate: false, selectedCharacterIds: [] } };
   const localForumData = loadPersistedForumData(forumDataFallback);
   const forumData = hasIndexedDbForumData
     ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
