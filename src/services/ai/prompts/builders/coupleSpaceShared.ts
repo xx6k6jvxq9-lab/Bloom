@@ -18,7 +18,7 @@ function buildCharacterProfileSection(profile: CoupleSpaceCharacterProfile = {})
     profile.traits?.length ? `性格特征: ${profile.traits.join('、')}` : '',
     profile.speakingStyle ? `说话习惯: ${profile.speakingStyle}` : '',
     profile.initiativeStyle ? `主动程度/主动方式: ${profile.initiativeStyle}` : '',
-    '硬约束提醒: 不要把所有角色写成统一甜妹、统一恋爱文案生成器。',
+    '硬约束提醒: 不要把所有角色写成统一甜宠、统一恋爱文案生成器。',
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -38,6 +38,25 @@ function buildRelationshipContextSection(context: CoupleSpaceRelationshipContext
   return lines.join('\n');
 }
 
+function formatTypedResidueLines<T extends { summary: string }>(
+  title: string,
+  items: T[] | undefined,
+  usageNote: string,
+): string {
+  const typedItems = (items || [])
+    .map((item) => item.summary.trim())
+    .filter(Boolean);
+  if (typedItems.length === 0) {
+    return '';
+  }
+
+  return [
+    title,
+    usageNote,
+    ...typedItems.map((summary) => `- ${summary}`),
+  ].join('\n');
+}
+
 function buildGenerationContextSection(context: CoupleSpacePromptCommonInput): string {
   const recentContext: CoupleSpaceRecentContext = context.recentContext ?? {};
   const lines = [
@@ -47,6 +66,23 @@ function buildGenerationContextSection(context: CoupleSpacePromptCommonInput): s
     recentContext.currentSubScene ? `情侣空间子场景: ${recentContext.currentSubScene}` : '',
     recentContext.occasion ? `特殊契机 / occasion: ${recentContext.occasion}` : '',
     recentContext.triggerReason ? `触发原因 / reason: ${recentContext.triggerReason}` : '',
+    recentContext.publicAcquaintanceSummary ? `公开认识与跨场景连续性: ${recentContext.publicAcquaintanceSummary}` : '',
+    formatTypedResidueLines(
+      '## Typed Relationship Residue',
+      recentContext.relationshipResidue,
+      '这些是别的场景留下、但在情侣空间里仍会影响亲密感和关系底色的共享余波。只把它们当成关系连续性，不要误写成当前情侣空间里刚发生的新动作。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Topic Anchors',
+      recentContext.topicAnchors,
+      '这些是跨场景留下的话题锚点。只有当前情侣空间内容真的碰到时才可轻量带回，不要无缘无故翻旧梗。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Task Residue',
+      recentContext.taskResidue,
+      '这些是跨场景仍可能算数的待办或约定。只有当前情侣空间语境真的相关时再恢复。',
+    ),
+    recentContext.sharedRecentRelationshipSummary ? `跨场景共享关系余波: ${recentContext.sharedRecentRelationshipSummary}` : '',
     recentContext.recentCoupleSpaceSummary ? `最近情侣空间摘要: ${recentContext.recentCoupleSpaceSummary}` : '',
     recentContext.recentRelatedContentSummary ? `最近相关内容摘要: ${recentContext.recentRelatedContentSummary}` : '',
     recentContext.recentSharedMomentsSummary ? `最近共同经历摘要: ${recentContext.recentSharedMomentsSummary}` : '',

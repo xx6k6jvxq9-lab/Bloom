@@ -7,6 +7,8 @@ import {
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
+import { buildGroupContextLayers } from '../../services/chat/buildGroupContextLayers';
+import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
 import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
@@ -29,6 +31,7 @@ import { resolveGroupReplyIntent, type GroupReplyIntent } from './groupIntentRes
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
+import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
 
 type UseGroupChatRuntimeArgs = {
   members: Character[];
@@ -59,6 +62,7 @@ type UseGroupChatRuntimeArgs = {
   setReplyingTo: (value: ChatMessage['replyTo'] | null) => void;
   userName: string;
   directChatHistory: ChatHistory;
+  patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
@@ -245,22 +249,27 @@ function inferReadableSpeakerWeight(character: Character, userText: string): num
 
 function buildRuntimeMessages(params: {
   systemPrompt: string;
-  history: ChatMessage[];
+  liveHistory: ChatMessage[];
   mode: 'reply' | 'invited' | 'opening';
   replyTarget?: ChatMessage['replyTo'] | null;
   speechActInstruction?: string;
+  continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  nowTimestamp: number;
 }): RuntimeChatMessage[] {
-  const historyMessages = params.history
+  const historyMessages = params.liveHistory
     .filter((message) => !message.isSystem)
     .map<RuntimeChatMessage>((message) => ({
       role: message.role === 'user' ? 'user' : 'assistant',
-      content: getPromptTextForMessage(message),
+      content: getGroupPromptTextForMessage(message, {
+        continuityMode: params.continuityMode,
+        nowTimestamp: params.nowTimestamp,
+      }),
       ...(message.imageUrl ? { imageUrl: message.imageUrl } : {}),
       ...(message.audioUrl ? { audioUrl: message.audioUrl, audioMimeType: message.audioMimeType } : {}),
     }))
     .filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl);
 
-  const latestVisibleMessage = [...params.history]
+  const latestVisibleMessage = [...params.liveHistory]
     .reverse()
     .find((message) => !message.isSystem) || null;
   const latestMessageFromUser = latestVisibleMessage?.role === 'user';
@@ -325,6 +334,43 @@ function getPromptTextForMessage(message: ChatMessage): string {
 
   const text = getMessageMainText(message);
   return isUsableChatText(text) ? normalizeChatPunctuationNoise(text) : '';
+}
+
+function formatGroupPromptTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function formatGroupPromptAge(timestamp: number, nowTimestamp: number): string {
+  const diffMinutes = Math.max(0, Math.floor((nowTimestamp - timestamp) / 60000));
+  if (diffMinutes < 60) return diffMinutes < 1 ? '刚刚' : `${diffMinutes} 分钟前`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} 小时前`;
+  return `${Math.floor(diffHours / 24)} 天前`;
+}
+
+function getGroupPromptTextForMessage(
+  message: ChatMessage,
+  options: {
+    continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+    nowTimestamp: number;
+  },
+): string {
+  const baseText = getPromptTextForMessage(message);
+  if (!baseText) {
+    return '';
+  }
+
+  if (options.continuityMode === 'continuous_scene') {
+    return baseText;
+  }
+
+  return `[发送时间 ${formatGroupPromptTimestamp(message.timestamp)} / 相对现在 ${formatGroupPromptAge(message.timestamp, options.nowTimestamp)}] ${baseText}`;
 }
 
 function buildReplyPreviewPayload(message: ChatMessage, fallbackAuthor: string): NonNullable<ChatMessage['replyTo']> {
@@ -912,6 +958,7 @@ export function useGroupChatRuntime({
   setReplyingTo,
   userName,
   directChatHistory,
+  patchCharacter,
   worldBooks = [],
   perception,
   settings,
@@ -936,6 +983,30 @@ export function useGroupChatRuntime({
   const secondarySpeakerRequestIdRef = useRef(0);
   const historyRef = useRef(history);
   const manualReplyModeEnabled = groupMeta?.manualReplyEnabled !== false;
+
+  const recordGroupSpeakerSettlement = useCallback((speaker: Character, messages: ChatMessage[]) => {
+    const mainText = messages
+      .filter((message) => !message.isSystem)
+      .map((message) => getMessageMainText(message))
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .join(' ');
+    const latestTimestamp = messages[messages.length - 1]?.timestamp ?? Date.now();
+    if (!mainText) {
+      return;
+    }
+
+    const settlement = buildGroupChatSharedSettlement(speaker, {
+      speakerName: speaker.name,
+      content: mainText,
+      timestamp: latestTimestamp,
+    });
+    patchCharacter(speaker.id, {
+      sharedContextSnapshots: settlement.sharedContextSnapshots,
+      shortTermSummary: settlement.shortTermSummary,
+      openLoopRegistry: settlement.openLoopRegistry,
+    });
+  }, [patchCharacter]);
 
   const clearDelayedSpeakerTimer = useCallback(() => {
     if (delayedSpeakerTimerRef.current) {
@@ -999,6 +1070,17 @@ export function useGroupChatRuntime({
     }
 
     const requestTimestamp = Date.now();
+    const temporalState = buildCharacterTemporalState({
+      characterId: params.speaker.id,
+      perception,
+      directChatHistory,
+      groupMessages: params.currentHistory,
+    });
+    const contextLayers = buildGroupContextLayers({
+      messages: params.currentHistory,
+      continuityMode: temporalState.continuityMode,
+      nowTimestamp: requestTimestamp,
+    });
     const systemPrompt = [
       buildGroupChatPrompt({
         sceneInput: buildGroupChatSceneInput({
@@ -1026,7 +1108,7 @@ export function useGroupChatRuntime({
               }
             : undefined,
           userName,
-          history: params.currentHistory,
+          history: contextLayers.liveMessages,
           mode: params.mode,
           directChatHistory,
           activeWorldBooks: selectActiveGroupWorldBooks({
@@ -1041,6 +1123,12 @@ export function useGroupChatRuntime({
           }),
         }),
       }),
+      buildOpenLoopRegistryPrompt({
+        existingEntries: params.speaker.openLoopRegistry,
+        shortTermSummary: params.speaker.shortTermSummary,
+        recentMessages: contextLayers.memoryMessages,
+      }),
+      contextLayers.memoryContextPrompt,
       buildAssistantStickerPromptSection([
         ...(params.speaker.stickers || []),
       ]),
@@ -1066,10 +1154,12 @@ export function useGroupChatRuntime({
 
     const runtimeMessages = buildRuntimeMessages({
       systemPrompt,
-      history: params.currentHistory,
+      liveHistory: contextLayers.liveMessages,
       mode: params.mode,
       replyTarget: params.replyTarget,
       speechActInstruction: params.speechActInstruction,
+      continuityMode: temporalState.continuityMode,
+      nowTimestamp: requestTimestamp,
     });
     const qualityResult = await generateQualityCheckedAssistantReply({
       activeConfig,
@@ -1375,9 +1465,12 @@ export function useGroupChatRuntime({
       })),
     });
     setHistory(() => [...historyAfterRecall, ...structuredMessages]);
+    if (structuredMessages.length > 0) {
+      recordGroupSpeakerSettlement(speaker, structuredMessages);
+    }
     void attachAudioToSpeakerMessages(speaker, structuredMessages);
     return structuredMessages;
-  }, [attachAudioToSpeakerMessages, resolveReplyTarget, setHistory]);
+  }, [attachAudioToSpeakerMessages, recordGroupSpeakerSettlement, resolveReplyTarget, setHistory]);
 
   const triggerAISpeaker = useCallback(async (
     speaker: Character,

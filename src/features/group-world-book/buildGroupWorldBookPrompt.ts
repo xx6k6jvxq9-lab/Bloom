@@ -1,6 +1,9 @@
 import type { WorldBookEntry } from '../../types';
-import { buildBudgetedWorldBookPrompt } from '../../services/world-book/worldBookBudget';
+import { buildBudgetedWorldBookPrompt, type WorldBookRetrievalOptions } from '../../services/world-book/worldBookBudget';
 
-export function buildGroupWorldBookPrompt(worldBooks: WorldBookEntry[] | undefined): string | undefined {
-  return buildBudgetedWorldBookPrompt(worldBooks, 'group');
+export function buildGroupWorldBookPrompt(
+  worldBooks: WorldBookEntry[] | undefined,
+  options: WorldBookRetrievalOptions = {},
+): string | undefined {
+  return buildBudgetedWorldBookPrompt(worldBooks, 'group', options);
 }

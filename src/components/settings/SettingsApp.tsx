@@ -1145,7 +1145,7 @@ export function SettingsApp({
                                 type="button"
                                 onClick={async () => {
                                   const result = await copyTextContent(editor.defaultVoiceId);
-                                  await showInAppAlert(result.success ? '默认 voiceId 已复制。' : '复制失败，请手动复制。');
+                                  await showInAppAlert(result.ok ? '默认 voiceId 已复制。' : '复制失败，请手动复制。');
                                 }}
                                 className="shrink-0 rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 active:opacity-70"
                                 title="复制 voiceId"

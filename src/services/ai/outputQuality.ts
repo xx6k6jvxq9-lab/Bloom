@@ -26,6 +26,7 @@ export type GenerateQualityCheckedAssistantReplyParams = {
   temperature?: number;
   retryTemperature?: number;
   onInvalid?: (result: OutputQualityResult) => void;
+  onProgress?: (text: string, meta: { attempt: 1 | 2 }) => void;
 };
 
 const ANALYSIS_LEAK_PATTERN =
@@ -135,12 +136,14 @@ async function streamRuntimeReplyText(params: {
   activeConfig: ApiConfig;
   messages: RuntimeChatMessage[];
   temperature?: number;
+  onProgress?: (text: string) => void;
 }): Promise<string> {
   let responseText = '';
   await streamTextWithConfig({
     ...params,
     onTextChunk: (chunkText) => {
       responseText += chunkText;
+      params.onProgress?.(responseText);
     },
   });
   return responseText;
@@ -220,6 +223,9 @@ export async function generateQualityCheckedAssistantReply(
     activeConfig: params.activeConfig,
     messages: params.messages,
     temperature: params.temperature,
+    onProgress: (text) => {
+      params.onProgress?.(text, { attempt: 1 });
+    },
   });
   const firstResult = evaluateAssistantOutput(firstText, {
     allowBracketActions: params.allowBracketActions,
@@ -240,6 +246,9 @@ export async function generateQualityCheckedAssistantReply(
       },
     ],
     temperature: params.retryTemperature ?? 0.4,
+    onProgress: (text) => {
+      params.onProgress?.(text, { attempt: 2 });
+    },
   });
 
   return evaluateAssistantOutput(retryText, {

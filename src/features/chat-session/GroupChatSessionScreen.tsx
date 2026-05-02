@@ -565,6 +565,7 @@ export function GroupChatSessionScreen({
   worldBooks = [],
   perception,
   directChatHistory,
+  patchCharacter,
   inviteableCharacters,
 }: {
   group: ChatGroup;
@@ -584,6 +585,7 @@ export function GroupChatSessionScreen({
   worldBooks: WorldBookEntry[];
   perception?: PerceptionSettings;
   directChatHistory: ChatHistory;
+  patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   inviteableCharacters: Character[];
 }) {
   const [input, setInput] = useState('');
@@ -897,6 +899,7 @@ export function GroupChatSessionScreen({
     setReplyingTo,
     userName: groupUserDisplayName,
     directChatHistory,
+    patchCharacter,
     perception,
     settings,
   });

@@ -15,6 +15,7 @@ import { runMomentCommentReplySequence } from '../../../services/moments/comment
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
+import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
 import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
@@ -70,6 +71,36 @@ function ResolvedContactsImage({
   }
 
   return <img src={resolvedUrl} alt={alt} className={className} />;
+}
+
+function applyForumFriendAcceptanceSettlement(
+  characters: Character[],
+  input: {
+    characterId: string;
+    actorName: string;
+    content: string;
+    timestamp: number;
+  },
+) {
+  return characters.map((character) => {
+    if (!character || character.id !== input.characterId) {
+      return character;
+    }
+
+    const settlement = buildForumSharedSettlement(character, {
+      kind: 'friend_request_accepted',
+      actorName: input.actorName,
+      content: input.content,
+      timestamp: input.timestamp,
+    });
+
+    return {
+      ...character,
+      sharedContextSnapshots: settlement.sharedContextSnapshots,
+      shortTermSummary: settlement.shortTermSummary,
+      openLoopRegistry: settlement.openLoopRegistry,
+    };
+  });
 }
 
 function CharacterCardPreviewPage({
@@ -221,9 +252,17 @@ export function ContactsApp({
               groupId: '朋友'
             };
 
-            const nextCharacters = req.sourceScene === 'forum'
+            const acceptedCharacters = req.sourceScene === 'forum'
               ? (bridged?.nextCharacters || prev.characters)
               : [...prev.characters, newChar];
+            const nextCharacters = req.sourceScene === 'forum'
+              ? applyForumFriendAcceptanceSettlement(acceptedCharacters, {
+                  characterId: req.fromUserId,
+                  actorName: req.fromUserName,
+                  content: req.message || '论坛里的来往正式往前走了一步。',
+                  timestamp: Date.now(),
+                })
+              : acceptedCharacters;
             void saveCharacters(nextCharacters);
             const nextTempChats = req.sourceScene === 'forum'
               ? {

@@ -6,6 +6,8 @@ type BuildCharacterContextInput = {
   character: Character;
   activeMask?: Mask | null;
   activeWorldBooks?: WorldBookEntry[];
+  worldBookQuery?: string;
+  worldBookRecentText?: string[];
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
@@ -27,8 +29,14 @@ function buildMaskPrompt(mask?: Mask | null): string | undefined {
   return parts.length > 0 ? parts.join('\n') : undefined;
 }
 
-function buildWorldBookPrompt(worldBooks: WorldBookEntry[] | undefined): string | undefined {
-  return buildBudgetedWorldBookPrompt(worldBooks, 'direct');
+function buildWorldBookPrompt(
+  worldBooks: WorldBookEntry[] | undefined,
+  options?: Pick<BuildCharacterContextInput, 'worldBookQuery' | 'worldBookRecentText'>,
+): string | undefined {
+  return buildBudgetedWorldBookPrompt(worldBooks, 'direct', {
+    query: options?.worldBookQuery,
+    recentText: options?.worldBookRecentText,
+  });
 }
 
 function normalizeSceneHints(value: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -52,6 +60,9 @@ export function buildCharacterContext(input: BuildCharacterContextInput): Charac
     extendedLore: normalizeOptionalText(input.character.extendedLore),
     sceneHints: normalizeSceneHints(input.character.sceneHints),
     maskPrompt: buildMaskPrompt(input.activeMask),
-    worldBookPrompt: buildWorldBookPrompt(input.activeWorldBooks),
+    worldBookPrompt: buildWorldBookPrompt(input.activeWorldBooks, {
+      worldBookQuery: input.worldBookQuery,
+      worldBookRecentText: input.worldBookRecentText,
+    }),
   };
 }

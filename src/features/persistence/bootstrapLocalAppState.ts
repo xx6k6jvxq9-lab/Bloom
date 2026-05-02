@@ -1,4 +1,4 @@
-import type { AppData, AppSettings } from '../../types';
+import type { AppData, AppSettings, ForumData, ForumSpectatorSettings } from '../../types';
 import type { UserProfile } from '../app-shell/appShellTypes';
 import {
   sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore,
@@ -21,6 +21,7 @@ import {
   hydrateForumData,
   loadPersistedForumData,
 } from './forumDataStore';
+import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
 import {
   hydrateFriendRequests,
   loadPersistedFriendRequests,
@@ -61,6 +62,33 @@ type BootstrapLocalAppStateResult = {
   appData: AppData;
   migratedSettings?: AppSettings;
   settings: AppSettings;
+};
+
+const EMPTY_SPECTATOR_SETTINGS: ForumSpectatorSettings = {
+  subjectName: '',
+  relationshipSummary: '',
+  tone: undefined,
+  worldShell: undefined,
+  angles: [],
+  autoGenerate: false,
+  selectedCharacterIds: [],
+  userSlot: { mode: 'self' },
+  targetCharacters: [],
+  targetPresets: [],
+  defaultThreadTypePool: [],
+  cluePool: [],
+};
+
+const EMPTY_FORUM_DATA: ForumData = {
+  posts: [],
+  notifications: [],
+  followedUsers: [],
+  followerMap: {},
+  tempChats: {},
+  runtimeAuthorProfiles: {},
+  composerDraft: null,
+  spectatorSettings: EMPTY_SPECTATOR_SETTINGS,
+  globalSettings: DEFAULT_FORUM_GLOBAL_SETTINGS,
 };
 
 function readStoredJson<T>(key: string): T | null {
@@ -311,8 +339,8 @@ export async function bootstrapLocalAppState({
 
   const forumDataFallback =
     !hasIndexedDbForumData && !hasLocalForumData
-      ? (legacyAppData?.forumData ?? { posts: [], notifications: [], followedUsers: [], followerMap: {}, tempChats: {}, runtimeAuthorProfiles: {}, composerDraft: null, spectatorSettings: { subjectName: '', relationshipSummary: '', tone: '吃瓜围观', autoGenerate: false, selectedCharacterIds: [] } })
-      : { posts: [], notifications: [], followedUsers: [], followerMap: {}, tempChats: {}, runtimeAuthorProfiles: {}, composerDraft: null, spectatorSettings: { subjectName: '', relationshipSummary: '', tone: '吃瓜围观', autoGenerate: false, selectedCharacterIds: [] } };
+      ? (legacyAppData?.forumData ?? EMPTY_FORUM_DATA)
+      : EMPTY_FORUM_DATA;
   const localForumData = loadPersistedForumData(forumDataFallback);
   const forumData = hasIndexedDbForumData
     ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)

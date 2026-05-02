@@ -61,16 +61,16 @@ const AVATAR_STYLE_BY_THEME: Record<ForumAvatarTheme, string> = {
   junction: 'lorelei',
   present: 'lorelei-neutral',
   oldDynasty: 'lorelei',
-  xianmen: 'adventurer',
-  otherworld: 'adventurer-neutral',
+  xianmen: 'lorelei',
+  otherworld: 'lorelei-neutral',
   starSea: 'lorelei-neutral',
-  weird: 'adventurer',
-  cyber: 'adventurer-neutral',
+  weird: 'lorelei',
+  cyber: 'lorelei-neutral',
   anonymous: 'lorelei-neutral',
 };
 
 const seedAvatar = (seed: string, theme: ForumAvatarTheme = 'junction') =>
-  `https://api.dicebear.com/9.x/${AVATAR_STYLE_BY_THEME[theme]}/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear`;
+  `https://api.dicebear.com/9.x/${AVATAR_STYLE_BY_THEME[theme]}/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffe4ef,ffeef8,e8f2ff,f3ecff&radius=50&scale=110&translateY=-2`;
 
 const npcProfile = (
   id: string,
@@ -1355,6 +1355,96 @@ export const FORUM_SEED_THREAD_CATALOG: ForumSeedThreadTemplate[] = [
       comment(3, anonymousAuthor(), '通宵补漏洞比吵架诚实。', 19),
     ],
   }),
+  thread({
+    id: 'junction-11-gossip-thread',
+    channel: 'junction',
+    threadType: 'gossip' as ForumThreadType,
+    title: '不保真，但交界昨晚那栋热楼里疑似真有当事人披皮下场',
+    body:
+      '先说我不保真，只是把昨晚看到的说一下。\n\n那栋楼里有个号回得太准了，像是每一句都在替自己擦边解释，但又不敢把话说死。最离谱的是，楼里提到某个细节后，它三分钟内就改口风了，像是临时补救。\n\n有人也看见了吗，还是我又把热帖当连续剧追了？',
+    tags: ['交界', '爆料', '披皮', '热楼'],
+    author: npcAuthor('forum_npc_yiduluanhui'),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_menkouchigua'), '这种楼最怕的不是当事人下场，是他以为自己装得像路人。', 51),
+      comment(2, npcAuthor('forum_npc_momo'), '交界老传统了，越说不保真越像真见过。', 36),
+      comment(3, anonymousAuthor(), '我也看到了，那个号急得像下一秒就要掉马。', 29),
+    ],
+  }),
+  thread({
+    id: 'present-11-help-thread',
+    channel: 'present',
+    threadType: 'help' as ForumThreadType,
+    title: '求助，室友天天替我占座、带饭、拿快递，我该怎么自然问他是不是越界了',
+    body:
+      '先说明我不是来秀的，我是真不知道怎么处理。\n\n他最近一个月几乎把我生活半包了，图书馆占座、下课带饭、快递顺手拿上来都算了，连我没回消息都会来宿舍门口敲一下。嘴上还总说只是顺路。\n\n我现在想问的是，这种情况该怎么开口，不显得我自作多情，也不显得我默认享受。',
+    tags: ['今世', '求助', '室友', '边界'],
+    author: anonymousAuthor(),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_jintianbuyixiangshangban'), '先问一句“你对别人也这样吗”，比直接摊牌安全。', 41),
+      comment(2, npcAuthor('forum_npc_188chunqing'), '如果他只对你这样，那答案八九不离十。', 48),
+      comment(3, anonymousAuthor(), '不如先试着拒绝一次，看他反应。', 24),
+    ],
+  }),
+  thread({
+    id: 'weird-11-sighting-thread',
+    channel: 'weird',
+    threadType: 'sighting' as ForumThreadType,
+    title: '目击一下，凌晨三点半楼道尽头真的站了两个人，但监控里只有一个',
+    body:
+      '我知道这句话看起来像在编，但我还是得发。\n\n我下楼倒垃圾的时候，走廊尽头明明站着两个人，一个背对着我，另一个靠得很近，像在低声说话。可我回房间后顺手翻了监控，那段画面里只剩下一个人，另一个像从来没存在过。\n\n怪的是，监控里那个人转身的时候，像是在看我身后。',
+    tags: ['怪谈', '目击帖', '监控', '凌晨'],
+    author: npcAuthor('forum_npc_buyaohuitou'),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_guizediqitiao'), '先别回忆第二个人长什么样。', 67),
+      comment(2, npcAuthor('forum_npc_lingchensan'), '你能看见两个，说明它也知道你看见了。', 52),
+      comment(3, anonymousAuthor(), '我看完这楼决定今晚不开门。', 26),
+    ],
+  }),
+  thread({
+    id: 'old-11-timeline-thread',
+    channel: 'oldDynasty',
+    threadType: 'timeline' as ForumThreadType,
+    title: '我按时间理了一下这位世子的“顺手”，感觉根本不是顺手',
+    body:
+      '不是吃饱了撑的，是最近被这类话术听烦了，索性理一下。\n\n一，春宴那天他说顺手替人挡酒；二，三天后又顺手把那院的守夜全换了；三，入夏后连药方都顺手过目；四，昨夜还顺手拦了来见她的人。\n\n单拎每一件都能解释，排成一条线就很难继续装成普通照拂了。要么世子对谁都这样，要么他就没想给别人留退路。',
+    tags: ['旧朝', '记录帖', '世子', '时间线'],
+    author: npcAuthor('forum_npc_libuwenjiu'),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_wangfubaoan'), '你这个时间线一排出来，顺手两个字都站不住了。', 46),
+      comment(2, anonymousAuthor(), '旧朝最会装体面的，往往做事最不体面。', 31),
+      comment(3, npcAuthor('forum_npc_menkouchigua'), '建议继续往前翻，他肯定更早就开始了。', 27),
+    ],
+  }),
+  thread({
+    id: 'xianmen-11-essay-thread',
+    channel: 'xianmen',
+    threadType: 'essay' as ForumThreadType,
+    title: '【片段】夜里那句“别再硬撑”，像是从无情道裂开的一道缝',
+    body:
+      '山门夜里风大。\n\n他站在台阶上，看着我把那口血咽回去，半天没动。月色把人照得太冷，我以为他又要说些规矩、说些分寸，结果他只是低了一下眼。\n\n“别再硬撑。”\n\n声音很轻，轻得像怕被别人听见。可就是这一下，我忽然觉得无情道也未必真能把人心全磨平。',
+    tags: ['仙门', '片段帖', '无情道', '夜巡'],
+    author: anonymousAuthor(),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_xinmobanyoubianzhi'), '这句一出来就不叫无情道了，叫嘴硬道。', 54),
+      comment(2, npcAuthor('forum_npc_wuqingdaoguancha'), '你这不是发帖，是往楼里投灵石。', 47),
+      comment(3, anonymousAuthor(), '这种片段再来一口，我还能继续修。', 33),
+    ],
+  }),
+  thread({
+    id: 'cyber-11-vote-thread',
+    channel: 'cyber',
+    threadType: 'vote' as ForumThreadType,
+    title: '开个投票，你们觉得“把人权限全锁了但自己通宵修白名单”算护短还是控制',
+    body:
+      '事情经过不展开太细，免得当事人看到又装死。\n\n目前已知信息是：一，他锁了对方的高危权限；二，他自己通宵把所有后门和漏洞清了一遍；三，第二天嘴上还说只是怕出事故。\n\n所以来投一个，你们觉得这种算护短、控制、心虚补救，还是三者叠满？',
+    tags: ['赛博城', '投票帖', '权限', '白名单'],
+    author: npcAuthor('forum_npc_xitongrizhibiefanle'),
+    featuredComments: [
+      comment(1, npcAuthor('forum_npc_996dianziyouling'), '我投“控制欲里掺了真在意”。', 44),
+      comment(2, anonymousAuthor(), '赛博人护短都爱拿安全做借口。', 28),
+      comment(3, npcAuthor('forum_npc_quanxianbuzu'), '开盘的话我押第三项，三者叠满。', 35),
+    ],
+  }),
 ];
 
 export function getSeedThreadsByChannel(channel: ForumChannel): ForumSeedThreadTemplate[] {
@@ -1406,6 +1496,40 @@ function shuffleWithSeed<T>(items: T[], seed: number): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function pickSeedThreadsWithSpread(seed: number, count: number): ForumSeedThreadTemplate[] {
+  const random = mulberry32(seed);
+  const byChannel = new Map<ForumChannel, ForumSeedThreadTemplate[]>();
+
+  FORUM_SEED_THREAD_CATALOG.forEach((item) => {
+    const existing = byChannel.get(item.channel) || [];
+    existing.push(item);
+    byChannel.set(item.channel, existing);
+  });
+
+  const channelOrder = shuffleWithSeed(Array.from(byChannel.keys()), seed);
+  const picked: ForumSeedThreadTemplate[] = [];
+  const pickedIds = new Set<string>();
+
+  channelOrder.forEach((channel, channelIndex) => {
+    if (picked.length >= count) return;
+    const pool = shuffleWithSeed(byChannel.get(channel) || [], seed + channelIndex * 17);
+    const first = pool.find((item) => !pickedIds.has(item.id));
+    if (!first) return;
+    picked.push(first);
+    pickedIds.add(first.id);
+  });
+
+  const remainder = shuffleWithSeed(FORUM_SEED_THREAD_CATALOG, seed + 97).filter((item) => !pickedIds.has(item.id));
+  while (picked.length < count && remainder.length > 0) {
+    const nextIndex = Math.floor(random() * remainder.length);
+    const nextItem = remainder.splice(nextIndex, 1)[0];
+    picked.push(nextItem);
+    pickedIds.add(nextItem.id);
+  }
+
+  return picked.slice(0, count);
 }
 
 function channelLabel(channel: ForumChannel): string {
@@ -1611,9 +1735,9 @@ export function buildInitialForumSeedThreadsV2(userId: string, count?: number): 
   const seed = hashString(userId || 'default-forum-user');
   const derivedCount = 18 + (seed % 13);
   const resolvedCount = count ?? derivedCount;
-  const safeCount = Math.max(1, Math.min(resolvedCount, 30, FORUM_SEED_THREAD_CATALOG.length));
-  const shuffled = shuffleWithSeed(FORUM_SEED_THREAD_CATALOG, seed).slice(0, safeCount);
-  return shuffled.map((item, index) => buildSeedThreadV2(item, index, seed));
+  const safeCount = Math.max(1, Math.min(resolvedCount, 42, FORUM_SEED_THREAD_CATALOG.length));
+  const selected = pickSeedThreadsWithSpread(seed, safeCount);
+  return selected.map((item, index) => buildSeedThreadV2(item, index, seed));
 }
 
 export function buildInitialForumSeedPosts(userId: string, count?: number): ForumPost[] {

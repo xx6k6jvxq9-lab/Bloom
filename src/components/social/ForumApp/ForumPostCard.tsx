@@ -2,6 +2,9 @@ import React from 'react';
 import { AlertTriangle, BarChart2, Bookmark, Heart, Link2, MessageCircle, MoreHorizontal, Repeat, Share2, Trash2 } from 'lucide-react';
 import type { ForumPost } from '../../../types';
 import { ForumResolvedImage } from './ForumResolvedImage';
+import { ForumRichText } from './ForumRichText';
+import { buildForumPostPreview } from '../../../services/forum/buildForumPostPreview';
+import { getForumHotBadgeLabel } from '../../../services/forum/forumHotState';
 
 type IdentityMeta = {
   label: string;
@@ -23,11 +26,13 @@ type ForumPostCardProps = {
   timeStr: string;
   currentUserId: string;
   showMenu: boolean;
+  isPinned?: boolean;
   onOpen: (postId: string) => void;
   onOpenAuthor: (authorId: string) => void;
   onToggleMenu: (postId: string) => void;
   onCloseMenu: () => void;
   onCollect: (postId: string) => void;
+  onTogglePin?: (postId: string) => void;
   onDelete: (postId: string) => void;
   onReport: () => void;
   onLike: (postId: string) => void;
@@ -45,17 +50,29 @@ export function ForumPostCard({
   timeStr,
   currentUserId,
   showMenu,
+  isPinned = false,
   onOpen,
   onOpenAuthor,
   onToggleMenu,
   onCloseMenu,
   onCollect,
+  onTogglePin,
   onDelete,
   onReport,
   onLike,
   onShare,
 }: ForumPostCardProps) {
   const likedByCurrentUser = post.likes.includes(currentUserId);
+  const previewLimit = post.threadType === 'essay'
+    ? 64
+    : post.threadType === 'timeline'
+      ? 72
+      : post.threadType === 'sighting'
+        ? 66
+        : 68;
+  const previewContent = buildForumPostPreview(post.content, previewLimit);
+  const isPreviewTruncated = previewContent.trim().length < post.content.trim().length;
+  const hotBadge = getForumHotBadgeLabel(post);
 
   return (
     <div
@@ -76,6 +93,7 @@ export function ForumPostCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 text-[14px] truncate">
             <span className="font-bold text-zinc-900 truncate hover:underline">{author.name}</span>
+            {isPinned && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">置顶</span>}
             {identityMeta && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${identityMeta.className}`}>{identityMeta.label}</span>}
             {author.id !== 'user_8888' && <span className="text-zinc-500">●</span>}
             <span className="text-zinc-500 truncate">{handle}</span>
@@ -107,6 +125,18 @@ export function ForumPostCard({
                     <Bookmark size={16} />
                     {post.collections.includes(currentUserId) ? '取消收藏' : '收藏'}
                   </button>
+                  {isOwner && onTogglePin && (
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTogglePin(post.id);
+                        onCloseMenu();
+                      }}
+                      className="w-full px-4 py-2 text-left text-[14px] hover:bg-zinc-50 flex items-center gap-2"
+                    >
+                      {isPinned ? '取消置顶' : '置顶帖子'}
+                    </button>
+                  )}
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
@@ -154,9 +184,25 @@ export function ForumPostCard({
           <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${threadTypeClassName}`}>
             {threadTypeLabel}
           </span>
+          {hotBadge && <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600">{hotBadge}</span>}
           {post.title && <h3 className="text-[14px] font-bold text-zinc-900">{post.title}</h3>}
         </div>
-        <p className="text-[14px] text-zinc-900 mt-0.5 whitespace-pre-wrap leading-snug">{post.content}</p>
+        <div className="relative mt-1 overflow-hidden">
+          <ForumRichText
+            content={previewContent}
+            compact
+            className="max-h-[5.6rem] overflow-hidden"
+            threadType={post.threadType}
+          />
+          {isPreviewTruncated && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white via-white/92 to-transparent" />
+          )}
+        </div>
+        {isPreviewTruncated && (
+          <div className="mt-1 text-[11px] font-medium text-zinc-400">
+            点击进入帖子查看全文
+          </div>
+        )}
 
         {post.images && post.images.length > 0 && (
           <div className={`mt-3 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : post.images.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>

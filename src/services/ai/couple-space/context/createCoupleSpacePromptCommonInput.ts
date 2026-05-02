@@ -12,9 +12,11 @@ import type {
 import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
 import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
+import { buildRelationshipProjection } from '../../../relationship-context/buildRelationshipProjection';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../../relationship-time/buildTemporalContextPrompt';
-import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../../../world-book/worldBookMeta';
+import { sortWorldBooksByPriority } from '../../../world-book/worldBookMeta';
+import { buildBudgetedWorldBookPrompt } from '../../../world-book/worldBookBudget';
 import type {
   CoupleSpacePromptCommonInputDiagnostics,
   CoupleSpacePromptCommonInputEnvelope,
@@ -58,6 +60,12 @@ export function createCoupleSpacePromptCommonInput(
     character: source.partner,
   });
   const resolvedMemory = buildResolvedMemoryLayers(source.partner);
+  const relationshipProjection = buildRelationshipProjection({
+    character: source.partner,
+    coupleSpace: source.coupleSpace,
+    userName: source.user.name,
+    directMessages: source.chatHistory?.[source.partner.id] || [],
+  });
   const characterCoreResult = buildCharacterCore(source);
   const recentChatMessages = getRecentChatMessages(source, options, policy);
   const recentChatTurns = options.includeRecentChatTurns
@@ -133,6 +141,11 @@ export function createCoupleSpacePromptCommonInput(
       },
       recentContext: {
         currentSubScene: scene?.currentSubScene ?? scene?.subScene,
+        relationshipResidue: relationshipProjection.sceneScopedSignals.relationshipResidue?.slice(0, 3),
+        topicAnchors: relationshipProjection.sceneScopedSignals.topicAnchors?.slice(0, 2),
+        taskResidue: relationshipProjection.sceneScopedSignals.taskResidue?.slice(0, 2),
+        sharedRecentRelationshipSummary: relationshipProjection.sceneScopedSignals.sharedRecentRelationshipSummary,
+        publicAcquaintanceSummary: relationshipProjection.sceneScopedSignals.publicAcquaintanceSummary,
         recentCoupleSpaceSummary,
         recentRelatedContentSummary: scene?.relatedContentSummary,
         recentSharedMomentsSummary: scene?.sharedMomentsSummary,
@@ -150,7 +163,7 @@ export function createCoupleSpacePromptCommonInput(
         temporalContext,
         formatTemporalStatePrompt(temporalState),
         formatRecentImageReferencePrompt(recentImageReferences),
-      ].filter(Boolean),
+      ].filter((value): value is string => Boolean(value)),
     },
     policy,
     diagnostics,
@@ -326,11 +339,7 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
       ].join('\n')
     : undefined;
 
-  const worldBookPrompt = activeWorldBooks.length
-    ? activeWorldBooks
-        .map((worldBook) => `[${normalizeWorldBookCategory(worldBook.category)}] ${worldBook.title}:\n${worldBook.content}`)
-        .join('\n\n')
-    : undefined;
+  const worldBookPrompt = buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
 
   return {
     value: {
@@ -768,7 +777,7 @@ function formatRecentImageReferencePrompt(
         `${index + 1}.`,
         reference.authorLabel ? `发布者：${reference.authorLabel}` : '',
         reference.relatedText ? `配文：${reference.relatedText}` : '',
-      ].filter(Boolean);
+      ].filter((value): value is string => Boolean(value));
       return parts.join(' ');
     }),
   ];

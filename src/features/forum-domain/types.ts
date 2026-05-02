@@ -18,11 +18,23 @@ export type ForumChannel =
 
 export type ForumThreadType =
   | 'normal'
+  | 'gossip'
+  | 'help'
   | 'rift'
   | 'sameTopic'
+  | 'sighting'
+  | 'timeline'
+  | 'essay'
+  | 'vote'
   | 'commission'
   | 'reversal'
   | 'ownerUpdate';
+
+export type ForumContentTier =
+  | 'baseline'
+  | 'ferment'
+  | 'highlight'
+  | 'fragment';
 
 export type ForumLifecycleStage =
   | 'new'
@@ -84,6 +96,8 @@ export type ForumThreadV2 = {
   body: string;
   channel: ForumChannel;
   threadType: ForumThreadType;
+  contentTier?: ForumContentTier;
+  discourseAxis?: string;
   authorType: Extract<ForumAuthorType, 'user' | 'anonymous' | 'forumNpc'>;
   authorId?: string;
   authorDisplayName: string;

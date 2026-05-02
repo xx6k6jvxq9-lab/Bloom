@@ -1,5 +1,7 @@
 ﻿
 import type { ForumThreadType } from './features/forum-domain/types';
+import type { ForumChannel } from './features/forum-domain/types';
+import type { CharacterSharedContextSnapshot } from './services/relationship-context/types';
 
 export type Mask = {
   id: string;
@@ -223,6 +225,13 @@ export type WorldBookEntry = {
   isActive: boolean;
   isGlobal: boolean;
   characterIds?: string[];
+  pinMode?: 'none' | 'always';
+  chunkCache?: {
+    id: string;
+    label: string;
+    content: string;
+    keywords?: string[];
+  }[];
 };
 
 export type CoNote = {
@@ -511,6 +520,40 @@ export type MemoryLibraryEntry = {
   charCount: number;
 };
 
+export type CharacterOpenLoopKind = 'scene' | 'relationship' | 'task' | 'topic' | 'unknown';
+
+export type CharacterOpenLoopStatus = 'active' | 'waiting_user' | 'dormant' | 'resolved';
+
+export type CharacterOpenLoopEntry = {
+  id: string;
+  kind: CharacterOpenLoopKind;
+  status: CharacterOpenLoopStatus;
+  content: string;
+  source: 'short_term_summary' | 'recent_history' | 'manual';
+  createdAt: number;
+  lastTouchedAt: number;
+  updatedAt: number;
+  resumeHint?: string;
+};
+
+export type CharacterPresenceState = {
+  lastSeenAt: number;
+  availability: 'live' | 'recent' | 'returning' | 'away';
+  recentLifeBeat?: string;
+  resumeTone?: 'natural_continue' | 'soft_return' | 'fresh_reentry';
+  updatedAt: number;
+};
+
+export type CharacterActiveDatingState = {
+  sessionId: string;
+  startedAt: number;
+  updatedAt: number;
+  status: 'active';
+  summary: string;
+  relationshipResidue?: string;
+  boundaryNote?: string;
+};
+
 export type ChatMemorySnapshot = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
@@ -587,6 +630,10 @@ export type Character = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
   memoryLibraryEntries?: MemoryLibraryEntry[];
+  openLoopRegistry?: CharacterOpenLoopEntry[];
+  presenceState?: CharacterPresenceState;
+  activeDatingState?: CharacterActiveDatingState;
+  sharedContextSnapshots?: CharacterSharedContextSnapshot[];
   avatarLibrary?: CharacterAvatarLibrary;
   stickers?: string[];
   maskId?: string; // Linked mask ID
@@ -869,6 +916,7 @@ export type ForumComment = {
   postId: string;
   authorId: string;
   authorIdentity?: 'self' | 'anonymous' | 'character';
+  authorMaskId?: string;
   ownerUserId?: string;
   authorCharacterId?: string;
   content: string;
@@ -883,6 +931,7 @@ export type ForumPost = {
   id: string;
   authorId: string;
   authorIdentity?: 'self' | 'anonymous' | 'character';
+  authorMaskId?: string;
   ownerUserId?: string;
   authorCharacterId?: string;
   board?: 'public' | 'spectator';
@@ -891,6 +940,8 @@ export type ForumPost = {
   images?: string[];
   category: string; // New field
   threadType?: ForumThreadType;
+  contentTier?: import('./features/forum-domain/types').ForumContentTier;
+  discourseAxis?: string;
   timestamp: number;
   viewCount: number;
   likes: string[]; // User IDs
@@ -901,12 +952,24 @@ export type ForumPost = {
   aiDetailExpanded?: boolean;
   aiLastExpandedAt?: number;
   aiLastReplyAt?: number;
+  hotScore?: number;
+  hotState?: 'none' | 'warm' | 'hot';
+  hotContinuationCount?: number;
+  lastHotContinuationAt?: number;
+  lastHotContinuationSource?: 'feed_refresh' | 'detail_refresh';
+  poll?: {
+    options: Array<{
+      id: string;
+      text: string;
+      voterIds: string[];
+    }>;
+  };
 };
 
 export type ForumNotification = {
   id: string;
   userId: string;
-  type: 'reply' | 'like_post' | 'like_comment';
+  type: 'reply_to_post' | 'reply_to_comment' | 'like_post' | 'like_comment' | 'follow' | 'friend_request';
   sourceUserId: string;
   postId: string;
   commentId?: string;
@@ -937,10 +1000,18 @@ export type ForumTempChatSession = {
   createdAt: number;
   updatedAt: number;
   messages: ForumTempChatMessage[];
+  sessionOrigin?: 'user_opened' | 'npc_auto';
   canAddFriend?: boolean;
   addedAsFriend?: boolean;
   pendingReply?: ForumTempChatPendingReply;
   viewerLastSeenAt?: number;
+  completedExchangeRounds?: number;
+  meaningfulReplyCount?: number;
+  proactiveNpcTurnCount?: number;
+  friendRequestState?: 'none' | 'ready' | 'sent' | 'accepted' | 'rejected';
+  friendRequestSentAt?: number;
+  lastGhostedAt?: number;
+  convertedFriendId?: string;
 };
 
 export type ForumRuntimeAuthorProfile = {
@@ -949,27 +1020,111 @@ export type ForumRuntimeAuthorProfile = {
   handle: string;
   avatar: string;
   bio: string;
+  homeChannel?: ForumChannel;
+  boardScope?: 'public' | 'spectator';
   persona?: string;
   speakingStyle?: string;
   preferredMove?: string;
+  origin?: 'character' | 'npc' | 'seed' | 'custom';
+  aliasVersion?: number;
+  manuallyEdited?: boolean;
+  generationMode?: 'ai' | 'fallback' | 'manual';
+  aiGeneratedAt?: number;
+  aiLastAttemptAt?: number;
+  aiLastFailedAt?: number;
 };
 
 export type ForumComposerDraft = {
   title: string;
   content: string;
   images: string[];
-  identity: 'self' | 'anonymous';
+  identity: 'self' | 'mask' | 'anonymous';
+  maskId?: string;
   channel: string;
+  threadType?: ForumThreadType | 'auto';
   board?: 'public' | 'spectator';
   updatedAt: number;
+};
+
+export type ForumSpectatorTargetRole = 'primary' | 'secondary' | 'equal';
+export type ForumSpectatorObjectMode = 'user_with_characters' | 'single_character';
+
+export type ForumSpectatorUserSlot = {
+  mode: 'self' | 'mask';
+  maskId?: string;
+};
+
+export type ForumSpectatorTargetCharacter = {
+  characterId: string;
+  role: ForumSpectatorTargetRole;
+};
+
+export type ForumSpectatorTargetPreset = {
+  id: string;
+  label: string;
+  objectMode?: ForumSpectatorObjectMode;
+  topicHint?: string;
+  userSlot: ForumSpectatorUserSlot;
+  userNameSource?: 'user' | 'forum';
+  targetCharacters: ForumSpectatorTargetCharacter[];
+  threadTypes?: ForumThreadType[];
+  angles?: Array<'observation' | 'romance' | 'sighting' | 'danger' | 'fiction' | 'rumor' | 'vote' | 'contrast' | 'hardmouth' | 'protective' | 'occupy' | 'jealousy' | 'essay' | 'analysis' | 'melodrama' | 'rps' | 'bet' | 'breakup' | 'misread' | 'shipwar' | 'backstory' | 'forbidden' | 'adult' | 'enemy'>;
+  relationshipSummary?: string;
+  worldShell?: 'campus' | 'workplace' | 'xianmen' | 'entertainment' | 'manor' | 'starnet' | 'weird' | 'esports' | 'showbiz' | 'haoMen' | 'apocalypse' | 'agency';
 };
 
 export type ForumSpectatorSettings = {
   subjectName: string;
   relationshipSummary: string;
-  tone: '吃瓜围观' | '认真分析' | '暧昧起哄';
+  objectMode?: ForumSpectatorObjectMode;
+  topicHint?: string;
+  mode?: 'random' | 'configured';
+  threadTypes?: ForumThreadType[];
+  tone?: '嘴碎路人' | '深夜不睡' | '嗑疯了' | '拉扯党' | '缺德乐子人' | '正经考据' | '半真半假' | '代餐文学' | '押注开盘' | '冷脸上头' | '阴暗乱嗑' | '买冷股的' | '见证文学' | '背德发作' | '宿敌特供';
+  worldShell?: 'campus' | 'workplace' | 'xianmen' | 'entertainment' | 'manor' | 'starnet' | 'weird' | 'esports' | 'showbiz' | 'haoMen' | 'apocalypse' | 'agency';
+  angles?: Array<'observation' | 'romance' | 'sighting' | 'danger' | 'fiction' | 'rumor' | 'vote' | 'contrast' | 'hardmouth' | 'protective' | 'occupy' | 'jealousy' | 'essay' | 'analysis' | 'melodrama' | 'rps' | 'bet' | 'breakup' | 'misread' | 'shipwar' | 'backstory' | 'forbidden' | 'adult' | 'enemy'>;
   autoGenerate: boolean;
   selectedCharacterIds: string[];
+  userSlot?: ForumSpectatorUserSlot;
+  userNameSource?: 'user' | 'forum';
+  targetCharacters?: ForumSpectatorTargetCharacter[];
+  targetPresets?: ForumSpectatorTargetPreset[];
+  defaultThreadTypePool?: ForumThreadType[];
+  cluePool?: string[];
+};
+
+export type ForumWorldBookUsageScope =
+  | 'public_open'
+  | 'spectator_open'
+  | 'hot_followup'
+  | 'detail_refresh'
+  | 'ai_reply'
+  | 'character_post';
+
+export type ForumMaskUsageScope =
+  | 'spectator_open'
+  | 'detail_refresh'
+  | 'ai_reply'
+  | 'character_post';
+
+export type ForumGlobalSettings = {
+  worldBook: {
+    enabled: boolean;
+    strength: 'light' | 'medium' | 'strong';
+    selectedIds: string[];
+    selectedCategories: string[];
+    scopes: Record<ForumWorldBookUsageScope, boolean>;
+  };
+  mask: {
+    enabled: boolean;
+    useActiveMaskOnly: boolean;
+    selectedIds: string[];
+    scopes: Record<ForumMaskUsageScope, boolean>;
+  };
+  social: {
+    allowNpcTempChat: boolean;
+    allowNpcFriendRequest: boolean;
+  };
 };
 
 export type ForumData = {
@@ -978,9 +1133,12 @@ export type ForumData = {
   followedUsers?: string[];
   followerMap?: Record<string, string[]>;
   tempChats?: Record<string, ForumTempChatSession>;
+  pinnedChatAuthorIds?: string[];
+  pinnedPostIds?: string[];
   runtimeAuthorProfiles?: Record<string, ForumRuntimeAuthorProfile>;
   composerDraft?: ForumComposerDraft | null;
   spectatorSettings?: ForumSpectatorSettings;
+  globalSettings?: ForumGlobalSettings;
 };
 
 export type FriendRequest = {
@@ -991,6 +1149,12 @@ export type FriendRequest = {
   status: 'pending' | 'accepted' | 'rejected';
   timestamp: number;
   message?: string;
+  sourceScene?: 'forum' | 'manual';
+  sourcePostId?: string;
+  sourceTempChatAuthorId?: string;
+  forumHandle?: string;
+  forumBio?: string;
+  forumPersona?: string;
 };
 
 export type ChatGroup = {
@@ -1179,6 +1343,8 @@ export type CharacterVoiceProfile = {
   sampleAssetId?: string;
   sampleName?: string;
   autoPlay?: boolean;
+  replyMode?: 'text' | 'mixed' | 'voice';
+  replyFrequency?: 'low' | 'medium' | 'high';
 };
 
 export type ApiCenterConfig = {

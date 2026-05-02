@@ -23,6 +23,7 @@ import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../..
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -207,6 +208,23 @@ const REPLY_LANGUAGE_MODE_OPTIONS = [
 
 const LANGUAGE_PRESET_OPTIONS = ['自动识别', '中文', '韩语', '日语', '英语', '粤语'];
 
+function getWorldBookDiscardReasonLabel(reason?: WorldBookSelectionDiagnostic['discardReason']): string {
+  switch (reason) {
+    case 'per_book_limit':
+      return '同一本命中过多';
+    case 'max_selections':
+      return '达到片段数量上限';
+    case 'hard_budget':
+      return '达到硬预算上限';
+    case 'soft_budget_stop':
+      return '软预算提前收口';
+    case 'empty_content':
+      return '片段内容为空';
+    default:
+      return '未入选';
+  }
+}
+
 function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
   if (files.length === 0) return;
 
@@ -315,6 +333,25 @@ export function ChatSettingsPanel({
     autoReply: 0,
     autoTranslate: 0,
     autoSummary: 0,
+  });
+  const [worldBookDebug, setWorldBookDebug] = useState<{
+    selected: WorldBookSelectionDiagnostic[];
+    discarded: WorldBookSelectionDiagnostic[];
+    query?: string;
+    usedChars: number;
+    softCharBudget: number;
+    hardCharBudget: number;
+    maxSelections: number;
+    totalCandidates: number;
+  }>({
+    selected: [],
+    discarded: [],
+    query: undefined,
+    usedChars: 0,
+    softCharBudget: 0,
+    hardCharBudget: 0,
+    maxSelections: 0,
+    totalCandidates: 0,
   });
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
@@ -694,6 +731,13 @@ export function ChatSettingsPanel({
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)
       );
+      const latestUserText = [...history]
+        .reverse()
+        .find((msg) => msg.role === 'user' && getMessageMainText(msg).trim())?.text;
+      const worldBookSelection = selectWorldBooksForPrompt(activeWorldBooks, 'direct', {
+        query: latestUserText,
+        recentText: historyWindow.map((msg) => getMessageMainText(msg)),
+      });
 
       const mainChatPrompt = buildChatPrompt(buildChatSceneInput({
         mode: 'chat',
@@ -703,6 +747,7 @@ export function ChatSettingsPanel({
         activeWorldBooks,
         worldBooks,
         perceptionPrompt: '',
+        worldBookQuery: latestUserText,
       }));
 
       const autoReplyPrompt = buildChatPrompt(buildChatSceneInput({
@@ -714,6 +759,7 @@ export function ChatSettingsPanel({
         activeWorldBooks,
         worldBooks,
         perceptionPrompt: '',
+        worldBookQuery: latestUserText,
       }));
 
       const latestModelMessage = [...history]
@@ -743,6 +789,16 @@ export function ChatSettingsPanel({
         autoReply: estimateTextTokens(`${autoReplyPrompt}\n\n${historyWindowText}`),
         autoTranslate: autoTranslatePrompt ? estimateTextTokens(autoTranslatePrompt) : 0,
         autoSummary: autoSummaryPrompt ? estimateTextTokens(autoSummaryPrompt) : 0,
+      });
+      setWorldBookDebug({
+        selected: worldBookSelection.diagnostics.selected,
+        discarded: worldBookSelection.diagnostics.discarded,
+        query: worldBookSelection.diagnostics.query,
+        usedChars: worldBookSelection.diagnostics.usedChars,
+        softCharBudget: worldBookSelection.diagnostics.softCharBudget,
+        hardCharBudget: worldBookSelection.diagnostics.hardCharBudget,
+        maxSelections: worldBookSelection.diagnostics.maxSelections,
+        totalCandidates: worldBookSelection.diagnostics.totalCandidates,
       });
   };
 
@@ -2359,6 +2415,75 @@ export function ChatSettingsPanel({
                 </div>
                 <button onClick={calculateTokens} className="text-zinc-500 hover:text-zinc-900 shrink-0">重新计算</button>
               </div>
+              {character.showTokenCount && (
+                <div className="mt-3 rounded-xl border border-white/40 bg-white/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[12px] font-medium text-zinc-700">世界书命中调试</div>
+                      <div className="mt-1 text-[10px] text-zinc-400">
+                        {worldBookDebug.query?.trim() ? `当前检索锚点：${worldBookDebug.query.trim().slice(0, 48)}` : '当前没有明确 query，主要按优先级与最近聊天选段。'}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-zinc-400">{worldBookDebug.selected.length} / {worldBookDebug.maxSelections || '-'} 条已注入</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-zinc-500">
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      已用预算 {worldBookDebug.usedChars} / {worldBookDebug.hardCharBudget || '-'}
+                    </div>
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      软预算 {worldBookDebug.softCharBudget || '-'} / 候选 {worldBookDebug.totalCandidates}
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {worldBookDebug.selected.length === 0 ? (
+                      <div className="text-[11px] text-zinc-400">当前没有命中的世界书片段。</div>
+                    ) : (
+                      worldBookDebug.selected.map((item) => (
+                        <div key={`${item.worldBookId}-${item.label}`} className="rounded-lg border border-zinc-100 bg-white/70 px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-medium text-zinc-700">{item.title}</span>
+                            <span className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] text-zinc-500">{item.label}</span>
+                            {item.pinned && <span className="rounded border border-sky-100 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">钉住</span>}
+                            <span className="text-[10px] text-zinc-400">score {item.score}</span>
+                          </div>
+                          <div className="mt-1 text-[10px] leading-5 text-zinc-500">{item.preview}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-4 border-t border-white/40 pt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[11px] font-medium text-zinc-700">未注入片段</div>
+                      <span className="text-[10px] text-zinc-400">{worldBookDebug.discarded.length} 条</span>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {worldBookDebug.discarded.length === 0 ? (
+                        <div className="text-[11px] text-zinc-400">当前没有被丢弃的世界书片段。</div>
+                      ) : (
+                        worldBookDebug.discarded.slice(0, 8).map((item) => (
+                          <div key={`discarded-${item.worldBookId}-${item.label}`} className="rounded-lg border border-zinc-100 bg-white/55 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] font-medium text-zinc-700">{item.title}</span>
+                              <span className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] text-zinc-500">{item.label}</span>
+                              {item.pinned && <span className="rounded border border-sky-100 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">钉住</span>}
+                              <span className="rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">
+                                {getWorldBookDiscardReasonLabel(item.discardReason)}
+                              </span>
+                              <span className="text-[10px] text-zinc-400">score {item.score}</span>
+                            </div>
+                            <div className="mt-1 text-[10px] leading-5 text-zinc-500">{item.preview}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {worldBookDebug.discarded.length > 8 && (
+                      <div className="mt-2 text-[10px] text-zinc-400">
+                        仅显示前 8 条未注入片段，剩余 {worldBookDebug.discarded.length - 8} 条未展开。
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

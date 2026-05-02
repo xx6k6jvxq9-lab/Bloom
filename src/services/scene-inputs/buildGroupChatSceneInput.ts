@@ -3,8 +3,14 @@ import { buildGroupWorldBookPrompt } from '../../features/group-world-book/build
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import type {
+  RelationshipResidueItem,
+  TaskResidueItem,
+  TopicAnchorItem,
+} from '../relationship-context/types';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { formatGroupTopicStateForPrompt } from '../group-chat/topicState';
+import { filterTopicAnchorsForPrompt } from '../chat/topicRecall';
 
 export type GroupChatSceneInput = {
   speakerName: string;
@@ -20,11 +26,15 @@ export type GroupChatSceneInput = {
   groupBehaviorGuide?: string;
   roleInstruction: string;
   mentionInstruction?: string;
-  recentContext?: {
-    shortTermSummary?: string;
-    longTermMemoryProfile?: string;
-    temporalContext?: string;
-    groupSceneHint?: string;
+    recentContext?: {
+      shortTermSummary?: string;
+      relationshipResidue?: RelationshipResidueItem[];
+      topicAnchors?: TopicAnchorItem[];
+      taskResidue?: TaskResidueItem[];
+      longTermMemoryProfile?: string;
+      temporalContext?: string;
+      activeDatingSummary?: string;
+      groupSceneHint?: string;
     groupShortTermSummary?: string;
     groupMemberPerspectiveSummary?: string;
     groupLongTermAtmosphere?: string;
@@ -414,6 +424,31 @@ function buildHistoryTranscript(history: ChatMessage[], userName: string): strin
     .join('\n');
 }
 
+function extractGroupRecallText(message: ChatMessage): string {
+  const text = message.text?.trim();
+  return text ? text : '';
+}
+
+function buildGroupWorldBookRetrievalOptions(history: ChatMessage[]) {
+  const recentText = history
+    .map(extractGroupRecallText)
+    .filter(Boolean)
+    .slice(-8);
+
+  const latestUserText = [...history]
+    .reverse()
+    .find((message) => message.role === 'user' && extractGroupRecallText(message))?.text?.trim();
+  const latestConversationText = [...history]
+    .reverse()
+    .map(extractGroupRecallText)
+    .find(Boolean);
+
+  return {
+    query: latestUserText || latestConversationText,
+    recentText,
+  };
+}
+
 function formatGroupTemporalStatePrompt(
   state: ReturnType<typeof buildCharacterTemporalState>,
   baseTemporalContext?: string,
@@ -489,14 +524,25 @@ function formatGroupTemporalStatePrompt(
   ].filter(Boolean).join('\n');
 }
 
+function limitResidueItems<T>(items: T[] | undefined, maxItems: number): T[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return items.slice(0, Math.max(0, maxItems));
+}
+
 export function buildGroupChatSceneInput(
   options: BuildGroupChatSceneInputOptions,
 ): GroupChatSceneInput {
   const mode = options.mode ?? 'reply';
   const groupStage = options.group?.groupStage ?? 'new';
+  const worldBookRetrievalOptions = buildGroupWorldBookRetrievalOptions(options.history);
   const characterContext = buildCharacterContext({
     character: options.speaker,
     activeWorldBooks: options.activeWorldBooks,
+    worldBookQuery: worldBookRetrievalOptions.query,
+    worldBookRecentText: worldBookRetrievalOptions.recentText,
   });
   const relationshipProjection = buildRelationshipProjection({
     character: options.speaker,
@@ -548,8 +594,15 @@ export function buildGroupChatSceneInput(
         : undefined,
     recentContext: {
       shortTermSummary: characterScopedMemory.shortTermSummary,
+      relationshipResidue: limitResidueItems(sceneScopedSignals.relationshipResidue, 3),
+      topicAnchors: filterTopicAnchorsForPrompt(
+        sceneScopedSignals.topicAnchors,
+        characterTemporalState.continuityMode,
+      ).slice(0, 2),
+      taskResidue: limitResidueItems(sceneScopedSignals.taskResidue, 2),
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
       temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
+      activeDatingSummary: options.speaker.activeDatingState?.summary,
       groupSceneHint: characterContext.sceneHints?.groupChat,
       groupShortTermSummary: options.group?.groupShortTermSummary?.trim() || undefined,
       groupMemberPerspectiveSummary: options.group?.groupMemberPerspectiveSummaries?.[options.speaker.id]?.trim() || undefined,
@@ -562,7 +615,7 @@ export function buildGroupChatSceneInput(
       currentScene: options.group?.currentScene?.trim() || undefined,
       publicFacts: options.group?.publicFacts?.trim() || undefined,
       topicStatePrompt: formatGroupTopicStateForPrompt(options.group?.topicState),
-      worldBookPrompt: buildGroupWorldBookPrompt(options.activeWorldBooks),
+      worldBookPrompt: buildGroupWorldBookPrompt(options.activeWorldBooks, worldBookRetrievalOptions),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,

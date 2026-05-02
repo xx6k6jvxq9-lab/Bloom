@@ -90,10 +90,9 @@ function formatCurrentGeneratedPlaylist(session: DateSession): string {
     return '当前还没有已生成的歌单。';
   }
 
-  return `当前歌单：
-${session.generatedContent.playlist
-  .map((song) => `- ${song.title} / ${song.artist}：${song.note || '符合当前氛围'}`)
-  .join('\n')}`;
+  return `当前歌单：${session.generatedContent.playlist
+    .map((song) => `- ${song.title} / ${song.artist}：${song.note || '符合当前氛围'}`)
+    .join('\n')}`;
 }
 
 function buildTask(options: BuildDatingSceneInputOptions): string {
@@ -103,10 +102,29 @@ function buildTask(options: BuildDatingSceneInputOptions): string {
 
   if (options.latestUserInput) {
     return `用户刚刚在正式约会里说了：${options.latestUserInput}
-请从这句话之后继续推进剧情，并同步更新状态与歌单。`;
+请从这句之后继续推进剧情，并同步更新状态与歌单。`;
   }
 
   return '请基于当前保留的约会上下文继续生成后续内容。';
+}
+
+function formatTypedResidueLines<T extends { summary: string }>(
+  title: string,
+  items: T[] | undefined,
+  usageNote: string,
+): string {
+  const typedItems = (items || [])
+    .map((item) => item.summary.trim())
+    .filter(Boolean);
+  if (typedItems.length === 0) {
+    return '';
+  }
+
+  return [
+    title,
+    usageNote,
+    ...typedItems.map((summary) => `- ${summary}`),
+  ].join('\n');
 }
 
 function buildExtraSections(input: {
@@ -117,6 +135,9 @@ function buildExtraSections(input: {
   datingSceneHint?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  relationshipResidue?: Array<{ summary: string }>;
+  topicAnchors?: Array<{ summary: string }>;
+  taskResidue?: Array<{ summary: string }>;
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
 }): string[] {
@@ -128,6 +149,21 @@ function buildExtraSections(input: {
     input.datingSceneHint ? ['## 当前约会场景补充', input.datingSceneHint].join('\n') : '',
     input.shortTermSummary ? ['## 近期关系余波', input.shortTermSummary].join('\n') : '',
     input.longTermMemoryProfile ? ['## 长期关系印象', input.longTermMemoryProfile].join('\n') : '',
+    formatTypedResidueLines(
+      '## Typed Relationship Residue',
+      input.relationshipResidue,
+      '这些是最近还能影响约会语气和亲密感的关系余波。只把它们当成关系底色，不要直接改写成当前约会现场已经发生的动作。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Topic Anchors',
+      input.topicAnchors,
+      '这些是旧梗或旧话题锚点。只有这轮约会真的碰到时才可轻量带回，不要无缘无故自己翻旧梗。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Task Residue',
+      input.taskResidue,
+      '这些是仍可能算数的待办、约定或还没完全落地的事。只有当前语境相关时才轻量恢复。',
+    ),
     input.recentCoupleSpaceSummary ? ['## 最近情侣空间相关痕迹', input.recentCoupleSpaceSummary].join('\n') : '',
     input.sharedRecentRelationshipSummary
       ? ['## 最近关系连续性', input.sharedRecentRelationshipSummary].join('\n')
@@ -142,6 +178,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
   const relationshipProjection = buildRelationshipProjection({
     character: options.character,
     userName: options.userProfile.name,
+    directMessages: options.chatHistory,
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
 
@@ -174,6 +211,9 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
       datingSceneHint: characterContext.sceneHints?.dating,
       shortTermSummary: characterScopedMemory.shortTermSummary,
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
+      relationshipResidue: sceneScopedSignals.relationshipResidue?.slice(0, 3),
+      topicAnchors: sceneScopedSignals.topicAnchors?.slice(0, 2),
+      taskResidue: sceneScopedSignals.taskResidue?.slice(0, 2),
       recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
     }),

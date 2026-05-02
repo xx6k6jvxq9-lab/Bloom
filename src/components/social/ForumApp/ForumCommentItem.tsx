@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   BarChart2,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { ForumComment, ForumPost } from '../../../types';
 import { ForumResolvedImage } from './ForumResolvedImage';
+import { ForumRichText } from './ForumRichText';
 
 type IdentityMeta = {
   label: string;
@@ -35,10 +36,12 @@ type ForumCommentItemProps = {
   replyToAuthorName?: string;
   currentUserAvatar: string;
   anonymousAvatar: string;
+  availableReplyMasks: Array<{ id: string; name: string }>;
+  defaultReplyMaskId?: string;
   likedByCurrentUser: boolean;
   repliesCount: number;
   timeStr: string;
-  onReply: (postId: string, content: string, replyToId?: string, rootId?: string, identity?: 'self' | 'anonymous') => void;
+  onReply: (postId: string, content: string, replyToId?: string, rootId?: string, identity?: 'self' | 'anonymous', maskId?: string) => void;
   onLike: (postId: string, commentId: string) => void;
   onDelete: (postId: string, commentId: string) => void;
   onReport: () => void;
@@ -58,6 +61,8 @@ export function ForumCommentItem({
   replyToAuthorName,
   currentUserAvatar,
   anonymousAvatar,
+  availableReplyMasks,
+  defaultReplyMaskId,
   likedByCurrentUser,
   repliesCount,
   timeStr,
@@ -70,7 +75,48 @@ export function ForumCommentItem({
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [replyIdentity, setReplyIdentity] = useState<'self' | 'anonymous'>('self');
+  const [replyMaskId, setReplyMaskId] = useState<string | undefined>(defaultReplyMaskId);
+  const [showReplyMaskPicker, setShowReplyMaskPicker] = useState(false);
   const [showPostMenu, setShowPostMenu] = useState<string | null>(null);
+  const [preferPlainSelfReply, setPreferPlainSelfReply] = useState(() => !defaultReplyMaskId);
+
+  const selectedReplyMaskName = availableReplyMasks.find((mask) => mask.id === replyMaskId)?.name;
+
+  useEffect(() => {
+    if (!availableReplyMasks.length) {
+      setReplyMaskId(undefined);
+      setShowReplyMaskPicker(false);
+      return;
+    }
+
+    setReplyMaskId((current) => (
+      preferPlainSelfReply
+        ? undefined
+        : (
+      current && availableReplyMasks.some((mask) => mask.id === current)
+        ? current
+        : (defaultReplyMaskId && availableReplyMasks.some((mask) => mask.id === defaultReplyMaskId)
+          ? defaultReplyMaskId
+          : availableReplyMasks[0]?.id)
+        )
+    ));
+  }, [availableReplyMasks, defaultReplyMaskId, preferPlainSelfReply]);
+
+  const submitReply = () => {
+    if (!replyText.trim()) return;
+    onReply(
+      post.id,
+      replyText.trim(),
+      comment.id,
+      comment.rootCommentId || comment.id,
+      replyIdentity,
+      replyIdentity === 'self' ? replyMaskId : undefined,
+    );
+    setReplyText('');
+    setReplyIdentity('self');
+    setShowReplyMaskPicker(false);
+    setShowReply(false);
+  };
 
   return (
     <div className="border-b border-zinc-100">
@@ -92,7 +138,7 @@ export function ForumCommentItem({
               <span className="font-bold text-zinc-900 break-all hover:underline">{author.name}</span>
               {identityMeta && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${identityMeta.className}`}>{identityMeta.label}</span>}
               {isPostOwner && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700">楼主</span>}
-              {author.id !== 'user_8888' && <span className="text-zinc-500">●</span>}
+              {author.id !== 'user_8888' && <span className="text-zinc-500">·</span>}
               <span className="text-zinc-500 break-all">{handle}</span>
               <span className="text-zinc-500">·</span>
               <span className="text-zinc-500 shrink-0 hover:underline">{timeStr}</span>
@@ -160,7 +206,7 @@ export function ForumCommentItem({
             </div>
           )}
 
-          <p className="text-[14px] text-zinc-900 mt-0.5 whitespace-pre-wrap leading-snug">{comment.content}</p>
+          <ForumRichText content={comment.content} compact className="mt-1" />
 
           <div className="flex items-center justify-between mt-2 text-zinc-500 max-w-md pr-2">
             <button
@@ -201,16 +247,55 @@ export function ForumCommentItem({
           {showReply && (
             <div className="mt-3 space-y-2">
               <div className="flex items-center gap-2">
+                <div className="relative flex gap-2">
+                  {replyIdentity === 'self' && showReplyMaskPicker && availableReplyMasks.length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-2 flex min-w-28 flex-col gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreferPlainSelfReply(true);
+                          setReplyMaskId(undefined);
+                          setShowReplyMaskPicker(false);
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${!replyMaskId ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
+                      >
+                        本人
+                      </button>
+                      {availableReplyMasks.map((mask) => (
+                        <button
+                          key={mask.id}
+                          type="button"
+                          onClick={() => {
+                            setPreferPlainSelfReply(false);
+                            setReplyMaskId(mask.id);
+                            setShowReplyMaskPicker(false);
+                          }}
+                          className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${replyMaskId === mask.id ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
+                        >
+                          {mask.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplyIdentity('self');
+                      if (availableReplyMasks.length > 0) {
+                        setShowReplyMaskPicker((current) => !current);
+                      }
+                    }}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${replyIdentity === 'self' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
+                  >
+                    {selectedReplyMaskName || '本人'}
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setReplyIdentity('self')}
-                  className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${replyIdentity === 'self' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
-                >
-                  本人
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReplyIdentity('anonymous')}
+                  onClick={() => {
+                    setReplyIdentity('anonymous');
+                    setShowReplyMaskPicker(false);
+                  }}
                   className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${replyIdentity === 'anonymous' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
                 >
                   匿名
@@ -226,22 +311,12 @@ export function ForumCommentItem({
                   className="flex-1 bg-transparent text-[14px] outline-none placeholder-zinc-500"
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && replyText.trim()) {
-                      onReply(post.id, replyText.trim(), comment.id, comment.rootCommentId || comment.id, replyIdentity);
-                      setReplyText('');
-                      setReplyIdentity('self');
-                      setShowReply(false);
+                      submitReply();
                     }
                   }}
                 />
                 <button
-                  onClick={() => {
-                    if (replyText.trim()) {
-                      onReply(post.id, replyText.trim(), comment.id, comment.rootCommentId || comment.id, replyIdentity);
-                      setReplyText('');
-                      setReplyIdentity('self');
-                      setShowReply(false);
-                    }
-                  }}
+                  onClick={submitReply}
                   disabled={!replyText.trim()}
                   className={`px-4 py-1.5 rounded-full font-bold text-[14px] transition-all ${replyText.trim() ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
                 >

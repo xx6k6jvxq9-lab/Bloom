@@ -1,5 +1,10 @@
 import type { CharacterCoreSectionsInput } from '../character/characterCore';
 import type { MemoryContextInput } from '../character/memoryContext';
+import type {
+  RelationshipResidueItem,
+  TaskResidueItem,
+  TopicAnchorItem,
+} from '../../../relationship-context/types';
 
 /**
  * 预留给未来“char 主动行为调度层”的轻量动作类型。
@@ -56,6 +61,11 @@ export type CoupleSpaceRecentImageReference = {
 
 export type CoupleSpaceRecentContext = {
   currentSubScene?: string;
+  relationshipResidue?: RelationshipResidueItem[];
+  topicAnchors?: TopicAnchorItem[];
+  taskResidue?: TaskResidueItem[];
+  sharedRecentRelationshipSummary?: string;
+  publicAcquaintanceSummary?: string;
   recentCoupleSpaceSummary?: string;
   recentRelatedContentSummary?: string;
   recentSharedMomentsSummary?: string;

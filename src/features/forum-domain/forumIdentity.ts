@@ -1,6 +1,6 @@
 import type { Character, ForumComment, ForumPost } from '../../types';
 
-export type ForumIdentity = 'self' | 'anonymous' | 'character';
+export type ForumIdentity = 'self' | 'mask' | 'anonymous' | 'character';
 
 export type ForumIdentityBadgeMeta = {
   label: string;
@@ -15,6 +15,13 @@ export function getForumIdentityBadgeMeta(identity?: ForumIdentity): ForumIdenti
     };
   }
 
+  if (identity === 'mask') {
+    return {
+      label: '面具',
+      className: 'border border-amber-200 bg-amber-50 text-amber-700',
+    };
+  }
+
   return null;
 }
 
@@ -22,6 +29,7 @@ export function resolveForumPostIdentity(
   post: ForumPost,
   getCharacterById: (characterId: string) => Character | undefined,
 ): ForumIdentity {
+  if (post.authorMaskId) return 'mask';
   if (post.authorIdentity) return post.authorIdentity;
   if (getCharacterById(post.authorId)) return 'character';
   if (post.authorId.startsWith('seed-anon-')) return 'anonymous';
@@ -32,6 +40,7 @@ export function resolveForumCommentIdentity(
   comment: ForumComment,
   getCharacterById: (characterId: string) => Character | undefined,
 ): ForumIdentity {
+  if (comment.authorMaskId) return 'mask';
   if (comment.authorIdentity) return comment.authorIdentity;
   if (getCharacterById(comment.authorId)) return 'character';
   if (comment.authorId.startsWith('seed-anon-')) return 'anonymous';

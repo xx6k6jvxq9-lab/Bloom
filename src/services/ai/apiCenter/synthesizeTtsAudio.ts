@@ -1,4 +1,4 @@
-import type { ApiConfig } from '../../types';
+import type { ApiConfig } from '../../../types';
 import { saveUploadedBlob } from '../../../features/persistence/persistentAssetService';
 
 type SynthesizeTtsAudioParams = {

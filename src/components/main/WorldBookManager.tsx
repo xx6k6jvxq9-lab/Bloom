@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Book, Check, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Book, Check, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import type { WorldBookEntry } from '../../types';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
@@ -11,6 +11,7 @@ import {
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
 import { extractCompatibleWorldBookEntries } from '../../features/import/importCompat';
+import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 import { showInAppConfirm } from '../../utils';
 
 type WorldBookManagerProps = {
@@ -21,6 +22,51 @@ type WorldBookManagerProps = {
   globalBackground?: string;
   onAddCharacter?: (char: any) => void;
 };
+
+function normalizeCharacterIds(value: WorldBookEntry['characterIds']): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(value.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim())));
+}
+
+function normalizeWorldBookForRepair(entry: WorldBookEntry): WorldBookEntry {
+  const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+  const content = typeof entry.content === 'string' ? entry.content.trim() : '';
+
+  return {
+    ...entry,
+    title,
+    content,
+    category: normalizeWorldBookCategory(entry.category),
+    priorityLevel: normalizeWorldBookPriorityLevel(entry.priorityLevel),
+    isActive: entry.isActive !== false,
+    isGlobal: entry.isGlobal !== false,
+    characterIds: normalizeCharacterIds(entry.characterIds),
+    pinMode: entry.pinMode === 'always' ? 'always' : 'none',
+    chunkCache: buildWorldBookChunkCache({
+      id: entry.id,
+      content,
+    }),
+  };
+}
+
+function countWorldBookRepairChanges(previous: WorldBookEntry, next: WorldBookEntry): number {
+  let changes = 0;
+
+  if (previous.title !== next.title) changes += 1;
+  if (previous.content !== next.content) changes += 1;
+  if (normalizeWorldBookCategory(previous.category) !== next.category) changes += 1;
+  if (normalizeWorldBookPriorityLevel(previous.priorityLevel) !== next.priorityLevel) changes += 1;
+  if ((previous.isActive !== false) !== next.isActive) changes += 1;
+  if ((previous.isGlobal !== false) !== next.isGlobal) changes += 1;
+  if ((previous.pinMode === 'always' ? 'always' : 'none') !== next.pinMode) changes += 1;
+  if (JSON.stringify(normalizeCharacterIds(previous.characterIds)) !== JSON.stringify(next.characterIds || [])) changes += 1;
+  if (JSON.stringify(previous.chunkCache || []) !== JSON.stringify(next.chunkCache || [])) changes += 1;
+
+  return changes;
+}
 
 function getWorldBookScopeLabel(worldBook: WorldBookEntry): string {
   if (worldBook.isGlobal) {
@@ -82,6 +128,7 @@ export function WorldBookManager({
     isActive: true,
     isGlobal: true,
     characterIds: [],
+    pinMode: 'none',
   });
 
   const [editForm, setEditForm] = useState<Partial<WorldBookEntry>>(createEmptyForm());
@@ -123,8 +170,9 @@ export function WorldBookManager({
       return;
     }
 
+    const nextEntryId = editForm.id || Date.now().toString();
     const nextEntry: WorldBookEntry = {
-      id: editForm.id || Date.now().toString(),
+      id: nextEntryId,
       title,
       content,
       category: normalizeWorldBookCategory(editForm.category),
@@ -132,6 +180,11 @@ export function WorldBookManager({
       isActive: editForm.isActive ?? true,
       isGlobal: editForm.isGlobal ?? true,
       characterIds: editForm.characterIds || [],
+      pinMode: editForm.pinMode === 'always' ? 'always' : 'none',
+      chunkCache: buildWorldBookChunkCache({
+        id: nextEntryId,
+        content,
+      }),
     };
 
     if (editForm.id) {
@@ -194,6 +247,38 @@ export function WorldBookManager({
 
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleRepairLegacyWorldBooks = async () => {
+    if (worldBooks.length === 0) {
+      alert('当前没有可修复的世界书。');
+      return;
+    }
+
+    if (!(await showInAppConfirm('要批量修复当前全部世界书旧数据吗？这会补建 chunk 缓存、规范优先级/分类，并修正 pin 字段。'))) {
+      return;
+    }
+
+    let changedEntries = 0;
+    let changedFields = 0;
+    const repairedWorldBooks = worldBooks.map((entry) => {
+      const repaired = normalizeWorldBookForRepair(entry);
+      const changeCount = countWorldBookRepairChanges(entry, repaired);
+      if (changeCount > 0) {
+        changedEntries += 1;
+        changedFields += changeCount;
+      }
+      return repaired;
+    });
+
+    setWorldBooks(repairedWorldBooks);
+
+    if (changedEntries === 0) {
+      alert('检查完成：当前世界书数据已经是最新格式。');
+      return;
+    }
+
+    alert(`修复完成：共更新 ${changedEntries} 本世界书，修正 ${changedFields} 处旧数据。`);
   };
 
   return (
@@ -331,6 +416,18 @@ export function WorldBookManager({
                 <div className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${editForm.isActive ? 'translate-x-6.5' : 'translate-x-0.5'}`} />
               </button>
             </div>
+            <div className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 p-3">
+              <div>
+                <div className="text-[14px] font-bold text-zinc-800">钉住读取</div>
+                <div className="text-[11px] text-zinc-500">钉住后，这条世界书的相关片段会在预算内优先保留。</div>
+              </div>
+              <button
+                onClick={() => setEditForm({ ...editForm, pinMode: editForm.pinMode === 'always' ? 'none' : 'always' })}
+                className={`relative h-6 w-12 rounded-full transition-colors ${editForm.pinMode === 'always' ? 'bg-sky-500' : 'bg-zinc-300'}`}
+              >
+                <div className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${editForm.pinMode === 'always' ? 'translate-x-6.5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -343,6 +440,13 @@ export function WorldBookManager({
               <h3 className="text-[17px] font-bold">世界书</h3>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleRepairLegacyWorldBooks}
+                className="rounded-full p-2 text-emerald-600 transition-colors hover:bg-emerald-50"
+                title="批量修复旧世界书数据"
+              >
+                <RefreshCw size={18} />
+              </button>
               <label className="cursor-pointer rounded-full p-2 text-zinc-600 transition-colors hover:bg-black/5">
                 <Upload size={20} />
                 <input type="file" accept=".json" className="hidden" onChange={handleImport} />
@@ -402,6 +506,11 @@ export function WorldBookManager({
                         <span className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
                           {getWorldBookPriorityLabel(worldBook.priorityLevel)}优先
                         </span>
+                        {worldBook.pinMode === 'always' && (
+                          <span className="rounded border border-sky-100 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">
+                            钉住
+                          </span>
+                        )}
                         <span
                           className={`rounded px-1.5 py-0.5 text-[10px] ${
                             worldBook.isGlobal

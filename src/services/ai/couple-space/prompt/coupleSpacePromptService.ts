@@ -1,5 +1,6 @@
 import type { ApiConfig } from '../../../../types';
 import { resolveSceneTextApiConfig } from '../../apiCenter/resolveSceneApiConfig';
+import type { ApiCenterSettingsLike } from '../../apiCenter/types';
 import {
   buildCoupleCoNotePrompt,
   buildCoupleDailyCommentPrompt,
@@ -24,11 +25,16 @@ import { generateTextFromMessagesWithConfig } from '../../runtimeClient';
 export type CoupleSpaceSettingsLike = {
   activeConfigId?: string;
   configs?: ApiConfig[];
+  apiCenterConfig?: ApiCenterSettingsLike['apiCenterConfig'];
 };
 
 function resolveActiveConfig(settings: CoupleSpaceSettingsLike): ApiConfig | null {
   const activeConfig = resolveSceneTextApiConfig({
-    settings,
+    settings: {
+      activeConfigId: settings.activeConfigId,
+      configs: settings.configs ?? [],
+      apiCenterConfig: settings.apiCenterConfig,
+    },
     scene: 'default',
   }).runtimeConfig;
   return activeConfig?.apiKey ? activeConfig : null;

@@ -15,6 +15,9 @@ import { buildCharacterContext } from '../relationship-context/buildCharacterCon
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
+import { buildTemporalSnapshotPrompt } from '../relationship-time/buildTemporalSnapshotPrompt';
+import { buildPresenceSnapshotPrompt } from '../relationship-time/buildPresenceSnapshotPrompt';
+import { filterTopicAnchorsForPrompt, suppressTopicResidualsForPrompt } from '../chat/topicRecall';
 import { decayShortTermSummaryForContinuity } from '../memory/buildShortTermSummary';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
@@ -31,6 +34,8 @@ type BuildChatSceneInputParams = {
   includeProtocolRules?: boolean;
   directChatHistory?: ChatHistory;
   chatGroups?: ChatGroup[];
+  worldBookQuery?: string;
+  latestUserText?: string;
 };
 
 function getDirectMemoryReadableGroups(
@@ -91,6 +96,7 @@ function buildSharedGroupInteropSections(
 function buildExtraSections(input: {
   temporalStatePrompt?: string;
   continuityPrompt?: string;
+  activeDatingPrompt?: string;
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
@@ -99,6 +105,7 @@ function buildExtraSections(input: {
   return [
     input.temporalStatePrompt || '',
     input.continuityPrompt || '',
+    input.activeDatingPrompt || '',
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
       : '',
@@ -249,6 +256,14 @@ function formatTemporalStatePrompt(state: ReturnType<typeof buildCharacterTempor
   ].filter(Boolean).join('\n');
 }
 
+function limitResidueItems<T>(items: T[] | undefined, maxItems: number): T[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return items.slice(0, Math.max(0, maxItems));
+}
+
 export function buildChatSceneInput(
   params: BuildChatSceneInputParams,
 ): BuildChatPromptOptions {
@@ -263,6 +278,11 @@ export function buildChatSceneInput(
     character: params.character,
     activeMask: params.activeMask,
     activeWorldBooks: params.activeWorldBooks,
+    worldBookQuery: params.worldBookQuery,
+    worldBookRecentText: (params.directChatHistory?.[params.character.id] || [])
+      .slice(-8)
+      .map((message) => message.text?.trim() || '')
+      .filter(Boolean),
   });
   const relationshipProjection = buildRelationshipProjection({
     character: params.character,
@@ -300,21 +320,62 @@ export function buildChatSceneInput(
     userName: params.userName,
   };
   const recentContext: ChatRecentContext = {
-    shortTermSummary: characterScopedMemory.shortTermSummary
-      ? decayShortTermSummaryForContinuity(
-        characterScopedMemory.shortTermSummary,
-        characterTemporalState.continuityMode,
-      )
-      : characterScopedMemory.shortTermSummary,
-    recentCoupleSpaceSummary: sceneScopedSignals.recentCoupleSpaceSummary,
-    sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
+    shortTermSummary: suppressTopicResidualsForPrompt(
+      characterScopedMemory.shortTermSummary
+        ? decayShortTermSummaryForContinuity(
+          characterScopedMemory.shortTermSummary,
+          characterTemporalState.continuityMode,
+        )
+        : characterScopedMemory.shortTermSummary,
+      characterTemporalState.continuityMode,
+      params.latestUserText,
+    ),
+    relationshipResidue: limitResidueItems(sceneScopedSignals.relationshipResidue, 3),
+    sceneResidue: characterTemporalState.continuityMode === 'continuous_scene'
+      ? limitResidueItems(sceneScopedSignals.sceneResidue, 1)
+      : [],
+    topicAnchors: filterTopicAnchorsForPrompt(
+      sceneScopedSignals.topicAnchors,
+      characterTemporalState.continuityMode,
+      params.latestUserText,
+    ).slice(0, 2),
+    taskResidue: limitResidueItems(sceneScopedSignals.taskResidue, 2),
+    recentCoupleSpaceSummary: suppressTopicResidualsForPrompt(
+      sceneScopedSignals.recentCoupleSpaceSummary,
+      characterTemporalState.continuityMode,
+      params.latestUserText,
+    ),
+    sharedRecentRelationshipSummary: suppressTopicResidualsForPrompt(
+      sceneScopedSignals.sharedRecentRelationshipSummary,
+      characterTemporalState.continuityMode,
+      params.latestUserText,
+    ),
     publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
   };
   const budgetedContext = applyChatPromptBudget({
     recentContext,
     sections: buildExtraSections({
-      temporalStatePrompt: formatTemporalStatePrompt(characterTemporalState),
-      continuityPrompt: buildContinuityResumePrompt(characterTemporalState),
+      temporalStatePrompt: [
+        formatTemporalStatePrompt(characterTemporalState),
+        buildPresenceSnapshotPrompt({
+          state: characterTemporalState,
+          shortTermSummary: recentContext.shortTermSummary,
+          existingEntries: params.character.openLoopRegistry,
+          latestUserText: params.latestUserText,
+        }),
+      ].filter(Boolean).join('\n\n'),
+      continuityPrompt: [
+        buildTemporalSnapshotPrompt({ state: characterTemporalState }),
+        buildContinuityResumePrompt(characterTemporalState),
+      ].filter(Boolean).join('\n\n'),
+      activeDatingPrompt: params.character.activeDatingState
+        ? [
+            '## 进行中的约会共享语境',
+            params.character.activeDatingState.summary,
+            params.character.activeDatingState.relationshipResidue || '',
+            params.character.activeDatingState.boundaryNote || '',
+          ].filter(Boolean).join('\n')
+        : '',
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,
       extendedLore: characterContext.extendedLore,

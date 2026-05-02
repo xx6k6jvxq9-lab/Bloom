@@ -148,6 +148,7 @@ export function ChatSessionMount({
           characters={characters}
           chatGroups={chatGroups}
           setChatGroups={setChatGroups}
+          patchCharacter={patchCharacter}
           favorites={favorites}
           setFavorites={setFavorites}
           onBack={onBackToChat}

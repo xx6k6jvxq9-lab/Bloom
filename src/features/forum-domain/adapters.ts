@@ -14,7 +14,7 @@ const FORUM_LABEL_TO_CHANNEL = Object.entries(FORUM_CHANNEL_LABELS).reduce<Recor
   return acc;
 }, {});
 
-function inferAuthorType(authorId?: string): ForumAuthorType {
+function inferAuthorType(authorId?: string): Extract<ForumAuthorType, 'user' | 'anonymous' | 'forumNpc'> {
   if (!authorId) return 'anonymous';
   if (authorId.startsWith('user_')) return 'user';
   if (authorId.startsWith('seed-anon-') || authorId.includes('-mask-')) return 'anonymous';
@@ -55,7 +55,9 @@ export function legacyForumPostToThreadV2(
   });
 
   const threadType = options.threadType ?? post.threadType ?? 'normal';
-  const channel = inferForumChannelFromLegacyCategory(post.category);
+  const channel = post.board === 'spectator'
+    ? 'junction'
+    : inferForumChannelFromLegacyCategory(post.category);
   const comments: ForumCommentV2[] = sortedComments.map((comment) => ({
     id: comment.id,
     threadId: post.id,
@@ -75,6 +77,8 @@ export function legacyForumPostToThreadV2(
     body: post.content,
     channel,
     threadType,
+    contentTier: post.contentTier,
+    discourseAxis: post.discourseAxis,
     authorType: inferAuthorType(post.authorId),
     authorId: post.authorId,
     authorDisplayName: options.authorNameResolver?.(post.authorId) || post.authorId || '匿名楼主',
@@ -129,6 +133,8 @@ export function forumThreadV2ToLegacyPost(thread: ForumThreadV2): ForumPost {
     content: thread.body,
     category: FORUM_CHANNEL_LABELS[thread.channel],
     threadType: thread.threadType,
+    contentTier: thread.contentTier,
+    discourseAxis: thread.discourseAxis,
     timestamp: thread.createdAt,
     viewCount: thread.stats.views,
     likes: createSyntheticLikes(`forum-v2-like-${thread.id}`, thread.stats.likes),

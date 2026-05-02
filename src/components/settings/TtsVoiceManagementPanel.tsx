@@ -150,7 +150,9 @@ export function TtsVoiceManagementPanel({
       const voices = await fetchMinimaxVoices(config, 'all');
       setVoiceOptions(voices);
       const fetchedMineRecords: SavedTtsVoiceRecord[] = voices
-        .filter((voice) => voice.source === 'voice_cloning' || voice.source === 'voice_generation')
+        .filter((voice): voice is MinimaxVoiceRecord & { source: SavedTtsVoiceRecord['source'] } => (
+          voice.source === 'voice_cloning' || voice.source === 'voice_generation'
+        ))
         .map((voice) => {
           const existingRecord = savedVoiceRecords.find((record) => record.voiceId === voice.voiceId);
           const now = Date.now();

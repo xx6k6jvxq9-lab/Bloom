@@ -79,6 +79,9 @@ Add a second forum mode where forum users actively discuss the user and characte
 
 - [ ] Add a separate entry for `新世界` / spectator mode
 - [ ] Add world-shell selection
+- [ ] Split spectator targeting into `user slot` + `character slots` instead of one mixed `subject` field
+- [ ] Support multi-character spectator targeting with role weights: primary / secondary / equal
+- [ ] Allow spectator user slot to bind a specific user mask so spectator generation can read different user identities
 - [ ] Launch v1 with 3 world shells
   - [ ] campus forum
   - [ ] workplace board
@@ -92,6 +95,9 @@ Add a second forum mode where forum users actively discuss the user and characte
 - [ ] Public forum remains public-world discussion
 - [ ] Spectator mode becomes “people discussing the user and characters”
 - [ ] These two modes should not collapse into one undifferentiated feed
+- [ ] In spectator settings, `thread type` controls structure, `angles / clues` control content, and `user + characters` control who the crowd is discussing
+- [ ] A spectator target should be able to mean `user x role A x role B`, not only `user x single role`
+- [ ] User masks stay user-side identity filters; they affect how the crowd reads the user, but do not overwrite character identity
 
 ---
 
@@ -105,7 +111,6 @@ Turn current identity handling into a full forum identity system.
 
 - [x] self posting
 - [x] anonymous posting
-- [ ] character posting
 - [ ] anonymous commenting
 - [ ] channel masks
 - [ ] persistent hidden real identity mapping
@@ -113,8 +118,9 @@ Turn current identity handling into a full forum identity system.
 
 ### Required Deliverables
 
-- [ ] Posting supports self / anonymous / character
-- [ ] Commenting supports self / anonymous / character
+- [ ] Posting supports self / anonymous
+- [ ] Commenting supports self / anonymous
+- [ ] Character-driven posting remains system-driven instead of user-switchable
 - [ ] Frontstage identity and backstage real identity are separated
 - [ ] Anonymous interactions are still attributable in-system
 
@@ -152,4 +158,3 @@ The correct order is:
 5. memory write-back
 
 This is now the authoritative forum implementation order.
-

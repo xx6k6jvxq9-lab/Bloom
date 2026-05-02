@@ -5,7 +5,8 @@ import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
-import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
+import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
+import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 import {
   classifyMomentCommentType,
   getRecentMomentReplyContext,
@@ -83,15 +84,7 @@ function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[])
     ),
   );
 
-  return activeWorldBooks
-    .map((entry) => {
-      const title = entry.title?.trim();
-      const content = entry.content?.trim();
-      if (!title || !content) return '';
-      return `[${normalizeWorldBookCategory(entry.category)}] ${title}\n${content}`;
-    })
-    .filter(Boolean)
-    .join('\n\n');
+  return buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
 }
 
 function buildMomentCharacterCore(options: {
@@ -399,10 +392,22 @@ export async function generateMomentPostContent(options: {
   masks: Mask[];
   worldBook: WorldBookEntry[];
   requestText: string;
+  extraPromptSections?: string[];
 }): Promise<GeneratedMomentPost> {
-  const { activeConfig, character, masks, worldBook, requestText } = options;
+  const {
+    activeConfig,
+    character,
+    masks,
+    worldBook,
+    requestText,
+    extraPromptSections = [],
+  } = options;
   const fallback = getCleanMomentFallback();
   const momentMode = inferMomentPostMode(requestText);
+  const combinedRequestText = [
+    ...extraPromptSections.filter((section) => section.trim()),
+    requestText,
+  ].join('\n\n');
 
   const firstPrompt = buildBalancedMomentPostPrompt({
     character,
@@ -415,7 +420,7 @@ export async function generateMomentPostContent(options: {
   const firstPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: firstPrompt,
-    requestText: `Generate one publishable public post body. Trigger: ${requestText}`,
+    requestText: `Generate one publishable public post body. Trigger: ${combinedRequestText}`,
     fallback,
   }));
 
@@ -447,7 +452,7 @@ export async function generateMomentPostContent(options: {
   const secondPass = normalizeGeneratedMomentContent(await generateSingleText({
     activeConfig,
     prompt: retryPrompt,
-    requestText: `Regenerate one publishable public post body. Trigger: ${requestText}`,
+    requestText: `Regenerate one publishable public post body. Trigger: ${combinedRequestText}`,
     fallback,
   }));
 

@@ -1,5 +1,13 @@
-import type { Character, CharacterAvatarLibraryEntry, MemoryLibraryEntry } from '../../types';
+import type {
+  CharacterActiveDatingState,
+  Character,
+  CharacterAvatarLibraryEntry,
+  CharacterOpenLoopEntry,
+  CharacterPresenceState,
+  MemoryLibraryEntry,
+} from '../../types';
 import { normalizeMemoryLibraryEntries } from '../../services/memory/memoryLibrary';
+import type { CharacterSharedContextSnapshot } from '../../services/relationship-context/types';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
 
 function normalizeOptionalText(value: unknown): string | undefined {
@@ -80,6 +88,194 @@ function normalizeReplyLanguageMode(value: unknown): Character['replyLanguageMod
     : 'follow-user';
 }
 
+function normalizeOpenLoopRegistry(value: unknown): CharacterOpenLoopEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const entries = value
+    .map((item): CharacterOpenLoopEntry | null => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const content = normalizeOptionalText(record.content);
+      if (!content) return null;
+
+      const kind = record.kind === 'scene'
+        || record.kind === 'relationship'
+        || record.kind === 'task'
+        ? record.kind
+        : 'unknown';
+      const status = record.status === 'active'
+        || record.status === 'waiting_user'
+        || record.status === 'dormant'
+        || record.status === 'resolved'
+        ? record.status
+        : 'waiting_user';
+      const source = record.source === 'short_term_summary'
+        || record.source === 'recent_history'
+        || record.source === 'manual'
+        ? record.source
+        : 'manual';
+      const createdAt = Number.isFinite(record.createdAt) ? Math.max(0, Math.floor(record.createdAt as number)) : Date.now();
+      const lastTouchedAt = Number.isFinite(record.lastTouchedAt) ? Math.max(0, Math.floor(record.lastTouchedAt as number)) : createdAt;
+      const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : lastTouchedAt;
+
+      return {
+        id: normalizeOptionalText(record.id) || `open-loop-${createdAt}-${Math.random().toString(16).slice(2)}`,
+        kind,
+        status,
+        source,
+        content,
+        createdAt,
+        lastTouchedAt,
+        updatedAt,
+        ...(normalizeOptionalText(record.resumeHint) ? { resumeHint: normalizeOptionalText(record.resumeHint) } : {}),
+      };
+    })
+    .filter((entry): entry is CharacterOpenLoopEntry => Boolean(entry));
+
+  return entries.length > 0 ? entries : undefined;
+}
+
+function normalizePresenceState(value: unknown): CharacterPresenceState | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const record = value as Record<string, unknown>;
+  const lastSeenAt = Number.isFinite(record.lastSeenAt) ? Math.max(0, Math.floor(record.lastSeenAt as number)) : null;
+  const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : lastSeenAt;
+  if (lastSeenAt == null || updatedAt == null) {
+    return undefined;
+  }
+
+  return {
+    lastSeenAt,
+    availability: record.availability === 'live'
+      || record.availability === 'recent'
+      || record.availability === 'returning'
+      ? record.availability
+      : 'away',
+    updatedAt,
+    ...(normalizeOptionalText(record.recentLifeBeat) ? { recentLifeBeat: normalizeOptionalText(record.recentLifeBeat) } : {}),
+    ...(record.resumeTone === 'natural_continue'
+      || record.resumeTone === 'soft_return'
+      || record.resumeTone === 'fresh_reentry'
+      ? { resumeTone: record.resumeTone }
+      : {}),
+  };
+}
+
+function normalizeActiveDatingState(value: unknown): CharacterActiveDatingState | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const record = value as Record<string, unknown>;
+  const sessionId = normalizeOptionalText(record.sessionId);
+  const summary = normalizeOptionalText(record.summary);
+  const startedAt = Number.isFinite(record.startedAt) ? Math.max(0, Math.floor(record.startedAt as number)) : null;
+  const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : startedAt;
+  if (!sessionId || !summary || startedAt == null || updatedAt == null) {
+    return undefined;
+  }
+
+  return {
+    sessionId,
+    summary,
+    startedAt,
+    updatedAt,
+    status: 'active',
+    ...(normalizeOptionalText(record.relationshipResidue)
+      ? { relationshipResidue: normalizeOptionalText(record.relationshipResidue) }
+      : {}),
+    ...(normalizeOptionalText(record.boundaryNote)
+      ? { boundaryNote: normalizeOptionalText(record.boundaryNote) }
+      : {}),
+  };
+}
+
+function normalizeSharedContextSnapshots(value: unknown): CharacterSharedContextSnapshot[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const normalizeTypedItems = <T extends { summary: string; timestamp: number }>(
+    items: unknown,
+    expectedType: 'relationship_residue' | 'scene_residue' | 'topic_anchor' | 'task_residue',
+  ): T[] | undefined => {
+    if (!Array.isArray(items)) return undefined;
+
+    const normalized = items
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const record = item as Record<string, unknown>;
+        const summary = normalizeOptionalText(record.summary);
+        const timestamp = Number.isFinite(record.timestamp) ? Math.max(0, Math.floor(record.timestamp as number)) : null;
+        if (!summary || timestamp == null) {
+          return null;
+        }
+
+        return {
+          type: record.type === expectedType ? record.type : expectedType,
+          summary,
+          sourceScene:
+            record.sourceScene === 'direct_chat'
+            || record.sourceScene === 'group_chat'
+            || record.sourceScene === 'dating'
+            || record.sourceScene === 'music_together'
+            || record.sourceScene === 'couple_space'
+            || record.sourceScene === 'moments'
+              ? record.sourceScene
+              : 'dating',
+          timestamp,
+          decay: record.decay === 'stable' || record.decay === 'medium' ? record.decay : 'short',
+          visibility:
+            record.visibility === 'private'
+            || record.visibility === 'group_public'
+            || record.visibility === 'cross_scene_readable'
+              ? record.visibility
+              : 'cross_scene_readable',
+        } as unknown as T;
+      })
+      .filter((entry): entry is T => Boolean(entry));
+
+    return normalized.length > 0 ? normalized : undefined;
+  };
+
+  const snapshots = value
+    .map((item): CharacterSharedContextSnapshot | null => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const settledAt = Number.isFinite(record.settledAt) ? Math.max(0, Math.floor(record.settledAt as number)) : null;
+      if (settledAt == null) {
+        return null;
+      }
+
+      const sourceScene =
+        record.sourceScene === 'direct_chat'
+        || record.sourceScene === 'group_chat'
+        || record.sourceScene === 'dating'
+        || record.sourceScene === 'music_together'
+        || record.sourceScene === 'couple_space'
+        || record.sourceScene === 'moments'
+          ? record.sourceScene
+          : 'dating';
+
+      return {
+        sourceScene,
+        settledAt,
+        ...(normalizeTypedItems(record.relationshipResidue, 'relationship_residue')
+          ? { relationshipResidue: normalizeTypedItems(record.relationshipResidue, 'relationship_residue') }
+          : {}),
+        ...(normalizeTypedItems(record.sceneResidue, 'scene_residue')
+          ? { sceneResidue: normalizeTypedItems(record.sceneResidue, 'scene_residue') }
+          : {}),
+        ...(normalizeTypedItems(record.topicAnchors, 'topic_anchor')
+          ? { topicAnchors: normalizeTypedItems(record.topicAnchors, 'topic_anchor') }
+          : {}),
+        ...(normalizeTypedItems(record.taskResidue, 'task_residue')
+          ? { taskResidue: normalizeTypedItems(record.taskResidue, 'task_residue') }
+          : {}),
+      };
+    })
+    .filter((entry): entry is CharacterSharedContextSnapshot => Boolean(entry));
+
+  return snapshots.length > 0 ? snapshots : undefined;
+}
+
 function createLegacyShortTermMemoryEntry(character: Character, content: string): MemoryLibraryEntry {
   const createdAt = Number.isFinite(character.lastTime) ? Math.max(0, Math.floor(character.lastTime as number)) : Date.now();
   const date = new Date(createdAt);
@@ -113,6 +309,10 @@ export function migrateCharacterShape(character: Character): Character {
   const nativeLanguage = normalizeOptionalText(character.nativeLanguage);
   const fixedReplyLanguage = normalizeOptionalText(character.fixedReplyLanguage);
   const avatarLibraryEntries = normalizeAvatarLibraryEntries(character.avatarLibrary?.entries);
+  const openLoopRegistry = normalizeOpenLoopRegistry(character.openLoopRegistry);
+  const presenceState = normalizePresenceState(character.presenceState);
+  const activeDatingState = normalizeActiveDatingState(character.activeDatingState);
+  const sharedContextSnapshots = normalizeSharedContextSnapshots(character.sharedContextSnapshots);
   let memoryLibraryEntries = normalizeMemoryLibraryEntries(character.memoryLibraryEntries);
   if (
     shortTermSummary &&
@@ -137,6 +337,10 @@ export function migrateCharacterShape(character: Character): Character {
     shortTermSummary,
     longTermMemoryProfile,
     memoryLibraryEntries,
+    openLoopRegistry,
+    presenceState,
+    activeDatingState,
+    sharedContextSnapshots,
     avatarLibrary: avatarLibraryEntries
       ? {
           entries: avatarLibraryEntries,

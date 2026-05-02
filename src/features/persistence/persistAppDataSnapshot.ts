@@ -1,4 +1,4 @@
-import type { AppData, ForumData, WalletData } from '../../types';
+import type { AppData, ForumData, ForumSpectatorSettings, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
 import {
   extractDirectFactTraces,
@@ -20,6 +20,22 @@ import { persistVisualSettings } from './visualSettingsStore';
 import { persistWalletData } from './walletDataStore';
 import { persistChatOrganization } from './chatOrganizationStore';
 import { saveCallHistory } from './callHistoryStore';
+import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+
+const EMPTY_SPECTATOR_SETTINGS: ForumSpectatorSettings = {
+  subjectName: '',
+  relationshipSummary: '',
+  tone: undefined,
+  worldShell: undefined,
+  angles: [],
+  autoGenerate: false,
+  selectedCharacterIds: [],
+  userSlot: { mode: 'self' },
+  targetCharacters: [],
+  targetPresets: [],
+  defaultThreadTypePool: [],
+  cluePool: [],
+};
 
 const EMPTY_FORUM_DATA: ForumData = {
   posts: [],
@@ -29,13 +45,8 @@ const EMPTY_FORUM_DATA: ForumData = {
   tempChats: {},
   runtimeAuthorProfiles: {},
   composerDraft: null,
-  spectatorSettings: {
-    subjectName: '',
-    relationshipSummary: '',
-    tone: '吃瓜围观',
-    autoGenerate: false,
-    selectedCharacterIds: [],
-  },
+  spectatorSettings: EMPTY_SPECTATOR_SETTINGS,
+  globalSettings: DEFAULT_FORUM_GLOBAL_SETTINGS,
 };
 
 const EMPTY_WALLET_DATA: WalletData = {

@@ -1,35 +1,137 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Search, Bell, User, PenSquare, Heart, MessageCircle, Share2, 
-  MoreHorizontal, Image as ImageIcon, Send, X, 
+  Search, Bell, User, PenSquare, Share2, 
+  Image as ImageIcon, Send, X, 
   ThumbsUp, Flag, Trash2, Edit2, MessageSquare, Flame, Clock,
   Camera, Check, LogOut, Key, Settings, Repeat, BarChart2, Feather,
   CheckCircle2, ArrowLeft, Home, Mail, Plus, Bookmark, Link2, AlertTriangle
 } from 'lucide-react';
-import { AppDataExtended, ForumPost, ForumComment, ForumNotification, UserProfileExtended, Character, ForumData, AppSettings, ForumTempChatSession, ForumTempChatMessage, ForumTempChatPendingReply, ForumRuntimeAuthorProfile, ForumSpectatorSettings } from '../../../types';
+import {
+  AppDataExtended,
+  ForumPost,
+  ForumComment,
+  UserProfileExtended,
+  Character,
+  ForumData,
+  AppSettings,
+  ForumTempChatSession,
+  ForumRuntimeAuthorProfile,
+  ForumSpectatorSettings,
+  ForumSpectatorTargetCharacter,
+  ForumSpectatorTargetPreset,
+  ForumSpectatorObjectMode,
+  Mask,
+} from '../../../types';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
-import { buildInitialForumSeedPosts, FORUM_SEED_NPC_PROFILES, getForumSeedAuthorProfile, registerForumRuntimeAuthorProfile } from '../../../features/forum-domain/seedThreadsCatalog';
+import { buildInitialForumSeedPosts, getForumSeedAuthorProfile, registerForumRuntimeAuthorProfile } from '../../../features/forum-domain/seedThreadsCatalog';
 import { appendRepliesToForumThreadV2, legacyForumPostToThreadV2, forumThreadV2ToLegacyPost } from '../../../features/forum-domain/adapters';
 import { FORUM_CHANNEL_LABELS, FORUM_THREAD_TYPE_LABELS } from '../../../features/forum-domain/constants';
+import { FORUM_CHANNEL_TABS, FORUM_FILTER_THREAD_TYPES, getForumThreadTypeMeta } from '../../../features/forum-domain/forumPresentation';
 import type { ForumChannel, ForumThreadType } from '../../../features/forum-domain/types';
-import { buildCharacterForumHabit, buildForumCharacterHandle, buildForumCharacterPostTitle, buildReadableForumHandle } from '../../../features/forum-domain/characterForumPersona';
+import { buildCharacterForumHabit, buildForumCharacterPostTitle, buildReadableForumHandle } from '../../../features/forum-domain/characterForumPersona';
 import { getForumIdentityBadgeMeta, isCurrentUserCommentAuthor as isCurrentUserCommentOwner, isCurrentUserPostAuthor as isCurrentUserPostOwner, resolveForumCommentIdentity, resolveForumPostIdentity } from '../../../features/forum-domain/forumIdentity';
-import { buildDefaultSpectatorSettings, buildSpectatorPostDrafts, SPECTATOR_BOARD_AUTHOR_PREFIX, SPECTATOR_BOARD_CATEGORY } from '../../../features/forum-domain/spectatorBoard';
+import {
+  buildDefaultSpectatorSettings,
+  buildRandomSpectatorSettings,
+  normalizeSpectatorTargetCharacters,
+  normalizeSpectatorUserSlot,
+  resolveAutoSpectatorFlavor,
+  SPECTATOR_BOARD_AUTHOR_PREFIX,
+  SPECTATOR_BOARD_CATEGORY,
+  SPECTATOR_BOARD_LABEL,
+  SPECTATOR_RELATIONSHIP_HINTS,
+} from '../../../features/forum-domain/spectatorBoard';
+import { buildSpectatorAuthorProfile, buildSpectatorRuntimeHandle, parseSpectatorAuthorShell, resolveSpectatorWorldShell, SPECTATOR_WORLD_SHELLS, type SpectatorWorldShell } from '../../../features/forum-domain/spectatorWorldShells';
 import { SpectatorSettingsView } from './SpectatorSettingsView';
 import { ForumResolvedImage as ResolvedImage } from './ForumResolvedImage';
 import { ForumCommentItem } from './ForumCommentItem';
 import { ForumPostCard } from './ForumPostCard';
 import { ForumHomeHeader } from './ForumHomeHeader';
+import { ForumBrowseFilterSheet } from './ForumBrowseFilterSheet';
 import { ForumTempChatView } from './ForumTempChatView';
+import { ForumFollowListView } from './ForumFollowListView';
+import { ForumPostDetailView } from './ForumPostDetailView';
+import { ForumUserProfileView } from './ForumUserProfileView';
+import { ForumOpenSettingsRoute, type ForumOpenDraft } from './ForumOpenSettingsRoute';
+import { ForumAuthorProfileEditor } from './ForumAuthorProfileEditor';
+import { ForumMessageManageSheet } from './ForumMessageManageSheet';
+import { ForumProfilePostCard } from './ForumProfilePostCard';
+import { ForumTrendListView, type ForumTrendListItem } from './ForumTrendListView';
+import { ForumSettingsRoute } from './ForumSettingsRoute';
+import { ForumMessageCenterView } from './ForumMessageCenterView';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
-import { generateForumReplies } from '../../../services/forum/generateForumReplies';
-import { generateForumThreads, type GeneratedForumAuthorDraft } from '../../../services/forum/generateForumThreads';
-import { generateForumTempReply } from '../../../services/forum/generateForumTempReply';
+import { generateSpectatorThreads } from '../../../services/forum/generateSpectatorThreads';
+import { maybeGenerateSpectatorCharacterPost, maybeGenerateSpectatorCharacterReply } from '../../../services/forum/generateSpectatorCharacterActivity';
+import { maybeGenerateCharacterForumReplyActivity } from '../../../services/forum/generateCharacterForumActivity';
+import { buildCharacterForumRuntimeProfile } from '../../../services/forum/buildCharacterForumRuntimeProfile';
+import {
+  buildUpdatedCurrentUserForumProfiles,
+  resolveCurrentUserForumProfile,
+} from '../../../services/forum/currentUserForumProfile';
+import { generateCharacterForumRuntimeProfile } from '../../../services/forum/generateCharacterForumRuntimeProfile';
+import { resolveCharacterForumDisplayProfile } from '../../../services/forum/resolveCharacterForumDisplayProfile';
+import { syncCharacterForumProfiles } from '../../../services/forum/syncCharacterForumProfiles';
+import { shouldSyncCharacterForumProfile } from '../../../services/forum/shouldSyncCharacterForumProfile';
+import { openForumThreads } from '../../../services/forum/openForumThreads';
+import { applyForumHotState, markForumHotContinuation } from '../../../services/forum/forumHotState';
+import { buildForumMomentumCandidates } from '../../../services/forum/buildForumMomentumCandidates';
+import { evaluateForumUserMomentum } from '../../../services/forum/evaluateForumUserMomentum';
+import { generateForumTempOpening } from '../../../services/forum/generateForumTempOpening';
+import { createSpectatorPosts } from '../../../services/forum/createSpectatorPosts';
+import {
+  applyForumAutoNpcChatsCleared,
+  applyForumChatsRead,
+  applyForumNotificationsCleared,
+  applyForumNotificationsRead,
+  applyForumStrangerChatsCleared,
+  applySingleForumChatRemoved,
+  applySingleForumNotificationRemoved,
+} from '../../../services/forum/manageForumMessages';
+import { getForumTrendBreakdown, getForumTrendMeta, getForumTrendScore, normalizeForumTrendStates } from '../../../services/forum/forumPostActivity';
+import { togglePinnedForumChat, togglePinnedForumPost, sortForumIdsWithPins, sortForumPostsWithPins } from '../../../services/forum/manageForumPins';
+import { buildForumPostMeta, buildForumReplyPlan, diversifyForumPosts } from '../../../services/forum/forumOrchestration';
+import { castForumPollVote, ensureForumPollState } from '../../../services/forum/forumPoll';
+import { appendForumPostFooterTags } from '../../../services/forum/forumPostTags';
+import { orchestrateForumReplies } from '../../../services/forum/orchestrateForumReplies';
+import { inferForumContentTier, inferForumDiscourseAxis } from '../../../services/forum/forumContentTier';
+import {
+  addForumComment,
+  toggleForumCommentLike,
+  toggleForumPostLike,
+} from '../../../services/forum/forumPostInteractions';
+import { buildSpectatorGenerationBatches } from '../../../services/forum/buildSpectatorGenerationBatches';
+import { buildSpectatorDraftText, parseSpectatorDraftChips, pickRandomSpectatorDraftValues, toggleSpectatorDraftValue } from '../../../services/forum/spectatorSettingsDraft';
+import { DEFAULT_FORUM_GLOBAL_SETTINGS, normalizeForumGlobalSettings } from '../../../services/forum/forumGlobalSettings';
+import { resolveForumGenerationContext } from '../../../services/forum/forumGenerationContext';
+import { buildPublicViewSummary, toggleForumChannelSelection } from '../../../services/forum/forumPublicViewState';
+import {
+  buildSpectatorTargetLabel,
+  buildSpectatorTargetPreset,
+  cycleSpectatorTargetCharacterRole,
+  deriveTargetCharactersFromIds,
+  toggleSpectatorTargetCharacterSelection,
+} from '../../../services/forum/spectatorSettingsManager';
 import { generateMomentPostContent } from '../../../services/moments/generators';
 import { extractImageUrls, showInAppConfirm } from '../../../utils';
+import { getForumNotificationActionText } from '../../../services/forum/forumNotifications';
+import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
+import {
+  createEmptyForumTempChatSession,
+} from '../../../services/forum/forumTempChatState';
+import {
+  buildForumMessageCenterData,
+  type ForumMessageNotificationItem,
+} from '../../../services/forum/forumMessageCenter';
+import {
+  processPendingForumTempReply,
+  resolveForumTempSession,
+} from '../../../services/forum/forumTempChatRuntime';
+import { createForumTempUserMessage, queueForumTempUserMessage } from '../../../services/forum/forumTempChatCompose';
+import { appendForumNotification } from '../../../services/forum/forumNotificationState';
+import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
 
 type ForumAppProps = {
   appData: AppDataExtended;
@@ -57,25 +159,25 @@ type ForumNotice = {
   message: string;
 };
 
-const FORUM_CHANNEL_TABS = [
-  { id: 'junction', label: '交界', blurb: '跨世界公共区' },
-  { id: 'present', label: '今世', blurb: '校园打工和现实树洞' },
-  { id: 'oldDynasty', label: '旧朝', blurb: '名分礼法和宅院弯话' },
-  { id: 'xianmen', label: '仙门', blurb: '情劫心魔和破戒现场' },
-  { id: 'otherworld', label: '异域', blurb: '冒险队和种族误读' },
-  { id: 'starSea', label: '星海', blurb: '权限白名单和高冷越界' },
-  { id: 'weird', label: '怪谈', blurb: '规则异常和目击记录' },
-  { id: 'cyber', label: '赛博城', blurb: '日志监控和越权关系' },
-] as const;
+type EditorIdentityMode = 'self' | 'mask' | 'anonymous';
 
 type ForumChannelTabId = typeof FORUM_CHANNEL_TABS[number]['id'];
 
-const ANIME_AVATAR_STYLES = ['lorelei', 'adventurer'] as const;
+const ANIME_AVATAR_STYLES = ['lorelei', 'lorelei-neutral'] as const;
+
+function isForumGeneratedAvatar(value?: string) {
+  return !!value && /api\.dicebear\.com\/9\.x\//.test(value);
+}
 
 function buildAnimeAvatar(seed: string, label?: string) {
   const style = ANIME_AVATAR_STYLES[hashString(seed) % ANIME_AVATAR_STYLES.length];
   const safeSeed = `${label || seed}-${hashString(seed).toString(36).slice(0, 4)}`;
-  return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(safeSeed)}&backgroundType=gradientLinear&backgroundColor=fce7f3,dbeafe,e9d5ff,ccfbf1`;
+  return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(safeSeed)}&backgroundType=gradientLinear&backgroundColor=ffe4ef,ffeef8,e8f2ff,f3ecff&radius=50&scale=110&translateY=-2`;
+}
+
+function resolveForumAvatar(avatar: string | undefined, seed: string, label?: string) {
+  if (avatar && !isForumGeneratedAvatar(avatar)) return avatar;
+  return buildAnimeAvatar(seed, label);
 }
 
 function looksMachineGeneratedHandle(value?: string) {
@@ -87,28 +189,15 @@ function looksMachineGeneratedHandle(value?: string) {
 
 const formatForumHandle = (author: ForumAuthor) => {
   if (author.handle && !looksMachineGeneratedHandle(author.handle)) return `@${author.handle}`;
-  if (author.id.startsWith('forum_runtime_') || author.id.startsWith('generated-') || !author.handle) {
-    return `@${buildReadableForumHandle({ id: author.id, name: author.name })}`;
-  }
-  return `@${author.id.replace('user_', 'u').replace('char_', 'c')}`;
+  return `@${buildReadableForumHandle({
+    id: author.handle || author.id,
+    name: author.name,
+  })}`;
 };
 
 function formatCurrentUserForumHandle(userId: string) {
   if (!userId.trim()) return '@未设置ID';
   return `@${userId.replace(/^@/, '').trim()}`;
-}
-
-const VALID_THREAD_TYPE_SET = new Set<ForumThreadType>(['normal', 'rift', 'sameTopic', 'commission', 'reversal', 'ownerUpdate']);
-
-function getForumThreadTypeMeta(threadType?: string) {
-  const normalized = typeof threadType === 'string' && VALID_THREAD_TYPE_SET.has(threadType as ForumThreadType)
-    ? threadType as ForumThreadType
-    : 'normal';
-
-  return {
-    label: FORUM_THREAD_TYPE_LABELS[normalized],
-    className: 'border border-zinc-200 bg-white text-zinc-700',
-  };
 }
 
 const resolveSeedFallbackTheme = (seedId: string) => {
@@ -129,6 +218,7 @@ const FORUM_CHANNEL_LABEL_TO_ID = Object.entries(FORUM_CHANNEL_LABELS).reduce<Re
   acc[label] = channel as ForumChannel;
   return acc;
 }, {});
+const SPECTATOR_OPEN_THREAD_TOTAL_COUNT = 10;
 
 const inferForumChannelFromCategory = (category: string): ForumChannel =>
   FORUM_CHANNEL_LABEL_TO_ID[category] || 'junction';
@@ -169,6 +259,11 @@ function normalizeForumPostFingerprint(value: string) {
 
 const DEFAULT_SPECTATOR_SETTINGS = buildDefaultSpectatorSettings();
 
+function pickRandomItem<T>(items: T[]): T | undefined {
+  if (!items.length) return undefined;
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 function areStringListsEqual(left: string[] = [], right: string[] = []) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
@@ -190,6 +285,53 @@ function hashString(value: string) {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash;
+}
+
+function formatCompactMetric(value: number) {
+  if (value >= 10000) return `${(value / 10000).toFixed(1)}w`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return `${value}`;
+}
+
+function buildSearchSnippet(text: string, query: string, radius = 28) {
+  const source = (text || '').replace(/\s+/g, ' ').trim();
+  if (!source) return '';
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return source.slice(0, radius * 2);
+
+  const hitIndex = source.toLowerCase().indexOf(normalizedQuery);
+  if (hitIndex < 0) return source.slice(0, radius * 2);
+
+  const start = Math.max(0, hitIndex - radius);
+  const end = Math.min(source.length, hitIndex + normalizedQuery.length + radius);
+  const prefix = start > 0 ? '...' : '';
+  const suffix = end < source.length ? '...' : '';
+  return `${prefix}${source.slice(start, end)}${suffix}`;
+}
+
+function buildHotInsight(post: ForumPost) {
+  const breakdown = getForumTrendBreakdown(post);
+  if (breakdown.velocityScore >= 14) {
+    return `近期增速很快，${post.comments.length} 条回复把这楼顶上来了。`;
+  }
+  if (breakdown.discussionScore >= 8) {
+    return `讨论层数够深，串楼回复和接话都在继续扩散。`;
+  }
+  if (post.collections.length >= 4) {
+    return `收藏转存比较多，这类帖子后劲通常会更长。`;
+  }
+  if (post.likes.length >= 10) {
+    return `喜欢反馈稳定，说明这条内容已经出圈到更泛的人群。`;
+  }
+  return `阅读和互动都在稳步积累，属于会被继续翻出来的帖子。`;
+}
+
+function buildMaskDisplayBio(mask: Mask) {
+  return [mask.occupation, mask.personality, mask.relationship, mask.worldBackground]
+    .map((item) => item?.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' · ');
 }
 
 function buildTempChatReplyPolicy(author: ForumAuthor, session: ForumTempChatSession) {
@@ -228,33 +370,12 @@ function buildTempChatReplyPolicy(author: ForumAuthor, session: ForumTempChatSes
   };
 }
 
-function buildForumNpcBridgeCharacter(author: ForumAuthor): Character {
-  const profileText = author.description || author.bio || `${author.name}是在界隙论坛长期活跃的 AI 网友。`;
-  return {
-    id: author.id,
-    name: author.name,
-    gender: 'other',
-    avatar: author.avatar,
-    setting: profileText,
-    corePersona: profileText,
-    signature: author.bio || author.description || `${author.name}常驻论坛，回帖风格很稳定。`,
-    openingRemark: '你来得挺快。现在我们换个地方继续聊。',
-    lastMessage: '你来得挺快。现在我们换个地方继续聊。',
-    lastTime: Date.now(),
-    groupId: '论坛网友',
-    maxReplies: 3,
-    autoReplyEnabled: true,
-    postFrequency: 'medium',
-    showTime: true,
-  };
-}
-
 export default function ForumApp({ appData, onUpdateAppData, onClose, settings, onOpenChat, initialPostId }: ForumAppProps) {
   const forumTopInsetStyle = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' };
   const forumBottomInsetStyle = { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' };
   const forumBottomNavStyle = { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' };
   const [activeTab, setActiveTab] = useState<'home' | 'hot' | 'notification' | 'profile'>('home');
-  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'editor' | 'edit-profile' | 'user-profile' | 'temp-chat' | 'follow-list' | 'spectator-settings'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'editor' | 'edit-profile' | 'edit-author-profile' | 'user-profile' | 'temp-chat' | 'follow-list' | 'spectator-settings' | 'forum-settings' | 'public-open-settings'>('list');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [followListMode, setFollowListMode] = useState<'following' | 'followers'>('following');
   const [followListUserId, setFollowListUserId] = useState<string | null>(null);
@@ -269,18 +390,31 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [activeTempChatUserId, setActiveTempChatUserId] = useState<string | null>(null);
+  const [tempChatReturnTarget, setTempChatReturnTarget] = useState<'messages' | 'user-profile'>('user-profile');
   const [homeFilter, setHomeFilter] = useState<'latest' | 'hot'>('latest');
   const [forumBoard, setForumBoard] = useState<'public' | 'spectator'>('public');
-  const [threadTypeFilter, setThreadTypeFilter] = useState<'all' | ForumThreadType>('all');
-  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [publicOpenDraft, setPublicOpenDraft] = useState<ForumOpenDraft>({
+    mode: 'random',
+    selectedChannels: ['junction'],
+    selectedThreadTypes: [],
+    preferredTopicText: '',
+    preferredSceneText: '',
+    preferredConflictText: '',
+    preferredRelationshipText: '',
+    excludedTopicText: '',
+  });
+  const [publicViewChannels, setPublicViewChannels] = useState<ForumChannel[]>([]);
+  const [showBrowseFilterSheet, setShowBrowseFilterSheet] = useState(false);
   const [activeChannel, setActiveChannel] = useState<ForumChannelTabId>('junction');
   const [profileTab, setProfileTab] = useState<'posts' | 'replies' | 'likes'>('posts');
   const [searchQuery, setSearchQuery] = useState('');
+  const [hotSearchQuery, setHotSearchQuery] = useState('');
   
   // Editor State
   const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [editorImages, setEditorImages] = useState<string[]>([]);
+  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
 
@@ -288,10 +422,14 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const [editName, setEditName] = useState('');
   const [editId, setEditId] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editingForumAuthorId, setEditingForumAuthorId] = useState<string | null>(null);
   const [editAvatar, setEditAvatar] = useState('');
   const [editAvatarUrlInput, setEditAvatarUrlInput] = useState('');
-  const [editorIdentity, setEditorIdentity] = useState<'self' | 'anonymous'>('self');
-  const [commentIdentity, setCommentIdentity] = useState<'self' | 'anonymous'>('self');
+  const [profileEditReturnView, setProfileEditReturnView] = useState<'list' | 'forum-settings'>('list');
+  const [editorIdentity, setEditorIdentity] = useState<EditorIdentityMode>('self');
+  const [editorMaskId, setEditorMaskId] = useState<string | undefined>(undefined);
+  const [editorChannel, setEditorChannel] = useState<ForumChannelTabId>('junction');
+  const [editorThreadType, setEditorThreadType] = useState<ForumThreadType | 'auto'>('auto');
 
   // Post Detail State
   const [mainReplyText, setMainReplyText] = useState('');
@@ -303,14 +441,29 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const [forumNotice, setForumNotice] = useState<ForumNotice | null>(null);
   const [spectatorSubjectName, setSpectatorSubjectName] = useState('');
   const [spectatorRelationshipSummary, setSpectatorRelationshipSummary] = useState('');
-  const [spectatorTone, setSpectatorTone] = useState<ForumSpectatorSettings['tone']>('吃瓜围观');
+  const [spectatorObjectMode, setSpectatorObjectMode] = useState<ForumSpectatorObjectMode>('user_with_characters');
+  const [spectatorTopicHint, setSpectatorTopicHint] = useState('');
+  const [spectatorOpenMode, setSpectatorOpenMode] = useState<'random' | 'configured'>('configured');
+  const [spectatorThreadTypes, setSpectatorThreadTypes] = useState<ForumThreadType[]>([]);
+  const [spectatorWorldShell, setSpectatorWorldShell] = useState<SpectatorWorldShell | undefined>(undefined);
+  const [spectatorTone, setSpectatorTone] = useState<ForumSpectatorSettings['tone']>(undefined);
+  const [spectatorAngles, setSpectatorAngles] = useState<NonNullable<ForumSpectatorSettings['angles']>>([]);
   const [spectatorAutoGenerate, setSpectatorAutoGenerate] = useState(false);
   const [spectatorCharacterIds, setSpectatorCharacterIds] = useState<string[]>([]);
+  const [spectatorUserSlotMode, setSpectatorUserSlotMode] = useState<'self' | 'mask'>('self');
+  const [spectatorUserNameSource, setSpectatorUserNameSource] = useState<'user' | 'forum'>('user');
+  const [spectatorUserMaskId, setSpectatorUserMaskId] = useState<string | undefined>(undefined);
+  const [spectatorTargetCharacters, setSpectatorTargetCharacters] = useState<ForumSpectatorTargetCharacter[]>([]);
+  const [spectatorTargetPresets, setSpectatorTargetPresets] = useState<ForumSpectatorTargetPreset[]>([]);
+  const [spectatorCluePool, setSpectatorCluePool] = useState<string[]>([]);
+  const [spectatorDefaultThreadTypePool, setSpectatorDefaultThreadTypePool] = useState<ForumThreadType[]>([]);
 
   // Share State
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [messageTab, setMessageTab] = useState<'chats' | 'activity'>('chats');
   const [chatListTab, setChatListTab] = useState<'mutual' | 'strangers'>('strangers');
+  const [showMessageManageSheet, setShowMessageManageSheet] = useState(false);
+  const [openMessageRowMenuId, setOpenMessageRowMenuId] = useState<string | null>(null);
 
   const currentUser = appData.userProfile;
   const forumData: ForumData = appData.forumData || {
@@ -319,6 +472,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     followedUsers: [],
     followerMap: {},
     tempChats: {},
+    pinnedChatAuthorIds: [],
+    pinnedPostIds: [],
     runtimeAuthorProfiles: {},
     composerDraft: null,
     spectatorSettings: DEFAULT_SPECTATOR_SETTINGS,
@@ -328,28 +483,54 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const followedUsers = forumData.followedUsers || [];
   const followerMap = forumData.followerMap || {};
   const tempChats = forumData.tempChats || {};
+  const pinnedChatAuthorIds = forumData.pinnedChatAuthorIds || [];
+  const pinnedPostIds = forumData.pinnedPostIds || [];
   const runtimeAuthorProfiles = forumData.runtimeAuthorProfiles || {};
+  const currentUserForumProfile = resolveCurrentUserForumProfile({
+    currentUser,
+    runtimeProfile: runtimeAuthorProfiles[currentUser.id],
+  });
+  const spectatorUserName = currentUser.name;
+  const spectatorForumNickname = currentUserForumProfile.name;
+  const resolveSpectatorNameSource = (source?: ForumSpectatorSettings['userNameSource']) => (
+    source === 'forum' ? spectatorForumNickname : spectatorUserName
+  );
+  const spectatorObjectUserName = spectatorUserNameSource === 'forum' ? spectatorForumNickname : spectatorUserName;
   const composerDraft = forumData.composerDraft || null;
   const spectatorSettings = forumData.spectatorSettings || DEFAULT_SPECTATOR_SETTINGS;
-  const resolvePostIdentity = (post: ForumPost) => resolveForumPostIdentity(post, getCharacterById);
-  const resolveCommentIdentity = (comment: ForumComment) => resolveForumCommentIdentity(comment, getCharacterById);
+  const forumGlobalSettings = normalizeForumGlobalSettings(forumData.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS);
+  const availableCommentMasks = (appData.masks || []).filter((mask) => {
+    if (!forumGlobalSettings.mask.enabled) return false;
+    if (forumGlobalSettings.mask.useActiveMaskOnly) return mask.isActive;
+    if (forumGlobalSettings.mask.selectedIds.length === 0) return true;
+    return forumGlobalSettings.mask.selectedIds.includes(mask.id);
+  });
+  const availablePostMasks = availableCommentMasks;
+  const resolvePostIdentity = (post: ForumPost) => resolveForumPostIdentity(post, getCharacterByIdStrict);
+  const resolveCommentIdentity = (comment: ForumComment) => resolveForumCommentIdentity(comment, getCharacterByIdStrict);
   const isCurrentUserPostAuthor = (authorId: string, post?: ForumPost) => isCurrentUserPostOwner(currentUser.id, authorId, post);
   const isCurrentUserCommentAuthor = (authorId: string, comment?: ForumComment) => isCurrentUserCommentOwner(currentUser.id, authorId, comment);
-  const buildAnonymousPostAuthorId = () => `seed-anon-${currentUser.id}-${activeChannel}-${Date.now()}`;
+  const buildAnonymousPostAuthorId = (channel: ForumChannelTabId = editorChannel) => `seed-anon-${currentUser.id}-${channel}-${Date.now()}`;
   const buildAnonymousCommentAuthorId = () => `seed-anon-${currentUser.id}-comment-${activeChannel}-${Date.now()}`;
   const appDataRef = useRef(appData);
   const forumDataRef = useRef(forumData);
   const postsRef = useRef(posts);
-  const attemptedDetailExpansionRef = useRef<Set<string>>(new Set());
   const feedRefreshLockRef = useRef(false);
   const tempReplyProcessingRef = useRef<Set<string>>(new Set());
   const profileAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
-  const { resolvedUrl: resolvedCurrentUserAvatarUrl } = useResolvedPersistentValue(currentUser.avatar);
-  const { resolvedUrl: resolvedEditAvatarUrl } = useResolvedPersistentValue(editAvatar || currentUser.avatar);
   const { getCharacterById } = createCharacterDirectory({ characters: appData.characters });
+  const getCharacterByIdStrict = (characterId: string) => getCharacterById(characterId) || undefined;
   const activeChannelMeta = FORUM_CHANNEL_TABS.find((item) => item.id === activeChannel) || FORUM_CHANNEL_TABS[0];
-  const activeThreadTypeLabel = threadTypeFilter === 'all' ? '全部帖型' : FORUM_THREAD_TYPE_LABELS[threadTypeFilter];
+  const editorChannelMeta = FORUM_CHANNEL_TABS.find((item) => item.id === editorChannel) || activeChannelMeta;
+  const publicViewSummary = buildPublicViewSummary(publicViewChannels);
+  const publicOpenSummaryLabel = publicOpenDraft.mode === 'random'
+    ? '随机开楼'
+    : publicOpenDraft.selectedThreadTypes.length === 0
+      ? '按设置开楼'
+      : publicOpenDraft.selectedThreadTypes.length === 1
+        ? FORUM_THREAD_TYPE_LABELS[publicOpenDraft.selectedThreadTypes[0]]
+        : `已选${publicOpenDraft.selectedThreadTypes.length}种帖型`;
   const forumConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'forum',
@@ -362,7 +543,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const showForumNotice = (message: string, tone: ForumNotice['tone'] = 'info') => {
     setForumNotice({ message, tone });
   };
-
+  const togglePublicViewChannel = (channel: ForumChannel) => {
+    setPublicViewChannels((current) => {
+      const next = toggleForumChannelSelection(current, channel);
+      if (next.length === 1) {
+        setActiveChannel(next[0] as ForumChannelTabId);
+      }
+      return next;
+    });
+  };
   useEffect(() => {
     appDataRef.current = appData;
     forumDataRef.current = forumData;
@@ -384,18 +573,226 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   }, [runtimeAuthorProfiles]);
 
   useEffect(() => {
+    const synced = syncCharacterForumProfiles({
+      characters: appData.characters,
+      runtimeAuthorProfiles,
+    });
+    if (!synced.changed) return;
+
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        runtimeAuthorProfiles: synced.runtimeAuthorProfiles,
+      }),
+    } as AppDataExtended);
+  }, [appData.characters, runtimeAuthorProfiles, onUpdateAppData]);
+
+  useEffect(() => {
     const nextSubjectName = spectatorSettings.subjectName || '';
     const nextRelationshipSummary = spectatorSettings.relationshipSummary || '';
-    const nextTone = spectatorSettings.tone || '吃瓜围观';
+    const nextTopicHint = spectatorSettings.topicHint || '';
+    const nextObjectMode = spectatorSettings.objectMode || 'user_with_characters';
+    const nextMode = spectatorSettings.mode === 'random' ? 'random' : 'configured';
+    const nextThreadTypes = spectatorSettings.threadTypes || [];
+    const nextWorldShell = spectatorSettings.worldShell as SpectatorWorldShell | undefined;
+    const nextTone = spectatorSettings.tone;
+    const nextAngles = spectatorSettings.angles || [];
     const nextAutoGenerate = !!spectatorSettings.autoGenerate;
     const nextCharacterIds = spectatorSettings.selectedCharacterIds || [];
+    const nextUserSlot = normalizeSpectatorUserSlot(spectatorSettings);
+    const nextTargetCharacters = normalizeSpectatorTargetCharacters(spectatorSettings);
+    const nextTargetPresets = spectatorSettings.targetPresets || [];
+    const nextCluePool = spectatorSettings.cluePool || [];
+    const nextDefaultThreadTypePool = spectatorSettings.defaultThreadTypePool || [];
 
     setSpectatorSubjectName((current) => current === nextSubjectName ? current : nextSubjectName);
     setSpectatorRelationshipSummary((current) => current === nextRelationshipSummary ? current : nextRelationshipSummary);
+    setSpectatorTopicHint((current) => current === nextTopicHint ? current : nextTopicHint);
+    setSpectatorObjectMode((current) => current === nextObjectMode ? current : nextObjectMode);
+    setSpectatorOpenMode((current) => current === nextMode ? current : nextMode);
+    setSpectatorThreadTypes((current) => areStringListsEqual(current, nextThreadTypes) ? current : nextThreadTypes);
+    setSpectatorWorldShell((current) => current === nextWorldShell ? current : nextWorldShell);
     setSpectatorTone((current) => current === nextTone ? current : nextTone);
+    setSpectatorAngles((current) => areStringListsEqual(current || [], nextAngles) ? current : nextAngles);
     setSpectatorAutoGenerate((current) => current === nextAutoGenerate ? current : nextAutoGenerate);
     setSpectatorCharacterIds((current) => areStringListsEqual(current, nextCharacterIds) ? current : nextCharacterIds);
-  }, [spectatorSettings.subjectName, spectatorSettings.relationshipSummary, spectatorSettings.tone, spectatorSettings.autoGenerate, spectatorSettings.selectedCharacterIds]);
+    setSpectatorUserSlotMode((current) => current === nextUserSlot.mode ? current : nextUserSlot.mode);
+    setSpectatorUserNameSource((current) => current === (spectatorSettings.userNameSource || 'user') ? current : (spectatorSettings.userNameSource || 'user'));
+    setSpectatorUserMaskId((current) => current === nextUserSlot.maskId ? current : nextUserSlot.maskId);
+    setSpectatorTargetCharacters((current) => JSON.stringify(current) === JSON.stringify(nextTargetCharacters) ? current : nextTargetCharacters);
+    setSpectatorTargetPresets((current) => JSON.stringify(current) === JSON.stringify(nextTargetPresets) ? current : nextTargetPresets);
+    setSpectatorCluePool((current) => areStringListsEqual(current, nextCluePool) ? current : nextCluePool);
+    setSpectatorDefaultThreadTypePool((current) => areStringListsEqual(current, nextDefaultThreadTypePool) ? current : nextDefaultThreadTypePool);
+  }, [spectatorSettings.subjectName, spectatorSettings.relationshipSummary, spectatorSettings.topicHint, spectatorSettings.objectMode, spectatorSettings.mode, spectatorSettings.threadTypes, spectatorSettings.worldShell, spectatorSettings.tone, spectatorSettings.angles, spectatorSettings.autoGenerate, spectatorSettings.selectedCharacterIds, spectatorSettings.userSlot, spectatorSettings.userNameSource, spectatorSettings.targetCharacters, spectatorSettings.targetPresets, spectatorSettings.cluePool, spectatorSettings.defaultThreadTypePool]);
+
+  useEffect(() => {
+    const nextIds = spectatorTargetCharacters.map((target) => target.characterId);
+    setSpectatorCharacterIds((current) => areStringListsEqual(current, nextIds) ? current : nextIds);
+  }, [spectatorTargetCharacters]);
+
+  const spectatorRelationshipSuggestions = [...SPECTATOR_RELATIONSHIP_HINTS];
+  const selectedSpectatorRelationshipSuggestions = parseSpectatorDraftChips(spectatorRelationshipSummary);
+
+  const buildCurrentSpectatorSettings = (): ForumSpectatorSettings => {
+    const normalizedTargetCharacters = spectatorTargetCharacters.length > 0
+      ? spectatorTargetCharacters
+      : deriveTargetCharactersFromIds(spectatorCharacterIds);
+    const constrainedTargetCharacters = normalizedTargetCharacters;
+    const normalizedCharacterIds = constrainedTargetCharacters.map((target) => target.characterId);
+    const computedSubjectName = buildSpectatorTargetLabel({
+      currentUserName: spectatorObjectUserName,
+      characters: appData.characters,
+      targets: constrainedTargetCharacters,
+      userSlotMode: spectatorUserSlotMode,
+      objectMode: spectatorObjectMode,
+    });
+    const normalizedSubjectName = constrainedTargetCharacters.length > 0
+      ? computedSubjectName
+      : spectatorSubjectName.trim() || computedSubjectName;
+    const baseSettings: ForumSpectatorSettings = {
+      subjectName: normalizedSubjectName,
+      relationshipSummary: spectatorRelationshipSummary.trim(),
+      topicHint: spectatorTopicHint.trim(),
+      objectMode: spectatorObjectMode,
+      mode: spectatorOpenMode,
+      threadTypes: spectatorThreadTypes,
+      worldShell: spectatorWorldShell,
+      autoGenerate: spectatorAutoGenerate,
+      selectedCharacterIds: normalizedCharacterIds,
+      userSlot: {
+        mode: spectatorUserSlotMode,
+        maskId: spectatorUserSlotMode === 'mask' ? spectatorUserMaskId : undefined,
+      },
+      userNameSource: spectatorUserNameSource,
+      targetCharacters: constrainedTargetCharacters,
+      targetPresets: spectatorTargetPresets,
+      cluePool: spectatorCluePool.length > 0 ? spectatorCluePool : selectedSpectatorRelationshipSuggestions,
+      defaultThreadTypePool: spectatorDefaultThreadTypePool.length > 0 ? spectatorDefaultThreadTypePool : spectatorThreadTypes,
+    };
+    const autoFlavor = resolveAutoSpectatorFlavor(baseSettings);
+    return {
+      ...baseSettings,
+      tone: spectatorTone || autoFlavor.tone,
+      angles: spectatorAngles.length > 0 ? spectatorAngles : autoFlavor.angles,
+    };
+  };
+  const spectatorHeaderSettings = buildCurrentSpectatorSettings();
+
+  const toggleSpectatorRelationshipSuggestion = (value: string) => {
+    setSpectatorRelationshipSummary((current) => toggleSpectatorDraftValue(current, value, ' / '));
+  };
+
+  const toggleSpectatorThreadType = (threadType: ForumThreadType) => {
+    setSpectatorThreadTypes((current) => (
+      current.includes(threadType)
+        ? current.filter((item) => item !== threadType)
+        : [...current, threadType]
+    ));
+  };
+
+  const toggleSpectatorAngle = (angle: NonNullable<ForumSpectatorSettings['angles']>[number]) => {
+    setSpectatorAngles((current) => (
+      current.includes(angle)
+        ? current.filter((item) => item !== angle)
+        : [...current, angle]
+    ));
+  };
+
+  const clearSpectatorThreadTypes = () => {
+    setSpectatorThreadTypes([]);
+  };
+
+  const toggleSpectatorTargetCharacter = (characterId: string) => {
+    setSpectatorTargetCharacters((current) => toggleSpectatorTargetCharacterSelection(current, characterId));
+    setSpectatorSubjectName('');
+  };
+
+  const cycleSpectatorTargetRole = (characterId: string) => {
+    setSpectatorTargetCharacters((current) => cycleSpectatorTargetCharacterRole(current, characterId));
+    setSpectatorSubjectName('');
+  };
+
+  const saveCurrentSpectatorPreset = () => {
+    const currentTargets = spectatorTargetCharacters.length > 0
+      ? spectatorTargetCharacters
+      : deriveTargetCharactersFromIds(spectatorCharacterIds);
+
+    if (!currentTargets.length) {
+      showForumNotice('至少先选一个角色，再存成常用组合。');
+      return;
+    }
+
+    const nextPreset = buildSpectatorTargetPreset({
+      currentUserName: spectatorObjectUserName,
+      characters: appData.characters,
+      objectMode: spectatorObjectMode,
+      userSlotMode: spectatorUserSlotMode,
+      userNameSource: spectatorUserNameSource,
+      userMaskId: spectatorUserMaskId,
+      targetCharacters: currentTargets,
+      threadTypes: spectatorThreadTypes,
+      angles: spectatorAngles,
+      relationshipSummary: spectatorRelationshipSummary,
+      worldShell: spectatorWorldShell,
+    });
+
+    setSpectatorTargetPresets((current) => {
+      const deduped = current.filter((item) => item.label !== nextPreset.label);
+      return [nextPreset, ...deduped].slice(0, 8);
+    });
+    showForumNotice('这组围观对象已经存成常用组合。');
+  };
+
+  const applySpectatorPreset = (presetId: string) => {
+    const preset = spectatorTargetPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+    setSpectatorUserSlotMode(preset.userSlot.mode);
+    setSpectatorObjectMode(preset.objectMode || 'user_with_characters');
+    setSpectatorUserNameSource(preset.userNameSource || 'user');
+    setSpectatorUserMaskId(preset.userSlot.maskId);
+    setSpectatorTargetCharacters(preset.targetCharacters);
+    setSpectatorCharacterIds(preset.targetCharacters.map((target) => target.characterId));
+    if ((preset.threadTypes || []).length > 0) setSpectatorThreadTypes(preset.threadTypes || []);
+    if ((preset.angles || []).length > 0) setSpectatorAngles(preset.angles || []);
+    if (preset.relationshipSummary) setSpectatorRelationshipSummary(preset.relationshipSummary);
+    if (preset.worldShell) setSpectatorWorldShell(preset.worldShell as SpectatorWorldShell);
+    setSpectatorSubjectName(buildSpectatorTargetLabel({
+      currentUserName: preset.userNameSource === 'forum' ? spectatorForumNickname : spectatorUserName,
+      characters: appData.characters,
+      targets: preset.targetCharacters,
+      userSlotMode: preset.userSlot.mode,
+      objectMode: preset.objectMode || 'user_with_characters',
+    }));
+  };
+
+  const removeSpectatorPreset = (presetId: string) => {
+    setSpectatorTargetPresets((current) => current.filter((item) => item.id !== presetId));
+  };
+
+  const resolveMaskAvatar = (mask: Mask) => seedFallbackAvatar(`forum-mask-${mask.id}`, mask.name);
+
+  const resolveIdentityAvatar = (identity: EditorIdentityMode, maskId?: string) => {
+    if (identity === 'anonymous') return seedFallbackAvatar(buildAnonymousPostAuthorId(), '匿名');
+    if (identity === 'mask' && maskId) {
+      const matchedMask = availablePostMasks.find((mask) => mask.id === maskId);
+      if (matchedMask) return resolveMaskAvatar(matchedMask);
+    }
+    return currentUserForumProfile.avatar;
+  };
+
+  const resolveMaskedAuthor = (maskId?: string): ForumAuthor | null => {
+    if (!maskId) return null;
+    const mask = (appData.masks || []).find((item) => item.id === maskId);
+    if (!mask) return null;
+    return {
+      id: currentUser.id,
+      name: mask.name,
+      avatar: resolveMaskAvatar(mask),
+      handle: buildReadableForumHandle({ id: mask.id, name: mask.name }),
+      bio: buildMaskDisplayBio(mask),
+      description: buildMaskDisplayBio(mask),
+    };
+  };
 
   const buildForumDataState = (overrides: Partial<ForumData> = {}): ForumData => ({
     posts: overrides.posts ?? postsRef.current,
@@ -403,9 +800,14 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     followedUsers: overrides.followedUsers ?? (forumDataRef.current.followedUsers || []),
     followerMap: overrides.followerMap ?? (forumDataRef.current.followerMap || {}),
     tempChats: overrides.tempChats ?? (forumDataRef.current.tempChats || {}),
+    pinnedChatAuthorIds: overrides.pinnedChatAuthorIds ?? (forumDataRef.current.pinnedChatAuthorIds || []),
+    pinnedPostIds: overrides.pinnedPostIds ?? (forumDataRef.current.pinnedPostIds || []),
     runtimeAuthorProfiles: overrides.runtimeAuthorProfiles ?? (forumDataRef.current.runtimeAuthorProfiles || {}),
     composerDraft: overrides.composerDraft ?? (forumDataRef.current.composerDraft || null),
     spectatorSettings: overrides.spectatorSettings ?? (forumDataRef.current.spectatorSettings || DEFAULT_SPECTATOR_SETTINGS),
+    globalSettings: normalizeForumGlobalSettings(
+      overrides.globalSettings ?? (forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS),
+    ),
   });
 
   const mergeRuntimeAuthorProfiles = (profiles: ForumRuntimeAuthorProfile[]) => {
@@ -434,43 +836,50 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   }, [posts.length, currentUser.id]);
 
   useEffect(() => {
-    if (currentView !== 'detail' || !selectedPostId || !forumConfig) return;
-    if (forumAiLoadingPostId === selectedPostId) return;
+    if (!posts.length) return;
+    if (posts.every((post) => typeof post.hotState === 'string' && typeof post.hotScore === 'number')) return;
+    updatePosts(posts, forumDataRef.current.runtimeAuthorProfiles || {});
+  }, [posts]);
 
-    const post = posts.find((item) => item.id === selectedPostId);
-    if (!post || post.aiDetailExpanded || attemptedDetailExpansionRef.current.has(post.id)) return;
-
-    attemptedDetailExpansionRef.current.add(post.id);
-    const targetReplyCount = Math.max(20 - post.comments.length, 12);
-    void triggerForumAiReplies(post.id, {
-      replyCount: targetReplyCount,
-      replyMode: post.comments.length > 0 ? 'mixed' : 'independent_only',
-      markDetailExpanded: true,
-    });
-  }, [currentView, selectedPostId, posts, forumConfig, forumAiLoadingPostId]);
+  useEffect(() => {
+    if (editorIdentity !== 'mask') return;
+    if (!availablePostMasks.length) {
+      setEditorIdentity('self');
+      setEditorMaskId(undefined);
+      return;
+    }
+    setEditorMaskId((current) => (
+      current && availablePostMasks.some((mask) => mask.id === current)
+        ? current
+        : availablePostMasks[0]?.id
+    ));
+  }, [availablePostMasks, editorIdentity]);
 
   const getAuthor = (id: string): ForumAuthor => {
     if (id === currentUser.id) {
       return {
-        ...currentUser,
-        handle: currentUser.id.replace(/^@/, '').trim(),
+        id: currentUser.id,
+        name: currentUserForumProfile.name,
+        avatar: currentUserForumProfile.avatar,
+        bio: currentUserForumProfile.bio,
+        handle: currentUserForumProfile.handle,
       };
     }
     const runtimeProfile = runtimeAuthorProfiles[id];
     const seedProfile = getForumSeedAuthorProfile(id);
     const character = getCharacterById(id);
     if (character) {
-      const forumHabit = buildCharacterForumHabit(character);
+      const characterProfile = resolveCharacterForumDisplayProfile(character, runtimeProfile);
       return {
         id: character.id,
-        name: character.name,
-        avatar: runtimeProfile?.avatar || seedProfile?.avatar || character.avatar,
-        handle: runtimeProfile?.handle || seedProfile?.handle || buildForumCharacterHandle(character),
-        bio: runtimeProfile?.bio || seedProfile?.bio || character.signature || '',
-        description: runtimeProfile?.bio || seedProfile?.bio || character.signature || character.corePersona || character.openingRemark || '',
-        persona: runtimeProfile?.persona || forumHabit.persona,
-        speakingStyle: runtimeProfile?.speakingStyle || forumHabit.speakingStyle,
-        preferredMove: runtimeProfile?.preferredMove || forumHabit.preferredMove,
+        name: characterProfile.name,
+        avatar: character.avatar || resolveForumAvatar(seedProfile?.avatar, `${character.id}${character.name}`, characterProfile.name),
+        handle: characterProfile.handle,
+        bio: characterProfile.bio,
+        description: characterProfile.bio || character.corePersona || character.openingRemark || '',
+        persona: characterProfile.persona,
+        speakingStyle: characterProfile.speakingStyle,
+        preferredMove: characterProfile.preferredMove,
       };
     }
 
@@ -478,7 +887,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       return {
         id: runtimeProfile.id,
         name: runtimeProfile.name,
-        avatar: runtimeProfile.avatar,
+        avatar: resolveForumAvatar(runtimeProfile.avatar, `${runtimeProfile.id}${runtimeProfile.handle || runtimeProfile.name}`, runtimeProfile.name),
         handle: runtimeProfile.handle,
         bio: runtimeProfile.bio,
         description: runtimeProfile.bio,
@@ -492,7 +901,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       return {
         id: seedProfile.id,
         name: seedProfile.name,
-        avatar: seedProfile.avatar,
+        avatar: resolveForumAvatar(seedProfile.avatar, `${seedProfile.id}${seedProfile.handle || seedProfile.name}`, seedProfile.name),
         handle: seedProfile.handle,
         description: seedProfile.bio,
       };
@@ -504,25 +913,37 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   }
 
     if (id.startsWith(SPECTATOR_BOARD_AUTHOR_PREFIX)) {
+      const shell = parseSpectatorAuthorShell(id);
+      const indexMatch = id.match(/_(\d+)$/);
+      const index = indexMatch?.[1] ? Number(indexMatch[1]) : 0;
+      const profile = buildSpectatorAuthorProfile(shell, index);
       return {
         id,
-        name: '围观群众',
-        avatar: seedFallbackAvatar(id, '围观'),
-        handle: '楼里吃瓜',
-        description: '围观板块常驻发帖人',
+        name: profile.name,
+        avatar: seedFallbackAvatar(id, profile.name),
+        handle: profile.handle,
+        description: profile.description,
       };
     }
     
     return {
       id,
-      name: id.startsWith('forum_runtime_') ? `网友${id.slice(-4)}` : `用户${id.slice(-4)}`,
-      avatar: seedFallbackAvatar(id, id.startsWith('forum_runtime_') ? id.slice(-2).toUpperCase() : id.slice(-2)),
-      handle: id.startsWith('forum_runtime_') ? buildReadableForumHandle({
+      name: id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? `网友${id.slice(-4)}` : `用户${id.slice(-4)}`,
+      avatar: seedFallbackAvatar(id, id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? id.slice(-2).toUpperCase() : id.slice(-2)),
+      handle: id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? buildReadableForumHandle({
         id,
         name: `网友${id.slice(-4)}`,
       }) : undefined,
     };
   };
+
+  const resolvePostAuthor = (post: ForumPost): ForumAuthor => (
+    resolveMaskedAuthor(post.authorMaskId) || getAuthor(post.authorId)
+  );
+
+  const resolveCommentAuthor = (comment: ForumComment): ForumAuthor => (
+    resolveMaskedAuthor(comment.authorMaskId) || getAuthor(comment.authorId)
+  );
 
   const canOpenForumPrivateChat = (authorId: string) => {
     if (authorId === currentUser.id) return false;
@@ -534,27 +955,6 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       .filter((post) => post.authorId === authorId || post.comments.some((comment) => comment.authorId === authorId))
       .sort((a, b) => b.timestamp - a.timestamp)[0] || null
   );
-
-  const inferAuthorPreferredMove = (authorId: string) => {
-    const recentComments = [...postsRef.current]
-      .flatMap((post) => post.comments.filter((comment) => comment.authorId === authorId))
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 4);
-
-    if (recentComments.some((comment) => /笑死|哈哈|吃瓜|围观|看戏/.test(comment.content))) {
-      return '常常边看戏边接梗';
-    }
-    if (recentComments.some((comment) => /不一定|未必|先别|我不信|存疑/.test(comment.content))) {
-      return '更爱泼冷水和提怀疑';
-    }
-    if (recentComments.some((comment) => /建议|先去|最好|可以|别硬撑/.test(comment.content))) {
-      return '习惯认真给建议';
-    }
-    if (recentComments.some((comment) => /就是|明显|本来就|我就说/.test(comment.content))) {
-      return '喜欢站队补刀';
-    }
-    return undefined;
-  };
 
   const pickSupplementalForumCharacters = (channel: ForumChannel) => {
     const now = Date.now();
@@ -604,12 +1004,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           viewerLastSeenAt: Date.now(),
         }
       : {
-          authorId,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          messages: [],
-          canAddFriend: false,
-          addedAsFriend: false,
+          ...createEmptyForumTempChatSession(authorId),
           viewerLastSeenAt: Date.now(),
         };
 
@@ -623,77 +1018,21 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       }),
     } as AppDataExtended);
     setActiveTempChatUserId(authorId);
+    setTempChatReturnTarget('user-profile');
     setCurrentView('temp-chat');
-  };
-
-  const selectForumReplyAuthorPool = (post: ForumPost) => {
-    const threadAuthorIds = Array.from(new Set([
-      post.authorId,
-      ...post.comments.map((comment) => comment.authorId),
-    ])).filter((authorId) => authorId !== currentUser.id);
-
-    const knownAuthors = threadAuthorIds.map((authorId) => {
-      const author = getAuthor(authorId);
-      return {
-        id: authorId,
-        displayName: author.name,
-        persona: author.persona || author.description || author.bio || '',
-        speakingStyle: author.speakingStyle,
-        preferredMove: author.preferredMove || inferAuthorPreferredMove(authorId),
-      };
-    });
-
-    const category = inferForumChannelFromCategory(post.category);
-    const channelKeyword = category === 'oldDynasty'
-      ? 'old'
-      : category === 'otherworld'
-        ? 'other'
-        : category === 'starSea'
-          ? 'star'
-          : category;
-
-    const supplementalAuthors = FORUM_SEED_NPC_PROFILES
-      .filter((profile) => profile.id.includes(channelKeyword) || category === 'junction')
-      .filter((profile) => !knownAuthors.some((author) => author.id === profile.id))
-      .slice(0, 4)
-      .map((profile) => ({
-        id: profile.id,
-        displayName: profile.name,
-        persona: profile.bio,
-      }));
-
-    const supplementalCharacters = pickSupplementalForumCharacters(category)
-      .filter((character) => !knownAuthors.some((author) => author.id === character.id))
-      .map((character) => {
-        const habit = buildCharacterForumHabit(character, category);
-        return {
-          id: character.id,
-          displayName: character.name,
-          persona: habit.persona,
-          speakingStyle: habit.speakingStyle,
-          preferredMove: habit.preferredMove,
-        };
-      });
-
-    const pool = [...knownAuthors, ...supplementalCharacters, ...supplementalAuthors].slice(0, 6);
-    return {
-      knownAuthors: pool.map(({ id, displayName }) => ({ id, displayName })),
-      participants: pool.map(({ displayName, persona, speakingStyle, preferredMove }) => ({
-        displayName,
-        persona,
-        speakingStyle,
-        preferredMove,
-      })),
-    };
   };
 
   const pruneForumFeed = (items: ForumPost[]) => {
     const deduped = items.filter((post, index, collection) => {
+      const isSpectatorPost = post.board === 'spectator' || post.category === SPECTATOR_BOARD_CATEGORY;
+      if (isSpectatorPost) {
+        return collection.findIndex((candidate) => candidate.id === post.id) === index;
+      }
       const titleKey = normalizeForumPostFingerprint(post.title || '');
       const bodyKey = normalizeForumPostFingerprint(post.content || '');
       return collection.findIndex((candidate) => (
         normalizeForumPostFingerprint(candidate.title || '') === titleKey
-        || normalizeForumPostFingerprint(candidate.content || '') === bodyKey
+        && normalizeForumPostFingerprint(candidate.content || '') === bodyKey
       )) === index;
     });
 
@@ -708,20 +1047,14 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       .filter((post) => !pinnedIds.has(post.id))
       .sort((a, b) => b.timestamp - a.timestamp);
 
-    return [...pinned, ...remainder]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 50);
+    const diversifiedRemainder = diversifyForumPosts(remainder);
+
+    return [...pinned, ...diversifiedRemainder]
+      .sort((a, b) => b.timestamp - a.timestamp);
   };
 
   const updateTempChatSession = (authorId: string, updater: (session: ForumTempChatSession) => ForumTempChatSession) => {
-    const existingSession = (forumDataRef.current.tempChats || {})[authorId] || {
-      authorId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-      canAddFriend: false,
-      addedAsFriend: false,
-    };
+    const existingSession = (forumDataRef.current.tempChats || {})[authorId] || createEmptyForumTempChatSession(authorId);
     const nextSession = updater(existingSession);
 
     onUpdateAppData({
@@ -750,95 +1083,90 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         const author = getAuthor(authorId);
 
         if (!author) return;
-
-        const shouldMarkRead = now >= pendingReply.readAt;
-        const userMessage = session.messages.find((message) => message.id === pendingReply.userMessageId);
-
-        if (shouldMarkRead && userMessage && !userMessage.readAt) {
-          updateTempChatSession(authorId, (currentSession) => ({
-            ...currentSession,
-            messages: currentSession.messages.map((message) => (
-              message.id === pendingReply.userMessageId
-                ? { ...message, readAt: pendingReply.readAt }
-                : message
-            )),
-            updatedAt: Date.now(),
-          }));
-        }
-
-        if (pendingReply.behavior === 'ghost') {
-          if (shouldMarkRead && pendingReply.status !== 'ghosted') {
-            updateTempChatSession(authorId, (currentSession) => ({
-              ...currentSession,
-              pendingReply: currentSession.pendingReply
-                ? { ...currentSession.pendingReply, status: 'ghosted' }
-                : currentSession.pendingReply,
-              updatedAt: Date.now(),
-            }));
-          }
-          return;
-        }
-
-        if (!pendingReply.replyAt || now < pendingReply.replyAt) return;
+        const shouldNeedProcessing = now >= pendingReply.readAt || pendingReply.status === 'typing' || (!!pendingReply.replyAt && now >= pendingReply.replyAt);
+        if (!shouldNeedProcessing) return;
         if (tempReplyProcessingRef.current.has(authorId)) return;
 
         tempReplyProcessingRef.current.add(authorId);
 
-      updateTempChatSession(authorId, (currentSession) => ({
-        ...currentSession,
-        pendingReply: currentSession.pendingReply
-          ? { ...currentSession.pendingReply, status: 'typing' }
-          : currentSession.pendingReply,
-          updatedAt: Date.now(),
-        }));
-
         const relatedPost = pendingReply.relatedPostId
           ? postsRef.current.find((post) => post.id === pendingReply.relatedPostId) || null
           : resolveRecentForumPostForAuthor(authorId);
+        const currentSession = resolveForumTempSession(forumDataRef.current.tempChats || {}, authorId);
 
-        const currentHistory = (forumDataRef.current.tempChats || {})[authorId]?.messages || [];
-
-        generateForumTempReply({
-          activeConfig: forumConfig,
-          authorName: author.name,
-          authorPersona: author.description || author.bio || '',
-          channel: relatedPost ? inferForumChannelFromCategory(relatedPost.category) : undefined,
-          recentForumPost: relatedPost,
-          history: currentHistory,
-          userMessage: pendingReply.userText,
+        processPendingForumTempReply({
+          appData: appDataRef.current,
+          currentUserId: currentUser.id,
+          allowNpcFriendRequest: !!(forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS).social?.allowNpcFriendRequest,
+          activeTempChatUserId,
+          currentView,
+          forumConfig,
+          session: currentSession,
+          author,
+          relatedPost,
+          resolveRecentForumPostForAuthor,
+          inferForumChannelFromCategory,
         })
-          .then((replyText) => {
-            const trimmed = replyText.trim();
-            if (!trimmed) {
-              updateTempChatSession(authorId, (currentSession) => ({
-                ...currentSession,
-                pendingReply: undefined,
-                updatedAt: Date.now(),
-              }));
+          .then((result) => {
+            if (result.kind === 'idle') return;
+
+            if (result.kind === 'mark-read' || result.kind === 'ghosted' || result.kind === 'typing' || result.kind === 'cleared') {
+              updateTempChatSession(authorId, () => result.nextSession);
               return;
             }
 
-            const npcMessage: ForumTempChatMessage = {
-              id: `forum-temp-npc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              role: 'npc',
-              text: trimmed,
-              timestamp: Date.now(),
-            };
+            const tempChatsMap = forumDataRef.current.tempChats || {};
+            const nextSettlementEvents: Array<Parameters<typeof applyForumCharacterSettlements>[0][number]> = [];
+            const isKnownCharacter = !!getCharacterById(authorId);
+            const priorRounds = currentSession.completedExchangeRounds || 0;
+            const nextRounds = result.nextSession.completedExchangeRounds || 0;
 
-            updateTempChatSession(authorId, (currentSession) => {
-              const messages = [...currentSession.messages, npcMessage];
-              const npcReplyCount = messages.filter((message) => message.role === 'npc').length;
-              return {
-                ...currentSession,
-                messages,
-                pendingReply: undefined,
-                updatedAt: Date.now(),
-                canAddFriend: currentSession.canAddFriend || npcReplyCount >= 3,
-                viewerLastSeenAt: currentView === 'temp-chat' && activeTempChatUserId === authorId
-                  ? Date.now()
-                  : currentSession.viewerLastSeenAt,
-              };
-            });
+            if (isKnownCharacter && priorRounds < 3 && nextRounds >= 3) {
+              const latestNpcMessage = [...result.nextSession.messages]
+                .reverse()
+                .find((message) => message.role === 'npc');
+              if (latestNpcMessage?.text.trim()) {
+                nextSettlementEvents.push({
+                  kind: 'temp_chat_familiar',
+                  characterId: authorId,
+                  actorName: author.name,
+                  content: latestNpcMessage.text,
+                  timestamp: latestNpcMessage.timestamp,
+                  postTitle: relatedPost?.title,
+                  userComment: pendingReply.userText,
+                });
+              }
+            }
+
+            if (isKnownCharacter && result.friendRequestNotice) {
+              nextSettlementEvents.push({
+                kind: 'friend_request_sent',
+                characterId: authorId,
+                actorName: author.name,
+                content: result.friendRequestNotice,
+                timestamp: Date.now(),
+                postTitle: relatedPost?.title,
+                userComment: pendingReply.userText,
+              });
+            }
+
+            const nextCharacters = applyForumCharacterSettlements(nextSettlementEvents);
+            onUpdateAppData({
+              ...appDataRef.current,
+              characters: nextCharacters,
+              friendRequests: result.nextFriendRequests,
+              forumData: buildForumDataState({
+                tempChats: {
+                  ...tempChatsMap,
+                  [authorId]: result.nextSession,
+                },
+                notifications: result.nextNotifications,
+              }),
+            } as AppDataExtended);
+
+            if (result.friendRequestNotice) {
+              showForumNotice(result.friendRequestNotice);
+            }
           })
           .catch((error) => {
             console.error('[forum] temporary chat reply failed', error);
@@ -864,7 +1192,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const post = posts.find(p => p.id === postId);
     if (!post) return;
 
-    const shareContent = `[分享动态] ${post.content.slice(0, 50)}${post.content.length > 50 ? '...' : ''}`;
+    const sharePreview = `${post.title || post.content.slice(0, 20)}${post.content.length > 20 && !post.title ? '...' : ''}`;
 
     // Cast appData to access chatHistory which is present in AppData but not AppDataExtended
     const fullAppData = appData as any;
@@ -872,7 +1200,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     
     const newMessage = {
       role: 'user',
-      text: shareContent,
+      text: '',
       timestamp: Date.now(),
       needsReply: true,
       sharedPost: {
@@ -880,8 +1208,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         title: post.title || post.content.slice(0, 20),
         content: post.content,
         images: post.images,
-        authorName: getAuthor(post.authorId).name,
-        authorAvatar: getAuthor(post.authorId).avatar
+        authorName: resolvePostAuthor(post).name,
+        authorAvatar: resolvePostAuthor(post).avatar
       }
     };
 
@@ -892,7 +1220,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       if (c.id === characterId) {
         return {
           ...c,
-          lastMessage: shareContent,
+          lastMessage: `[分享动态] ${sharePreview}`,
           lastTime: Date.now()
         };
       }
@@ -949,23 +1277,20 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   };
 
   const handleLikePost = (postId: string) => {
-    const newPosts = posts.map(p => {
-      if (p.id === postId) {
-        const isLiked = p.likes.includes(currentUser.id);
-        const newLikes = isLiked 
-          ? p.likes.filter(id => id !== currentUser.id)
-          : [...p.likes, currentUser.id];
-        
-        // Notify author if liked
-        if (!isLiked && !isCurrentUserPostAuthor(p.authorId, p)) {
-          addNotification(p.authorId, 'like_post', currentUser.id, postId);
-        }
-        
-        return { ...p, likes: newLikes };
-      }
-      return p;
+    const result = toggleForumPostLike({
+      posts,
+      currentUserId: currentUser.id,
+      notifications: forumDataRef.current.notifications || [],
+      postId,
+      isCurrentUserPostAuthor,
     });
-    updatePosts(newPosts);
+    updatePosts(result.posts);
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        notifications: result.notifications,
+      }),
+    } as AppDataExtended);
   };
 
   const handleCollectPost = (postId: string) => {
@@ -997,9 +1322,34 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     alert('已举报，感谢您的反馈！');
   };
 
+  const handleVoteInPoll = (postId: string, optionId: string) => {
+    const nextPosts = postsRef.current.map((post) => (
+      post.id === postId ? castForumPollVote(post, currentUser.id, optionId) : post
+    ));
+    updatePosts(nextPosts);
+  };
+
   const handlePublish = () => {
-    if (!editorTitle.trim() || !editorContent.trim()) return;
+    if (!editorContent.trim()) return;
+    const resolvedTitle = editorTitle.trim() || buildForumCharacterPostTitle(editorContent.trim()) || editorContent.trim().slice(0, 18);
+    const resolvedChannel = forumBoard === 'spectator' ? 'junction' : editorChannel as ForumChannel;
+    const inferredMeta = buildForumPostMeta(resolvedTitle, editorContent.trim(), resolvedChannel);
+    const resolvedThreadType = editorThreadType === 'auto' ? inferredMeta.threadType : editorThreadType;
+    const resolvedMeta = {
+      threadType: resolvedThreadType,
+      contentTier: inferForumContentTier(resolvedThreadType, resolvedTitle, editorContent.trim()),
+      discourseAxis: inferForumDiscourseAxis(resolvedThreadType, resolvedChannel, resolvedTitle, editorContent.trim()),
+    };
+    const resolvedContent = appendForumPostFooterTags(editorContent.trim(), {
+      title: resolvedTitle,
+      body: editorContent.trim(),
+      threadType: resolvedMeta.threadType,
+      contentTier: resolvedMeta.contentTier,
+      discourseAxis: resolvedMeta.discourseAxis,
+      channel: resolvedChannel,
+    });
     let publishedPostId: string | null = null;
+    const resolvedMaskId = editorIdentity === 'mask' ? editorMaskId : undefined;
 
     if (editingPostId) {
       // Update existing post
@@ -1007,10 +1357,14 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         if (p.id === editingPostId) {
           return {
             ...p,
-            title: editorTitle,
-            content: editorContent,
+            title: resolvedTitle,
+            content: resolvedContent,
             images: editorImages,
-            category: activeChannelMeta.label,
+            category: forumBoard === 'spectator' ? SPECTATOR_BOARD_CATEGORY : editorChannelMeta.label,
+            authorMaskId: resolvedMaskId,
+            threadType: resolvedMeta.threadType,
+            contentTier: resolvedMeta.contentTier,
+            discourseAxis: resolvedMeta.discourseAxis,
             timestamp: Date.now() // Update timestamp or keep original? Usually keep original or add edited time.
           };
         }
@@ -1020,19 +1374,23 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     } else {
       // Create new post
       const authorId = editorIdentity === 'anonymous'
-        ? buildAnonymousPostAuthorId()
+        ? buildAnonymousPostAuthorId(editorChannel)
         : currentUser.id;
       const postId = `post-${Date.now()}`;
       const newPost: ForumPost = {
         id: postId,
         authorId,
-        authorIdentity: editorIdentity,
+        authorIdentity: editorIdentity === 'anonymous' ? 'anonymous' : 'self',
+        authorMaskId: resolvedMaskId,
         ownerUserId: currentUser.id,
-        title: editorTitle,
-        content: editorContent,
+        board: forumBoard,
+        title: resolvedTitle,
+        content: resolvedContent,
         images: editorImages,
-        category: activeChannelMeta.label,
-        threadType: 'normal',
+        category: forumBoard === 'spectator' ? SPECTATOR_BOARD_CATEGORY : editorChannelMeta.label,
+        threadType: resolvedMeta.threadType,
+        contentTier: resolvedMeta.contentTier,
+        discourseAxis: resolvedMeta.discourseAxis,
         timestamp: Date.now(),
         viewCount: 0,
         likes: [],
@@ -1050,6 +1408,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     setEditorContent('');
     setEditorImages([]);
     setEditorIdentity('self');
+    setEditorMaskId(undefined);
+    setEditorChannel(activeChannel);
+    setEditorThreadType('auto');
+    setEditorSettingsOpen(false);
     setShowUrlInput(false);
     setUrlInput('');
     onUpdateAppData({
@@ -1061,13 +1423,21 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
     if (publishedPostId && forumConfig) {
       window.setTimeout(() => {
-        void triggerForumAiReplies(publishedPostId!, {
-          replyCount: 3,
-          replyMode: 'independent_only',
-        });
+        const publishedPost = postsRef.current.find((post) => post.id === publishedPostId);
+        if (!publishedPost) return;
+        const replyPlan = buildForumReplyPlan(publishedPost, 'post');
+        void triggerForumAiReplies(publishedPostId!, replyPlan);
       }, 300);
+      const publishedPost = postsRef.current.find((post) => post.id === publishedPostId);
+      if (publishedPost) {
+        window.setTimeout(() => { void applyUserMomentum(publishedPost); }, 450);
+      }
     } else if (publishedPostId) {
       showForumNotice('帖子已经发出。当前论坛 AI 未启用，所以这次不会自动出现网友互动。');
+      const publishedPost = postsRef.current.find((post) => post.id === publishedPostId);
+      if (publishedPost) {
+        void applyUserMomentum(publishedPost);
+      }
     }
   };
 
@@ -1085,7 +1455,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           content: editorContent,
           images: editorImages,
           identity: editorIdentity,
-          channel: activeChannel,
+          maskId: editorIdentity === 'mask' ? editorMaskId : undefined,
+          channel: editorChannel,
+          threadType: editorThreadType,
+          board: forumBoard,
           updatedAt: Date.now(),
         },
       }),
@@ -1100,10 +1473,17 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     setEditorContent(draft?.content || '');
     setEditorImages(draft?.images || []);
     setEditorIdentity(draft?.identity || 'self');
+    setEditorMaskId(draft?.maskId);
+    setEditorThreadType(draft?.threadType || 'auto');
     setShowUrlInput(false);
     setUrlInput('');
     if (draft?.channel && FORUM_CHANNEL_TABS.some((item) => item.id === draft.channel)) {
-      setActiveChannel(draft.channel as ForumChannelTabId);
+      setEditorChannel(draft.channel as ForumChannelTabId);
+    } else {
+      setEditorChannel(activeChannel);
+    }
+    if (draft?.board) {
+      setForumBoard(draft.board);
     }
     setCurrentView('editor');
     if (draft) {
@@ -1172,7 +1552,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
     notifications.forEach((notification) => {
       if (notification.userId === userId) {
-        const scoreByType = notification.type === 'reply' ? 4 : 2;
+        const scoreByType = notification.type === 'reply_to_post' || notification.type === 'reply_to_comment' ? 4 : 2;
         pushScore(notification.sourceUserId, scoreByType, notification.timestamp);
       }
     });
@@ -1215,54 +1595,36 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     setCurrentView('follow-list');
   };
 
-  const handleComment = (postId: string, content: string, replyToId?: string, rootCommentId?: string, identity: 'self' | 'anonymous' = 'self') => {
-    let createdComment: ForumComment | null = null;
-    const newPosts = posts.map(p => {
-      if (p.id === postId) {
-        const commentId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const authorId = identity === 'anonymous'
-          ? buildAnonymousCommentAuthorId()
-          : currentUser.id;
-        const newComment: ForumComment = {
-          id: commentId,
-          postId,
-          authorId,
-          authorIdentity: identity,
-          ownerUserId: currentUser.id,
-          content,
-          timestamp: Date.now(),
-          likes: [],
-          replyToId,
-          rootCommentId: rootCommentId || (replyToId ? undefined : commentId) // If reply, use passed root, else self is root
-        };
-        
-        // Fix rootCommentId for top-level comment
-        if (!replyToId) {
-            newComment.rootCommentId = newComment.id;
-        }
-
-        createdComment = newComment;
-
-        // Notify
-        if (replyToId) {
-           // Notify comment author
-           const parentComment = p.comments.find(c => c.id === replyToId);
-           if (parentComment && !isCurrentUserCommentAuthor(parentComment.authorId)) {
-             addNotification(parentComment.authorId, 'reply', currentUser.id, postId, newComment.id);
-           }
-        } else {
-           // Notify post author
-           if (!isCurrentUserPostAuthor(p.authorId, p)) {
-             addNotification(p.authorId, 'reply', currentUser.id, postId, newComment.id);
-           }
-        }
-
-        return { ...p, comments: [...p.comments, newComment] };
-      }
-      return p;
+  const handleComment = (
+    postId: string,
+    content: string,
+    replyToId?: string,
+    rootCommentId?: string,
+    identity: 'self' | 'anonymous' = 'self',
+    maskId?: string,
+  ): ForumComment | null => {
+    const result = addForumComment({
+      posts,
+      currentUserId: currentUser.id,
+      notifications: forumDataRef.current.notifications || [],
+      postId,
+      content,
+      replyToId,
+      rootCommentId,
+      identity,
+      maskId,
+      anonymousAuthorId: buildAnonymousCommentAuthorId(),
+      isCurrentUserPostAuthor,
+      isCurrentUserCommentAuthor,
     });
-    updatePosts(newPosts);
-    return createdComment;
+    updatePosts(result.posts);
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        notifications: result.notifications,
+      }),
+    } as AppDataExtended);
+    return result.createdComment;
   };
 
   const handleDeleteComment = async (postId: string, commentId: string) => {
@@ -1278,39 +1640,37 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   };
 
   const handleLikeComment = (postId: string, commentId: string) => {
-    const newPosts = posts.map(p => {
-      if (p.id === postId) {
-        const newComments = p.comments.map(c => {
-          if (c.id === commentId) {
-            const isLiked = c.likes.includes(currentUser.id);
-            const newLikes = isLiked
-              ? c.likes.filter(id => id !== currentUser.id)
-              : [...c.likes, currentUser.id];
-            
-            if (!isLiked && c.authorId !== currentUser.id) {
-                addNotification(c.authorId, 'like_comment', currentUser.id, postId, commentId);
-            }
-
-            return { ...c, likes: newLikes };
-          }
-          return c;
-        });
-        return { ...p, comments: newComments };
-      }
-      return p;
+    const result = toggleForumCommentLike({
+      posts,
+      currentUserId: currentUser.id,
+      notifications: forumDataRef.current.notifications || [],
+      postId,
+      commentId,
     });
-    updatePosts(newPosts);
+    updatePosts(result.posts);
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        notifications: result.notifications,
+      }),
+    } as AppDataExtended);
   };
 
   const updatePosts = (
     newPosts: ForumPost[],
     nextRuntimeAuthorProfiles = forumDataRef.current.runtimeAuthorProfiles || {},
+    nextCharacters = appDataRef.current.characters,
   ) => {
-    postsRef.current = newPosts;
+    const normalizedPosts = normalizeForumTrendStates(
+      newPosts.map((post) => ensureForumPollState(post)),
+      inferForumChannelFromCategory,
+    );
+    postsRef.current = normalizedPosts;
     onUpdateAppData({
       ...appDataRef.current,
+      characters: nextCharacters,
       forumData: buildForumDataState({
-        posts: newPosts,
+        posts: normalizedPosts,
         runtimeAuthorProfiles: nextRuntimeAuthorProfiles,
       })
     });
@@ -1323,6 +1683,63 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     updatePosts(nextPosts);
   };
 
+  const applyForumCharacterSettlements = (events: Array<{
+    kind?: 'public_reply' | 'public_loop' | 'temp_chat_familiar' | 'friend_request_sent' | 'friend_request_accepted' | 'friend_bridge';
+    characterId: string;
+    actorName: string;
+    content: string;
+    timestamp: number;
+    postTitle?: string;
+    userComment?: string;
+    userIdentity?: 'self' | 'anonymous';
+    repeatedCount?: number;
+  }>) => {
+    if (!events.length) return appDataRef.current.characters;
+
+    const groupedEvents = new Map<string, typeof events>();
+    events.forEach((event) => {
+      const current = groupedEvents.get(event.characterId) || [];
+      current.push(event);
+      groupedEvents.set(event.characterId, current);
+    });
+
+    let didChange = false;
+    const nextCharacters = appDataRef.current.characters.map((character) => {
+      if (!character) return character;
+      const characterEvents = groupedEvents.get(character.id);
+      if (!characterEvents?.length) {
+        return character;
+      }
+
+      let nextCharacter = character;
+      characterEvents.forEach((event) => {
+        const settlement = buildForumSharedSettlement(nextCharacter, {
+          kind: event.kind,
+          actorName: event.actorName,
+          content: event.content,
+          timestamp: event.timestamp,
+          postTitle: event.postTitle,
+          userComment: event.userComment,
+          userIdentity: event.userIdentity,
+          repeatedCount: event.repeatedCount,
+        });
+        nextCharacter = {
+          ...nextCharacter,
+          sharedContextSnapshots: settlement.sharedContextSnapshots,
+          shortTermSummary: settlement.shortTermSummary,
+          openLoopRegistry: settlement.openLoopRegistry,
+        };
+      });
+
+      if (nextCharacter !== character) {
+        didChange = true;
+      }
+      return nextCharacter;
+    });
+
+    return didChange ? nextCharacters : appDataRef.current.characters;
+  };
+
   const appendGeneratedReplies = (postId: string, replies: Array<{
     authorId: string;
     content: string;
@@ -1331,7 +1748,64 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   }>) => {
     if (!replies.length) return;
 
-    updateSinglePost(postId, (post) => {
+    const sourcePost = postsRef.current.find((post) => post.id === postId);
+    if (sourcePost) {
+      let nextNotifications = forumDataRef.current.notifications || [];
+      replies.forEach((reply) => {
+        if (!reply.authorId || reply.authorId === currentUser.id) return;
+        if (reply.replyToId) {
+          const targetComment = sourcePost.comments.find((comment) => comment.id === reply.replyToId);
+          if (targetComment && isCurrentUserCommentAuthor(targetComment.authorId, targetComment)) {
+            nextNotifications = appendForumNotification({
+              notifications: nextNotifications,
+              userId: currentUser.id,
+              type: 'reply_to_comment',
+              sourceUserId: reply.authorId,
+              postId,
+              commentId: targetComment.id,
+            });
+          }
+          return;
+        }
+
+        if (isCurrentUserPostAuthor(sourcePost.authorId, sourcePost)) {
+          nextNotifications = appendForumNotification({
+            notifications: nextNotifications,
+            userId: currentUser.id,
+            type: 'reply_to_post',
+            sourceUserId: reply.authorId,
+            postId,
+          });
+        }
+      });
+
+      if (nextNotifications !== (forumDataRef.current.notifications || [])) {
+        onUpdateAppData({
+          ...appDataRef.current,
+          forumData: buildForumDataState({
+            notifications: nextNotifications,
+          }),
+        } as AppDataExtended);
+      }
+    }
+
+    const nextCharacterSettlementEvents: Array<{
+      kind?: 'public_reply' | 'public_loop' | 'temp_chat_familiar' | 'friend_request_sent' | 'friend_request_accepted' | 'friend_bridge';
+      characterId: string;
+      actorName: string;
+      content: string;
+      timestamp: number;
+      postTitle?: string;
+      userComment?: string;
+      userIdentity?: 'self' | 'anonymous';
+      repeatedCount?: number;
+    }> = [];
+
+    const nextPosts = postsRef.current.map((post) => {
+      if (post.id !== postId) {
+        return post;
+      }
+
       const baseTimestamp = Date.now();
       const thread = legacyForumPostToThreadV2(post, {
         authorNameResolver: (authorId) => getAuthor(authorId).name,
@@ -1358,6 +1832,37 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
         const matchedReply = pendingIdentityReplies.splice(matchIndex, 1)[0];
         const isCharacterReply = !!getCharacterById(matchedReply.authorId);
+        const replyTarget = matchedReply.replyToId
+          ? post.comments.find((item) => item.id === matchedReply.replyToId)
+          : undefined;
+        const repliedToCurrentUser = replyTarget
+          ? isCurrentUserCommentAuthor(replyTarget.authorId, replyTarget)
+          : isCurrentUserPostAuthor(post.authorId, post);
+
+        if (isCharacterReply && repliedToCurrentUser) {
+          const previousPublicReplies = post.comments.filter((item) => {
+            if (item.authorId !== matchedReply.authorId) return false;
+            if (replyTarget) {
+              return item.replyToId === replyTarget.id;
+            }
+            return !item.replyToId && isCurrentUserPostAuthor(post.authorId, post);
+          }).length;
+
+          nextCharacterSettlementEvents.push({
+            kind: previousPublicReplies > 0 ? 'public_loop' : 'public_reply',
+            characterId: matchedReply.authorId,
+            actorName: getAuthor(matchedReply.authorId).name,
+            content: matchedReply.content,
+            timestamp: baseTimestamp,
+            postTitle: post.title,
+            userComment: replyTarget?.content || post.content,
+            userIdentity: replyTarget
+              ? (replyTarget.authorIdentity === 'anonymous' ? 'anonymous' : 'self')
+              : (post.authorIdentity === 'anonymous' ? 'anonymous' : 'self'),
+            repeatedCount: previousPublicReplies + 1,
+          });
+        }
+
         return {
           ...comment,
           authorIdentity: isCharacterReply ? 'character' : comment.authorIdentity,
@@ -1374,58 +1879,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         aiLastExpandedAt: post.aiLastExpandedAt || baseTimestamp,
       };
     });
-  };
 
-  const pickRefreshContinuationTargets = (channel: ForumChannel) => {
-    const now = Date.now();
-    return postsRef.current
-      .filter((post) => {
-        if (inferForumChannelFromCategory(post.category) !== channel) return false;
-        if (post.comments.length < 2) return false;
-        const lastReplyAt = post.aiLastReplyAt || post.aiLastExpandedAt || post.timestamp;
-        if (now - lastReplyAt < 15 * 60 * 1000) return false;
-        return true;
-      })
-      .map((post) => {
-        const freshnessBonus = Math.max(0, 36 - Math.floor((now - post.timestamp) / (60 * 60 * 1000)));
-        const heatScore = post.comments.length * 12 + post.likes.length * 6 + post.viewCount * 0.06 + freshnessBonus;
-        return { post, heatScore };
-      })
-      .sort((a, b) => b.heatScore - a.heatScore)
-      .slice(0, 4)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, Math.random() < 0.65 ? 1 : 2)
-      .map((item) => item.post);
-  };
-
-  const pickRecurringForumAuthorsForChannel = (channel: ForumChannel): GeneratedForumAuthorDraft[] => {
-    const scoreMap = new Map<string, number>();
-    const bump = (authorId: string, score: number) => {
-      if (!authorId || authorId === currentUser.id) return;
-      if (authorId.startsWith(`seed-anon-${currentUser.id}-`)) return;
-      scoreMap.set(authorId, (scoreMap.get(authorId) || 0) + score);
-    };
-
-    postsRef.current.forEach((post) => {
-      if (inferForumChannelFromCategory(post.category) !== channel) return;
-      bump(post.authorId, 5);
-      post.comments.forEach((comment) => bump(comment.authorId, comment.replyToId ? 2 : 3));
-    });
-
-    return Array.from(scoreMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([authorId]) => {
-        const author = getAuthor(authorId);
-        return {
-          id: authorId,
-          displayName: author.name,
-          bio: author.bio || author.description || '',
-          handle: author.handle || '',
-          avatarSeed: `${author.name}${author.handle || authorId}`,
-        };
-      })
-      .filter((author) => !!author.displayName);
+    const nextCharacters = applyForumCharacterSettlements(nextCharacterSettlementEvents);
+    updatePosts(nextPosts, forumDataRef.current.runtimeAuthorProfiles || {}, nextCharacters);
   };
 
   const pickForumCharacterAuthor = (channel: ForumChannel) => {
@@ -1478,24 +1934,52 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const pickedCharacter = pickForumCharacterAuthor(channel);
     if (!pickedCharacter) return null;
     const forumHabit = buildCharacterForumHabit(pickedCharacter, channel);
+    const existingRuntimeProfile = forumDataRef.current.runtimeAuthorProfiles?.[pickedCharacter.id];
+    let characterRuntimeProfile = existingRuntimeProfile && existingRuntimeProfile.origin === 'character'
+      ? existingRuntimeProfile
+      : buildCharacterForumRuntimeProfile(pickedCharacter, channel);
+
+    if (shouldSyncCharacterForumProfile({ character: pickedCharacter, profile: existingRuntimeProfile })) {
+      try {
+        characterRuntimeProfile = await generateCharacterForumRuntimeProfile({
+          activeConfig: forumConfig,
+          character: pickedCharacter,
+          channel,
+        });
+      } catch (error) {
+        console.error('Failed to generate AI forum profile before character post', pickedCharacter.id, error);
+      }
+    }
+
+    const generationContext = resolveForumGenerationContext({
+      globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+      masks: appDataRef.current.masks || [],
+      worldBooks: appDataRef.current.worldBooks || [],
+      worldBookScope: 'character_post',
+      maskScope: 'character_post',
+    });
 
     const generated = await generateMomentPostContent({
       activeConfig: forumConfig,
       character: pickedCharacter,
-      masks: appDataRef.current.masks || [],
-      worldBook: appDataRef.current.worldBooks || [],
+      masks: generationContext.activeMasks,
+      worldBook: generationContext.activeWorldBooks,
+      extraPromptSections: [
+        generationContext.worldBookPromptBlock,
+        generationContext.maskPromptBlock,
+      ].filter(Boolean),
       requestText: `论坛角色自主发帖：频道=${FORUM_CHANNEL_LABELS[channel]}；氛围=${activeChannelMeta.blurb}；角色论坛偏好=${forumHabit.persona}；写成角色本人会发在公共论坛的一条短帖。`,
     });
 
     const content = generated.content.trim();
     if (!content) return null;
+    const title = buildForumCharacterPostTitle(content);
+    const resolvedMeta = buildForumPostMeta(title, content, channel);
 
     const runtimeProfile: ForumRuntimeAuthorProfile = {
+      ...characterRuntimeProfile,
       id: pickedCharacter.id,
-      name: pickedCharacter.name,
-      handle: buildForumCharacterHandle(pickedCharacter),
       avatar: pickedCharacter.avatar,
-      bio: pickedCharacter.signature?.trim() || pickedCharacter.corePersona?.trim() || pickedCharacter.openingRemark?.trim() || '',
       persona: forumHabit.persona,
       speakingStyle: forumHabit.speakingStyle,
       preferredMove: forumHabit.preferredMove,
@@ -1506,11 +1990,20 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       authorId: pickedCharacter.id,
       authorIdentity: 'character',
       authorCharacterId: pickedCharacter.id,
-      title: buildForumCharacterPostTitle(content),
-      content,
+      title,
+      content: appendForumPostFooterTags(content, {
+        title,
+        body: content,
+        threadType: resolvedMeta.threadType,
+        contentTier: resolvedMeta.contentTier,
+        discourseAxis: resolvedMeta.discourseAxis,
+        channel,
+      }),
       images: [],
       category: FORUM_CHANNEL_LABELS[channel],
-      threadType: 'normal',
+      threadType: resolvedMeta.threadType,
+      contentTier: resolvedMeta.contentTier,
+      discourseAxis: resolvedMeta.discourseAxis,
       timestamp: Date.now(),
       viewCount: 0,
       likes: [],
@@ -1526,79 +2019,244 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     };
   };
 
-  const addNotification = (userId: string, type: ForumNotification['type'], sourceUserId: string, postId: string, commentId?: string) => {
-    const newNotification: ForumNotification = {
-      id: `n-${Date.now()}`,
-      userId,
-      type,
-      sourceUserId,
-      postId,
-      commentId,
-      timestamp: Date.now(),
-      read: false
-    };
-    const currentNotifications = forumDataRef.current.notifications || [];
+  const applyUserMomentum = async (post: ForumPost, comment?: ForumComment) => {
+    const relatedPosts = postsRef.current.filter((item) => {
+      if (post.board === 'spectator' || post.category === SPECTATOR_BOARD_CATEGORY) {
+        return item.board === 'spectator' || item.category === SPECTATOR_BOARD_CATEGORY;
+      }
+      return inferForumChannelFromCategory(item.category) === inferForumChannelFromCategory(post.category);
+    });
+
+    const candidates = buildForumMomentumCandidates({
+      post,
+      recentPosts: relatedPosts,
+      currentUserId: currentUser.id,
+      resolveAuthor: (authorId) => {
+        const author = getAuthor(authorId);
+        return {
+          id: author.id,
+          name: author.name,
+          handle: author.handle || buildReadableForumHandle({ id: author.id, name: author.name }),
+          avatar: author.avatar,
+          bio: author.bio || author.description || '',
+        };
+      },
+      isCharacterAuthor: (authorId) => !!getCharacterById(authorId),
+    });
+
+    const momentum = evaluateForumUserMomentum({
+      event: comment ? 'comment' : 'post',
+      currentUserId: currentUser.id,
+      currentUserName: currentUserForumProfile.name,
+      post,
+      comment,
+      allowNpcTempChat: !!(forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS).social?.allowNpcTempChat,
+      followedUsers: forumDataRef.current.followedUsers || [],
+      followerMap: forumDataRef.current.followerMap || {},
+      tempChats: forumDataRef.current.tempChats || {},
+      candidates,
+    });
+
+    const hasDmIntent = !!momentum.dmOpenIntent;
+    if (
+      !momentum.summaryNotice
+      && momentum.notifications.length === 0
+      && momentum.likedByIds.length === 0
+      && momentum.collectedByIds.length === 0
+      && !hasDmIntent
+    ) return;
+
+    const nextPosts = postsRef.current.map((item) => {
+      if (item.id !== post.id) return item;
+      const nextLikes = Array.from(new Set([...(item.likes || []), ...momentum.likedByIds]));
+      const nextCollections = Array.from(new Set([...(item.collections || []), ...momentum.collectedByIds]));
+      if (nextLikes.length === item.likes.length && nextCollections.length === item.collections.length) {
+        return item;
+      }
+      return {
+        ...item,
+        likes: nextLikes,
+        collections: nextCollections,
+      };
+    });
+
+    const baseForumData = forumDataRef.current;
+    const nextNotifications = [...momentum.notifications, ...(baseForumData.notifications || [])];
+    let nextTempChats = momentum.tempChats;
+    let dmChatCreated = false;
+
+    if (hasDmIntent && forumConfig) {
+      const authorId = momentum.dmOpenIntent!.authorId;
+      const author = getAuthor(authorId);
+      const relatedPost = postsRef.current.find((item) => item.id === momentum.dmOpenIntent!.postId) || post;
+      try {
+        const opening = await generateForumTempOpening({
+          activeConfig: forumConfig,
+          authorName: author.name,
+          authorPersona: author.description || author.bio || '',
+          channel: relatedPost ? inferForumChannelFromCategory(relatedPost.category) : undefined,
+          recentForumPost: relatedPost,
+          userComment: comment || null,
+          reason: momentum.dmOpenIntent!.reason,
+        });
+
+        if (opening.trim()) {
+          const now = Date.now();
+          nextTempChats = {
+            ...nextTempChats,
+            [authorId]: {
+              ...createEmptyForumTempChatSession(authorId, now),
+              updatedAt: now,
+              sessionOrigin: 'npc_auto',
+              messages: [{
+                id: `forum-temp-npc-${now}-${authorId}`,
+                role: 'npc',
+                text: opening.trim(),
+                timestamp: now,
+              }],
+              viewerLastSeenAt: 0,
+            },
+          };
+          dmChatCreated = true;
+        }
+      } catch (error) {
+        console.error('[forum] temporary opening generation failed', error);
+      }
+    }
+
     onUpdateAppData({
       ...appDataRef.current,
       forumData: buildForumDataState({
-        notifications: [newNotification, ...currentNotifications],
-      })
-    });
+        posts: nextPosts,
+        followerMap: momentum.followerMap,
+        tempChats: nextTempChats,
+        notifications: nextNotifications,
+      }),
+    } as AppDataExtended);
+
+    const shouldShowSummaryNotice = momentum.summaryNotice && (
+      !hasDmIntent
+      || dmChatCreated
+    );
+    if (shouldShowSummaryNotice) {
+      showForumNotice(momentum.summaryNotice);
+    }
   };
 
   const triggerForumAiReplies = async (postId: string, options: {
     userNewComment?: ForumComment;
     replyCount?: number;
+    minReplyCount?: number;
     replyMode?: 'mixed' | 'independent_only' | 'threaded_only';
     markDetailExpanded?: boolean;
+    allowCharacterReply?: boolean;
   } = {}) => {
     if (!forumConfig) {
       if (options.userNewComment) {
         showForumNotice('评论已发出，但论坛 AI 还没启用，所以这次不会自动跟帖。');
       }
-      return;
+      return 0;
     }
-    if (forumAiLoadingPostId === postId) return;
+    if (forumAiLoadingPostId === postId) return 0;
 
     const latestPost = postsRef.current.find((item) => item.id === postId);
-    if (!latestPost) return;
+    if (!latestPost) return 0;
 
-    const { knownAuthors, participants } = selectForumReplyAuthorPool(latestPost);
-    if (!knownAuthors.length || !participants.length) return;
+    const desiredReplyCount = options.replyCount ?? 3;
+    const minimumReplyCount = Math.max(0, options.minReplyCount ?? 0);
 
     setForumAiLoadingPostId(postId);
     try {
-      const generatedReplies = await generateForumReplies({
+      const result = await orchestrateForumReplies({
         activeConfig: forumConfig,
         post: latestPost,
-        channel: inferForumChannelFromCategory(latestPost.category),
-        knownAuthors,
-        participants,
-        replyCount: options.replyCount ?? 3,
+        currentUserId: currentUser.id,
+        desiredReplyCount,
+        minimumReplyCount,
         replyMode: options.replyMode ?? 'mixed',
         userNewComment: options.userNewComment,
+        allCharacters: appDataRef.current.characters,
+        existingPosts: postsRef.current,
+        globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+        masks: appDataRef.current.masks || [],
+        worldBooks: appDataRef.current.worldBooks || [],
+        inferChannel: inferForumChannelFromCategory,
+        getAuthor,
+        getCharacterById,
+        appendReplies: (replies) => appendGeneratedReplies(postId, replies),
+        allowCharacterReply: options.allowCharacterReply ?? true,
+        resolveCharacterReply: async ({ post, channel, triggerComment, allCharacters, existingPosts }) => {
+          if (post.board === 'spectator' || post.category === SPECTATOR_BOARD_CATEGORY) {
+            const spectatorSettings = forumDataRef.current.spectatorSettings || buildCurrentSpectatorSettings();
+            const selectedTargetIds = normalizeSpectatorTargetCharacters(spectatorSettings).map((target) => target.characterId);
+            const selectedCharacters = appDataRef.current.characters.filter((character) => (
+              selectedTargetIds.includes(character.id)
+            ));
+              return maybeGenerateSpectatorCharacterReply({
+                activeConfig: forumConfig,
+                settings: spectatorSettings,
+                currentUserName: resolveSpectatorNameSource(spectatorSettings.userNameSource),
+                selectedCharacters,
+              allCharacters,
+              existingPosts: existingPosts.filter((item) => item.board === 'spectator' || item.category === SPECTATOR_BOARD_CATEGORY),
+              globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+              masks: appDataRef.current.masks || [],
+              worldBooks: appDataRef.current.worldBooks || [],
+              post,
+              userComment: triggerComment.content,
+            });
+          }
+
+          return maybeGenerateCharacterForumReplyActivity({
+            activeConfig: forumConfig,
+            post,
+            channel,
+            userNewComment: triggerComment,
+            allCharacters,
+            existingPosts,
+            globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+            masks: appDataRef.current.masks || [],
+            worldBooks: appDataRef.current.worldBooks || [],
+            resolveAuthorName: (authorId) => getAuthor(authorId).name,
+          });
+        },
       });
 
-      if (generatedReplies.length > 0) {
-        appendGeneratedReplies(postId, generatedReplies);
-      } else if (options.markDetailExpanded) {
+      if (result.addedCount > 0) {
+        return result.addedCount;
+      }
+
+      if (options.markDetailExpanded) {
         updateSinglePost(postId, (post) => ({
           ...post,
           aiDetailExpanded: true,
           aiLastExpandedAt: Date.now(),
         }));
       }
+      return 0;
     } catch (error) {
       console.error('[forum] failed to generate replies', error);
       showForumNotice('论坛自动回帖失败了，这次先没接上。可以稍后再试一次。', 'error');
+      return 0;
     } finally {
       setForumAiLoadingPostId((current) => current === postId ? null : current);
     }
   };
 
-  const handleCommentWithAi = async (postId: string, content: string, replyToId?: string, rootCommentId?: string, identity: 'self' | 'anonymous' = 'self') => {
-    const createdComment = handleComment(postId, content, replyToId, rootCommentId, identity);
+  const handleCommentWithAi = async (
+    postId: string,
+    content: string,
+    replyToId?: string,
+    rootCommentId?: string,
+    identity: 'self' | 'anonymous' = 'self',
+    maskId?: string,
+  ) => {
+    const createdComment = handleComment(postId, content, replyToId, rootCommentId, identity, maskId);
     if (!createdComment) return;
+    const commentedPost = postsRef.current.find((item) => item.id === postId);
+    if (commentedPost) {
+      void applyUserMomentum(commentedPost, createdComment);
+    }
     if (!forumConfig) {
       showForumNotice('评论已发出。当前论坛 AI 未启用，所以还不会自动回复。');
       return;
@@ -1606,99 +2264,109 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
     await triggerForumAiReplies(postId, {
       userNewComment: createdComment,
-      replyCount: replyToId ? 2 : 3,
-      replyMode: replyToId ? 'threaded_only' : 'mixed',
+      allowCharacterReply: false,
+      ...buildForumReplyPlan(postsRef.current.find((item) => item.id === postId) || { contentTier: 'baseline' }, 'comment', !!replyToId),
     });
   };
 
-  const handleRefreshFeed = async () => {
+  const handleManualRefreshReplies = async (postId: string) => {
     if (!forumConfig) {
-      showForumNotice('当前论坛 AI 未启用，暂时不能补新帖。', 'error');
+      showForumNotice('当前论坛 AI 未启用，暂时不能补楼。', 'error');
+      return;
+    }
+
+    const targetPost = postsRef.current.find((item) => item.id === postId);
+    if (!targetPost) return;
+
+    const replyCount = 28 + Math.floor(Math.random() * 13);
+    const addedCount = await triggerForumAiReplies(postId, {
+      replyCount,
+      minReplyCount: 20,
+      replyMode: 'mixed',
+      markDetailExpanded: true,
+    });
+    if (addedCount > 0) {
+      updateSinglePost(postId, (post) => applyForumHotState(markForumHotContinuation(post, 'detail_refresh')));
+      showForumNotice(`这次手动补了 ${addedCount} 层新回复。`);
+      return;
+    }
+    showForumNotice('这次没补出新回复，可以稍后再点一次。');
+  };
+
+  const handleOpenPublicThreads = async (draftOverride?: ForumOpenDraft) => {
+    if (!forumConfig) {
+      showForumNotice('当前论坛 AI 未启用，暂时不能开新楼。', 'error');
       return;
     }
     if (feedRefreshLoading || feedRefreshLockRef.current) return;
+    const openDraft = draftOverride || publicOpenDraft;
 
+    let shouldTriggerLinkedSpectatorRefresh = false;
     feedRefreshLockRef.current = true;
     setFeedRefreshLoading(true);
     try {
-      const channel = activeChannel as ForumChannel;
-      const generationCount = 5 + Math.floor(Math.random() * 4);
-      const channelPosts = postsRef.current.filter((post) => inferForumChannelFromCategory(post.category) === channel);
-      const recurringAuthors = pickRecurringForumAuthorsForChannel(channel);
-      const continuationTargets = pickRefreshContinuationTargets(channel);
-      const generatedBatch = await generateForumThreads({
+      const opened = await openForumThreads({
         activeConfig: forumConfig,
-        channel,
-        existingPosts: channelPosts,
-        count: generationCount,
-        recurringAuthors,
+        activeChannel,
+        mode: openDraft.mode,
+        selectedChannels: openDraft.selectedChannels,
+        selectedThreadTypes: openDraft.selectedThreadTypes,
+        preferredTopicText: openDraft.preferredTopicText.trim(),
+        preferredSceneText: openDraft.preferredSceneText.trim(),
+        preferredConflictText: openDraft.preferredConflictText.trim(),
+        preferredRelationshipText: openDraft.preferredRelationshipText.trim(),
+        excludedTopicText: openDraft.excludedTopicText.trim(),
+        posts: postsRef.current,
+        globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+        worldBooks: appDataRef.current.worldBooks || [],
+        currentUserId: currentUser.id,
+        followedUserIds: followedUsers,
+        inferChannel: inferForumChannelFromCategory,
+        getAuthor,
       });
-      const characterPostResult = await maybeGenerateCharacterForumPost(channel);
-
-      const generatedRuntimeProfiles = generatedBatch.authors.map((author) => ({
-            id: author.id,
-            name: author.displayName,
-            handle: author.handle || buildReadableForumHandle({
-              id: author.id,
-              name: author.displayName,
-            }),
-            avatar: seedFallbackAvatar(author.avatarSeed || `${author.displayName}${author.handle || ''}`, author.displayName),
-            bio: author.bio || '',
-            persona: author.persona || author.bio || '',
-            speakingStyle: author.speakingStyle,
-            preferredMove: author.speakingStyle ? `说话常带 ${author.speakingStyle}` : undefined,
-          }));
-      const nextRuntimeAuthorProfiles = (generatedRuntimeProfiles.length > 0 || characterPostResult?.runtimeProfile)
-        ? mergeRuntimeAuthorProfiles([
-            ...generatedRuntimeProfiles,
-            ...(characterPostResult?.runtimeProfile ? [characterPostResult.runtimeProfile] : []),
-          ])
-        : (forumDataRef.current.runtimeAuthorProfiles || {});
-
-      const refreshedPosts = [
-        ...(characterPostResult ? [characterPostResult.post] : []),
-        ...generatedBatch.posts,
-      ];
-
-      if (refreshedPosts.length > 0) {
-        const merged = pruneForumFeed([...refreshedPosts, ...postsRef.current]);
+        const nextViewChannels = openDraft.mode === 'random'
+          ? opened.openedChannels
+          : (openDraft.selectedChannels.length > 0 ? openDraft.selectedChannels : publicViewChannels);
+        if (opened.posts.length > 0) {
+          const nextRuntimeAuthorProfiles = opened.runtimeProfiles.length > 0
+            ? mergeRuntimeAuthorProfiles(opened.runtimeProfiles)
+            : (forumDataRef.current.runtimeAuthorProfiles || {});
+          const updatedSourcePostMap = new Map(opened.updatedSourcePosts.map((post) => [post.id, post]));
+          const merged = pruneForumFeed(
+          [
+            ...diversifyForumPosts(opened.posts),
+            ...postsRef.current.map((post) => updatedSourcePostMap.get(post.id) || post),
+          ].map((post) => applyForumHotState(post)),
+        );
         updatePosts(merged, nextRuntimeAuthorProfiles);
-      }
-
-      let continuedCount = 0;
-      for (const post of continuationTargets) {
-        try {
-          await triggerForumAiReplies(post.id, {
-            replyCount: post.comments.length >= 8 ? 2 : 3,
-            replyMode: post.comments.length >= 4 ? 'mixed' : 'independent_only',
-          });
-          continuedCount += 1;
-        } catch (error) {
-          console.error('[forum] failed to continue hot thread', { postId: post.id, error });
+        setPublicViewChannels(nextViewChannels);
+        if (nextViewChannels.length === 1) {
+          setActiveChannel(nextViewChannels[0] as ForumChannelTabId);
         }
-      }
-
-      if (!refreshedPosts.length && !continuedCount) {
-        console.warn('[forum] refresh produced no posts', {
-          channel,
-          generationCount,
-        });
+        shouldTriggerLinkedSpectatorRefresh = !!forumDataRef.current.spectatorSettings?.autoGenerate;
+        const followupSuffix = opened.hotFollowupCount > 0 ? `，另带了 ${opened.hotFollowupCount} 篇热帖续贴` : '';
+        const feedbackSuffix = opened.topicFeedbackLines.length > 0
+          ? ` 命中：${opened.topicFeedbackLines.slice(0, 3).join('；')}。`
+          : '';
+        showForumNotice(`这次开了 ${opened.actualCount} / ${opened.requestedCount} 帖，覆盖 ${opened.openedChannels.length} 个区${followupSuffix}。${feedbackSuffix}`);
       } else {
-        const summaryBits = [
-          generatedBatch.posts.length > 0 ? `补了 ${generatedBatch.posts.length} 条新帖` : '',
-          characterPostResult ? `${characterPostResult.characterName} 来发了一条帖` : '',
-          continuedCount > 0 ? `续了 ${continuedCount} 个热帖` : '',
-        ].filter(Boolean);
-        if (summaryBits.length > 0) {
-          showForumNotice(summaryBits.join('，') + '。');
-        }
+        console.warn('[forum] open threads produced no posts');
+        showForumNotice('这次没开出新楼，可以稍后再试。', 'error');
       }
     } catch (error) {
-      console.error('[forum] failed to refresh feed', error);
-      showForumNotice('补新帖失败了，可能是接口暂时没接上。', 'error');
+      console.error('[forum] failed to open public threads', error);
+      showForumNotice('开楼失败了，可能是接口暂时没接上。', 'error');
     } finally {
       setFeedRefreshLoading(false);
       feedRefreshLockRef.current = false;
+    }
+
+    if (shouldTriggerLinkedSpectatorRefresh) {
+      await generateSpectatorPostsFromSettings({
+        randomizeIfEmpty: true,
+        preserveBoardView: true,
+        silentNotice: true,
+      });
     }
   };
 
@@ -1709,38 +2377,45 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       return;
     }
 
-    const bridgeCharacter = buildForumNpcBridgeCharacter(author);
-    const fullAppData = appDataRef.current as any;
-    const existingHistory = fullAppData.chatHistory?.[authorId];
-    const initialHistory = existingHistory && existingHistory.length > 0
-      ? existingHistory
-      : [{
-          role: 'model' as const,
-          text: `${bridgeCharacter.openingRemark} 现在如果你愿意，我们可以换到正式聊天里继续。`,
-          timestamp: Date.now(),
-        }];
+    const existingSession = (forumDataRef.current.tempChats || {})[authorId];
+    if (!existingSession?.addedAsFriend) {
+      showForumNotice('对方还没有正式加上你，先去“新的朋友”里处理好友申请。', 'error');
+      return;
+    }
+    const bridged = bridgeForumFriendToFormalChat({
+      appData: appDataRef.current,
+      author,
+      session: existingSession,
+    });
+    const bridgeTimestamp = Date.now();
+    const nextCharacters = bridged.nextCharacters.map((character) => {
+      if (!character || character.id !== authorId) {
+        return character;
+      }
 
-    updateTempChatSession(authorId, (session) => ({
-      ...session,
-      addedAsFriend: true,
-      updatedAt: Date.now(),
-    }));
+      const settlement = buildForumSharedSettlement(character, {
+        kind: 'friend_bridge',
+        actorName: author.name,
+        content: existingSession.messages.slice(-1)[0]?.text || '论坛里的关系已经往正式单聊过渡。',
+        timestamp: bridgeTimestamp,
+      });
+
+      return {
+        ...character,
+        sharedContextSnapshots: settlement.sharedContextSnapshots,
+        shortTermSummary: settlement.shortTermSummary,
+        openLoopRegistry: settlement.openLoopRegistry,
+      };
+    });
 
     onUpdateAppData({
       ...appDataRef.current,
-      characters: [...appDataRef.current.characters, bridgeCharacter],
-      chatHistory: {
-        ...(fullAppData.chatHistory || {}),
-        [authorId]: initialHistory,
-      },
+      characters: nextCharacters,
+      chatHistory: bridged.nextChatHistory,
       forumData: buildForumDataState({
         tempChats: {
           ...(forumDataRef.current.tempChats || {}),
-          [authorId]: {
-            ...(forumDataRef.current.tempChats || {})[authorId],
-            addedAsFriend: true,
-            updatedAt: Date.now(),
-          },
+          [authorId]: bridged.nextTempSession,
         },
       }),
     } as AppDataExtended);
@@ -1760,43 +2435,26 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const session = (forumDataRef.current.tempChats || {})[activeTempChatUserId];
     if (session?.pendingReply) return;
     const userText = tempChatInput.trim();
-    const userMessage: ForumTempChatMessage = {
-      id: `forum-temp-user-${Date.now()}`,
-      role: 'user',
-      text: userText,
-      timestamp: Date.now(),
-    };
+    const userMessage = createForumTempUserMessage(userText);
 
     setTempChatInput('');
     setTempChatLoading(true);
 
     const relatedPost = resolveRecentForumPostForAuthor(activeTempChatUserId);
     const replyPolicy = buildTempChatReplyPolicy(author, session || {
-      authorId: activeTempChatUserId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
+      ...createEmptyForumTempChatSession(activeTempChatUserId),
     });
-    const pendingReply: ForumTempChatPendingReply = {
-      userMessageId: userMessage.id,
-      userText,
-      behavior: replyPolicy.behavior,
-      readAt: userMessage.timestamp + replyPolicy.readDelayMs,
-      replyAt: replyPolicy.behavior === 'ghost'
-        ? undefined
-        : userMessage.timestamp + (replyPolicy.replyDelayMs || 0),
-      status: 'waiting',
-      relatedPostId: relatedPost?.id || null,
-    };
 
     updateTempChatSession(activeTempChatUserId, (currentSession) => {
-      const messages = [...currentSession.messages, userMessage];
-      return {
-        ...currentSession,
-        messages,
-        updatedAt: Date.now(),
-        pendingReply,
-      };
+      return queueForumTempUserMessage({
+        session: currentSession,
+        userMessage,
+        userText,
+        behavior: replyPolicy.behavior,
+        readDelayMs: replyPolicy.readDelayMs,
+        replyDelayMs: replyPolicy.replyDelayMs,
+        relatedPostId: relatedPost?.id || null,
+      });
     });
 
     window.setTimeout(() => {
@@ -1817,6 +2475,88 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     });
   };
 
+  const handleMarkAllForumNotificationsRead = () => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applyForumNotificationsRead(currentForumData)),
+    } as AppDataExtended);
+    showForumNotice('通知都标成已读了。');
+    setShowMessageManageSheet(false);
+  };
+
+  const handleMarkAllForumChatsRead = () => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applyForumChatsRead(currentForumData)),
+    } as AppDataExtended);
+    showForumNotice('聊天都标成已读了。');
+    setShowMessageManageSheet(false);
+  };
+
+  const handleClearStrangerForumChats = () => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applyForumStrangerChatsCleared(
+        currentForumData,
+        (authorId) => isMutualForumFollow(authorId),
+      )),
+    } as AppDataExtended);
+    showForumNotice('陌生人聊天已经清掉。');
+    setShowMessageManageSheet(false);
+  };
+
+  const handleClearAllForumNotifications = () => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applyForumNotificationsCleared(currentForumData)),
+    } as AppDataExtended);
+    showForumNotice('通知列表已经清空。');
+    setShowMessageManageSheet(false);
+  };
+
+  const handleTogglePinnedForumChat = (authorId: string) => {
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        pinnedChatAuthorIds: togglePinnedForumChat(forumDataRef.current.pinnedChatAuthorIds || [], authorId),
+      }),
+    } as AppDataExtended);
+    setOpenMessageRowMenuId(null);
+  };
+
+  const handleTogglePinnedForumPost = (postId: string) => {
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        pinnedPostIds: togglePinnedForumPost(forumDataRef.current.pinnedPostIds || [], postId),
+      }),
+    } as AppDataExtended);
+  };
+
+  const handleRemoveSingleForumChat = (authorId: string) => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applySingleForumChatRemoved(currentForumData, authorId)),
+    } as AppDataExtended);
+    showForumNotice('这条聊天已经清理。');
+    setOpenMessageRowMenuId(null);
+  };
+
+  const handleRemoveSingleForumNotification = (notificationId: string) => {
+    const currentForumData = forumDataRef.current;
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(applySingleForumNotificationRemoved(currentForumData, notificationId)),
+    } as AppDataExtended);
+    showForumNotice('这条通知已经清理。');
+    setOpenMessageRowMenuId(null);
+  };
+
   // Mark notifications as read when switching to notification tab
   useEffect(() => {
     if (activeTab === 'notification' && messageTab === 'activity') {
@@ -1824,63 +2564,115 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     }
   }, [activeTab, messageTab]);
 
+  useEffect(() => {
+    setOpenMessageRowMenuId(null);
+  }, [messageTab, chatListTab]);
+
   const handleUpdateProfile = () => {
-    const normalizedNextId = editId.trim().replace(/^@/, '');
-    const previousUserId = currentUser.id;
-    const nextUserId = normalizedNextId || previousUserId;
-    const nextAvatar = editAvatar || currentUser.avatar;
-    const nextForumPosts = posts.map((post) => ({
-      ...post,
-      authorId: post.authorId === previousUserId ? nextUserId : post.authorId,
-      ownerUserId: post.ownerUserId === previousUserId ? nextUserId : post.ownerUserId,
-      likes: post.likes.map((id) => id === previousUserId ? nextUserId : id),
-      collections: post.collections.map((id) => id === previousUserId ? nextUserId : id),
-      comments: post.comments.map((comment) => ({
-        ...comment,
-        authorId: comment.authorId === previousUserId ? nextUserId : comment.authorId,
-        ownerUserId: comment.ownerUserId === previousUserId ? nextUserId : comment.ownerUserId,
-        likes: comment.likes.map((id) => id === previousUserId ? nextUserId : id),
-      })),
-    }));
-    const nextForumNotifications = notifications.map((notification) => ({
-      ...notification,
-      userId: notification.userId === previousUserId ? nextUserId : notification.userId,
-      sourceUserId: notification.sourceUserId === previousUserId ? nextUserId : notification.sourceUserId,
-    }));
-    const nextFollowerMap = Object.entries(followerMap).reduce<Record<string, string[]>>((acc, [key, value]) => {
-      const nextKey = key === previousUserId ? nextUserId : key;
-      acc[nextKey] = (value || []).map((id) => id === previousUserId ? nextUserId : id);
-      return acc;
-    }, {});
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState({
+        runtimeAuthorProfiles: buildUpdatedCurrentUserForumProfiles({
+          currentUser,
+          runtimeProfiles: forumDataRef.current.runtimeAuthorProfiles || {},
+          draft: {
+            name: editName,
+            handle: editId,
+            bio: editBio,
+            avatar: editAvatar || currentUserForumProfile.avatar,
+          },
+        }),
+      }),
+    } as AppDataExtended);
+    setEditAvatarUrlInput('');
+    setCurrentView(profileEditReturnView);
+    if (profileEditReturnView === 'list') {
+      setActiveTab('profile');
+    }
+  };
+
+  const openCurrentUserForumProfileEditor = (returnView: 'list' | 'forum-settings' = 'list') => {
+    setProfileEditReturnView(returnView);
+    setEditName(currentUserForumProfile.name || '');
+    setEditId(currentUserForumProfile.handle || '');
+    setEditBio(currentUserForumProfile.bio || '');
+    setEditAvatar(currentUserForumProfile.avatar || '');
+    setEditAvatarUrlInput('');
+    setCurrentView('edit-profile');
+  };
+
+  const openCharacterForumProfileEditor = (characterId: string) => {
+    const character = getCharacterByIdStrict(characterId);
+    if (!character) return;
+    const profile = runtimeAuthorProfiles[characterId] || buildCharacterForumRuntimeProfile(character);
+    setEditingForumAuthorId(characterId);
+    setEditName(profile.name || character.name);
+    setEditId(profile.handle || '');
+    setEditBio(profile.bio || character.signature || character.corePersona || '');
+    setCurrentView('edit-author-profile');
+  };
+
+  const handleSaveCharacterForumProfile = () => {
+    if (!editingForumAuthorId) return;
+    const character = getCharacterByIdStrict(editingForumAuthorId);
+    if (!character) return;
+
+    const baseProfile = buildCharacterForumRuntimeProfile(character);
+    const normalizedHandle = editId.trim().replace(/^@/, '');
+    const nextProfile: ForumRuntimeAuthorProfile = {
+      ...baseProfile,
+      id: character.id,
+      name: editName.trim() || baseProfile.name,
+      handle: normalizedHandle || baseProfile.handle,
+      bio: editBio.trim() || baseProfile.bio,
+      avatar: character.avatar,
+      origin: 'character',
+      aliasVersion: baseProfile.aliasVersion,
+      manuallyEdited: true,
+      generationMode: 'manual',
+    };
 
     onUpdateAppData({
-      ...appData,
-      userProfile: {
-        ...currentUser,
-        name: editName,
-        bio: editBio,
-        avatar: nextAvatar,
-        id: nextUserId,
-      },
+      ...appDataRef.current,
       forumData: buildForumDataState({
-        posts: nextForumPosts,
-        notifications: nextForumNotifications,
-        followerMap: nextFollowerMap,
+        runtimeAuthorProfiles: {
+          ...(forumDataRef.current.runtimeAuthorProfiles || {}),
+          [character.id]: nextProfile,
+        },
       }),
-    });
-    setEditAvatarUrlInput('');
-    setCurrentView('list');
-    setActiveTab('profile');
+    } as AppDataExtended);
+
+    setCurrentView('user-profile');
+    showForumNotice('这个角色的论坛资料已经改好。');
+  };
+
+  const handleUpdateForumGlobalSettings = (nextSettings: NonNullable<ForumData['globalSettings']>) => {
+    const currentSettings = normalizeForumGlobalSettings(forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS);
+    const normalizedNextSettings = normalizeForumGlobalSettings(nextSettings);
+    const shouldClearAutoNpcChats = currentSettings.social.allowNpcTempChat && !normalizedNextSettings.social.allowNpcTempChat;
+    const nextForumData = shouldClearAutoNpcChats
+      ? applyForumAutoNpcChatsCleared({
+          ...forumDataRef.current,
+          globalSettings: normalizedNextSettings,
+        } as ForumData)
+      : {
+          ...forumDataRef.current,
+          globalSettings: normalizedNextSettings,
+        };
+
+    onUpdateAppData({
+      ...appDataRef.current,
+      forumData: buildForumDataState(nextForumData),
+    } as AppDataExtended);
+
+    if (shouldClearAutoNpcChats) {
+      showForumNotice('已关闭网友主动私聊，历史自动陌生人私聊也一起清掉了。');
+    }
   };
 
   const saveSpectatorSettings = () => {
-    const nextSettings: ForumSpectatorSettings = {
-      subjectName: spectatorSubjectName.trim(),
-      relationshipSummary: spectatorRelationshipSummary.trim(),
-      tone: spectatorTone,
-      autoGenerate: spectatorAutoGenerate,
-      selectedCharacterIds: spectatorCharacterIds,
-    };
+    setSpectatorOpenMode('configured');
+    const nextSettings = buildCurrentSpectatorSettings();
 
     onUpdateAppData({
       ...appDataRef.current,
@@ -1888,56 +2680,193 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         spectatorSettings: nextSettings,
       }),
     } as AppDataExtended);
-    showForumNotice('围观板块设置已保存。');
+    showForumNotice('镜间设置已保存。');
+    setForumBoard('spectator');
     setCurrentView('list');
   };
 
-  const generateSpectatorPostsFromSettings = () => {
-    const settingsPayload: ForumSpectatorSettings = {
-      subjectName: spectatorSubjectName.trim(),
-      relationshipSummary: spectatorRelationshipSummary.trim(),
-      tone: spectatorTone,
-      autoGenerate: spectatorAutoGenerate,
-      selectedCharacterIds: spectatorCharacterIds,
-    };
-    const selectedCharacters = appData.characters.filter((character) => settingsPayload.selectedCharacterIds.includes(character.id));
-    if (!settingsPayload.subjectName && selectedCharacters.length === 0) {
-      showForumNotice('先在围观设置里选角色或填一个围观对象。', 'error');
-      return;
-    }
+  const buildRandomSpectatorSeed = (): ForumSpectatorSettings => buildRandomSpectatorSettings({
+    currentUserName: spectatorObjectUserName,
+    availableCharacterNames: appData.characters.slice(0, 10).map((character) => character.name).filter(Boolean),
+  });
 
-    const drafts = buildSpectatorPostDrafts({
+  const applySpectatorSettingsDraft = (draft: ForumSpectatorSettings) => {
+    setSpectatorSubjectName(draft.subjectName || '');
+    setSpectatorRelationshipSummary(draft.relationshipSummary || '');
+    setSpectatorTopicHint(draft.topicHint || '');
+    setSpectatorObjectMode(draft.objectMode || 'user_with_characters');
+    setSpectatorOpenMode(draft.mode === 'random' ? 'random' : 'configured');
+    setSpectatorThreadTypes(draft.threadTypes || []);
+    setSpectatorWorldShell(draft.worldShell as SpectatorWorldShell | undefined);
+    setSpectatorTone(draft.tone);
+    setSpectatorAngles(draft.angles || []);
+    setSpectatorAutoGenerate(!!draft.autoGenerate);
+    setSpectatorCharacterIds(draft.selectedCharacterIds || []);
+    const normalizedUserSlot = normalizeSpectatorUserSlot(draft);
+    setSpectatorUserSlotMode(normalizedUserSlot.mode);
+    setSpectatorUserNameSource(draft.userNameSource || 'user');
+    setSpectatorUserMaskId(normalizedUserSlot.maskId);
+    setSpectatorTargetCharacters(normalizeSpectatorTargetCharacters(draft));
+    setSpectatorTargetPresets(draft.targetPresets || []);
+    setSpectatorCluePool(draft.cluePool || []);
+    setSpectatorDefaultThreadTypePool(draft.defaultThreadTypePool || []);
+  };
+
+  const generateSpectatorPostsFromSettings = async (options?: {
+    randomizeIfEmpty?: boolean;
+    forceRandomize?: boolean;
+    preserveBoardView?: boolean;
+    silentNotice?: boolean;
+  }) => {
+    const currentSettings = buildCurrentSpectatorSettings();
+    const randomSeed = buildRandomSpectatorSeed();
+    const currentAngles = currentSettings.angles || [];
+    const selectedThreadTypes = currentSettings.threadTypes || [];
+    const preserveBoardView = !!options?.preserveBoardView;
+    const shouldRandomize = !!options?.forceRandomize
+      || (!!options?.randomizeIfEmpty && !currentSettings.subjectName && !currentSettings.worldShell && currentAngles.length === 0);
+    const randomizedRelationshipSummary = buildSpectatorDraftText(
+      pickRandomSpectatorDraftValues(
+        spectatorRelationshipSuggestions,
+        2 + Math.floor(Math.random() * 2),
+      ),
+      ' / ',
+    );
+    const settingsPayload = shouldRandomize ? {
+      ...randomSeed,
+      relationshipSummary: randomizedRelationshipSummary || randomSeed.relationshipSummary,
+      threadTypes: [],
+    } : {
+      ...currentSettings,
+      subjectName: currentSettings.subjectName || randomSeed.subjectName,
+      relationshipSummary: currentSettings.relationshipSummary || randomizedRelationshipSummary || randomSeed.relationshipSummary,
+      tone: currentSettings.tone || randomSeed.tone,
+      worldShell: currentSettings.worldShell || randomSeed.worldShell,
+      angles: currentAngles.length ? currentAngles : randomSeed.angles,
+      threadTypes: selectedThreadTypes,
+    };
+    const selectedTargetIds = normalizeSpectatorTargetCharacters(settingsPayload).map((target) => target.characterId);
+    const selectedCharacters = appData.characters.filter((character) => selectedTargetIds.includes(character.id));
+    const generationBatches = buildSpectatorGenerationBatches({
       settings: settingsPayload,
-      currentUserName: currentUser.name,
       selectedCharacters,
+      totalCount: SPECTATOR_OPEN_THREAD_TOTAL_COUNT,
     });
 
-    const spectatorPosts: ForumPost[] = drafts.map((draft, index) => ({
-      id: `spectator-post-${Date.now()}-${index}`,
-      authorId: `${SPECTATOR_BOARD_AUTHOR_PREFIX}${index}`,
-      board: 'spectator',
-      title: draft.title,
-      content: draft.content,
-      category: SPECTATOR_BOARD_CATEGORY,
-      threadType: index % 2 === 0 ? 'normal' : 'sameTopic',
-      timestamp: Date.now() - index * 60 * 1000,
-      viewCount: 12 + index * 8,
-      likes: [],
-      collections: [],
-      comments: [],
-      source: 'generated',
-    }));
+    applySpectatorSettingsDraft(settingsPayload);
 
-    onUpdateAppData({
-      ...appDataRef.current,
-      forumData: buildForumDataState({
-        posts: pruneForumFeed([...spectatorPosts, ...postsRef.current]),
-        spectatorSettings: settingsPayload,
-      }),
-    } as AppDataExtended);
-    showForumNotice(`围观板块补了 ${spectatorPosts.length} 条新帖。`);
-    setCurrentView('list');
-    setForumBoard('spectator');
+    if (!preserveBoardView) {
+      setForumBoard('spectator');
+      setCurrentView('list');
+    }
+
+    if (feedRefreshLoading || feedRefreshLockRef.current) return;
+    feedRefreshLockRef.current = true;
+    setFeedRefreshLoading(true);
+
+    try {
+      let spectatorPosts = generationBatches.flatMap((batch, index) => createSpectatorPosts({
+        settings: batch.settings,
+        currentUserName: spectatorObjectUserName,
+        selectedCharacters: batch.selectedCharacters,
+        now: Date.now() + index * 1000,
+        count: batch.count,
+        allowedThreadTypes: batch.settings.threadTypes || [],
+      })).slice(0, SPECTATOR_OPEN_THREAD_TOTAL_COUNT);
+      let nextRuntimeProfiles = forumDataRef.current.runtimeAuthorProfiles || {};
+
+      if (forumConfig) {
+        const generatedResults = await Promise.all(generationBatches.map((batch) => generateSpectatorThreads({
+          activeConfig: forumConfig,
+          settings: batch.settings,
+          currentUserName: spectatorObjectUserName,
+          selectedCharacters: batch.selectedCharacters,
+          existingPosts: postsRef.current.filter((post) => post.board === 'spectator' || post.category === SPECTATOR_BOARD_CATEGORY),
+          globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+          masks: appDataRef.current.masks || [],
+          worldBooks: appDataRef.current.worldBooks || [],
+          count: batch.count,
+          allowedThreadTypes: batch.settings.threadTypes || [],
+        })));
+
+        const generatedPosts = generatedResults.flatMap((result) => result.posts);
+        if (generatedPosts.length > 0) {
+          const resolvedShell = resolveSpectatorWorldShell(settingsPayload.worldShell);
+          const generatedRuntimeProfiles = generatedResults.flatMap((result) => result.authors).map((author, index) => ({
+            id: author.id,
+            name: author.displayName,
+            handle: !author.handle || looksMachineGeneratedHandle(author.handle)
+              ? buildSpectatorRuntimeHandle(resolvedShell, index, author.displayName)
+              : author.handle.replace(/^@/, '').trim(),
+            avatar: seedFallbackAvatar(author.avatarSeed || `${author.displayName}${author.handle || ''}`, author.displayName),
+            bio: author.bio || '',
+            persona: author.persona || author.bio || '',
+            speakingStyle: author.speakingStyle,
+            preferredMove: author.speakingStyle ? `说话常带 ${author.speakingStyle}` : undefined,
+            homeChannel: 'junction' as const,
+            boardScope: 'spectator' as const,
+          }));
+          nextRuntimeProfiles = mergeRuntimeAuthorProfiles(generatedRuntimeProfiles);
+          spectatorPosts = generatedPosts.slice(0, SPECTATOR_OPEN_THREAD_TOTAL_COUNT);
+        }
+      }
+
+      if (spectatorPosts.length < SPECTATOR_OPEN_THREAD_TOTAL_COUNT) {
+        const fallbackPosts = generationBatches.flatMap((batch, index) => createSpectatorPosts({
+          settings: batch.settings,
+          currentUserName: spectatorObjectUserName,
+          selectedCharacters: batch.selectedCharacters,
+          now: Date.now() + 2000 + index * 1000,
+          count: batch.count,
+          allowedThreadTypes: batch.settings.threadTypes || [],
+        }));
+        const existingIds = new Set(spectatorPosts.map((post) => post.id));
+        spectatorPosts = [...spectatorPosts, ...fallbackPosts.filter((post) => !existingIds.has(post.id))]
+          .slice(0, SPECTATOR_OPEN_THREAD_TOTAL_COUNT);
+      }
+
+      if (forumConfig && settingsPayload.objectMode !== 'single_character') {
+        const characterPost = await maybeGenerateSpectatorCharacterPost({
+          activeConfig: forumConfig,
+          settings: settingsPayload,
+          currentUserName: spectatorObjectUserName,
+          selectedCharacters,
+          allCharacters: appDataRef.current.characters,
+          existingPosts: postsRef.current.filter((post) => post.board === 'spectator' || post.category === SPECTATOR_BOARD_CATEGORY),
+          globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
+          masks: appDataRef.current.masks || [],
+          worldBooks: appDataRef.current.worldBooks || [],
+        });
+
+        if (characterPost) {
+          spectatorPosts = [characterPost, ...spectatorPosts].slice(0, SPECTATOR_OPEN_THREAD_TOTAL_COUNT);
+        }
+      }
+
+      onUpdateAppData({
+        ...appDataRef.current,
+        forumData: buildForumDataState({
+          posts: pruneForumFeed([...spectatorPosts, ...postsRef.current]),
+          runtimeAuthorProfiles: nextRuntimeProfiles,
+          spectatorSettings: settingsPayload,
+        }),
+      } as AppDataExtended);
+      if (!options?.silentNotice) {
+        showForumNotice(`镜间补了 ${spectatorPosts.length} 条新帖。`);
+      }
+      if (!preserveBoardView) {
+        setCurrentView('list');
+        setForumBoard('spectator');
+      }
+    } catch (error) {
+      console.error('[forum] failed to generate spectator posts', error);
+      if (!options?.silentNotice) {
+        showForumNotice('镜间补帖失败了，这次先没接上。', 'error');
+      }
+    } finally {
+      feedRefreshLockRef.current = false;
+      setFeedRefreshLoading(false);
+    }
   };
 
   const toggleSpectatorCharacter = (characterId: string) => {
@@ -1992,16 +2921,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     let displayPosts = posts.filter((p) => {
       if (forumBoard === 'spectator') return p.board === 'spectator' || p.category === SPECTATOR_BOARD_CATEGORY;
       return (p.board ?? 'public') !== 'spectator'
-        && (p.category === activeChannelMeta.label || (activeChannel === 'junction' && p.category === '全部'));
+        && (publicViewChannels.length === 0 || publicViewChannels.includes(inferForumChannelFromCategory(p.category)));
     });
+    displayPosts = sortForumPostsWithPins(displayPosts, pinnedPostIds);
 
-    if (forumBoard === 'public' && threadTypeFilter !== 'all') {
-      displayPosts = displayPosts.filter((post) => {
-        const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
-        return (post.threadType || 'normal') === threadTypeFilter || threadTypeMeta.label === FORUM_THREAD_TYPE_LABELS[threadTypeFilter];
-      });
-    }
-    
     if (searchQuery.trim()) {
       displayPosts = displayPosts.filter(p => 
         p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -2010,16 +2933,17 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       );
     } else {
       if (homeFilter === 'hot') {
-        displayPosts.sort((a, b) => (b.comments.length + b.likes.length) - (a.comments.length + a.likes.length));
+        displayPosts.sort((a, b) => getForumTrendScore(b) - getForumTrendScore(a));
       } else {
         displayPosts.sort((a, b) => b.timestamp - a.timestamp);
       }
     }
+    displayPosts = displayPosts.slice(0, 60);
 
     return (
       <div className="forum-app-scroll h-full min-h-0 overflow-y-auto bg-white" style={forumBottomInsetStyle}>
         {displayPosts.map(post => {
-          const author = getAuthor(post.authorId);
+          const author = resolvePostAuthor(post);
           const handle = formatForumHandle(author);
           const isOwner = isCurrentUserPostAuthor(post.authorId, post);
           const identityMeta = getForumIdentityBadgeMeta(resolvePostIdentity(post));
@@ -2052,6 +2976,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
               timeStr={timeStr}
               currentUserId={currentUser.id}
               showMenu={showPostMenu === post.id}
+              isPinned={pinnedPostIds.includes(post.id)}
               onOpen={(postId) => {
                 setSelectedPostId(postId);
                 setCurrentView('detail');
@@ -2069,6 +2994,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
               onToggleMenu={(postId) => setShowPostMenu(showPostMenu === postId ? null : postId)}
               onCloseMenu={() => setShowPostMenu(null)}
               onCollect={handleCollectPost}
+              onTogglePin={isOwner ? handleTogglePinnedForumPost : undefined}
               onDelete={(postId) => { void handleDeletePost(postId); }}
               onReport={handleReport}
               onLike={handleLikePost}
@@ -2078,116 +3004,24 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         })}
         {displayPosts.length === 0 && (
           <div className="px-8 py-14 text-center text-zinc-500">
-            <div className="text-[18px] font-bold text-zinc-900 mb-2">{activeChannelMeta.label}还没有帖子</div>
-            <div className="text-[13px] leading-6 text-zinc-500">{activeChannelMeta.blurb}</div>
+            <div className="text-[18px] font-bold text-zinc-900 mb-2">
+              {forumBoard === 'spectator' ? '镜间还没有帖子' : `${publicViewSummary.label}还没有帖子`}
+            </div>
+            <div className="text-[13px] leading-6 text-zinc-500">
+              {forumBoard === 'spectator'
+                ? '先随手开一栋楼，或者直接点随机生贴。'
+                : publicViewSummary.blurb}
+            </div>
           </div>
         )}
       </div>
     );
   };
 
-  const renderFilterSheet = () => {
-    if (!showFilterSheet) return null;
-
-    return (
-      <>
-        <div
-          className="absolute inset-0 z-40 bg-black/35"
-          onClick={() => setShowFilterSheet(false)}
-        />
-        <div className="absolute inset-x-0 bottom-0 z-50 rounded-t-[28px] bg-white px-4 pb-6 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
-          <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-zinc-200" />
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-[17px] font-bold text-zinc-900">筛选</h3>
-              <p className="mt-1 text-[12px] text-zinc-500">把区域和帖型收在这里，首页保持干净一点。</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveChannel('junction');
-                setThreadTypeFilter('all');
-              }}
-              className="rounded-full bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
-            >
-              重置
-            </button>
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 text-[13px] font-semibold text-zinc-900">区域</div>
-            <div className="flex flex-wrap gap-2">
-              {FORUM_CHANNEL_TABS.map((channel) => {
-                const selected = channel.id === activeChannel;
-                return (
-                  <button
-                    key={channel.id}
-                    type="button"
-                    onClick={() => setActiveChannel(channel.id)}
-                    className={`rounded-full border px-4 py-2 text-[13px] font-medium transition-colors ${
-                      selected
-                        ? 'border-sky-200 bg-sky-50 text-zinc-900'
-                        : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
-                    }`}
-                  >
-                    {channel.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 text-[13px] font-semibold text-zinc-900">帖型</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setThreadTypeFilter('all')}
-                className={`rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-                  threadTypeFilter === 'all'
-                    ? 'border border-sky-200 bg-sky-50 text-zinc-900'
-                    : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
-                }`}
-              >
-                全部帖型
-              </button>
-              {(['normal', 'commission', 'sameTopic', 'rift', 'reversal', 'ownerUpdate'] as ForumThreadType[]).map((threadType) => {
-                const meta = getForumThreadTypeMeta(threadType);
-                const selected = threadTypeFilter === threadType;
-                return (
-                  <button
-                    key={threadType}
-                    type="button"
-                    onClick={() => setThreadTypeFilter(threadType)}
-                    className={`rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-                      selected
-                        ? 'border border-sky-200 bg-sky-50 text-zinc-900'
-                        : `${meta.className} hover:bg-zinc-50`
-                    }`}
-                  >
-                    {meta.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowFilterSheet(false)}
-            className="mt-6 w-full rounded-full border border-zinc-200 bg-white py-3 text-[14px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
-          >
-            完成
-          </button>
-        </div>
-      </>
-    );
-  };
-
   const renderPostDetail = () => {
     const post = posts.find(p => p.id === selectedPostId);
     if (!post) return null;
-    const author = getAuthor(post.authorId);
+    const author = resolvePostAuthor(post);
     const handle = formatForumHandle(author);
     const isOwner = isCurrentUserPostAuthor(post.authorId, post);
     const identityMeta = getForumIdentityBadgeMeta(resolvePostIdentity(post));
@@ -2203,269 +3037,91 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const dateStr = postDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 
     return (
-      <div className="bg-white h-full min-h-0 flex flex-col relative">
-        {/* Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-2 flex items-center gap-6" style={forumTopInsetStyle}>
-          <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="font-bold text-lg text-zinc-900">帖子</h2>
-        </div>
-
-        {/* Content */}
-        <div className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-24">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <button
-                className="shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (author.id !== currentUser.id && !author.id.startsWith(`seed-anon-${currentUser.id}-`)) {
-                    setViewingUserId(author.id);
-                    setCurrentView('user-profile');
-                  } else {
-                    setActiveTab('profile');
-                  }
-                }}
-              >
-                <ResolvedImage value={author.avatar} className="w-9 h-9 rounded-full object-cover cursor-pointer" />
-              </button>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-[14px] text-zinc-900 hover:underline">{author.name}</span>
-                  {identityMeta && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${identityMeta.className}`}>{identityMeta.label}</span>}
-                  {author.id !== 'user_8888' && <CheckCircle2 size={14} className="text-zinc-900 fill-zinc-900" />}
-                </div>
-                <span className="text-[13px] text-zinc-500">{handle}</span>
-              </div>
-            </div>
-            <div className="relative">
-              <button 
-                onClick={() => setShowPostMenu(showPostMenu === post.id ? null : post.id)}
-                className="p-1.5 text-zinc-500 hover:bg-zinc-100 rounded-full transition-colors"
-              >
-                <MoreHorizontal size={18} />
-              </button>
-              {showPostMenu === post.id && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowPostMenu(null)} />
-                  <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-xl shadow-lg border border-zinc-100 py-1 z-50 overflow-hidden">
-                    <button 
-                      onClick={() => {
-                        handleCollectPost(post.id);
-                        setShowPostMenu(null);
-                      }}
-                      className="w-full px-3 py-2 text-left text-[13px] hover:bg-zinc-50 flex items-center gap-2"
-                    >
-                      <Bookmark size={14} />
-                      {post.collections.includes(currentUser.id) ? '取消收藏' : '收藏'}
-                    </button>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(window.location.href);
-                        alert('链接已复制');
-                        setShowPostMenu(null);
-                      }}
-                      className="w-full px-3 py-2 text-left text-[13px] hover:bg-zinc-50 flex items-center gap-2"
-                    >
-                      <Link2 size={14} />
-                      复制链接
-                    </button>
-                    {isOwner ? (
-                      <button 
-                        onClick={() => {
-                          handleDeletePost(post.id);
-                          setShowPostMenu(null);
-                        }}
-                        className="w-full px-3 py-2 text-left text-[13px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                      >
-                        <Trash2 size={14} />
-                        删除
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => {
-                          handleReport();
-                          setShowPostMenu(null);
-                        }}
-                        className="w-full px-3 py-2 text-left text-[13px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                      >
-                        <AlertTriangle size={14} />
-                        举报
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${threadTypeMeta.className}`}>
-              {threadTypeMeta.label}
-            </span>
-            {post.title && <h1 className="text-base font-bold text-zinc-900">{post.title}</h1>}
-          </div>
-          <p className="text-[15px] text-zinc-900 leading-normal whitespace-pre-wrap mb-2">{post.content}</p>
-          
-          {post.images && post.images.length > 0 && (
-            <div className={`mb-2 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : post.images.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>
-              {post.images.map((img, i) => (
-                <ResolvedImage
-                  key={i}
-                  value={img}
-                  className={`w-full object-cover ${post.images!.length === 1 ? 'max-h-80' : 'h-32'} ${post.images!.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-1 text-[13px] text-zinc-500 py-2 border-b border-zinc-100">
-            <span>{timeStr}</span>
-            <span>·</span>
-            <span>{dateStr}</span>
-            <span>·</span>
-            <span className="font-bold text-zinc-900">{post.viewCount}</span>
-            <span>查看</span>
-          </div>
-
-          <div className="flex items-center gap-6 py-2 border-b border-zinc-100 text-[13px]">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-zinc-900">{post.comments.length}</span>
-              <span className="text-zinc-500">回复</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-zinc-900">{post.collections.length}</span>
-              <span className="text-zinc-500">转发</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-zinc-900">{post.likes.length}</span>
-              <span className="text-zinc-500">喜欢</span>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-around py-1 border-b border-zinc-100 text-zinc-500">
-            <button className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
-              <MessageCircle size={20} />
-            </button>
-            <button className="p-1.5 hover:text-green-500 hover:bg-green-50 rounded-full transition-colors">
-              <Repeat size={20} />
-            </button>
-            <button 
-              onClick={() => handleLikePost(post.id)}
-              className={`p-1.5 rounded-full transition-colors ${post.likes.includes(currentUser.id) ? 'text-pink-500' : 'hover:text-pink-500 hover:bg-pink-50'}`}
-            >
-              <Heart size={20} className={post.likes.includes(currentUser.id) ? 'fill-pink-500' : ''} />
-            </button>
-            <button 
-              onClick={() => setShowShareModal(post.id)}
-              className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors"
-            >
-              <Share2 size={20} />
-            </button>
-          </div>
-
-          {/* Comments */}
-          <div className="mt-0">
-            {forumAiLoadingPostId === post.id && (
-              <div className="px-4 py-3 text-[12px] text-zinc-500">
-                网友正在接楼...
-              </div>
-            )}
-            {sortedComments.map(comment => (
-              <ForumCommentItem
-                key={comment.id}
-                comment={comment}
-                post={post}
-                author={getAuthor(comment.authorId)}
-                handle={formatForumHandle(getAuthor(comment.authorId))}
-                identityMeta={getForumIdentityBadgeMeta(resolveCommentIdentity(comment))}
-                isOwner={isCurrentUserCommentAuthor(comment.authorId, comment)}
-                isPostOwner={comment.authorId === post.authorId}
-                floorNumber={floorMap[comment.id] || 0}
-                replyToFloor={comment.replyToId ? (floorMap[comment.replyToId] || null) : null}
-                replyToAuthorName={comment.replyToId ? getAuthor(post.comments.find((item) => item.id === comment.replyToId)?.authorId || '').name : undefined}
-                currentUserAvatar={currentUser.avatar}
-                anonymousAvatar={seedFallbackAvatar(`seed-anon-${currentUser.id}-reply`, '匿名')}
-                likedByCurrentUser={comment.likes.includes(currentUser.id)}
-                repliesCount={post.comments.filter((item) => item.replyToId === comment.id).length}
-                timeStr={(() => {
-                  const postDate = new Date(comment.timestamp);
-                  const now = new Date();
-                  const diffMs = now.getTime() - postDate.getTime();
-                  const diffMins = Math.floor(diffMs / 60000);
-                  const diffHours = Math.floor(diffMins / 60);
-                  const diffDays = Math.floor(diffHours / 24);
-                  if (diffMins < 1) return '刚刚';
-                  if (diffMins < 60) return `${diffMins}分钟`;
-                  if (diffHours < 24) return `${diffHours}小时`;
-                  if (diffDays < 365) return postDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-                  return postDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
-                })()}
-                onReply={handleCommentWithAi}
-                onLike={handleLikeComment}
-                onDelete={(postId, commentId) => { void handleDeleteComment(postId, commentId); }}
-                onReport={handleReport}
-                onUserClick={handleUserClick}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Reply Input */}
-        <div className="sticky bottom-0 z-20 shrink-0 bg-white border-t border-zinc-100 px-3 py-2 flex items-center gap-3">
-          <ResolvedImage
-            value={commentIdentity === 'anonymous' ? seedFallbackAvatar(`seed-anon-${currentUser.id}-main`, '匿名') : currentUser.avatar}
-            className="w-7 h-7 rounded-full object-cover"
-          />
-          <div className="flex gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setCommentIdentity('self')}
-              className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${commentIdentity === 'self' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
-            >
-              本人
-            </button>
-            <button
-              type="button"
-              onClick={() => setCommentIdentity('anonymous')}
-              className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${commentIdentity === 'anonymous' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
-            >
-              匿名
-            </button>
-          </div>
-          <input 
-            type="text" 
-            value={mainReplyText}
-            onChange={(e) => setMainReplyText(e.target.value)}
-            placeholder="发布你的回复"
-            className="flex-1 bg-transparent text-[14px] outline-none placeholder-zinc-500"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && mainReplyText.trim()) {
-                void handleCommentWithAi(post.id, mainReplyText.trim(), undefined, undefined, commentIdentity);
-                setMainReplyText('');
-                setCommentIdentity('self');
-              }
-            }}
-          />
-          <button 
-            onClick={() => {
-              if (mainReplyText.trim()) {
-                void handleCommentWithAi(post.id, mainReplyText.trim(), undefined, undefined, commentIdentity);
-                setMainReplyText('');
-                setCommentIdentity('self');
-              }
-            }}
-            disabled={!mainReplyText.trim()}
-            className={`px-3 py-1.5 rounded-full font-bold text-[12px] transition-all shrink-0 whitespace-nowrap ${mainReplyText.trim() ? 'border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'}`}
-          >
-            回复
-          </button>
-        </div>
-        {/* Share Modal */}
+      <ForumPostDetailView
+        post={post}
+        author={author}
+        handle={handle}
+        isOwner={isOwner}
+        identityMeta={identityMeta}
+        threadTypeLabel={threadTypeMeta.label}
+        threadTypeClassName={threadTypeMeta.className}
+        sortedComments={sortedComments}
+        floorMap={floorMap}
+        timeStr={timeStr}
+        dateStr={dateStr}
+        currentUserId={currentUser.id}
+        currentUserAvatar={currentUserForumProfile.avatar}
+        anonymousMainAvatar={seedFallbackAvatar(`seed-anon-${currentUser.id}-main`, '匿名')}
+        anonymousReplyAvatar={seedFallbackAvatar(`seed-anon-${currentUser.id}-reply`, '匿名')}
+        defaultCommentMaskId={availableCommentMasks[0]?.id}
+        availableCommentMasks={availableCommentMasks.map((mask) => ({ id: mask.id, name: mask.name }))}
+        mainReplyText={mainReplyText}
+        showPostMenu={showPostMenu === post.id}
+        isPinned={pinnedPostIds.includes(post.id)}
+        forumAiLoading={forumAiLoadingPostId === post.id}
+        topInsetStyle={forumTopInsetStyle}
+        onBack={() => setCurrentView('list')}
+        onOpenAuthor={(authorId) => {
+          if (authorId !== currentUser.id && !authorId.startsWith(`seed-anon-${currentUser.id}-`)) {
+            setViewingUserId(authorId);
+            setCurrentView('user-profile');
+          } else {
+            setActiveTab('profile');
+          }
+        }}
+        onToggleMenu={() => setShowPostMenu(showPostMenu === post.id ? null : post.id)}
+        onCloseMenu={() => setShowPostMenu(null)}
+        onCollect={handleCollectPost}
+        onTogglePin={isOwner ? handleTogglePinnedForumPost : undefined}
+        onDelete={handleDeletePost}
+        onReport={handleReport}
+        onLike={handleLikePost}
+        onShare={setShowShareModal}
+        onRefreshReplies={(postId) => { void handleManualRefreshReplies(postId); }}
+        onVotePoll={handleVoteInPoll}
+        onMainReplyTextChange={setMainReplyText}
+        onSubmitSelfReply={(maskId) => {
+          if (mainReplyText.trim()) {
+            void handleCommentWithAi(post.id, mainReplyText.trim(), undefined, undefined, 'self', maskId);
+            setMainReplyText('');
+          }
+        }}
+        onSubmitAnonymousReply={() => {
+          if (mainReplyText.trim()) {
+            void handleCommentWithAi(post.id, mainReplyText.trim(), undefined, undefined, 'anonymous');
+            setMainReplyText('');
+          }
+        }}
+        resolveCommentAuthor={(comment) => resolveCommentAuthor(comment)}
+        resolveCommentHandle={(comment) => formatForumHandle(resolveCommentAuthor(comment))}
+        resolveCommentIdentityMeta={(comment) => getForumIdentityBadgeMeta(resolveCommentIdentity(comment))}
+        isCurrentUserCommentAuthor={(comment) => isCurrentUserCommentAuthor(comment.authorId, comment)}
+        resolveReplyToAuthorName={(comment) => (
+          comment.replyToId
+            ? resolveCommentAuthor(post.comments.find((item) => item.id === comment.replyToId) || comment).name
+            : undefined
+        )}
+        resolveCommentTime={(comment) => {
+          const commentDate = new Date(comment.timestamp);
+          const now = new Date();
+          const diffMs = now.getTime() - commentDate.getTime();
+          const diffMins = Math.floor(diffMs / 60000);
+          const diffHours = Math.floor(diffMins / 60);
+          const diffDays = Math.floor(diffHours / 24);
+          if (diffMins < 1) return '刚刚';
+          if (diffMins < 60) return `${diffMins}分钟`;
+          if (diffHours < 24) return `${diffHours}小时`;
+          if (diffDays < 365) return commentDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+          return commentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+        }}
+        resolveRepliesCount={(comment) => post.comments.filter((item) => item.replyToId === comment.id).length}
+        onReply={handleCommentWithAi}
+        onLikeComment={handleLikeComment}
+        onDeleteComment={(postId, commentId) => { void handleDeleteComment(postId, commentId); }}
+        onUserClick={handleUserClick}
+      >
         {renderShareModal()}
-      </div>
+      </ForumPostDetailView>
     );
   };
 
@@ -2476,12 +3132,16 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           setCurrentView('list');
           setEditingPostId(null);
           setEditorIdentity('self');
+          setEditorMaskId(undefined);
+          setEditorThreadType('auto');
+          setEditorChannel(activeChannel);
+          setEditorSettingsOpen(false);
         }} className="text-zinc-900 font-bold text-[14px]">取消</button>
         <div className="flex gap-4 items-center">
           <button onClick={saveForumComposerDraft} className="text-zinc-900 font-bold text-[14px]">草稿</button>
-          <button 
+          <button
             onClick={handlePublish}
-            className={`rounded-full border px-4 py-1.5 text-[14px] font-bold transition-colors ${(!editorTitle.trim() || !editorContent.trim()) ? 'border-zinc-200 bg-zinc-100 text-zinc-400 opacity-60' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+            className={`rounded-full border px-4 py-1.5 text-[14px] font-bold transition-colors ${(!editorContent.trim()) ? 'border-zinc-200 bg-zinc-100 text-zinc-400 opacity-60' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
           >
             发布
           </button>
@@ -2489,32 +3149,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       </div>
       <div className="p-4 flex-1 min-h-0 overflow-y-auto flex gap-3">
         <ResolvedImage
-          value={editorIdentity === 'anonymous' ? seedFallbackAvatar(buildAnonymousPostAuthorId(), '匿名') : currentUser.avatar}
+          value={resolveIdentityAvatar(editorIdentity, editorMaskId)}
           className="w-10 h-10 rounded-full object-cover shrink-0"
         />
         <div className="flex-1">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[12px] font-bold text-zinc-600">
-              发到 {activeChannelMeta.label}
-            </div>
-            <button
-              type="button"
-              onClick={() => setEditorIdentity('self')}
-              className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${editorIdentity === 'self' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
-            >
-              本人发帖
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorIdentity('anonymous')}
-              className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${editorIdentity === 'anonymous' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
-            >
-              匿名发帖
-            </button>
-          </div>
-          <div className="mb-3 text-[12px] text-zinc-500">
-            {editorIdentity === 'anonymous' ? '这条帖子会以前台匿名马甲显示，但仍算你的帖子。' : '这条帖子会以你的当前身份发布。'}
-          </div>
           <input
             type="text"
             placeholder="标题（可选）"
@@ -2528,13 +3166,13 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
             onChange={e => setEditorContent(e.target.value)}
             className="w-full h-32 text-lg outline-none resize-none placeholder-zinc-500 bg-transparent"
           />
-          
+
           {editorImages.length > 0 && (
             <div className={`grid gap-0.5 mt-4 overflow-hidden rounded-2xl border border-zinc-100 ${editorImages.length === 1 ? 'grid-cols-1' : editorImages.length === 2 ? 'grid-cols-2' : editorImages.length === 3 ? 'grid-cols-2' : 'grid-cols-2'}`}>
               {editorImages.map((img, i) => (
                 <div key={i} className={`relative ${editorImages.length === 1 ? 'max-h-80' : 'h-32'} ${editorImages.length === 3 && i === 0 ? 'row-span-2 h-full' : ''}`}>
                   <ResolvedImage value={img} className="w-full h-full object-cover" />
-                  <button 
+                  <button
                     onClick={() => setEditorImages(editorImages.filter((_, idx) => idx !== i))}
                     className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-colors backdrop-blur-sm"
                   >
@@ -2544,15 +3182,163 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
               ))}
             </div>
           )}
-          
+
+          <div className="mt-5 rounded-3xl border border-zinc-100 bg-white/90 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <button
+              type="button"
+              onClick={() => setEditorSettingsOpen((current) => !current)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <div className="text-[13px] font-semibold text-zinc-800">
+                  发布到 {editorChannelMeta.label}
+                  <span className="mx-2 text-zinc-300">·</span>
+                  {editorIdentity === 'anonymous' ? '匿名' : editorIdentity === 'mask' ? (availablePostMasks.find((mask) => mask.id === editorMaskId)?.name || '面具') : '本人'}
+                  <span className="mx-2 text-zinc-300">·</span>
+                  {editorThreadType === 'auto' ? '自动帖型' : FORUM_THREAD_TYPE_LABELS[editorThreadType]}
+                </div>
+                <div className="mt-1 text-[12px] text-zinc-400">
+                  {editorIdentity === 'anonymous'
+                    ? '前台会显示为匿名马甲。'
+                    : editorIdentity === 'mask'
+                      ? '会以当前面具身份发布。'
+                      : '会以你当前论坛身份发布。'}
+                </div>
+              </div>
+              <span
+                className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[12px] font-medium text-zinc-500"
+              >
+                {editorSettingsOpen ? '收起' : '调整'}
+              </span>
+            </button>
+
+            {editorSettingsOpen && (
+              <div className="border-t border-zinc-100 px-4 pb-4 pt-3">
+                <div className="mb-3">
+                  <div className="mb-2 text-[12px] font-medium text-zinc-500">发布分区</div>
+                  <div className="flex flex-wrap gap-2">
+                    {FORUM_CHANNEL_TABS.map((channel) => (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        onClick={() => setEditorChannel(channel.id)}
+                        className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
+                          editorChannel === channel.id
+                            ? 'border-sky-200 bg-sky-50 text-sky-700'
+                            : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                        }`}
+                      >
+                        {channel.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="mb-2 text-[12px] font-medium text-zinc-500">发帖身份</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditorIdentity('self');
+                        setEditorMaskId(undefined);
+                      }}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${editorIdentity === 'self' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
+                    >
+                      本人发帖
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditorIdentity('mask');
+                        setEditorMaskId((current) => current || availablePostMasks[0]?.id);
+                      }}
+                      disabled={availablePostMasks.length === 0}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
+                        editorIdentity === 'mask'
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                      } ${availablePostMasks.length === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
+                    >
+                      面具发帖
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditorIdentity('anonymous');
+                        setEditorMaskId(undefined);
+                      }}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${editorIdentity === 'anonymous' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'}`}
+                    >
+                      匿名发帖
+                    </button>
+                  </div>
+                </div>
+
+                {editorIdentity === 'mask' && availablePostMasks.length > 0 && (
+                  <div className="mb-3">
+                    <div className="mb-2 text-[12px] font-medium text-zinc-500">选择面具</div>
+                    <div className="flex flex-wrap gap-2">
+                      {availablePostMasks.map((mask) => (
+                        <button
+                          key={mask.id}
+                          type="button"
+                          onClick={() => setEditorMaskId(mask.id)}
+                          className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
+                            editorMaskId === mask.id
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                          }`}
+                        >
+                          {mask.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <div className="mb-2 text-[12px] font-medium text-zinc-500">帖型</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditorThreadType('auto')}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
+                        editorThreadType === 'auto'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                      }`}
+                    >
+                      自动判断
+                    </button>
+                    {FORUM_FILTER_THREAD_TYPES.map((threadType) => (
+                      <button
+                        key={threadType}
+                        type="button"
+                        onClick={() => setEditorThreadType(threadType)}
+                        className={`rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
+                          editorThreadType === threadType
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                        }`}
+                      >
+                        {FORUM_THREAD_TYPE_LABELS[threadType]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-4 mt-4 pt-4 border-t border-zinc-100 text-zinc-900">
             <label className="p-2 hover:bg-zinc-100 rounded-full transition-colors -ml-2 cursor-pointer">
               <ImageIcon size={20} />
-              <input 
-                type="file" 
-                multiple 
-                accept="image/*" 
-                className="hidden" 
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
                 onChange={async (e) => {
                   const files = Array.from(e.target.files || []) as File[];
                   if (files.length === 0) {
@@ -2562,10 +3348,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
                   const uploadedValues = await Promise.all(files.map(file => setUploadedFile(file)));
                   setEditorImages(prev => [...prev, ...uploadedValues].slice(0, 9));
                   e.target.value = '';
-                }} 
+                }}
               />
             </label>
-            <button 
+            <button
               onClick={() => setShowUrlInput(!showUrlInput)}
               className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
             >
@@ -2590,7 +3376,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
                 placeholder="支持输入图片链接、Markdown图片格式、HTML img标签"
                 className="w-full h-24 bg-white border border-zinc-200 rounded-lg p-2 text-xs outline-none focus:border-zinc-900/30 transition-all resize-none"
               />
-              <button 
+              <button
                 onClick={async () => {
                   const urls = extractImageUrls(urlInput);
                   if (urls.length > 0) {
@@ -2612,123 +3398,158 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   );
 
   const renderHotList = () => {
-    // Sort posts by view count + comments + likes for "hotness"
-    const hotPosts = [...posts].sort((a, b) => {
-      const scoreA = a.viewCount + a.comments.length * 10 + a.likes.length * 5;
-      const scoreB = b.viewCount + b.comments.length * 10 + b.likes.length * 5;
-      return scoreB - scoreA;
+    const hotPosts = [...posts]
+      .filter((post) => (post.board ?? 'public') !== 'spectator')
+      .sort((a, b) => getForumTrendScore(b) - getForumTrendScore(a));
+    const query = hotSearchQuery.trim().toLowerCase();
+
+    const basePostItems: ForumTrendListItem[] = hotPosts.map((post, index) => {
+      const author = resolvePostAuthor(post);
+      const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
+      const trendMeta = getForumTrendMeta(post);
+      const trendScore = getForumTrendScore(post);
+      return {
+        type: 'post',
+        key: `post-${post.id}`,
+        post,
+        rank: index + 1,
+        authorId: author.id,
+        authorName: author.name,
+        authorAvatar: author.avatar,
+        authorHandle: formatForumHandle(author),
+        category: post.category,
+        threadTypeLabel: threadTypeMeta.label,
+        threadTypeClassName: threadTypeMeta.className,
+        trendLabel: trendMeta.label,
+        trendToneClassName: trendMeta.direction === 'up'
+          ? 'text-rose-600'
+          : trendMeta.direction === 'flat'
+            ? 'text-zinc-500'
+            : 'text-sky-700',
+        heatText: `${formatCompactMetric(post.viewCount)} 浏览`,
+        heatScoreText: `${Math.round(trendScore)}`,
+        preview: post.title || post.content,
+        insight: buildHotInsight(post),
+        image: post.images?.[0],
+        isOwner: isCurrentUserPostAuthor(post.authorId, post),
+        showMenu: showPostMenu === post.id,
+        isCollected: post.collections.includes(currentUser.id),
+      };
     });
 
+    let trendItems: ForumTrendListItem[] = basePostItems;
+
+    if (query) {
+      const authorItems = Array.from(new Map(
+        hotPosts.flatMap((post) => {
+          const author = resolvePostAuthor(post);
+          const handle = formatForumHandle(author);
+          const bio = author.bio || author.description || '';
+          const matchedFieldLabel = author.name.toLowerCase().includes(query)
+            ? '作者'
+            : handle.toLowerCase().includes(query)
+              ? 'ID'
+              : bio.toLowerCase().includes(query)
+                ? '简介'
+                : '';
+          if (!matchedFieldLabel) return [];
+
+          const matchedSnippet = matchedFieldLabel === '作者'
+            ? author.name
+            : matchedFieldLabel === 'ID'
+              ? handle
+              : bio;
+          const hotCount = hotPosts.filter((item) => item.authorId === author.id).length;
+
+          return [[author.id, {
+            type: 'author' as const,
+            key: `author-${author.id}`,
+            authorId: author.id,
+            authorName: author.name,
+            authorAvatar: author.avatar,
+            authorHandle: handle,
+            authorBio: bio,
+            matchedFieldLabel,
+            matchedSnippet,
+            postCount: posts.filter((item) => item.authorId === author.id).length,
+            hotCount,
+          }]];
+        }),
+      ).values());
+
+      const snippetItems: ForumTrendListItem[] = hotPosts.flatMap((post, index) => {
+        const author = resolvePostAuthor(post);
+        const fields = [
+          { label: '标题命中', text: post.title || '' },
+          { label: '正文命中', text: post.content || '' },
+          { label: '分区命中', text: post.category || '' },
+        ];
+        const matched = fields.find((field) => field.text.toLowerCase().includes(query));
+        if (!matched) return [];
+
+        return [{
+          type: 'snippet' as const,
+          key: `snippet-${post.id}-${matched.label}`,
+          post,
+          authorId: author.id,
+          authorName: author.name,
+          authorAvatar: author.avatar,
+          authorHandle: formatForumHandle(author),
+          category: post.category,
+          rank: index + 1,
+          matchLabel: matched.label,
+          matchText: buildSearchSnippet(matched.text, query, 32),
+          heatScoreText: `${Math.round(getForumTrendScore(post))}`,
+        }];
+      });
+
+      const filteredPosts = basePostItems.filter((item) => (
+        item.type === 'post' && [
+          item.post.title,
+          item.post.content,
+          item.category,
+          item.authorName,
+          item.authorHandle,
+        ].some((value) => (value || '').toLowerCase().includes(query))
+      ));
+
+      trendItems = [
+        ...authorItems.slice(0, 4),
+        ...snippetItems.slice(0, 6),
+        ...filteredPosts.slice(0, 20),
+      ];
+    }
+
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
-        <div className="sticky top-0 z-10 border-b border-zinc-100 bg-white/95 px-5 pb-3 backdrop-blur-md" style={forumTopInsetStyle}>
-          <h2 className="text-[20px] font-black tracking-tight text-zinc-900">为你推荐的趋势</h2>
-        </div>
-        <div className="space-y-0">
-          {hotPosts.map((post, index) => {
-            const author = getAuthor(post.authorId);
-            const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
-            return (
-              <div 
-                key={post.id}
-                onClick={() => {
-                  setSelectedPostId(post.id);
-                  setCurrentView('detail');
-                  const newPosts = posts.map(p => p.id === post.id ? { ...p, viewCount: p.viewCount + 1 } : p);
-                  updatePosts(newPosts);
-                }}
-                className="flex cursor-pointer items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-zinc-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <span className="text-[12px] text-zinc-500 font-bold">{index + 1} · 趋势</span>
-                    <div className="relative">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowPostMenu(showPostMenu === post.id ? null : post.id);
-                        }}
-                        className="text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 p-1.5 rounded-full transition-colors -mr-1.5"
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
-                      {showPostMenu === post.id && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowPostMenu(null); }} />
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl shadow-lg border border-zinc-100 py-1 z-50 overflow-hidden">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCollectPost(post.id);
-                                setShowPostMenu(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-[14px] hover:bg-zinc-50 flex items-center gap-2"
-                            >
-                              <Bookmark size={16} />
-                              {post.collections.includes(currentUser.id) ? '取消收藏' : '收藏'}
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(window.location.href);
-                                alert('链接已复制');
-                                setShowPostMenu(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-[14px] hover:bg-zinc-50 flex items-center gap-2"
-                            >
-                              <Link2 size={16} />
-                              复制链接
-                            </button>
-                            {isCurrentUserPostAuthor(post.authorId, post) ? (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeletePost(post.id);
-                                  setShowPostMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-[14px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <Trash2 size={16} />
-                                删除
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReport();
-                                  setShowPostMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-[14px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <AlertTriangle size={16} />
-                                举报
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mb-2 flex flex-wrap items-center gap-2 pr-2">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${threadTypeMeta.className}`}>
-                      {threadTypeMeta.label}
-                    </span>
-                    <h3 className="text-[15px] font-bold leading-7 text-zinc-900 line-clamp-2">{post.title || post.content}</h3>
-                  </div>
-                  <div className="text-[12px] text-zinc-500">
-                    {post.viewCount > 1000 ? `${(post.viewCount / 1000).toFixed(1)}K` : post.viewCount} 帖子
-                  </div>
-                </div>
-                {post.images && post.images.length > 0 && (
-                <ResolvedImage value={post.images[0]} className="h-24 w-24 shrink-0 rounded-2xl object-cover" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {/* Share Modal */}
+      <>
+        <ForumTrendListView
+          items={trendItems}
+          searchValue={hotSearchQuery}
+          topInsetStyle={forumTopInsetStyle}
+          bottomInsetStyle={forumBottomInsetStyle}
+          onSearchChange={setHotSearchQuery}
+          onOpenPost={(postId) => {
+            setSelectedPostId(postId);
+            setCurrentView('detail');
+            const newPosts = posts.map((p) => p.id === postId ? { ...p, viewCount: p.viewCount + 1 } : p);
+            updatePosts(newPosts);
+          }}
+          onOpenAuthor={(authorId) => {
+            if (authorId !== currentUser.id && !authorId.startsWith(`seed-anon-${currentUser.id}-`)) {
+              setViewingUserId(authorId);
+              setCurrentView('user-profile');
+            } else {
+              setActiveTab('profile');
+            }
+          }}
+          onTogglePostMenu={(postId) => setShowPostMenu(showPostMenu === postId ? null : postId)}
+          onClosePostMenu={() => setShowPostMenu(null)}
+          onCollectPost={handleCollectPost}
+          onDeletePost={(postId) => { void handleDeletePost(postId); }}
+          onReport={handleReport}
+        />
         {renderShareModal()}
-      </div>
+      </>
     );
   };
 
@@ -2738,250 +3559,78 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const userPosts = posts.filter(p => p.authorId === viewingUserId).sort((a, b) => b.timestamp - a.timestamp);
     const handle = formatForumHandle(user);
     const isFollowed = followedUsers.includes(user.id);
+    const editableCharacter = getCharacterByIdStrict(user.id);
     const userFollowingCount = resolveFollowingIdsForUser(user.id).length;
     const userFollowerCount = collectFollowerIdsForUser(user.id).length;
+    const userPostItems = userPosts.map((post) => {
+      const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
+      const postDate = new Date(post.timestamp);
+      const now = new Date();
+      const diffMs = now.getTime() - postDate.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+      let timeStr = '';
+      if (diffMins < 1) timeStr = '刚刚';
+      else if (diffMins < 60) timeStr = `${diffMins}分钟`;
+      else if (diffHours < 24) timeStr = `${diffHours}小时`;
+      else if (diffDays < 365) timeStr = postDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+      else timeStr = postDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+
+      return {
+        post,
+        timeStr,
+        threadTypeLabel: threadTypeMeta.label,
+        threadTypeClassName: threadTypeMeta.className,
+        showMenu: showPostMenu === post.id,
+        isOwner: isCurrentUserPostAuthor(post.authorId, post),
+        isPinned: pinnedPostIds.includes(post.id),
+        identityMeta: getForumIdentityBadgeMeta(resolvePostIdentity(post)),
+      };
+    });
 
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
-        {/* Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-3 flex items-center gap-6" style={forumTopInsetStyle}>
-          <button onClick={() => {
-            setCurrentView('list');
-            setViewingUserId(null);
-          }} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-          <div className="flex flex-col">
-            <h2 className="font-bold text-lg text-zinc-900 leading-tight">{user.name}</h2>
-            <span className="text-[12px] text-zinc-500">{userPosts.length} 帖子</span>
-          </div>
-        </div>
-
-        {/* Profile Header */}
-        <div className="px-4 pt-12 pb-6">
-          <div className="rounded-[28px] border border-zinc-100 bg-zinc-50/60 p-4">
-            <div className="flex items-start gap-4">
-              <ResolvedImage value={user.avatar} className="w-24 h-24 rounded-full border-2 border-white object-cover shadow-sm shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-[20px] font-bold text-zinc-900 leading-tight break-words">{user.name}</h2>
-                    <p className="mt-1 text-[12px] text-zinc-500 break-all">{handle}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 pt-1">
-                    {canOpenForumPrivateChat(user.id) && (
-                      <button
-                        onClick={() => openForumPrivateChat(user.id)}
-                        className="w-9 h-9 rounded-full border border-zinc-200 bg-white flex items-center justify-center text-zinc-900 hover:bg-zinc-50 transition-colors"
-                      >
-                        <MessageCircle size={18} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleFollow(user.id)}
-                      className={`px-5 py-1.5 rounded-full font-bold text-[13px] transition-colors ${
-                        isFollowed
-                          ? 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                          : 'border border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
-                      }`}
-                    >
-                      {isFollowed ? '已关注' : '关注'}
-                    </button>
-                  </div>
-                </div>
-                <p className="mt-3 text-[13px] leading-7 text-zinc-600 break-words">
-                  {('bio' in user ? user.bio : 'description' in user ? user.description : '') || '暂无简介。'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-3 border-t border-zinc-100 pt-4">
-              <div className="rounded-2xl bg-white px-3 py-3 text-center">
-                <div className="text-[18px] font-bold text-zinc-900">{userPosts.length}</div>
-                <div className="mt-1 text-[11px] text-zinc-400">帖子</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => openFollowList('following', user.id)}
-                className="rounded-2xl bg-white px-3 py-3 text-center transition-colors hover:bg-zinc-50"
-              >
-                <div className="text-[18px] font-bold text-zinc-900">{userFollowingCount}</div>
-                <div className="mt-1 text-[11px] text-zinc-400">正在关注</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => openFollowList('followers', user.id)}
-                className="rounded-2xl bg-white px-3 py-3 text-center transition-colors hover:bg-zinc-50"
-              >
-                <div className="text-[18px] font-bold text-zinc-900">{userFollowerCount}</div>
-                <div className="mt-1 text-[11px] text-zinc-400">关注者</div>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Profile Tabs */}
-        <div className="flex border-b border-zinc-100">
-          <button className="flex-1 py-4 text-[14px] font-bold text-zinc-900 relative hover:bg-zinc-50 transition-colors">
-            帖子
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-zinc-900 rounded-full" />
-          </button>
-          <button className="flex-1 py-4 text-[14px] font-bold text-zinc-500 relative hover:bg-zinc-50 transition-colors">
-            回复
-          </button>
-          <button className="flex-1 py-4 text-[14px] font-bold text-zinc-500 relative hover:bg-zinc-50 transition-colors">
-            喜欢
-          </button>
-        </div>
-
-        <div className="space-y-0">
-          {/* User Posts Section */}
-          {userPosts.length > 0 ? userPosts.map(post => {
-            const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
-            const postDate = new Date(post.timestamp);
-            const now = new Date();
-            const diffMs = now.getTime() - postDate.getTime();
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMins / 60);
-            const diffDays = Math.floor(diffHours / 24);
-            let timeStr = '';
-            if (diffMins < 1) timeStr = '刚刚';
-            else if (diffMins < 60) timeStr = `${diffMins}分钟`;
-            else if (diffHours < 24) timeStr = `${diffHours}小时`;
-            else if (diffDays < 365) timeStr = postDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-            else timeStr = postDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
-
-            return (
-              <div 
-                key={post.id}
-                onClick={() => {
-                  setSelectedPostId(post.id);
-                  setCurrentView('detail');
-                }}
-                className="bg-white p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3"
-              >
-                <ResolvedImage value={user.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-[14px] truncate">
-                      <span className="font-bold text-zinc-900 truncate hover:underline">{user.name}</span>
-                      <span className="text-zinc-500 truncate">{handle}</span>
-                      <span className="text-zinc-500">·</span>
-                      <span className="text-zinc-500 hover:underline">{timeStr}</span>
-                    </div>
-                    <div className="relative">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowPostMenu(showPostMenu === post.id ? null : post.id);
-                        }}
-                        className="text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 p-1.5 rounded-full transition-colors -mr-1.5"
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
-                      {showPostMenu === post.id && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowPostMenu(null); }} />
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl shadow-lg border border-zinc-100 py-1 z-50 overflow-hidden">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCollectPost(post.id);
-                                setShowPostMenu(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-[14px] hover:bg-zinc-50 flex items-center gap-2"
-                            >
-                              <Bookmark size={16} />
-                              {post.collections.includes(currentUser.id) ? '取消收藏' : '收藏'}
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(window.location.href);
-                                alert('链接已复制');
-                                setShowPostMenu(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-[14px] hover:bg-zinc-50 flex items-center gap-2"
-                            >
-                              <Link2 size={16} />
-                              复制链接
-                            </button>
-                            {isCurrentUserPostAuthor(post.authorId, post) ? (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeletePost(post.id);
-                                  setShowPostMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-[14px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <Trash2 size={16} />
-                                删除
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReport();
-                                  setShowPostMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-[14px] text-red-500 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <AlertTriangle size={16} />
-                                举报
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${threadTypeMeta.className}`}>
-                      {threadTypeMeta.label}
-                    </span>
-                    {post.title && <h3 className="text-[14px] font-bold text-zinc-900">{post.title}</h3>}
-                  </div>
-                  <p className="text-[14px] text-zinc-900 mt-0.5 whitespace-pre-wrap leading-snug">{post.content}</p>
-                  
-                  <div className="flex items-center justify-between mt-3 text-zinc-500 max-w-md pr-4">
-                    <button className="flex items-center gap-1 hover:text-zinc-900 group transition-colors">
-                      <div className="p-1.5 rounded-full group-hover:bg-zinc-100 transition-colors -ml-1.5">
-                        <MessageCircle size={18} />
-                      </div>
-                      <span className="text-[12px]">{post.comments.length > 0 ? post.comments.length : ''}</span>
-                    </button>
-                    <button className="flex items-center gap-1 hover:text-green-500 group transition-colors">
-                      <div className="p-1.5 rounded-full group-hover:bg-green-50 transition-colors -ml-1.5">
-                        <Repeat size={18} />
-                      </div>
-                      <span className="text-[12px]">{post.collections.length > 0 ? post.collections.length : ''}</span>
-                    </button>
-                    <button className="flex items-center gap-1 hover:text-pink-500 group transition-colors">
-                      <div className="p-1.5 rounded-full group-hover:bg-pink-50 transition-colors -ml-1.5">
-                        <Heart size={18} />
-                      </div>
-                      <span className="text-[12px]">{post.likes.length > 0 ? post.likes.length : ''}</span>
-                    </button>
-                    <button className="flex items-center gap-1 hover:text-zinc-900 group transition-colors">
-                      <div className="p-1.5 rounded-full group-hover:bg-zinc-100 transition-colors -ml-1.5">
-                        <BarChart2 size={18} />
-                      </div>
-                      <span className="text-[12px]">{post.viewCount > 0 ? post.viewCount : ''}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          }) : (
-            <div className="text-center py-10 text-zinc-500 text-[14px]">
-              <h3 className="font-bold text-lg text-zinc-900 mb-2">还没有帖子</h3>
-              <p>当该用户发布帖子时，它会显示在这里。</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <ForumUserProfileView
+        user={{
+          id: user.id,
+          name: user.name,
+          avatar: user.avatar,
+          handle,
+          bio: user.bio,
+          description: user.description,
+        }}
+        postCount={userPosts.length}
+        followingCount={userFollowingCount}
+        followerCount={userFollowerCount}
+        isFollowed={isFollowed}
+        canChat={canOpenForumPrivateChat(user.id)}
+        canEditProfile={!!editableCharacter}
+        posts={userPostItems}
+        currentUserId={currentUser.id}
+        topInsetStyle={forumTopInsetStyle}
+        bottomInsetStyle={forumBottomInsetStyle}
+        onBack={() => {
+          setCurrentView('list');
+          setViewingUserId(null);
+        }}
+        onOpenChat={() => openForumPrivateChat(user.id)}
+        onEditProfile={() => openCharacterForumProfileEditor(user.id)}
+        onToggleFollow={() => handleFollow(user.id)}
+        onOpenFollowing={() => openFollowList('following', user.id)}
+        onOpenFollowers={() => openFollowList('followers', user.id)}
+        onOpenPost={(postId) => {
+          setSelectedPostId(postId);
+          setCurrentView('detail');
+        }}
+        onTogglePostMenu={(postId) => setShowPostMenu(showPostMenu === postId ? null : postId)}
+        onClosePostMenu={() => setShowPostMenu(null)}
+        onCollectPost={handleCollectPost}
+        onTogglePinnedPost={handleTogglePinnedForumPost}
+        onDeletePost={(postId) => { void handleDeletePost(postId); }}
+        onReport={handleReport}
+        onLikePost={handleLikePost}
+        onSharePost={setShowShareModal}
+      />
     );
   };
 
@@ -2994,11 +3643,11 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       <ForumTempChatView
         author={author}
         session={session}
-        currentUserAvatar={currentUser.avatar}
+        currentUserAvatar={currentUserForumProfile.avatar}
         tempChatInput={tempChatInput}
         tempChatLoading={tempChatLoading}
         onBack={() => {
-          setCurrentView('user-profile');
+          setCurrentView(tempChatReturnTarget === 'messages' ? 'list' : 'user-profile');
           setTempChatInput('');
         }}
         onUpgrade={() => handleUpgradeForumFriend(activeTempChatUserId)}
@@ -3015,136 +3664,64 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     const rawFollowIds = followListMode === 'following'
       ? resolveFollowingIdsForUser(targetUserId)
       : collectFollowerIdsForUser(targetUserId);
+    const keyword = followListSearch.trim().toLowerCase();
     const followIds = rawFollowIds.filter((userId) => {
       if (!followListSearch.trim()) return true;
       const user = getAuthor(userId);
-      const keyword = followListSearch.trim().toLowerCase();
       return (
         user.name.toLowerCase().includes(keyword)
         || formatForumHandle(user).toLowerCase().includes(keyword)
         || (user.bio || user.description || '').toLowerCase().includes(keyword)
       );
     });
+    const followUsers = followIds.map((userId) => {
+      const user = getAuthor(userId);
+      return {
+        id: userId,
+        name: user.name,
+        avatar: user.avatar,
+        handle: formatForumHandle(user),
+        bio: user.bio,
+        description: user.description,
+        isFollowed: followedUsers.includes(userId),
+        canChat: canOpenForumPrivateChat(userId),
+      };
+    });
 
     return (
-      <div className="bg-white h-full min-h-0 flex flex-col">
-        <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 pb-3 flex items-center gap-6" style={forumTopInsetStyle}>
-          <button
-            onClick={() => {
-              if (targetUserId === currentUser.id) {
-                setCurrentView('list');
-                setActiveTab('profile');
-              } else {
-                setCurrentView('user-profile');
-              }
-            }}
-            className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div className="min-w-0">
-            <h2 className="font-bold text-lg text-zinc-900">
-              {followListMode === 'following' ? '正在关注' : '关注者'}
-            </h2>
-            <div className="text-[12px] text-zinc-500 truncate">
-              {targetUser.name} · {rawFollowIds.length}
-            </div>
-          </div>
-        </div>
-
-        <div className="border-b border-zinc-100 px-4 py-3">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <input
-              type="text"
-              value={followListSearch}
-              onChange={(e) => setFollowListSearch(e.target.value)}
-              placeholder={followListMode === 'following' ? '搜索你关注的人' : '搜索关注你的人'}
-              className="w-full bg-transparent text-[13px] text-zinc-900 outline-none placeholder-zinc-400"
-            />
-          </div>
-        </div>
-
-        <div className="forum-app-scroll flex-1 min-h-0 overflow-y-auto bg-white" style={forumBottomInsetStyle}>
-          {followIds.length === 0 ? (
-            <div className="px-8 pt-16 text-center text-[14px] text-zinc-500">
-              <h3 className="mb-3 text-[18px] font-bold text-zinc-900">这里还没有名单</h3>
-              <p className="leading-7">
-                {followListSearch.trim()
-                  ? '没有搜到匹配的人。'
-                  : followListMode === 'following'
-                    ? '还没有关注任何人。'
-                    : '目前还没有整理出关注者。'}
-              </p>
-            </div>
-          ) : (
-            followIds.map((userId) => {
-              const user = getAuthor(userId);
-              const handle = formatForumHandle(user);
-              const isFollowed = followedUsers.includes(userId);
-              const canChat = canOpenForumPrivateChat(userId);
-
-              return (
-                <div key={userId} className="flex items-center gap-3 border-b border-zinc-100 px-4 py-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewingUserId(userId);
-                      setCurrentView('user-profile');
-                    }}
-                    className="shrink-0"
-                  >
-                    <ResolvedImage value={user.avatar} className="h-12 w-12 rounded-full object-cover" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewingUserId(userId);
-                      setCurrentView('user-profile');
-                    }}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <div className="truncate text-[15px] font-bold text-zinc-900">{user.name}</div>
-                    <div className="mt-1 truncate text-[12px] text-zinc-500">{handle}</div>
-                    <div className="mt-1 truncate text-[12px] text-zinc-400">
-                      {user.bio || user.description || '这个人还没有留下简介。'}
-                    </div>
-                  </button>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {canChat && (
-                      <button
-                        type="button"
-                        onClick={() => openForumPrivateChat(userId)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 transition-colors hover:bg-zinc-50"
-                      >
-                        <MessageCircle size={16} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleFollow(userId)}
-                      className={`rounded-full px-4 py-1.5 text-[12px] font-bold transition-colors ${
-                        isFollowed
-                          ? 'border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
-                          : 'border border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
-                      }`}
-                    >
-                      {isFollowed ? '已关注' : '关注'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
+      <ForumFollowListView
+        mode={followListMode}
+        targetUserName={targetUser.name}
+        rawCount={rawFollowIds.length}
+        searchValue={followListSearch}
+        users={followUsers}
+        emptyBySearch={!!keyword}
+        onBack={() => {
+          if (targetUserId === currentUser.id) {
+            setCurrentView('list');
+            setActiveTab('profile');
+          } else {
+            setCurrentView('user-profile');
+          }
+        }}
+        onSearchChange={setFollowListSearch}
+        onOpenUser={(userId) => {
+          setViewingUserId(userId);
+          setCurrentView('user-profile');
+        }}
+        onOpenChat={openForumPrivateChat}
+        onToggleFollow={handleFollow}
+        topInsetStyle={forumTopInsetStyle}
+        bottomInsetStyle={forumBottomInsetStyle}
+      />
     );
   };
 
   const renderProfile = () => {
-    const myPosts = posts.filter((p) => isCurrentUserPostAuthor(p.authorId, p));
+    const myPosts = sortForumPostsWithPins(posts.filter((p) => isCurrentUserPostAuthor(p.authorId, p)), pinnedPostIds);
     const myReplies = posts.flatMap((p) => p.comments).filter((c) => isCurrentUserCommentAuthor(c.authorId, c));
     const myLikedPosts = posts.filter(p => p.likes.includes(currentUser.id));
-    const handle = formatCurrentUserForumHandle(currentUser.id);
+    const handle = formatCurrentUserForumHandle(currentUserForumProfile.handle);
     const followingCount = followedUsers.length;
     const followerCount = collectFollowerIdsForUser(currentUser.id).length;
 
@@ -3168,75 +3745,47 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     };
 
     const renderProfilePostCard = (post: ForumPost) => {
-      const author = getAuthor(post.authorId);
+      const author = resolvePostAuthor(post);
       const handle = formatForumHandle(author);
       const identityMeta = getForumIdentityBadgeMeta(resolvePostIdentity(post));
       const timeStr = formatProfileTime(post.timestamp);
       const threadTypeMeta = getForumThreadTypeMeta(post.threadType);
       return (
-        <div
+        <ForumProfilePostCard
           key={post.id}
-          onClick={() => openProfilePost(post.id)}
-          className="bg-white p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer flex gap-3"
-        >
-          <ResolvedImage value={author.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 text-[14px] truncate">
-                <span className="font-bold text-zinc-900 truncate hover:underline">{author.name}</span>
-                {identityMeta && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${identityMeta.className}`}>{identityMeta.label}</span>}
-                <span className="text-zinc-500 truncate">{handle}</span>
-                <span className="text-zinc-500">·</span>
-                <span className="text-zinc-500 hover:underline">{timeStr}</span>
-              </div>
-              <button className="text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 p-1.5 rounded-full transition-colors -mr-1.5">
-                <MoreHorizontal size={18} />
-              </button>
-            </div>
-
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${threadTypeMeta.className}`}>
-                {threadTypeMeta.label}
-              </span>
-              {post.title && <h3 className="text-[14px] font-bold text-zinc-900">{post.title}</h3>}
-            </div>
-            <p className="text-[14px] text-zinc-900 mt-0.5 whitespace-pre-wrap leading-snug">{post.content}</p>
-
-            <div className="flex items-center justify-between mt-3 text-zinc-500 max-w-md pr-4">
-              <button className="flex items-center gap-1 hover:text-zinc-900 group transition-colors">
-                <div className="p-1.5 rounded-full group-hover:bg-zinc-100 transition-colors -ml-1.5">
-                  <MessageCircle size={18} />
-                </div>
-                <span className="text-[12px]">{post.comments.length > 0 ? post.comments.length : ''}</span>
-              </button>
-              <button className="flex items-center gap-1 hover:text-green-500 group transition-colors">
-                <div className="p-1.5 rounded-full group-hover:bg-green-50 transition-colors -ml-1.5">
-                  <Repeat size={18} />
-                </div>
-                <span className="text-[12px]">{post.collections.length > 0 ? post.collections.length : ''}</span>
-              </button>
-              <button className="flex items-center gap-1 hover:text-pink-500 group transition-colors">
-                <div className="p-1.5 rounded-full group-hover:bg-pink-50 transition-colors -ml-1.5">
-                  <Heart size={18} />
-                </div>
-                <span className="text-[12px]">{post.likes.length > 0 ? post.likes.length : ''}</span>
-              </button>
-              <button className="flex items-center gap-1 hover:text-zinc-900 group transition-colors">
-                <div className="p-1.5 rounded-full group-hover:bg-zinc-100 transition-colors -ml-1.5">
-                  <BarChart2 size={18} />
-                </div>
-                <span className="text-[12px]">{post.viewCount > 0 ? post.viewCount : ''}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+          post={post}
+          author={{
+            id: author.id,
+            name: author.name,
+            avatar: author.avatar,
+          }}
+          handle={handle}
+          identityMeta={identityMeta}
+          isOwner={isCurrentUserPostAuthor(post.authorId, post)}
+          isPinned={pinnedPostIds.includes(post.id)}
+          threadTypeLabel={threadTypeMeta.label}
+          threadTypeClassName={threadTypeMeta.className}
+          timeStr={timeStr}
+          currentUserId={currentUser.id}
+          showMenu={showPostMenu === post.id}
+          onOpen={openProfilePost}
+          onOpenAuthor={handleUserClick}
+          onToggleMenu={(postId) => setShowPostMenu(showPostMenu === postId ? null : postId)}
+          onCloseMenu={() => setShowPostMenu(null)}
+          onCollect={handleCollectPost}
+          onTogglePin={handleTogglePinnedForumPost}
+          onDelete={(postId) => { void handleDeletePost(postId); }}
+          onReport={handleReport}
+          onLike={handleLikePost}
+          onShare={setShowShareModal}
+        />
       );
     };
 
     const renderProfileReplyCard = (comment: ForumComment) => {
       const parentPost = posts.find((post) => post.id === comment.postId);
       const replyToComment = parentPost?.comments.find((item) => item.id === comment.replyToId);
-      const author = getAuthor(comment.authorId);
+      const author = resolveCommentAuthor(comment);
       const handle = formatForumHandle(author);
       const identityMeta = getForumIdentityBadgeMeta(resolveCommentIdentity(comment));
       return (
@@ -3268,12 +3817,32 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       );
     };
 
+    if (currentView === 'edit-author-profile') {
+      const editingCharacter = editingForumAuthorId ? getCharacterByIdStrict(editingForumAuthorId) : undefined;
+      if (!editingCharacter) return null;
+      return (
+        <ForumAuthorProfileEditor
+          title="编辑论坛角色资料"
+          avatar={editingCharacter.avatar}
+          displayName={editName}
+          handle={editId}
+          bio={editBio}
+          topInsetStyle={forumTopInsetStyle}
+          onBack={() => setCurrentView('user-profile')}
+          onSave={handleSaveCharacterForumProfile}
+          onChangeDisplayName={setEditName}
+          onChangeHandle={setEditId}
+          onChangeBio={setEditBio}
+        />
+      );
+    }
+
     if (currentView === 'edit-profile') {
       return (
         <div className="bg-white h-full min-h-0 flex flex-col">
           <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={forumTopInsetStyle}>
             <div className="flex items-center gap-6">
-              <button onClick={() => setCurrentView('list')} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
+              <button onClick={() => setCurrentView(profileEditReturnView)} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
                 <ArrowLeft size={20} />
               </button>
               <h2 className="font-bold text-lg text-zinc-900">编辑个人资料</h2>
@@ -3295,14 +3864,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
+                  const input = event.currentTarget;
                   const persistedValue = await setUploadedFile(file);
                   setEditAvatar(persistedValue);
-                  event.currentTarget.value = '';
+                  input.value = '';
                 }}
               />
               <div className="flex items-start gap-4">
                 <div className="relative shrink-0">
-                  <ResolvedImage value={editAvatar || currentUser.avatar} className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-sm" />
+                  <ResolvedImage value={editAvatar || currentUserForumProfile.avatar} className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-sm" />
                   <button
                     type="button"
                     onClick={() => profileAvatarInputRef.current?.click()}
@@ -3363,7 +3933,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
                   className="w-full bg-transparent text-[14px] text-zinc-900 outline-none font-mono"
                 />
                 <div className="mt-1 text-[11px] text-zinc-400">
-                  当前论坛显示为 {formatCurrentUserForumHandle(editId || currentUser.id)}
+                  当前论坛显示为 {formatCurrentUserForumHandle(editId || currentUserForumProfile.handle || currentUser.id)}
                 </div>
               </div>
               <div className="relative border border-zinc-200 rounded-md px-3 py-2 focus-within:border-zinc-900 focus-within:ring-1 focus-within:ring-zinc-900 transition-all">
@@ -3380,6 +3950,28 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       );
     }
 
+    if (currentView === 'forum-settings') {
+      return (
+        <ForumSettingsRoute
+          handle={handle}
+          profile={{
+            name: currentUserForumProfile.name,
+            bio: currentUserForumProfile.bio,
+            avatar: currentUserForumProfile.avatar,
+          }}
+          settings={forumGlobalSettings}
+          posts={posts}
+          spectatorSettings={spectatorHeaderSettings}
+          masks={appData.masks || []}
+          worldBooks={appData.worldBooks || []}
+          topInsetStyle={forumTopInsetStyle}
+          onBack={() => setCurrentView('list')}
+          onChange={handleUpdateForumGlobalSettings}
+          onEditProfile={() => openCurrentUserForumProfileEditor('forum-settings')}
+        />
+      );
+    }
+
     return (
       <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto pb-20">
         {/* Profile Header */}
@@ -3387,32 +3979,27 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           <div className="flex gap-6">
             {/* Left: Avatar, Name, ID */}
             <div className="flex flex-col items-center shrink-0 w-24">
-              <ResolvedImage value={currentUser.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
-              <h2 className="text-[15px] font-bold text-zinc-900 text-center leading-tight">{currentUser.name}</h2>
-              <p className="text-[12px] text-zinc-500 text-center mt-1">{handle}</p>
+              <ResolvedImage value={currentUserForumProfile.avatar} className="w-24 h-24 rounded-full border-2 border-zinc-100 object-cover shadow-sm mb-3" />
+              <h2 className="text-[15px] font-bold text-zinc-900 text-center leading-tight">{currentUserForumProfile.name}</h2>
+              <p className="text-[12px] text-zinc-500 text-center mt-1">{formatCurrentUserForumHandle(currentUserForumProfile.handle)}</p>
             </div>
 
             {/* Right: Bio, Stats, Actions */}
             <div className="flex-1 flex flex-col">
               <div className="flex justify-end mb-4">
-                <button 
+                <button
                   onClick={() => {
-                    setEditName(currentUser.name);
-                    setEditId(currentUser.id);
-                    setEditBio(currentUser.bio);
-                    setEditAvatar(currentUser.avatar);
-                    setEditAvatarUrlInput('');
-                    setCurrentView('edit-profile');
+                    setCurrentView('forum-settings');
                   }}
                   className="px-5 py-1.5 rounded-full border border-zinc-200 font-bold text-[13px] text-zinc-900 hover:bg-zinc-50 transition-colors"
                 >
-                  编辑个人资料
+                  论坛设置
                 </button>
               </div>
 
               <div className="p-2 flex-1">
                 <p className="text-[13px] text-zinc-600 leading-relaxed mb-4 italic">
-                  {currentUser.bio || '暂无简介。'}
+                  {currentUserForumProfile.bio || '暂无简介。'}
                 </p>
                 <div className="flex gap-6 border-t border-zinc-100 pt-3">
                   <button
@@ -3494,235 +4081,85 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     );
   };
 
-  const renderNotifications = () => {
-    const myNotifications = notifications.filter(n => n.userId === currentUser.id).sort((a, b) => b.timestamp - a.timestamp);
-    const chatSessions = Object.values(tempChats)
-      .map((session) => {
-        const author = getAuthor(session.authorId);
-        const lastMessage = session.messages[session.messages.length - 1] || null;
-        const relatedPost = resolveRecentForumPostForAuthor(session.authorId);
-        const isUnread = !!lastMessage
-          && lastMessage.role === 'npc'
-          && lastMessage.timestamp > (session.viewerLastSeenAt || 0);
+  const getMessageCenterData = () => buildForumMessageCenterData({
+    currentUserId: currentUser.id,
+    notifications,
+    tempChats,
+    pinnedChatAuthorIds,
+    getAuthor: (authorId) => {
+      const author = getAuthor(authorId);
+      return {
+        id: author.id,
+        name: author.name,
+        avatar: author.avatar,
+      };
+    },
+    isMutualForumFollow,
+    resolveRecentForumPostForAuthor,
+    formatHandleText: (authorId) => formatForumHandle(getAuthor(authorId)),
+  });
 
-        return {
-          session,
-          author,
-          lastMessage,
-          relatedPost,
-          isUnread,
-          isMutual: isMutualForumFollow(session.authorId),
-          sortTimestamp: lastMessage?.timestamp || session.updatedAt || session.createdAt,
-        };
-      });
-    const sortChatSessionGroup = (items: typeof chatSessions) => [...items].sort((a, b) => {
-      if (a.isUnread !== b.isUnread) return a.isUnread ? -1 : 1;
-      if (!!a.session.pendingReply !== !!b.session.pendingReply) return a.session.pendingReply ? -1 : 1;
-      return b.sortTimestamp - a.sortTimestamp;
+  const renderMessageCenterView = () => {
+    const messageCenterData = getMessageCenterData();
+
+    const notificationItems: ForumMessageNotificationItem[] = messageCenterData.myNotifications.map((notification) => {
+      const sourceUser = getAuthor(notification.sourceUserId);
+      return {
+        notification,
+        sourceUser: {
+          id: sourceUser.id,
+          name: sourceUser.name,
+          avatar: sourceUser.avatar,
+        },
+        post: posts.find((post) => post.id === notification.postId),
+        actionText: getForumNotificationActionText(notification),
+      };
     });
-    const mutualChatSessions = sortChatSessionGroup(chatSessions.filter((item) => item.isMutual));
-    const strangerChatSessions = sortChatSessionGroup(chatSessions.filter((item) => !item.isMutual));
-    const visibleChatSessions = chatListTab === 'mutual' ? mutualChatSessions : strangerChatSessions;
-    const mutualUnreadCount = mutualChatSessions.filter((item) => item.isUnread).length;
-    const strangerUnreadCount = strangerChatSessions.filter((item) => item.isUnread).length;
-    
+
     return (
-      <div className="forum-app-scroll bg-white h-full min-h-0 overflow-y-auto" style={forumBottomInsetStyle}>
-        <div className="px-4 pb-3 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-100 flex items-center justify-between" style={forumTopInsetStyle}>
-           <div className="text-[20px] font-black tracking-tight text-zinc-900">消息</div>
-           <button className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
-             <Settings size={20} className="text-zinc-900" />
-           </button>
-        </div>
-        
-        <div className="flex border-b border-zinc-100">
-          <button
-            onClick={() => setMessageTab('chats')}
-            className={`flex-1 py-4 text-[14px] font-bold relative hover:bg-zinc-50 transition-colors ${messageTab === 'chats' ? 'text-zinc-900' : 'text-zinc-500'}`}
-          >
-            聊天
-            {messageTab === 'chats' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-zinc-900 rounded-full" />}
-          </button>
-          <button
-            onClick={() => setMessageTab('activity')}
-            className={`flex-1 py-4 text-[14px] font-bold relative hover:bg-zinc-50 transition-colors ${messageTab === 'activity' ? 'text-zinc-900' : 'text-zinc-500'}`}
-          >
-            通知
-            {messageTab === 'activity' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-zinc-900 rounded-full" />}
-          </button>
-        </div>
-
-        {messageTab === 'chats' ? (
-          <div className="space-y-0">
-            <div className="flex border-b border-zinc-100 bg-white px-4">
-              <button
-                type="button"
-                onClick={() => setChatListTab('mutual')}
-                className={`relative flex-1 py-3 text-[13px] font-medium transition-colors ${chatListTab === 'mutual' ? 'text-zinc-900' : 'text-zinc-500'}`}
-              >
-                互相关注
-                <span className="ml-1 text-[11px] text-zinc-400">{mutualChatSessions.length}</span>
-                {mutualUnreadCount > 0 && (
-                  <span className="ml-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {mutualUnreadCount}
-                  </span>
-                )}
-                {chatListTab === 'mutual' && <div className="absolute bottom-0 left-1/2 h-0.5 w-10 -translate-x-1/2 rounded-full bg-zinc-900" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setChatListTab('strangers')}
-                className={`relative flex-1 py-3 text-[13px] font-medium transition-colors ${chatListTab === 'strangers' ? 'text-zinc-900' : 'text-zinc-500'}`}
-              >
-                陌生人
-                <span className="ml-1 text-[11px] text-zinc-400">{strangerChatSessions.length}</span>
-                {strangerUnreadCount > 0 && (
-                  <span className="ml-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {strangerUnreadCount}
-                  </span>
-                )}
-                {chatListTab === 'strangers' && <div className="absolute bottom-0 left-1/2 h-0.5 w-10 -translate-x-1/2 rounded-full bg-zinc-900" />}
-              </button>
-            </div>
-            {visibleChatSessions.length > 0 && (
-              <div className="border-b border-zinc-100 bg-zinc-50/70 px-4 py-2 text-[12px] text-zinc-500">
-                {chatListTab === 'mutual'
-                  ? `按未读优先展示互相关注会话，共 ${mutualChatSessions.length} 条`
-                  : `按未读优先展示陌生人会话，共 ${strangerChatSessions.length} 条`}
-              </div>
-            )}
-            {visibleChatSessions.map(({ session, author, lastMessage, relatedPost, isUnread, isMutual }) => (
-              <button
-                key={session.authorId}
-                type="button"
-                onClick={() => {
-                  updateTempChatSession(session.authorId, (currentSession) => ({
-                    ...currentSession,
-                    viewerLastSeenAt: Date.now(),
-                  }));
-                  setViewingUserId(session.authorId);
-                  setActiveTempChatUserId(session.authorId);
-                  setCurrentView('temp-chat');
-                }}
-                className="flex w-full gap-3 border-b border-zinc-100 bg-white px-4 py-4 text-left transition-colors hover:bg-zinc-50"
-              >
-                <div className="relative shrink-0">
-                  <ResolvedImage value={author.avatar} className="h-12 w-12 rounded-full object-cover" />
-                  {isUnread && <div className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="truncate text-[15px] font-bold text-zinc-900">{author.name}</span>
-                        {isMutual && (
-                          <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-600">互关</span>
-                        )}
-                        {session.addedAsFriend && (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600">已加好友</span>
-                        )}
-                      </div>
-                      <div className="truncate text-[12px] text-zinc-500">{formatForumHandle(author)}</div>
-                    </div>
-                    <div className="shrink-0 text-[11px] text-zinc-400">
-                      {lastMessage ? formatRelativeTime(lastMessage.timestamp) : ''}
-                    </div>
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-600">
-                    {lastMessage?.text || '还没有开始聊天'}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-[12px] text-zinc-400">
-                    {session.pendingReply && (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
-                        {session.pendingReply.status === 'typing' ? '对方输入中' : session.pendingReply.status === 'ghosted' ? '已读未回' : '等待回复'}
-                      </span>
-                    )}
-                    {relatedPost && (
-                      <span className="truncate">
-                        相关帖子：{relatedPost.title || relatedPost.content.slice(0, 18)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-            {visibleChatSessions.length === 0 && (
-              <div className="px-8 pt-16 text-center text-[14px] text-zinc-500">
-                <h3 className="mb-3 text-[18px] font-bold text-zinc-900">
-                  {chatListTab === 'mutual' ? '这里还没有互关聊天' : '这里还没有陌生人聊天'}
-                </h3>
-                <p className="leading-7">
-                  {chatListTab === 'mutual'
-                    ? '当你和论坛网友互相关注后，你们的会话会整理到这里。'
-                    : '在论坛里点进网友主页并发起临时单聊后，来自陌生网友的会话会先留在这里。'}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-0">
-          {myNotifications.map(n => {
-            const sourceUser = getAuthor(n.sourceUserId);
-            const post = posts.find(p => p.id === n.postId);
-            
-            let Icon = User;
-            let iconColor = 'text-blue-500 fill-blue-500';
-            let actionText = '';
-            
-            if (n.type === 'like_post' || n.type === 'like_comment') {
-              Icon = Heart;
-              iconColor = 'text-pink-500 fill-pink-500';
-              actionText = '喜欢了你的帖子';
-            } else if (n.type === 'reply') {
-              Icon = MessageCircle;
-              iconColor = 'text-zinc-900 fill-zinc-900';
-              actionText = '回复了你的帖子';
-            }
-
-            return (
-              <div 
-                key={n.id} 
-                onClick={() => {
-                  if (post) {
-                    setSelectedPostId(post.id);
-                    setCurrentView('detail');
-                  }
-                }}
-                className="bg-white p-4 border-b border-zinc-100 flex gap-3 hover:bg-zinc-50 transition-colors cursor-pointer"
-              >
-                <div className="w-10 flex justify-end pt-1">
-                  <Icon size={24} className={iconColor} />
-                </div>
-                <div className="flex-1">
-                  <ResolvedImage value={sourceUser.avatar} className="w-8 h-8 rounded-full object-cover mb-2" />
-                  <p className="text-[14px] text-zinc-900 mb-2">
-                    <span className="font-bold hover:underline">{sourceUser.name}</span>
-                    <span className="text-zinc-500 ml-1">{actionText}</span>
-                  </p>
-                  {post && (
-                    <div className="text-[15px] text-zinc-500 line-clamp-3">
-                      {post.content}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {myNotifications.length === 0 && (
-            <div className="px-8 pt-16 text-center text-[14px] text-zinc-500">
-              <h3 className="mb-3 text-[18px] font-bold text-zinc-900">这里还没有任何互动</h3>
-              <p className="leading-7">从喜欢、回复到更多互动，这里会留下论坛里的动静。</p>
-            </div>
-          )}
-          </div>
-        )}
-      </div>
+      <ForumMessageCenterView
+        data={messageCenterData}
+        notificationItems={notificationItems}
+        messageTab={messageTab}
+        chatListTab={chatListTab}
+        openMessageRowMenuId={openMessageRowMenuId}
+        forumTopInsetStyle={forumTopInsetStyle}
+        forumBottomInsetStyle={forumBottomInsetStyle}
+        onOpenManageSheet={() => setShowMessageManageSheet(true)}
+        onChangeMessageTab={setMessageTab}
+        onChangeChatListTab={setChatListTab}
+        onOpenChat={(authorId) => {
+          setViewingUserId(authorId);
+          setActiveTempChatUserId(authorId);
+          setTempChatReturnTarget('messages');
+          setCurrentView('temp-chat');
+        }}
+        onMarkChatViewed={(authorId) => {
+          updateTempChatSession(authorId, (currentSession) => ({
+            ...currentSession,
+            viewerLastSeenAt: Date.now(),
+          }));
+        }}
+        onToggleMessageRowMenu={setOpenMessageRowMenuId}
+        onTogglePinnedChat={handleTogglePinnedForumChat}
+        onRemoveChat={handleRemoveSingleForumChat}
+        onOpenNotificationPost={(postId) => {
+          setSelectedPostId(postId);
+          setCurrentView('detail');
+        }}
+        onRemoveNotification={handleRemoveSingleForumNotification}
+        isPinnedChat={(authorId) => pinnedChatAuthorIds.includes(authorId)}
+      />
     );
   };
 
   // --- Main Render ---
 
-  const shouldShowForumBottomNav = currentView !== 'editor' && currentView !== 'edit-profile' && currentView !== 'follow-list';
+  const shouldShowForumBottomNav = currentView !== 'editor'
+    && currentView !== 'edit-profile'
+    && currentView !== 'follow-list'
+    && currentView !== 'forum-settings'
+    && currentView !== 'public-open-settings';
 
   const renderCurrentView = () => {
     if (currentView === 'detail') return renderPostDetail();
@@ -3731,20 +4168,74 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       return (
         <SpectatorSettingsView
           characters={appData.characters}
-          subjectName={spectatorSubjectName}
+          masks={appData.masks || []}
+          relationshipSuggestions={spectatorRelationshipSuggestions}
           relationshipSummary={spectatorRelationshipSummary}
-          tone={spectatorTone}
+          topicHint={spectatorTopicHint}
+          objectMode={spectatorObjectMode}
+          selectedThreadTypes={spectatorThreadTypes}
+          selectedAngles={spectatorAngles}
+          selectedTone={spectatorTone}
+          selectedRelationshipSuggestions={selectedSpectatorRelationshipSuggestions}
+          worldShell={spectatorWorldShell}
           autoGenerate={spectatorAutoGenerate}
-          selectedCharacterIds={spectatorCharacterIds}
-          onSubjectNameChange={setSpectatorSubjectName}
+          userSlotMode={spectatorUserSlotMode}
+          userNameSource={spectatorUserNameSource}
+          selectedMaskId={spectatorUserMaskId}
+          targetCharacters={spectatorTargetCharacters}
+          targetPresets={spectatorTargetPresets}
+          cluePool={spectatorCluePool}
+          defaultThreadTypePool={spectatorDefaultThreadTypePool}
+          currentUserName={spectatorUserName}
+          currentForumNickname={spectatorForumNickname}
           onRelationshipSummaryChange={setSpectatorRelationshipSummary}
+          onTopicHintChange={setSpectatorTopicHint}
+          onObjectModeChange={setSpectatorObjectMode}
+          onToggleThreadType={toggleSpectatorThreadType}
+          onToggleAngle={toggleSpectatorAngle}
           onToneChange={setSpectatorTone}
+          onClearThreadTypes={clearSpectatorThreadTypes}
+          onToggleRelationshipSuggestion={toggleSpectatorRelationshipSuggestion}
+          onWorldShellChange={setSpectatorWorldShell}
           onAutoGenerateChange={setSpectatorAutoGenerate}
-          onToggleCharacter={toggleSpectatorCharacter}
+          onUserSlotModeChange={setSpectatorUserSlotMode}
+          onUserNameSourceChange={setSpectatorUserNameSource}
+          onMaskChange={setSpectatorUserMaskId}
+          onToggleTargetCharacter={toggleSpectatorTargetCharacter}
+          onCycleTargetRole={cycleSpectatorTargetRole}
+          onSavePreset={saveCurrentSpectatorPreset}
+          onApplyPreset={applySpectatorPreset}
+          onRemovePreset={removeSpectatorPreset}
           onBack={() => setCurrentView('list')}
           onSave={saveSpectatorSettings}
-          onGenerate={generateSpectatorPostsFromSettings}
+          onGenerate={() => {
+            setSpectatorOpenMode('configured');
+            setForumBoard('spectator');
+            setCurrentView('list');
+            void generateSpectatorPostsFromSettings();
+          }}
+          onGenerateRandom={() => {
+            setSpectatorOpenMode('random');
+            setForumBoard('spectator');
+            setCurrentView('list');
+            void generateSpectatorPostsFromSettings({ forceRandomize: true });
+          }}
           topInsetStyle={forumTopInsetStyle}
+        />
+      );
+    }
+    if (currentView === 'public-open-settings') {
+      return (
+        <ForumOpenSettingsRoute
+          initialDraft={publicOpenDraft}
+          activeChannel={activeChannel}
+          topInsetStyle={forumTopInsetStyle}
+          onBack={() => setCurrentView('list')}
+          onGenerate={(draft) => {
+            setPublicOpenDraft(draft);
+            setCurrentView('list');
+            void handleOpenPublicThreads(draft);
+          }}
         />
       );
     }
@@ -3754,17 +4245,19 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
     if (activeTab === 'home') return renderPostList();
     if (activeTab === 'hot') return renderHotList();
-    if (activeTab === 'notification') return renderNotifications();
+    if (activeTab === 'notification') return renderMessageCenterView();
     return renderProfile();
   };
 
   const handlePrimaryRefresh = async () => {
     if (forumBoard === 'spectator') {
-      generateSpectatorPostsFromSettings();
+      await generateSpectatorPostsFromSettings({ randomizeIfEmpty: true });
       return;
     }
-    await handleRefreshFeed();
+    await handleOpenPublicThreads();
   };
+
+  const messageCenterManageData = activeTab === 'notification' ? getMessageCenterData() : null;
 
   return (
     <div className="forum-app-shell absolute inset-0 min-h-0 flex flex-col bg-white overflow-hidden">
@@ -3772,16 +4265,19 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       {currentView === 'list' && activeTab === 'home' && (
         <ForumHomeHeader
           forumBoard={forumBoard}
-          publicLabel={activeChannelMeta.label}
-          publicFilterLabel={activeThreadTypeLabel}
-          publicBlurb={activeChannelMeta.blurb}
-          spectatorSettings={spectatorSettings}
+          publicLabel={publicViewSummary.label}
+          publicFilterLabel={publicOpenSummaryLabel}
+          publicBlurb={publicViewSummary.blurb}
+          spectatorSettings={spectatorHeaderSettings}
+          spectatorCharacters={appData.characters.map((character) => ({ id: character.id, name: character.name }))}
+          currentUserName={spectatorObjectUserName}
           feedRefreshLoading={feedRefreshLoading}
           forumConfigEnabled={!!forumConfig}
           onClose={onClose}
           onSwitchBoard={setForumBoard}
           onRefresh={() => { void handlePrimaryRefresh(); }}
-          onOpenFilter={() => setShowFilterSheet(true)}
+          onOpenFilter={() => setCurrentView('public-open-settings')}
+          onOpenBrowseFilter={() => setShowBrowseFilterSheet(true)}
           onOpenSpectatorSettings={() => setCurrentView('spectator-settings')}
           topInsetStyle={forumTopInsetStyle}
         />
@@ -3803,21 +4299,41 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         </div>
       )}
 
-      {forumBoard === 'public' && renderFilterSheet()}
+      {forumBoard === 'public' && (
+        <ForumBrowseFilterSheet
+          open={showBrowseFilterSheet}
+          selectedChannels={publicViewChannels}
+          onClose={() => setShowBrowseFilterSheet(false)}
+          onReset={() => {
+            setPublicViewChannels([]);
+            setShowBrowseFilterSheet(false);
+          }}
+          onToggleChannel={togglePublicViewChannel}
+        />
+      )}
 
       {/* Content Area */}
       <div className="forum-app-content flex-1 min-h-0 overflow-hidden">
         {renderCurrentView()}
       </div>
 
+      {showMessageManageSheet && messageCenterManageData && (
+        <ForumMessageManageSheet
+          unreadNotificationCount={messageCenterManageData.unreadNotificationCount}
+          unreadChatCount={messageCenterManageData.unreadChatCount}
+          strangerChatCount={messageCenterManageData.strangerChatSessions.length}
+          onClose={() => setShowMessageManageSheet(false)}
+          onMarkAllNotificationsRead={handleMarkAllForumNotificationsRead}
+          onMarkAllChatsRead={handleMarkAllForumChatsRead}
+          onClearStrangerChats={handleClearStrangerForumChats}
+          onClearNotifications={handleClearAllForumNotifications}
+        />
+      )}
+
       {/* Floating Action Button */}
       {currentView === 'list' && activeTab === 'home' && (
         <button 
           onClick={() => {
-            if (forumBoard === 'spectator') {
-              setCurrentView('spectator-settings');
-              return;
-            }
             openForumComposer();
           }}
           className="forum-app-fab absolute bottom-20 right-4 flex h-14 w-14 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm transition-colors hover:bg-zinc-200 z-20"

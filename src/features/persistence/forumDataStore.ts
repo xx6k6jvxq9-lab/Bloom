@@ -1,4 +1,5 @@
 import type { ForumData } from '../../types';
+import { normalizeForumGlobalSettings } from '../../services/forum/forumGlobalSettings';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -16,6 +17,8 @@ export function hydrateForumData(
     tempChats: source?.tempChats && typeof source.tempChats === 'object'
       ? source.tempChats
       : fallback.tempChats,
+    pinnedChatAuthorIds: Array.isArray(source?.pinnedChatAuthorIds) ? source!.pinnedChatAuthorIds : fallback.pinnedChatAuthorIds,
+    pinnedPostIds: Array.isArray(source?.pinnedPostIds) ? source!.pinnedPostIds : fallback.pinnedPostIds,
     runtimeAuthorProfiles: source?.runtimeAuthorProfiles && typeof source.runtimeAuthorProfiles === 'object'
       ? source.runtimeAuthorProfiles
       : fallback.runtimeAuthorProfiles,
@@ -25,6 +28,11 @@ export function hydrateForumData(
     spectatorSettings: source?.spectatorSettings && typeof source.spectatorSettings === 'object'
       ? source.spectatorSettings
       : fallback.spectatorSettings,
+    globalSettings: normalizeForumGlobalSettings(
+      source?.globalSettings && typeof source.globalSettings === 'object'
+        ? source.globalSettings
+        : fallback.globalSettings,
+    ),
   };
 }
 

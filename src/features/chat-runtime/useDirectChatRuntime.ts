@@ -55,6 +55,9 @@ import {
   applyDirectTransferBridge,
   buildDirectCharacterDecisionPromptSection,
 } from '../../services/chat/directCharacterDecision';
+import { buildDirectContextLayers } from '../../services/chat/buildDirectContextLayers';
+import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
+import { reconcileCharacterRuntimeState } from '../../services/chat/reconcileCharacterRuntimeState';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import {
@@ -83,6 +86,47 @@ const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
+
+function isChineseLanguageName(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase() || '';
+  if (!normalized) {
+    return false;
+  }
+
+  return ['中文', '汉语', '普通话', '简体中文', '繁体中文', 'chinese', 'mandarin', 'simplified chinese', 'traditional chinese']
+    .includes(normalized);
+}
+
+function shouldInlineReplyTranslation(character: Character): boolean {
+  if (!character.autoTranslate) {
+    return false;
+  }
+
+  if (character.replyLanguageMode === 'native-first') {
+    return !isChineseLanguageName(character.nativeLanguage);
+  }
+
+  if (character.replyLanguageMode === 'fixed') {
+    return !isChineseLanguageName(character.fixedReplyLanguage);
+  }
+
+  return false;
+}
+
+function buildInlineReplyTranslationPrompt(character: Character): string {
+  const targetLanguage = character.replyLanguageMode === 'fixed'
+    ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
+    : (character.nativeLanguage?.trim() || '角色母语');
+
+  return [
+    '## 双语输出',
+    `本轮请先只输出角色实际会说的 ${targetLanguage} 原文。`,
+    '如果这轮回复里出现了正文内容，请在正文全部结束后另起一行输出 `---TRANSLATION---`，然后给出与正文严格对应的简体中文翻译。',
+    '翻译部分只做自然中文转写，不要补充解释、注释、语言标签、括号说明或额外寒暄。',
+    '如果正文被拆成多条短气泡，翻译部分也必须按完全相同的气泡顺序输出，并使用 `|||` 分隔每一条对应翻译。',
+    '除 `---TRANSLATION---` 这条分隔线外，不要输出任何额外格式标记。',
+  ].join('\n');
+}
 
 function createMomentPublishedSystemMessage(characterName: string, timestamp: number): ChatMessage {
   return {
@@ -206,6 +250,46 @@ function hasDirectRecallCue(
     .some((part) => parseDirectActionCue(part).kind === 'recall');
 }
 
+function splitDirectReplyTranslationsByBubble(
+  mainText: string,
+  translationText: string,
+  maxDirectReplyBubbles?: number,
+): string[] {
+  const normalizedTranslation = sanitizePipeMarkers(translationText, '\n');
+  if (!normalizedTranslation) {
+    return [];
+  }
+
+  const sourceParts = splitDirectAssistantReplyText(mainText, maxDirectReplyBubbles);
+  if (sourceParts.length <= 1) {
+    return [normalizedTranslation];
+  }
+
+  const pipeSegments = translationText
+    .split(/\s*\|\|\|\s*/g)
+    .map((segment) => sanitizePipeMarkers(segment, '\n'))
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (pipeSegments.length === sourceParts.length) {
+    return pipeSegments;
+  }
+
+  const explicitLineSegments = normalizedTranslation
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (explicitLineSegments.length === sourceParts.length) {
+    return explicitLineSegments;
+  }
+
+  const heuristicSegments = splitDirectAssistantReplyText(normalizedTranslation, maxDirectReplyBubbles);
+  if (heuristicSegments.length === sourceParts.length) {
+    return heuristicSegments;
+  }
+
+  return sourceParts.map((_, index) => (index === sourceParts.length - 1 ? normalizedTranslation : ''));
+}
+
 function markLatestVisibleModelMessageRecalled(messages: ChatMessage[]): ChatMessage[] {
   const targetIndex = [...messages]
     .reverse()
@@ -248,27 +332,109 @@ function isRetryableSummaryStreamError(error: unknown): boolean {
   return message.includes('failed to fetch') || message.includes('networkerror');
 }
 
-function toPromptHistoryContent(message: ChatMessage): string {
+function isSameLocalDay(leftTimestamp: number, rightTimestamp: number): boolean {
+  const left = new Date(leftTimestamp);
+  const right = new Date(rightTimestamp);
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function formatPromptHistoryTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function formatPromptHistoryAge(timestamp: number, nowTimestamp: number): string {
+  const diffMs = Math.max(0, nowTimestamp - timestamp);
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) {
+    return '刚刚';
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} 天前`;
+}
+
+function looksLikeFrozenSceneFragment(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return /(门口|楼下|车里|路上|电梯里|马上到|快到了|过来|过去|来找你|在你家|端着|腾不开手|刚煮|煮了粉|还在这|还没走)/.test(normalized);
+}
+
+function buildPromptHistoryPrefix(
+  message: ChatMessage,
+  options: {
+    nowTimestamp: number;
+    continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  },
+): string {
+  if (options.continuityMode === 'continuous_scene') {
+    return '';
+  }
+
+  const absoluteTime = formatPromptHistoryTimestamp(message.timestamp);
+  const ageText = formatPromptHistoryAge(message.timestamp, options.nowTimestamp);
+  const basePrefix = `[发送时间 ${absoluteTime} / 相对现在 ${ageText}]`;
+
+  if (
+    options.continuityMode === 'resume_after_gap'
+    && !isSameLocalDay(message.timestamp, options.nowTimestamp)
+    && looksLikeFrozenSceneFragment(message.text || '')
+  ) {
+    return `${basePrefix}[旧现场片段，仅作背景参考，不代表此刻仍在发生] `;
+  }
+
+  return `${basePrefix} `;
+}
+
+function toPromptHistoryContent(
+  message: ChatMessage,
+  options: {
+    nowTimestamp: number;
+    continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  },
+): string {
+  const prefix = buildPromptHistoryPrefix(message, options);
+
   if (message.audioUrl) {
     const transcript = message.audioTranscript?.trim();
     return transcript
-      ? `[sent a voice message; transcript: ${transcript}]`
-      : '[sent a voice message]';
+      ? `${prefix}[sent a voice message; transcript: ${transcript}]`
+      : `${prefix}[sent a voice message]`;
   }
 
   if (message.imageUrl) {
     if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
-      return describeStickerMessageForPrompt(message);
+      return `${prefix}${describeStickerMessageForPrompt(message)}`;
     }
-    return '[sent an image]';
+    return `${prefix}[sent an image]`;
   }
 
   if (message.role === 'user') {
     const userText = normalizeBracketActionTextForPrompt(message.text || '');
-    return isUsableChatText(userText) ? normalizeChatPunctuationNoise(userText) : '';
+    return isUsableChatText(userText) ? `${prefix}${normalizeChatPunctuationNoise(userText)}` : '';
   }
 
-  return isUsableChatText(message.text || '') ? normalizeChatPunctuationNoise(message.text || '') : '';
+  return isUsableChatText(message.text || '') ? `${prefix}${normalizeChatPunctuationNoise(message.text || '')}` : '';
 }
 
 function getDirectHistoryWindowByTemporalMode(
@@ -285,7 +451,16 @@ function getDirectHistoryWindowByTemporalMode(
     return cappedWindow.slice(-Math.min(historyLimit, 10));
   }
 
-  return cappedWindow.slice(-Math.min(historyLimit, 6));
+  const latestPendingUserBlock = getLatestPendingUserMessageBlock(messages);
+  if (latestPendingUserBlock) {
+    return messages.slice(latestPendingUserBlock.start, latestPendingUserBlock.end + 1);
+  }
+
+  const visibleTail = messages
+    .filter((message) => isVisibleDirectUserMessage(message) || isVisibleDirectModelMessage(message))
+    .slice(-2);
+
+  return visibleTail.length > 0 ? visibleTail : cappedWindow.slice(-1);
 }
 
 function isVisibleDirectUserMessage(message: ChatMessage): boolean {
@@ -513,6 +688,13 @@ const splitStreamingModelResponseIntoMessages = (
     options.assistantAliases || [],
   );
   const parts = splitDirectAssistantReplyText(mainText, options.maxDirectReplyBubbles);
+  const translationParts = legacyTranslationParts.translation
+    ? splitDirectReplyTranslationsByBubble(
+        mainText,
+        legacyTranslationParts.translation,
+        options.maxDirectReplyBubbles,
+      )
+    : [];
   const mappedMessages = parts.map((part, index) => {
     const cue = parseDirectActionCue(part);
     const pickedSticker = cue.kind === 'sticker'
@@ -537,7 +719,7 @@ const splitStreamingModelResponseIntoMessages = (
       text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : bodyText,
       ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
       ...(replyTo ? { replyTo } : {}),
-      ...(index === parts.length - 1 && legacyTranslationParts.translation ? { translation: legacyTranslationParts.translation } : {}),
+      ...(translationParts[index] ? { translation: translationParts[index] } : {}),
       timestamp: baseTimestamp + index,
     };
   });
@@ -960,6 +1142,25 @@ function extractSpeechTextForAudio(text: string): string {
     .trim();
 }
 
+function shouldAttachCharacterVoiceReply(character: Character): boolean {
+  if (character.voiceProfile?.enabled !== true) {
+    return false;
+  }
+
+  const replyMode = character.voiceProfile?.replyMode || 'voice';
+  if (replyMode === 'text') {
+    return false;
+  }
+
+  if (replyMode === 'voice') {
+    return true;
+  }
+
+  const frequency = character.voiceProfile?.replyFrequency || 'medium';
+  const probability = frequency === 'high' ? 0.75 : frequency === 'low' ? 0.3 : 0.55;
+  return Math.random() < probability;
+}
+
 function parseBatchTranslationResult(rawTranslation: string, expectedCount: number): string[] {
   const normalized = sanitizePipeMarkers(rawTranslation, '\n')
     .replace(/\r/g, '')
@@ -1061,6 +1262,34 @@ export function useDirectChatRuntime({
   const pendingCoupleSpaceInviteRef = useRef(false);
   const pendingTransferDecisionIdsRef = useRef<Set<string>>(new Set());
 
+  const syncCharacterRuntimeState = useCallback((params: {
+    history: ChatMessage[];
+    continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+    shortTermSummary?: string;
+    latestUserText?: string;
+    latestAssistantText?: string;
+  }) => {
+    const patch = reconcileCharacterRuntimeState({
+      character,
+      history: params.history,
+      continuityMode: params.continuityMode,
+      nowTimestamp: Date.now(),
+      shortTermSummary: params.shortTermSummary,
+      latestUserText: params.latestUserText,
+      latestAssistantText: params.latestAssistantText,
+    });
+
+    if (onPatchCharacter) {
+      onPatchCharacter(patch);
+      return;
+    }
+
+    onUpdateCharacter({
+      ...character,
+      ...patch,
+    });
+  }, [character, onPatchCharacter, onUpdateCharacter]);
+
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
@@ -1144,6 +1373,10 @@ export function useDirectChatRuntime({
     messages: ChatMessage[],
     fileNamePrefix: string,
   ) => {
+    if (!shouldAttachCharacterVoiceReply(character)) {
+      return messages;
+    }
+
     const latestReplySegment = getLatestModelReplySegment(messages);
     if (!latestReplySegment) {
       return messages;
@@ -1174,7 +1407,7 @@ export function useDirectChatRuntime({
     }
 
     return nextMessages;
-  }, [getLatestModelReplySegment, synthesizeCharacterReplyAudio]);
+  }, [character, getLatestModelReplySegment, synthesizeCharacterReplyAudio]);
 
   const applyAvatarAction = useCallback((
     action: ParsedAvatarAction | null,
@@ -1295,6 +1528,12 @@ export function useDirectChatRuntime({
             historyLimit,
             characterTemporalState.continuityMode,
           );
+          const contextLayers = buildDirectContextLayers({
+            messages: historySnapshot,
+            liveMessages: historyWindow,
+            continuityMode: characterTemporalState.continuityMode,
+            nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
+          });
 
           const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
@@ -1342,6 +1581,8 @@ export function useDirectChatRuntime({
             perceptionPrompt,
             directChatHistory,
             chatGroups,
+            worldBookQuery: latestPendingUserMessage?.text,
+            latestUserText: latestPendingUserMessage?.text,
           });
           const directIntentAnalysis = mode === 'proactive'
             ? null
@@ -1367,6 +1608,14 @@ export function useDirectChatRuntime({
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+              buildOpenLoopRegistryPrompt({
+                existingEntries: character.openLoopRegistry,
+                shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+                recentMessages: contextLayers.memoryMessages,
+                topicAnchors: chatSceneInput.recentContext?.topicAnchors,
+                taskResidue: chatSceneInput.recentContext?.taskResidue,
+              }),
+              contextLayers.memoryContextPrompt,
               buildAvatarActionPromptSection(character, historySnapshot),
               buildAutonomousAvatarLibraryPromptSection(character),
               buildAssistantStickerPromptSection(availableStickers),
@@ -1375,9 +1624,12 @@ export function useDirectChatRuntime({
 
           const runtimeMessages = [
             { role: 'system' as const, content: systemPrompt },
-            ...historyWindow.map(m => ({
+            ...contextLayers.liveMessages.map(m => ({
               role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-              content: toPromptHistoryContent(m),
+              content: toPromptHistoryContent(m, {
+                nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
+                continuityMode: characterTemporalState.continuityMode,
+              }),
               ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
               ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
             })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
@@ -1422,6 +1674,13 @@ export function useDirectChatRuntime({
             `direct-generate-${character.id}-${assistantMsgId}`,
           );
           setHistory(latestHistory);
+          syncCharacterRuntimeState({
+            history: latestHistory,
+            continuityMode: characterTemporalState.continuityMode,
+            shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+            latestUserText: latestPendingUserMessage?.text,
+            latestAssistantText: currentResponseText,
+          });
           applyAvatarAction(avatarActionResult.action, historySnapshot);
           activeAssistantMessageIdRef.current = null;
           activeAssistantRenderCountRef.current = 0;
@@ -1433,7 +1692,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     const pendingUserBlock = getLatestPendingUserMessageBlock(history);
@@ -1926,6 +2185,12 @@ export function useDirectChatRuntime({
         historyLimit,
         characterTemporalState.continuityMode,
       );
+      const contextLayers = buildDirectContextLayers({
+        messages: newHistory,
+        liveMessages: historyWindow,
+        continuityMode: characterTemporalState.continuityMode,
+        nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
+      });
 
       const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
@@ -1971,6 +2236,8 @@ export function useDirectChatRuntime({
         perceptionPrompt,
         directChatHistory,
         chatGroups,
+        worldBookQuery: userMsg.text,
+        latestUserText: userMsg.text,
       });
       const directIntentAnalysis = analyzeLatestDirectUserIntent(newHistory);
       const directCharacterDecision = analyzeDirectCharacterDecision({
@@ -1978,6 +2245,7 @@ export function useDirectChatRuntime({
         messages: newHistory,
         intentAnalysis: directIntentAnalysis,
       });
+      const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
         sections: [
@@ -1988,17 +2256,29 @@ export function useDirectChatRuntime({
           directSpecialReplyPrompt,
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+          buildOpenLoopRegistryPrompt({
+            existingEntries: character.openLoopRegistry,
+            shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+            recentMessages: contextLayers.memoryMessages,
+            topicAnchors: chatSceneInput.recentContext?.topicAnchors,
+            taskResidue: chatSceneInput.recentContext?.taskResidue,
+          }),
+          contextLayers.memoryContextPrompt,
           buildAvatarActionPromptSection(character, newHistory),
           buildAutonomousAvatarLibraryPromptSection(character),
           buildAssistantStickerPromptSection(availableStickers),
+          inlineReplyTranslationEnabled ? buildInlineReplyTranslationPrompt(character) : '',
         ].filter(Boolean),
       });
 
       const runtimeMessages = [
         { role: 'system' as const, content: systemPrompt },
-        ...historyWindow.map(m => ({
+        ...contextLayers.liveMessages.map(m => ({
           role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-          content: toPromptHistoryContent(m),
+          content: toPromptHistoryContent(m, {
+            nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
+            continuityMode: characterTemporalState.continuityMode,
+          }),
           ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
         })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
@@ -2007,6 +2287,18 @@ export function useDirectChatRuntime({
         activeConfig,
         messages: runtimeMessages,
         allowBracketActions: shouldAllowBracketActions(character),
+        onProgress: (streamingText) => {
+          if (activeGenerationIdRef.current !== generationId) {
+            return;
+          }
+
+          const previewText = stripPseudoMomentPrefix(getLegacyTranslationParts(streamingText).mainText);
+          if (!previewText.trim()) {
+            return;
+          }
+
+          updateAssistantMessage(previewText);
+        },
         onInvalid: (result) => {
           console.warn('[direct-chat] invalid generated reply, retrying', {
             reason: result.reason,
@@ -2051,6 +2343,13 @@ export function useDirectChatRuntime({
         `direct-send-${character.id}-${assistantMsgId}`,
       );
       setHistory(finalHistory);
+      syncCharacterRuntimeState({
+        history: finalHistory,
+        continuityMode: characterTemporalState.continuityMode,
+        shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+        latestUserText: userMsg.text,
+        latestAssistantText: currentResponseText,
+      });
       applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
@@ -2215,9 +2514,22 @@ export function useDirectChatRuntime({
               ? compressShortTermSummaryAfterLongTerm(safeSummaryText)
               : safeSummaryText;
 
+            const runtimePatch = reconcileCharacterRuntimeState({
+              character: {
+                openLoopRegistry: character.openLoopRegistry,
+                presenceState: character.presenceState,
+                shortTermSummary: nextShortTermSummary,
+              },
+              history: finalHistory,
+              continuityMode: characterTemporalState.continuityMode,
+              nowTimestamp: Date.now(),
+              shortTermSummary: nextShortTermSummary,
+            });
+
             const patch: Partial<Character> = {
               shortTermSummary: nextShortTermSummary,
               memoryLibraryEntries: nextMemoryLibraryEntries,
+              ...runtimePatch,
               ...(nextLongTermMemoryProfile
                 ? { longTermMemoryProfile: nextLongTermMemoryProfile }
                 : {}),
@@ -2249,7 +2561,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

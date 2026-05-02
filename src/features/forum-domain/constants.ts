@@ -28,12 +28,26 @@ export const FORUM_DEFAULT_CHANNELS: ForumChannel[] = [
   'starSea',
   'weird',
   'cyber',
+  'apocalypse',
+  'underworld',
+  'dragonPalace',
+  'infiniteTower',
+  'godCourt',
+  'dreamStation',
+  'bookCity',
+  'beastPlain',
 ];
 
 export const FORUM_THREAD_TYPE_LABELS: Record<ForumThreadType, string> = {
   normal: '普通帖',
+  gossip: '爆料帖',
+  help: '求助帖',
   rift: '裂隙帖',
   sameTopic: '同题帖',
+  sighting: '目击帖',
+  timeline: '记录帖',
+  essay: '片段帖',
+  vote: '投票帖',
   commission: '委托帖',
   reversal: '反转帖',
   ownerUpdate: '楼主补充',
@@ -120,6 +134,86 @@ export const FORUM_WORLD_THEMES: ForumWorldTheme[] = [
     exampleTopics: [
       '仿生人管家擅自把我的危险权限关了。',
       '公司上司把我的监控权限调成最高。',
+    ],
+  },
+  {
+    channel: 'apocalypse',
+    label: '末日',
+    coreConflicts: ['物资分配', '避难所关系', '感染猜疑'],
+    toneKeywords: ['求生感', '紧绷', '护人与牺牲'],
+    exampleTopics: [
+      '他把最后一支退烧针塞给我，还说只是顺手。',
+      '巡夜名单每次都把我放在自己后面，这正常吗？',
+    ],
+  },
+  {
+    channel: 'underworld',
+    label: '冥府',
+    coreConflicts: ['旧账未了', '判词偏袒', '阴阳两隔'],
+    toneKeywords: ['阴冷', '宿命感', '旧情翻出'],
+    exampleTopics: [
+      '判官说公事公办，却把我的名字从生死簿边上划掉了。',
+      '引魂路上有人一路护着我，还装作没认出来。',
+    ],
+  },
+  {
+    channel: 'dragonPalace',
+    label: '龙宫',
+    coreConflicts: ['旧约', '婚配', '身份压制'],
+    toneKeywords: ['华丽', '潮湿', '古艳关系'],
+    exampleTopics: [
+      '龙君说只是旧约照看，但我住处门口夜夜有水卫守着。',
+      '海宴上他只给我留了那颗避水珠，这算什么？',
+    ],
+  },
+  {
+    channel: 'infiniteTower',
+    label: '无限楼',
+    coreConflicts: ['组队绑定', '通关分配', '危险偏爱'],
+    toneKeywords: ['副本感', '高压', '生死同行'],
+    exampleTopics: [
+      '队长说别拖后腿，结果把唯一保命道具塞给我了。',
+      '同伴平时最烦我，进副本却永远先确认我活着。',
+    ],
+  },
+  {
+    channel: 'godCourt',
+    label: '神庭',
+    coreConflicts: ['神谕偏心', '天规越界', '降罚与护短'],
+    toneKeywords: ['高位感', '肃冷', '禁忌偏爱'],
+    exampleTopics: [
+      '神官说不能偏私，却替我压了整整三道天罚。',
+      '司命当众翻脸，私下却把我的命格改回来了。',
+    ],
+  },
+  {
+    channel: 'dreamStation',
+    label: '梦站',
+    coreConflicts: ['错站重逢', '梦境掉马', '暧昧失联'],
+    toneKeywords: ['轻悬浮', '夜车感', '暧昧漂流'],
+    exampleTopics: [
+      '每次梦站换乘都能碰见同一个人，他是不是故意的？',
+      '他在梦里认得我，醒来却装作第一次见。',
+    ],
+  },
+  {
+    channel: 'bookCity',
+    label: '书中城',
+    coreConflicts: ['角色出格', '设定崩坏', '作者偏爱'],
+    toneKeywords: ['元叙事', '纸面感', '失控张力'],
+    exampleTopics: [
+      '某角色疑似自己改剧情了，我不是开玩笑。',
+      '作者说他没私心，那为什么番外总是单给我写？',
+    ],
+  },
+  {
+    channel: 'beastPlain',
+    label: '兽原',
+    coreConflicts: ['领地边界', '标记误会', '本能压制'],
+    toneKeywords: ['野性', '直觉感', '护短很重'],
+    exampleTopics: [
+      '他嘴上说烦我，换毛期却只肯让我靠近。',
+      '同伴说别误会，但他在领地边上只给我留了气味。',
     ],
   },
 ];

@@ -55,6 +55,7 @@ import { CoupleSpaceArchiveCenter } from '../archive/CoupleSpaceArchiveCenter';
 import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
 import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
+import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
@@ -279,6 +280,37 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         ...prev,
         coupleSpaceState,
         coupleSpace,
+      };
+    });
+  };
+
+  const handleRecordPartnerSettlement = (
+    partnerId: string,
+    event: {
+      type: 'post' | 'message_board' | 'love_letter' | 'co_note' | 'ledger' | 'comment_reply';
+      content: string;
+      timestamp: number;
+      authorRole: 'user' | 'partner';
+    },
+  ) => {
+    setAppData((prev: any) => {
+      const nextCharacters = (prev.characters || []).map((item: any) => {
+        if (!item || item.id !== partnerId) {
+          return item;
+        }
+
+        const settlement = buildCoupleSpaceSharedSettlement(item, event);
+        return {
+          ...item,
+          sharedContextSnapshots: settlement.sharedContextSnapshots,
+          shortTermSummary: settlement.shortTermSummary,
+          openLoopRegistry: settlement.openLoopRegistry,
+        };
+      });
+
+      return {
+        ...prev,
+        characters: nextCharacters,
       };
     });
   };
@@ -734,6 +766,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                       partner={partner}
                       updateSpace={handleUpdateCoupleSpace}
                       updateSpaceForPartner={handleUpdatePartnerSpace}
+                      recordSettlement={handleRecordPartnerSettlement}
                       coupleSpace={coupleSpace}
                       settings={settings}
                       chatHistory={appData.chatHistory}
@@ -1404,6 +1437,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
               updateSpaceForPartner={handleUpdatePartnerSpace}
+              recordSettlement={handleRecordPartnerSettlement}
               user={user}
               partner={partner}
               settings={settings}
@@ -1414,7 +1448,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'ledger' && partner && (
-            <LedgerView coupleSpace={coupleSpace} updateSpace={handleUpdateCoupleSpace} user={user} partner={partner} />
+            <LedgerView
+              coupleSpace={coupleSpace}
+              updateSpace={handleUpdateCoupleSpace}
+              recordSettlement={handleRecordPartnerSettlement}
+              user={user}
+              partner={partner}
+            />
           )}
 
           {activeView === 'loveletters' && partner && (
@@ -1422,6 +1462,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
               updateSpaceForPartner={handleUpdatePartnerSpace}
+              recordSettlement={handleRecordPartnerSettlement}
               user={user}
               partner={partner}
               settings={settings}
@@ -1532,6 +1573,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
               updateSpaceForPartner={handleUpdatePartnerSpace}
+              recordSettlement={handleRecordPartnerSettlement}
               user={user}
               partner={partner}
               settings={settings}
@@ -1579,6 +1621,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               coupleSpace={coupleSpace}
               updateSpace={handleUpdateCoupleSpace}
               updateSpaceForPartner={handleUpdatePartnerSpace}
+              recordSettlement={handleRecordPartnerSettlement}
               user={user}
               partner={partner}
               settings={settings}
@@ -1619,7 +1662,7 @@ function MiniAppIcon({ icon, title, onClick }: { icon: React.ReactNode, title: s
 
 // --- Sub Views ---
 
-function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
+function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, recordSettlement, coupleSpace, settings, chatHistory, masks, worldBooks }: any) {
   const [commentText, setCommentText] = useState('');
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
@@ -1663,6 +1706,12 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
         p.id === post.id ? { ...p, comments: [...(p.comments || []), newComment] } : p
       )
     }));
+    recordSettlement(scopedPartnerId, {
+      type: 'comment_reply',
+      content: newComment.content,
+      timestamp: operationNow,
+      authorRole: 'user',
+    });
     
     setCommentText('');
     setShowCommentInput(false);
@@ -1717,6 +1766,12 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
                 p.id === post.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
             }));
+            recordSettlement(scopedPartnerId, {
+              type: 'comment_reply',
+              content: aiComment.content,
+              timestamp: aiComment.timestamp,
+              authorRole: 'partner',
+            });
           }, 3000);
         }
       } catch (e) {
@@ -1926,7 +1981,7 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, cou
   );
 }
 
-function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks, worldBooks }: any) {
+function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSettlement, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [text, setText] = useState('');
   const allNotes: CoNote[] = coupleSpace.coNotes || [];
   const noteMap = new Map(allNotes.map((note) => [note.id, note]));
@@ -1952,6 +2007,12 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
       isCompleted: false,
     };
     updateSpace({ coNotes: [newNote, ...allNotes] });
+    recordSettlement(scopedPartnerId, {
+      type: 'co_note',
+      content: newNote.content,
+      timestamp: operationNow,
+      authorRole: 'user',
+    });
     setText('');
 
     try {
@@ -2000,6 +2061,12 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
             updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               coNotes: [...(prev.coNotes || []), aiReply],
             }));
+            recordSettlement(scopedPartnerId, {
+              type: 'co_note',
+              content: aiReply.content,
+              timestamp: aiReply.timestamp,
+              authorRole: 'partner',
+            });
           }, 2000);
         }
         return;
@@ -2157,7 +2224,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, user, pa
   );
 }
 
-function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
+function LedgerView({ coupleSpace, updateSpace, recordSettlement, user, partner }: any) {
   const [amount, setAmount] = useState('');
   const [desc, setDesc] = useState('');
   const [payer, setPayer] = useState<'user' | 'partner'>('user');
@@ -2172,6 +2239,12 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
       timestamp: Date.now()
     };
     updateSpace({ ledger: [newEntry, ...(coupleSpace.ledger || [])] });
+    recordSettlement(coupleSpace.partnerId || partner.id, {
+      type: 'ledger',
+      content: `${payer === 'user' ? user.name : partner.name} 记了一笔：${newEntry.description} ${newEntry.amount}`,
+      timestamp: newEntry.timestamp,
+      authorRole: payer === 'user' ? 'user' : 'partner',
+    });
     setAmount('');
     setDesc('');
   };
@@ -2266,7 +2339,7 @@ function LedgerView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks = [], worldBooks = [], onOpenLetter }: any) {
+function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSettlement, user, partner, settings, chatHistory, masks = [], worldBooks = [], onOpenLetter }: any) {
   const [writing, setWriting] = useState(false);
   const [content, setContent] = useState('');
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
@@ -2297,6 +2370,12 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
     };
     const updatedLetters = [newLetter, ...(coupleSpace.loveLetters || [])];
     updateSpace({ loveLetters: updatedLetters });
+    recordSettlement(scopedPartnerId, {
+      type: 'love_letter',
+      content: newLetter.content,
+      timestamp: operationNow,
+      authorRole: 'user',
+    });
     setWriting(false);
     setContent('');
 
@@ -2345,6 +2424,12 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
               l.id === newLetter.id ? { ...l, comments: [...(l.comments || []), aiComment] } : l
             )
           }));
+          recordSettlement(scopedPartnerId, {
+            type: 'comment_reply',
+            content: aiComment.content,
+            timestamp: aiComment.timestamp,
+            authorRole: 'partner',
+          });
         }, 3000);
       }
     } catch (e) {
@@ -2354,17 +2439,24 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
 
   const handleComment = (letterId: string) => {
     if (!commentText.trim()) return;
+    const now = Date.now();
     const newComment = {
-      id: Date.now().toString(),
+      id: now.toString(),
       authorId: 'user',
       content: commentText,
-      timestamp: Date.now()
+      timestamp: now
     };
     updateSpace((prev: any) => ({ 
       loveLetters: (prev.loveLetters || []).map((l: LoveLetter) => 
         l.id === letterId ? { ...l, comments: [...(l.comments || []), newComment] } : l
       ) 
     }));
+    recordSettlement(scopedPartnerId, {
+      type: 'comment_reply',
+      content: newComment.content,
+      timestamp: newComment.timestamp,
+      authorRole: 'user',
+    });
     setCommentingOn(null);
     setCommentText('');
   };
@@ -2634,7 +2726,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, user
   );
 }
 
-function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, onBack, chatHistory, masks, worldBooks }: any) {
+function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSettlement, user, partner, settings, onBack, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
   const [imgUrls, setImgUrls] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('');
@@ -2657,6 +2749,12 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
     updateSpace((prev: any) => ({
       posts: [newPost, ...(prev.posts || [])]
     }));
+    recordSettlement(scopedPartnerId, {
+      type: 'post',
+      content: newPost.content || (newPost.images?.length ? '发了一条带图片的情侣动态' : ''),
+      timestamp: operationNow,
+      authorRole: 'user',
+    });
     const nextCoupleSpaceForPrompt = {
       ...coupleSpace,
       posts: [newPost, ...(coupleSpace.posts || [])],
@@ -2711,6 +2809,12 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, user, p
                 p.id === newPost.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
             }));
+            recordSettlement(scopedPartnerId, {
+              type: 'comment_reply',
+              content: aiComment.content,
+              timestamp: aiComment.timestamp,
+              authorRole: 'partner',
+            });
           }, 3000);
         }
       }
@@ -2874,7 +2978,7 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
   );
 }
 
-function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, user, partner, settings, chatHistory, masks, worldBooks }: any) {
+function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSettlement, user, partner, settings, chatHistory, masks, worldBooks }: any) {
   const [content, setContent] = useState('');
   const scopedPartnerId = coupleSpace.partnerId || partner.id;
   const visibleMessages = sortPinnedByTimestampDesc(
@@ -2893,6 +2997,12 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, use
     updateSpace((prev: any) => ({
       messageBoard: [newMsg, ...(prev.messageBoard || [])]
     }));
+    recordSettlement(scopedPartnerId, {
+      type: 'message_board',
+      content: newMsg.content,
+      timestamp: operationNow,
+      authorRole: 'user',
+    });
     setContent('');
 
     // AI Partner might reply
@@ -2937,6 +3047,12 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, use
             updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               messageBoard: [aiMsg, ...(prev.messageBoard || [])]
             }));
+            recordSettlement(scopedPartnerId, {
+              type: 'message_board',
+              content: aiMsg.content,
+              timestamp: aiMsg.timestamp,
+              authorRole: 'partner',
+            });
           }, 2000);
         }
       }

@@ -29,6 +29,25 @@ function buildPersonaGuardBlock(sceneInput: GroupChatSceneInput): string {
   return lines.length > 0 ? ['人设守则：', ...lines].join('\n') : '';
 }
 
+function formatTypedResidueLines<T extends { summary: string }>(
+  title: string,
+  items: T[] | undefined,
+  usageNote: string,
+): string {
+  const typedItems = (items || [])
+    .map((item) => item.summary.trim())
+    .filter(Boolean);
+  if (typedItems.length === 0) {
+    return '';
+  }
+
+  return [
+    title,
+    usageNote,
+    ...typedItems.map((summary) => `- ${summary}`),
+  ].join('\n');
+}
+
 function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
   const lines = [
     '这些上下文只用于帮助判断群里的熟悉度、张力和最近余波，不代表群聊已经自动切成线下现场。',
@@ -57,6 +76,21 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.publicAcquaintanceSummary
       ? `公开认识与群内连续性：${sceneInput.recentContext.publicAcquaintanceSummary}`
       : '',
+    formatTypedResidueLines(
+      '## Typed Relationship Residue',
+      sceneInput.recentContext?.relationshipResidue,
+      '这些是能影响群聊里亲疏、站位、语气和轻微张力的关系余波。只把它们当成背景，不要改写成当前群聊里已经发生的现场动作。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Topic Anchors',
+      sceneInput.recentContext?.topicAnchors,
+      '这些是旧梗或旧话题锚点。只有当前群聊真的碰到时才可轻量接住；否则不要主动把冷掉的话题硬拉回来。',
+    ),
+    formatTypedResidueLines(
+      '## Typed Task Residue',
+      sceneInput.recentContext?.taskResidue,
+      '这些是仍可能算数的待办或约定。默认先回应当前群聊内容，只有当前真的相关时再轻量恢复。',
+    ),
     sceneInput.recentContext?.sharedRecentRelationshipSummary
       ? `跨场景共享关系余波：${sceneInput.recentContext.sharedRecentRelationshipSummary}`
       : '',
@@ -65,6 +99,9 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
       : '',
     sceneInput.recentContext?.longTermMemoryProfile
       ? `长期记忆印象：${sceneInput.recentContext.longTermMemoryProfile}`
+      : '',
+    sceneInput.recentContext?.activeDatingSummary
+      ? `进行中的线下约会共享语境：${sceneInput.recentContext.activeDatingSummary}`
       : '',
     sceneInput.recentContext?.temporalContext || '',
     sceneInput.recentContext?.expressionStyle

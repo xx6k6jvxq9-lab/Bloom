@@ -63,7 +63,7 @@ function normalizeVoiceList(rawList: unknown, source: MinimaxVoiceRecord['source
         source,
       } satisfies MinimaxVoiceRecord;
     })
-    .filter((item): item is MinimaxVoiceRecord => Boolean(item));
+    .filter((item) => item !== null);
 }
 
 export async function fetchMinimaxVoices(

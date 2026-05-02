@@ -19,6 +19,7 @@ export type RelationshipWaveSourceScene =
   | 'dating'
   | 'music_together'
   | 'couple_space'
+  | 'forum'
   | 'moments';
 
 export type RelationshipWaveRelationType =
@@ -61,7 +62,60 @@ export type RelationshipWaveRecord = {
   decayHint: RelationshipWaveDecayHint;
 };
 
+export type TypedContextDecay = 'short' | 'medium' | 'stable';
+
+export type TypedContextVisibility = 'private' | 'group_public' | 'cross_scene_readable';
+
+export type RelationshipResidueItem = {
+  type: 'relationship_residue';
+  summary: string;
+  sourceScene: RelationshipWaveSourceScene;
+  timestamp: number;
+  decay: TypedContextDecay;
+  visibility: TypedContextVisibility;
+};
+
+export type SceneResidueItem = {
+  type: 'scene_residue';
+  summary: string;
+  sourceScene: RelationshipWaveSourceScene;
+  timestamp: number;
+  decay: TypedContextDecay;
+  visibility: TypedContextVisibility;
+};
+
+export type TopicAnchorItem = {
+  type: 'topic_anchor';
+  summary: string;
+  sourceScene: RelationshipWaveSourceScene;
+  timestamp: number;
+  decay: TypedContextDecay;
+  visibility: TypedContextVisibility;
+};
+
+export type TaskResidueItem = {
+  type: 'task_residue';
+  summary: string;
+  sourceScene: RelationshipWaveSourceScene;
+  timestamp: number;
+  decay: TypedContextDecay;
+  visibility: TypedContextVisibility;
+};
+
+export type CharacterSharedContextSnapshot = {
+  sourceScene: RelationshipWaveSourceScene;
+  settledAt: number;
+  relationshipResidue?: RelationshipResidueItem[];
+  sceneResidue?: SceneResidueItem[];
+  topicAnchors?: TopicAnchorItem[];
+  taskResidue?: TaskResidueItem[];
+};
+
 export type SceneScopedSignals = {
+  relationshipResidue?: RelationshipResidueItem[];
+  sceneResidue?: SceneResidueItem[];
+  topicAnchors?: TopicAnchorItem[];
+  taskResidue?: TaskResidueItem[];
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
   publicAcquaintanceSummary?: string;
@@ -73,6 +127,10 @@ export type UserGlobalContext = {
 
 export type ChatRecentContext = {
   shortTermSummary?: string;
+  relationshipResidue?: RelationshipResidueItem[];
+  sceneResidue?: SceneResidueItem[];
+  topicAnchors?: TopicAnchorItem[];
+  taskResidue?: TaskResidueItem[];
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
   publicAcquaintanceSummary?: string;

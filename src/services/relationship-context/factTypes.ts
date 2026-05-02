@@ -4,6 +4,7 @@ export type FactTraceSourceScene =
   | 'dating'
   | 'music_together'
   | 'couple_space'
+  | 'forum'
   | 'moments';
 
 export type FactTraceType =

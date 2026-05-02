@@ -4,6 +4,7 @@ import {
   normalizeWorldBookCategory,
   normalizeWorldBookPriorityLevel,
 } from '../../services/world-book/worldBookMeta';
+import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 
 type CharacterImportFields = Pick<
   Character,
@@ -276,6 +277,11 @@ function normalizeWorldBookRecord(item: unknown, index: number): WorldBookEntry 
     isActive: !disabled,
     isGlobal: typeof item.isGlobal === 'boolean' ? item.isGlobal : characterIds.length === 0,
     characterIds,
+    pinMode: item.pinMode === 'always' ? 'always' : 'none',
+    chunkCache: buildWorldBookChunkCache({
+      id: pickFirstText(item.id, item.uid) || `${Date.now()}-${index}`,
+      content,
+    }),
   };
 }
 

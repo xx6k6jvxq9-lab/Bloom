@@ -2,7 +2,31 @@ import type { Character } from '../../types';
 import { FORUM_CHANNEL_LABELS } from './constants';
 import type { ForumChannel } from './types';
 
-const FORUM_HANDLE_SUFFIXES = ['今天闭嘴', '先听八卦', '摸鱼失败', '还没下班', '只看不回', '路过旁听', '先记一笔', '不想加班'] as const;
+const FORUM_HANDLE_SUFFIX_BANK = [
+  '先别催',
+  '晚点回',
+  '刚路过',
+  '先蹲着',
+  '还醒着',
+  '不装了',
+  '在看楼',
+  '别点我',
+  '今天在线',
+  '先旁听',
+  '楼里见',
+  '还没散',
+] as const;
+
+const FORUM_HANDLE_PREFIX_BANK = [
+  '不想',
+  '先别',
+  '刚从',
+  '又在',
+  '今天',
+  '凌晨',
+  '路过',
+  '下班后',
+] as const;
 
 function hashString(value: string) {
   let hash = 0;
@@ -19,8 +43,20 @@ export function buildReadableForumHandle(options: { id: string; name: string }) 
     .replace(/\s+/g, '')
     .replace(/[^\p{Script=Han}A-Za-z0-9]+/gu, '')
     .slice(0, 4) || '路过';
-  const suffix = FORUM_HANDLE_SUFFIXES[hashString(`${options.id}:${options.name}`) % FORUM_HANDLE_SUFFIXES.length];
-  return `${baseName}${suffix}`.slice(0, 10);
+  const seed = hashString(`${options.id}:${options.name}`);
+  const suffix = FORUM_HANDLE_SUFFIX_BANK[seed % FORUM_HANDLE_SUFFIX_BANK.length];
+  const prefix = FORUM_HANDLE_PREFIX_BANK[Math.floor(seed / 7) % FORUM_HANDLE_PREFIX_BANK.length];
+
+  if (baseName.length <= 2) {
+    return `${prefix}${baseName}${suffix}`.slice(0, 10);
+  }
+  if (seed % 3 === 0) {
+    return `${baseName}${suffix}`.slice(0, 10);
+  }
+  if (seed % 3 === 1) {
+    return `${prefix}${baseName}`.slice(0, 10);
+  }
+  return `${baseName}${suffix.slice(0, 2)}`.slice(0, 10);
 }
 
 export function buildForumCharacterHandle(character: Character) {

@@ -1,9 +1,15 @@
-import type { ApiConfig, ForumPost } from '../../types';
+import type { ApiConfig, ForumGlobalSettings, ForumPost, WorldBookEntry } from '../../types';
 import { forumThreadV2ToLegacyPost } from '../../features/forum-domain/adapters';
 import type { ForumChannel, ForumCommentV2, ForumThreadType, ForumThreadV2 } from '../../features/forum-domain/types';
-import { FORUM_CHANNEL_LABELS, FORUM_THREAD_TYPE_LABELS, getForumWorldTheme } from '../../features/forum-domain/constants';
+import { FORUM_CHANNEL_LABELS, getForumWorldTheme } from '../../features/forum-domain/constants';
+import { buildReadableForumHandle } from '../../features/forum-domain/characterForumPersona';
 import { FORUM_SCENARIO_PROMPT } from '../ai/prompts/scenarios/forum';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
+import type { ForumTopicPackage } from './forumTopicPlanner';
+import { buildForumPostMeta } from './forumOrchestration';
+import { inferForumContentTier, inferForumDiscourseAxis } from './forumContentTier';
+import { polishGeneratedForumThread } from './polishGeneratedForumThread';
+import { buildForumPostFooterTags } from './forumPostTags';
 
 export type GeneratedForumAuthorDraft = {
   id: string;
@@ -21,13 +27,26 @@ type GenerateForumThreadsInput = {
   channel: ForumChannel;
   existingPosts: ForumPost[];
   count: number;
+  globalSettings?: ForumGlobalSettings;
+  worldBooks?: WorldBookEntry[];
   recurringAuthors?: GeneratedForumAuthorDraft[];
+  allowedThreadTypes?: ForumThreadType[];
+  ordinaryPostFloor?: number;
+  recurringAuthorTargetCount?: number;
+  preferNewAuthors?: boolean;
+  suppressForcedVariety?: boolean;
+  preferredTopicText?: string;
+  preferredSceneText?: string;
+  preferredConflictText?: string;
+  preferredRelationshipText?: string;
+  excludedTopicText?: string;
 };
 
 export type GenerateForumThreadsResult = {
   authors: GeneratedForumAuthorDraft[];
   posts: ForumPost[];
   threads: ForumThreadV2[];
+  topicPackage?: ForumTopicPackage;
 };
 
 type ParsedGeneratedComment = {
@@ -58,7 +77,13 @@ type ParsedGeneratedBatch = {
   posts: ParsedGeneratedPost[];
 };
 
-const VALID_FORUM_THREAD_TYPES: ForumThreadType[] = ['normal', 'rift', 'sameTopic', 'commission', 'reversal', 'ownerUpdate'];
+type RankedGeneratedPost = {
+  index: number;
+  post: ParsedGeneratedPost;
+  resolvedThreadType: ForumThreadType;
+};
+
+const VALID_FORUM_THREAD_TYPES: ForumThreadType[] = ['normal', 'gossip', 'help', 'rift', 'sameTopic', 'sighting', 'timeline', 'essay', 'vote', 'commission', 'reversal', 'ownerUpdate'];
 
 function isForumThreadType(value: unknown): value is ForumThreadType {
   return typeof value === 'string' && VALID_FORUM_THREAD_TYPES.includes(value as ForumThreadType);
@@ -97,21 +122,14 @@ function looksLivelyForumHandle(value?: string) {
 function looksLivelyForumBio(value?: string) {
   if (!value) return false;
   const normalized = value.trim();
-  return containsHan(normalized) && normalized.length >= 10 && normalized.length <= 48;
+  return containsHan(normalized) && normalized.length >= 4 && normalized.length <= 48;
 }
 
 function isValidGeneratedBatch(batch: ParsedGeneratedBatch) {
-  const authorNames = new Set(batch.authors.map((author) => author.displayName.trim()));
-  return batch.authors.length >= 4
-    && batch.authors.every((author) => (
-      containsHan(author.displayName)
-      && looksLivelyForumHandle(author.handle)
-      && looksLivelyForumBio(author.bio)
-    ))
-    && batch.posts.every((post) => (
-      authorNames.has(post.displayName.trim())
-      && (!post.comments || post.comments.every((comment) => authorNames.has(comment.displayName.trim())))
-    ));
+  return batch.authors.length >= 1
+    && batch.posts.length >= 1
+    && batch.authors.every((author) => containsHan(author.displayName))
+    && batch.posts.every((post) => !!post.displayName && !!post.body);
 }
 
 function buildRecentTopicHints(posts: ForumPost[]) {
@@ -150,6 +168,12 @@ function inferThreadTypeFromContent(post: Pick<ParsedGeneratedPost, 'title' | 'b
   const text = `${post.title} ${post.body}`.toLowerCase();
   if (/后续|更新|补充|二编|编辑一下|再补一句|说下后续|汇报/.test(text)) return 'ownerUpdate';
   if (/反转|打脸|结果是|没想到|后来发现|真相|反而是/.test(text)) return 'reversal';
+  if (/投票|站队|押|开盘|选哪个|买股/.test(text)) return 'vote';
+  if (/片段|短打|短文|同人|脑补/.test(text)) return 'essay';
+  if (/时间线|复盘|记录|repo|整理一下/.test(text)) return 'timeline';
+  if (/看见|目击|撞见|路过|我在现场/.test(text)) return 'sighting';
+  if (/爆料|吃瓜|风声|听说|不保真/.test(text)) return 'gossip';
+  if (/求助|怎么办|该不该|想问问|有人懂/.test(text)) return 'help';
   if (/求助|怎么办|委托|悬赏|有没有人|谁能|帮忙/.test(text)) return 'commission';
   if (/同题|也来|同样|同一个问题|来个同题|跟风/.test(text)) return 'sameTopic';
   if (/跨区|串台|裂缝|两个世界|界外|错频|时空/.test(text)) return 'rift';
@@ -163,71 +187,370 @@ function stripCodeFence(raw: string) {
     .trim();
 }
 
+function normalizePossiblyBrokenJson(value: string) {
+  return value
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1');
+}
+
+function sanitizeGeneratedJsonKey(value: string) {
+  const normalized = value.trim().replace(/^['"]|['"]$/g, '');
+  const tail = normalized.split(/[\\/]/).pop() || normalized;
+  return tail.trim() || normalized;
+}
+
+function normalizeForumJsonCandidate(value: string) {
+  return normalizePossiblyBrokenJson(value)
+    .replace(/([{,]\s*)'([^']+)'\s*:/g, (_, prefix: string, key: string) => `${prefix}"${sanitizeGeneratedJsonKey(key)}":`)
+    .replace(/([{,]\s*)"([^"]+)"\s*:/g, (_, prefix: string, key: string) => `${prefix}"${sanitizeGeneratedJsonKey(key)}":`)
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_/-]*)\s*:/g, (_, prefix: string, key: string) => `${prefix}"${sanitizeGeneratedJsonKey(key)}":`)
+    .replace(/:\s*'((?:\\.|[^'\\])*)'/g, (_, rawValue: string) => `: "${rawValue.replace(/"/g, '\\"')}"`);
+}
+
+function hashString(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function randomAlphaTag(length = 4) {
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  let token = '';
+  for (let index = 0; index < length; index += 1) {
+    token += letters[Math.floor(Math.random() * letters.length)];
+  }
+  return token;
+}
+
+function sanitizeIdWord(value: string) {
+  const normalized = value
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+  if (!normalized) return '';
+  if (/[a-z]/.test(normalized)) return normalized.slice(0, 8);
+  return '';
+}
+
+function buildHumanForumId(prefix: string, seed: string, fallbackWord: string) {
+  const moodPool = ['soft', 'night', 'mild', 'hush', 'after', 'moon', 'glass', 'paper', 'amber', 'velvet'] as const;
+  const placePool = ['room', 'hall', 'gate', 'desk', 'lane', 'note', 'floor', 'corner', 'cloud', 'echo'] as const;
+  const hash = hashString(`${prefix}:${seed}`);
+  const mood = moodPool[hash % moodPool.length];
+  const place = placePool[Math.floor(hash / moodPool.length) % placePool.length];
+  const word = sanitizeIdWord(seed) || fallbackWord;
+  return `${prefix}_${word}_${mood}_${place}_${randomAlphaTag(3)}`;
+}
+
+function findBalancedSegment(value: string, startIndex: number, openChar: string, closeChar: string) {
+  let depth = 0;
+  let inString = false;
+  let quoteChar = '';
+  let escaped = false;
+
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === quoteChar) {
+        inString = false;
+        quoteChar = '';
+      }
+      continue;
+    }
+
+    if (char === '"' || char === '\'') {
+      inString = true;
+      quoteChar = char;
+      continue;
+    }
+
+    if (char === openChar) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === closeChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return value.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractNamedArraySegment(value: string, fieldName: string) {
+  const patterns = [
+    new RegExp(`"${fieldName}"\\s*:`, 'i'),
+    new RegExp(`'${fieldName}'\\s*:`, 'i'),
+    new RegExp(`\\b${fieldName}\\b\\s*:`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(value);
+    if (!match) continue;
+    const arrayStart = value.indexOf('[', match.index + match[0].length);
+    if (arrayStart === -1) continue;
+    const segment = findBalancedSegment(value, arrayStart, '[', ']');
+    if (segment) return segment;
+  }
+
+  return null;
+}
+
+function extractTopLevelObjectLiterals(arrayText: string) {
+  const objects: string[] = [];
+  let cursor = 0;
+
+  while (cursor < arrayText.length) {
+    const start = arrayText.indexOf('{', cursor);
+    if (start === -1) break;
+    const segment = findBalancedSegment(arrayText, start, '{', '}');
+    if (!segment) break;
+    objects.push(segment);
+    cursor = start + segment.length;
+  }
+
+  return objects;
+}
+
+function buildFallbackTitleFromBody(body: string) {
+  const compact = body.replace(/\s+/g, ' ').trim();
+  if (!compact) return '';
+  return compact.length <= 24 ? compact : `${compact.slice(0, 24)}…`;
+}
+
+function parseAuthorRecord(item: unknown): ParsedGeneratedAuthor | null {
+  if (!item || typeof item !== 'object') return null;
+  const authorRecord = item as Record<string, unknown>;
+  const displayName = typeof authorRecord.displayName === 'string'
+    ? authorRecord.displayName.trim()
+    : typeof authorRecord.name === 'string'
+      ? authorRecord.name.trim()
+      : '';
+  if (!displayName) return null;
+
+  return {
+    displayName,
+    bio: typeof authorRecord.bio === 'string'
+      ? authorRecord.bio.trim()
+      : typeof authorRecord.description === 'string'
+        ? authorRecord.description.trim()
+        : '',
+    handle: typeof authorRecord.handle === 'string'
+      ? authorRecord.handle.trim()
+      : typeof authorRecord.id === 'string'
+        ? authorRecord.id.trim()
+        : '',
+    persona: typeof authorRecord.persona === 'string' ? authorRecord.persona.trim() : '',
+    speakingStyle: typeof authorRecord.speakingStyle === 'string' ? authorRecord.speakingStyle.trim() : '',
+    avatarSeed: typeof authorRecord.avatarSeed === 'string'
+      ? authorRecord.avatarSeed.trim()
+      : typeof authorRecord.avatar === 'string'
+        ? authorRecord.avatar.trim()
+        : '',
+  };
+}
+
+function parseCommentRecord(item: unknown): ParsedGeneratedComment | null {
+  if (!item || typeof item !== 'object') return null;
+  const commentRecord = item as Record<string, unknown>;
+  const displayName = typeof commentRecord.displayName === 'string'
+    ? commentRecord.displayName.trim()
+    : typeof commentRecord.author === 'string'
+      ? commentRecord.author.trim()
+      : '';
+  const content = typeof commentRecord.content === 'string' ? commentRecord.content.trim() : '';
+  if (!displayName || !content) return null;
+
+  return {
+    displayName,
+    content,
+    replyToFloor: typeof commentRecord.replyToFloor === 'number'
+      ? Math.max(1, Math.floor(commentRecord.replyToFloor))
+      : undefined,
+  };
+}
+
+function parsePostRecord(item: unknown): ParsedGeneratedPost | null {
+  if (!item || typeof item !== 'object') return null;
+  const postRecord = item as Record<string, unknown>;
+  const displayName = typeof postRecord.displayName === 'string'
+    ? postRecord.displayName.trim()
+    : typeof postRecord.author === 'string'
+      ? postRecord.author.trim()
+      : '';
+  const body = typeof postRecord.body === 'string'
+    ? postRecord.body.trim()
+    : typeof postRecord.content === 'string'
+      ? postRecord.content.trim()
+      : '';
+  if (!displayName || !body) return null;
+
+  return {
+    displayName,
+    threadType: isForumThreadType(postRecord.threadType) ? postRecord.threadType : undefined,
+    title: typeof postRecord.title === 'string' ? postRecord.title.trim() : buildFallbackTitleFromBody(body),
+    body,
+    comments: Array.isArray(postRecord.comments)
+      ? postRecord.comments
+        .map((comment) => parseCommentRecord(comment))
+        .filter((comment): comment is ParsedGeneratedComment => !!comment)
+      : [],
+  };
+}
+
+function parseLooseRecordArray<T>(raw: string, fieldName: string, parser: (item: unknown) => T | null): T[] {
+  const segment = extractNamedArraySegment(raw, fieldName);
+  if (!segment) return [];
+
+  return extractTopLevelObjectLiterals(segment)
+    .map((literal) => {
+      try {
+        return JSON.parse(normalizeForumJsonCandidate(literal)) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .map((item) => parser(item))
+    .filter((item): item is T => !!item);
+}
+
+function buildFallbackAuthorsFromPosts(posts: ParsedGeneratedPost[]) {
+  const deduped = new Map<string, ParsedGeneratedAuthor>();
+
+  const register = (displayName: string) => {
+    const normalized = normalizeName(displayName);
+    if (!normalized || deduped.has(normalized)) return;
+    deduped.set(normalized, { displayName });
+  };
+
+  posts.forEach((post) => {
+    register(post.displayName);
+    (post.comments || []).forEach((comment) => register(comment.displayName));
+  });
+
+  return [...deduped.values()];
+}
+
+function finalizeParsedBatch(batch: ParsedGeneratedBatch): ParsedGeneratedBatch | null {
+  const posts = batch.posts
+    .map((post) => ({
+      ...post,
+      title: post.title?.trim() || buildFallbackTitleFromBody(post.body),
+      body: post.body.trim(),
+      comments: (post.comments || []).filter((comment) => comment.displayName && comment.content),
+    }))
+    .filter((post) => post.displayName && post.body);
+
+  if (!posts.length) return null;
+
+  const authors = [...batch.authors, ...buildFallbackAuthorsFromPosts(posts)]
+    .reduce<ParsedGeneratedAuthor[]>((collection, author) => {
+      const normalized = normalizeName(author.displayName);
+      if (!normalized) return collection;
+      if (collection.some((item) => normalizeName(item.displayName) === normalized)) return collection;
+      collection.push(author);
+      return collection;
+    }, []);
+
+  if (!authors.length) return null;
+
+  return { authors, posts };
+}
+
+function selectGeneratedPosts(input: {
+  posts: ParsedGeneratedPost[];
+  count: number;
+  ordinaryPostFloor?: number;
+}) {
+  const { posts, count, ordinaryPostFloor = 0 } = input;
+  const rankedPosts: RankedGeneratedPost[] = posts.map((post, index) => ({
+    index,
+    post,
+    resolvedThreadType: post.threadType || inferThreadTypeFromContent(post),
+  }));
+  const desiredNormalCount = Math.max(0, Math.min(count, ordinaryPostFloor));
+  const normalCandidates = rankedPosts.filter((entry) => entry.resolvedThreadType === 'normal');
+  const nonNormalCandidates = rankedPosts.filter((entry) => entry.resolvedThreadType !== 'normal');
+  const selected: RankedGeneratedPost[] = [];
+  const selectedIndexes = new Set<number>();
+
+  normalCandidates.slice(0, desiredNormalCount).forEach((entry) => {
+    selected.push(entry);
+    selectedIndexes.add(entry.index);
+  });
+
+  nonNormalCandidates.slice(0, Math.max(0, count - selected.length)).forEach((entry) => {
+    if (selectedIndexes.has(entry.index)) return;
+    selected.push(entry);
+    selectedIndexes.add(entry.index);
+  });
+
+  rankedPosts.forEach((entry) => {
+    if (selected.length >= count) return;
+    if (selectedIndexes.has(entry.index)) return;
+    selected.push(entry);
+    selectedIndexes.add(entry.index);
+  });
+
+  let normalShortfall = desiredNormalCount - selected.filter((entry) => entry.resolvedThreadType === 'normal').length;
+  if (normalShortfall > 0) {
+    selected.forEach((entry) => {
+      if (normalShortfall <= 0) return;
+      if (entry.resolvedThreadType === 'normal') return;
+      if (entry.post.threadType) return;
+      entry.resolvedThreadType = 'normal';
+      normalShortfall -= 1;
+    });
+  }
+
+  return selected
+    .sort((left, right) => left.index - right.index)
+    .slice(0, count);
+}
+
 function tryParseGeneratedBatch(raw: string): ParsedGeneratedBatch | null {
   const cleaned = stripCodeFence(raw);
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) {
-    return null;
-  }
+  if (start === -1 || end === -1 || end < start) return null;
 
-  const jsonText = cleaned.slice(start, end + 1);
+  const jsonText = normalizeForumJsonCandidate(cleaned.slice(start, end + 1));
 
   try {
     const parsed = JSON.parse(jsonText);
     if (!parsed || typeof parsed !== 'object') return null;
     const record = parsed as Record<string, unknown>;
-
     const authors = Array.isArray(record.authors)
       ? record.authors
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => {
-          const authorRecord = item as Record<string, unknown>;
-          return {
-            displayName: typeof authorRecord.displayName === 'string' ? authorRecord.displayName.trim() : '',
-            bio: typeof authorRecord.bio === 'string' ? authorRecord.bio.trim() : '',
-            handle: typeof authorRecord.handle === 'string' ? authorRecord.handle.trim() : '',
-            persona: typeof authorRecord.persona === 'string' ? authorRecord.persona.trim() : '',
-            speakingStyle: typeof authorRecord.speakingStyle === 'string' ? authorRecord.speakingStyle.trim() : '',
-            avatarSeed: typeof authorRecord.avatarSeed === 'string' ? authorRecord.avatarSeed.trim() : '',
-          };
-        })
-        .filter((author) => author.displayName)
+        .map((item) => parseAuthorRecord(item))
+        .filter((author): author is ParsedGeneratedAuthor => !!author)
       : [];
-
     const posts = Array.isArray(record.posts)
       ? record.posts
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => {
-          const postRecord = item as Record<string, unknown>;
-          return {
-            displayName: typeof postRecord.displayName === 'string' ? postRecord.displayName.trim() : '',
-            threadType: isForumThreadType(postRecord.threadType) ? postRecord.threadType : undefined,
-            title: typeof postRecord.title === 'string' ? postRecord.title.trim() : '',
-            body: typeof postRecord.body === 'string' ? postRecord.body.trim() : '',
-            comments: Array.isArray(postRecord.comments)
-              ? postRecord.comments
-                .filter((comment) => comment && typeof comment === 'object')
-                .map((comment) => {
-                  const commentRecord = comment as Record<string, unknown>;
-                  return {
-                    displayName: typeof commentRecord.displayName === 'string' ? commentRecord.displayName.trim() : '',
-                    content: typeof commentRecord.content === 'string' ? commentRecord.content.trim() : '',
-                    replyToFloor: typeof commentRecord.replyToFloor === 'number'
-                      ? Math.max(1, Math.floor(commentRecord.replyToFloor))
-                      : undefined,
-                  };
-                })
-                .filter((comment) => comment.displayName && comment.content)
-              : [],
-          };
-        })
-        .filter((post) => post.displayName && post.body)
+        .map((item) => parsePostRecord(item))
+        .filter((post): post is ParsedGeneratedPost => !!post)
       : [];
 
-    return { authors, posts };
+    return finalizeParsedBatch({ authors, posts });
   } catch {
-    return null;
+    const authors = parseLooseRecordArray(cleaned, 'authors', parseAuthorRecord);
+    const posts = parseLooseRecordArray(cleaned, 'posts', parsePostRecord);
+    return finalizeParsedBatch({ authors, posts });
   }
 }
 
@@ -241,10 +564,7 @@ function resolveAuthorId(displayName: string, authors: GeneratedForumAuthorDraft
   return matched?.id || authors[0]?.id || 'forum_npc_momo';
 }
 
-function resolveReusableAuthor(
-  author: ParsedGeneratedAuthor,
-  recurringAuthors: GeneratedForumAuthorDraft[],
-) {
+function resolveReusableAuthor(author: ParsedGeneratedAuthor, recurringAuthors: GeneratedForumAuthorDraft[]) {
   const normalizedDisplayName = normalizeName(author.displayName);
   const normalizedHandle = normalizeName(author.handle || '');
   return recurringAuthors.find((item) => (
@@ -254,46 +574,71 @@ function resolveReusableAuthor(
   ));
 }
 
-function buildBatchThreadPrompt(input: GenerateForumThreadsInput) {
-  const { channel, existingPosts, count } = input;
+function buildFallbackForumBio(displayName: string, channel: ForumChannel, threadType?: ForumThreadType) {
+  const channelLabel = FORUM_CHANNEL_LABELS[channel];
+  const fallbackPool = [
+    `${channelLabel}常驻，偶尔冒头`,
+    `路过${channelLabel}，顺手回帖`,
+    `在${channelLabel}蹲楼`,
+    `${threadType || 'normal'}体质，看到就会说两句`,
+  ];
+  return fallbackPool[hashString(`${displayName}:${channel}:${threadType || 'normal'}`) % fallbackPool.length];
+}
+
+function buildSimpleForumBatchPrompt(input: GenerateForumThreadsInput) {
+  const {
+    channel,
+    existingPosts,
+    count,
+    recurringAuthors = [],
+    allowedThreadTypes,
+    preferredTopicText,
+    preferredSceneText,
+    preferredConflictText,
+    preferredRelationshipText,
+    excludedTopicText,
+  } = input;
   const recentTopicHints = buildRecentTopicHints(existingPosts);
   const worldTheme = getForumWorldTheme(channel);
   const topicBuckets = CHANNEL_TOPIC_BUCKETS[channel] || [];
+  const resolvedAllowedThreadTypes = (allowedThreadTypes || []).length > 0
+    ? (allowedThreadTypes || []).join(' | ')
+    : VALID_FORUM_THREAD_TYPES.join(' | ');
+  const recurringAuthorHint = recurringAuthors.length
+    ? `这一轮可以优先复用这些熟脸，但不要全用熟脸：${recurringAuthors.map((author) => `${author.displayName}(@${author.handle || author.displayName})`).join('、')}`
+    : '';
 
   return [
     FORUM_SCENARIO_PROMPT,
-    '## 刷新补帖任务',
+    '## 刷新论坛帖子任务',
     `目标频道：${FORUM_CHANNEL_LABELS[channel]}`,
     `本轮一次性生成 ${count} 条新帖子。`,
-    '这些帖子是用户手动刷新论坛后看到的新帖子，所以要像同一时间段内冒出来的新内容，但不要互相重复。',
+    '这些帖子是用户手动刷新论坛后看到的新内容，要像同一时间段一起冒出来的新帖，但不要互相太像。',
     recentTopicHints.length ? `最近已有帖子，尽量避开重复话题：${recentTopicHints.join(' | ')}` : '',
-    topicBuckets.length ? `这一轮优先从这些不同子话题里分散选题：${topicBuckets.join('、')}` : '',
-    worldTheme?.exampleTopics?.length ? `世界参考话题只作语气参考，不要照抄：${worldTheme.exampleTopics.join('；')}` : '',
-    '同一轮里你还要顺带生成这批“新网友”，不要只用固定熟面孔。',
+    topicBuckets.length ? `优先从这些不同子话题里分散选题：${topicBuckets.join('、')}` : '',
+    worldTheme?.exampleTopics?.length ? `世界参考话题只作语气参考，不要照抄：${worldTheme.exampleTopics.join('、')}` : '',
+    preferredTopicText?.trim() ? `Preferred topic cues: ${preferredTopicText.trim()}` : '',
+    preferredSceneText?.trim() ? `Preferred scene cues: ${preferredSceneText.trim()}` : '',
+    preferredConflictText?.trim() ? `Preferred conflict cues: ${preferredConflictText.trim()}` : '',
+    preferredRelationshipText?.trim() ? `Preferred relationship cues: ${preferredRelationshipText.trim()}` : '',
+    excludedTopicText?.trim() ? `Avoid these directions: ${excludedTopicText.trim()}` : '',
+    recurringAuthorHint,
+    `这一轮允许的 threadType：${resolvedAllowedThreadTypes}`,
+    input.ordinaryPostFloor ? `普通帖尽量保底 ${Math.min(count, input.ordinaryPostFloor)} 条，但不用为了凑数写得很假。` : '',
     '请先生成 4 到 6 个本轮会出现的论坛网友，再让他们去发帖和评论。',
     '这些网友要像论坛里真实会反复见到的人，不要叫“网友A”“路人1”“用户1234”。',
-    '每条帖子都要有：发帖显示名、标题、正文、4条精选评论。',
-    '评论也必须像论坛现场，不要整齐回答，可以短一点，可以接话，可以阴阳怪气。',
-    '本轮最重要限制：',
-    '1. 5到8条帖子的话题必须分散，不能连续都写同一种暧昧/已读不回/点赞暴露。',
-    '2. 标题不能高度相似，正文开头也不能高度相似。',
-    '3. 不要把“事情是这样的”“我先声明”这种句式在多条帖子里重复使用。',
-    '4. 允许有一两条短帖，但多数帖子正文必须完整，不要只写半句。',
-    '输出必须是一个 JSON 对象，不要输出解释，不要输出 markdown 标题。',
+    '每条帖子都要有：发帖显示名、标题、正文、几条评论。',
+    '帖子和评论都要像论坛现场，不要像说明书，也不要像标准作文。',
+    '输出必须是一个 JSON 对象，不要输出解释。',
     'JSON 对象格式固定为：',
     '{',
     '  "authors": [',
-    '    {',
-    '      "displayName": "网友显示名",',
-    '      "handle": "论坛handle",',
-    '      "persona": "公开人设简介",',
-    '      "speakingStyle": "说话方式",',
-    '      "avatarSeed": "头像seed词"',
-    '    }',
+    '    { "displayName": "网友显示名", "bio": "短简介", "handle": "论坛ID", "persona": "公开人设简介", "speakingStyle": "说话方式", "avatarSeed": "头像seed词" }',
     '  ],',
     '  "posts": [',
     '    {',
     '      "displayName": "必须从authors里选一个",',
+    '      "threadType": "normal | gossip | help | commission | sameTopic | sighting | timeline | essay | vote | reversal | ownerUpdate | rift",',
     '      "title": "帖子标题",',
     '      "body": "帖子正文",',
     '      "comments": [',
@@ -303,128 +648,54 @@ function buildBatchThreadPrompt(input: GenerateForumThreadsInput) {
     '    }',
     '  ]',
     '}',
-    'replyToFloor 表示这条评论是在回复本帖评论列表中的第几条评论，只有在需要楼中楼时才填写。',
-    'authors 至少 4 个，posts 必须等于本轮要求数量。',
     '不要缺字段，不要输出 null，不要输出对象外的任何说明文字。',
+    'JSON key names must stay exactly as written above.',
+    'Do not prefix keys with ln/, line/, index, notes, or any extra markers.',
+    'Use standard double quotes for every key and every string value.',
+    'Essay posts must be 400 to 500 Chinese characters and broken into multiple paragraphs.',
+    'Vote posts must include clear A/B/C/D options on separate lines so the poll card can render.',
+    'Use varied paragraph rhythms and at most 3 visual decoration blocks in the body.',
+    input.ordinaryPostFloor ? `At least ${Math.min(count, input.ordinaryPostFloor)} posts should use threadType "normal".` : '',
   ].filter(Boolean).join('\n');
 }
 
-function buildDynamicForumBatchPrompt(input: GenerateForumThreadsInput) {
-  const { channel, existingPosts, count, recurringAuthors = [] } = input;
-  const recentTopicHints = buildRecentTopicHints(existingPosts);
-  const worldTheme = getForumWorldTheme(channel);
-  const topicBuckets = CHANNEL_TOPIC_BUCKETS[channel] || [];
-  const recurringAuthorHint = recurringAuthors.length
-    ? `这一轮优先复用这些已经在本区活跃过的论坛熟脸，至少回收其中 2 到 3 个，不要每次都全换新人：${recurringAuthors.map((author) => `${author.displayName}(@${author.handle || author.displayName})`).join('、')}`
-    : '';
-  const recurringAuthorStabilityHint = recurringAuthors.length
-    ? '如果复用了老网友，就继续沿用他们原来的显示名和论坛 ID，不要轻微改字重新造一个近似新名字。'
-    : '';
-
-  return [
-    FORUM_SCENARIO_PROMPT,
-    recurringAuthorHint,
-    '## 刷新论坛帖子任务',
-    `目标频道：${FORUM_CHANNEL_LABELS[channel]}`,
-    `本轮一次性生成 ${count} 条新帖子。`,
-    '这些帖子是用户手动刷新论坛后看到的新内容，要像同一时间段里一起冒出来的新帖，但彼此不能太像。',
-    recentTopicHints.length ? `最近已经出现过的话题，尽量避开：${recentTopicHints.join(' | ')}` : '',
-    topicBuckets.length ? `优先从这些不同子话题里分散选题：${topicBuckets.join('、')}` : '',
-    worldTheme?.exampleTopics?.length ? `世界观话题仅供语气参考，不要照抄：${worldTheme.exampleTopics.join('、')}` : '',
-    '先生成 4 到 6 个本轮会出现的论坛网友，再让他们去发帖和评论。',
-    '网友必须有活人感，像中文论坛里会反复见到的人，不要像系统用户。',
-    'authors.displayName 必须像真人昵称，例如“今天也不想上班”“权限不足但想看”“前线医疗兵E”。',
-    'authors.handle 必须像中文论坛ID，例如“工位弄丢失败”“白名单旁听生”“别急我路过”，不要带@，不要英文串、下划线、编号串。',
-    'authors.bio 必须像个人主页简介，要活一点，像网友自己写的短签名，不要模板句，不要总结腔，不要“常在xx出没”。',
-    'authors.avatarSeed 要偏二次元角色感，可以写中文短词或角色气质词，例如“冷脸黑发”“粉发猫眼”“软萌短发”。',
-    'posts.displayName 和 comments.displayName 必须直接复用 authors 里已有的 displayName，不要另起新名字。',
-    '每条帖子都要有：发帖显示名、标题、正文、几条精选评论。',
-    '评论要像论坛现场，不要整齐回答，可以接话，可以阴阳怪气。',
-    '最重要的限制：',
-    '1. 本轮帖子的话题必须分散，不能连续都在写同一种瓜。',
-    '2. 标题不能高度相似，正文开头也不能高度相似。',
-    '3. 简介、昵称、ID 都不要模板化重复。',
-    '4. 输出必须是一个 JSON 对象，不要输出解释，不要输出 markdown。',
-    'JSON 格式固定为：',
-    '{',
-    '  "authors": [',
-    '    {',
-    '      "displayName": "网友显示名",',
-    '      "bio": "个人主页简介，像网友自己写的短签名",',
-    '      "handle": "论坛ID，不带@",',
-    '      "persona": "公开人设简介",',
-    '      "speakingStyle": "说话方式",',
-    '      "avatarSeed": "偏二次元角色感的头像seed"',
-    '    }',
-    '  ],',
-    '  "posts": [',
-    '    {',
-    '      "displayName": "必须从 authors 里选一个",',
-    '      "title": "帖子标题",',
-    '      "body": "帖子正文",',
-    '      "comments": [',
-    '        { "displayName": "必须从 authors 里选一个", "content": "评论正文" },',
-    '        { "displayName": "必须从 authors 里选一个", "content": "评论正文", "replyToFloor": 1 }',
-    '      ]',
-    '    }',
-    '  ]',
-    '}',
-    'replyToFloor 表示这条评论是在回复本帖评论列表中的第几条评论，只有在需要楼中楼时才填写。',
-    'authors 至少 4 个，posts 必须等于本轮要求数量。',
-    '不要缺字段，不要输出 null，不要输出对象外的任何说明文字。',
-  ].filter(Boolean).join('\n');
-}
-
-export async function generateForumThreads(input: GenerateForumThreadsInput): Promise<{
-  authors: GeneratedForumAuthorDraft[];
-  posts: ForumPost[];
-  threads: ForumThreadV2[];
-}> {
+export async function generateForumThreads(input: GenerateForumThreadsInput): Promise<GenerateForumThreadsResult> {
   const { activeConfig, channel, existingPosts, count, recurringAuthors = [] } = input;
-  if (count <= 0) return { authors: [], posts: [], threads: [] };
+  if (count <= 0) return { authors: [], posts: [], threads: [], topicPackage: undefined };
 
-  const prompt = buildDynamicForumBatchPrompt(input);
-  let raw = '';
-  let parsedBatch: ParsedGeneratedBatch | null = null;
+  const prompt = buildSimpleForumBatchPrompt(input);
+  const raw = await generateTextFromMessagesWithConfig({
+    activeConfig,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.68,
+  }) || '';
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    raw = await generateTextFromMessagesWithConfig({
-      activeConfig,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.95,
-    }) || '';
-
-    parsedBatch = tryParseGeneratedBatch(raw);
-    if (parsedBatch && parsedBatch.authors.length > 0 && parsedBatch.posts.length > 0 && isValidGeneratedBatch(parsedBatch)) {
-      break;
-    }
-  }
-
+  const parsedBatch = tryParseGeneratedBatch(raw);
   if (!parsedBatch || !parsedBatch.authors.length || !parsedBatch.posts.length || !isValidGeneratedBatch(parsedBatch)) {
     console.error('[forum] batch thread parse failed', {
       channel,
       count,
       rawPreview: (raw || '').slice(0, 400),
     });
-    return { authors: [], posts: [], threads: [] };
+    return { authors: [], posts: [], threads: [], topicPackage: undefined };
   }
 
   const now = Date.now();
   const generatedAuthors: GeneratedForumAuthorDraft[] = parsedBatch.authors.map((author, index) => {
     const reusable = resolveReusableAuthor(author, recurringAuthors);
+    const displayName = reusable?.displayName || author.displayName;
+    const handle = (reusable?.handle || author.handle || '').replace(/^@/, '').trim();
+    const finalHandle = looksLivelyForumHandle(handle)
+      ? handle
+      : buildReadableForumHandle({ id: `${channel}-${displayName}-${index}`, name: displayName });
     return {
-      id: reusable?.id || `forum_runtime_${channel}_${now}_${index}_${Math.random().toString(36).slice(2, 6)}`,
-      displayName: reusable?.displayName || author.displayName,
-      bio: reusable?.bio || author.bio,
-      handle: (reusable?.handle || author.handle || '').replace(/^@/, '').trim(),
+      id: reusable?.id || buildHumanForumId(`forum_runtime_${channel}`, `${displayName}_${finalHandle}_${index}`, 'guest'),
+      displayName,
+      bio: reusable?.bio || (looksLivelyForumBio(author.bio) ? author.bio : buildFallbackForumBio(displayName, channel)),
+      handle: finalHandle,
       persona: reusable?.persona || author.persona,
       speakingStyle: reusable?.speakingStyle || author.speakingStyle,
-      avatarSeed: reusable?.avatarSeed || author.avatarSeed || `${author.displayName}${author.handle || ''}`,
+      avatarSeed: reusable?.avatarSeed || author.avatarSeed || `${displayName}${finalHandle}`,
       sourceDisplayName: reusable?.sourceDisplayName || author.displayName,
     };
   });
@@ -434,7 +705,7 @@ export async function generateForumThreads(input: GenerateForumThreadsInput): Pr
     const bodyKey = normalizeTopicFingerprint(item.body);
     return collection.findIndex((candidate) => (
       normalizeTopicFingerprint(candidate.title) === titleKey
-      || normalizeTopicFingerprint(candidate.body) === bodyKey
+      && normalizeTopicFingerprint(candidate.body) === bodyKey
     )) === index;
   });
 
@@ -443,11 +714,34 @@ export async function generateForumThreads(input: GenerateForumThreadsInput): Pr
   const uniquePosts = dedupedPosts.filter((item) => {
     const titleKey = normalizeTopicFingerprint(item.title);
     const bodyKey = normalizeTopicFingerprint(item.body);
-    return !existingTitleKeys.has(titleKey) && !existingBodyKeys.has(bodyKey);
+    return !(existingTitleKeys.has(titleKey) && existingBodyKeys.has(bodyKey));
   });
 
-  const threads = uniquePosts.slice(0, count).map((item, index): ForumThreadV2 => {
-    const postId = `generated-post-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+  const candidatePosts = uniquePosts.length >= Math.max(1, Math.min(count, 4))
+    ? uniquePosts
+    : dedupedPosts;
+
+  const selectedPosts = selectGeneratedPosts({
+    posts: candidatePosts,
+    count,
+    ordinaryPostFloor: input.ordinaryPostFloor,
+  });
+
+  const threads = selectedPosts.map(({ post: item, resolvedThreadType }, index): ForumThreadV2 => {
+    const inferredMeta = buildForumPostMeta(item.title, item.body, channel);
+    const resolvedContentTier = resolvedThreadType === 'essay'
+      ? inferForumContentTier(resolvedThreadType, item.title, item.body)
+      : inferForumContentTier(resolvedThreadType, item.title, item.body);
+    const resolvedDiscourseAxis = inferForumDiscourseAxis(resolvedThreadType, channel, item.title, item.body);
+    const polished = polishGeneratedForumThread({
+      channel,
+      threadType: resolvedThreadType,
+      contentTier: resolvedContentTier,
+      discourseAxis: resolvedDiscourseAxis || inferredMeta.discourseAxis,
+      title: item.title,
+      body: item.body,
+    });
+    const postId = buildHumanForumId('generated_post', `${item.title}_${item.displayName}_${index}`, 'post');
     const postTimestamp = now - index * 60000;
     const commentIdByFloor = new Map<number, string>();
     const comments: ForumCommentV2[] = (item.comments || []).slice(0, 4).map((comment, commentIndex) => {
@@ -472,14 +766,23 @@ export async function generateForumThreads(input: GenerateForumThreadsInput): Pr
 
     return {
       id: postId,
-      title: item.title,
-      body: item.body,
+      title: polished.title.trim(),
+      body: polished.body.trim(),
       channel,
-      threadType: item.threadType || inferThreadTypeFromContent(item),
+      threadType: resolvedThreadType,
+      contentTier: resolvedContentTier,
+      discourseAxis: resolvedDiscourseAxis || inferredMeta.discourseAxis,
       authorType: 'forumNpc',
       authorId: resolveAuthorId(item.displayName, generatedAuthors),
       authorDisplayName: item.displayName,
-      tags: [],
+      tags: buildForumPostFooterTags({
+        title: polished.title,
+        body: polished.body,
+        threadType: resolvedThreadType,
+        contentTier: resolvedContentTier,
+        discourseAxis: resolvedDiscourseAxis || inferredMeta.discourseAxis,
+        channel,
+      }),
       comments,
       lifecycleStage: comments.length > 0 ? 'initialReplies' : 'new',
       stats: {
@@ -500,5 +803,6 @@ export async function generateForumThreads(input: GenerateForumThreadsInput): Pr
     authors: generatedAuthors,
     posts,
     threads,
+    topicPackage: undefined,
   };
 }

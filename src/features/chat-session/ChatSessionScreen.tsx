@@ -10,6 +10,7 @@ import {
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import { buildDatingEndedSettlement } from '../../services/dating/buildDatingEndedSettlement';
 import { GameCenter } from '../../components/games/GameCenter';
 import { GameCard } from '../../components/chat/GameCard';
 import { AvatarLibraryPanel } from './AvatarLibraryPanel';
@@ -3051,9 +3052,26 @@ export function ChatSessionScreen({
             resetDatingScenePresentation();
             setShowDatingModal(false);
           }}
-          onEndDateComplete={({ returnChatText }) => {
+          onEndDateComplete={({ archivedSession, returnChatText }) => {
             resetDatingScenePresentation();
             setShowDatingModal(false);
+            const settlement = buildDatingEndedSettlement(character, archivedSession);
+            if (onPatchCharacter) {
+              onPatchCharacter({
+                activeDatingState: undefined,
+                sharedContextSnapshots: settlement.sharedContextSnapshots,
+                shortTermSummary: settlement.shortTermSummary,
+                openLoopRegistry: settlement.openLoopRegistry,
+              });
+            } else {
+              onUpdateCharacter({
+                ...character,
+                activeDatingState: undefined,
+                sharedContextSnapshots: settlement.sharedContextSnapshots,
+                shortTermSummary: settlement.shortTermSummary,
+                openLoopRegistry: settlement.openLoopRegistry,
+              });
+            }
             if (!returnChatText.trim()) {
               return;
             }

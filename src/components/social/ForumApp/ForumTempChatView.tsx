@@ -73,13 +73,10 @@ export function ForumTempChatView({
             <div className="text-[12px] text-zinc-500">论坛临时单聊</div>
           </div>
         </div>
-        {session.canAddFriend && !session.addedAsFriend && (
-          <button
-            onClick={onUpgrade}
-            className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-1.5 text-[12px] font-bold text-zinc-900 hover:bg-zinc-200"
-          >
-            加好友
-          </button>
+        {session.friendRequestState === 'sent' && !session.addedAsFriend && (
+          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-[12px] font-bold text-emerald-700">
+            已发好友申请
+          </div>
         )}
         {session.addedAsFriend && (
           <button

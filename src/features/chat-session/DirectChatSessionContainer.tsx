@@ -16,6 +16,7 @@ import type {
 } from '../../types';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { areChatMemorySnapshotsEqual, createChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
+import { buildActiveDatingSharedState } from '../../services/dating/buildDatingSharedState';
 import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
@@ -176,6 +177,11 @@ export function DirectChatSessionContainer({
         setDatingRecords({
           savedDates: nextSavedDates,
           collectedDates,
+        });
+        patchCharacter(character.id, {
+          activeDatingState: (session.status || 'active') === 'active'
+            ? buildActiveDatingSharedState(session)
+            : undefined,
         });
       }}
       onCollectDate={(session) => {

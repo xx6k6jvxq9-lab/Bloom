@@ -14,6 +14,7 @@ type GroupChatSessionContainerProps = {
   characters: Character[];
   chatGroups: ChatGroup[];
   setChatGroups: Dispatch<SetStateAction<ChatGroup[]>>;
+  patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   directChatHistory: ChatHistory;
   favorites: FavoriteMessage[];
   setFavorites: (favorites: FavoriteMessage[]) => void;
@@ -30,6 +31,7 @@ export function GroupChatSessionContainer({
   characters,
   chatGroups,
   setChatGroups,
+  patchCharacter,
   directChatHistory,
   favorites,
   setFavorites,
@@ -139,6 +141,7 @@ export function GroupChatSessionContainer({
       worldBooks={worldBooks}
       perception={perception}
       directChatHistory={directChatHistory}
+      patchCharacter={patchCharacter}
       inviteableCharacters={inviteableCharacters}
     />
   );
