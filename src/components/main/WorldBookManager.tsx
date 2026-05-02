@@ -10,6 +10,7 @@ import {
   WORLD_BOOK_CATEGORY_PRESETS,
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
+import { extractCompatibleWorldBookEntries } from '../../features/import/importCompat';
 import { showInAppConfirm } from '../../utils';
 
 type WorldBookManagerProps = {
@@ -155,8 +156,15 @@ export function WorldBookManager({
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const compatibleEntries = extractCompatibleWorldBookEntries(content);
+      if (compatibleEntries.length > 0) {
+        setWorldBooks([...compatibleEntries, ...worldBooks]);
+        alert(`成功导入 ${compatibleEntries.length} 条设定`);
+        return;
+      }
+
       try {
-        const content = event.target?.result as string;
         const parsed = JSON.parse(content);
 
         if (!Array.isArray(parsed)) {

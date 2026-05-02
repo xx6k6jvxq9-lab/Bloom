@@ -20,6 +20,7 @@ import {
   WORLD_BOOK_CATEGORY_PRESETS,
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
+import { sanitizePreviewText } from '../../features/app-shell/formatMessagePreview';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 
 type MePageProps = {
@@ -460,7 +461,7 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
             <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-12 h-12 rounded-full object-cover bg-zinc-100 shrink-0" />
             <div className="flex-1 min-w-0">
               <h4 className="text-[15px] font-bold text-zinc-900 truncate">{char.name}</h4>
-              <p className="text-[12px] text-zinc-500 truncate">{char.openingRemark}</p>
+              <p className="text-[12px] text-zinc-500 truncate">{sanitizePreviewText(char.openingRemark)}</p>
             </div>
             
             {isBatchMode ? (

@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
+import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
@@ -28,6 +28,10 @@ import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import {
+  extractCompatibleChatSettingsImport,
+  parseJsonWithCompatibility,
+} from '../../features/import/importCompat';
 import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
 import { copyTextContent } from '../../services/chat/messageActions';
 import { fetchMinimaxVoices, type MinimaxVoiceRecord } from '../../services/ai/apiCenter/fetchMinimaxVoices';
@@ -94,6 +98,11 @@ function ResolvedSettingsImage({
 }
 
 function parseJsonFileContent(raw: string) {
+  const parsed = parseJsonWithCompatibility(raw);
+  if (parsed !== null) {
+    return parsed;
+  }
+
   try {
     return JSON.parse(raw) as unknown;
   } catch (error) {
@@ -348,6 +357,8 @@ export function ChatSettingsPanel({
     sampleAssetId: character.voiceProfile?.sampleAssetId,
     sampleName: character.voiceProfile?.sampleName,
     autoPlay: !!character.voiceProfile?.autoPlay,
+    replyMode: character.voiceProfile?.replyMode || 'voice',
+    replyFrequency: character.voiceProfile?.replyFrequency || 'medium',
   } as NonNullable<Character['voiceProfile']>;
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
   const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
@@ -1040,7 +1051,20 @@ export function ChatSettingsPanel({
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        const data = parseJsonFileContent(reader.result as string);
+        const raw = reader.result as string;
+        const compatibleImport = extractCompatibleChatSettingsImport(raw);
+        if (compatibleImport?.character) {
+          onUpdate({ ...character, ...compatibleImport.character });
+        }
+        if (compatibleImport?.history) {
+          setHistory(compatibleImport.history);
+        }
+        if (compatibleImport?.character || compatibleImport?.history) {
+          setShowImportDialog(false);
+          return;
+        }
+
+        const data = parseJsonFileContent(raw);
         if (!isRecord(data)) {
           alert('无效的 JSON 文件');
           return;
@@ -1804,7 +1828,7 @@ export function ChatSettingsPanel({
                                 type="button"
                                 onClick={async () => {
                                   const result = await copyTextContent(voiceProfile.voiceId || '');
-                                  await showInAppAlert(result.success ? '角色 voiceId 已复制。' : '复制失败，请手动复制。');
+                                  await showInAppAlert(result.ok ? '角色 voiceId 已复制。' : '复制失败，请手动复制。');
                                 }}
                                 className="shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-700 hover:bg-zinc-100"
                                 title="复制 voiceId"
@@ -1857,6 +1881,82 @@ export function ChatSettingsPanel({
                       className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${voiceProfile.autoPlay ? 'bg-zinc-900' : 'bg-zinc-200'}`}
                     >
                       <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${voiceProfile.autoPlay ? 'translate-x-4.5' : ''}`} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
+                    <div className="flex flex-col items-start">
+                      <span className="text-[13px] text-zinc-700">回复形式</span>
+                      <span className="text-[10px] text-zinc-400">控制角色是只打字、文字语音混合，还是尽量都发语音</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'text', label: '纯文字' },
+                        { value: 'mixed', label: '混合' },
+                        { value: 'voice', label: '多语音' },
+                      ].map((option) => {
+                        const selected = voiceProfile.replyMode === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => onUpdate({
+                              ...character,
+                              voiceProfile: {
+                                ...voiceProfile,
+                                replyMode: option.value as NonNullable<Character['voiceProfile']>['replyMode'],
+                              },
+                            })}
+                            className={`rounded-xl px-3 py-2 text-[12px] font-medium transition-colors ${
+                              selected
+                                ? 'border border-zinc-300 bg-zinc-100 text-zinc-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
+                                : 'border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
+                    <div className="flex flex-col items-start">
+                      <span className="text-[13px] text-zinc-700">语音频率</span>
+                      <span className="text-[10px] text-zinc-400">
+                        {voiceProfile.replyMode === 'mixed'
+                          ? '混合模式下，决定角色这次回复有多大概率发语音'
+                          : '只有在混合模式下会用到这个频率'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'low', label: '低' },
+                        { value: 'medium', label: '中' },
+                        { value: 'high', label: '高' },
+                      ].map((option) => {
+                        const selected = voiceProfile.replyFrequency === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => onUpdate({
+                              ...character,
+                              voiceProfile: {
+                                ...voiceProfile,
+                                replyFrequency: option.value as NonNullable<Character['voiceProfile']>['replyFrequency'],
+                              },
+                            })}
+                            className={`rounded-xl px-3 py-2 text-[12px] font-medium transition-colors ${
+                              selected
+                                ? 'border border-zinc-300 bg-zinc-100 text-zinc-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
+                                : 'border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

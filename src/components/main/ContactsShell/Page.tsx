@@ -13,6 +13,28 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
+import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
+import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
+import {
+  looksLikeStructuredCardText,
+  sanitizePreviewText,
+} from '../../../features/app-shell/formatMessagePreview';
+
+function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
+  const candidates = [
+    character.openingRemark,
+    character.signature,
+    character.corePersona,
+    character.setting,
+  ];
+
+  const structured = candidates.find((value) => looksLikeStructuredCardText(value));
+  if (structured?.trim()) {
+    return structured.trim();
+  }
+
+  return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+}
 
 function ResolvedContactsAvatar({
   value,
@@ -48,6 +70,80 @@ function ResolvedContactsImage({
   }
 
   return <img src={resolvedUrl} alt={alt} className={className} />;
+}
+
+function CharacterCardPreviewPage({
+  title,
+  rawContent,
+  previewContent,
+  mode,
+  onChangeMode,
+  onBack,
+}: {
+  title: string;
+  rawContent: string;
+  previewContent: string;
+  mode: 'preview' | 'raw';
+  onChangeMode: (mode: 'preview' | 'raw') => void;
+  onBack: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      className="absolute inset-0 z-[90] flex flex-col bg-white"
+    >
+      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
+        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+          <ChevronLeft size={22} />
+        </button>
+        <h1 className="text-[16px] font-bold text-zinc-900">角色卡预览</h1>
+        <div className="w-8" />
+      </div>
+
+      <div className="px-4 pt-4">
+        <h2 className="text-[18px] font-bold text-zinc-900">{title}</h2>
+        <p className="mt-1 text-[11px] text-zinc-400">预览只做显示清洗，不会改动你导入的原始内容。</p>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => onChangeMode('preview')}
+            className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              mode === 'preview'
+                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                : 'border-zinc-200 bg-zinc-50 text-zinc-500'
+            }`}
+          >
+            预览
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeMode('raw')}
+            className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              mode === 'raw'
+                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                : 'border-zinc-200 bg-zinc-50 text-zinc-500'
+            }`}
+          >
+            原文
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {mode === 'preview' ? (
+          <div className="whitespace-pre-wrap break-words rounded-2xl bg-zinc-50 p-4 text-[13px] leading-6 text-zinc-700">
+            {previewContent || '暂无可显示的角色卡预览。'}
+          </div>
+        ) : (
+          <pre className="whitespace-pre-wrap break-words rounded-2xl bg-zinc-50 p-4 text-[12px] leading-6 text-zinc-700">
+            {rawContent || '暂无原始内容。'}
+          </pre>
+        )}
+      </div>
+    </motion.div>
+  );
 }
 
 export function ContactsApp({ 
@@ -94,8 +190,25 @@ export function ContactsApp({
           setAppData(prev => {
             const req = prev.friendRequests?.find(r => r.id === id);
             if (!req) return prev;
-            
-            // Create new character from request
+
+            const currentForumData = prev.forumData || {};
+            const currentTempChats = currentForumData.tempChats || {};
+            const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
+            const bridged = req.sourceScene === 'forum'
+              ? bridgeForumFriendToFormalChat({
+                  appData: prev as any,
+                  author: {
+                    id: req.fromUserId,
+                    name: req.fromUserName,
+                    avatar: req.fromUserAvatar,
+                    handle: req.forumHandle,
+                    bio: req.forumBio,
+                    persona: req.forumPersona,
+                  },
+                  session: currentTempChats[requestAuthorId],
+                })
+              : null;
+
             const newChar: Character = {
               id: req.fromUserId,
               name: req.fromUserName,
@@ -108,21 +221,72 @@ export function ContactsApp({
               groupId: '朋友'
             };
 
-            const nextCharacters = [...prev.characters, newChar];
+            const nextCharacters = req.sourceScene === 'forum'
+              ? (bridged?.nextCharacters || prev.characters)
+              : [...prev.characters, newChar];
             void saveCharacters(nextCharacters);
+            const nextTempChats = req.sourceScene === 'forum'
+              ? {
+                  ...currentTempChats,
+                  [requestAuthorId]: bridged?.nextTempSession || markForumFriendRequestResolved(
+                    currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
+                    'accepted',
+                  ),
+                }
+              : currentTempChats;
 
             return {
               ...prev,
               characters: nextCharacters,
-              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'accepted' } : r)
+              chatHistory: req.sourceScene === 'forum'
+                ? bridged?.nextChatHistory || (prev as any).chatHistory
+                : (prev as any).chatHistory,
+              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'accepted' } : r),
+              forumData: req.sourceScene === 'forum'
+                ? {
+                    ...currentForumData,
+                    tempChats: nextTempChats,
+                  }
+                : prev.forumData,
             };
           });
         }}
         onReject={(id) => {
-          setAppData(prev => ({
-            ...prev,
-            friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
-          }));
+          setAppData(prev => {
+            const req = prev.friendRequests?.find(r => r.id === id);
+            if (!req) {
+              return {
+                ...prev,
+                friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
+              };
+            }
+
+            if (req.sourceScene !== 'forum') {
+              return {
+                ...prev,
+                friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
+              };
+            }
+
+            const currentForumData = prev.forumData || {};
+            const currentTempChats = currentForumData.tempChats || {};
+            const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
+
+            return {
+              ...prev,
+              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r),
+              forumData: {
+                ...currentForumData,
+                tempChats: {
+                  ...currentTempChats,
+                  [requestAuthorId]: markForumFriendRequestResolved(
+                    currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
+                    'rejected',
+                  ),
+                },
+              },
+            };
+          });
         }}
         onAddById={(id) => {
           // Mock adding by ID
@@ -343,6 +507,11 @@ export function ContactsApp({
             <div className="divide-y divide-zinc-200/20">
               {filteredCharacters.map(char => {
                 const displayName = char.remarkName?.trim() || char.name;
+                const listPreview = sanitizePreviewText(char.signature)
+                  || sanitizePreviewText(char.openingRemark)
+                  || sanitizePreviewText(char.corePersona)
+                  || sanitizePreviewText(char.setting)
+                  || '这个角色还没有简介。';
 
                 return (
                   <div 
@@ -365,6 +534,7 @@ export function ContactsApp({
                   </button>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
+                    <p className="mt-0.5 text-[12px] text-zinc-400 truncate">{listPreview}</p>
                   </div>
                 </div>
               );
@@ -403,11 +573,29 @@ export function CharacterProfile({
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
 }) {
-  const [wechatModalOpen, setWechatModalOpen] = useState(false);
+  const [showRawCardPreview, setShowRawCardPreview] = useState(false);
+  const [cardPreviewMode, setCardPreviewMode] = useState<'preview' | 'raw'>('preview');
   const displayName = character.remarkName?.trim() || character.name;
-  const fallbackSignature = character.openingRemark?.trim()
+  const rawCardContent = resolveCharacterCardSource(character);
+  const previewCardContent = sanitizePreviewText(rawCardContent);
+  const fallbackSignature = sanitizePreviewText(character.openingRemark)
+    || sanitizePreviewText(character.corePersona)
     || `${(character.corePersona?.trim() || '').slice(0, 36)}${(character.corePersona?.trim() || '').length > 36 ? '...' : ''}`;
-  const profileSignature = character.signature?.trim() || fallbackSignature;
+  const profileSignature = sanitizePreviewText(character.signature) || fallbackSignature;
+  const hasRawCardPreview = rawCardContent.length > 0;
+
+  if (showRawCardPreview) {
+    return (
+      <CharacterCardPreviewPage
+        title={displayName}
+        rawContent={rawCardContent}
+        previewContent={previewCardContent}
+        mode={cardPreviewMode}
+        onChangeMode={setCardPreviewMode}
+        onBack={() => setShowRawCardPreview(false)}
+      />
+    );
+  }
 
   return (
     <motion.div 
@@ -463,6 +651,18 @@ export function CharacterProfile({
             <div className="px-4 py-3.5">
               <p className="text-[14px] text-zinc-800 mb-1">个性签名</p>
               <p className="text-[13px] text-zinc-400 leading-relaxed">{profileSignature}</p>
+              {hasRawCardPreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCardPreviewMode('preview');
+                    setShowRawCardPreview(true);
+                  }}
+                  className="mt-2 text-[12px] font-medium text-zinc-500 underline-offset-2 active:opacity-70"
+                >
+                  查看角色卡预览
+                </button>
+              )}
             </div>
           </div>
 
@@ -511,13 +711,6 @@ export function CharacterProfile({
             <MessageSquare size={18} />
             主动加你
           </button>
-          <button
-            onClick={() => setWechatModalOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 py-3.5 text-[15px] font-bold text-emerald-700 shadow-sm transition-transform hover:bg-emerald-100 active:scale-[0.98]"
-          >
-            <RefreshCw size={18} />
-            接入微信
-          </button>
           {false && (
             <button 
               onClick={onAddFriend}
@@ -529,6 +722,7 @@ export function CharacterProfile({
           )}
         </div>
       </div>
+
     </motion.div>
   );
 }
@@ -574,9 +768,9 @@ export function CharacterMomentsProfile({
   const ownMoments = moments
     .filter(moment => moment.authorId === character.id)
     .sort((a, b) => b.timestamp - a.timestamp);
-  const profileSummary = character.signature?.trim()
-    || character.motto?.trim()
-    || character.openingRemark?.trim()
+  const profileSummary = sanitizePreviewText(character.signature)
+    || sanitizePreviewText(character.motto)
+    || sanitizePreviewText(character.openingRemark)
     || '这个角色还没有写下动态签名。';
   const heroGradient = character.gender === 'female'
     ? 'from-zinc-200 via-rose-200 to-zinc-500'

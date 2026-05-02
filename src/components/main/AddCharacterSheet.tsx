@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { ChevronLeft, ImagePlus, Upload } from 'lucide-react';
 import type { Character } from '../../types';
 import { extractImageUrls } from '../../utils';
+import { extractCompatibleCharacterImport } from '../../features/import/importCompat';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 
@@ -232,7 +233,7 @@ const extractTavernCharacterData = (buffer: ArrayBuffer) => {
   const trimmed = rawPayload.trim();
   const decoded = trimmed.startsWith('{') ? trimmed : decodeBase64Utf8(trimmed);
   const parsed = JSON.parse(decoded);
-  return toRecord(parsed);
+  return parsed as Record<string, unknown>;
 };
 
 const normalizeTavernCharacterCardImport = (raw: Record<string, unknown>) => {
@@ -279,6 +280,7 @@ const buildImportedCharacterFromData = (
     gender: normalizeImportedGender(data.gender),
     avatar: clampText(overrides?.avatar ?? data.avatar, CHARACTER_FIELD_LIMITS.avatar),
     setting: clampText(data.setting, CHARACTER_FIELD_LIMITS.setting),
+    corePersona: clampText(data.corePersona ?? data.setting, CHARACTER_FIELD_LIMITS.setting) || undefined,
     signature: clampText(data.signature, CHARACTER_FIELD_LIMITS.signature) || undefined,
     openingRemark: clampText(data.openingRemark, CHARACTER_FIELD_LIMITS.openingRemark),
     groupId: clampText(data.groupId, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
@@ -307,7 +309,10 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [importJson, setImportJson] = useState('');
 
   const buildImportedCharacter = (raw: string) => {
-    const data = parseLooseCharacterImport(raw);
+    const data = extractCompatibleCharacterImport(raw);
+    if (!data) {
+      throw new Error('未识别到可导入的角色数据');
+    }
     return buildImportedCharacterFromData(data);
   };
 
@@ -352,7 +357,10 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       try {
         const [buffer, dataUrl] = await Promise.all([file.arrayBuffer(), readFileAsDataUrl(file)]);
         const rawCard = extractTavernCharacterData(buffer);
-        const normalized = normalizeTavernCharacterCardImport(rawCard);
+        const normalized = extractCompatibleCharacterImport(JSON.stringify(rawCard));
+        if (!normalized) {
+          throw new Error('酒馆角色卡里缺少可导入的角色字段');
+        }
         setImportJson(JSON.stringify(rawCard, null, 2).slice(0, CHARACTER_FIELD_LIMITS.importText));
         onSave(buildImportedCharacterFromData(normalized, { avatar: dataUrl }));
       } catch (e: any) {
@@ -524,12 +532,13 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                   <Upload size={18} />
                   导入角色
                 </button>
-                <label className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-3.5 text-[14px] font-medium text-zinc-500 active:bg-zinc-50">
+                <label className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-3.5 text-[0px] font-medium text-zinc-500 active:bg-zinc-50">
                   <ImagePlus size={18} />
+                  <span className="text-[14px]">导入角色卡（PNG / JSON / TXT）</span>
                   导入角色卡（支持 PNG）
                   <input
                     type="file"
-                    accept=".png,image/png"
+                    accept=".png,.json,.txt,.md,image/png,application/json,text/plain,text/markdown"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
