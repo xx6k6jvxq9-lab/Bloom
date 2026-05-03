@@ -150,17 +150,40 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const isStorageReady = hasHydratedStorage;
+  const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
   const phoneContainerBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-black'
       : 'bg-zinc-50';
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlBackground = html.style.backgroundColor;
+    const previousBodyBackground = body.style.backgroundColor;
+
+    html.style.backgroundColor = appChromeBackground;
+    body.style.backgroundColor = appChromeBackground;
+
+    return () => {
+      html.style.backgroundColor = previousHtmlBackground;
+      body.style.backgroundColor = previousBodyBackground;
+    };
+  }, [appChromeBackground]);
 
   return (
     <div
       className={`app-shell relative bg-black font-sans selection:bg-blue-500/30 ${
         useDesktopStageLayout ? 'md:flex md:min-h-screen md:items-center md:justify-center md:bg-zinc-950 md:p-4' : ''
       }`}
-      style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
+      style={{
+        ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
+        backgroundColor: appChromeBackground,
+      }}
     >
       <GlobalStyles
         customCss={`${appData.visualSettings?.globalCss || ''}\n${buildThemeScopedCss(appData.visualSettings?.themeScopedCss)}\n${themeTypographyCss}`}
@@ -173,7 +196,10 @@ export default function App() {
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
         }`}
-        style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
+        style={{
+          ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
+          backgroundColor: appChromeBackground,
+        }}
       >
         
         {/* Status Bar */}

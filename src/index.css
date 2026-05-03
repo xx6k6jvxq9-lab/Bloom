@@ -86,7 +86,6 @@ body {
     min-width: 0;
     height: var(--app-viewport-height, 100dvh) !important;
     min-height: var(--app-viewport-height, 100dvh);
-    background: #09090b !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
