@@ -1565,7 +1565,7 @@ export function ChatSessionScreen({
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
-  const directFooterClassName = 'relative z-10 px-3 pt-1.5 border-t backdrop-blur-md flex flex-col gap-1.5';
+  const directFooterClassName = 'relative z-10 px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
   let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
@@ -1653,10 +1653,10 @@ export function ChatSessionScreen({
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
       chatFooterLift > 0
-        ? `calc(0.55rem + ${chatFooterLift}px)`
+        ? `calc(0.2rem + ${chatFooterLift}px)`
         : keyboardVisible
-          ? '0.55rem'
-          : 'calc(0.55rem + env(safe-area-inset-bottom, 0px))',
+          ? '0.2rem'
+          : 'calc(env(safe-area-inset-bottom, 0px) + 2px)',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };

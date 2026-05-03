@@ -1956,7 +1956,7 @@ export function HomeScreen({
       </AnimatePresence>)}
 
       {pageCount > 1 && (
-        <div className="homeDesktop__pageDots pointer-events-auto absolute bottom-[132px] left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2">
+        <div className="homeDesktop__pageDots pointer-events-auto absolute bottom-[104px] left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2">
           {Array.from({ length: pageCount }, (_, page) => (
             <button
               key={page}

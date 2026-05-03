@@ -166,7 +166,7 @@ export function getDesktopLayoutMetrics({
   );
   const topWidgetHeight = Math.round(preset.topWidgetHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 14 : 10) : 0));
   const dockHeight = Math.round(preset.dockHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 4 : 2) : 0));
-  const dockBottomGap = sizeTier === 'compact' ? 6 : isTallPhone ? (sizeTier === 'large' ? 18 : 15) : sizeTier === 'large' ? 12 : 10;
+  const dockBottomGap = sizeTier === 'compact' ? 4 : isTallPhone ? 6 : sizeTier === 'large' ? 8 : 6;
   const desktopStartYBase = clamp(
     Math.round(safeHeight * (sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),
     preset.startY - 6,
