@@ -45,13 +45,22 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
     const updateViewportHeight = () => {
       const layoutViewportHeight = window.innerHeight;
-      const visualViewportHeight = window.visualViewport?.height ?? layoutViewportHeight;
+      const viewport = window.visualViewport;
+      const visualViewportHeight = viewport?.height ?? layoutViewportHeight;
+      const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
+      const keyboardVisible = keyboardInset > 120;
 
       // Keep the app itself sized to the real fullscreen layout viewport so
       // iOS standalone safe-area space stays painted. The visual viewport is
       // still tracked separately for keyboard-aware screens.
       root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
       root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
+      root.style.setProperty('--app-keyboard-inset', `${keyboardInset}px`);
+      if (keyboardVisible) {
+        root.setAttribute('data-keyboard-open', 'true');
+      } else {
+        root.removeAttribute('data-keyboard-open');
+      }
     };
 
     updateViewportHeight();
@@ -68,7 +77,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       window.removeEventListener('orientationchange', updateViewportHeight);
       root.style.removeProperty('--app-viewport-height');
       root.style.removeProperty('--app-visible-viewport-height');
+      root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
+      root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');
     };
   }, []);

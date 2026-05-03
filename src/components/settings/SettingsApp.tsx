@@ -790,7 +790,7 @@ export function SettingsApp({
   };
 
   return (
-    <motion.div className="absolute inset-0 flex flex-col bg-[#f7f7f9]">
+    <motion.div className="absolute inset-0 flex min-h-0 flex-col bg-[#f7f7f9]">
       {view === 'list' ? (
         <>
           <div className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3 pt-12">
@@ -801,7 +801,7 @@ export function SettingsApp({
             <div className="w-[26px]" />
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 pb-20">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
             <div className="mb-8">
               <div className="mb-3 flex items-start justify-between">
                 <div>
@@ -982,7 +982,7 @@ export function SettingsApp({
             </div>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto bg-white p-4 pb-20">
+          <div className="flex-1 min-h-0 space-y-5 overflow-y-auto bg-white p-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
             <div className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-4">
               <div className="text-[16px] font-bold text-zinc-900">
                 {editor.kind === 'default' ? '总调用配置' : '分调用配置'}

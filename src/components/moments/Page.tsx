@@ -461,7 +461,7 @@ export function MomentsApp({
 
   if (showPublish) {
     return (
-      <div className="absolute inset-0 z-[100] flex flex-col bg-white/80 backdrop-blur-xl">
+      <div className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl">
         <div
           className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
@@ -475,7 +475,7 @@ export function MomentsApp({
             发表
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4">
           <textarea
             value={publishContent}
             onChange={(e) => setPublishContent(e.target.value)}

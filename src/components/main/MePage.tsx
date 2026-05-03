@@ -2058,15 +2058,15 @@ export function WorldBookManager({
   };
 
   return (
-    <div className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
+    <div className={`absolute inset-0 flex min-h-0 flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       {showAdd ? (
-        <div className={`flex-1 flex flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
+        <div className={`flex-1 min-h-0 flex flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
           <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>
             <button onClick={() => setShowAdd(false)} className="text-zinc-500 hover:bg-black/5 px-2 py-1 rounded-lg transition-colors">取消</button>
             <span className="font-bold text-[17px]">{editForm.id ? '编辑设定' : '添加设定'}</span>
             <button onClick={handleSave} className="text-blue-500 font-bold hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors">保存</button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] space-y-4">
             <div className="space-y-1.5">
               <label className="text-[13px] text-zinc-500">标题</label>
               <input 
@@ -2194,7 +2194,7 @@ export function WorldBookManager({
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] space-y-4">
             {filtered.length === 0 && (
               <div className="py-20 text-center text-zinc-300">
                 <Book size={48} className="mx-auto mb-4 opacity-20" />

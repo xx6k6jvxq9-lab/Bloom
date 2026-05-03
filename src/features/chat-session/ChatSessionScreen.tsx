@@ -1672,18 +1672,18 @@ export function ChatSessionScreen({
     };
   }
 
-  const chatFooterLift = keyboardInset;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = keyboardVisible
     ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
     : 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
-      chatFooterLift > 0
-        ? `calc(${chatFooterLift}px + 1px)`
-        : keyboardVisible
-          ? '1px'
-          : 'var(--app-safe-area-bottom-ui, 0px)',
+      // The chat screen already switches its own height to the visual viewport
+      // while the keyboard is open, so adding the keyboard inset here would
+      // enlarge the footer itself and create a blank gap above the keyboard.
+      keyboardVisible
+        ? '1px'
+        : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };
