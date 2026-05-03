@@ -5,12 +5,14 @@ import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
 type UseAppEnvironmentResult = {
+  isStandalone: boolean;
   time: string;
   useDesktopStageLayout: boolean;
 };
 
 export function useAppEnvironment(): UseAppEnvironmentResult {
   const [time, setTime] = useState('');
+  const [isStandalone, setIsStandalone] = useState(false);
   const hasPrefetchedPanelChunksRef = useRef(false);
   const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -29,21 +31,23 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIsStandalone(isStandalone);
     if (isAndroid) {
       root.setAttribute('data-android', 'true');
     } else {
       root.removeAttribute('data-android');
     }
+    if (isStandalone) {
+      root.setAttribute('data-standalone', 'true');
+    } else {
+      root.removeAttribute('data-standalone');
+    }
 
     const updateViewportHeight = () => {
-      const visualViewportHeight = window.visualViewport?.height ?? 0;
       const layoutViewportHeight = window.innerHeight;
-
-      // Always prefer the live visual viewport when it is available so iOS
-      // keyboard and browser chrome changes shrink the app with the visible area
-      // instead of leaving an unpainted gap below the current screen.
-      const viewportHeight = visualViewportHeight || layoutViewportHeight;
-      root.style.setProperty('--app-viewport-height', `${Math.round(viewportHeight)}px`);
+      const visualViewportHeight = window.visualViewport?.height ?? layoutViewportHeight;
+      root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
+      root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
     };
 
     updateViewportHeight();
@@ -59,7 +63,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       window.removeEventListener('resize', updateViewportHeight);
       window.removeEventListener('orientationchange', updateViewportHeight);
       root.style.removeProperty('--app-viewport-height');
+      root.style.removeProperty('--app-visible-viewport-height');
       root.removeAttribute('data-android');
+      root.removeAttribute('data-standalone');
     };
   }, []);
 
@@ -152,6 +158,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   }, []);
 
   return {
+    isStandalone,
     time,
     useDesktopStageLayout,
   };

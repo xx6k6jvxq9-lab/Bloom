@@ -93,7 +93,7 @@ export default function App() {
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
-  const { time, useDesktopStageLayout } = useAppEnvironment();
+  const { isStandalone, time, useDesktopStageLayout } = useAppEnvironment();
   const {
     appData,
     hasHydratedStorage,
@@ -173,7 +173,7 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !window.matchMedia?.('(display-mode: standalone)')?.matches && (
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && (
           <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
@@ -303,14 +303,16 @@ export default function App() {
         </AnimatePresence>
 
         {/* Home Indicator */}
-        <div
-          className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
-        >
+        {!isStandalone && (
           <div
-            className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
-            onClick={() => setActiveApp('home')}
-          />
-        </div>
+            className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
+          >
+            <div
+              className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
+              onClick={() => setActiveApp('home')}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
