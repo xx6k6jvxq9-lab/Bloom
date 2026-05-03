@@ -11,6 +11,10 @@ import { usePersistentFieldActions } from '../../../features/persistence/usePers
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { CHAT_THEME_TARGET_GROUPS } from './chatThemeCustomizationTargets';
 
+function clampBubbleScale(value: number): number {
+  return Math.min(1.3, Math.max(0.8, value));
+}
+
 function PreviewAnchors() {
   return (
     <>
@@ -160,6 +164,11 @@ export function ChatBubbleThemeCustomizationSection({
   const [mainTab, setMainTab] = useState<'global' | 'local' | 'targets'>('global');
   const [localTab, setLocalTab] = useState<'model' | 'user'>('model');
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
+  const previewBubbleScale = clampBubbleScale(settings.chat?.bubbleScale ?? 1);
+  const previewBubblePaddingX = 16 * previewBubbleScale;
+  const previewBubblePaddingY = 8 * previewBubbleScale;
+  const previewUserBubbleMaxWidth = `min(${Math.min(92, 70 + (previewBubbleScale - 1) * 18)}%, ${18 * previewBubbleScale}rem)`;
+  const previewModelBubbleMaxWidth = `min(${Math.min(96, 82 + (previewBubbleScale - 1) * 18)}%, ${24 * previewBubbleScale}rem)`;
 
   const previewBubbleThemeCss = buildScopedBubbleThemeCss(settings.chat?.bubbleStyleCss, '.bubble-theme-preview');
   const previewModelBubbleThemeCss = buildScopedBubbleVariantCss(settings.chat?.modelBubbleStyleCss, '.bubble-theme-preview', '.bot-bubble');
@@ -195,6 +204,9 @@ export function ChatBubbleThemeCustomizationSection({
                     ...(previewHasUserThemeCss ? {} : { backgroundColor: settings.chat.messageBackgroundColorUser }),
                   }),
               ...previewUserBubbleStyle,
+              paddingInline: `${previewBubblePaddingX}px`,
+              paddingBlock: `${previewBubblePaddingY}px`,
+              maxWidth: previewUserBubbleMaxWidth,
             }}
             className="chat-bubble message-bubble user-bubble right chat-bubble-right relative px-4 py-2 text-sm text-white"
           >
@@ -219,6 +231,9 @@ export function ChatBubbleThemeCustomizationSection({
                         }),
                   }),
               ...previewModelBubbleStyle,
+              paddingInline: `${previewBubblePaddingX}px`,
+              paddingBlock: `${previewBubblePaddingY}px`,
+              maxWidth: previewModelBubbleMaxWidth,
             }}
             className="chat-bubble message-bubble bot-bubble left chat-bubble-left relative border border-zinc-200 px-4 py-2 text-sm text-zinc-800"
           >
@@ -260,6 +275,28 @@ export function ChatBubbleThemeCustomizationSection({
           max="32"
           value={settings.chat.messageSpacing}
           onChange={(e) => setSettings({ ...settings, chat: { ...settings.chat, messageSpacing: Number(e.target.value) } })}
+          className="w-full accent-zinc-900"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="flex justify-between text-xs font-bold text-zinc-500">
+          <span>大小</span>
+          <span>{(previewBubbleScale * 100).toFixed(0)}%</span>
+        </label>
+        <input
+          type="range"
+          min="0.8"
+          max="1.3"
+          step="0.01"
+          value={previewBubbleScale}
+          onChange={(e) => setSettings({
+            ...settings,
+            chat: {
+              ...settings.chat,
+              bubbleScale: clampBubbleScale(parseFloat(e.target.value)),
+            },
+          })}
           className="w-full accent-zinc-900"
         />
       </div>

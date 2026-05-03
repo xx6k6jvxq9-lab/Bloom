@@ -61,6 +61,7 @@ export function createDefaultAppData(): AppData {
         messageBackgroundColorUser: '#3b82f6',
         messageBackgroundColorModel: '#ffffff',
         messageSpacing: 16,
+        bubbleScale: 1,
       },
       dynamics: {
         background: '',

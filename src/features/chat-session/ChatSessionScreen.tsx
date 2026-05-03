@@ -136,6 +136,10 @@ function getDirectTextBubbleClass(role: ChatMessage['role'], maxWidthClass: stri
   return `w-fit ${maxWidthClass} px-4 py-3 rounded-2xl`;
 }
 
+function clampChatBubbleScale(value: number | undefined): number {
+  return Math.min(1.3, Math.max(0.8, value ?? 1));
+}
+
 function getDirectTextBubbleStyle({
   role,
   visualSettings,
@@ -1418,6 +1422,26 @@ export function ChatSessionScreen({
   font-family: ${chatFontFamily} !important;
 }`
     : '';
+  const bubbleScale = clampChatBubbleScale(visualSettings?.chat?.bubbleScale);
+  const textBubbleWidthPercent = Math.min(96, Math.max(76, 88 + (bubbleScale - 1) * 22));
+  const mediaBubbleWidthPercent = Math.min(96, Math.max(72, 84 + (bubbleScale - 1) * 18));
+  const getDirectBubbleScaleStyle = ({
+    basePaddingX,
+    basePaddingY,
+    maxWidthPercent,
+    maxWidthRem,
+  }: {
+    basePaddingX: number;
+    basePaddingY: number;
+    maxWidthPercent?: number;
+    maxWidthRem?: number;
+  }): React.CSSProperties => ({
+    paddingInline: `${basePaddingX * bubbleScale}px`,
+    paddingBlock: `${basePaddingY * bubbleScale}px`,
+    ...(maxWidthPercent && maxWidthRem
+      ? { maxWidth: `min(${maxWidthPercent}%, ${maxWidthRem * bubbleScale}rem)` }
+      : {}),
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1650,6 +1674,9 @@ export function ChatSessionScreen({
 
   const chatFooterLift = keyboardInset;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const chatViewportHeight = keyboardVisible
+    ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
+    : 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
       chatFooterLift > 0
@@ -1693,6 +1720,8 @@ export function ChatSessionScreen({
     <motion.div 
       className="absolute inset-0 flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope"
       style={{ 
+        height: chatViewportHeight,
+        minHeight: chatViewportHeight,
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -2042,6 +2071,12 @@ export function ChatSessionScreen({
                                   handleMessageClick(e, i);
                                 }}
                                 className={`chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} inline-flex max-w-[min(84%,16rem)] cursor-pointer flex-col gap-1 rounded-2xl border border-zinc-200 bg-white/95 px-3.5 py-3 shadow-sm transition-all active:scale-[0.98]`}
+                                style={getDirectBubbleScaleStyle({
+                                  basePaddingX: 14,
+                                  basePaddingY: 12,
+                                  maxWidthPercent: mediaBubbleWidthPercent,
+                                  maxWidthRem: 16,
+                                })}
                               >
                                 <div className="text-[14px] font-semibold text-zinc-800">[语音通话]</div>
                                 <div className="text-[12px] text-zinc-500">
@@ -2151,7 +2186,17 @@ export function ChatSessionScreen({
                                       ? 'p-0'
                                       : `chat-bubble message-bubble ${msg.role === 'user' ? 'user-bubble right chat-bubble-right' : 'bot-bubble left chat-bubble-left'} overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 px-2.5 py-2.5 shadow-sm`
                                   }`}
-                                  style={chatTextStyle}
+                                  style={{
+                                    ...(chatTextStyle || {}),
+                                    ...(isStickerMessage(msg)
+                                      ? {}
+                                      : getDirectBubbleScaleStyle({
+                                          basePaddingX: 10,
+                                          basePaddingY: 10,
+                                          maxWidthPercent: mediaBubbleWidthPercent,
+                                          maxWidthRem: 22,
+                                        })),
+                                  }}
                                 >
                                   {!isStickerMessage(msg) && <BubbleThemeAnchors />}
                                   <PersistentImage
@@ -2221,6 +2266,12 @@ export function ChatSessionScreen({
                                         character,
                                       }),
                                       ...(chatTextStyle || {}),
+                                      ...getDirectBubbleScaleStyle({
+                                        basePaddingX: 16,
+                                        basePaddingY: 12,
+                                        maxWidthPercent: textBubbleWidthPercent,
+                                        maxWidthRem: 32,
+                                      }),
                                     }}
                                   >
                                     <BubbleThemeAnchors />
@@ -2581,6 +2632,12 @@ export function ChatSessionScreen({
                     resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
                     resolvedUserBubbleImageUrl: undefined,
                     character,
+                  }),
+                  ...getDirectBubbleScaleStyle({
+                    basePaddingX: 16,
+                    basePaddingY: 12,
+                    maxWidthPercent: textBubbleWidthPercent,
+                    maxWidthRem: 18,
                   }),
                   ...(chatTextStyle || {}),
                   borderTopLeftRadius: 6,

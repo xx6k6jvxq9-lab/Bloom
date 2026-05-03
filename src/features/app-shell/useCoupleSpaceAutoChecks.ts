@@ -5,6 +5,7 @@ import type { CoupleSpaceUpdateToast } from './appShellTypes';
 import { runCoupleSpaceInitiativeAutoCheck } from '../../services/ai/couple-space/initiative/runCoupleSpaceInitiativeAutoCheck';
 import { evaluateCoupleSpaceInitiativeAutoCheckGate } from '../../services/ai/couple-space/initiative/coupleSpaceInitiativeAutoCheckGate';
 import { applyCoupleSpaceInitiativeRunResult } from '../../services/ai/couple-space/initiative/coupleSpaceInitiativeResultApplier';
+import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import {
   resolveCoupleSpaceState,
   updatePartnerCoupleSpaceState,
@@ -48,7 +49,25 @@ export function useCoupleSpaceAutoChecks({
 
     let cancelled = false;
 
+    const hasUsableAutoCheckConfig = () => {
+      const resolved = resolveSceneTextApiConfig({
+        settings: settingsRef.current,
+        scene: 'default',
+      }).runtimeConfig;
+
+      return !!resolved?.apiKey?.trim();
+    };
+
+    const isAuthUnavailableError = (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error || '');
+      return /auth_unavailable|no auth available providers|503/i.test(message);
+    };
+
     const runBackgroundCoupleSpaceChecks = async () => {
+      if (!hasUsableAutoCheckConfig()) {
+        return;
+      }
+
       const currentAppData = appDataRef.current;
       const currentSettings = settingsRef.current;
       const resolvedState = resolveCoupleSpaceState(
@@ -124,6 +143,9 @@ export function useCoupleSpaceAutoChecks({
             });
           }
         } catch (error) {
+          if (isAuthUnavailableError(error)) {
+            continue;
+          }
           console.error('Background couple-space auto check failed:', error);
         }
       }

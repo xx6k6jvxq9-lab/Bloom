@@ -86,6 +86,7 @@ export type ChatCustomization = {
   messageBackgroundColorModel: string;
   messageBackgroundImageUrl?: string;
   messageSpacing: number;
+  bubbleScale?: number;
   bubbleStyleCss?: string;
   modelBubbleStyleCss?: string;
   userBubbleStyleCss?: string;

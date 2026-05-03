@@ -76,6 +76,10 @@ function isStickerMessage(message: Pick<ChatMessage, "imageUrl" | "text">) {
   return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || "").trim());
 }
 
+function clampTogetherBubbleScale(value: number | undefined): number {
+  return Math.min(1.3, Math.max(0.8, value ?? 1));
+}
+
 function ResolvedChatImage({
   value,
   alt,
@@ -178,6 +182,25 @@ export function TogetherChatPanel({
   font-family: ${chatFontFamily} !important;
 }`
     : "";
+  const bubbleScale = clampTogetherBubbleScale(visualSettings?.chat?.bubbleScale);
+  const textBubbleWidthPercent = Math.min(96, Math.max(76, 86 + (bubbleScale - 1) * 20));
+  const getTogetherBubbleScaleStyle = ({
+    basePaddingX,
+    basePaddingY,
+    maxWidthPercent,
+    maxWidthRem,
+  }: {
+    basePaddingX: number;
+    basePaddingY: number;
+    maxWidthPercent?: number;
+    maxWidthRem?: number;
+  }): React.CSSProperties => ({
+    paddingInline: `${basePaddingX * bubbleScale}px`,
+    paddingBlock: `${basePaddingY * bubbleScale}px`,
+    ...(maxWidthPercent && maxWidthRem
+      ? { maxWidth: `min(${maxWidthPercent}%, ${maxWidthRem * bubbleScale}rem)` }
+      : {}),
+  });
   const {
     isRecording,
     startRecording,
@@ -417,6 +440,12 @@ export function TogetherChatPanel({
                 }`}
                 style={{
                   ...getDirectTextBubbleStyle(msg.role),
+                  ...getTogetherBubbleScaleStyle({
+                    basePaddingX: 16,
+                    basePaddingY: 12,
+                    maxWidthPercent: textBubbleWidthPercent,
+                    maxWidthRem: 26,
+                  }),
                   ...(chatTextStyle || {}),
                 }}
               >
@@ -480,6 +509,12 @@ export function TogetherChatPanel({
                 className="chat-bubble message-bubble bot-bubble left chat-bubble-left chat-loading-bubble border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                 style={{
                   ...getDirectTextBubbleStyle("model"),
+                  ...getTogetherBubbleScaleStyle({
+                    basePaddingX: 16,
+                    basePaddingY: 12,
+                    maxWidthPercent: textBubbleWidthPercent,
+                    maxWidthRem: 14,
+                  }),
                   ...(chatTextStyle || {}),
                   borderTopLeftRadius: 6,
                 }}

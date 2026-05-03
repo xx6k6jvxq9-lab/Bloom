@@ -547,6 +547,10 @@ function BubbleThemeAnchors() {
   );
 }
 
+function clampGroupBubbleScale(value: number | undefined): number {
+  return Math.min(1.3, Math.max(0.8, value ?? 1));
+}
+
 export function GroupChatSessionScreen({
   group,
   members,
@@ -769,6 +773,25 @@ export function GroupChatSessionScreen({
   font-family: ${chatFontFamily} !important;
 }`
     : '';
+  const bubbleScale = clampGroupBubbleScale(settings.visualSettings?.chat?.bubbleScale);
+  const groupTextBubbleWidthPercent = Math.min(96, Math.max(76, 86 + (bubbleScale - 1) * 20));
+  const getGroupBubbleScaleStyle = ({
+    basePaddingX,
+    basePaddingY,
+    maxWidthPercent,
+    maxWidthRem,
+  }: {
+    basePaddingX: number;
+    basePaddingY: number;
+    maxWidthPercent?: number;
+    maxWidthRem?: number;
+  }): React.CSSProperties => ({
+    paddingInline: `${basePaddingX * bubbleScale}px`,
+    paddingBlock: `${basePaddingY * bubbleScale}px`,
+    ...(maxWidthPercent && maxWidthRem
+      ? { maxWidth: `min(${maxWidthPercent}%, ${maxWidthRem * bubbleScale}rem)` }
+      : {}),
+  });
   let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 pt-12 shadow-sm';
   const groupHeaderStyle: React.CSSProperties = {};
   const getDefaultGroupBubbleSurfaceStyle = (params: {
@@ -2940,6 +2963,12 @@ export function GroupChatSessionScreen({
                           style={isStandaloneMedia
                             ? undefined
                             : {
+                                ...getGroupBubbleScaleStyle({
+                                  basePaddingX: 16,
+                                  basePaddingY: 10,
+                                  maxWidthPercent: groupTextBubbleWidthPercent,
+                                  maxWidthRem: 28,
+                                }),
                                 ...getDefaultGroupBubbleSurfaceStyle({
                                   isUser,
                                   shouldUseDefaultSurface: resolvedDefaultBubbleSurface,
@@ -3046,7 +3075,15 @@ export function GroupChatSessionScreen({
         {isLoading && !pendingMessage && (
           <div className="mt-3 flex gap-3">
             <div className="h-10 w-10 animate-pulse rounded-full bg-zinc-100" />
-            <div className="chat-loading-bubble rounded-2xl rounded-tl-sm border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+            <div
+              className="chat-loading-bubble rounded-2xl rounded-tl-sm border border-zinc-100 bg-white px-4 py-3 shadow-sm"
+              style={getGroupBubbleScaleStyle({
+                basePaddingX: 16,
+                basePaddingY: 12,
+                maxWidthPercent: groupTextBubbleWidthPercent,
+                maxWidthRem: 12,
+              })}
+            >
               <div className="flex gap-1">
                 <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
                 <div className="delay-75 h-2 w-2 animate-bounce rounded-full bg-zinc-400" />

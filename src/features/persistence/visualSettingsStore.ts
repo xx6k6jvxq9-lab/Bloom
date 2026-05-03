@@ -66,6 +66,7 @@ export function hydrateVisualSettings(
       messageBackgroundColorModel: source?.chat?.messageBackgroundColorModel || '#ffffff',
       messageBackgroundImageUrl: source?.chat?.messageBackgroundImageUrl,
       messageSpacing: source?.chat?.messageSpacing ?? 16,
+      bubbleScale: source?.chat?.bubbleScale ?? 1,
       bubbleStyleCss: source?.chat?.bubbleStyleCss || '',
       modelBubbleStyleCss: source?.chat?.modelBubbleStyleCss || '',
       userBubbleStyleCss: source?.chat?.userBubbleStyleCss || '',
