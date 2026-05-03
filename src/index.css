@@ -216,7 +216,3 @@ body {
     display: none;
   }
 }
-
-html[data-standalone='true'] .app-home-indicator-wrap {
-  display: none;
-}

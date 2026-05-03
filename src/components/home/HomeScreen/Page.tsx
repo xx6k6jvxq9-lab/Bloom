@@ -326,6 +326,9 @@ export function HomeScreen({
 
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
+      const isStandalone =
+        window.matchMedia?.('(display-mode: standalone)')?.matches ||
+        (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
       const safeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom')?.trim() || '0';
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
@@ -346,7 +349,7 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
+      const nextSafeAreaBottom = Math.round(isStandalone ? 0 : resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 

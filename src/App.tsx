@@ -93,7 +93,7 @@ export default function App() {
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
-  const { isStandalone, time, useDesktopStageLayout } = useAppEnvironment();
+  const { time, useDesktopStageLayout } = useAppEnvironment();
   const {
     appData,
     hasHydratedStorage,
@@ -150,6 +150,10 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const isStorageReady = hasHydratedStorage;
+  const phoneContainerBackgroundClass =
+    activeApp === 'home' || activeApp === 'dream'
+      ? 'bg-black'
+      : 'bg-zinc-50';
 
   return (
     <div
@@ -164,7 +168,7 @@ export default function App() {
       {/* Phone Container */}
       <div
         id="phone-container"
-        className={`app-phone-container relative flex h-full w-full flex-col overflow-hidden bg-black ring-0 ${
+        className={`app-phone-container relative flex h-full w-full flex-col overflow-hidden ${phoneContainerBackgroundClass} ring-0 ${
           useDesktopStageLayout
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
@@ -173,7 +177,7 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && (
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !window.matchMedia?.('(display-mode: standalone)')?.matches && (
           <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
@@ -303,16 +307,14 @@ export default function App() {
         </AnimatePresence>
 
         {/* Home Indicator */}
-        {!isStandalone && (
+        <div
+          className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
+        >
           <div
-            className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
-          >
-            <div
-              className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
-              onClick={() => setActiveApp('home')}
-            />
-          </div>
-        )}
+            className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
+            onClick={() => setActiveApp('home')}
+          />
+        </div>
       </div>
     </div>
   );

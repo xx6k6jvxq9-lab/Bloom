@@ -459,6 +459,7 @@ export function ChatSessionScreen({
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1435,7 +1436,22 @@ export function ChatSessionScreen({
       const previousViewportHeight = lastVisualViewportHeightRef.current;
       lastVisualViewportHeightRef.current = currentViewportHeight;
       const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      setKeyboardInset(inset > 120 ? inset : 0);
+      const nextKeyboardVisible = inset > 120;
+      const rootViewportHeight = typeof document !== 'undefined'
+        ? Number.parseFloat(
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--app-viewport-height')
+            .trim()
+            .replace('px', ''),
+        )
+        : 0;
+      const rootTracksVisualViewport = rootViewportHeight > 0
+        && Math.abs(rootViewportHeight - viewport.height) <= 2;
+
+      // When the root already shrinks with the keyboard, adding the inset again
+      // double-lifts the footer and creates a visible gap above the keyboard.
+      setKeyboardVisible(nextKeyboardVisible);
+      setKeyboardInset(!rootTracksVisualViewport && nextKeyboardVisible ? inset : 0);
 
       const isInputFocused = document.activeElement === inputTextareaRef.current;
       if (
@@ -1480,6 +1496,7 @@ export function ChatSessionScreen({
       if (!isTextInputFocused) {
         window.setTimeout(() => {
           setKeyboardInset(0);
+          setKeyboardVisible(false);
         }, 120);
       }
     };
@@ -1637,7 +1654,9 @@ export function ChatSessionScreen({
     paddingBottom:
       chatFooterLift > 0
         ? `calc(0.55rem + ${chatFooterLift}px)`
-        : 'calc(0.55rem + env(safe-area-inset-bottom, 0px))',
+        : keyboardVisible
+          ? '0.55rem'
+          : 'calc(0.55rem + env(safe-area-inset-bottom, 0px))',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };
