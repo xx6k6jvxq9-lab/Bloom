@@ -75,7 +75,7 @@ body {
     height: var(--app-viewport-height, 100dvh);
     min-height: var(--app-viewport-height, 100dvh);
     overflow: hidden;
-    background: #f8fafc;
+    background: #09090b;
   }
 
   .app-phone-container {
@@ -85,7 +85,7 @@ body {
     min-width: 0;
     height: var(--app-viewport-height, 100dvh) !important;
     min-height: var(--app-viewport-height, 100dvh);
-    background: #f8fafc !important;
+    background: #09090b !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -201,11 +201,11 @@ body {
   html,
   body,
   #root {
-    background: #f8fafc;
+    background: #09090b;
   }
 
   .app-shell {
-    background: #f8fafc;
+    background: #09090b;
   }
 
   .app-phone-container {

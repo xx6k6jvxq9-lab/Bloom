@@ -463,6 +463,7 @@ export function ChatSessionScreen({
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const lastVisualViewportHeightRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1430,6 +1431,9 @@ export function ChatSessionScreen({
 
     const updateViewportMetrics = () => {
       const layoutHeight = window.innerHeight;
+      const currentViewportHeight = Math.round(viewport.height);
+      const previousViewportHeight = lastVisualViewportHeightRef.current;
+      lastVisualViewportHeightRef.current = currentViewportHeight;
       const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
       const rootViewportHeight = typeof document !== 'undefined'
         ? Number.parseFloat(
@@ -1445,6 +1449,17 @@ export function ChatSessionScreen({
       // When the root already shrinks with the keyboard, adding the inset again
       // double-lifts the footer and creates a visible gap above the keyboard.
       setKeyboardInset(!rootTracksVisualViewport && inset > 120 ? inset : 0);
+
+      const isInputFocused = document.activeElement === inputTextareaRef.current;
+      if (
+        isInputFocused
+        && previousViewportHeight !== null
+        && Math.abs(previousViewportHeight - currentViewportHeight) > 24
+      ) {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ block: 'end' });
+        });
+      }
     };
 
     updateViewportMetrics();
@@ -1632,12 +1647,17 @@ export function ChatSessionScreen({
   const chatFooterLift = keyboardInset;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
-    paddingBottom: chatFooterLift > 0 ? `calc(0.55rem + ${chatFooterLift}px)` : '0.55rem',
+    paddingBottom:
+      chatFooterLift > 0
+        ? `calc(0.55rem + ${chatFooterLift}px)`
+        : 'calc(0.55rem + env(safe-area-inset-bottom, 0px))',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     paddingBottom: '8px',
+    minHeight: 0,
+    scrollPaddingBottom: `${chatFooterHeight + 12}px`,
   };
 
   if (showSettings) {
@@ -1665,7 +1685,7 @@ export function ChatSessionScreen({
 
   return (
     <motion.div 
-      className="absolute inset-0 bg-zinc-50 flex flex-col z-[60] chat-bubble-theme-scope"
+      className="absolute inset-0 flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope"
       style={{ 
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
@@ -1755,7 +1775,7 @@ export function ChatSessionScreen({
 
       {/* Messages */}
       <div
-        className={`${layoutConfig.messageListClass}${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
+        className={`${layoutConfig.messageListClass} min-h-0 ${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
         style={chatMessageListStyle}
       >
         {error && (

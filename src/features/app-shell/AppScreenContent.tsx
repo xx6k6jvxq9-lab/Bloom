@@ -116,6 +116,10 @@ export function AppScreenContent({
   setStatusBarVisible,
   settings,
 }: AppScreenContentProps) {
+  const screenRootBackgroundClass =
+    activeApp === 'home' || activeApp === 'dream'
+      ? 'bg-transparent'
+      : 'bg-zinc-50';
   const forumConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'forum',
@@ -149,7 +153,7 @@ export function AppScreenContent({
   };
 
   return (
-    <div className="phone-screen-root flex-1 relative bg-zinc-50 overflow-hidden">
+    <div className={`phone-screen-root flex-1 relative overflow-hidden ${screenRootBackgroundClass}`}>
       {coupleSpaceUpdateToast && (
         <button
           type="button"

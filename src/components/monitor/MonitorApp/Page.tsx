@@ -425,7 +425,10 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
   return (
     <div className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans overflow-hidden">
       {/* Header */}
-      <div className="p-3 flex items-center justify-between bg-white border-b border-zinc-100 z-20 shadow-sm relative">
+      <div
+        className="flex items-center justify-between bg-white border-b border-zinc-100 z-20 shadow-sm relative px-3 pb-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      >
         <div className="flex items-center gap-3">
           <button onClick={() => setSelectedCharId(null)} className="p-1.5 hover:bg-zinc-100 rounded-xl transition-colors">
             <ChevronLeft size={18} className="text-zinc-600" />
@@ -448,7 +451,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-hidden flex relative">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Left Sidebar Navigation - Collapsible */}
         <AnimatePresence initial={false}>
           {isSidebarVisible && (
@@ -472,7 +475,10 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
         </AnimatePresence>
 
         {/* Content Panel */}
-        <div className="flex-1 overflow-y-auto p-4 w-full">
+        <div
+          className="min-h-0 w-full flex-1 overflow-y-auto p-4"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+        >
           {isScanning ? (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
               <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin" />

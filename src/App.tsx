@@ -164,7 +164,7 @@ export default function App() {
       {/* Phone Container */}
       <div
         id="phone-container"
-        className={`app-phone-container relative flex h-full w-full flex-col overflow-hidden bg-zinc-50 ring-0 ${
+        className={`app-phone-container relative flex h-full w-full flex-col overflow-hidden bg-black ring-0 ${
           useDesktopStageLayout
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
