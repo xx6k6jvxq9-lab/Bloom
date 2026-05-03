@@ -326,10 +326,7 @@ export function HomeScreen({
 
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
-      const isStandalone =
-        window.matchMedia?.('(display-mode: standalone)')?.matches ||
-        (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-      const safeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom')?.trim() || '0';
+      const safeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim() || '0';
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
         if (safeAreaVar.endsWith('px')) {
@@ -349,7 +346,7 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const nextSafeAreaBottom = Math.round(isStandalone ? 0 : resolvedSafeAreaBottom);
+      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 
@@ -1956,7 +1953,7 @@ export function HomeScreen({
       </AnimatePresence>)}
 
       {pageCount > 1 && (
-        <div className="homeDesktop__pageDots pointer-events-auto absolute bottom-[104px] left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2">
+        <div className="homeDesktop__pageDots pointer-events-auto absolute bottom-[88px] left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2">
           {Array.from({ length: pageCount }, (_, page) => (
             <button
               key={page}

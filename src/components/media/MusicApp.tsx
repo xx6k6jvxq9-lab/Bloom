@@ -2528,8 +2528,8 @@ export default function MusicApp({
       <div
         className="relative z-50 flex shrink-0 items-center justify-around border-t border-zinc-100/80 bg-white/85 px-8 pt-2 backdrop-blur-xl"
         style={{
-          minHeight: "calc(64px + env(safe-area-inset-bottom, 0px) + 8px)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+          minHeight: "calc(64px + var(--app-safe-area-bottom-ui, 0px) + 8px)",
+          paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)",
         }}
       >
         <button

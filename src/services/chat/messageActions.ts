@@ -475,7 +475,7 @@ export const getChatLayoutConfig = (): ChatLayoutConfig => ({
   headerPaddingClass: 'pt-4 pb-2 px-4',
   messageListClass: 'flex-1 overflow-y-auto px-3 py-3 space-y-3',
   inputContainerClass: 'relative z-10 px-3 pt-2 border-t backdrop-blur-md flex flex-col gap-1.5',
-  inputContainerStyle: { paddingBottom: '0.9rem' },
+  inputContainerStyle: { paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' },
   textBubbleMaxWidthClass: 'max-w-[88%]',
 });
 

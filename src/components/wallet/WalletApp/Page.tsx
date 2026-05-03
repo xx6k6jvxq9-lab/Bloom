@@ -489,7 +489,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
       {/* Main Content */}
       <div
         className="flex-1 overflow-y-auto relative px-4 pt-2"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)" }}
+        style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 80px)" }}
       >
         
         {/* Balance Section */}

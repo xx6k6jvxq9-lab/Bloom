@@ -1653,10 +1653,10 @@ export function ChatSessionScreen({
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
       chatFooterLift > 0
-        ? `calc(0.2rem + ${chatFooterLift}px)`
+        ? `calc(${chatFooterLift}px + 1px)`
         : keyboardVisible
-          ? '0.2rem'
-          : 'calc(env(safe-area-inset-bottom, 0px) + 2px)',
+          ? '1px'
+          : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };

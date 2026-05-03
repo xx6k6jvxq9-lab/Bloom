@@ -31,6 +31,7 @@ body {
   position: relative;
   isolation: isolate;
   --app-safe-area-bottom: 0px;
+  --app-safe-area-bottom-ui: 0px;
 }
 
 /* Prevent iOS Safari/PWA from auto-zooming focused form fields. */
@@ -210,6 +211,7 @@ body {
 
   .app-phone-container {
     --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --app-safe-area-bottom-ui: max(0px, calc(env(safe-area-inset-bottom, 0px) - 14px));
   }
 
   .app-home-indicator-wrap {

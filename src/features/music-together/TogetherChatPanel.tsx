@@ -387,7 +387,7 @@ export function TogetherChatPanel({
 
       <div
         className="flex-1 overflow-y-auto bg-zinc-50/50 p-4 space-y-4"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+        style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
       >
         {history.map((msg, index) => (
           <div
