@@ -1260,12 +1260,36 @@ export type DateMessage = {
   pending?: boolean;
 };
 
+export type DateNarrativePerspective = 'default' | 'first' | 'second' | 'third';
+
+export type DateWritingPreset =
+  | 'default'
+  | 'novel'
+  | 'cinematic'
+  | 'tender'
+  | 'restrained'
+  | 'casual'
+  | 'tension';
+
+export type DateDialogueFormat = 'default' | 'quoted' | 'plain';
+
+export type DateDescriptionDensity = 'default' | 'light' | 'medium' | 'heavy';
+
+export type DateAccentColorMode = 'character' | 'random' | 'custom';
+
 export type DateSession = {
   id: string;
   characterId: string;
   location: string;
   scenario: string;
   mood: string;
+  narrativePerspective?: DateNarrativePerspective;
+  writingPreset?: DateWritingPreset;
+  dialogueFormat?: DateDialogueFormat;
+  descriptionDensity?: DateDescriptionDensity;
+  writingStyleCustom?: string;
+  accentColorMode?: DateAccentColorMode;
+  accentColor?: string;
   backgroundScene: string;
   backgroundImage?: string;
   backgroundSource?: 'character-avatar' | 'url' | 'local-upload';

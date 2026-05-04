@@ -13,7 +13,19 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ApiConfig, Character, ChatMessage, DateSession, PerceptionSettings, UserProfileExtended } from '../../types';
+import type {
+  ApiConfig,
+  Character,
+  ChatMessage,
+  DateAccentColorMode,
+  DateDescriptionDensity,
+  DateDialogueFormat,
+  DateNarrativePerspective,
+  DateSession,
+  DateWritingPreset,
+  PerceptionSettings,
+  UserProfileExtended,
+} from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -37,6 +49,65 @@ interface DatingModalProps {
 
 type RecoverableDateSession = DateSession & { isSaved?: boolean };
 const DATING_AUTO_SAVE_KEY = 'dating_modal_auto_save_enabled';
+
+const NARRATIVE_PERSPECTIVE_OPTIONS: Array<{ value: DateNarrativePerspective; label: string }> = [
+  { value: 'default', label: '默认' },
+  { value: 'first', label: '第一人称' },
+  { value: 'second', label: '第二人称' },
+  { value: 'third', label: '第三人称' },
+];
+
+const WRITING_PRESET_OPTIONS: Array<{ value: DateWritingPreset; label: string }> = [
+  { value: 'default', label: '默认' },
+  { value: 'novel', label: '小说感' },
+  { value: 'cinematic', label: '电影镜头感' },
+  { value: 'tender', label: '细腻暧昧' },
+  { value: 'restrained', label: '克制冷感' },
+  { value: 'casual', label: '轻松口语' },
+  { value: 'tension', label: '拉扯张力' },
+];
+
+const DIALOGUE_FORMAT_OPTIONS: Array<{ value: DateDialogueFormat; label: string }> = [
+  { value: 'default', label: '默认' },
+  { value: 'quoted', label: '对白加 “ ”' },
+  { value: 'plain', label: '对白不加引号' },
+];
+
+const DESCRIPTION_DENSITY_OPTIONS: Array<{ value: DateDescriptionDensity; label: string }> = [
+  { value: 'default', label: '默认' },
+  { value: 'light', label: '轻' },
+  { value: 'medium', label: '中' },
+  { value: 'heavy', label: '重' },
+];
+
+const ACCENT_COLOR_MODE_OPTIONS: Array<{ value: DateAccentColorMode; label: string }> = [
+  { value: 'character', label: '跟随默认' },
+  { value: 'random', label: '随机主题色' },
+  { value: 'custom', label: '手动指定' },
+];
+
+const DATE_ACCENT_PRESETS = [
+  '#92EBF2',
+  '#FF8FA3',
+  '#FFC56B',
+  '#B7A7FF',
+  '#7FE7C4',
+  '#F9A8D4',
+  '#9CC7FF',
+  '#F7D774',
+] as const;
+
+function normalizeHexColor(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const normalized = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return /^#([0-9a-fA-F]{6})$/.test(normalized) ? normalized.toUpperCase() : '';
+}
+
+function pickRandomAccentColor(seed = Date.now()): string {
+  const index = Math.abs(seed) % DATE_ACCENT_PRESETS.length;
+  return DATE_ACCENT_PRESETS[index];
+}
 
 const LOCATION_OPTIONS = ['海边沙滩', '电影院', '咖啡馆', '游乐园', '森林公园', '高档餐厅'];
 const SCENARIO_OPTIONS = ['初次约会', '纪念日庆祝', '周末散步', '意外相遇', '浪漫晚餐'];
@@ -65,6 +136,13 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const [activeSceneSession, setActiveSceneSession] = useState<RecoverableDateSession | null>(null);
   const [sceneStartToken, setSceneStartToken] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [narrativePerspective, setNarrativePerspective] = useState<DateNarrativePerspective>('default');
+  const [writingPreset, setWritingPreset] = useState<DateWritingPreset>('default');
+  const [dialogueFormat, setDialogueFormat] = useState<DateDialogueFormat>('default');
+  const [descriptionDensity, setDescriptionDensity] = useState<DateDescriptionDensity>('default');
+  const [writingStyleCustom, setWritingStyleCustom] = useState('');
+  const [accentColorMode, setAccentColorMode] = useState<DateAccentColorMode>('character');
+  const [customAccentColor, setCustomAccentColor] = useState('');
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(DATING_AUTO_SAVE_KEY) === '1';
@@ -105,6 +183,13 @@ export const DatingModal: React.FC<DatingModalProps> = ({
         setScenario(initialSession.scenario || '');
         setMood(initialSession.mood || '浪漫');
         setCustomMood('');
+        setNarrativePerspective(initialSession.narrativePerspective || 'default');
+        setWritingPreset(initialSession.writingPreset || 'default');
+        setDialogueFormat(initialSession.dialogueFormat || 'default');
+        setDescriptionDensity(initialSession.descriptionDensity || 'default');
+        setWritingStyleCustom(initialSession.writingStyleCustom || '');
+        setAccentColorMode(initialSession.accentColorMode || 'character');
+        setCustomAccentColor(initialSession.accentColor || '');
         setLocalBackground(
           initialSession.backgroundSource === 'local-upload' ? initialSession.backgroundImage || '' : '',
         );
@@ -114,6 +199,13 @@ export const DatingModal: React.FC<DatingModalProps> = ({
         setScenario('');
         setMood('浪漫');
         setCustomMood('');
+        setNarrativePerspective('default');
+        setWritingPreset('default');
+        setDialogueFormat('default');
+        setDescriptionDensity('default');
+        setWritingStyleCustom('');
+        setAccentColorMode('character');
+        setCustomAccentColor('');
         setLocalBackground('');
         setBackgroundUrl('');
       }
@@ -148,12 +240,34 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const { resolvedUrl: resolvedPreviewBackgroundUrl } = useResolvedPersistentValue(resolvedBackground.image);
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
 
+  const resolveSessionAccent = () => {
+    const normalizedCustomAccent = normalizeHexColor(customAccentColor);
+    const normalizedExistingAccent = normalizeHexColor(recoverableInitialSession?.accentColor || '');
+
+    if (accentColorMode === 'custom') {
+      return normalizedCustomAccent || normalizedExistingAccent || DATE_ACCENT_PRESETS[0];
+    }
+
+    if (accentColorMode === 'random') {
+      return normalizedExistingAccent || pickRandomAccentColor(Date.now());
+    }
+
+    return normalizedExistingAccent;
+  };
+
   const buildSession = (): RecoverableDateSession => ({
     id: initialSession?.id || Date.now().toString(),
     characterId: character.id,
     location,
     scenario,
     mood: customMood.trim() || mood,
+    narrativePerspective,
+    writingPreset,
+    dialogueFormat,
+    descriptionDensity,
+    writingStyleCustom: writingStyleCustom.trim(),
+    accentColorMode,
+    accentColor: resolveSessionAccent(),
     backgroundScene: '',
     backgroundImage: resolvedBackground.image,
     backgroundSource: resolvedBackground.source,
@@ -178,6 +292,13 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     setScenario('');
     setMood('浪漫');
     setCustomMood('');
+    setNarrativePerspective('default');
+    setWritingPreset('default');
+    setDialogueFormat('default');
+    setDescriptionDensity('default');
+    setWritingStyleCustom('');
+    setAccentColorMode('character');
+    setCustomAccentColor('');
     resetBackgroundInputs();
     setShowMenu(false);
     setActiveSceneSession(null);
@@ -456,7 +577,129 @@ export const DatingModal: React.FC<DatingModalProps> = ({
 
                   {advancedOpen ? (
                     <div className="mt-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-4">
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-4">
+                        <div className="rounded-[16px] bg-zinc-50 px-3.5 py-3">
+                          <div className="text-[12px] leading-5 text-zinc-500">
+                            不设置时保持当前默认效果；只有你手动指定后，才会覆盖本次约会的视角、文风或高亮色。
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            叙事视角
+                            <select
+                              value={narrativePerspective}
+                              onChange={(event) => setNarrativePerspective(event.target.value as DateNarrativePerspective)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {NARRATIVE_PERSPECTIVE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            文风预设
+                            <select
+                              value={writingPreset}
+                              onChange={(event) => setWritingPreset(event.target.value as DateWritingPreset)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {WRITING_PRESET_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            对白格式
+                            <select
+                              value={dialogueFormat}
+                              onChange={(event) => setDialogueFormat(event.target.value as DateDialogueFormat)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {DIALOGUE_FORMAT_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            描写浓度
+                            <select
+                              value={descriptionDensity}
+                              onChange={(event) => setDescriptionDensity(event.target.value as DateDescriptionDensity)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {DESCRIPTION_DENSITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                          自定义文风
+                          <textarea
+                            value={writingStyleCustom}
+                            onChange={(event) => setWritingStyleCustom(event.target.value.slice(0, 240))}
+                            placeholder="例如：用小说写法，人物对白加“”，多写动作、眼神和停顿，少一点直白解释。"
+                            className="min-h-[108px] rounded-[16px] border border-zinc-200 bg-white px-3 py-3 text-[13px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400 resize-none"
+                          />
+                          <span className="text-right text-[11px] text-zinc-400">{writingStyleCustom.length}/240</span>
+                        </label>
+
+                        <div className="space-y-3 rounded-[16px] border border-zinc-200 px-3.5 py-3">
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            本次约会主题色
+                            <select
+                              value={accentColorMode}
+                              onChange={(event) => setAccentColorMode(event.target.value as DateAccentColorMode)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {ACCENT_COLOR_MODE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          {accentColorMode === 'custom' ? (
+                            <div className="grid gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
+                              <input
+                                type="color"
+                                value={normalizeHexColor(customAccentColor) || DATE_ACCENT_PRESETS[0]}
+                                onChange={(event) => setCustomAccentColor(event.target.value.toUpperCase())}
+                                className="h-11 w-full rounded-[14px] border border-zinc-200 bg-white px-1 py-1"
+                              />
+                              <input
+                                value={customAccentColor}
+                                onChange={(event) => setCustomAccentColor(event.target.value)}
+                                placeholder="#FF8FA3"
+                                className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+                              />
+                            </div>
+                          ) : null}
+
+                          <div className="flex flex-wrap gap-2">
+                            {DATE_ACCENT_PRESETS.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                onClick={() => {
+                                  setAccentColorMode('custom');
+                                  setCustomAccentColor(color);
+                                }}
+                                className="h-8 w-8 rounded-full border border-white shadow-sm ring-1 ring-zinc-200"
+                                style={{ backgroundColor: color }}
+                                aria-label={`选择主题色 ${color}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4 border-t border-zinc-100 pt-1">
                         <div>
                           <div className="text-[13px] font-semibold text-zinc-800">自动保存约会进度</div>
                           <div className="mt-1 text-[11px] leading-5 text-zinc-500">

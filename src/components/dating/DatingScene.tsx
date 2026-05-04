@@ -58,6 +58,7 @@ type EndingSequencePayload = {
 };
 
 const DATING_STICKERS = ['🥺', '😤', '😭', '😳', '😎', '❤️', '(贴贴)', '(抱抱)', '(委屈)', '(不理你了)'];
+const DEFAULT_DATING_ACCENT = '#92EBF2';
 
 const createEmptyGeneratedContent = (session: DateSession, character: Character): DatingGeneratedContent => ({
   background: {
@@ -79,6 +80,37 @@ const createEmptyGeneratedContent = (session: DateSession, character: Character)
   },
   playlist: [],
 });
+
+function normalizeHexColor(value: string | null | undefined): string {
+  const trimmed = value?.trim() || '';
+  if (!trimmed) return '';
+  const normalized = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return /^#([0-9a-fA-F]{6})$/.test(normalized) ? normalized.toUpperCase() : '';
+}
+
+function hexToRgb(value: string): [number, number, number] | null {
+  const normalized = normalizeHexColor(value);
+  if (!normalized) return null;
+  return [
+    Number.parseInt(normalized.slice(1, 3), 16),
+    Number.parseInt(normalized.slice(3, 5), 16),
+    Number.parseInt(normalized.slice(5, 7), 16),
+  ];
+}
+
+function buildDatingAccentVars(session: DateSession): React.CSSProperties {
+  const accent = session.accentColorMode === 'character'
+    ? DEFAULT_DATING_ACCENT
+    : normalizeHexColor(session.accentColor) || DEFAULT_DATING_ACCENT;
+  const rgb = hexToRgb(accent) || [146, 235, 242];
+
+  return {
+    '--dating-accent': accent,
+    '--dating-accent-soft': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.16)`,
+    '--dating-accent-strong': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.3)`,
+    '--dating-accent-glow': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.45)`,
+  } as React.CSSProperties;
+}
 
 function extractCandidateJsonObjects(text: string): string[] {
   const trimmed = text.trim();

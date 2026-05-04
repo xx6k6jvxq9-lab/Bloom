@@ -4,6 +4,10 @@ import { buildRelationshipProjection } from '../relationship-context/buildRelati
 import type {
   Character,
   ChatMessage,
+  DateDescriptionDensity,
+  DateDialogueFormat,
+  DateNarrativePerspective,
+  DateWritingPreset,
   DateSession,
   PerceptionSettings,
   UserProfileExtended,
@@ -18,6 +22,11 @@ export type DatingSceneInput = {
   location?: string;
   scenario?: string;
   mood?: string;
+  narrativePerspective?: DateNarrativePerspective;
+  writingPreset?: DateWritingPreset;
+  dialogueFormat?: DateDialogueFormat;
+  descriptionDensity?: DateDescriptionDensity;
+  writingStyleCustom?: string;
   backgroundRule: string;
   pastChatContext: string;
   datingMessages: string;
@@ -171,6 +180,10 @@ function buildExtraSections(input: {
   ].filter(Boolean);
 }
 
+function normalizeStyleValue<T extends string>(value: T | undefined, fallback: T): T {
+  return value && value !== fallback ? value : fallback;
+}
+
 export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): DatingSceneInput {
   const characterContext = buildCharacterContext({
     character: options.character,
@@ -191,6 +204,11 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     location: options.session.location,
     scenario: options.session.scenario,
     mood: options.session.mood,
+    narrativePerspective: normalizeStyleValue(options.session.narrativePerspective, 'default'),
+    writingPreset: normalizeStyleValue(options.session.writingPreset, 'default'),
+    dialogueFormat: normalizeStyleValue(options.session.dialogueFormat, 'default'),
+    descriptionDensity: normalizeStyleValue(options.session.descriptionDensity, 'default'),
+    writingStyleCustom: options.session.writingStyleCustom?.trim() || undefined,
     backgroundRule: options.session.backgroundImage
       ? `本次约会背景图已经确定，页面会优先使用：${options.session.backgroundImage}`
       : '本次约会背景图未单独设置，页面默认使用角色头像作为背景。',
