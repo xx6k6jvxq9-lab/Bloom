@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -114,8 +113,6 @@ export function MomentsApp({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   settings: AppSettings;
 }) {
-  const pageRef = useRef<HTMLDivElement | null>(null);
-  const publishScreenRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -133,8 +130,6 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
-  const { viewportStyle: pageViewportStyle } = useKeyboardSafeViewport({ containerRef: pageRef, enabled: !showPublish });
-  const { viewportStyle: publishViewportStyle } = useKeyboardSafeViewport({ containerRef: publishScreenRef, enabled: showPublish });
 
   const { userProfile, moments, characters } = appData;
   const forumConfig = resolveSceneTextApiConfig({
@@ -479,9 +474,7 @@ export function MomentsApp({
   if (showPublish) {
     return (
       <div
-        ref={publishScreenRef}
         className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
-        style={publishViewportStyle}
       >
         <div
           className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
@@ -567,11 +560,7 @@ export function MomentsApp({
   }
 
   return (
-    <div
-      ref={pageRef}
-      className="relative flex-1 min-h-0"
-      style={pageViewportStyle}
-    >
+    <div className="relative flex-1 min-h-0">
       <div
         className="h-full overflow-y-auto pb-24"
         style={{
