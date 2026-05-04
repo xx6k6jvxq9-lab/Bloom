@@ -37,6 +37,7 @@ type DreamAftermathView = {
 
 const DREAM_LATEST_SESSION_KEY = 'dream_app_latest_session';
 const DREAM_BACKGROUND_RESUME_REQUEST_KEY = 'dream_background_resume_request';
+const DREAM_SELECTED_ROLE_KEY = 'dream_selected_role_id';
 
 const BASE_TAG_BATCH_SIZE = 12;
 
@@ -152,6 +153,23 @@ function readPersistedDreamSession(): PersistedDreamSession | null {
   } catch {
     return null;
   }
+}
+
+function readPersistedDreamSelectedRoleId(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(DREAM_SELECTED_ROLE_KEY);
+    const roleId = raw?.trim();
+    return roleId || null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedDreamSelectedRoleId(roleId: string) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DREAM_SELECTED_ROLE_KEY, roleId);
 }
 
 function writePersistedDreamSession(session: PersistedDreamSession) {
@@ -948,7 +966,7 @@ function Home({ time: _time, role: _role, onPickRole: _onPickRole, onEnter: _onE
 function HomeLegacyDeadCode() {
   return (
     <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-      <div className="flex flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))]">
+      <div className="flex min-h-full flex-col">
         <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
@@ -1037,7 +1055,7 @@ function HomeV2({
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
         </div>
         <div className="pt-2 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-4 pb-6 pt-2 text-center sm:justify-center sm:gap-6 sm:py-8">
+        <div className="flex flex-col items-center justify-start gap-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-2 text-center sm:gap-6 sm:py-8">
           <button type="button" onClick={onPickRole}>
             <Avatar role={role} />
           </button>
@@ -1478,7 +1496,7 @@ export function DreamAppPage({
   const roles = useMemo(() => buildRoles(characters), [characters]);
   const [time, setTime] = useState(formatDreamTime);
   const [stage, setStage] = useState<DreamStage>('splash');
-  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(roles[0]?.id ?? null);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(() => readPersistedDreamSelectedRoleId());
   const [entryMode, setEntryMode] = useState<DreamEntryMode>('quick');
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
@@ -1668,11 +1686,9 @@ export function DreamAppPage({
   }, [roles, selectedRoleId]);
 
   useEffect(() => {
-    if (!resumableDream?.roleId) return;
-    if (!roles.some((role) => role.id === resumableDream.roleId)) return;
-    if (selectedRoleId === resumableDream.roleId) return;
-    setSelectedRoleId(resumableDream.roleId);
-  }, [resumableDream?.roleId, roles, selectedRoleId]);
+    if (!selectedRoleId) return;
+    writePersistedDreamSelectedRoleId(selectedRoleId);
+  }, [selectedRoleId]);
 
   useEffect(() => {
     if (stage !== 'splash') return;
@@ -2461,7 +2477,7 @@ export function DreamAppPage({
           </Shell>
         )}
         {(stage === 'home' || stage === 'entry') && (
-          <div className="relative">
+          <div className="relative h-full min-h-0">
           <HomeV2
             time={time}
             role={selectedRole}
