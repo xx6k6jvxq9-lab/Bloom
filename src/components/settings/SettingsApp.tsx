@@ -35,7 +35,7 @@ import {
 import { testApiConnection } from '../../services/ai/apiCenter/testApiConnection';
 import { testTtsVoice } from '../../services/ai/apiCenter/testTtsVoice';
 import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
-import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
+import { KeyboardAwareScreen } from '../../features/app-shell/KeyboardAwareScreen';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
@@ -378,9 +378,7 @@ export function SettingsApp({
   defaultConfig,
   characters,
 }: SettingsAppProps) {
-  const screenRef = useRef<HTMLDivElement | null>(null);
   const voiceSampleInputRef = useRef<HTMLInputElement | null>(null);
-  const { viewportStyle } = useKeyboardSafeViewport({ containerRef: screenRef });
   const { setUploadedFile } = usePersistentFieldActions();
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [editor, setEditor] = useState<EditorState>({
@@ -793,10 +791,9 @@ export function SettingsApp({
   };
 
   return (
-    <motion.div
-      ref={screenRef}
+    <KeyboardAwareScreen
       className="absolute inset-0 flex min-h-0 flex-col bg-[#f7f7f9]"
-      style={viewportStyle}
+      bodyClassName="flex-1 min-h-0 overflow-hidden flex flex-col"
     >
       {view === 'list' ? (
         <>
@@ -1372,6 +1369,6 @@ export function SettingsApp({
           </div>
         </>
       )}
-    </motion.div>
+    </KeyboardAwareScreen>
   );
 }

@@ -10,6 +10,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { PerceptionSettings } from '../../types';
+import { KeyboardAwareScreen } from '../../features/app-shell/KeyboardAwareScreen';
 
 type Props = {
   coupleSpace: any;
@@ -43,12 +44,16 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="flex h-full flex-col bg-zinc-50"
+    <KeyboardAwareScreen
+      className="absolute inset-0 flex h-full flex-col bg-zinc-50"
+      bodyClassName="flex-1 min-h-0 overflow-hidden flex flex-col bg-zinc-50"
     >
+      <motion.div
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        className="flex h-full flex-col bg-zinc-50"
+      >
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200/50 bg-white/80 px-4 pb-4 pt-12 backdrop-blur-md">
         <button
           onClick={onBack}
@@ -161,7 +166,8 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
           />
         </div>
       </div>
-    </motion.div>
+      </motion.div>
+    </KeyboardAwareScreen>
   );
 }
 

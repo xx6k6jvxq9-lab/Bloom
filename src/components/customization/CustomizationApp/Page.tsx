@@ -6,7 +6,7 @@ import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset } 
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
-import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
+import { KeyboardAwareScreen } from '../../../features/app-shell/KeyboardAwareScreen';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
@@ -102,16 +102,13 @@ export function CustomizationApp({
   settings,
   setSettings
 }: CustomizationAppProps) {
-  const screenRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'desktop' | 'chat' | 'theme' | 'data'>('home');
   const [desktopSubTab, setDesktopSubTab] = useState<'wallpaper' | 'icons' | 'layout' | 'widgets' | 'navbar' | 'font'>('wallpaper');
   const [chatSubTab, setChatSubTab] = useState<'avatar' | 'bubble' | 'background' | 'interface' | 'dynamics'>('avatar');
-  const { viewportStyle } = useKeyboardSafeViewport({ containerRef: screenRef });
   return (
-    <div
-      ref={screenRef}
+    <KeyboardAwareScreen
       className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans z-50"
-      style={viewportStyle}
+      bodyClassName="flex-1 overflow-hidden flex flex-col"
     >
       {/* Header */}
       <div
@@ -195,7 +192,7 @@ export function CustomizationApp({
           )}
         </div>
       </div>
-    </div>
+    </KeyboardAwareScreen>
   );
 }
 
