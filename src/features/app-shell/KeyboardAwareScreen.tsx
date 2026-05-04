@@ -1,5 +1,24 @@
-import React, { useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
-import { useKeyboardSafeViewport } from './useKeyboardSafeViewport';
+import React, { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+
+function isTextEntryElement(element: Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (element.isContentEditable) {
+    return true;
+  }
+
+  if (element instanceof HTMLTextAreaElement) {
+    return !element.readOnly && !element.disabled;
+  }
+
+  if (element instanceof HTMLInputElement) {
+    return !element.readOnly && !element.disabled;
+  }
+
+  return false;
+}
 
 type KeyboardAwareScreenProps = {
   children: ReactNode;
@@ -27,7 +46,47 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardVisible, viewportStyle } = useKeyboardSafeViewport({ containerRef: shellRef });
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    if (!hideFooterWhenKeyboardOpen || typeof window === 'undefined' || typeof document === 'undefined') {
+      setKeyboardVisible(false);
+      return undefined;
+    }
+
+    const updateKeyboardVisibility = () => {
+      const shell = shellRef.current;
+      const activeElement = document.activeElement;
+      const ownsFocusedField = !!shell
+        && shell.contains(activeElement)
+        && isTextEntryElement(activeElement);
+      const viewport = window.visualViewport;
+      const keyboardInset = viewport
+        ? Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))
+        : 0;
+      const rootKeyboardVisible = document.documentElement.getAttribute('data-keyboard-open') === 'true';
+
+      setKeyboardVisible(ownsFocusedField && (rootKeyboardVisible || keyboardInset > 120));
+    };
+
+    const scheduleUpdate = () => {
+      window.requestAnimationFrame(updateKeyboardVisibility);
+    };
+
+    updateKeyboardVisibility();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', updateKeyboardVisibility);
+    viewport?.addEventListener('scroll', updateKeyboardVisibility);
+    document.addEventListener('focusin', scheduleUpdate, true);
+    document.addEventListener('focusout', scheduleUpdate, true);
+
+    return () => {
+      viewport?.removeEventListener('resize', updateKeyboardVisibility);
+      viewport?.removeEventListener('scroll', updateKeyboardVisibility);
+      document.removeEventListener('focusin', scheduleUpdate, true);
+      document.removeEventListener('focusout', scheduleUpdate, true);
+    };
+  }, [hideFooterWhenKeyboardOpen]);
 
   const resolvedFooterStyle = footer
     ? {
@@ -47,10 +106,7 @@ export function KeyboardAwareScreen({
     <div
       ref={shellRef}
       className={className}
-      style={{
-        ...(style || {}),
-        ...(viewportStyle || {}),
-      }}
+      style={style}
     >
       {header}
       <div {...bodyProps} className={bodyClassName}>
