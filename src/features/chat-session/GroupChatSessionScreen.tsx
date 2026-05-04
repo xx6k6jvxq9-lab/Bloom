@@ -600,6 +600,9 @@ export function GroupChatSessionScreen({
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [activeGroupFeatureComposer, setActiveGroupFeatureComposer] = useState<'poll' | 'relay' | 'task' | null>(null);
   const [groupPollTitleDraft, setGroupPollTitleDraft] = useState('');
@@ -640,6 +643,8 @@ export function GroupChatSessionScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const lastVisualViewportHeightRef = useRef<number | null>(null);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -661,6 +666,7 @@ export function GroupChatSessionScreen({
   const headerOpacity = group.headerOpacity ?? 0.92;
   const footerStyleType = group.footerStyle || 'default';
   const footerOpacity = group.footerOpacity ?? 0.92;
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
   const hasSharedBubbleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss);
   const hasGroupRoleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
@@ -747,6 +753,127 @@ export function GroupChatSessionScreen({
       setIsInputExpanded(false);
     }
   }, [input, isInputExpanded, isVoiceMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      setKeyboardInset(0);
+      return undefined;
+    }
+
+    const updateViewportMetrics = () => {
+      const layoutHeight = window.innerHeight;
+      const currentViewportHeight = Math.round(viewport.height);
+      const previousViewportHeight = lastVisualViewportHeightRef.current;
+      lastVisualViewportHeightRef.current = currentViewportHeight;
+      const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
+      const nextKeyboardVisible = inset > 120;
+      const rootViewportHeight = typeof document !== 'undefined'
+        ? Number.parseFloat(
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--app-viewport-height')
+            .trim()
+            .replace('px', ''),
+        )
+        : 0;
+      const rootTracksVisualViewport = rootViewportHeight > 0
+        && Math.abs(rootViewportHeight - viewport.height) <= 2;
+
+      setKeyboardVisible(nextKeyboardVisible);
+      setKeyboardInset(!rootTracksVisualViewport && nextKeyboardVisible ? inset : 0);
+
+      const isInputFocused = document.activeElement === textareaRef.current;
+      if (
+        isInputFocused
+        && previousViewportHeight !== null
+        && Math.abs(previousViewportHeight - currentViewportHeight) > 24
+        && scrollRef.current
+      ) {
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        });
+      }
+    };
+
+    updateViewportMetrics();
+    viewport.addEventListener('resize', updateViewportMetrics);
+    viewport.addEventListener('scroll', updateViewportMetrics);
+    window.addEventListener('orientationchange', updateViewportMetrics);
+
+    return () => {
+      viewport.removeEventListener('resize', updateViewportMetrics);
+      viewport.removeEventListener('scroll', updateViewportMetrics);
+      window.removeEventListener('orientationchange', updateViewportMetrics);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!keyboardInset || document.activeElement !== textareaRef.current || !scrollRef.current) {
+      return;
+    }
+
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [keyboardInset]);
+
+  useEffect(() => {
+    if (!isAndroid || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const resetKeyboardInsetIfNeeded = () => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTextInputFocused = activeElement === textareaRef.current || activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
+      if (!isTextInputFocused) {
+        window.setTimeout(() => {
+          setKeyboardInset(0);
+          setKeyboardVisible(false);
+        }, 120);
+      }
+    };
+
+    document.addEventListener('focusout', resetKeyboardInsetIfNeeded, true);
+    return () => {
+      document.removeEventListener('focusout', resetKeyboardInsetIfNeeded, true);
+    };
+  }, [isAndroid]);
+
+  useEffect(() => {
+    const footerNode = chatFooterRef.current;
+    if (!footerNode || typeof window === 'undefined') {
+      return;
+    }
+
+    const updateFooterHeight = () => {
+      const measuredHeight = Math.ceil(footerNode.getBoundingClientRect().height);
+      setChatFooterHeight(measuredHeight > 0 ? measuredHeight : 64);
+    };
+
+    updateFooterHeight();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateFooterHeight);
+      return () => {
+        window.removeEventListener('resize', updateFooterHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateFooterHeight();
+    });
+    observer.observe(footerNode);
+    window.addEventListener('resize', updateFooterHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateFooterHeight);
+    };
+  }, [replyingTo, isVoiceMode, input, editingMessageIndex, showEmojiPanel, showFunPanel, isInputExpanded, settings.visualSettings?.chat?.uiScale]);
 
   const mentionMatch = input.match(/(?:^|\s)@([^\s@]*)$/);
   const mentionQuery = mentionMatch?.[1] ?? '';
@@ -957,6 +1084,20 @@ export function GroupChatSessionScreen({
       }]
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
+  const chatViewportHeight = keyboardVisible
+    ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
+    : 'var(--app-viewport-height, 100dvh)';
+  const chatFooterStyle: React.CSSProperties = {
+    paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
+    ...layoutConfig.inputContainerStyle,
+    ...groupFooterStyle,
+    transition: 'padding-bottom 180ms ease',
+  };
+  const chatMessageListStyle: React.CSSProperties = {
+    minHeight: 0,
+    paddingBottom: '8px',
+    scrollPaddingBottom: `${chatFooterHeight + 12}px`,
+  };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig
     && !isLoading
@@ -2527,7 +2668,11 @@ export function GroupChatSessionScreen({
   return (
     <div
       className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope"
-      style={chatFontFamily ? { fontFamily: chatFontFamily } : undefined}
+      style={{
+        ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
+        height: chatViewportHeight,
+        minHeight: chatViewportHeight,
+      }}
     >
       {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss || groupCharacterBubbleThemeCss || groupChatFontCss) && (
         <style>{[groupBubbleThemeCss, groupModelBubbleThemeCss, groupUserBubbleThemeCss, groupCharacterBubbleThemeCss, groupChatFontCss].filter(Boolean).join('\n\n')}</style>
@@ -2586,7 +2731,7 @@ export function GroupChatSessionScreen({
         </div>
       )}
 
-      <div className={`${layoutConfig.messageListClass} relative z-10`} ref={scrollRef}>
+      <div className={`${layoutConfig.messageListClass} relative z-10`} ref={scrollRef} style={chatMessageListStyle}>
         <div>
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
@@ -3095,7 +3240,7 @@ export function GroupChatSessionScreen({
         </div>
       </div>
 
-      <div className={`chat-session-footer chat-footer ${groupFooterClassName}`} style={{ ...layoutConfig.inputContainerStyle, ...groupFooterStyle }}>
+      <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${groupFooterClassName}`} style={chatFooterStyle}>
         {replyingTo && (
           <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
