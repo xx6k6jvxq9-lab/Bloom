@@ -101,7 +101,7 @@ export function GroupChatManagerPage({
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: createKeyboardVisible } = useKeyboardSafeViewport({
     containerRef: createModalRef,
     enabled: showCreate,
@@ -188,7 +188,7 @@ export function GroupChatManagerPage({
               exit={{ y: '100%' }}
               className="flex max-h-[80vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl sm:w-[90%] sm:rounded-2xl"
               style={{
-                transform: createKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+                transform: manualKeyboardAvoidanceEnabled && createKeyboardVisible && appKeyboardVisible && keyboardInset > 0
                   ? `translateY(-${keyboardInset}px)`
                   : undefined,
                 transition: 'transform 180ms ease',

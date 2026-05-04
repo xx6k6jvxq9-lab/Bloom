@@ -385,7 +385,7 @@ export function ChatSettingsPanel({
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
@@ -1246,7 +1246,7 @@ export function ChatSettingsPanel({
       <div
         className="flex-1 overflow-y-auto pb-10"
         style={{
-          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 20}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',
@@ -2746,7 +2746,7 @@ export function ChatSettingsPanel({
             <div
               className="flex-1 overflow-y-auto pb-6"
               style={{
-                paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+                paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
                   ? `${keyboardInset + 16}px`
                   : undefined,
                 transition: 'padding-bottom 180ms ease',

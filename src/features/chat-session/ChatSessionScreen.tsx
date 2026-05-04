@@ -476,6 +476,7 @@ export function ChatSessionScreen({
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
+    manualKeyboardAvoidanceEnabled,
   } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1472,6 +1473,7 @@ export function ChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
+      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
       || !keyboardInset
       || document.activeElement !== inputTextareaRef.current
@@ -1487,7 +1489,7 @@ export function ChatSessionScreen({
       }
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
+  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1633,7 +1635,7 @@ export function ChatSessionScreen({
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: keyboardVisible && keyboardInset > 0
+    bottom: manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
       ? `${keyboardInset}px`
       : '0px',
     paddingBottom:
@@ -1644,9 +1646,9 @@ export function ChatSessionScreen({
     transition: 'bottom 180ms ease, padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
+    paddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
+    scrollPaddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
 
   if (showSettings) {

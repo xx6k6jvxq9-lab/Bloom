@@ -1079,7 +1079,7 @@ export function AddFriendModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -1093,7 +1093,7 @@ export function AddFriendModal({
       exit={{ opacity: 0, y: 20 }}
       className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
-        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,
         transition: 'transform 180ms ease',
@@ -1154,7 +1154,7 @@ export function GroupManagementModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [newGroup, setNewGroup] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -1168,7 +1168,7 @@ export function GroupManagementModal({
       exit={{ opacity: 0, scale: 0.95 }}
       className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
-        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,
         transition: 'transform 180ms ease',

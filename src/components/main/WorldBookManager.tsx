@@ -136,7 +136,7 @@ export function WorldBookManager({
   const [editForm, setEditForm] = useState<Partial<WorldBookEntry>>(createEmptyForm());
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -307,7 +307,7 @@ export function WorldBookManager({
           <div
             className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4"
             style={{
-              paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+              paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
                 ? `${keyboardInset + 24}px`
                 : undefined,
               transition: 'padding-bottom 180ms ease',

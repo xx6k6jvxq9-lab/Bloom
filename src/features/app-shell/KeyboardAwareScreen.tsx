@@ -27,7 +27,7 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
+  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export function KeyboardAwareScreen({
           || (activeElement instanceof HTMLTextAreaElement && !activeElement.readOnly && !activeElement.disabled)
         );
 
-      setKeyboardVisible(ownsFocusedField && (appKeyboardVisible || keyboardInset > 120));
+      setKeyboardVisible(manualKeyboardAvoidanceEnabled && ownsFocusedField && (appKeyboardVisible || keyboardInset > 120));
     };
 
     const scheduleUpdate = () => {
@@ -63,7 +63,7 @@ export function KeyboardAwareScreen({
       document.removeEventListener('focusin', scheduleUpdate, true);
       document.removeEventListener('focusout', scheduleUpdate, true);
     };
-  }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset]);
+  }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset, manualKeyboardAvoidanceEnabled]);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
@@ -81,7 +81,7 @@ export function KeyboardAwareScreen({
 
   const resolvedBodyStyle: CSSProperties | undefined = {
     ...(bodyProps?.style || {}),
-    ...(keyboardVisible && keyboardInset > 0
+    ...(manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
       ? { paddingBottom: `${keyboardInset}px` }
       : {}),
     transition: 'padding-bottom 180ms ease',

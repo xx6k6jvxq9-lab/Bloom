@@ -62,7 +62,7 @@ export function ForumTempChatView({
   const pendingReply = session.pendingReply;
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -99,7 +99,7 @@ export function ForumTempChatView({
       <div
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3"
         style={{
-          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 16}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',
@@ -154,7 +154,7 @@ export function ForumTempChatView({
       <div
         className="border-t border-zinc-100 px-3 py-2 flex items-center gap-3"
         style={{
-          transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `translateY(-${keyboardInset}px)`
             : 'translateY(0)',
           transition: 'transform 180ms ease',

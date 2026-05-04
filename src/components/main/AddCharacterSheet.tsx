@@ -310,7 +310,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
-  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
+  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -410,7 +410,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       <div
         className="flex-1 overflow-y-auto p-5"
         style={{
-          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 20}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',

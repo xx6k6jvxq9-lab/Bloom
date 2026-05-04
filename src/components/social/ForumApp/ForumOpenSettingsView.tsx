@@ -265,7 +265,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
     threadType: false,
     topics: true,
   });
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -316,7 +316,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
       <div
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8"
         style={{
-          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 20}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',

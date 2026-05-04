@@ -10,6 +10,7 @@ type UseAppEnvironmentResult = {
   keyboardInset: number;
   keyboardVisible: boolean;
   layoutViewportHeight: number;
+  manualKeyboardAvoidanceEnabled: boolean;
   time: string;
   useDesktopStageLayout: boolean;
   visualViewportHeight: number;
@@ -19,6 +20,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [layoutViewportHeight, setLayoutViewportHeight] = useState(0);
+  const [manualKeyboardAvoidanceEnabled, setManualKeyboardAvoidanceEnabled] = useState(false);
   const [time, setTime] = useState('');
   const [isStandalone, setIsStandalone] = useState(false);
   const hasPrefetchedPanelChunksRef = useRef(false);
@@ -40,7 +42,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const manualKeyboardAvoidanceEnabled = isStandalone;
     setIsStandalone(isStandalone);
+    setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
       root.setAttribute('data-android', 'true');
     } else {
@@ -66,6 +70,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         keyboardInset,
         keyboardVisible,
         layoutViewportHeight: Math.round(layoutViewportHeight),
+        manualKeyboardAvoidanceEnabled,
         visualViewportHeight: Math.round(visualViewportHeight),
       });
 
@@ -106,6 +111,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         keyboardInset: 0,
         keyboardVisible: false,
         layoutViewportHeight: 0,
+        manualKeyboardAvoidanceEnabled: false,
         visualViewportHeight: 0,
       });
     };
@@ -204,6 +210,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     keyboardInset,
     keyboardVisible,
     layoutViewportHeight,
+    manualKeyboardAvoidanceEnabled,
     time,
     useDesktopStageLayout,
     visualViewportHeight,

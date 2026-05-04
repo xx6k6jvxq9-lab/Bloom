@@ -91,12 +91,14 @@ function KeyboardDebugOverlay({
   keyboardInset,
   keyboardVisible,
   layoutViewportHeight,
+  manualKeyboardAvoidanceEnabled,
   visualViewportHeight,
 }: {
   activeApp: string;
   keyboardInset: number;
   keyboardVisible: boolean;
   layoutViewportHeight: number;
+  manualKeyboardAvoidanceEnabled: boolean;
   visualViewportHeight: number;
 }) {
   const [enabled, setEnabled] = useState(false);
@@ -181,6 +183,7 @@ function KeyboardDebugOverlay({
     <div className="pointer-events-none absolute bottom-20 right-2 z-[300] max-w-[240px] rounded-2xl bg-black/78 px-3 py-2 text-[10px] leading-5 text-white shadow-2xl backdrop-blur-md">
       <div>app: {activeApp}</div>
       <div>kbd: {keyboardVisible ? 'open' : 'closed'}</div>
+      <div>manual: {manualKeyboardAvoidanceEnabled ? 'on' : 'off'}</div>
       <div>inset: {keyboardInset}</div>
       <div>layoutVH: {layoutViewportHeight}</div>
       <div>visualVH: {visualViewportHeight}</div>
@@ -220,6 +223,7 @@ export default function App() {
     keyboardInset,
     keyboardVisible,
     layoutViewportHeight,
+    manualKeyboardAvoidanceEnabled,
     time,
     useDesktopStageLayout,
     visualViewportHeight,
@@ -636,6 +640,7 @@ export default function App() {
           keyboardInset={keyboardInset}
           keyboardVisible={keyboardVisible}
           layoutViewportHeight={layoutViewportHeight}
+          manualKeyboardAvoidanceEnabled={manualKeyboardAvoidanceEnabled}
           visualViewportHeight={visualViewportHeight}
         />
       </div>

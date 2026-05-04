@@ -648,6 +648,7 @@ export function GroupChatSessionScreen({
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
+    manualKeyboardAvoidanceEnabled,
   } = useAppKeyboard();
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
@@ -760,6 +761,7 @@ export function GroupChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
+      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
       || !keyboardInset
       || document.activeElement !== textareaRef.current
@@ -775,7 +777,7 @@ export function GroupChatSessionScreen({
       chatFooterRef.current?.scrollIntoView({ block: 'end' });
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
+  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1021,7 +1023,7 @@ export function GroupChatSessionScreen({
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: keyboardVisible && keyboardInset > 0
+    bottom: manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
       ? `${keyboardInset}px`
       : '0px',
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
@@ -1031,8 +1033,8 @@ export function GroupChatSessionScreen({
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
-    scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
+    paddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
+    scrollPaddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig

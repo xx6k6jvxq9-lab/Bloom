@@ -255,7 +255,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
   const [tempUrl, setTempUrl] = useState('');
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedTempAvatarUrl } = useResolvedPersistentValue(tempProfile.avatar);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
@@ -272,7 +272,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
       <div
         className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-5 [webkit-overflow-scrolling:touch]"
         style={{
-          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 24}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',

@@ -134,7 +134,7 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
   const { keyboardVisible: publishKeyboardVisible } = useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
@@ -506,7 +506,7 @@ export function MomentsApp({
         <div
           className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4"
           style={{
-            paddingBottom: publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+            paddingBottom: manualKeyboardAvoidanceEnabled && publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
               ? `${keyboardInset + 16}px`
               : undefined,
             transition: 'padding-bottom 180ms ease',
@@ -898,7 +898,7 @@ export function MomentsApp({
           <div
             className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
             style={{
-              transform: commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+              transform: manualKeyboardAvoidanceEnabled && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
                 ? `translateY(-${keyboardInset}px)`
                 : 'translateY(0)',
               transition: 'transform 180ms ease',
