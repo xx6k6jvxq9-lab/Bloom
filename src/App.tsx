@@ -86,122 +86,6 @@ import {
   resolveCurrentCoupleSpace,
 } from './features/persistence/coupleSpaceStore';
 
-function KeyboardDebugOverlay({
-  activeApp,
-  keyboardInset,
-  keyboardVisible,
-  layoutViewportHeight,
-  manualKeyboardAvoidanceEnabled,
-  visualViewportHeight,
-}: {
-  activeApp: string;
-  keyboardInset: number;
-  keyboardVisible: boolean;
-  layoutViewportHeight: number;
-  manualKeyboardAvoidanceEnabled: boolean;
-  visualViewportHeight: number;
-}) {
-  const [enabled, setEnabled] = useState(false);
-  const [snapshot, setSnapshot] = useState({
-    scrollY: 0,
-    visualOffsetTop: 0,
-    footerTop: 0,
-    footerBottom: 0,
-    footerHeight: 0,
-    focusedTag: '',
-    focusedTop: 0,
-    focusedBottom: 0,
-    rootViewport: '',
-    rootVisibleViewport: '',
-    rootKeyboardInset: '',
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const queryEnabled = params.get('keyboardDebug') === '1';
-    const storageEnabled = window.localStorage.getItem('keyboard_debug_overlay') === '1';
-    setEnabled(queryEnabled || storageEnabled);
-  }, []);
-
-  useEffect(() => {
-    if (!enabled || typeof window === 'undefined' || typeof document === 'undefined') {
-      return undefined;
-    }
-
-    const updateSnapshot = () => {
-      const viewport = window.visualViewport;
-      const rootStyle = getComputedStyle(document.documentElement);
-      const footer = document.querySelector<HTMLElement>('.chat-session-footer, .forum-app-bottom-nav');
-      const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const footerRect = footer?.getBoundingClientRect();
-      const focusedRect = focused?.getBoundingClientRect();
-
-      setSnapshot({
-        scrollY: Math.round(window.scrollY || 0),
-        visualOffsetTop: Math.round(viewport?.offsetTop || 0),
-        footerTop: Math.round(footerRect?.top || 0),
-        footerBottom: Math.round(footerRect?.bottom || 0),
-        footerHeight: Math.round(footerRect?.height || 0),
-        focusedTag: focused?.tagName?.toLowerCase() || '',
-        focusedTop: Math.round(focusedRect?.top || 0),
-        focusedBottom: Math.round(focusedRect?.bottom || 0),
-        rootViewport: rootStyle.getPropertyValue('--app-viewport-height').trim(),
-        rootVisibleViewport: rootStyle.getPropertyValue('--app-visible-viewport-height').trim(),
-        rootKeyboardInset: rootStyle.getPropertyValue('--app-keyboard-inset').trim(),
-      });
-    };
-
-    updateSnapshot();
-
-    const viewport = window.visualViewport;
-    viewport?.addEventListener('resize', updateSnapshot);
-    viewport?.addEventListener('scroll', updateSnapshot);
-    window.addEventListener('resize', updateSnapshot);
-    window.addEventListener('scroll', updateSnapshot, true);
-    document.addEventListener('focusin', updateSnapshot, true);
-    document.addEventListener('focusout', updateSnapshot, true);
-
-    return () => {
-      viewport?.removeEventListener('resize', updateSnapshot);
-      viewport?.removeEventListener('scroll', updateSnapshot);
-      window.removeEventListener('resize', updateSnapshot);
-      window.removeEventListener('scroll', updateSnapshot, true);
-      document.removeEventListener('focusin', updateSnapshot, true);
-      document.removeEventListener('focusout', updateSnapshot, true);
-    };
-  }, [enabled, activeApp, keyboardInset, keyboardVisible, layoutViewportHeight, visualViewportHeight]);
-
-  if (!enabled) {
-    return null;
-  }
-
-  return (
-    <div className="pointer-events-none absolute bottom-20 right-2 z-[300] max-w-[240px] rounded-2xl bg-black/78 px-3 py-2 text-[10px] leading-5 text-white shadow-2xl backdrop-blur-md">
-      <div>app: {activeApp}</div>
-      <div>kbd: {keyboardVisible ? 'open' : 'closed'}</div>
-      <div>manual: {manualKeyboardAvoidanceEnabled ? 'on' : 'off'}</div>
-      <div>inset: {keyboardInset}</div>
-      <div>layoutVH: {layoutViewportHeight}</div>
-      <div>visualVH: {visualViewportHeight}</div>
-      <div>vvTop: {snapshot.visualOffsetTop}</div>
-      <div>scrollY: {snapshot.scrollY}</div>
-      <div>footerTop: {snapshot.footerTop}</div>
-      <div>footerBottom: {snapshot.footerBottom}</div>
-      <div>footerHeight: {snapshot.footerHeight}</div>
-      <div>focus: {snapshot.focusedTag || 'none'}</div>
-      <div>focusTop: {snapshot.focusedTop}</div>
-      <div>focusBottom: {snapshot.focusedBottom}</div>
-      <div>cssVH: {snapshot.rootViewport || 'n/a'}</div>
-      <div>cssVisibleVH: {snapshot.rootVisibleViewport || 'n/a'}</div>
-      <div>cssInset: {snapshot.rootKeyboardInset || 'n/a'}</div>
-    </div>
-  );
-}
-
 export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -220,10 +104,8 @@ export default function App() {
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const {
     isStandalone,
-    keyboardInset,
     keyboardVisible,
     layoutViewportHeight,
-    manualKeyboardAvoidanceEnabled,
     time,
     useDesktopStageLayout,
     visualViewportHeight,
@@ -635,14 +517,6 @@ export default function App() {
           </div>
         )}
 
-        <KeyboardDebugOverlay
-          activeApp={activeApp}
-          keyboardInset={keyboardInset}
-          keyboardVisible={keyboardVisible}
-          layoutViewportHeight={layoutViewportHeight}
-          manualKeyboardAvoidanceEnabled={manualKeyboardAvoidanceEnabled}
-          visualViewportHeight={visualViewportHeight}
-        />
       </div>
     </div>
   );

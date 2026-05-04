@@ -5,13 +5,11 @@ import { containerOwnsFocusedTextEntry } from './keyboardUtils';
 type UseKeyboardSafeViewportOptions = {
   containerRef: RefObject<HTMLElement | null>;
   enabled?: boolean;
-  thresholdPx?: number;
 };
 
 export function useKeyboardSafeViewport({
   containerRef,
   enabled = true,
-  thresholdPx: _thresholdPx = 12,
 }: UseKeyboardSafeViewportOptions) {
   const {
     keyboardVisible: appKeyboardVisible,
