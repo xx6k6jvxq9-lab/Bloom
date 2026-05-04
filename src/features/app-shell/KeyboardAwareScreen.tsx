@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+import { useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { useAppKeyboard } from './AppKeyboardContext';
+import { useKeyboardSafeViewport } from './useKeyboardSafeViewport';
 
 type KeyboardAwareScreenProps = {
   children: ReactNode;
@@ -28,42 +29,11 @@ export function KeyboardAwareScreen({
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    if (!hideFooterWhenKeyboardOpen || typeof document === 'undefined') {
-      setKeyboardVisible(false);
-      return undefined;
-    }
-
-    const updateKeyboardVisibility = () => {
-      const shell = shellRef.current;
-      const activeElement = document.activeElement;
-      const ownsFocusedField = !!shell
-        && activeElement instanceof HTMLElement
-        && shell.contains(activeElement)
-        && (
-          activeElement.isContentEditable
-          || (activeElement instanceof HTMLInputElement && !activeElement.readOnly && !activeElement.disabled)
-          || (activeElement instanceof HTMLTextAreaElement && !activeElement.readOnly && !activeElement.disabled)
-        );
-
-      setKeyboardVisible(manualKeyboardAvoidanceEnabled && ownsFocusedField && (appKeyboardVisible || keyboardInset > 120));
-    };
-
-    const scheduleUpdate = () => {
-      window.requestAnimationFrame(updateKeyboardVisibility);
-    };
-
-    updateKeyboardVisibility();
-    document.addEventListener('focusin', scheduleUpdate, true);
-    document.addEventListener('focusout', scheduleUpdate, true);
-
-    return () => {
-      document.removeEventListener('focusin', scheduleUpdate, true);
-      document.removeEventListener('focusout', scheduleUpdate, true);
-    };
-  }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset, manualKeyboardAvoidanceEnabled]);
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef: shellRef,
+    enabled: hideFooterWhenKeyboardOpen || manualKeyboardAvoidanceEnabled,
+  });
+  const keyboardVisible = ownsFocusedKeyboard && (appKeyboardVisible || keyboardInset > 120);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
