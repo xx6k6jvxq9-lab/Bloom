@@ -10,7 +10,10 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react';
+import { useRef } from 'react';
 import type { ForumComment, ForumPost } from '../../../types';
+import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumCommentItem } from './ForumCommentItem';
 import { ForumResolvedImage } from './ForumResolvedImage';
 import { ForumReplyComposer } from './ForumReplyComposer';
@@ -75,6 +78,7 @@ type ForumPostDetailViewProps = {
 };
 
 export function ForumPostDetailView(props: ForumPostDetailViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const {
     post,
     author,
@@ -129,9 +133,14 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
 
   const postImages = post.images || [];
   const hotBadge = getForumHotBadgeLabel(post);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
-    <div className="bg-white h-full min-h-0 flex flex-col relative">
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col relative">
       <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-2 flex items-center gap-6" style={topInsetStyle}>
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
           <ArrowLeft size={20} />
@@ -139,7 +148,15 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
         <h2 className="font-bold text-lg text-zinc-900">帖子</h2>
       </div>
 
-      <div className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-6">
+      <div
+        className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-6"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 24}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <button className="shrink-0" onClick={() => onOpenAuthor(author.id)}>

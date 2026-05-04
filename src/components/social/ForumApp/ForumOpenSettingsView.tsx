@@ -1,5 +1,7 @@
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { FORUM_CHANNEL_TABS, FORUM_FILTER_THREAD_TYPES } from '../../../features/forum-domain/forumPresentation';
 import { FORUM_THREAD_TYPE_LABELS } from '../../../features/forum-domain/constants';
 import type { ForumChannel, ForumThreadType } from '../../../features/forum-domain/types';
@@ -232,6 +234,7 @@ function InputGroup(props: {
 }
 
 export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const {
     mode,
     selectedChannels,
@@ -262,6 +265,11 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
     threadType: false,
     topics: true,
   });
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   const toggleSection = (section: SectionKey) => {
     setExpandedSections((current) => ({
@@ -282,7 +290,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
     : '未填';
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
+    <div ref={containerRef} className="flex h-full min-h-0 flex-col bg-white">
       <div
         className="sticky top-0 z-10 flex items-center justify-between bg-white/90 px-4 pb-3 backdrop-blur-md"
         style={topInsetStyle}
@@ -305,7 +313,15 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8">
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 20}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <section className="rounded-2xl border border-zinc-200 bg-white">
           <button type="button" onClick={() => toggleSection('mode')} className="flex w-full items-center justify-between px-4 py-3 text-left">
             <span className="text-[13px] font-bold text-zinc-900">模式</span>

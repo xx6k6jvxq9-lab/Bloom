@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Pencil, Link2, Upload, RefreshCw, ChevronRight, 
@@ -21,6 +21,8 @@ import {
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
 import { sanitizePreviewText } from '../../features/app-shell/formatMessagePreview';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 
 type MePageProps = {
@@ -248,19 +250,34 @@ export function MePage({
 }
 
 function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfile: UserProfileExtended, setUserProfile: (p: UserProfileExtended) => void, onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [tempProfile, setTempProfile] = useState(userProfile);
   const [tempUrl, setTempUrl] = useState('');
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedTempAvatarUrl } = useResolvedPersistentValue(tempProfile.avatar);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
     <motion.div
+      ref={containerRef}
       initial={{ opacity: 0, x: 24 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 24 }}
       className="absolute inset-0 z-[110] flex flex-col bg-white"
     >
-      <div className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-5 [webkit-overflow-scrolling:touch]">
+      <div
+        className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-5 [webkit-overflow-scrolling:touch]"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 24}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <div className="space-y-5">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-[18px] font-bold text-zinc-900">编辑个人资料</h3>

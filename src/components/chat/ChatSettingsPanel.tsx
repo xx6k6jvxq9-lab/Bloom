@@ -29,6 +29,8 @@ import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import {
   extractCompatibleChatSettingsImport,
   parseJsonWithCompatibility,
@@ -380,8 +382,14 @@ export function ChatSettingsPanel({
   const [voiceClonePreviewUrl, setVoiceClonePreviewUrl] = useState('');
   const [voiceLibrary, setVoiceLibrary] = useState<MinimaxVoiceRecord[]>([]);
   const [isFetchingVoiceLibrary, setIsFetchingVoiceLibrary] = useState(false);
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef: panelRef,
+    enabled: true,
+  });
 
   if (!character) return null;
 
@@ -1145,6 +1153,7 @@ export function ChatSettingsPanel({
 
   return (
     <motion.div 
+      ref={panelRef}
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
@@ -1234,7 +1243,15 @@ export function ChatSettingsPanel({
         <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">聊天设置</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-10">
+      <div
+        className="flex-1 overflow-y-auto pb-10"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 20}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <div className="px-4 pt-6 flex flex-col gap-3">
             <button
               onClick={() => setExpandedSection(prev => (prev === 'basic' ? null : 'basic'))}
@@ -2726,7 +2743,15 @@ export function ChatSettingsPanel({
               <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">编辑角色设定</h1>
             </div>
 
-            <div className="flex-1 overflow-y-auto pb-6">
+            <div
+              className="flex-1 overflow-y-auto pb-6"
+              style={{
+                paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+                  ? `${keyboardInset + 16}px`
+                  : undefined,
+                transition: 'padding-bottom 180ms ease',
+              }}
+            >
               <SettingsSection
                 title="核心人设"
                 summary="角色是谁、基本气质和稳定关系姿态"

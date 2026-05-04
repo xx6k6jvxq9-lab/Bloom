@@ -58,10 +58,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const visualViewportHeight = viewport?.height ?? layoutViewportHeight;
       const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
       const keyboardVisible = keyboardInset > 120;
-      const resolvedShellViewportHeight = isStandalone
-        ? layoutViewportHeight
-        : visualViewportHeight;
-
       setLayoutViewportHeight(Math.round(layoutViewportHeight));
       setVisualViewportHeight(Math.round(visualViewportHeight));
       setKeyboardInset(keyboardInset);
@@ -73,11 +69,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         visualViewportHeight: Math.round(visualViewportHeight),
       });
 
-      // In browser mode the shell should follow the visible viewport so the
-      // whole mock phone chrome stays attached to the keyboard. Standalone
-      // mode still uses the layout viewport to preserve painted safe areas.
+      // The shell itself should keep the stable layout viewport height. The
+      // visible viewport and keyboard inset are published separately so input
+      // bars can move without collapsing the whole page into half-height.
       root.style.setProperty('--app-layout-viewport-height', `${Math.round(layoutViewportHeight)}px`);
-      root.style.setProperty('--app-viewport-height', `${Math.round(resolvedShellViewportHeight)}px`);
+      root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
       root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
       root.style.setProperty('--app-keyboard-inset', `${keyboardInset}px`);
       if (keyboardVisible) {

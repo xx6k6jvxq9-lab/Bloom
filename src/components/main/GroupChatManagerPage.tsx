@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BellOff, Check, ChevronLeft, Pin, Plus, Trash2, Users, X } from 'lucide-react';
 import type { Character, ChatGroup } from '../../types';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { showInAppConfirm } from '../../utils';
@@ -94,9 +96,16 @@ export function GroupChatManagerPage({
   onDeleteGroup: (id: string) => void;
   onBack: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const createModalRef = useRef<HTMLDivElement | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: createKeyboardVisible } = useKeyboardSafeViewport({
+    containerRef: createModalRef,
+    enabled: showCreate,
+  });
 
   const closeCreateModal = () => {
     setShowCreate(false);
@@ -105,7 +114,7 @@ export function GroupChatManagerPage({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-zinc-50">
+    <div ref={containerRef} className="absolute inset-0 z-50 flex flex-col bg-zinc-50">
       <div className="flex min-h-[64px] items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 pt-12">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
@@ -173,10 +182,17 @@ export function GroupChatManagerPage({
         {showCreate && (
           <div className="absolute inset-0 z-[60] flex items-end justify-center bg-black/20 backdrop-blur-sm sm:items-center">
             <motion.div
+              ref={createModalRef}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               className="flex max-h-[80vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl sm:w-[90%] sm:rounded-2xl"
+              style={{
+                transform: createKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+                  ? `translateY(-${keyboardInset}px)`
+                  : undefined,
+                transition: 'transform 180ms ease',
+              }}
             >
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-[18px] font-bold">创建群聊</h2>

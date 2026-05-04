@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ChevronLeft, Search, UserPlus, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { FriendRequest } from '../../types';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 
 function ResolvedNewFriendAvatar({
@@ -35,10 +37,16 @@ export function NewFriendsPage({
   onAddById: (id: string) => void;
   onBack: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
-    <div className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
+    <div ref={containerRef} className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
       {/* Header */}
       <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center gap-2 bg-white border-b border-zinc-100">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
@@ -68,7 +76,15 @@ export function NewFriendsPage({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 16}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <div className="px-4 py-2 text-[13px] text-zinc-500">好友申请</div>
         {requests.length === 0 ? (
           <div className="text-center py-10 text-zinc-400 text-sm">暂无好友申请</div>

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -113,6 +115,8 @@ export function MomentsApp({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   settings: AppSettings;
 }) {
+  const publishRef = useRef<HTMLDivElement | null>(null);
+  const commentComposerRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,6 +134,15 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: publishKeyboardVisible } = useKeyboardSafeViewport({
+    containerRef: publishRef,
+    enabled: showPublish,
+  });
+  const { keyboardVisible: commentKeyboardVisible } = useKeyboardSafeViewport({
+    containerRef: commentComposerRef,
+    enabled: !!commentingOn,
+  });
 
   const { userProfile, moments, characters } = appData;
   const forumConfig = resolveSceneTextApiConfig({
@@ -474,6 +487,7 @@ export function MomentsApp({
   if (showPublish) {
     return (
       <div
+        ref={publishRef}
         className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
       >
         <div
@@ -489,7 +503,15 @@ export function MomentsApp({
             发表
           </button>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4"
+          style={{
+            paddingBottom: publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+              ? `${keyboardInset + 16}px`
+              : undefined,
+            transition: 'padding-bottom 180ms ease',
+          }}
+        >
           <textarea
             value={publishContent}
             onChange={(e) => setPublishContent(e.target.value)}
@@ -870,9 +892,18 @@ export function MomentsApp({
 
       {commentingOn && activeCommentMoment && (
         <div
+          ref={commentComposerRef}
           className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
         >
-          <div className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]">
+          <div
+            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
+            style={{
+              transform: commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+                ? `translateY(-${keyboardInset}px)`
+                : 'translateY(0)',
+              transition: 'transform 180ms ease',
+            }}
+          >
             <div className="mx-auto flex max-w-[560px] flex-col gap-2">
             <div className="flex items-center justify-between gap-3 px-1">
               <div className="min-w-0 text-[12px] text-zinc-500">

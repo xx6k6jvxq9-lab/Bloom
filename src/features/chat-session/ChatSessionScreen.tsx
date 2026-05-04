@@ -1631,24 +1631,22 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const chatViewportHeight = keyboardVisible
-    ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
-    : 'var(--app-viewport-height, 100dvh)';
+  const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
-      // The chat screen already switches its own height to the visual viewport
-      // while the keyboard is open, so adding the keyboard inset here would
-      // enlarge the footer itself and create a blank gap above the keyboard.
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
+    transform: keyboardVisible && keyboardInset > 0
+      ? `translateY(-${keyboardInset}px)`
+      : 'translateY(0)',
     ...footerStyleObj,
-    transition: 'padding-bottom 180ms ease',
+    transition: 'padding-bottom 180ms ease, transform 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: '8px',
+    paddingBottom: `${keyboardVisible && keyboardInset > 0 ? keyboardInset + 8 : 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + 12}px`,
+    scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
 
   if (showSettings) {

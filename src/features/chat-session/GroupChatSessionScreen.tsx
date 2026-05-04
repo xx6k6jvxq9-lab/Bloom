@@ -1019,19 +1019,20 @@ export function GroupChatSessionScreen({
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const chatViewportHeight = keyboardVisible
-    ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
-    : 'var(--app-viewport-height, 100dvh)';
+  const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
+    transform: keyboardVisible && keyboardInset > 0
+      ? `translateY(-${keyboardInset}px)`
+      : 'translateY(0)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
-    transition: 'padding-bottom 180ms ease',
+    transition: 'padding-bottom 180ms ease, transform 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: '8px',
-    scrollPaddingBottom: `${chatFooterHeight + 12}px`,
+    paddingBottom: `${keyboardVisible && keyboardInset > 0 ? keyboardInset + 8 : 8}px`,
+    scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig

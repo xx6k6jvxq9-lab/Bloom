@@ -6,6 +6,7 @@ import { extractImageUrls } from '../../utils';
 import { extractCompatibleCharacterImport } from '../../features/import/importCompat';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 
 type AddCharacterSheetProps = {
@@ -309,7 +310,8 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
-  const { viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -392,7 +394,6 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
     <motion.div
       ref={containerRef}
       className="absolute inset-0 z-50 flex flex-col bg-white"
-      style={viewportStyle}
     >
       <div className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 pt-12 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -406,7 +407,15 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <div
+        className="flex-1 overflow-y-auto p-5"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 20}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         {view === 'edit' ? (
           <div className="space-y-6">
             <div className="bg-white rounded-[28px] border border-zinc-100 shadow-sm p-5 flex flex-col items-center gap-4">

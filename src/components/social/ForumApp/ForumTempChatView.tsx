@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { ForumTempChatSession } from '../../../types';
+import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumResolvedImage } from './ForumResolvedImage';
 
 type ForumTempChatViewProps = {
@@ -56,12 +58,18 @@ export function ForumTempChatView({
   onSend,
   topInsetStyle,
 }: ForumTempChatViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const pendingReply = session.pendingReply;
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
-    <div className="bg-white h-full min-h-0 flex flex-col">
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
       <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 pb-3 flex items-center justify-between" style={topInsetStyle}>
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
@@ -88,7 +96,15 @@ export function ForumTempChatView({
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 16}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         {sortedMessages.map((message, index) => {
           const isUser = message.role === 'user';
           const previousTimestamp = index > 0 ? sortedMessages[index - 1].timestamp : null;
@@ -135,7 +151,15 @@ export function ForumTempChatView({
         )}
       </div>
 
-      <div className="border-t border-zinc-100 px-3 py-2 flex items-center gap-3">
+      <div
+        className="border-t border-zinc-100 px-3 py-2 flex items-center gap-3"
+        style={{
+          transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `translateY(-${keyboardInset}px)`
+            : 'translateY(0)',
+          transition: 'transform 180ms ease',
+        }}
+      >
         <ForumResolvedImage value={currentUserAvatar} className="h-8 w-8 rounded-full object-cover" />
         <input
           type="text"

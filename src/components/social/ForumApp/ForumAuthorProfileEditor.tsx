@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
+import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumResolvedImage } from './ForumResolvedImage';
 
 type ForumAuthorProfileEditorProps = {
@@ -29,8 +31,15 @@ export function ForumAuthorProfileEditor({
   onChangeHandle,
   onChangeBio,
 }: ForumAuthorProfileEditorProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
+
   return (
-    <div className="bg-white h-full min-h-0 flex flex-col">
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
       <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={topInsetStyle}>
         <div className="flex items-center gap-6">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
@@ -48,7 +57,15 @@ export function ForumAuthorProfileEditor({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
+        style={{
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 16}px`
+            : undefined,
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
         <div className="flex items-center gap-4 rounded-[24px] border border-zinc-100 bg-zinc-50/70 p-4">
           <ForumResolvedImage value={avatar} className="w-16 h-16 rounded-full border-2 border-white object-cover shadow-sm shrink-0" />
           <div className="min-w-0">

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Book, Check, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import type { WorldBookEntry } from '../../types';
+import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
   getWorldBookPriorityLabel,
@@ -132,6 +134,13 @@ export function WorldBookManager({
   });
 
   const [editForm, setEditForm] = useState<Partial<WorldBookEntry>>(createEmptyForm());
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   const categories = [
     '全部',
@@ -282,7 +291,7 @@ export function WorldBookManager({
   };
 
   return (
-    <div className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
+    <div ref={containerRef} className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       {showAdd ? (
         <div className={`flex h-full min-h-0 flex-1 flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
           <div className={`flex items-center justify-between border-b px-4 pb-4 pt-12 ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>
@@ -295,7 +304,15 @@ export function WorldBookManager({
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4">
+          <div
+            className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4"
+            style={{
+              paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+                ? `${keyboardInset + 24}px`
+                : undefined,
+              transition: 'padding-bottom 180ms ease',
+            }}
+          >
             <div className="space-y-1.5">
               <label className="text-[13px] text-zinc-500">标题</label>
               <input

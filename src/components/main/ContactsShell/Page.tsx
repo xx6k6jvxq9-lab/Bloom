@@ -1,8 +1,11 @@
 ﻿import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { useMemo } from 'react';
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppData, AppSettings, Character, ChatGroup, FriendRequest, MomentComment, MomentItem } from '../../../types';
+import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR } from '../../../utils';
@@ -1074,14 +1077,27 @@ export function AddFriendModal({
   onClose: () => void; 
   onAdd: (char: any) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState('');
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
     <motion.div 
+      ref={containerRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      style={{
+        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          ? `translateY(-${keyboardInset}px)`
+          : undefined,
+        transition: 'transform 180ms ease',
+      }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">添加 AI 好友</h2>
@@ -1136,14 +1152,27 @@ export function GroupManagementModal({
   onDelete: (name: string) => void; 
   onClose: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [newGroup, setNewGroup] = useState('');
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   return (
     <motion.div 
+      ref={containerRef}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      style={{
+        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          ? `translateY(-${keyboardInset}px)`
+          : undefined,
+        transition: 'transform 180ms ease',
+      }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">管理分组</h2>
