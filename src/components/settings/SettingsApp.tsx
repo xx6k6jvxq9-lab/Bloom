@@ -35,6 +35,7 @@ import {
 import { testApiConnection } from '../../services/ai/apiCenter/testApiConnection';
 import { testTtsVoice } from '../../services/ai/apiCenter/testTtsVoice';
 import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
@@ -377,7 +378,9 @@ export function SettingsApp({
   defaultConfig,
   characters,
 }: SettingsAppProps) {
+  const screenRef = useRef<HTMLDivElement | null>(null);
   const voiceSampleInputRef = useRef<HTMLInputElement | null>(null);
+  const { viewportStyle } = useKeyboardSafeViewport({ containerRef: screenRef });
   const { setUploadedFile } = usePersistentFieldActions();
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [editor, setEditor] = useState<EditorState>({
@@ -790,7 +793,11 @@ export function SettingsApp({
   };
 
   return (
-    <motion.div className="absolute inset-0 flex min-h-0 flex-col bg-[#f7f7f9]">
+    <motion.div
+      ref={screenRef}
+      className="absolute inset-0 flex min-h-0 flex-col bg-[#f7f7f9]"
+      style={viewportStyle}
+    >
       {view === 'list' ? (
         <>
           <div className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3 pt-12">

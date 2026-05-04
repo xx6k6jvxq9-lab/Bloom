@@ -1,10 +1,12 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
@@ -100,11 +102,17 @@ export function CustomizationApp({
   settings,
   setSettings
 }: CustomizationAppProps) {
+  const screenRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'desktop' | 'chat' | 'theme' | 'data'>('home');
   const [desktopSubTab, setDesktopSubTab] = useState<'wallpaper' | 'icons' | 'layout' | 'widgets' | 'navbar' | 'font'>('wallpaper');
   const [chatSubTab, setChatSubTab] = useState<'avatar' | 'bubble' | 'background' | 'interface' | 'dynamics'>('avatar');
+  const { viewportStyle } = useKeyboardSafeViewport({ containerRef: screenRef });
   return (
-    <div className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans z-50">
+    <div
+      ref={screenRef}
+      className="absolute inset-0 bg-zinc-50 text-zinc-900 flex flex-col font-sans z-50"
+      style={viewportStyle}
+    >
       {/* Header */}
       <div
         className="flex items-center justify-between border-b border-zinc-100 bg-white px-4 pb-4 shadow-sm relative z-10"
