@@ -217,6 +217,7 @@ export default function App() {
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const {
     isStandalone,
+    keyboardInset,
     keyboardVisible,
     layoutViewportHeight,
     time,
