@@ -4,10 +4,6 @@ html {
   --app-active-viewport-height: var(--app-viewport-height, 100dvh);
 }
 
-html[data-keyboard-open='true'] {
-  --app-active-viewport-height: var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh));
-}
-
 html,
 body,
 #root {
@@ -40,6 +36,7 @@ body {
   isolation: isolate;
   --app-safe-area-bottom: 0px;
   --app-safe-area-bottom-ui: 0px;
+  background-color: inherit;
 }
 
 /* Prevent iOS Safari/PWA from auto-zooming focused form fields. */
@@ -61,6 +58,16 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   align-self: stretch;
+  background-color: inherit;
+}
+
+.app-active-viewport-screen {
+  height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
+  min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
+}
+
+.app-active-viewport-max {
+  max-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
 }
 
 .phone-screen-root.is-dating-scene {

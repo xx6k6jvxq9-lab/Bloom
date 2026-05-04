@@ -2514,8 +2514,7 @@ export default function MusicApp({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-0 z-[100] flex flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
-      style={{ minHeight: "100dvh", height: "100dvh" }}
+      className="app-active-viewport-screen absolute inset-0 z-[100] flex flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
     >
       {/* Main Content */}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">

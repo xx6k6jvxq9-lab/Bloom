@@ -1231,6 +1231,11 @@ export function SettingsApp({
                   type="text"
                   value={currentConfigForm.baseUrl}
                   onChange={(event) => updateCurrentConfig({ baseUrl: event.target.value })}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="url"
                   placeholder="https://api.openai.com/v1"
                   className="w-full rounded-xl border border-zinc-100 bg-zinc-50 py-3 pl-10 pr-3 text-[15px] text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-blue-500"
                 />

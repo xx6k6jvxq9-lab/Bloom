@@ -81,11 +81,12 @@ export function LoveLetterDetailPage({
       className="relative flex-1 overflow-y-auto no-scrollbar"
     >
       <div
-        className={`relative min-h-[100dvh] w-full overflow-hidden ${paperStyle.bgColor}`}
+        className={`relative w-full overflow-hidden ${paperStyle.bgColor}`}
         style={{
           backgroundImage: paperStyle.bg,
           backgroundSize: 'cover',
           backgroundPosition: 'center top',
+          minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
         }}
       >
         <div

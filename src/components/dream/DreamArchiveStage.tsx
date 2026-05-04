@@ -75,7 +75,14 @@ export function DreamArchiveStage({
     const aftermath = scenario.aftermathOutput;
 
     return (
-      <div className="relative h-[100dvh] min-h-[100dvh] w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]" style={archiveThemeStyle}>
+      <div
+        className="relative w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]"
+        style={{
+          ...archiveThemeStyle,
+          minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
+          height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
+        }}
+      >
         <div className="flex items-center justify-between text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />
@@ -145,7 +152,14 @@ export function DreamArchiveStage({
   }
 
   return (
-    <div className="relative h-[100dvh] min-h-[100dvh] w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]" style={archiveThemeStyle}>
+    <div
+      className="relative w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]"
+      style={{
+        ...archiveThemeStyle,
+        minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
+        height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
+      }}
+    >
       <div className="flex items-center justify-between text-[12px] tracking-[0.08em] text-[var(--mist)]">
         <div>{time}</div>
         <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />

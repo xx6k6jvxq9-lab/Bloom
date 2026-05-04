@@ -379,8 +379,7 @@ export function TogetherChatPanel({
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
-      className="chat-bubble-theme-scope absolute inset-0 z-[200] flex flex-col overflow-hidden bg-zinc-50"
-      style={{ minHeight: "100dvh", height: "100dvh" }}
+      className="chat-bubble-theme-scope app-active-viewport-screen absolute inset-0 z-[200] flex flex-col overflow-hidden bg-zinc-50"
     >
       <style>{directBubbleThemeCss}</style>
       <style>{directModelBubbleThemeCss}</style>
