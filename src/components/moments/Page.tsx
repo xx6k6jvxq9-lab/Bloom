@@ -893,7 +893,7 @@ export function MomentsApp({
       {overlayHost && commentingOn && activeCommentMoment && createPortal(
         <div
           ref={commentComposerRef}
-          className="absolute inset-x-0 top-0 z-[60] flex pointer-events-none"
+          className="absolute inset-x-0 top-0 z-[60] flex flex-col pointer-events-none"
           style={commentComposerShellStyle}
         >
           <div className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]">
