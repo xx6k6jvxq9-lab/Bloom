@@ -1460,26 +1460,17 @@ export function ChatSessionScreen({
       const previousViewportHeight = lastVisualViewportHeightRef.current;
       lastVisualViewportHeightRef.current = currentViewportHeight;
       const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      const activeElement = document.activeElement as HTMLElement | null;
-      const isTextInputFocused = activeElement === inputTextareaRef.current
-        || activeElement?.tagName === 'INPUT'
-        || activeElement?.tagName === 'TEXTAREA'
-        || activeElement?.isContentEditable === true;
-      const nextKeyboardVisible = isTextInputFocused && (
-        inset > 12
-        || Math.abs(layoutHeight - viewport.height) > 12
-        || viewport.offsetTop > 0
-      );
-      const rootActiveViewportHeight = typeof document !== 'undefined'
+      const nextKeyboardVisible = inset > 120;
+      const rootViewportHeight = typeof document !== 'undefined'
         ? Number.parseFloat(
           getComputedStyle(document.documentElement)
-            .getPropertyValue('--app-active-viewport-height')
+            .getPropertyValue('--app-viewport-height')
             .trim()
             .replace('px', ''),
         )
         : 0;
-      const rootTracksVisualViewport = rootActiveViewportHeight > 0
-        && Math.abs(rootActiveViewportHeight - viewport.height) <= 2;
+      const rootTracksVisualViewport = rootViewportHeight > 0
+        && Math.abs(rootViewportHeight - viewport.height) <= 2;
 
       // When the root already shrinks with the keyboard, adding the inset again
       // double-lifts the footer and creates a visible gap above the keyboard.

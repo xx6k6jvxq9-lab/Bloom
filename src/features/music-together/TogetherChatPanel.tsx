@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { motion } from "motion/react";
 import { ChevronDown, ChevronLeft, ChevronUp, Keyboard, Mic, Send, Smile } from "lucide-react";
 import type { AppSettings, Character, ChatMessage, VisualSettings } from "../../types";
@@ -379,7 +379,7 @@ export function TogetherChatPanel({
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
-      className="chat-bubble-theme-scope app-active-viewport-screen absolute inset-0 z-[200] flex flex-col overflow-hidden bg-zinc-50"
+      className="chat-bubble-theme-scope absolute inset-0 z-[200] flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50"
     >
       <style>{directBubbleThemeCss}</style>
       <style>{directModelBubbleThemeCss}</style>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
 import {
   Play,
@@ -2514,7 +2514,7 @@ export default function MusicApp({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="app-active-viewport-screen absolute inset-0 z-[100] flex flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
+      className="absolute inset-0 z-[100] flex h-full min-h-0 flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
     >
       {/* Main Content */}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">

@@ -547,7 +547,7 @@ export function MomentsApp({
 
   return (
     <div
-      className="relative flex-1 min-h-0 overflow-y-auto pb-24"
+      className="relative flex-1 overflow-y-auto pb-24"
       style={{
         backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
         backgroundSize: 'cover',

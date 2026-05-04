@@ -25,44 +25,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     }
 
     const root = document.documentElement;
-    const isTextEntryElement = (element: Element | null): element is HTMLElement => {
-      if (!(element instanceof HTMLElement)) {
-        return false;
-      }
-
-      if (element.isContentEditable) {
-        return true;
-      }
-
-      if (element instanceof HTMLTextAreaElement) {
-        return !element.readOnly && !element.disabled;
-      }
-
-      if (element instanceof HTMLInputElement) {
-        if (element.readOnly || element.disabled) {
-          return false;
-        }
-
-        return ![
-          'button',
-          'checkbox',
-          'color',
-          'file',
-          'hidden',
-          'image',
-          'radio',
-          'range',
-          'reset',
-          'submit',
-        ].includes(element.type);
-      }
-
-      return false;
-    };
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const hasTouchMacUa = userAgent.includes('macintosh') && (window.navigator.maxTouchPoints || 0) > 1;
     const isAndroid = /Android/i.test(window.navigator.userAgent || '');
-    const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
+    const isIosLike = /iphone|ipad|ipod/.test(userAgent);
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -71,11 +36,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.setAttribute('data-android', 'true');
     } else {
       root.removeAttribute('data-android');
-    }
-    if (isIosLike) {
-      root.setAttribute('data-ios-like', 'true');
-    } else {
-      root.removeAttribute('data-ios-like');
     }
     if (isStandalone) {
       root.setAttribute('data-standalone', 'true');
@@ -87,36 +47,20 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const layoutViewportHeight = window.innerHeight;
       const viewport = window.visualViewport;
       const visualViewportHeight = viewport?.height ?? layoutViewportHeight;
-      const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
-      const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - viewportOffsetTop));
-      const activeElement = document.activeElement;
-      const hasTextEntryFocus = isTextEntryElement(activeElement);
-      const viewportHeightDelta = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight));
-      const iosKeyboardVisible = isIosLike && hasTextEntryFocus && (
-        keyboardInset > 12
-        || viewportHeightDelta > 12
-        || viewportOffsetTop > 0
-      );
-      const keyboardVisible = iosKeyboardVisible || (!isIosLike && keyboardInset > 120);
-      const activeViewportHeight = isIosLike && keyboardVisible
-        ? Math.round(visualViewportHeight)
-        : Math.round(layoutViewportHeight);
+      const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
+      const keyboardVisible = keyboardInset > 120;
 
       // Keep the app itself sized to the real fullscreen layout viewport so
       // iOS standalone safe-area space stays painted. The visual viewport is
       // still tracked separately for keyboard-aware screens.
       root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
       root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
-      root.style.setProperty('--app-active-viewport-height', `${activeViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${keyboardInset}px`);
       if (keyboardVisible) {
         root.setAttribute('data-keyboard-open', 'true');
       } else {
         root.removeAttribute('data-keyboard-open');
       }
-    };
-    const scheduleViewportUpdate = () => {
-      window.requestAnimationFrame(updateViewportHeight);
     };
 
     updateViewportHeight();
@@ -125,22 +69,16 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     viewport?.addEventListener('scroll', updateViewportHeight);
     window.addEventListener('resize', updateViewportHeight);
     window.addEventListener('orientationchange', updateViewportHeight);
-    document.addEventListener('focusin', scheduleViewportUpdate, true);
-    document.addEventListener('focusout', scheduleViewportUpdate, true);
 
     return () => {
       viewport?.removeEventListener('resize', updateViewportHeight);
       viewport?.removeEventListener('scroll', updateViewportHeight);
       window.removeEventListener('resize', updateViewportHeight);
       window.removeEventListener('orientationchange', updateViewportHeight);
-      document.removeEventListener('focusin', scheduleViewportUpdate, true);
-      document.removeEventListener('focusout', scheduleViewportUpdate, true);
       root.style.removeProperty('--app-viewport-height');
       root.style.removeProperty('--app-visible-viewport-height');
-      root.style.removeProperty('--app-active-viewport-height');
       root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
-      root.removeAttribute('data-ios-like');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');
     };

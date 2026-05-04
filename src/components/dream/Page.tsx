@@ -1,4 +1,4 @@
-﻿import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -35,19 +35,7 @@ type DreamAftermathView = {
   previewMessages: [string, string];
 };
 
-type DreamTaskSnapshot = {
-  activeConfig: ApiConfig;
-  character: Character;
-  masks: Mask[];
-  worldBooks: WorldBookEntry[];
-  selection: {
-    entryMode: DreamEntryMode;
-    domainId: DreamDomainId;
-    depth: DreamDepth;
-    selectedTags: Record<DreamTagCategory, string[]>;
-  };
-  userName: string;
-};
+const DREAM_LATEST_SESSION_KEY = 'dream_app_latest_session';
 
 const BASE_TAG_BATCH_SIZE = 12;
 
@@ -87,6 +75,24 @@ type DreamConfirmPreview = {
   confirmHint: string;
 };
 
+type PersistedDreamSession = {
+  mode: DreamEntryMode;
+  roleId: string;
+  domain: DreamDomainId;
+  depth: DreamDepth;
+  selectedTags: Record<DreamTagCategory, string[]>;
+  scenario: DreamRuntimeScenario;
+  createdAt: number;
+  progress?: {
+    stage: DreamStage;
+    actIndex: number;
+    selectedChoice: ActiveDreamChoice | null;
+    closingActId: string | null;
+    customInput: string;
+    customInputOpen: boolean;
+  };
+};
+
 const dreamThemeStyle = {
   '--void': '#030509',
   '--ink': '#05080E',
@@ -116,6 +122,52 @@ function debugDreamStagePayload(label: string, payload: unknown) {
   }
 }
 
+function readPersistedDreamSession(): PersistedDreamSession | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(DREAM_LATEST_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedDreamSession | null;
+    if (!parsed?.scenario || !parsed.roleId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedDreamSession(session: PersistedDreamSession) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DREAM_LATEST_SESSION_KEY, JSON.stringify(session));
+}
+
+function clearPersistedDreamSession() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(DREAM_LATEST_SESSION_KEY);
+}
+
+function isDreamResumeStage(stage: DreamStage | undefined): stage is 'scene' | 'choices' | 'reaction' | 'ending' | 'aftermath' {
+  return stage === 'scene' || stage === 'choices' || stage === 'reaction' || stage === 'ending' || stage === 'aftermath';
+}
+
+function isPersistedDreamUnfinished(session: PersistedDreamSession | null) {
+  if (!session) return false;
+  return !(session.scenario.endingOutput && session.scenario.aftermathOutput);
+}
+
+function formatPersistedDreamTime(timestamp: number) {
+  try {
+    return new Date(timestamp).toLocaleString('zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
 function buildRoles(characters: Character[]): DreamRole[] {
   return characters.slice(0, 12).map((character) => ({
     id: character.id,
@@ -141,22 +193,6 @@ function pickRandomIds(category: DreamTagCategory, count: number) {
     pool.splice(index, 1);
   }
   return picked;
-}
-
-function cloneDreamValue<T>(value: T): T {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(value);
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function normalizeDreamSelectedTags(selectedTags: Record<DreamTagCategory, string[]>) {
-  const normalized = { ...defaultTagSelection };
-  for (const group of dreamTagGroups) {
-    normalized[group.category] = [...(selectedTags[group.category] ?? [])].sort();
-  }
-  return normalized;
 }
 
 function buildQuickDreamPreset(): {
@@ -382,25 +418,14 @@ function Shell({
   contentClassName?: string;
 }) {
   return (
-    <div
-      className="relative w-full overflow-hidden bg-[var(--ink)] text-[var(--paper)]"
-      style={{
-        ...dreamThemeStyle,
-        minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-        height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-      }}
-    >
+    <div className="relative h-full min-h-full w-full overflow-hidden bg-[var(--ink)] text-[var(--paper)]" style={dreamThemeStyle}>
       <DreamStars />
       <div className="pointer-events-none fixed inset-0 z-[5] opacity-[0.025]" style={{ backgroundImage: dreamNoise, backgroundRepeat: 'repeat', mixBlendMode: 'screen' }} />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
       <div
-        className={`relative z-10 flex min-w-0 flex-col px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
-        style={{
-          ...(scrollable ? { WebkitOverflowScrolling: 'touch' } : {}),
-          minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-          height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-        }}
+        className={`relative z-10 flex h-full min-h-full min-w-0 flex-col px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
+        style={scrollable ? { WebkitOverflowScrolling: 'touch' } : undefined}
       >
         {children}
       </div>
@@ -916,8 +941,12 @@ function HomeV2({
   role,
   archiveCount,
   deepArchiveCount,
+  unfinishedDreamTitle,
+  unfinishedDreamMeta,
+  canContinueDream,
   onPickRole,
   onEnter,
+  onContinueDream,
   onOpenArchive,
   onExit,
 }: {
@@ -925,8 +954,12 @@ function HomeV2({
   role: DreamRole | null;
   archiveCount: number;
   deepArchiveCount: number;
+  unfinishedDreamTitle?: string;
+  unfinishedDreamMeta?: string;
+  canContinueDream?: boolean;
   onPickRole: () => void;
   onEnter: () => void;
+  onContinueDream: () => void;
   onOpenArchive: (view: 'all' | 'deep') => void;
   onExit: () => void;
 }) {
@@ -953,6 +986,20 @@ function HomeV2({
                 <div className="text-[15px] font-[300] leading-[2] tracking-[0.12em] text-[var(--paper)]">有一场梦等待进入</div>
                 <div className="mt-2 text-[11px] tracking-[0.12em] text-[var(--mist)]">梦将于 06:00 消散</div>
               </div>
+              {canContinueDream ? (
+                <div className="w-full max-w-[334px] border border-[rgba(123,168,196,.28)] bg-[rgba(123,168,196,.08)] px-5 py-5 text-left">
+                  <div className="text-[11px] tracking-[0.26em] text-[#9EBEE2]">未做完的梦</div>
+                  <div className="mt-3 text-[15px] font-[300] tracking-[0.12em] text-[var(--paper)]">
+                    {unfinishedDreamTitle || '继续上次梦境'}
+                  </div>
+                  {unfinishedDreamMeta ? (
+                    <div className="mt-2 text-[11px] leading-[1.8] tracking-[0.08em] text-[var(--mist)]">{unfinishedDreamMeta}</div>
+                  ) : null}
+                  <div className="mt-4">
+                    <SecondaryAction label="继 续 上 次" onClick={onContinueDream} />
+                  </div>
+                </div>
+              ) : null}
               <div className="w-full max-w-[334px]">
                 <SealButton label="进入今夜" onClick={onEnter} />
               </div>
@@ -1303,7 +1350,7 @@ function EntrySheet({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.65, ease: [0.2, 0.8, 0.4, 1] }}
-        className="absolute inset-x-0 bottom-0 max-h-[min(88vh,calc(var(--app-active-viewport-height,100dvh)-16px))] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-5 [webkit-overflow-scrolling:touch]"
+        className="absolute inset-x-0 bottom-0 max-h-[calc(100%-16px)] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-5 [webkit-overflow-scrolling:touch]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto h-[3px] w-10 rounded-[2px] bg-[var(--mist)] opacity-30" />
@@ -1386,14 +1433,9 @@ export function DreamAppPage({
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [archiveView, setArchiveView] = useState<'all' | 'deep'>('all');
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const startRequestIdRef = useRef(0);
-  const startRequestActiveRef = useRef(false);
-  const continuationRequestActiveRef = useRef(false);
-  const endingRequestIdRef = useRef(0);
+  const [latestSavedSession, setLatestSavedSession] = useState<PersistedDreamSession | null>(() => readPersistedDreamSession());
   const endingRequestActiveRef = useRef(false);
-  const aftermathRequestIdRef = useRef(0);
   const aftermathRequestActiveRef = useRef(false);
-  const currentDreamSnapshotRef = useRef<DreamTaskSnapshot | null>(null);
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedRoleId) ?? characters[0] ?? null,
     [characters, selectedRoleId],
@@ -1499,47 +1541,40 @@ export function DreamAppPage({
   const typedAftermathDetail = typedAftermathTextBlocks[1]?.text || '';
   const choiceHoldTimerRef = useRef<number | null>(null);
 
-  const createDreamSnapshot = () => {
-    if (!selectedCharacter) {
-      return null;
-    }
+  const persistDreamProgress = (
+    scenarioToPersist: DreamRuntimeScenario,
+    overrides?: Partial<NonNullable<PersistedDreamSession['progress']>>,
+  ) => {
+    if (!selectedCharacter) return;
 
-    return {
-      activeConfig: cloneDreamValue(activeConfig),
-      character: cloneDreamValue(selectedCharacter),
-      masks: cloneDreamValue(masks),
-      worldBooks: cloneDreamValue(worldBooks),
-      selection: {
-        entryMode,
-        domainId: selectedDomain,
-        depth: dreamDepth,
-        selectedTags: normalizeDreamSelectedTags(selectedTags),
-      },
-      userName: userName.trim(),
-    } satisfies DreamTaskSnapshot;
+    const progressStage = overrides?.stage ?? stage;
+    const nextSession: PersistedDreamSession = {
+      mode: entryMode,
+      roleId: selectedCharacter.id,
+      domain: selectedDomain,
+      depth: dreamDepth,
+      selectedTags,
+      scenario: scenarioToPersist,
+      createdAt: Date.now(),
+      progress: isDreamResumeStage(progressStage)
+        ? {
+            stage: progressStage,
+            actIndex: overrides?.actIndex ?? actIndex,
+            selectedChoice: overrides?.selectedChoice ?? selectedChoice,
+            closingActId: overrides?.closingActId ?? closingActId,
+            customInput: overrides?.customInput ?? customInput,
+            customInputOpen: overrides?.customInputOpen ?? customInputOpen,
+          }
+        : undefined,
+    };
+
+    writePersistedDreamSession(nextSession);
+    setLatestSavedSession(nextSession);
   };
 
-  const persistLatestDreamSession = (
-    scenarioToPersist: DreamRuntimeScenario,
-    snapshot = currentDreamSnapshotRef.current,
-  ) => {
-    const persistedSnapshot = snapshot;
-    if (!persistedSnapshot) {
-      return;
-    }
-
-    localStorage.setItem(
-      'dream_app_latest_session',
-      JSON.stringify({
-        mode: persistedSnapshot.selection.entryMode,
-        roleId: persistedSnapshot.character.id,
-        domain: persistedSnapshot.selection.domainId,
-        depth: persistedSnapshot.selection.depth,
-        selectedTags: persistedSnapshot.selection.selectedTags,
-        scenario: scenarioToPersist,
-        createdAt: Date.now(),
-      }),
-    );
+  const clearDreamProgress = () => {
+    clearPersistedDreamSession();
+    setLatestSavedSession(null);
   };
 
   useEffect(() => {
@@ -1559,6 +1594,57 @@ export function DreamAppPage({
   }, [stage]);
 
   useEffect(() => {
+    if (stage !== 'loading' || !selectedRole || !selectedCharacter) return;
+    let cancelled = false;
+    setLoadingError(null);
+    setRuntimeScenario(null);
+    setLoadingProgress(12);
+    const progressTimer = window.setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev >= 92) return prev;
+        return Math.min(92, prev + 1 + Math.random() * 3.5);
+      });
+    }, 180);
+
+    generateDreamScenario({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+    })
+      .then((generatedScenario) => {
+        if (cancelled) return;
+        window.clearInterval(progressTimer);
+        setRuntimeScenario(generatedScenario);
+        setLoadingProgress(100);
+        setActIndex(0);
+        setSelectedChoice(null);
+        setClosingActId(null);
+        setCustomInput('');
+        window.setTimeout(() => {
+          if (!cancelled) setStage('scene');
+        }, 260);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        window.clearInterval(progressTimer);
+        setLoadingProgress(0);
+        setLoadingError(error instanceof Error ? error.message : '梦境生成失败');
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(progressTimer);
+    };
+  }, [activeConfig, dreamDepth, entryMode, masks, selectedCharacter, selectedDomain, selectedRole, selectedTags, stage, worldBooks]);
+
+  useEffect(() => {
     if (stage !== 'choices') {
       setPreviewChoiceId(null);
       setCustomInputOpen(false);
@@ -1570,254 +1656,212 @@ export function DreamAppPage({
   }, [stage]);
 
   useEffect(() => {
-    if (!runtimeScenario) return;
-    persistLatestDreamSession(runtimeScenario);
-  }, [runtimeScenario]);
-
-  useEffect(() => {
-    const persistedSnapshot = currentDreamSnapshotRef.current;
-    if (!runtimeScenario?.endingOutput || !persistedSnapshot) return;
+    if (!runtimeScenario?.endingOutput || !selectedCharacter) return;
     const nextRecord = buildDreamArchiveRecord({
-      character: persistedSnapshot.character,
+      character: selectedCharacter,
       scenario: runtimeScenario,
-      selectedTags: persistedSnapshot.selection.selectedTags,
+      selectedTags,
     });
     setArchiveRecords((prev) => {
       const next = upsertDreamArchiveRecord(prev, nextRecord);
       saveDreamArchiveRecords(next);
       return next;
     });
-  }, [runtimeScenario]);
+  }, [runtimeScenario, selectedCharacter, selectedTags]);
 
   useEffect(() => {
-    return () => {
-      startRequestIdRef.current += 1;
-      endingRequestIdRef.current += 1;
-      aftermathRequestIdRef.current += 1;
-      startRequestActiveRef.current = false;
-      continuationRequestActiveRef.current = false;
-      endingRequestActiveRef.current = false;
-      aftermathRequestActiveRef.current = false;
-    };
-  }, []);
+    if (!runtimeScenario?.endingOutput || !runtimeScenario.aftermathOutput) return;
+    clearDreamProgress();
+  }, [runtimeScenario?.aftermathOutput, runtimeScenario?.endingOutput]);
 
-  const startDreamGeneration = async (snapshot = createDreamSnapshot()) => {
-    if (!selectedRole || !snapshot || startRequestActiveRef.current) {
+  useEffect(() => {
+    endingRequestActiveRef.current = isGeneratingEnding;
+  }, [isGeneratingEnding]);
+
+  useEffect(() => {
+    aftermathRequestActiveRef.current = isGeneratingAftermath;
+  }, [isGeneratingAftermath]);
+
+  useEffect(() => {
+    if (
+      stage !== 'ending'
+      || !runtimeScenario
+      || !selectedCharacter
+      || runtimeScenario.endingOutput
+      || endingRequestActiveRef.current
+    ) {
       return;
     }
 
-    const requestId = startRequestIdRef.current + 1;
-    startRequestIdRef.current = requestId;
-    startRequestActiveRef.current = true;
-    currentDreamSnapshotRef.current = snapshot;
-    setStage('loading');
+    let cancelled = false;
     setLoadingError(null);
-    setRuntimeScenario(null);
-    setLoadingProgress(12);
-    setActIndex(0);
-    setSelectedChoice(null);
-    setClosingActId(null);
-    setCustomInput('');
-    setCustomInputOpen(false);
-
-    const progressTimer = window.setInterval(() => {
-      setLoadingProgress((prev) => {
-        if (prev >= 92) return prev;
-        return Math.min(92, prev + 1 + Math.random() * 3.5);
-      });
-    }, 180);
-
-    try {
-      const generatedScenario = await generateDreamScenario({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
-      });
-
-      if (requestId !== startRequestIdRef.current) {
-        return;
-      }
-
-      window.clearInterval(progressTimer);
-      setRuntimeScenario(generatedScenario);
-      persistLatestDreamSession(generatedScenario, snapshot);
-      setLoadingProgress(100);
-      window.setTimeout(() => {
-        if (requestId === startRequestIdRef.current) {
-          setStage('scene');
-        }
-      }, 260);
-    } catch (error) {
-      if (requestId !== startRequestIdRef.current) {
-        return;
-      }
-
-      window.clearInterval(progressTimer);
-      setLoadingProgress(0);
-      setLoadingError(error instanceof Error ? error.message : '梦境生成失败');
-    } finally {
-      window.clearInterval(progressTimer);
-      if (requestId === startRequestIdRef.current) {
-        startRequestActiveRef.current = false;
-      }
-    }
-  };
-
-  const enterEndingStage = async () => {
-    if (!runtimeScenario) {
-      return;
-    }
-
-    setStage('ending');
-    if (runtimeScenario.endingOutput || endingRequestActiveRef.current) {
-      return;
-    }
-
-    const snapshot = currentDreamSnapshotRef.current;
-    if (!snapshot) {
-      setLoadingError('缺少本轮梦境上下文，无法生成结局。');
-      return;
-    }
-
-    const requestId = endingRequestIdRef.current + 1;
-    endingRequestIdRef.current = requestId;
     endingRequestActiveRef.current = true;
-    setLoadingError(null);
     setIsGeneratingEnding(true);
     debugDreamStagePayload('[dream][ending] request:start', {
       scenarioId: runtimeScenario.id,
-      stage: 'ending',
+      stage,
       actCount: runtimeScenario.acts.length,
       hasEndingOutput: Boolean(runtimeScenario.endingOutput),
       endingDirection: runtimeScenario.endingInput?.endingDirection || '',
     });
 
-    try {
-      const endingOutput = await generateDreamEnding({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
-        scenario: runtimeScenario,
-        userName: snapshot.userName,
-      });
-
-      if (requestId !== endingRequestIdRef.current) {
-        return;
-      }
-
-      debugDreamStagePayload('[dream][ending] request:resolved', {
-        scenarioId: runtimeScenario.id,
-        title: endingOutput.title,
-        chapter: endingOutput.chapter,
-        bodyLength: endingOutput.body.length,
-        excerptLength: endingOutput.excerpt.length,
-      });
-      setRuntimeScenario((prev) => (
-        prev?.id === runtimeScenario.id
-          ? hydrateDreamRuntimeScenario({
-              ...prev,
-              endingOutput,
-            })
-          : prev
-      ));
-    } catch (error) {
-      if (requestId !== endingRequestIdRef.current) {
-        return;
-      }
-
-      console.error('[dream][ending] request:failed', error);
-      setLoadingError(error instanceof Error ? error.message : '结局生成失败');
-    } finally {
-      if (requestId === endingRequestIdRef.current) {
-        debugDreamStagePayload('[dream][ending] request:finalized', {
+    generateDreamEnding({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+      scenario: runtimeScenario,
+      userName,
+    })
+      .then((endingOutput) => {
+        if (cancelled) return;
+        debugDreamStagePayload('[dream][ending] request:resolved', {
           scenarioId: runtimeScenario.id,
-          cancelled: false,
+          title: endingOutput.title,
+          chapter: endingOutput.chapter,
+          bodyLength: endingOutput.body.length,
+          excerptLength: endingOutput.excerpt.length,
         });
-        endingRequestActiveRef.current = false;
-        setIsGeneratingEnding(false);
-      }
-    }
-  };
+        setRuntimeScenario((prev) => (
+          prev
+            ? hydrateDreamRuntimeScenario({
+                ...prev,
+                endingOutput,
+              })
+            : prev
+        ));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error('[dream][ending] request:failed', error);
+        setLoadingError(error instanceof Error ? error.message : '结局生成失败');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          debugDreamStagePayload('[dream][ending] request:finalized', {
+            scenarioId: runtimeScenario.id,
+            cancelled: false,
+          });
+          endingRequestActiveRef.current = false;
+          setIsGeneratingEnding(false);
+        }
+      });
 
-  const enterAftermathStage = async () => {
-    if (!runtimeScenario?.endingOutput) {
+    return () => {
+      cancelled = true;
+      debugDreamStagePayload('[dream][ending] request:cleanup', {
+        scenarioId: runtimeScenario.id,
+      });
+    };
+  }, [
+    activeConfig,
+    dreamDepth,
+    entryMode,
+    masks,
+    runtimeScenario,
+    selectedCharacter,
+    selectedDomain,
+    selectedTags,
+    stage,
+    userName,
+    worldBooks,
+  ]);
+
+  useEffect(() => {
+    if (
+      stage !== 'aftermath'
+      || !runtimeScenario
+      || !selectedCharacter
+      || !runtimeScenario.endingOutput
+      || runtimeScenario.aftermathOutput
+      || aftermathRequestActiveRef.current
+    ) {
       return;
     }
 
-    setStage('aftermath');
-    if (runtimeScenario.aftermathOutput || aftermathRequestActiveRef.current) {
-      return;
-    }
-
-    const snapshot = currentDreamSnapshotRef.current;
-    if (!snapshot) {
-      setLoadingError('缺少本轮梦境上下文，无法生成余响。');
-      return;
-    }
-
-    const requestId = aftermathRequestIdRef.current + 1;
-    aftermathRequestIdRef.current = requestId;
-    aftermathRequestActiveRef.current = true;
+    let cancelled = false;
     setLoadingError(null);
+    aftermathRequestActiveRef.current = true;
     setIsGeneratingAftermath(true);
     debugDreamStagePayload('[dream][aftermath] request:start', {
       scenarioId: runtimeScenario.id,
-      stage: 'aftermath',
+      stage,
       hasEndingOutput: Boolean(runtimeScenario.endingOutput),
       hasAftermathOutput: Boolean(runtimeScenario.aftermathOutput),
     });
 
-    try {
-      const aftermathOutput = await generateDreamAftermath({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
-        scenario: runtimeScenario,
-        userName: snapshot.userName,
-      });
-
-      if (requestId !== aftermathRequestIdRef.current) {
-        return;
-      }
-
-      debugDreamStagePayload('[dream][aftermath] request:resolved', {
-        scenarioId: runtimeScenario.id,
-        summaryLength: aftermathOutput.summary.length,
-        detailLength: aftermathOutput.detail.length,
-        previewCount: aftermathOutput.previewMessages.length,
-      });
-      setRuntimeScenario((prev) => (
-        prev?.id === runtimeScenario.id
-          ? hydrateDreamRuntimeScenario({
-              ...prev,
-              aftermathOutput,
-            })
-          : prev
-      ));
-    } catch (error) {
-      if (requestId !== aftermathRequestIdRef.current) {
-        return;
-      }
-
-      console.error('[dream][aftermath] request:failed', error);
-      setLoadingError(error instanceof Error ? error.message : '余响生成失败');
-    } finally {
-      if (requestId === aftermathRequestIdRef.current) {
-        debugDreamStagePayload('[dream][aftermath] request:finalized', {
+    generateDreamAftermath({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+      },
+      scenario: runtimeScenario,
+      userName,
+    })
+      .then((aftermathOutput) => {
+        if (cancelled) return;
+        debugDreamStagePayload('[dream][aftermath] request:resolved', {
           scenarioId: runtimeScenario.id,
-          cancelled: false,
+          summaryLength: aftermathOutput.summary.length,
+          detailLength: aftermathOutput.detail.length,
+          previewCount: aftermathOutput.previewMessages.length,
         });
-        aftermathRequestActiveRef.current = false;
-        setIsGeneratingAftermath(false);
-      }
-    }
-  };
+        setRuntimeScenario((prev) => (
+          prev
+            ? hydrateDreamRuntimeScenario({
+                ...prev,
+                aftermathOutput,
+              })
+            : prev
+        ));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error('[dream][aftermath] request:failed', error);
+        setLoadingError(error instanceof Error ? error.message : '余响生成失败');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          debugDreamStagePayload('[dream][aftermath] request:finalized', {
+            scenarioId: runtimeScenario.id,
+            cancelled: false,
+          });
+          aftermathRequestActiveRef.current = false;
+          setIsGeneratingAftermath(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      debugDreamStagePayload('[dream][aftermath] request:cleanup', {
+        scenarioId: runtimeScenario.id,
+      });
+    };
+  }, [
+    activeConfig,
+    dreamDepth,
+    entryMode,
+    masks,
+    runtimeScenario,
+    selectedCharacter,
+    selectedDomain,
+    selectedTags,
+    stage,
+    userName,
+    worldBooks,
+  ]);
 
   const openEntry = () => {
     if (!selectedRole) {
@@ -1884,19 +1928,21 @@ export function DreamAppPage({
   };
 
   const continueDeeper = async () => {
-    if (!runtimeScenario || !selectedChoice || isGeneratingNextAct || isEndingDeepDream || continuationRequestActiveRef.current) return;
-    const snapshot = currentDreamSnapshotRef.current;
-    if (!snapshot) return;
+    if (!runtimeScenario || !selectedCharacter || !selectedChoice || isGeneratingNextAct || isEndingDeepDream) return;
     setLoadingError(null);
-    continuationRequestActiveRef.current = true;
     setIsGeneratingNextAct(true);
     try {
       const payload = await generateDreamContinuation({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
         scenario: runtimeScenario,
         actIndex,
         mode: 'deeper',
@@ -1921,26 +1967,27 @@ export function DreamAppPage({
     } catch (error) {
       setLoadingError(error instanceof Error ? error.message : '深梦继续失败');
     } finally {
-      continuationRequestActiveRef.current = false;
       setIsGeneratingNextAct(false);
     }
   };
 
   const submitCustomChoice = async () => {
-    if (!runtimeScenario || !act || !customInput.trim() || isSubmittingCustom || isGeneratingNextAct || isEndingDeepDream || continuationRequestActiveRef.current) return;
-    const snapshot = currentDreamSnapshotRef.current;
-    if (!snapshot) return;
+    if (!runtimeScenario || !selectedCharacter || !act || !customInput.trim() || isSubmittingCustom || isGeneratingNextAct || isEndingDeepDream) return;
     const needsNextAct = isDeepDream || actIndex < runtimeScenario.acts.length - 1;
     setLoadingError(null);
-    continuationRequestActiveRef.current = true;
     setIsSubmittingCustom(true);
     try {
       const payload = await generateDreamContinuation({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
         scenario: runtimeScenario,
         actIndex,
         mode: 'custom',
@@ -1988,25 +2035,26 @@ export function DreamAppPage({
     } catch (error) {
       setLoadingError(error instanceof Error ? error.message : '自定义续写失败');
     } finally {
-      continuationRequestActiveRef.current = false;
       setIsSubmittingCustom(false);
     }
   };
 
   const endDeepDream = async () => {
-    if (!runtimeScenario || isGeneratingNextAct || isEndingDeepDream || continuationRequestActiveRef.current) return;
-    const snapshot = currentDreamSnapshotRef.current;
-    if (!snapshot) return;
+    if (!runtimeScenario || !selectedCharacter || isGeneratingNextAct || isEndingDeepDream) return;
     setLoadingError(null);
-    continuationRequestActiveRef.current = true;
     setIsEndingDeepDream(true);
     try {
       const payload = await generateDreamContinuation({
-        activeConfig: snapshot.activeConfig,
-        character: snapshot.character,
-        masks: snapshot.masks,
-        worldBooks: snapshot.worldBooks,
-        selection: snapshot.selection,
+        activeConfig,
+        character: selectedCharacter,
+        masks,
+        worldBooks,
+        selection: {
+          entryMode,
+          domainId: selectedDomain,
+          depth: dreamDepth,
+          selectedTags,
+        },
         scenario: runtimeScenario,
         actIndex,
         mode: 'deep-end',
@@ -2034,7 +2082,6 @@ export function DreamAppPage({
     } catch (error) {
       setLoadingError(error instanceof Error ? error.message : '结束做梦失败');
     } finally {
-      continuationRequestActiveRef.current = false;
       setIsEndingDeepDream(false);
     }
   };
@@ -2050,18 +2097,10 @@ export function DreamAppPage({
       await continueDeeper();
       return;
     }
-    await enterEndingStage();
+    setStage('ending');
   };
 
   const restart = () => {
-    startRequestIdRef.current += 1;
-    endingRequestIdRef.current += 1;
-    aftermathRequestIdRef.current += 1;
-    startRequestActiveRef.current = false;
-    continuationRequestActiveRef.current = false;
-    endingRequestActiveRef.current = false;
-    aftermathRequestActiveRef.current = false;
-    currentDreamSnapshotRef.current = null;
     setEntryMode('quick');
     setSelectedDomain('shared');
     setDreamDepth('shallow');
@@ -2077,8 +2116,6 @@ export function DreamAppPage({
     setIsSubmittingCustom(false);
     setIsGeneratingNextAct(false);
     setIsEndingDeepDream(false);
-    setIsGeneratingEnding(false);
-    setIsGeneratingAftermath(false);
     setClosingActId(null);
     setRuntimeScenario(null);
     setStage('home');
@@ -2109,6 +2146,14 @@ export function DreamAppPage({
     ? archiveRecords.filter((record) => record.depth === 'deep')
     : archiveRecords;
   const deepArchiveCount = archiveRecords.filter((record) => record.depth === 'deep').length;
+  const canContinueDream = isPersistedDreamUnfinished(latestSavedSession);
+  const unfinishedDreamTitle = latestSavedSession?.scenario.coverTitle || latestSavedSession?.scenario.storyFrame.worldTitle || '继续上次梦境';
+  const unfinishedDreamMeta = canContinueDream
+    ? [
+        latestSavedSession?.scenario.storyFrame.dreamRelationship,
+        formatPersistedDreamTime(latestSavedSession?.createdAt || 0),
+      ].filter(Boolean).join(' · ')
+    : '';
   const baseTagGroups = dreamTagGroups.filter((group) => !group.detailed);
   const detailedTagGroups = dreamTagGroups.filter((group) => group.detailed);
 
@@ -2140,14 +2185,55 @@ export function DreamAppPage({
   const retryDreamGeneration = () => {
     setLoadingError(null);
     setLoadingProgress(0);
-    void startDreamGeneration();
+    setStage('confirm');
+    window.requestAnimationFrame(() => {
+      setStage('loading');
+    });
+  };
+
+  const handleSaveAndExit = () => {
+    if (runtimeScenario) {
+      persistDreamProgress(runtimeScenario);
+    }
+    onBack();
+  };
+
+  const handleResumeLatestDream = () => {
+    const persisted = readPersistedDreamSession();
+    if (!persisted || !isPersistedDreamUnfinished(persisted)) {
+      setLatestSavedSession(null);
+      return;
+    }
+
+    const persistedCharacter = characters.find((character) => character.id === persisted.roleId) ?? null;
+    if (!persistedCharacter) {
+      clearDreamProgress();
+      return;
+    }
+
+    const resumeStage = isDreamResumeStage(persisted.progress?.stage) ? persisted.progress.stage : 'scene';
+    setSelectedRoleId(persisted.roleId);
+    setEntryMode(persisted.mode);
+    setSelectedDomain(persisted.domain);
+    setDreamDepth(persisted.depth);
+    setSelectedTags(persisted.selectedTags);
+    setConfirmPreview(null);
+    setLoadingError(null);
+    setRuntimeScenario(hydrateDreamRuntimeScenario(persisted.scenario));
+    setActIndex(persisted.progress?.actIndex ?? 0);
+    setSelectedChoice(persisted.progress?.selectedChoice ?? null);
+    setClosingActId(persisted.progress?.closingActId ?? null);
+    setCustomInput(persisted.progress?.customInput ?? '');
+    setCustomInputOpen(persisted.progress?.customInputOpen ?? false);
+    setStage(resumeStage);
+    setLatestSavedSession(persisted);
   };
 
   return (
     <>
         {stage === 'splash' && (
           <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex min-h-[calc(var(--app-active-viewport-height,100dvh)-5rem)] flex-1 items-start justify-center pt-[24vh] sm:pt-[22vh]">
+            <div className="flex min-h-[calc(100%-5rem)] flex-1 items-start justify-center pt-[24vh] sm:pt-[22vh]">
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.4 }} className="space-y-6 text-center">
                 <div className="text-[72px] font-[200] tracking-[0.2em] text-[var(--paper)]">梦</div>
                 <div className="mx-auto h-px w-20 bg-[var(--border-mid)]" />
@@ -2163,8 +2249,12 @@ export function DreamAppPage({
             role={selectedRole}
             archiveCount={archiveRecords.length}
             deepArchiveCount={deepArchiveCount}
+            unfinishedDreamTitle={unfinishedDreamTitle}
+            unfinishedDreamMeta={unfinishedDreamMeta}
+            canContinueDream={canContinueDream}
             onPickRole={() => setStage('role-picker')}
             onEnter={openEntry}
+            onContinueDream={handleResumeLatestDream}
             onOpenArchive={(view) => {
               setArchiveView(view);
               setSelectedArchiveId(null);
@@ -2342,9 +2432,7 @@ export function DreamAppPage({
             preview={confirmPreview}
             selectedLabels={selectedLabels}
             onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')}
-            onConfirm={() => {
-              void startDreamGeneration();
-            }}
+            onConfirm={() => setStage('loading')}
           />
         )}
         {/* {false && stage === 'confirm' && selectedRole && (
@@ -2496,19 +2584,9 @@ export function DreamAppPage({
                 </div>
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
-              <div className="mt-10">
-                <SealButton
-                  label={sceneReady ? (isClosingAct ? '进 入 结 局' : '进 入 选 择') : '正 文 正 在 浮 出'}
-                  onClick={() => {
-                    if (isClosingAct) {
-                      void enterEndingStage();
-                      return;
-                    }
-                    setStage('choices');
-                  }}
-                  disabled={!sceneReady}
-                  presentation={presentation}
-                />
+              <div className="mt-10 grid gap-4">
+                <SecondaryAction label="保 存 退 出" onClick={handleSaveAndExit} presentation={presentation} />
+                <SealButton label={sceneReady ? (isClosingAct ? '进 入 结 局' : '进 入 选 择') : '正 文 正 在 浮 出'} onClick={() => (isClosingAct ? setStage('ending') : setStage('choices'))} disabled={!sceneReady} presentation={presentation} />
               </div>
               {isDeepDream && !isClosingAct ? (
                 <div className="mt-4">
@@ -2631,6 +2709,7 @@ export function DreamAppPage({
                   </div>
                 ) : null}
                 {loadingError ? <div className="text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
+                <SecondaryAction label="保 存 退 出" onClick={handleSaveAndExit} presentation={presentation} />
                 {isDeepDream ? (
                   <SecondaryAction
                     label={isEndingDeepDream ? '正 在 收 梦' : '结 束 做 梦'}
@@ -2698,6 +2777,9 @@ export function DreamAppPage({
                   presentation={presentation}
                 />
               </div>
+              <div className="mt-4">
+                <SecondaryAction label="保 存 退 出" onClick={handleSaveAndExit} presentation={presentation} />
+              </div>
               {isDeepDream && !isClosingAct ? (
                 <div className="mt-4">
                   <SecondaryAction
@@ -2740,9 +2822,7 @@ export function DreamAppPage({
                           : '请 先 等 结 局 完 成'
                   }
                   onClick={() => {
-                    if (runtimeScenario?.endingOutput) {
-                      void enterAftermathStage();
-                    }
+                    if (runtimeScenario?.endingOutput) setStage('aftermath');
                   }}
                   presentation={presentation}
                   disabled={isGeneratingEnding || !runtimeScenario?.endingOutput || !endingTextReady}

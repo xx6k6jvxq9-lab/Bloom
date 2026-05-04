@@ -75,14 +75,7 @@ export function DreamArchiveStage({
     const aftermath = scenario.aftermathOutput;
 
     return (
-      <div
-        className="relative w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]"
-        style={{
-          ...archiveThemeStyle,
-          minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-          height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-        }}
-      >
+      <div className="relative h-full min-h-full w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]" style={archiveThemeStyle}>
         <div className="flex items-center justify-between text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />
@@ -152,14 +145,7 @@ export function DreamArchiveStage({
   }
 
   return (
-    <div
-      className="relative w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]"
-      style={{
-        ...archiveThemeStyle,
-        minHeight: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-        height: 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))',
-      }}
-    >
+    <div className="relative h-full min-h-full w-full overflow-y-auto bg-[var(--ink)] px-6 py-5 text-[var(--paper)]" style={archiveThemeStyle}>
       <div className="flex items-center justify-between text-[12px] tracking-[0.08em] text-[var(--mist)]">
         <div>{time}</div>
         <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)]" />

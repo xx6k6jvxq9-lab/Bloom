@@ -544,7 +544,7 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        className="flex w-full max-w-[360px] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-[32px] bg-white touch-pan-y [webkit-overflow-scrolling:touch]"
+        className="flex w-full max-w-[360px] max-h-[calc(100%-24px)] flex-col overflow-hidden rounded-[32px] bg-white touch-pan-y [webkit-overflow-scrolling:touch]"
         onClick={e => e.stopPropagation()}
       >
         <div className="shrink-0 px-6 pb-4 pt-6">
