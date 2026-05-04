@@ -77,8 +77,15 @@ body {
 }
 
 @media (max-width: 767px) {
+  html,
+  body,
+  #root {
+    overflow: hidden;
+  }
+
   .app-shell {
-    position: relative;
+    position: fixed;
+    inset: 0;
     width: 100%;
     max-width: 100%;
     height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
@@ -88,6 +95,8 @@ body {
   }
 
   .app-phone-container {
+    position: absolute;
+    inset: 0;
     left: 0;
     width: 100% !important;
     max-width: 100% !important;
