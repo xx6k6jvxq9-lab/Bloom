@@ -1466,7 +1466,17 @@ export function useDirectChatRuntime({
         setErrorState(null);
 
         if (!activeConfig) {
-          setErrorState('Missing API Key. Please configure it in API Center settings.');
+          const missingConfigMessage = '错误: Missing API Key. Please configure it in API Center settings.';
+          setErrorState(missingConfigMessage);
+          setHistory([
+            ...historySnapshot,
+            {
+              role: 'model',
+              text: missingConfigMessage,
+              timestamp: Date.now(),
+              isSystem: true,
+            },
+          ]);
           return;
         }
 
@@ -1687,7 +1697,20 @@ export function useDirectChatRuntime({
 
         } catch (err) {
           console.error(err);
-          setErrorState('Failed to generate reply. Please try again later.');
+          const formattedError = formatChatApiError(err);
+          const stabilizedHistory = latestHistory.filter(msg =>
+            !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
+          );
+          setHistory([
+            ...stabilizedHistory,
+            {
+              role: 'model',
+              text: formattedError,
+              timestamp: Date.now(),
+              isSystem: true,
+            },
+          ]);
+          setErrorState(formattedError);
           activeAssistantMessageIdRef.current = null;
           activeAssistantRenderCountRef.current = 0;
         }

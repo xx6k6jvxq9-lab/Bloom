@@ -5,6 +5,7 @@ export type OutputQualityReason =
   | 'empty'
   | 'punctuation_only'
   | 'punctuation_heavy'
+  | 'repetition_noise'
   | 'analysis_leak'
   | 'system_leak'
   | 'too_short_after_cleaning';
@@ -39,6 +40,8 @@ const BRACKET_BLOCK_REGEX = /[\(\uFF08]([^\(\)\uFF08\uFF09\n]{0,160})[\)\uFF09]/
 const PUNCTUATION_CHARS_REGEX = /[\s,\uFF0C.\u3002!\uFF01?\uFF1F\u3001;\uFF1B:"\u201C\u201D'\u2018\u2019`~\u2026\-\u2014()[\]{}<>\u300A\u300B\u3010\u3011\uFF08\uFF09]/gu;
 const EFFECTIVE_CHAR_REGEX = /[\p{L}\p{N}]/gu;
 const CJK_REGEX = /[\u4e00-\u9fff]/u;
+const REPEATED_CHAR_RUN_REGEX = /(.)\1{7,}/u;
+const REPEATED_PUNCTUATION_CLUSTER_REGEX = /([,，.。!！?？、;；~…])\1{3,}/u;
 
 function countMatches(text: string, pattern: RegExp): number {
   return text.match(pattern)?.length ?? 0;
@@ -54,6 +57,24 @@ function normalizeExcessivePunctuation(text: string): string {
     .replace(/[\u2026]{3,}/g, '\u2026')
     .replace(/\s{3,}/g, ' ')
     .trim();
+}
+
+function hasObviousRepetitionNoise(text: string): boolean {
+  const compactText = text.replace(/\s/g, '');
+  if (!compactText) {
+    return false;
+  }
+
+  if (REPEATED_CHAR_RUN_REGEX.test(compactText)) {
+    return true;
+  }
+
+  const punctuationClusters = compactText.match(REPEATED_PUNCTUATION_CLUSTER_REGEX) ?? [];
+  if (punctuationClusters.length >= 2) {
+    return true;
+  }
+
+  return false;
 }
 
 function isInvalidBracketContent(content: string): boolean {
@@ -209,8 +230,8 @@ export function evaluateAssistantOutput(
     return { ok: false, cleanedText, reason: 'punctuation_heavy' };
   }
 
-  if (effectiveChars < 2 && compactText.length <= 6) {
-    return { ok: false, cleanedText, reason: 'too_short_after_cleaning' };
+  if (hasObviousRepetitionNoise(text)) {
+    return { ok: false, cleanedText, reason: 'repetition_noise' };
   }
 
   return { ok: true, cleanedText };
