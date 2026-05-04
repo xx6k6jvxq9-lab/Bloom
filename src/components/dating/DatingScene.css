@@ -276,7 +276,10 @@
 }
 
 .dating-scene__segment--dialogue {
-  color: #92ebf2;
+  color: var(--dating-accent, #92ebf2);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.62),
+    0 0 18px var(--dating-accent-glow, rgba(146, 235, 242, 0.45));
   font-weight: 600;
 }
 
@@ -368,8 +371,9 @@
 .dating-scene__rollback-action {
   border: none;
   border-radius: 14px;
-  background: rgba(139, 231, 238, 0.18);
-  color: #d9fbff;
+  background: var(--dating-accent-soft, rgba(139, 231, 238, 0.18));
+  color: var(--dating-accent, #d9fbff);
+  box-shadow: inset 0 0 0 1px var(--dating-accent-strong, rgba(139, 231, 238, 0.3));
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -485,8 +489,8 @@
 }
 
 .dating-scene__emoji-btn.is-active {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: var(--dating-accent-soft, rgba(255, 255, 255, 0.08));
+  color: var(--dating-accent, #ffffff);
 }
 
 .dating-scene__input {
@@ -523,6 +527,12 @@
   align-items: center;
   justify-content: center;
   box-shadow: none;
+}
+
+.dating-scene__send:not(:disabled) {
+  background: var(--dating-accent-soft, rgba(255, 255, 255, 0.08));
+  color: var(--dating-accent, #ffffff);
+  box-shadow: inset 1px 0 0 var(--dating-accent-strong, rgba(255, 255, 255, 0.12));
 }
 
 .dating-scene__send:disabled {

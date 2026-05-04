@@ -1271,6 +1271,15 @@ export type DateWritingPreset =
   | 'casual'
   | 'tension';
 
+export type DateWritingReference =
+  | 'none'
+  | 'jjwxc'
+  | 'zhihu'
+  | 'taiwan-romance'
+  | 'youth-ache'
+  | 'urban-mature'
+  | 'light-novel';
+
 export type DateDialogueFormat = 'default' | 'quoted' | 'plain';
 
 export type DateDescriptionDensity = 'default' | 'light' | 'medium' | 'heavy';
@@ -1285,6 +1294,7 @@ export type DateSession = {
   mood: string;
   narrativePerspective?: DateNarrativePerspective;
   writingPreset?: DateWritingPreset;
+  writingReference?: DateWritingReference;
   dialogueFormat?: DateDialogueFormat;
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;

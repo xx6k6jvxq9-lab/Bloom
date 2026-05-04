@@ -7,6 +7,7 @@ import type {
   DateDescriptionDensity,
   DateDialogueFormat,
   DateNarrativePerspective,
+  DateWritingReference,
   DateWritingPreset,
   DateSession,
   PerceptionSettings,
@@ -24,6 +25,7 @@ export type DatingSceneInput = {
   mood?: string;
   narrativePerspective?: DateNarrativePerspective;
   writingPreset?: DateWritingPreset;
+  writingReference?: DateWritingReference;
   dialogueFormat?: DateDialogueFormat;
   descriptionDensity?: DateDescriptionDensity;
   writingStyleCustom?: string;
@@ -206,6 +208,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     mood: options.session.mood,
     narrativePerspective: normalizeStyleValue(options.session.narrativePerspective, 'default'),
     writingPreset: normalizeStyleValue(options.session.writingPreset, 'default'),
+    writingReference: normalizeStyleValue(options.session.writingReference, 'none'),
     dialogueFormat: normalizeStyleValue(options.session.dialogueFormat, 'default'),
     descriptionDensity: normalizeStyleValue(options.session.descriptionDensity, 'default'),
     writingStyleCustom: options.session.writingStyleCustom?.trim() || undefined,

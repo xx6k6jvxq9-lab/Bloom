@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   ChevronLeft,
@@ -21,6 +21,7 @@ import type {
   DateDescriptionDensity,
   DateDialogueFormat,
   DateNarrativePerspective,
+  DateWritingReference,
   DateSession,
   DateWritingPreset,
   PerceptionSettings,
@@ -65,6 +66,16 @@ const WRITING_PRESET_OPTIONS: Array<{ value: DateWritingPreset; label: string }>
   { value: 'restrained', label: '克制冷感' },
   { value: 'casual', label: '轻松口语' },
   { value: 'tension', label: '拉扯张力' },
+];
+
+const WRITING_REFERENCE_OPTIONS: Array<{ value: DateWritingReference; label: string }> = [
+  { value: 'none', label: '无' },
+  { value: 'jjwxc', label: '晋江感' },
+  { value: 'zhihu', label: '知乎文感' },
+  { value: 'taiwan-romance', label: '台言感' },
+  { value: 'youth-ache', label: '青春疼痛感' },
+  { value: 'urban-mature', label: '都市熟龄感' },
+  { value: 'light-novel', label: '轻小说感' },
 ];
 
 const DIALOGUE_FORMAT_OPTIONS: Array<{ value: DateDialogueFormat; label: string }> = [
@@ -138,6 +149,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [narrativePerspective, setNarrativePerspective] = useState<DateNarrativePerspective>('default');
   const [writingPreset, setWritingPreset] = useState<DateWritingPreset>('default');
+  const [writingReference, setWritingReference] = useState<DateWritingReference>('none');
   const [dialogueFormat, setDialogueFormat] = useState<DateDialogueFormat>('default');
   const [descriptionDensity, setDescriptionDensity] = useState<DateDescriptionDensity>('default');
   const [writingStyleCustom, setWritingStyleCustom] = useState('');
@@ -185,6 +197,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
         setCustomMood('');
         setNarrativePerspective(initialSession.narrativePerspective || 'default');
         setWritingPreset(initialSession.writingPreset || 'default');
+        setWritingReference(initialSession.writingReference || 'none');
         setDialogueFormat(initialSession.dialogueFormat || 'default');
         setDescriptionDensity(initialSession.descriptionDensity || 'default');
         setWritingStyleCustom(initialSession.writingStyleCustom || '');
@@ -201,6 +214,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
         setCustomMood('');
         setNarrativePerspective('default');
         setWritingPreset('default');
+        setWritingReference('none');
         setDialogueFormat('default');
         setDescriptionDensity('default');
         setWritingStyleCustom('');
@@ -263,6 +277,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
     mood: customMood.trim() || mood,
     narrativePerspective,
     writingPreset,
+    writingReference,
     dialogueFormat,
     descriptionDensity,
     writingStyleCustom: writingStyleCustom.trim(),
@@ -614,6 +629,19 @@ export const DatingModal: React.FC<DatingModalProps> = ({
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
+                            风格参考
+                            <select
+                              value={writingReference}
+                              onChange={(event) => setWritingReference(event.target.value as DateWritingReference)}
+                              className="h-11 rounded-[14px] border border-zinc-200 bg-white px-3 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                            >
+                              {WRITING_REFERENCE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="flex flex-col gap-1.5 text-[12px] text-zinc-500">
                             对白格式
                             <select
                               value={dialogueFormat}
@@ -645,7 +673,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                           <textarea
                             value={writingStyleCustom}
                             onChange={(event) => setWritingStyleCustom(event.target.value.slice(0, 240))}
-                            placeholder="例如：用小说写法，人物对白加“”，多写动作、眼神和停顿，少一点直白解释。"
+                            placeholder="例如：偏晋江感，人物对白加“”，多写眼神和停顿，少一点解释感。"
                             className="min-h-[108px] rounded-[16px] border border-zinc-200 bg-white px-3 py-3 text-[13px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400 resize-none"
                           />
                           <span className="text-right text-[11px] text-zinc-400">{writingStyleCustom.length}/240</span>
@@ -717,6 +745,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                           />
                         </button>
                       </div>
+                    </div>
                     </div>
                   ) : null}
                 </section>

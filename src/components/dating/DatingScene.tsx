@@ -98,10 +98,11 @@ function hexToRgb(value: string): [number, number, number] | null {
   ];
 }
 
-function buildDatingAccentVars(session: DateSession): React.CSSProperties {
+function buildDatingAccentVars(session: DateSession, character: Character): React.CSSProperties {
+  const characterAccent = normalizeHexColor(character.bubbleColor) || DEFAULT_DATING_ACCENT;
   const accent = session.accentColorMode === 'character'
-    ? DEFAULT_DATING_ACCENT
-    : normalizeHexColor(session.accentColor) || DEFAULT_DATING_ACCENT;
+    ? characterAccent
+    : normalizeHexColor(session.accentColor) || characterAccent;
   const rgb = hexToRgb(accent) || [146, 235, 242];
 
   return {
@@ -915,7 +916,7 @@ export function DatingScene({
   };
 
   return (
-    <div className="dating-scene">
+    <div className="dating-scene" style={buildDatingAccentVars(currentSession, character)}>
       <div className="dating-scene__background" style={{ backgroundImage: `url(${backgroundImage})` }} />
       {backgroundImage ? (
         <img
