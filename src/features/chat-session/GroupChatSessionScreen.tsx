@@ -768,6 +768,10 @@ export function GroupChatSessionScreen({
     }
 
     requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        return;
+      }
       chatFooterRef.current?.scrollIntoView({ block: 'end' });
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
@@ -3255,6 +3259,10 @@ export function GroupChatSessionScreen({
               onChange={(event) => setInput(event.target.value)}
               onFocus={() => {
                 requestAnimationFrame(() => {
+                  if (scrollRef.current) {
+                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                    return;
+                  }
                   chatFooterRef.current?.scrollIntoView({ block: 'end' });
                 });
               }}

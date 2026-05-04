@@ -470,6 +470,7 @@ export function ChatSessionScreen({
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     keyboardInset,
@@ -1360,7 +1361,16 @@ export function ChatSessionScreen({
   const basicEmojis = ['😀', '😺', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = scrollRef.current;
+    if (!container) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth',
+    });
   };
 
   useEffect(() => {
@@ -1470,6 +1480,11 @@ export function ChatSessionScreen({
     }
 
     requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
   }, [keyboardInset, keyboardVisible, visualViewportHeight]);
@@ -1671,8 +1686,10 @@ export function ChatSessionScreen({
         fontSize: visualSettings?.chat?.fontSize ?? 14,
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
         // Android WebView/Chrome is prone to black-screen repaint glitches when
-        // keyboard-driven viewport changes are combined with CSS zoom.
-        ...(!isAndroid ? {
+        // keyboard-driven viewport changes are combined with CSS zoom. iOS
+        // browser mode is also prone to lifting the whole page when a focused
+        // textarea lives inside a zoomed container.
+        ...(!isAndroid && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -1753,6 +1770,7 @@ export function ChatSessionScreen({
 
       {/* Messages */}
       <div
+        ref={scrollRef}
         className={`${layoutConfig.messageListClass} min-h-0 ${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
         style={chatMessageListStyle}
       >

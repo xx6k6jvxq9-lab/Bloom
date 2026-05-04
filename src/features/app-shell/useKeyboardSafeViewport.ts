@@ -89,12 +89,6 @@ export function useKeyboardSafeViewport({
 
       setKeyboardVisible(shouldUseVisibleViewport);
       setViewportHeight(shouldUseVisibleViewport ? Math.round(viewport.height) : null);
-
-      if (shouldUseVisibleViewport && activeElement instanceof HTMLElement) {
-        window.requestAnimationFrame(() => {
-          activeElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        });
-      }
     };
 
     const scheduleViewportUpdate = () => {
