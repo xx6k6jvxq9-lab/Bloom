@@ -1,24 +1,5 @@
 import React, { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
-
-function isTextEntryElement(element: Element | null): element is HTMLElement {
-  if (!(element instanceof HTMLElement)) {
-    return false;
-  }
-
-  if (element.isContentEditable) {
-    return true;
-  }
-
-  if (element instanceof HTMLTextAreaElement) {
-    return !element.readOnly && !element.disabled;
-  }
-
-  if (element instanceof HTMLInputElement) {
-    return !element.readOnly && !element.disabled;
-  }
-
-  return false;
-}
+import { useAppKeyboard } from './AppKeyboardContext';
 
 type KeyboardAwareScreenProps = {
   children: ReactNode;
@@ -46,10 +27,11 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
-    if (!hideFooterWhenKeyboardOpen || typeof window === 'undefined' || typeof document === 'undefined') {
+    if (!hideFooterWhenKeyboardOpen || typeof document === 'undefined') {
       setKeyboardVisible(false);
       return undefined;
     }
@@ -58,15 +40,15 @@ export function KeyboardAwareScreen({
       const shell = shellRef.current;
       const activeElement = document.activeElement;
       const ownsFocusedField = !!shell
+        && activeElement instanceof HTMLElement
         && shell.contains(activeElement)
-        && isTextEntryElement(activeElement);
-      const viewport = window.visualViewport;
-      const keyboardInset = viewport
-        ? Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))
-        : 0;
-      const rootKeyboardVisible = document.documentElement.getAttribute('data-keyboard-open') === 'true';
+        && (
+          activeElement.isContentEditable
+          || (activeElement instanceof HTMLInputElement && !activeElement.readOnly && !activeElement.disabled)
+          || (activeElement instanceof HTMLTextAreaElement && !activeElement.readOnly && !activeElement.disabled)
+        );
 
-      setKeyboardVisible(ownsFocusedField && (rootKeyboardVisible || keyboardInset > 120));
+      setKeyboardVisible(ownsFocusedField && (appKeyboardVisible || keyboardInset > 120));
     };
 
     const scheduleUpdate = () => {
@@ -74,19 +56,14 @@ export function KeyboardAwareScreen({
     };
 
     updateKeyboardVisibility();
-    const viewport = window.visualViewport;
-    viewport?.addEventListener('resize', updateKeyboardVisibility);
-    viewport?.addEventListener('scroll', updateKeyboardVisibility);
     document.addEventListener('focusin', scheduleUpdate, true);
     document.addEventListener('focusout', scheduleUpdate, true);
 
     return () => {
-      viewport?.removeEventListener('resize', updateKeyboardVisibility);
-      viewport?.removeEventListener('scroll', updateKeyboardVisibility);
       document.removeEventListener('focusin', scheduleUpdate, true);
       document.removeEventListener('focusout', scheduleUpdate, true);
     };
-  }, [hideFooterWhenKeyboardOpen]);
+  }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset]);
 
   const resolvedFooterStyle = footer
     ? {

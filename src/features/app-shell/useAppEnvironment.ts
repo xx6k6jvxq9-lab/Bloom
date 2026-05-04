@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IdleWindow } from './appShellTypes';
+import { setAppKeyboardState } from './AppKeyboardContext';
 import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
 type UseAppEnvironmentResult = {
   isStandalone: boolean;
+  keyboardInset: number;
+  keyboardVisible: boolean;
+  layoutViewportHeight: number;
   time: string;
   useDesktopStageLayout: boolean;
+  visualViewportHeight: number;
 };
 
 export function useAppEnvironment(): UseAppEnvironmentResult {
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [layoutViewportHeight, setLayoutViewportHeight] = useState(0);
   const [time, setTime] = useState('');
   const [isStandalone, setIsStandalone] = useState(false);
   const hasPrefetchedPanelChunksRef = useRef(false);
@@ -18,6 +26,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     if (typeof window === 'undefined') return true;
     return window.matchMedia(DESKTOP_STAGE_MEDIA_QUERY).matches;
   });
+  const [visualViewportHeight, setVisualViewportHeight] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -50,6 +59,17 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
       const keyboardVisible = keyboardInset > 120;
 
+      setLayoutViewportHeight(Math.round(layoutViewportHeight));
+      setVisualViewportHeight(Math.round(visualViewportHeight));
+      setKeyboardInset(keyboardInset);
+      setKeyboardVisible(keyboardVisible);
+      setAppKeyboardState({
+        keyboardInset,
+        keyboardVisible,
+        layoutViewportHeight: Math.round(layoutViewportHeight),
+        visualViewportHeight: Math.round(visualViewportHeight),
+      });
+
       // Keep the app itself sized to the real fullscreen layout viewport so
       // iOS standalone safe-area space stays painted. The visual viewport is
       // still tracked separately for keyboard-aware screens.
@@ -81,6 +101,12 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.removeAttribute('data-android');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');
+      setAppKeyboardState({
+        keyboardInset: 0,
+        keyboardVisible: false,
+        layoutViewportHeight: 0,
+        visualViewportHeight: 0,
+      });
     };
   }, []);
 
@@ -174,7 +200,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
   return {
     isStandalone,
+    keyboardInset,
+    keyboardVisible,
+    layoutViewportHeight,
     time,
     useDesktopStageLayout,
+    visualViewportHeight,
   };
 }
