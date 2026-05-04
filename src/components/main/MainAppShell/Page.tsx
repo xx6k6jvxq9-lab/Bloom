@@ -10,7 +10,7 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
-import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
+import { KeyboardAwareScreen } from '../../../features/app-shell/KeyboardAwareScreen';
 
 function ResolvedMainShellAvatar({
   value,
@@ -121,7 +121,6 @@ export function MainApp({
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
   const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
-  const shellRef = React.useRef<HTMLDivElement | null>(null);
   const swipeStateRef = React.useRef<{
     startX: number;
     startY: number;
@@ -137,7 +136,6 @@ export function MainApp({
     active: false,
     lockedAxis: null,
   });
-  const { keyboardVisible, viewportStyle } = useKeyboardSafeViewport({ containerRef: shellRef });
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => ({
@@ -248,60 +246,65 @@ export function MainApp({
     resetSwipeState();
   };
 
-  return (
-    <motion.div 
-      ref={shellRef}
-      className="absolute inset-0 flex flex-col bg-zinc-50"
-      style={{
-        ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
-        ...(viewportStyle || {}),
-      }}
-    >
-      {/* Header */}
-      {!(activeTab === 'me' && meSection !== 'main') && (
-      <div 
-        className="relative z-10 min-h-[64px] pt-12 pb-3 px-4 flex justify-between items-center shrink-0 backdrop-blur-md border-b bg-white border-zinc-100"
-      >
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
-            <ChevronLeft size={24} />
-          </button>
-          <h1 className="text-[18px] font-bold text-zinc-900">
-            {activeTab === 'chat' && '聊天'}
-            {activeTab === 'contacts' && '通讯录'}
-            {activeTab === 'moments' && '动态'}
-            {activeTab === 'me' && '我的'}
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {activeTab === 'chat' && (
-            <button 
-              onClick={() => setShowChatQuickActions((prev) => !prev)}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
-            >
-              <Plus size={20} />
-            </button>
-          )}
-          {activeTab === 'contacts' && (
-            <button 
-              onClick={() => setShowAddFriend(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
-            >
-              <UserPlus2 size={18} />
-            </button>
-          )}
-        </div>
+  const header = !(activeTab === 'me' && meSection !== 'main') ? (
+    <div className="relative z-10 flex min-h-[64px] shrink-0 items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 pt-12 backdrop-blur-md">
+      <div className="flex items-center gap-2">
+        <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
+          <ChevronLeft size={24} />
+        </button>
+        <h1 className="text-[18px] font-bold text-zinc-900">
+          {activeTab === 'chat' && '聊天'}
+          {activeTab === 'contacts' && '通讯录'}
+          {activeTab === 'moments' && '动态'}
+          {activeTab === 'me' && '我的'}
+        </h1>
       </div>
-      )}
+      <div className="flex items-center gap-2">
+        {activeTab === 'chat' && (
+          <button
+            onClick={() => setShowChatQuickActions((prev) => !prev)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
+          >
+            <Plus size={20} />
+          </button>
+        )}
+        {activeTab === 'contacts' && (
+          <button
+            onClick={() => setShowAddFriend(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-zinc-900 transition-transform hover:bg-zinc-200 active:scale-90"
+          >
+            <UserPlus2 size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
 
-      {/* Content */}
-      <div
-        className="flex-1 min-h-0 overflow-hidden flex flex-col touch-pan-y"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-      >
+  const footer = !(activeTab === 'me' && meSection !== 'main') ? (
+    <>
+      <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+      <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
+      <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
+      <NavTab icon={<User size={24} />} label="我的" active={activeTab === 'me'} onClick={() => setActiveTab('me')} />
+    </>
+  ) : null;
+
+  return (
+    <KeyboardAwareScreen
+      className="absolute inset-0 flex flex-col bg-zinc-50"
+      style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
+      header={header}
+      bodyClassName="flex-1 min-h-0 overflow-hidden flex flex-col touch-pan-y"
+      bodyProps={{
+        onTouchStart: handleTouchStart,
+        onTouchMove: handleTouchMove,
+        onTouchEnd: handleTouchEnd,
+        onTouchCancel: handleTouchEnd,
+      }}
+      footer={footer}
+      hideFooterWhenKeyboardOpen
+      footerClassName="absolute bottom-0 left-0 right-0 z-20 flex h-[84px] items-center justify-around rounded-t-[32px] border-t border-zinc-100 bg-white px-4 pb-4 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
+    >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (
             <>
@@ -503,7 +506,6 @@ export function MainApp({
             onSectionChange={setMeSection}
           />
         )}
-      </div>
 
       {/* Modals */}
       <AnimatePresence>
@@ -627,25 +629,7 @@ export function MainApp({
           </>
         )}
       </AnimatePresence>
-
-      {/* Bottom Navigation */}
-      {!(activeTab === 'me' && meSection !== 'main') && (
-      <div 
-        className="absolute bottom-0 left-0 right-0 h-[84px] rounded-t-[32px] shadow-[0_-5px_20px_rgba(0,0,0,0.03)] flex items-center justify-around px-4 pb-4 z-20 backdrop-blur-md border-t bg-white border-zinc-100"
-        style={{
-          opacity: keyboardVisible ? 0 : 1,
-          transform: keyboardVisible ? 'translateY(100%)' : 'translateY(0)',
-          pointerEvents: keyboardVisible ? 'none' : 'auto',
-          transition: 'opacity 180ms ease, transform 180ms ease',
-        }}
-      >
-        <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
-        <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
-        <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
-        <NavTab icon={<User size={24} />} label="我的" active={activeTab === 'me'} onClick={() => setActiveTab('me')} />
-      </div>
-      )}
-    </motion.div>
+    </KeyboardAwareScreen>
   );
 }
 
