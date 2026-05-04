@@ -643,6 +643,7 @@ export function GroupChatSessionScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const lastVisualViewportHeightRef = useRef<number | null>(null);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
@@ -668,6 +669,7 @@ export function GroupChatSessionScreen({
   const footerOpacity = group.footerOpacity ?? 0.92;
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
+  const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const hasSharedBubbleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss);
   const hasGroupRoleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
   const hasGroupUserTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.userBubbleStyleCss);
@@ -791,12 +793,10 @@ export function GroupChatSessionScreen({
         isInputFocused
         && previousViewportHeight !== null
         && Math.abs(previousViewportHeight - currentViewportHeight) > 24
-        && scrollRef.current
       ) {
         requestAnimationFrame(() => {
-          if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          }
+          chatFooterRef.current?.scrollIntoView({ block: 'end' });
+          messagesEndRef.current?.scrollIntoView({ block: 'end' });
         });
       }
     };
@@ -814,11 +814,12 @@ export function GroupChatSessionScreen({
   }, []);
 
   useEffect(() => {
-    if (!keyboardInset || document.activeElement !== textareaRef.current || !scrollRef.current) {
+    if (!keyboardInset || document.activeElement !== textareaRef.current) {
       return;
     }
 
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    chatFooterRef.current?.scrollIntoView({ block: 'end' });
+    messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [keyboardInset]);
 
   useEffect(() => {
@@ -2731,7 +2732,7 @@ export function GroupChatSessionScreen({
         </div>
       )}
 
-      <div className={`${layoutConfig.messageListClass} relative z-10`} ref={scrollRef} style={chatMessageListStyle}>
+      <div className={`${layoutConfig.messageListClass} relative z-10 ${hasVisibleMessages ? '' : 'flex flex-col justify-end'}`} ref={scrollRef} style={chatMessageListStyle}>
         <div>
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
@@ -3238,6 +3239,7 @@ export function GroupChatSessionScreen({
           </div>
         )}
         </div>
+        <div ref={messagesEndRef} />
       </div>
 
       <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${groupFooterClassName}`} style={chatFooterStyle}>
@@ -3321,6 +3323,11 @@ export function GroupChatSessionScreen({
 	                  ref={textareaRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onFocus={() => {
+                requestAnimationFrame(() => {
+                  chatFooterRef.current?.scrollIntoView({ block: 'end' });
+                });
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
