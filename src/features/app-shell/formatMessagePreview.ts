@@ -39,37 +39,37 @@ export const formatMessagePreview = (text: string | undefined): string => {
 
   const trimmedText = text.trim();
   if (trimmedText === '[COUPLE_SPACE_INVITE]') {
-    return '[鎯呬荆绌洪棿閭€璇穄';
+    return '[情侣空间邀请]';
   }
   if (trimmedText === '[COUPLE_SPACE_INVITE_ACCEPTED]') {
-    return '[鎯呬荆绌洪棿宸插缓绔媇';
+    return '[情侣空间已建立]';
   }
-  if (/^\[transfer\]/i.test(trimmedText) || /^TRANSFER\|/i.test(trimmedText) || /^\[杞处\s*[\d.]+\]/.test(trimmedText)) {
-    return '[杞处鍗＄墖]';
+  if (/^\[transfer\]/i.test(trimmedText) || /^TRANSFER\|/i.test(trimmedText) || /^\[转账[:：]?\s*[\d.]+\]/.test(trimmedText)) {
+    return '[转账消息]';
   }
   if (text.startsWith('[notice]')) {
     return sanitizePreviewText(text.replace(/^\[notice\]\s*/i, '').trim());
   }
   if (text.startsWith('[audio]')) {
-    return '[璇煶]';
+    return '[语音]';
   }
   if (text.startsWith('[image]')) {
-    return '[鍥剧墖]';
+    return '[图片]';
   }
   if (text.startsWith('[sticker]')) {
-    return '[琛ㄦ儏鍖匽';
+    return '[表情]';
   }
   if (text.startsWith('[group-poll]')) {
-    return '[缇ゆ姇绁╙';
+    return '[群投票]';
   }
   if (text.startsWith('[group-relay]')) {
-    return '[缇ゆ帴榫橾';
+    return '[群接龙]';
   }
   if (text.startsWith('[group-task]')) {
-    return '[缇ゅ皬浠诲姟]';
+    return '[群任务]';
   }
   if (text.startsWith('[GAME_CARD]')) {
-    return '[娓告垙鍗＄墖]';
+    return '[游戏卡片]';
   }
 
   return sanitizePreviewText(text);

@@ -45,6 +45,7 @@ type ChatSessionMountProps = {
   setCallHistory: (callHistory: CallRecord[]) => void;
   savedDates: DateSession[];
   collectedDates: DateSession[];
+  datingResumeSignal?: number;
   setDatingRecords: (data: DatingRecordsData) => void;
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
@@ -84,6 +85,7 @@ export function ChatSessionMount({
   setCallHistory,
   savedDates,
   collectedDates,
+  datingResumeSignal,
   setDatingRecords,
   walletData,
   setWalletData,
@@ -131,6 +133,7 @@ export function ChatSessionMount({
           setCallHistory={setCallHistory}
           savedDates={savedDates}
           collectedDates={collectedDates}
+          datingResumeSignal={datingResumeSignal}
           setDatingRecords={setDatingRecords}
           walletData={walletData}
           setWalletData={setWalletData}

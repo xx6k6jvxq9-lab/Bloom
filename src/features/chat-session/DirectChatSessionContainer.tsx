@@ -45,6 +45,7 @@ type DirectChatSessionContainerProps = {
   setCallHistory: (callHistory: CallRecord[]) => void;
   savedDates: DateSession[];
   collectedDates: DateSession[];
+  datingResumeSignal?: number;
   setDatingRecords: (data: DatingRecordsData) => void;
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
@@ -80,6 +81,7 @@ export function DirectChatSessionContainer({
   setCallHistory,
   savedDates,
   collectedDates,
+  datingResumeSignal,
   setDatingRecords,
   walletData,
   setWalletData,
@@ -191,6 +193,7 @@ export function DirectChatSessionContainer({
         });
       }}
       savedDates={savedDatesForCharacter}
+      datingResumeSignal={datingResumeSignal}
       walletData={walletData}
       onUpdateWalletData={setWalletData}
       onPublishMoment={onPublishMoment}

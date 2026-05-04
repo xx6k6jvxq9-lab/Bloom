@@ -24,6 +24,8 @@ import { createDefaultAppData } from './features/app-shell/defaultAppData';
 import { GlobalStyles } from './features/app-shell/AppShellPrimitives';
 import type {
   CoupleSpaceUpdateToast,
+  DatingGenerationToast,
+  DreamGenerationToast,
   MomentPublishToast,
 } from './features/app-shell/appShellTypes';
 import { AppScreenContent } from './features/app-shell/AppScreenContent';
@@ -45,7 +47,8 @@ import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
 import { AppSelect } from './components/shared/AppSelect';
 import { streamTextWithConfig } from './services/ai/runtimeClient';
-import { DREAM_BACKGROUND_EVENT } from './services/dream/dreamBackgroundGeneration';
+import { DATING_BACKGROUND_EVENT } from './services/dating/datingBackgroundEvents';
+import { DREAM_BACKGROUND_EVENT, DREAM_BACKGROUND_TOAST_READY_EVENT } from './services/dream/dreamBackgroundGeneration';
 import { buildChatPrompt } from './services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from './services/ai/prompts/builders/buildSummaryPrompt';
 import {
@@ -87,13 +90,10 @@ export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [activeApp, setActiveApp] = useState<AppScreen>('home');
+  const [datingResumeSignal, setDatingResumeSignal] = useState(0);
   const [dreamResumeSignal, setDreamResumeSignal] = useState(0);
-  const [dreamGenerationToast, setDreamGenerationToast] = useState<null | {
-    kind: 'completed';
-    taskId: string;
-    title: string;
-    message: string;
-  }>(null);
+  const [datingGenerationToast, setDatingGenerationToast] = useState<DatingGenerationToast | null>(null);
+  const [dreamGenerationToast, setDreamGenerationToast] = useState<DreamGenerationToast | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chat');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -102,7 +102,14 @@ export default function App() {
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
-  const { isStandalone, time, useDesktopStageLayout } = useAppEnvironment();
+  const {
+    isStandalone,
+    keyboardVisible,
+    layoutViewportHeight,
+    time,
+    useDesktopStageLayout,
+    visualViewportHeight,
+  } = useAppEnvironment();
   const {
     appData,
     hasHydratedStorage,
@@ -134,6 +141,7 @@ export default function App() {
 
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
+  useAutoDismissToast(datingGenerationToast, setDatingGenerationToast, 5200);
   useAutoDismissToast(dreamGenerationToast, setDreamGenerationToast, 5200);
   useCoupleSpaceAutoChecks({
     activeApp,
@@ -165,6 +173,34 @@ export default function App() {
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-black'
       : 'bg-zinc-50';
+  const browserKeyboardViewportCollapsed = !isStandalone
+    && visualViewportHeight > 0
+    && layoutViewportHeight > 0
+    && visualViewportHeight < layoutViewportHeight - 40;
+  const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
+
+  const loadPendingDreamToast = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem('dream_background_toast_pending');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { taskId?: string; title?: string; roleName?: string; roleId?: string; roleAvatar?: string; shouldNotify?: boolean } | null;
+      if (!parsed?.taskId || !parsed?.roleId) return;
+      setDreamGenerationToast({
+        id: parsed.taskId,
+        roleId: parsed.roleId,
+        roleName: parsed.roleName || '角色',
+        roleAvatar: parsed.roleAvatar,
+        title: parsed.title || '梦境已生成',
+        preview: `${parsed.roleName || '角色'} 的梦已经织好，点开继续进入。`,
+      });
+    } catch {
+      // ignore malformed toast cache
+    }
+  };
 
   useEffect(() => {
     activeAppRef.current = activeApp;
@@ -195,26 +231,94 @@ export default function App() {
     }
 
     const handleDreamBackgroundEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ kind: string; taskId: string; title: string; roleName: string }>).detail;
+      const detail = (event as CustomEvent<{ kind: string; taskId: string; title: string; roleName: string; roleId: string; roleAvatar?: string; shouldNotify?: boolean }>).detail;
       if (!detail || detail.kind !== 'completed') {
         return;
       }
 
-      if (activeAppRef.current === 'dream') {
+      loadPendingDreamToast();
+
+      if (!detail.shouldNotify) {
         return;
       }
 
       setDreamGenerationToast({
-        kind: 'completed',
-        taskId: detail.taskId,
+        id: detail.taskId,
+        roleId: detail.roleId,
+        roleName: detail.roleName,
+        roleAvatar: detail.roleAvatar,
         title: detail.title || '梦境已生成',
-        message: `${detail.roleName} 的梦已经织好，点开继续进入。`,
+        preview: `${detail.roleName} 的梦已经织好，点开继续进入。`,
       });
     };
 
+    const handleDreamToastReady = () => {
+      loadPendingDreamToast();
+    };
+
+    loadPendingDreamToast();
     window.addEventListener(DREAM_BACKGROUND_EVENT, handleDreamBackgroundEvent as EventListener);
+    window.addEventListener(DREAM_BACKGROUND_TOAST_READY_EVENT, handleDreamToastReady as EventListener);
     return () => {
       window.removeEventListener(DREAM_BACKGROUND_EVENT, handleDreamBackgroundEvent as EventListener);
+      window.removeEventListener(DREAM_BACKGROUND_TOAST_READY_EVENT, handleDreamToastReady as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    const refreshPendingDreamToast = () => {
+      loadPendingDreamToast();
+    };
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        refreshPendingDreamToast();
+      }
+    };
+
+    window.addEventListener('focus', refreshPendingDreamToast);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    refreshPendingDreamToast();
+    return () => {
+      window.removeEventListener('focus', refreshPendingDreamToast);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [activeApp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleDatingBackgroundEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        kind: string;
+        characterId: string;
+        characterName: string;
+        characterAvatar?: string;
+        scenario: string;
+      }>).detail;
+
+      if (!detail || detail.kind !== 'completed') {
+        return;
+      }
+
+      setDatingGenerationToast({
+        id: `${detail.characterId}-${Date.now()}`,
+        characterId: detail.characterId,
+        characterName: detail.characterName,
+        characterAvatar: detail.characterAvatar,
+        preview: detail.scenario || '约会已生成完成',
+      });
+    };
+
+    window.addEventListener(DATING_BACKGROUND_EVENT, handleDatingBackgroundEvent as EventListener);
+    return () => {
+      window.removeEventListener(DATING_BACKGROUND_EVENT, handleDatingBackgroundEvent as EventListener);
     };
   }, []);
 
@@ -246,7 +350,7 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && (
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
           <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
@@ -282,6 +386,8 @@ export default function App() {
             couplePartnerCharacter={couplePartnerCharacter}
             coupleSpaceUpdateToast={coupleSpaceUpdateToast}
             currentCoupleSpace={currentCoupleSpace}
+            datingGenerationToast={datingGenerationToast}
+            datingResumeSignal={datingResumeSignal}
             dreamGenerationToast={dreamGenerationToast}
             dreamResumeSignal={dreamResumeSignal}
             handleAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
@@ -309,12 +415,28 @@ export default function App() {
             setSettings={setSettings}
             setStatusBarVisible={setStatusBarVisible}
             settings={settings}
+            onOpenReadyDating={(characterId) => {
+              setSelectedCharacterId(characterId);
+              setDatingResumeSignal((prev) => prev + 1);
+              setActiveApp('chat-session');
+              setDatingGenerationToast(null);
+            }}
+            onDismissDatingToast={() => setDatingGenerationToast(null)}
             onOpenReadyDream={() => {
               setDreamResumeSignal((prev) => prev + 1);
               setActiveApp('dream');
+              if (typeof window !== 'undefined') {
+                window.localStorage.removeItem('dream_background_toast_pending');
+              }
               setDreamGenerationToast(null);
             }}
-            onDismissDreamToast={() => setDreamGenerationToast(null)}
+            onDismissDreamToast={() => {
+              if (typeof window !== 'undefined') {
+                window.localStorage.removeItem('dream_background_toast_pending');
+              }
+              setDreamGenerationToast(null);
+            }}
+            onDreamResumeHandled={() => setDreamResumeSignal(0)}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center bg-zinc-50 px-8 text-center">
@@ -384,7 +506,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Home Indicator */}
-        {!isStandalone && (
+        {!isStandalone && !hideMockSystemChrome && (
           <div
             className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
           >

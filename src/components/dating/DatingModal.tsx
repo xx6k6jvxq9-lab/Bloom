@@ -36,6 +36,7 @@ interface DatingModalProps {
 }
 
 type RecoverableDateSession = DateSession & { isSaved?: boolean };
+const DATING_AUTO_SAVE_KEY = 'dating_modal_auto_save_enabled';
 
 const LOCATION_OPTIONS = ['海边沙滩', '电影院', '咖啡馆', '游乐园', '森林公园', '高档餐厅'];
 const SCENARIO_OPTIONS = ['初次约会', '纪念日庆祝', '周末散步', '意外相遇', '浪漫晚餐'];
@@ -63,6 +64,11 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   const [localBackground, setLocalBackground] = useState('');
   const [activeSceneSession, setActiveSceneSession] = useState<RecoverableDateSession | null>(null);
   const [sceneStartToken, setSceneStartToken] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(DATING_AUTO_SAVE_KEY) === '1';
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { setUploadedFile } = usePersistentFieldActions();
   const wasOpenRef = useRef(false);
@@ -124,6 +130,11 @@ export const DatingModal: React.FC<DatingModalProps> = ({
       resetDatingScenePresentation();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DATING_AUTO_SAVE_KEY, autoSaveEnabled ? '1' : '0');
+  }, [autoSaveEnabled]);
 
   const resolvedBackground = useMemo(
     () =>
@@ -239,6 +250,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
               }}
               onCollectDate={onCollectDate}
               onEndDateComplete={onEndDateComplete}
+              autoSaveEnabled={autoSaveEnabled}
             />
           ) : null}
 
@@ -427,6 +439,43 @@ export const DatingModal: React.FC<DatingModalProps> = ({
                       className="mt-2.5 h-12 w-full rounded-[16px] border border-zinc-200 bg-white px-4 text-[14px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
                     />
                   </div>
+                </section>
+
+                <section className="border-t border-zinc-200/80 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedOpen(prev => !prev)}
+                    className="flex w-full items-center justify-between rounded-[16px] border border-zinc-200 bg-white px-4 py-3 text-left"
+                  >
+                    <div>
+                      <div className="text-[13px] font-semibold text-zinc-800">高级设置</div>
+                      <div className="mt-1 text-[11px] text-zinc-500">自动保存约会进度等功能</div>
+                    </div>
+                    <div className="text-[12px] text-zinc-500">{advancedOpen ? '收起' : '展开'}</div>
+                  </button>
+
+                  {advancedOpen ? (
+                    <div className="mt-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[13px] font-semibold text-zinc-800">自动保存约会进度</div>
+                          <div className="mt-1 text-[11px] leading-5 text-zinc-500">
+                            开启后，约会每一轮生成后都会自动保存当前进度；结束约会后，下次仍会正常开启新的约会。
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAutoSaveEnabled(prev => !prev)}
+                          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${autoSaveEnabled ? 'bg-zinc-900' : 'bg-zinc-300'}`}
+                          aria-pressed={autoSaveEnabled}
+                        >
+                          <span
+                            className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${autoSaveEnabled ? 'left-6' : 'left-1'}`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </section>
 
                 <section className="border-t border-zinc-200/80 pt-4">

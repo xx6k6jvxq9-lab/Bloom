@@ -95,6 +95,7 @@ import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
+import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 const getGroupMessageSelectionKey = (message: ChatMessage) => (
@@ -600,8 +601,6 @@ export function GroupChatSessionScreen({
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [isInputExpanded, setIsInputExpanded] = useState(false);
   const [showExpandInputToggle, setShowExpandInputToggle] = useState(false);
-  const [keyboardInset, setKeyboardInset] = useState(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [activeGroupFeatureComposer, setActiveGroupFeatureComposer] = useState<'poll' | 'relay' | 'task' | null>(null);
@@ -645,7 +644,11 @@ export function GroupChatSessionScreen({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
-  const lastVisualViewportHeightRef = useRef<number | null>(null);
+  const {
+    keyboardInset,
+    keyboardVisible,
+    visualViewportHeight,
+  } = useAppKeyboard();
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -667,9 +670,7 @@ export function GroupChatSessionScreen({
   const headerOpacity = group.headerOpacity ?? 0.92;
   const footerStyleType = group.footerStyle || 'default';
   const footerOpacity = group.footerOpacity ?? 0.92;
-  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const [isNoticeVisible, setIsNoticeVisible] = useState(() => !!groupNotice);
-  const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const hasSharedBubbleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.bubbleStyleCss);
   const hasGroupRoleTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.modelBubbleStyleCss);
   const hasGroupUserTheme = hasBubbleThemeCss(settings.visualSettings?.chat?.userBubbleStyleCss);
@@ -757,92 +758,20 @@ export function GroupChatSessionScreen({
   }, [input, isInputExpanded, isVoiceMode]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const viewport = window.visualViewport;
-    if (!viewport) {
-      setKeyboardInset(0);
-      return undefined;
-    }
-
-    const updateViewportMetrics = () => {
-      const layoutHeight = window.innerHeight;
-      const currentViewportHeight = Math.round(viewport.height);
-      const previousViewportHeight = lastVisualViewportHeightRef.current;
-      lastVisualViewportHeightRef.current = currentViewportHeight;
-      const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      const nextKeyboardVisible = inset > 120;
-      const rootViewportHeight = typeof document !== 'undefined'
-        ? Number.parseFloat(
-          getComputedStyle(document.documentElement)
-            .getPropertyValue('--app-viewport-height')
-            .trim()
-            .replace('px', ''),
-        )
-        : 0;
-      const rootTracksVisualViewport = rootViewportHeight > 0
-        && Math.abs(rootViewportHeight - viewport.height) <= 2;
-
-      setKeyboardVisible(nextKeyboardVisible);
-      setKeyboardInset(!rootTracksVisualViewport && nextKeyboardVisible ? inset : 0);
-
-      const isInputFocused = document.activeElement === textareaRef.current;
-      if (
-        isInputFocused
-        && previousViewportHeight !== null
-        && Math.abs(previousViewportHeight - currentViewportHeight) > 24
-      ) {
-        requestAnimationFrame(() => {
-          chatFooterRef.current?.scrollIntoView({ block: 'end' });
-          messagesEndRef.current?.scrollIntoView({ block: 'end' });
-        });
-      }
-    };
-
-    updateViewportMetrics();
-    viewport.addEventListener('resize', updateViewportMetrics);
-    viewport.addEventListener('scroll', updateViewportMetrics);
-    window.addEventListener('orientationchange', updateViewportMetrics);
-
-    return () => {
-      viewport.removeEventListener('resize', updateViewportMetrics);
-      viewport.removeEventListener('scroll', updateViewportMetrics);
-      window.removeEventListener('orientationchange', updateViewportMetrics);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!keyboardInset || document.activeElement !== textareaRef.current) {
+    if (
+      typeof document === 'undefined'
+      || !keyboardVisible
+      || !keyboardInset
+      || document.activeElement !== textareaRef.current
+    ) {
       return;
     }
 
-    chatFooterRef.current?.scrollIntoView({ block: 'end' });
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [keyboardInset]);
-
-  useEffect(() => {
-    if (!isAndroid || typeof document === 'undefined') {
-      return undefined;
-    }
-
-    const resetKeyboardInsetIfNeeded = () => {
-      const activeElement = document.activeElement as HTMLElement | null;
-      const isTextInputFocused = activeElement === textareaRef.current || activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
-      if (!isTextInputFocused) {
-        window.setTimeout(() => {
-          setKeyboardInset(0);
-          setKeyboardVisible(false);
-        }, 120);
-      }
-    };
-
-    document.addEventListener('focusout', resetKeyboardInsetIfNeeded, true);
-    return () => {
-      document.removeEventListener('focusout', resetKeyboardInsetIfNeeded, true);
-    };
-  }, [isAndroid]);
+    requestAnimationFrame(() => {
+      chatFooterRef.current?.scrollIntoView({ block: 'end' });
+      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    });
+  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1085,6 +1014,7 @@ export function GroupChatSessionScreen({
       }]
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
+  const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = keyboardVisible
     ? 'var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh))'
     : 'var(--app-viewport-height, 100dvh)';

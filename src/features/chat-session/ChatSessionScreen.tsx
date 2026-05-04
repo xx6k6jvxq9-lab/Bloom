@@ -43,6 +43,7 @@ import { GroupLocationPickerSheet } from './GroupLocationPickerSheet';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from './InnerVoiceUnlockCard';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
+import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { getMessageMainText } from '../../utils';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
@@ -365,6 +366,7 @@ export function ChatSessionScreen({
   onSaveDate,
   onCollectDate,
   savedDates,
+  datingResumeSignal = 0,
   walletData,
   onUpdateWalletData,
   onPublishMoment,
@@ -401,6 +403,7 @@ export function ChatSessionScreen({
   onSaveDate?: (session: DateSession) => void;
   onCollectDate?: (session: DateSession) => void;
   savedDates?: DateSession[];
+  datingResumeSignal?: number;
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
@@ -439,6 +442,7 @@ export function ChatSessionScreen({
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showDatingModal, setShowDatingModal] = useState(false);
   const [showGameCenter, setShowGameCenter] = useState(false);
+  const handledDatingResumeSignalRef = useRef(0);
 
   const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [voiceCallDuration, setVoiceCallDuration] = useState(0);
@@ -462,14 +466,16 @@ export function ChatSessionScreen({
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
-  const [keyboardInset, setKeyboardInset] = useState(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
-  const lastVisualViewportHeightRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    keyboardInset,
+    keyboardVisible,
+    visualViewportHeight,
+  } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -851,6 +857,16 @@ export function ChatSessionScreen({
       resetDatingScenePresentation();
     }
   }, [showDatingModal]);
+
+  useEffect(() => {
+    if (!datingResumeSignal) return;
+    if (handledDatingResumeSignalRef.current === datingResumeSignal) return;
+    handledDatingResumeSignalRef.current = datingResumeSignal;
+
+    if (datingConfig && activeSavedDate) {
+      setShowDatingModal(true);
+    }
+  }, [activeSavedDate, datingConfig, datingResumeSignal]);
 
   const handleSendVoiceCallText = () => {
     if (!voiceCallInput.trim()) return;
@@ -1444,92 +1460,19 @@ export function ChatSessionScreen({
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const viewport = window.visualViewport;
-    if (!viewport) {
-      setKeyboardInset(0);
-      return undefined;
-    }
-
-    const updateViewportMetrics = () => {
-      const layoutHeight = window.innerHeight;
-      const currentViewportHeight = Math.round(viewport.height);
-      const previousViewportHeight = lastVisualViewportHeightRef.current;
-      lastVisualViewportHeightRef.current = currentViewportHeight;
-      const inset = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop));
-      const nextKeyboardVisible = inset > 120;
-      const rootViewportHeight = typeof document !== 'undefined'
-        ? Number.parseFloat(
-          getComputedStyle(document.documentElement)
-            .getPropertyValue('--app-viewport-height')
-            .trim()
-            .replace('px', ''),
-        )
-        : 0;
-      const rootTracksVisualViewport = rootViewportHeight > 0
-        && Math.abs(rootViewportHeight - viewport.height) <= 2;
-
-      // When the root already shrinks with the keyboard, adding the inset again
-      // double-lifts the footer and creates a visible gap above the keyboard.
-      setKeyboardVisible(nextKeyboardVisible);
-      setKeyboardInset(!rootTracksVisualViewport && nextKeyboardVisible ? inset : 0);
-
-      const isInputFocused = document.activeElement === inputTextareaRef.current;
-      if (
-        isInputFocused
-        && previousViewportHeight !== null
-        && Math.abs(previousViewportHeight - currentViewportHeight) > 24
-      ) {
-        requestAnimationFrame(() => {
-          messagesEndRef.current?.scrollIntoView({ block: 'end' });
-        });
-      }
-    };
-
-    updateViewportMetrics();
-    viewport.addEventListener('resize', updateViewportMetrics);
-    viewport.addEventListener('scroll', updateViewportMetrics);
-    window.addEventListener('orientationchange', updateViewportMetrics);
-
-    return () => {
-      viewport.removeEventListener('resize', updateViewportMetrics);
-      viewport.removeEventListener('scroll', updateViewportMetrics);
-      window.removeEventListener('orientationchange', updateViewportMetrics);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!keyboardInset || document.activeElement !== inputTextareaRef.current) {
+    if (
+      typeof document === 'undefined'
+      || !keyboardVisible
+      || !keyboardInset
+      || document.activeElement !== inputTextareaRef.current
+    ) {
       return;
     }
 
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [keyboardInset]);
-
-  useEffect(() => {
-    if (!isAndroid || typeof document === 'undefined') {
-      return undefined;
-    }
-
-    const resetKeyboardInsetIfNeeded = () => {
-      const activeElement = document.activeElement as HTMLElement | null;
-      const isTextInputFocused = activeElement === inputTextareaRef.current || activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
-      if (!isTextInputFocused) {
-        window.setTimeout(() => {
-          setKeyboardInset(0);
-          setKeyboardVisible(false);
-        }, 120);
-      }
-    };
-
-    document.addEventListener('focusout', resetKeyboardInsetIfNeeded, true);
-    return () => {
-      document.removeEventListener('focusout', resetKeyboardInsetIfNeeded, true);
-    };
-  }, [isAndroid]);
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    });
+  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -2774,11 +2717,6 @@ export function ChatSessionScreen({
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onBlur={() => {
-                  if (isAndroid) {
-                    window.setTimeout(() => {
-                      setKeyboardInset(0);
-                    }, 120);
-                  }
                   if (!input.trim()) {
                     setIsInputExpanded(false);
                   }
@@ -3158,12 +3096,15 @@ export function ChatSessionScreen({
             if (!returnChatText.trim()) {
               return;
             }
+            const latestHistoryTimestamp = history[history.length - 1]?.timestamp || 0;
+            const endedAt = archivedSession.endedAt || 0;
+            const nextReplyTimestamp = Math.max(Date.now(), endedAt, latestHistoryTimestamp + 1);
             setHistory([
               ...history,
               {
                 role: 'model',
                 text: returnChatText.trim(),
-                timestamp: Date.now(),
+                timestamp: nextReplyTimestamp,
               },
             ]);
           }}

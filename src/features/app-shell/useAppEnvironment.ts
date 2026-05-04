@@ -58,6 +58,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const visualViewportHeight = viewport?.height ?? layoutViewportHeight;
       const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
       const keyboardVisible = keyboardInset > 120;
+      const resolvedShellViewportHeight = isStandalone
+        ? layoutViewportHeight
+        : visualViewportHeight;
 
       setLayoutViewportHeight(Math.round(layoutViewportHeight));
       setVisualViewportHeight(Math.round(visualViewportHeight));
@@ -70,10 +73,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         visualViewportHeight: Math.round(visualViewportHeight),
       });
 
-      // Keep the app itself sized to the real fullscreen layout viewport so
-      // iOS standalone safe-area space stays painted. The visual viewport is
-      // still tracked separately for keyboard-aware screens.
-      root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
+      // In browser mode the shell should follow the visible viewport so the
+      // whole mock phone chrome stays attached to the keyboard. Standalone
+      // mode still uses the layout viewport to preserve painted safe areas.
+      root.style.setProperty('--app-layout-viewport-height', `${Math.round(layoutViewportHeight)}px`);
+      root.style.setProperty('--app-viewport-height', `${Math.round(resolvedShellViewportHeight)}px`);
       root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
       root.style.setProperty('--app-keyboard-inset', `${keyboardInset}px`);
       if (keyboardVisible) {
@@ -95,6 +99,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       viewport?.removeEventListener('scroll', updateViewportHeight);
       window.removeEventListener('resize', updateViewportHeight);
       window.removeEventListener('orientationchange', updateViewportHeight);
+      root.style.removeProperty('--app-layout-viewport-height');
       root.style.removeProperty('--app-viewport-height');
       root.style.removeProperty('--app-visible-viewport-height');
       root.style.removeProperty('--app-keyboard-inset');

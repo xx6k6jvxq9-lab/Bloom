@@ -1,6 +1,6 @@
 ﻿import React, { Suspense } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { Heart, Image as ImageIcon } from 'lucide-react';
+import { Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
 import type { AppData, AppSettings, Character, CoupleSpaceData } from '../../types';
 import { HomeScreen } from '../../components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from '../../components/main/ContactsShell/Page';
@@ -35,7 +35,7 @@ import {
 } from './customizationHandlers';
 import { formatMessagePreview } from './formatMessagePreview';
 import type { AppScreen, AppTab } from './appShellHandlers';
-import type { CoupleSpaceUpdateToast, MomentPublishToast } from './appShellTypes';
+import type { CoupleSpaceUpdateToast, DatingGenerationToast, DreamGenerationToast, MomentPublishToast } from './appShellTypes';
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
@@ -53,12 +53,9 @@ type AppScreenContentProps = {
   couplePartnerCharacter: Character;
   coupleSpaceUpdateToast: CoupleSpaceUpdateToast | null;
   currentCoupleSpace: CoupleSpaceData;
-  dreamGenerationToast: {
-    kind: 'completed';
-    taskId: string;
-    title: string;
-    message: string;
-  } | null;
+  datingGenerationToast: DatingGenerationToast | null;
+  datingResumeSignal: number;
+  dreamGenerationToast: DreamGenerationToast | null;
   dreamResumeSignal: number;
   handleAcceptCoupleSpaceInvite: (partnerId: string) => void;
   handleAddCharacter: (character: Character) => void;
@@ -85,8 +82,11 @@ type AppScreenContentProps = {
   setSettings: Dispatch<SetStateAction<AppSettings>>;
   setStatusBarVisible: Dispatch<SetStateAction<boolean>>;
   settings: AppSettings;
+  onOpenReadyDating: (characterId: string) => void;
+  onDismissDatingToast: () => void;
   onOpenReadyDream: () => void;
   onDismissDreamToast: () => void;
+  onDreamResumeHandled: () => void;
 };
 
 export function AppScreenContent({
@@ -99,6 +99,8 @@ export function AppScreenContent({
   couplePartnerCharacter,
   coupleSpaceUpdateToast,
   currentCoupleSpace,
+  datingGenerationToast,
+  datingResumeSignal,
   dreamGenerationToast,
   dreamResumeSignal,
   handleAcceptCoupleSpaceInvite,
@@ -126,8 +128,11 @@ export function AppScreenContent({
   setSettings,
   setStatusBarVisible,
   settings,
+  onOpenReadyDating,
+  onDismissDatingToast,
   onOpenReadyDream,
   onDismissDreamToast,
+  onDreamResumeHandled,
 }: AppScreenContentProps) {
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
@@ -248,34 +253,88 @@ export function AppScreenContent({
           </div>
         </button>
       )}
-      {dreamGenerationToast && (
+      {datingGenerationToast && (
         <div
-          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-[rgba(196,169,106,.45)] bg-[rgba(8,12,24,.92)] p-4 text-left shadow-lg backdrop-blur-md`}
+          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(196,169,106,.12)] text-[#d9c08a]">
-              <Heart size={18} />
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
+              {datingGenerationToast.characterAvatar ? (
+                <ResolvedAssetImagePrimitive
+                  value={datingGenerationToast.characterAvatar}
+                  alt={datingGenerationToast.characterName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[#d99ab5]">
+                  <Heart size={18} />
+                </div>
+              )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-[#9ebee2]">梦境提示</div>
-              <div className="mt-0.5 text-sm font-bold text-white">
-                {dreamGenerationToast.title}
+              <div className="text-xs font-medium text-zinc-400">约会提醒</div>
+              <div className="mt-0.5 text-sm font-bold text-zinc-800">
+                {datingGenerationToast.characterName} 的约会有新进展
               </div>
-              <div className="mt-1 text-xs text-[rgba(237,230,214,.72)]">
-                {dreamGenerationToast.message}
+              <div className="mt-1 truncate text-xs text-zinc-500">
+                {datingGenerationToast.preview || '点开继续这次约会'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenReadyDating(datingGenerationToast.characterId)}
+              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-200"
+            >
+              点开进入
+            </button>
+            <button
+              type="button"
+              onClick={onDismissDatingToast}
+              className="rounded-full px-2 py-1 text-xs text-zinc-400"
+            >
+              稍后再看
+            </button>
+          </div>
+        </div>
+      )}
+      {dreamGenerationToast && (
+        <div
+          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#f7f1e4]">
+              {dreamGenerationToast.roleAvatar ? (
+                <ResolvedAssetImagePrimitive
+                  value={dreamGenerationToast.roleAvatar}
+                  alt={dreamGenerationToast.roleName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[#c69a6a]">
+                  <Sparkles size={18} />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-zinc-400">梦境提醒</div>
+              <div className="mt-0.5 text-sm font-bold text-zinc-800">
+                {dreamGenerationToast.title || `${dreamGenerationToast.roleName} 的梦境已生成`}
+              </div>
+              <div className="mt-1 truncate text-xs text-zinc-500">
+                {dreamGenerationToast.preview || '点开继续进入这场梦'}
               </div>
             </div>
             <button
               type="button"
               onClick={onOpenReadyDream}
-              className="rounded-full bg-[rgba(196,169,106,.14)] px-3 py-1 text-xs font-medium text-[#f1dfb2] transition hover:bg-[rgba(196,169,106,.2)]"
+              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-200"
             >
               点开进入
             </button>
             <button
               type="button"
               onClick={onDismissDreamToast}
-              className="rounded-full px-2 py-1 text-xs text-[rgba(237,230,214,.68)]"
+              className="rounded-full px-2 py-1 text-xs text-zinc-400"
             >
               稍后再看
             </button>
@@ -391,6 +450,7 @@ export function AppScreenContent({
         setCallHistory={(callHistory) => setAppData((prev) => ({ ...prev, callHistory }))}
         savedDates={appData.savedDates || []}
         collectedDates={appData.collectedDates || []}
+        datingResumeSignal={datingResumeSignal}
         setDatingRecords={({ savedDates, collectedDates }) =>
           setAppData((prev) => ({
             ...prev,
@@ -513,6 +573,7 @@ export function AppScreenContent({
           masks={appData.masks || []}
           worldBooks={appData.worldBooks || []}
           resumeBackgroundSignal={dreamResumeSignal}
+          onResumeBackgroundHandled={onDreamResumeHandled}
         />
       )}
       {activeApp === 'worldbook' && (

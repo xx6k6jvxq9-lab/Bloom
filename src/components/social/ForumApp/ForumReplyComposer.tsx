@@ -62,7 +62,7 @@ export function ForumReplyComposer({
   };
 
   return (
-    <div className="sticky bottom-0 z-20 shrink-0 bg-white border-t border-zinc-100 px-3 py-2 flex items-center gap-3">
+    <div className="z-20 shrink-0 border-t border-zinc-100 bg-white px-3 py-2 [padding-bottom:calc(var(--app-safe-area-bottom-ui,0px)+0.5rem)] flex items-center gap-3">
       <ForumResolvedImage
         value={identity === 'anonymous' ? anonymousMainAvatar : currentUserAvatar}
         className="w-7 h-7 rounded-full object-cover"

@@ -1,6 +1,7 @@
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import type { Character, ApiConfig, Mask, WorldBookEntry } from '../../types';
 import type { DreamAftermathOutput, DreamSelection, DreamRuntimeScenario } from './dreamRuntimeTypes';
+import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
 import { parseJsonResponse } from './dreamRuntimeNormalize';
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
 import { buildAftermathFocusSummary, compactSummaryText } from './dreamRuntimeSummaries';
@@ -23,12 +24,15 @@ function previewDreamRawResponse(raw: string) {
 
 function buildAftermathPrompt(options: GenerateDreamAftermathOptions) {
   const { scenario, selection, character, userName } = options;
+  const promptInput = buildDreamPromptInput(options);
+  const { characterContext } = promptInput;
+  const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const domain = resolveDreamDomainDisplay(selection.domainId);
   const tagSummary = buildDreamTagSummary(selection.selectedTags);
   const aftermathFocusSummary = buildAftermathFocusSummary(scenario);
 
   return `
-你是 Bloom 梦境 App 的余响生成器。你的任务是根据这一整场梦和它的结局，生成“醒来之后还留下了什么”。
+你是 Bloom 梦境 App 的余响生成器。你的任务是根据这整场梦和它的结局，生成“醒来之后还留下了什么”。
 
 输出目标：
 1. summary：40-80 字，概括梦后留下的关系回响或心绪残响。
@@ -42,7 +46,10 @@ function buildAftermathPrompt(options: GenerateDreamAftermathOptions) {
 4. 语气要克制，不要大起大落。
 5. 只输出 JSON，不要输出 markdown。
 
-当前梦信息：
+Persona guardrails:
+${personaGuardrails}
+
+Current dream info:
 - domain: ${domain.name}
 - depth: ${scenario.depth}
 - worldTitle: ${compactSummaryText(scenario.storyFrame.worldTitle, 32) || 'n/a'}
@@ -54,11 +61,9 @@ function buildAftermathPrompt(options: GenerateDreamAftermathOptions) {
 - characterName: ${character.remarkName?.trim() || character.name}
 - userName: ${userName.trim() || '你'}
 
-标签摘要：
-${compactSummaryText(tagSummary, 120) || 'n/a'}
+标签摘要：${compactSummaryText(tagSummary, 120) || 'n/a'}
 
-余响摘要：
-${aftermathFocusSummary || 'n/a'}
+余响摘要：${aftermathFocusSummary || 'n/a'}
 
 输出 JSON：
 {

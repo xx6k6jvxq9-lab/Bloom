@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { generateDreamAftermath } from '../../services/dream/generateDreamAftermath';
-import { getCurrentDreamBackgroundTask, startDreamBackgroundGeneration } from '../../services/dream/dreamBackgroundGeneration';
+import { buildDreamBackgroundRequestKey, getCurrentDreamBackgroundTask, startDreamBackgroundGeneration } from '../../services/dream/dreamBackgroundGeneration';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
 import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSummaries';
@@ -36,6 +36,7 @@ type DreamAftermathView = {
 };
 
 const DREAM_LATEST_SESSION_KEY = 'dream_app_latest_session';
+const DREAM_BACKGROUND_RESUME_REQUEST_KEY = 'dream_background_resume_request';
 
 const BASE_TAG_BATCH_SIZE = 12;
 
@@ -76,6 +77,7 @@ type DreamConfirmPreview = {
 };
 
 type PersistedDreamSession = {
+  resumeKind?: 'saved' | 'background_exit';
   mode: DreamEntryMode;
   roleId: string;
   domain: DreamDomainId;
@@ -92,6 +94,22 @@ type PersistedDreamSession = {
     customInputOpen: boolean;
   };
 };
+
+type DreamResumableState =
+  | {
+      source: 'saved';
+      roleId: string;
+      scenario: DreamRuntimeScenario;
+      createdAt: number;
+      progress?: PersistedDreamSession['progress'];
+    }
+  | {
+      source: 'background';
+      roleId: string;
+      scenario: DreamRuntimeScenario;
+      createdAt: number;
+      progress?: PersistedDreamSession['progress'];
+    };
 
 const dreamThemeStyle = {
   '--void': '#030509',
@@ -146,6 +164,29 @@ function clearPersistedDreamSession() {
   window.localStorage.removeItem(DREAM_LATEST_SESSION_KEY);
 }
 
+function readDreamBackgroundResumeRequest(): { taskId?: string; requestKey?: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DREAM_BACKGROUND_RESUME_REQUEST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { taskId?: string; requestKey?: string } | null;
+    if (!parsed?.taskId && !parsed?.requestKey) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDreamBackgroundResumeRequest(request: { taskId?: string; requestKey?: string }) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DREAM_BACKGROUND_RESUME_REQUEST_KEY, JSON.stringify(request));
+}
+
+function clearDreamBackgroundResumeRequest() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(DREAM_BACKGROUND_RESUME_REQUEST_KEY);
+}
+
 function isDreamResumeStage(stage: DreamStage | undefined): stage is 'scene' | 'choices' | 'reaction' | 'ending' | 'aftermath' {
   return stage === 'scene' || stage === 'choices' || stage === 'reaction' || stage === 'ending' || stage === 'aftermath';
 }
@@ -153,6 +194,11 @@ function isDreamResumeStage(stage: DreamStage | undefined): stage is 'scene' | '
 function isPersistedDreamUnfinished(session: PersistedDreamSession | null) {
   if (!session) return false;
   return !(session.scenario.endingOutput && session.scenario.aftermathOutput);
+}
+
+function isDreamScenarioUnfinished(scenario: DreamRuntimeScenario | null | undefined) {
+  if (!scenario) return false;
+  return !(scenario.endingOutput && scenario.aftermathOutput);
 }
 
 function formatPersistedDreamTime(timestamp: number) {
@@ -166,6 +212,25 @@ function formatPersistedDreamTime(timestamp: number) {
   } catch {
     return '';
   }
+}
+
+function buildDreamResumableState(
+  savedSession: PersistedDreamSession | null,
+  _backgroundTask: ReturnType<typeof getCurrentDreamBackgroundTask>,
+): DreamResumableState | null {
+  const unfinishedSaved = savedSession
+    && (savedSession.resumeKind === 'saved' || savedSession.resumeKind === 'background_exit' || !savedSession.resumeKind)
+    && isPersistedDreamUnfinished(savedSession)
+    ? {
+        source: 'saved' as const,
+        roleId: savedSession.roleId,
+        scenario: savedSession.scenario,
+        createdAt: savedSession.createdAt,
+        progress: savedSession.progress,
+      }
+    : null;
+
+  return unfinishedSaved;
 }
 
 function buildRoles(characters: Character[]): DreamRole[] {
@@ -438,6 +503,7 @@ function Avatar({ role, secret, small = false }: { role?: DreamRole | null; secr
   const inner = small ? 'h-[74px] w-[74px]' : 'h-[88px] w-[88px]';
   const { resolvedUrl } = useResolvedPersistentValue(role?.avatar);
   const avatarSrc = getDisplayableAssetValue(role?.avatar, resolvedUrl);
+  const roleName = role?.name ?? '角色';
   return (
     <div className={`relative flex ${outer} items-center justify-center`}>
       <div className="absolute inset-[-28px] rounded-full border border-[rgba(196,169,106,.05)] animate-[pulse_6s_ease-in-out_infinite]" />
@@ -452,7 +518,7 @@ function Avatar({ role, secret, small = false }: { role?: DreamRole | null; secr
         {secret ? (
           <span className="text-[40px] font-[200] text-[var(--gold)]">?</span>
         ) : avatarSrc ? (
-          <img alt={role.name} src={avatarSrc} className="h-full w-full rounded-full object-cover" />
+          <img alt={roleName} src={avatarSrc} className="h-full w-full rounded-full object-cover" />
         ) : (
           <span className={`${small ? 'text-[24px]' : 'text-[56px]'} font-[200] text-[var(--paper)]`}>{role?.glyph || '梦'}</span>
         )}
@@ -1398,6 +1464,7 @@ export function DreamAppPage({
   masks,
   worldBooks,
   resumeBackgroundSignal = 0,
+  onResumeBackgroundHandled,
 }: {
   onBack: () => void;
   characters: Character[];
@@ -1406,6 +1473,7 @@ export function DreamAppPage({
   masks: Mask[];
   worldBooks: WorldBookEntry[];
   resumeBackgroundSignal?: number;
+  onResumeBackgroundHandled?: () => void;
 }) {
   const roles = useMemo(() => buildRoles(characters), [characters]);
   const [time, setTime] = useState(formatDreamTime);
@@ -1438,6 +1506,9 @@ export function DreamAppPage({
   const [latestSavedSession, setLatestSavedSession] = useState<PersistedDreamSession | null>(() => readPersistedDreamSession());
   const endingRequestActiveRef = useRef(false);
   const aftermathRequestActiveRef = useRef(false);
+  const backgroundTask = getCurrentDreamBackgroundTask();
+  const persistedLatestSession = readPersistedDreamSession();
+  const resumableDream = buildDreamResumableState(persistedLatestSession, backgroundTask);
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedRoleId) ?? characters[0] ?? null,
     [characters, selectedRoleId],
@@ -1446,6 +1517,7 @@ export function DreamAppPage({
   const previewScenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
   const scenario = runtimeScenario ?? previewScenario;
   const act = runtimeScenario?.acts[actIndex] ?? null;
+  const choiceAct = stage === 'choices' ? act : null;
   const presentation = runtimeScenario?.presentation ?? {
     accent: 'var(--gold)',
     accentSoft: 'rgba(196,169,106,.12)',
@@ -1551,6 +1623,7 @@ export function DreamAppPage({
 
     const progressStage = overrides?.stage ?? stage;
     const nextSession: PersistedDreamSession = {
+      resumeKind: 'saved',
       mode: entryMode,
       roleId: selectedCharacter.id,
       domain: selectedDomain,
@@ -1576,7 +1649,12 @@ export function DreamAppPage({
 
   const clearDreamProgress = () => {
     clearPersistedDreamSession();
+    clearDreamBackgroundResumeRequest();
     setLatestSavedSession(null);
+  };
+
+  const refreshLatestSavedSession = () => {
+    setLatestSavedSession(readPersistedDreamSession());
   };
 
   useEffect(() => {
@@ -1588,6 +1666,13 @@ export function DreamAppPage({
     if (!roles.length) return;
     if (!selectedRoleId || !roles.some((role) => role.id === selectedRoleId)) setSelectedRoleId(roles[0].id);
   }, [roles, selectedRoleId]);
+
+  useEffect(() => {
+    if (!resumableDream?.roleId) return;
+    if (!roles.some((role) => role.id === resumableDream.roleId)) return;
+    if (selectedRoleId === resumableDream.roleId) return;
+    setSelectedRoleId(resumableDream.roleId);
+  }, [resumableDream?.roleId, roles, selectedRoleId]);
 
   useEffect(() => {
     if (stage !== 'splash') return;
@@ -1663,27 +1748,52 @@ export function DreamAppPage({
     if (!resumeBackgroundSignal) return;
 
     const backgroundTask = getCurrentDreamBackgroundTask();
-    if (!backgroundTask || backgroundTask.status !== 'resolved') {
+    if (backgroundTask?.status === 'resolved') {
+      const backgroundCharacterId = backgroundTask.options.character.id;
+      setSelectedRoleId(backgroundCharacterId);
+      setEntryMode(backgroundTask.options.selection.entryMode);
+      setSelectedDomain(backgroundTask.options.selection.domainId);
+      setDreamDepth(backgroundTask.options.selection.depth);
+      setSelectedTags(backgroundTask.options.selection.selectedTags);
+      setConfirmPreview(null);
+      setLoadingError(null);
+      setLoadingProgress(100);
+      setRuntimeScenario(backgroundTask.scenario);
+      setActIndex(0);
+      setSelectedChoice(null);
+      setClosingActId(null);
+      setCustomInput('');
+      setCustomInputOpen(false);
+      setStage('scene');
+      clearDreamBackgroundResumeRequest();
+      onResumeBackgroundHandled?.();
       return;
     }
 
-    const backgroundCharacterId = backgroundTask.options.character.id;
-    setSelectedRoleId(backgroundCharacterId);
-    setEntryMode(backgroundTask.options.selection.entryMode);
-    setSelectedDomain(backgroundTask.options.selection.domainId);
-    setDreamDepth(backgroundTask.options.selection.depth);
-    setSelectedTags(backgroundTask.options.selection.selectedTags);
+    const persisted = readPersistedDreamSession();
+    if (!persisted || !isPersistedDreamUnfinished(persisted)) {
+      onResumeBackgroundHandled?.();
+      return;
+    }
+
+    setSelectedRoleId(persisted.roleId);
+    setEntryMode(persisted.mode);
+    setSelectedDomain(persisted.domain);
+    setDreamDepth(persisted.depth);
+    setSelectedTags(persisted.selectedTags);
     setConfirmPreview(null);
     setLoadingError(null);
     setLoadingProgress(100);
-    setRuntimeScenario(backgroundTask.scenario);
-    setActIndex(0);
-    setSelectedChoice(null);
-    setClosingActId(null);
-    setCustomInput('');
-    setCustomInputOpen(false);
-    setStage('scene');
-  }, [resumeBackgroundSignal]);
+    setRuntimeScenario(hydrateDreamRuntimeScenario(persisted.scenario));
+    setActIndex(persisted.progress?.actIndex ?? 0);
+    setSelectedChoice(persisted.progress?.selectedChoice ?? null);
+    setClosingActId(persisted.progress?.closingActId ?? null);
+    setCustomInput(persisted.progress?.customInput ?? '');
+    setCustomInputOpen(persisted.progress?.customInputOpen ?? false);
+    setStage(isDreamResumeStage(persisted.progress?.stage) ? persisted.progress.stage : 'scene');
+    clearDreamBackgroundResumeRequest();
+    onResumeBackgroundHandled?.();
+  }, [onResumeBackgroundHandled, resumeBackgroundSignal]);
 
   useEffect(() => {
     if (!runtimeScenario?.endingOutput || !selectedCharacter) return;
@@ -1703,6 +1813,31 @@ export function DreamAppPage({
     if (!runtimeScenario?.endingOutput || !runtimeScenario.aftermathOutput) return;
     clearDreamProgress();
   }, [runtimeScenario?.aftermathOutput, runtimeScenario?.endingOutput]);
+
+  useEffect(() => {
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLatestSavedSession();
+      }
+    };
+
+    const handleFocusRefresh = () => {
+      refreshLatestSavedSession();
+    };
+
+    window.addEventListener('focus', handleFocusRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    return () => {
+      window.removeEventListener('focus', handleFocusRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!persistedLatestSession) return;
+    if (isPersistedDreamUnfinished(persistedLatestSession)) return;
+    clearDreamProgress();
+  }, [persistedLatestSession]);
 
   useEffect(() => {
     endingRequestActiveRef.current = isGeneratingEnding;
@@ -1979,7 +2114,8 @@ export function DreamAppPage({
         selectedChoice,
       });
 
-      if (!payload.nextActs || payload.nextActs.length === 0) {
+      const nextActs = payload.nextActs ?? [];
+      if (nextActs.length === 0) {
         throw new Error('深梦续写没有返回新的下沉段。');
       }
 
@@ -1987,7 +2123,7 @@ export function DreamAppPage({
         prev
           ? hydrateDreamRuntimeScenario({
               ...prev,
-              acts: [...prev.acts, ...payload.nextActs],
+              acts: [...prev.acts, ...nextActs],
             })
           : prev,
       );
@@ -2003,6 +2139,7 @@ export function DreamAppPage({
 
   const submitCustomChoice = async () => {
     if (!runtimeScenario || !selectedCharacter || !act || !customInput.trim() || isSubmittingCustom || isGeneratingNextAct || isEndingDeepDream) return;
+    const currentAct = act;
     const needsNextAct = isDeepDream || actIndex < runtimeScenario.acts.length - 1;
     setLoadingError(null);
     setIsSubmittingCustom(true);
@@ -2054,7 +2191,7 @@ export function DreamAppPage({
         prev
           ? hydrateDreamRuntimeScenario({
               ...prev,
-              decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
+              decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(currentAct, nextChoice)),
             })
           : prev,
       );
@@ -2176,7 +2313,7 @@ export function DreamAppPage({
     ? archiveRecords.filter((record) => record.depth === 'deep')
     : archiveRecords;
   const deepArchiveCount = archiveRecords.filter((record) => record.depth === 'deep').length;
-  const canContinueDream = isPersistedDreamUnfinished(latestSavedSession);
+  const canContinueDream = Boolean(resumableDream);
   const unfinishedDreamTitle = latestSavedSession?.scenario.coverTitle || latestSavedSession?.scenario.storyFrame.worldTitle || '继续上次梦境';
   const unfinishedDreamMeta = canContinueDream
     ? [
@@ -2221,6 +2358,33 @@ export function DreamAppPage({
     });
   };
 
+  const handleLeaveDuringDreamLoading = () => {
+    const backgroundResumeTask = getCurrentDreamBackgroundTask();
+    const dreamOptions = selectedCharacter
+      ? {
+          activeConfig,
+          character: selectedCharacter,
+          masks,
+          worldBooks,
+          selection: {
+            entryMode,
+            domainId: selectedDomain,
+            depth: dreamDepth,
+            selectedTags,
+          },
+        }
+      : null;
+    if (!backgroundResumeTask && dreamOptions) {
+      void startDreamBackgroundGeneration(dreamOptions);
+    }
+    const requestKey = dreamOptions ? buildDreamBackgroundRequestKey(dreamOptions) : undefined;
+    writeDreamBackgroundResumeRequest({
+      taskId: backgroundResumeTask?.status === 'pending' ? backgroundResumeTask.id : undefined,
+      requestKey: backgroundResumeTask?.requestKey ?? requestKey,
+    });
+    onBack();
+  };
+
   const retryEndingGeneration = () => {
     setLoadingError(null);
     setStage('scene');
@@ -2245,34 +2409,42 @@ export function DreamAppPage({
   };
 
   const handleResumeLatestDream = () => {
-    const persisted = readPersistedDreamSession();
-    if (!persisted || !isPersistedDreamUnfinished(persisted)) {
-      setLatestSavedSession(null);
+    const resumable = buildDreamResumableState(readPersistedDreamSession(), getCurrentDreamBackgroundTask());
+    if (!resumable) {
+      setLatestSavedSession(readPersistedDreamSession());
       return;
     }
 
-    const persistedCharacter = characters.find((character) => character.id === persisted.roleId) ?? null;
+    const persistedCharacter = characters.find((character) => character.id === resumable.roleId) ?? null;
     if (!persistedCharacter) {
       clearDreamProgress();
       return;
     }
 
-    const resumeStage = isDreamResumeStage(persisted.progress?.stage) ? persisted.progress.stage : 'scene';
-    setSelectedRoleId(persisted.roleId);
-    setEntryMode(persisted.mode);
-    setSelectedDomain(persisted.domain);
-    setDreamDepth(persisted.depth);
-    setSelectedTags(persisted.selectedTags);
+    const savedSession = latestSavedSession && latestSavedSession.roleId === resumable.roleId
+      ? latestSavedSession
+      : readPersistedDreamSession();
+    const resumeStage = isDreamResumeStage(resumable.progress?.stage) ? resumable.progress.stage : 'scene';
+    setSelectedRoleId(resumable.roleId);
+    if (savedSession?.roleId === resumable.roleId) {
+      setEntryMode(savedSession.mode);
+      setSelectedDomain(savedSession.domain);
+      setDreamDepth(savedSession.depth);
+      setSelectedTags(savedSession.selectedTags);
+    }
     setConfirmPreview(null);
     setLoadingError(null);
-    setRuntimeScenario(hydrateDreamRuntimeScenario(persisted.scenario));
-    setActIndex(persisted.progress?.actIndex ?? 0);
-    setSelectedChoice(persisted.progress?.selectedChoice ?? null);
-    setClosingActId(persisted.progress?.closingActId ?? null);
-    setCustomInput(persisted.progress?.customInput ?? '');
-    setCustomInputOpen(persisted.progress?.customInputOpen ?? false);
+    setRuntimeScenario(hydrateDreamRuntimeScenario(resumable.scenario));
+    setActIndex(resumable.progress?.actIndex ?? 0);
+    setSelectedChoice(resumable.progress?.selectedChoice ?? null);
+    setClosingActId(resumable.progress?.closingActId ?? null);
+    setCustomInput(resumable.progress?.customInput ?? '');
+    setCustomInputOpen(resumable.progress?.customInputOpen ?? false);
     setStage(resumeStage);
-    setLatestSavedSession(persisted);
+    if (savedSession) {
+      setLatestSavedSession(savedSession);
+    }
+    clearDreamBackgroundResumeRequest();
   };
 
   return (
@@ -2295,8 +2467,15 @@ export function DreamAppPage({
             role={selectedRole}
             archiveCount={archiveRecords.length}
             deepArchiveCount={deepArchiveCount}
-            unfinishedDreamTitle={unfinishedDreamTitle}
-            unfinishedDreamMeta={unfinishedDreamMeta}
+            unfinishedDreamTitle={resumableDream?.scenario.coverTitle || resumableDream?.scenario.storyFrame.worldTitle || '继续上次梦境'}
+            unfinishedDreamMeta={
+              canContinueDream
+                ? [
+                    resumableDream?.scenario.storyFrame.dreamRelationship,
+                    formatPersistedDreamTime(resumableDream?.createdAt || 0),
+                  ].filter(Boolean).join(' · ')
+                : ''
+            }
             canContinueDream={canContinueDream}
             onPickRole={() => setStage('role-picker')}
             onEnter={openEntry}
@@ -2584,7 +2763,7 @@ export function DreamAppPage({
                     <div className="h-px bg-[var(--gold)] transition-[width] duration-300 ease-linear" style={{ width: `${loadingProgress}%` }} />
                   </div>
                   <div className="mt-8 w-full max-w-[334px]">
-                    <SecondaryAction label="返 回 首 页" onClick={onBack} />
+                    <SecondaryAction label="返 回 首 页" onClick={handleLeaveDuringDreamLoading} />
                   </div>
                 </>
               )}
@@ -2652,7 +2831,7 @@ export function DreamAppPage({
             </div>
           </Shell>
         )}
-        {stage === 'choices' && act && (
+        {choiceAct && (
           <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
             <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
               <div className="mt-4 flex items-center justify-center gap-2 text-[11px] tracking-[0.26em] text-[var(--gold)]">
@@ -2666,7 +2845,7 @@ export function DreamAppPage({
                 现在由你决定，下一步要怎样落下去。
               </div>
               <div className="mt-10 flex flex-1 flex-col gap-4">
-                {act.choiceSet.generated.map((choice, index) => {
+                {choiceAct.choiceSet.generated.map((choice, index) => {
                   const previewing = previewChoiceId === choice.id;
                   return (
                     <button
@@ -2683,10 +2862,10 @@ export function DreamAppPage({
                           reaction: choice.reactionHint,
                         };
                         setRuntimeScenario((prev) => (
-                          prev && act
+                          prev
                             ? hydrateDreamRuntimeScenario({
                                 ...prev,
-                                decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(act, nextChoice)),
+                                decisionTrail: appendDecisionRecord(prev.decisionTrail, createDecisionRecord(choiceAct, nextChoice)),
                               })
                             : prev
                         ));
@@ -2722,8 +2901,8 @@ export function DreamAppPage({
                   <div className="flex items-start gap-4">
                     <div className="pt-1 text-[14px] tracking-[0.18em]" style={{ color: presentation.accent }}>四</div>
                     <div className="min-w-0">
-                      <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{act.choiceSet.custom.title}</div>
-                      <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{act.choiceSet.custom.guidance}</div>
+                      <div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choiceAct.choiceSet.custom.title}</div>
+                      <div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{choiceAct.choiceSet.custom.guidance}</div>
                     </div>
                   </div>
                 </button>
@@ -2732,7 +2911,7 @@ export function DreamAppPage({
                     <textarea
                       value={customInput}
                       onChange={(event) => setCustomInput(event.target.value)}
-                      placeholder={act.choiceSet.custom.placeholder}
+                      placeholder={choiceAct.choiceSet.custom.placeholder}
                       className="min-h-[120px] w-full resize-none bg-transparent text-[14px] leading-[2.1] tracking-[0.08em] text-white caret-white outline-none placeholder:text-white/65 selection:bg-white/20"
                       style={{
                         color: 'rgba(255,255,255,.96)',
@@ -2773,7 +2952,7 @@ export function DreamAppPage({
             </div>
           </Shell>
         )}
-        {false && stage === 'choices' && act && (
+        {false && choiceAct && (
           <Shell time={time}>
             <div className="flex flex-1 flex-col">
               <div className="mt-4 flex items-center justify-center gap-2 text-[11px] tracking-[0.26em] text-[var(--gold)]">
@@ -2784,7 +2963,7 @@ export function DreamAppPage({
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{act.label} · 梦触</div>
               <div className="mt-6 text-center text-[14px] leading-[2.2] tracking-[0.16em] text-[var(--paper-60)]">梦已经给出方向。<br />现在由你决定，下一步要怎样落下去。</div>
               <div className="mt-10 flex flex-1 flex-col gap-4">
-                {act.choiceSet.generated.map((choice, index) => <button key={choice.id} type="button" onClick={() => { setSelectedChoice({ ...choice, reaction: choice.reactionHint }); setStage('reaction'); }} className="w-full border px-5 py-5 text-left transition duration-300" style={{ borderColor: 'rgba(196,169,106,.12)', backgroundColor: 'rgba(13,18,32,.72)' }}><div className="flex items-start gap-4"><div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{['一', '二', '三'][index]}</div><div className="min-w-0"><div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div><div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{choice.detail}</div></div></div></button>)}
+                {choiceAct.choiceSet.generated.map((choice, index) => <button key={choice.id} type="button" onClick={() => { setSelectedChoice({ ...choice, reaction: choice.reactionHint }); setStage('reaction'); }} className="w-full border px-5 py-5 text-left transition duration-300" style={{ borderColor: 'rgba(196,169,106,.12)', backgroundColor: 'rgba(13,18,32,.72)' }}><div className="flex items-start gap-4"><div className="pt-1 text-[14px] tracking-[0.18em] text-[var(--gold)]">{['一', '二', '三'][index]}</div><div className="min-w-0"><div className="text-[15px] font-[300] tracking-[0.18em] text-[var(--paper)]">{choice.title}</div><div className="mt-3 text-[12px] leading-[2.1] tracking-[0.14em] text-[var(--mist)]">{choice.detail}</div></div></div></button>)}
               </div>
             </div>
           </Shell>

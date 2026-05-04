@@ -227,6 +227,27 @@ function resolveVariationTone(selectedTags: Record<DreamTagCategory, string[]>):
   return hasGrounded && !hasHeightened ? 'grounded' : 'heightened';
 }
 
+export function buildDreamPersonaGuardrails(input: {
+  corePersona?: string;
+  expressionStyle?: string;
+  boundaryPack?: string;
+  extendedLore?: string;
+}) {
+  return [
+    'User-provided persona has higher priority than dream setting, dream identity, relationship shell, dramatic convenience, or generic romance flow.',
+    'Do not replace the character with a smoother, sweeter, softer, more generic, or more universally flirty version of them just because this is a dream.',
+    'Keep the same core persona, speaking texture, boundary sense, intimacy threshold, and emotional reaction logic throughout the dream.',
+    'The dream may amplify emotions, desire, possessiveness, vulnerability, obsession, jealousy, fear, or longing only if those tendencies can grow naturally from the existing persona.',
+    'Amplification is allowed; personality replacement is not. Even when desire or emotion becomes stronger, the character must still sound and react like this specific person.',
+    'Do not invent a new way of loving, teasing, yielding, comforting, seducing, or breaking down that contradicts the user-provided persona.',
+    'If the user-provided persona text mixes personality with setting labels, prioritize the parts that define how this person speaks, hesitates, desires, refuses, softens, or loses control.',
+    `Core persona anchor: ${input.corePersona || 'not provided'}`,
+    `Expression style anchor: ${input.expressionStyle || 'not provided'}`,
+    `Boundary anchor: ${input.boundaryPack || 'not provided'}`,
+    `Extended lore anchor: ${input.extendedLore || 'not provided'}`,
+  ].join('\n');
+}
+
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, ImagePlus, Upload } from 'lucide-react';
 import type { Character } from '../../types';
@@ -6,6 +6,7 @@ import { extractImageUrls } from '../../utils';
 import { extractCompatibleCharacterImport } from '../../features/import/importCompat';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 
 type AddCharacterSheetProps = {
   onSave: (char: Character) => void;
@@ -296,6 +297,7 @@ const readFileAsDataUrl = (file: File) =>
   });
 
 export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<'edit' | 'import'>('edit');
   const [name, setName] = useState('');
   const [remarkName, setRemarkName] = useState('');
@@ -307,6 +309,10 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
+  const { viewportStyle } = useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+  });
 
   const buildImportedCharacter = (raw: string) => {
     const data = extractCompatibleCharacterImport(raw);
@@ -383,7 +389,11 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   };
 
   return (
-    <motion.div className="absolute inset-0 z-50 flex flex-col bg-white">
+    <motion.div
+      ref={containerRef}
+      className="absolute inset-0 z-50 flex flex-col bg-white"
+      style={viewportStyle}
+    >
       <div className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 pt-12 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button onClick={view === 'import' ? () => setView('edit') : onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">

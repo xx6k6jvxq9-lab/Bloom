@@ -13,7 +13,9 @@ import type {
 } from '../../types';
 import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
+import { dispatchDatingBackgroundCompleted } from '../../services/dating/datingBackgroundEvents';
 import { buildDatingSceneInput } from '../../services/scene-inputs/buildDatingSceneInput';
+import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import {
@@ -38,9 +40,18 @@ type DatingSceneProps = {
   onSaveDate: (session: DateSession) => void;
   onCollectDate: (session: DateSession) => void;
   onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => void;
+  autoSaveEnabled?: boolean;
 };
 
-type SceneSessionState = DateSession & { isCollected?: boolean; isSaved?: boolean };
+type SceneSessionState = DateSession & {
+  isCollected?: boolean;
+  isSaved?: boolean;
+  pendingRoundRetry?: {
+    mode: 'start' | 'continue';
+    session: DateSession;
+  } | null;
+  pendingRoundError?: string;
+};
 type EndingSequencePayload = {
   monologue: string;
   chatFollowup: string;
@@ -261,6 +272,7 @@ export function DatingScene({
   onSaveDate,
   onCollectDate,
   onEndDateComplete,
+  autoSaveEnabled = false,
 }: DatingSceneProps) {
   const [currentSession, setCurrentSession] = useState<SceneSessionState>(() => ({
     ...session,
@@ -295,6 +307,16 @@ export function DatingScene({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const endingScreenRef = useRef<HTMLButtonElement | null>(null);
   const endingFlowActiveRef = useRef(false);
+  const generationInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const continueGeneratingAfterCloseRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const normalizedMessages = normalizeDateSessionMessages(session);
@@ -335,7 +357,15 @@ export function DatingScene({
     setEndingError('');
     setEndingRipple(null);
     setShowUnsavedBackDialog(false);
-    setRetryPayload(null);
+    setRetryPayload(
+      session.pendingRoundRetry
+        ? {
+            mode: session.pendingRoundRetry.mode,
+            session: session.pendingRoundRetry.session as SceneSessionState,
+          }
+        : null,
+    );
+    setError(session.pendingRoundError || '');
   }, [session]);
 
   useEffect(() => {
@@ -407,11 +437,18 @@ export function DatingScene({
     const normalizedMessages = normalizeDateSessionMessages(nextSession);
     const merged = {
       ...nextSession,
-      isSaved: options?.preserveSaved ? Boolean(nextSession.isSaved) : false,
+      isSaved: autoSaveEnabled ? true : options?.preserveSaved ? Boolean(nextSession.isSaved) : false,
+      pendingRoundRetry: nextSession.pendingRoundRetry || null,
+      pendingRoundError: nextSession.pendingRoundError || '',
       messages: normalizedMessages,
       generatedContent: getLatestGeneratedContent(normalizedMessages, nextSession.generatedContent),
     };
-    setCurrentSession(merged);
+    if (isMountedRef.current) {
+      setCurrentSession(merged);
+    }
+    if (autoSaveEnabled) {
+      onSaveDate(merged);
+    }
   };
 
   const persistSession = (nextSession: SceneSessionState) => {
@@ -421,18 +458,30 @@ export function DatingScene({
       isSaved: true,
       status: nextSession.status || 'active',
       endedAt: nextSession.status === 'ended' ? nextSession.endedAt : undefined,
+      pendingRoundRetry: null,
+      pendingRoundError: '',
       messages: normalizedMessages,
       generatedContent: getLatestGeneratedContent(normalizedMessages, nextSession.generatedContent),
     };
-    setCurrentSession(merged);
+    if (isMountedRef.current) {
+      setCurrentSession(merged);
+    }
     onSaveDate(merged);
   };
 
   const hasUnsavedProgress = Boolean(
-    currentSession.messages.length > 0 && (currentSession.status || 'active') === 'active' && !currentSession.isSaved,
+    currentSession.messages.length > 0
+      && (currentSession.status || 'active') === 'active'
+      && !currentSession.isSaved
+      && !autoSaveEnabled,
   );
 
   const handleBackAttempt = () => {
+    if (isLoading) {
+      handleLeaveAndContinueGenerating();
+      return;
+    }
+
     if (hasUnsavedProgress) {
       setMenuOpen(false);
       setShowStickerPanel(false);
@@ -456,6 +505,15 @@ export function DatingScene({
     onBackToPlanner();
   };
 
+  const handleLeaveAndContinueGenerating = () => {
+    continueGeneratingAfterCloseRef.current = true;
+    persistSession({
+      ...currentSession,
+      status: currentSession.status || 'active',
+    });
+    onBackToPlanner();
+  };
+
   const buildEndingSequencePrompt = (archivedSession: SceneSessionState) => {
     const latestGeneratedContent = getLatestGeneratedContent(archivedSession.messages, archivedSession.generatedContent);
     const latestNarrative = latestGeneratedContent?.narrative.segments.map(segment => segment.text).join('\n') || '';
@@ -465,6 +523,10 @@ export function DatingScene({
       .slice(-4)
       .map(message => `- ${message.text}`)
       .join('\n');
+    const temporalContext = buildTemporalContextPrompt({
+      perception,
+      now: archivedSession.endedAt || Date.now(),
+    });
 
     return [
       `你现在要为角色 ${character.name} 生成“结束约会后的收尾内容”。`,
@@ -476,6 +538,7 @@ export function DatingScene({
       '- monologue 只能 1 到 2 句。',
       '- chatFollowup 必须是线上聊天语境的一句话，不要再写线下现场动作，不要继续约会场景描写。',
       '- chatFollowup 要自然像回到聊天软件后的主动开口。',
+      temporalContext,
       `角色当前信息：心情=${archivedSession.mood || '未设定'}；地点=${archivedSession.location || '未设定'}；场景=${archivedSession.scenario || '未设定'}。`,
       latestStatus
         ? `本轮结束时的状态：地点=${latestStatus.location || archivedSession.location || '未设定'}；时间=${latestStatus.time || '未设定'}；心情=${latestStatus.mood || archivedSession.mood || '未设定'}；内心=${latestStatus.innerThought || '未设定'}。`
@@ -598,8 +661,9 @@ export function DatingScene({
     baseSession?: DateSession;
     appendUserMessage?: boolean;
   }) => {
-    if (isLoading) return;
+    if (isLoading || generationInFlightRef.current) return;
 
+    generationInFlightRef.current = true;
     setIsLoading(true);
     setError('');
 
@@ -620,6 +684,8 @@ export function DatingScene({
 
     const retrySession: SceneSessionState = {
       ...sessionSeed,
+      pendingRoundRetry: null,
+      pendingRoundError: '',
       messages: workingMessages,
       generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
     };
@@ -636,6 +702,8 @@ export function DatingScene({
 
     const pendingSession: SceneSessionState = {
       ...sessionSeed,
+      pendingRoundRetry: null,
+      pendingRoundError: '',
       messages: [...workingMessages, placeholderMessage],
       generatedContent: getLatestGeneratedContent(workingMessages, sessionSeed.generatedContent),
     };
@@ -672,12 +740,33 @@ export function DatingScene({
       sceneMessage.id = placeholderId;
 
       const finalMessages = replaceMessage(pendingSession.messages, placeholderId, () => sceneMessage);
-      saveSession({
+      const finalSession: SceneSessionState = {
         ...pendingSession,
+        pendingRoundRetry: null,
+        pendingRoundError: '',
         messages: finalMessages,
         generatedContent: normalizedContent,
-      });
-      setRetryPayload(null);
+      };
+      saveSession(finalSession);
+      if (continueGeneratingAfterCloseRef.current && !autoSaveEnabled) {
+        onSaveDate({
+          ...finalSession,
+          isSaved: true,
+        });
+      }
+      if (continueGeneratingAfterCloseRef.current) {
+        dispatchDatingBackgroundCompleted({
+          kind: 'completed',
+          characterId: character.id,
+          characterName: character.name,
+          characterAvatar: character.avatar,
+          scenario: finalSession.generatedContent?.narrative.title || finalSession.scenario || '正式约会',
+        });
+        continueGeneratingAfterCloseRef.current = false;
+      }
+      if (isMountedRef.current) {
+        setRetryPayload(null);
+      }
     } catch (err) {
       console.error('[dating-scene] generate failed', err);
       const failedMessages = replaceMessage(pendingSession.messages, placeholderId, message => ({
@@ -685,17 +774,34 @@ export function DatingScene({
         pending: false,
         text: '这一轮约会剧情生成失败了，请稍后再试。',
       }));
-      setCurrentSession({
+      const errorMessage = err instanceof Error ? err.message : '正式约会内容生成失败，请稍后重试。';
+      const failedSession: SceneSessionState = {
         ...pendingSession,
+        isSaved: autoSaveEnabled ? true : pendingSession.isSaved,
+        pendingRoundRetry: {
+          mode,
+          session: retrySession,
+        },
+        pendingRoundError: errorMessage,
         messages: failedMessages,
-      });
-      setRetryPayload({
-        mode,
-        session: retrySession,
-      });
-      setError(err instanceof Error ? err.message : '正式约会内容生成失败，请稍后重试。');
+      };
+      if (isMountedRef.current) {
+        setCurrentSession(failedSession);
+        setRetryPayload({
+          mode,
+          session: retrySession,
+        });
+        setError(errorMessage);
+      }
+      if (autoSaveEnabled || continueGeneratingAfterCloseRef.current) {
+        onSaveDate(failedSession);
+      }
+      continueGeneratingAfterCloseRef.current = false;
     } finally {
-      setIsLoading(false);
+      generationInFlightRef.current = false;
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -881,6 +987,17 @@ export function DatingScene({
         </div>
 
         <div className="dating-scene__body">
+          {isLoading && currentSession.messages.length > 0 ? (
+            <div className="mb-3 flex justify-center">
+              <button
+                type="button"
+                className="dating-scene__error-retry"
+                onClick={handleLeaveAndContinueGenerating}
+              >
+                返回聊天继续生成
+              </button>
+            </div>
+          ) : null}
           <div className="dating-scene__messages">
             {currentSession.messages.length === 0 && isLoading ? (
               <div className="dating-scene__scene-content dating-scene__scene-content--placeholder">
@@ -890,6 +1007,15 @@ export function DatingScene({
                 <p className="dating-scene__segment dating-scene__segment--placeholder">
                   角色正在根据你们的过往聊天、当前关系和这次约会的地点氛围生成第一轮剧情……
                 </p>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    className="dating-scene__error-retry"
+                    onClick={handleLeaveAndContinueGenerating}
+                  >
+                    返回聊天继续生成
+                  </button>
+                </div>
               </div>
             ) : null}
 

@@ -22,3 +22,20 @@ export type MomentPublishToast = {
   authorAvatar?: string;
   preview: string;
 };
+
+export type DatingGenerationToast = {
+  id: string;
+  characterId: string;
+  characterName: string;
+  characterAvatar?: string;
+  preview: string;
+};
+
+export type DreamGenerationToast = {
+  id: string;
+  roleId: string;
+  roleName: string;
+  roleAvatar?: string;
+  title: string;
+  preview: string;
+};

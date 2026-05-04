@@ -139,7 +139,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
         <h2 className="font-bold text-lg text-zinc-900">帖子</h2>
       </div>
 
-      <div className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-24">
+      <div className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <button className="shrink-0" onClick={() => onOpenAuthor(author.id)}>

@@ -1,5 +1,5 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
-import { buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
 import { resolveDreamPresentation } from './resolveDreamPresentation';
 import { buildDreamVariation } from './buildDreamVariation';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
@@ -12,6 +12,7 @@ function computeShallowActCount(seed: string) {
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, presentationSeed?: string) {
   const promptInput = buildDreamPromptInput(options);
   const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext, variationTone } = promptInput;
+  const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -59,6 +60,8 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   return `
 Novel prose and plot quality rules:
 ${novelQualityRules}
+Persona guardrails:
+${personaGuardrails}
 
 你是 Bloom 项目的梦境剧情生成器。你的任务是为“梦境 App”生成一局结构清晰、逻辑完整、可分幕展开的梦中小故事。
 

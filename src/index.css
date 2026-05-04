@@ -230,3 +230,7 @@ body {
 html[data-standalone='true'] .app-home-indicator-wrap {
   display: none;
 }
+
+html[data-keyboard-open='true']:not([data-standalone='true']) .app-home-indicator-wrap {
+  display: none;
+}

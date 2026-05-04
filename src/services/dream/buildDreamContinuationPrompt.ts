@@ -1,5 +1,5 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
-import { buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
 import { buildActBeatSummary, buildDreamMemorySummary, compactSummaryText } from './dreamRuntimeSummaries';
 import type { GenerateDreamContinuationOptions } from './dreamRuntimeTypes';
 
@@ -46,7 +46,8 @@ function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
 
 export function buildDreamContinuationPrompt(options: GenerateDreamContinuationOptions) {
   const promptInput = buildDreamPromptInput(options);
-  const { resolvedSelection, domainRule, tagCategoryContext } = promptInput;
+  const { characterContext, resolvedSelection, domainRule, tagCategoryContext } = promptInput;
+  const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
@@ -272,6 +273,9 @@ Hard rules:
 
 Novel prose and plot quality rules:
 ${novelQualityRules}
+
+Persona guardrails:
+${personaGuardrails}
 
 Current domain: ${domain.name}
 Domain rule: ${domainRule}

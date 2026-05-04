@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { useAppKeyboard } from './AppKeyboardContext';
+import { useKeyboardSafeViewport } from './useKeyboardSafeViewport';
 
 type KeyboardAwareScreenProps = {
   children: ReactNode;
@@ -29,6 +30,10 @@ export function KeyboardAwareScreen({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const { viewportStyle } = useKeyboardSafeViewport({
+    containerRef: shellRef,
+    enabled: true,
+  });
 
   useEffect(() => {
     if (!hideFooterWhenKeyboardOpen || typeof document === 'undefined') {
@@ -65,14 +70,14 @@ export function KeyboardAwareScreen({
     };
   }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset]);
 
-  const resolvedFooterStyle = footer
+  const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
         ...(footerStyle || {}),
         ...(hideFooterWhenKeyboardOpen
           ? {
               opacity: keyboardVisible ? 0 : 1,
               transform: keyboardVisible ? 'translateY(100%)' : 'translateY(0)',
-              pointerEvents: keyboardVisible ? 'none' : 'auto',
+              pointerEvents: keyboardVisible ? 'none' as const : 'auto' as const,
               transition: 'opacity 180ms ease, transform 180ms ease',
             }
           : {}),
@@ -83,7 +88,10 @@ export function KeyboardAwareScreen({
     <div
       ref={shellRef}
       className={className}
-      style={style}
+      style={{
+        ...(style || {}),
+        ...(viewportStyle || {}),
+      }}
     >
       {header}
       <div {...bodyProps} className={bodyClassName}>
