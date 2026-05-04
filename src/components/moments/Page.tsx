@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { createPortal } from 'react-dom';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
@@ -441,6 +442,9 @@ export function MomentsApp({
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
   const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
+  const overlayHost = typeof document !== 'undefined'
+    ? document.getElementById('phone-container') || document.body
+    : null;
 
   const handleComment = async (momentId: string) => {
     if (!commentText.trim()) return;
@@ -880,7 +884,7 @@ export function MomentsApp({
       </div>
       </div>
 
-      {commentingOn && activeCommentMoment && (
+      {overlayHost && commentingOn && activeCommentMoment && createPortal(
         <div className="absolute inset-x-0 bottom-0 z-[60] border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]">
           <div className="mx-auto flex max-w-[560px] flex-col gap-2">
             <div className="flex items-center justify-between gap-3 px-1">
@@ -924,7 +928,8 @@ export function MomentsApp({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        overlayHost,
       )}
 
       {activeInnerVoiceMoment && activeInnerVoiceAuthor && (
