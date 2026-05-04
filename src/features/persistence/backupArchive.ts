@@ -1,6 +1,7 @@
 import type { AppData, AppSettings } from '../../types';
 import { clearAssets, listAssets, putAsset, type StoredAssetRecord } from './browserDb';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { removeLocalStorageValue, syncLocalStorageJsonValue } from './localConfigStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
@@ -14,6 +15,10 @@ export const FULL_BACKUP_ARCHIVE_FORMAT = 'bloom-full-backup';
 export const FULL_BACKUP_ARCHIVE_VERSION = 1;
 export const MODULAR_BACKUP_ARCHIVE_SCHEMA = 'modular-persistence';
 export const MODULAR_BACKUP_ARCHIVE_VERSION = 2;
+export const MODULAR_BACKUP_DATA_SCHEMA = 'modular-persistence-data';
+export const MODULAR_BACKUP_DATA_VERSION = 1;
+export const MODULAR_BACKUP_ASSETS_SCHEMA = 'modular-persistence-assets';
+export const MODULAR_BACKUP_ASSETS_VERSION = 1;
 
 export type SerializedAssetRecord = Omit<StoredAssetRecord, 'blob'> & {
   dataUrl: string;
@@ -55,6 +60,30 @@ export type ModularBackupArchive = {
   assets: SerializedAssetRecord[];
 };
 
+export type ModularBackupDataArchive = {
+  version: typeof MODULAR_BACKUP_DATA_VERSION;
+  schema: typeof MODULAR_BACKUP_DATA_SCHEMA;
+  backupId: string;
+  exportedAt: number;
+  modules: ModularBackupModules;
+  assetCount: number;
+};
+
+export type ModularBackupAssetsArchive = {
+  version: typeof MODULAR_BACKUP_ASSETS_VERSION;
+  schema: typeof MODULAR_BACKUP_ASSETS_SCHEMA;
+  backupId: string;
+  exportedAt: number;
+  assets: SerializedAssetRecord[];
+};
+
+export type BackupRestoreProgress = {
+  phase: 'modules' | 'assets' | 'complete';
+  completed: number;
+  total: number;
+  message: string;
+};
+
 type FullBackupOverrides = {
   appData?: unknown;
   settings?: unknown;
@@ -80,6 +109,16 @@ const EXTRA_LOCAL_RESET_PREFIXES = [
   'memory_window_hint_dismissed_',
   'group_notice_dismissed:',
 ] as const;
+const ASSET_RESTORE_BATCH_SIZE = 6;
+
+type RestoreOptions = {
+  onProgress?: (progress: BackupRestoreProgress) => void;
+};
+
+type RestoreEntry = {
+  key: string;
+  value: unknown | null;
+};
 
 function createArchiveAssetId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -87,6 +126,14 @@ function createArchiveAssetId(): string {
   }
 
   return `ua_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function createBackupBundleId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `backup_${crypto.randomUUID()}`;
+  }
+
+  return `backup_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -355,6 +402,39 @@ export async function buildModularBackupArchive(overrides: ModularBackupOverride
   };
 }
 
+export async function buildSplitModularBackupBundle(
+  overrides: ModularBackupOverrides,
+): Promise<{
+  dataArchive: ModularBackupDataArchive;
+  assetsArchive: ModularBackupAssetsArchive | null;
+}> {
+  const archive = await buildModularBackupArchive(overrides);
+  const backupId = createBackupBundleId();
+  const dataArchive: ModularBackupDataArchive = {
+    version: MODULAR_BACKUP_DATA_VERSION,
+    schema: MODULAR_BACKUP_DATA_SCHEMA,
+    backupId,
+    exportedAt: archive.exportedAt,
+    modules: archive.modules,
+    assetCount: archive.assets.length,
+  };
+
+  const assetsArchive = archive.assets.length > 0
+    ? {
+        version: MODULAR_BACKUP_ASSETS_VERSION,
+        schema: MODULAR_BACKUP_ASSETS_SCHEMA,
+        backupId,
+        exportedAt: archive.exportedAt,
+        assets: archive.assets,
+      } satisfies ModularBackupAssetsArchive
+    : null;
+
+  return {
+    dataArchive,
+    assetsArchive,
+  };
+}
+
 export function isFullBackupArchive(value: unknown): value is FullBackupArchive {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -382,9 +462,37 @@ export function isModularBackupArchive(value: unknown): value is ModularBackupAr
     && !Array.isArray(candidate.modules);
 }
 
+export function isModularBackupDataArchive(value: unknown): value is ModularBackupDataArchive {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<ModularBackupDataArchive>;
+  return candidate.schema === MODULAR_BACKUP_DATA_SCHEMA
+    && candidate.version === MODULAR_BACKUP_DATA_VERSION
+    && typeof candidate.backupId === 'string'
+    && typeof candidate.exportedAt === 'number'
+    && !!candidate.modules
+    && typeof candidate.modules === 'object'
+    && !Array.isArray(candidate.modules);
+}
+
+export function isModularBackupAssetsArchive(value: unknown): value is ModularBackupAssetsArchive {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<ModularBackupAssetsArchive>;
+  return candidate.schema === MODULAR_BACKUP_ASSETS_SCHEMA
+    && candidate.version === MODULAR_BACKUP_ASSETS_VERSION
+    && typeof candidate.backupId === 'string'
+    && typeof candidate.exportedAt === 'number'
+    && Array.isArray(candidate.assets);
+}
+
 function writeStorageValue(key: string, value: unknown | null, indexedDbWrites: Promise<void>[]) {
   if (value == null) {
-    window.localStorage.removeItem(key);
+    removeLocalStorageValue(key);
     if (INDEXED_DB_RESTORE_KEYS.has(key)) {
       indexedDbWrites.push(
         removeJsonRecord(key).catch((error) => {
@@ -395,13 +503,113 @@ function writeStorageValue(key: string, value: unknown | null, indexedDbWrites: 
     return;
   }
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+  syncLocalStorageJsonValue(key, value);
   if (INDEXED_DB_RESTORE_KEYS.has(key)) {
     indexedDbWrites.push(
       saveJsonRecord(key, value).catch((error) => {
         console.error(`[backupArchive] Failed to restore IndexedDB key "${key}"`, error);
       }),
     );
+  }
+}
+
+function emitRestoreProgress(
+  options: RestoreOptions | undefined,
+  progress: BackupRestoreProgress,
+): void {
+  options?.onProgress?.(progress);
+}
+
+function nextRestoreTick(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+}
+
+async function restoreEntriesBatch(entries: RestoreEntry[]): Promise<void> {
+  const indexedDbWrites: Promise<void>[] = [];
+  entries.forEach((entry) => {
+    writeStorageValue(entry.key, entry.value, indexedDbWrites);
+  });
+  await Promise.all(indexedDbWrites);
+}
+
+async function restoreAssetsBatch(assets: SerializedAssetRecord[]): Promise<void> {
+  await Promise.all(
+    assets.map((asset) =>
+      putAsset({
+        id: asset.id,
+        kind: asset.kind,
+        mimeType: asset.mimeType,
+        blob: dataUrlToBlob(asset.dataUrl),
+        fileName: asset.fileName,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+        source: asset.source,
+        originalUrl: asset.originalUrl,
+      }).catch((error) => {
+        console.error('[backupArchive] Failed to restore asset into IndexedDB', error);
+      }),
+    ),
+  );
+}
+
+async function restoreEntriesInBatches(
+  batches: Array<{ message: string; entries: RestoreEntry[] }>,
+  options?: RestoreOptions,
+): Promise<void> {
+  const total = batches.length;
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    emitRestoreProgress(options, {
+      phase: 'modules',
+      completed: index,
+      total,
+      message: batch.message,
+    });
+    await restoreEntriesBatch(batch.entries);
+    emitRestoreProgress(options, {
+      phase: 'modules',
+      completed: index + 1,
+      total,
+      message: batch.message,
+    });
+    await nextRestoreTick();
+  }
+}
+
+async function restoreAssetsInBatches(
+  assets: SerializedAssetRecord[],
+  options?: RestoreOptions,
+): Promise<void> {
+  if (assets.length === 0) {
+    emitRestoreProgress(options, {
+      phase: 'assets',
+      completed: 0,
+      total: 0,
+      message: '本地资源恢复完成',
+    });
+    return;
+  }
+
+  const total = Math.ceil(assets.length / ASSET_RESTORE_BATCH_SIZE);
+  for (let index = 0; index < assets.length; index += ASSET_RESTORE_BATCH_SIZE) {
+    const chunk = assets.slice(index, index + ASSET_RESTORE_BATCH_SIZE);
+    const completed = Math.floor(index / ASSET_RESTORE_BATCH_SIZE);
+    emitRestoreProgress(options, {
+      phase: 'assets',
+      completed,
+      total,
+      message: `正在恢复本地资源（${index + 1}-${Math.min(index + chunk.length, assets.length)} / ${assets.length}）`,
+    });
+    await restoreAssetsBatch(chunk);
+    emitRestoreProgress(options, {
+      phase: 'assets',
+      completed: completed + 1,
+      total,
+      message: `正在恢复本地资源（${Math.min(index + chunk.length, assets.length)} / ${assets.length}）`,
+    });
+    await nextRestoreTick();
   }
 }
 
@@ -465,82 +673,132 @@ function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<st
   };
 }
 
-export async function restoreFullBackupArchive(archive: FullBackupArchive): Promise<void> {
-  if (typeof window === 'undefined') {
-    throw new Error('当前环境不支持恢复本地备份');
-  }
+async function restoreModularModules(
+  modules: ModularBackupModules,
+  options?: RestoreOptions,
+): Promise<void> {
+  const batches: Array<{ message: string; entries: RestoreEntry[] }> = [
+    {
+      message: '正在恢复基础设置',
+      entries: [
+        { key: STORAGE_KEYS.settings, value: modules.settings },
+        { key: STORAGE_KEYS.userProfile, value: modules.userProfile },
+        { key: STORAGE_KEYS.visualSettings, value: modules.visualSettings },
+      ],
+    },
+    {
+      message: '正在恢复角色与组织数据',
+      entries: [
+        { key: STORAGE_KEYS.characters, value: modules.characters },
+        { key: STORAGE_KEYS.chatOrganization, value: modules.chatOrganization },
+        { key: STORAGE_KEYS.meData, value: modules.meData },
+        { key: STORAGE_KEYS.friendRequests, value: modules.friendRequests },
+      ],
+    },
+    {
+      message: '正在恢复聊天与约会记录',
+      entries: [
+        { key: STORAGE_KEYS.chatHistory, value: modules.chatHistory },
+        { key: STORAGE_KEYS.callHistory, value: modules.callHistory },
+        { key: STORAGE_KEYS.datingRecords, value: modules.datingRecords },
+        { key: STORAGE_KEYS.wechatRoleBindings, value: modules.wechatRoleBindings },
+        { key: STORAGE_KEYS.wechatBindSessions, value: modules.wechatBindSessions },
+      ],
+    },
+    {
+      message: '正在恢复世界内容与应用数据',
+      entries: [
+        { key: STORAGE_KEYS.moments, value: modules.moments },
+        { key: STORAGE_KEYS.forumData, value: modules.forumData },
+        { key: STORAGE_KEYS.coupleSpace, value: modules.coupleSpace },
+        { key: STORAGE_KEYS.musicData, value: modules.musicData },
+        { key: STORAGE_KEYS.walletData, value: modules.walletData },
+        { key: STORAGE_KEYS.appData, value: buildLegacyAppDataFromModules(modules) },
+      ],
+    },
+  ];
 
-  const indexedDbWrites: Promise<void>[] = [];
-
-  Object.entries(archive.storage).forEach(([key, value]) => {
-    writeStorageValue(key, value, indexedDbWrites);
-  });
-
-  await Promise.all(
-    archive.assets.map((asset) =>
-      putAsset({
-        id: asset.id,
-        kind: asset.kind,
-        mimeType: asset.mimeType,
-        blob: dataUrlToBlob(asset.dataUrl),
-        fileName: asset.fileName,
-        createdAt: asset.createdAt,
-        updatedAt: asset.updatedAt,
-        source: asset.source,
-        originalUrl: asset.originalUrl,
-      }).catch((error) => {
-        console.error('[backupArchive] Failed to restore asset into IndexedDB', error);
-      }),
-    ),
-  );
-
-  await Promise.all(indexedDbWrites);
+  await restoreEntriesInBatches(batches, options);
 }
 
-export async function restoreModularBackupArchive(archive: ModularBackupArchive): Promise<void> {
+export async function restoreModularBackupDataArchive(
+  archive: ModularBackupDataArchive,
+  options?: RestoreOptions,
+): Promise<void> {
   if (typeof window === 'undefined') {
     throw new Error('Current environment does not support restore');
   }
 
-  const indexedDbWrites: Promise<void>[] = [];
-  const { modules } = archive;
+  await restoreModularModules(archive.modules, options);
+  emitRestoreProgress(options, {
+    phase: 'complete',
+    completed: 1,
+    total: 1,
+    message: '主数据包恢复完成',
+  });
+}
 
-  writeStorageValue(STORAGE_KEYS.settings, modules.settings, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.characters, modules.characters, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.chatHistory, modules.chatHistory, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.chatOrganization, modules.chatOrganization, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.userProfile, modules.userProfile, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.moments, modules.moments, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.forumData, modules.forumData, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.coupleSpace, modules.coupleSpace, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.datingRecords, modules.datingRecords, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.friendRequests, modules.friendRequests, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.meData, modules.meData, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.musicData, modules.musicData, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.walletData, modules.walletData, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.callHistory, modules.callHistory, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.visualSettings, modules.visualSettings, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.wechatRoleBindings, modules.wechatRoleBindings, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.wechatBindSessions, modules.wechatBindSessions, indexedDbWrites);
-  writeStorageValue(STORAGE_KEYS.appData, buildLegacyAppDataFromModules(modules), indexedDbWrites);
+export async function restoreModularBackupAssetsArchive(
+  archive: ModularBackupAssetsArchive,
+  options?: RestoreOptions,
+): Promise<void> {
+  if (typeof window === 'undefined') {
+    throw new Error('Current environment does not support restore');
+  }
 
-  await Promise.all(
-    archive.assets.map((asset) =>
-      putAsset({
-        id: asset.id,
-        kind: asset.kind,
-        mimeType: asset.mimeType,
-        blob: dataUrlToBlob(asset.dataUrl),
-        fileName: asset.fileName,
-        createdAt: asset.createdAt,
-        updatedAt: asset.updatedAt,
-        source: asset.source,
-        originalUrl: asset.originalUrl,
-      }).catch((error) => {
-        console.error('[backupArchive] Failed to restore asset into IndexedDB', error);
-      }),
-    ),
-  );
+  await restoreAssetsInBatches(archive.assets, options);
+  emitRestoreProgress(options, {
+    phase: 'complete',
+    completed: 1,
+    total: 1,
+    message: '资源包恢复完成',
+  });
+}
 
-  await Promise.all(indexedDbWrites);
+export async function restoreFullBackupArchive(
+  archive: FullBackupArchive,
+  options?: RestoreOptions,
+): Promise<void> {
+  if (typeof window === 'undefined') {
+    throw new Error('当前环境不支持恢复本地备份');
+  }
+
+  const storageEntries = Object.entries(archive.storage);
+  const chunkSize = 4;
+  const batches = Array.from({ length: Math.ceil(storageEntries.length / chunkSize) }, (_, batchIndex) => {
+    const start = batchIndex * chunkSize;
+    return {
+      message: `正在恢复第 ${batchIndex + 1} 批备份模块`,
+      entries: storageEntries
+        .slice(start, start + chunkSize)
+        .map(([key, value]) => ({ key, value })),
+    };
+  });
+
+  await restoreEntriesInBatches(batches, options);
+  await restoreAssetsInBatches(archive.assets, options);
+  emitRestoreProgress(options, {
+    phase: 'complete',
+    completed: 1,
+    total: 1,
+    message: '完整备份恢复完成',
+  });
+}
+
+export async function restoreModularBackupArchive(
+  archive: ModularBackupArchive,
+  options?: RestoreOptions,
+): Promise<void> {
+  if (typeof window === 'undefined') {
+    throw new Error('Current environment does not support restore');
+  }
+
+  await restoreModularModules(archive.modules, options);
+  await restoreAssetsInBatches(archive.assets, options);
+  emitRestoreProgress(options, {
+    phase: 'complete',
+    completed: 1,
+    total: 1,
+    message: '模块化备份恢复完成',
+  });
 }

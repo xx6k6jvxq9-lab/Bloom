@@ -11,9 +11,14 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
-  buildModularBackupArchive,
+  type BackupRestoreProgress,
+  buildSplitModularBackupBundle,
   isFullBackupArchive,
+  isModularBackupAssetsArchive,
   isModularBackupArchive,
+  isModularBackupDataArchive,
+  restoreModularBackupAssetsArchive,
+  restoreModularBackupDataArchive,
   restoreModularBackupArchive,
   restoreFullBackupArchive,
 } from '../../../features/persistence/backupArchive';
@@ -26,6 +31,7 @@ import {
   loadMigrationMeta,
   type MigrationCheckResult,
 } from '../../../features/persistence/migrationStatusStore';
+import { syncLocalStorageJsonValue } from '../../../features/persistence/localConfigStore';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import {
   extractDirectFactTraces,
@@ -1632,6 +1638,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const [activeTab, setActiveTab] = useState<'chat' | 'profile' | 'world' | 'apps'>('chat');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgressText, setImportProgressText] = useState('');
   const [isExportingFull, setIsExportingFull] = useState(false);
   const [migrationInfo, setMigrationInfo] = useState<MigrationCheckResult | null>(() => {
     const meta = loadMigrationMeta();
@@ -1705,12 +1712,18 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const handleExportFull = async () => {
     try {
       setIsExportingFull(true);
-      const archive = await buildModularBackupArchive({
+      const bundle = await buildSplitModularBackupBundle({
         appData,
         settings,
       });
-      downloadJsonFile(archive, `full_backup_${Date.now()}.json`);
-      alert(`全量备份导出成功！已打包 ${archive.assets.length} 个本地资源。`);
+      const timestamp = Date.now();
+      downloadJsonFile(bundle.dataArchive, `full_backup_${timestamp}_data.json`);
+      if (bundle.assetsArchive) {
+        downloadJsonFile(bundle.assetsArchive, `full_backup_${timestamp}_assets.json`);
+        alert(`全量备份导出成功！已生成主数据包和资源包，共包含 ${bundle.dataArchive.assetCount} 个本地资源。恢复时请先导入 data 包，再导入 assets 包。`);
+      } else {
+        alert('全量备份导出成功！已生成主数据包。当前没有需要单独打包的本地资源。');
+      }
     } catch (error) {
       console.error('Failed to export full backup archive', error);
       alert('全量备份导出失败，请稍后重试。');
@@ -1742,6 +1755,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
     if (!file) return;
 
     setIsImporting(true);
+    setImportProgressText('正在读取备份文件...');
     const reader = new FileReader();
     reader.onload = async (event) => {
       let parsed: any;
@@ -1751,14 +1765,18 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
       } catch (error) {
         alert('解析备份文件失败，请确保文件内容是有效的 JSON。');
         setIsImporting(false);
+        setImportProgressText('');
         e.target.value = '';
         return;
       }
 
       try {
+        const handleArchiveRestoreProgress = (progress: BackupRestoreProgress) => {
+          setImportProgressText(progress.message);
+        };
 
         const writeImportedRecord = async (key: string, value: unknown) => {
-          window.localStorage.setItem(key, JSON.stringify(value));
+          syncLocalStorageJsonValue(key, value);
           await saveJsonRecord(key, value).catch((error) => {
             console.error(`[CustomizationApp] Failed to mirror imported key "${key}" into IndexedDB`, error);
           });
@@ -1853,27 +1871,48 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           }
 
           if (shouldWriteLegacyAppDataCompat(source)) {
-            window.localStorage.setItem(STORAGE_KEYS.appData, JSON.stringify(normalizedAppData));
+            syncLocalStorageJsonValue(STORAGE_KEYS.appData, normalizedAppData);
           }
 
           if (source && typeof source === 'object' && 'settings' in source) {
-            window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(nextSettings));
+            syncLocalStorageJsonValue(STORAGE_KEYS.settings, nextSettings);
           }
 
           await Promise.all(writes);
         };
         
         if (await showInAppConfirm('导入备份将覆盖当前对应功能的数据，确定继续吗？')) {
+          if (isModularBackupDataArchive(parsed)) {
+            setImportProgressText('正在按批恢复主数据包...');
+            await restoreModularBackupDataArchive(parsed, { onProgress: handleArchiveRestoreProgress });
+            const nextStepText = parsed.assetCount > 0
+              ? `主数据包恢复成功！这份备份还有 ${parsed.assetCount} 个本地资源，请继续导入对应的 assets 包。页面将先重新加载。`
+              : '主数据包恢复成功！当前备份没有额外资源包，页面将重新加载。';
+            alert(nextStepText);
+            window.location.reload();
+            return;
+          }
+
+          if (isModularBackupAssetsArchive(parsed)) {
+            setImportProgressText('正在分批恢复资源包...');
+            await restoreModularBackupAssetsArchive(parsed, { onProgress: handleArchiveRestoreProgress });
+            alert(`资源包恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
+            window.location.reload();
+            return;
+          }
+
           if (isModularBackupArchive(parsed)) {
-            await restoreModularBackupArchive(parsed);
-            alert(`模块化备份恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
+            setImportProgressText('正在按批恢复模块化备份...');
+            await restoreModularBackupArchive(parsed, { onProgress: handleArchiveRestoreProgress });
+            alert(`模块化备份恢复成功！已按批恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
             window.location.reload();
             return;
           }
 
           if (isFullBackupArchive(parsed)) {
-            await restoreFullBackupArchive(parsed);
-            alert(`完整备份恢复成功！已恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
+            setImportProgressText('正在按批恢复完整备份...');
+            await restoreFullBackupArchive(parsed, { onProgress: handleArchiveRestoreProgress });
+            alert(`完整备份恢复成功！已按批恢复 ${parsed.assets.length} 个本地资源，页面将重新加载。`);
             window.location.reload();
             return;
           }
@@ -1887,6 +1926,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           if (parsed.characters && parsed.chatHistory && parsed.userProfile) {
              const normalizedImportedAppData = normalizeImportedAppData(parsed);
              if (setAppData) setAppData(normalizedImportedAppData);
+             setImportProgressText('正在写入导入数据...');
              await persistImportedSnapshot(normalizedImportedAppData, settings, parsed);
              updatedCount = keys.length;
           } else {
@@ -1902,6 +1942,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             });
             const normalizedImportedAppData = normalizeImportedAppData(newAppData);
             if (setAppData) setAppData(normalizedImportedAppData);
+            setImportProgressText('正在写入导入数据...');
             await persistImportedSnapshot(normalizedImportedAppData, newSettings, parsed);
           }
 
@@ -1912,6 +1953,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
         alert('备份文件已读取成功，但恢复数据时失败了。当前更像是浏览器本地存储环境异常，不是 JSON 文件本身无效。');
       } finally {
         setIsImporting(false);
+        setImportProgressText('');
       }
     };
     reader.readAsText(file);
@@ -2197,6 +2239,11 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             <span className="text-[14px] font-bold">导入恢复</span>
           </button>
         </div>
+        {isImporting && importProgressText ? (
+          <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
+            {importProgressText}
+          </div>
+        ) : null}
 
         {/* Module Selection Section */}
         <div className="space-y-4 pt-4 border-t border-zinc-100">

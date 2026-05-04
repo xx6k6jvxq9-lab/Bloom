@@ -8,6 +8,8 @@ export type DatingRecordsData = {
   collectedDates: DateSession[];
 };
 
+let datingRecordsCache: DatingRecordsData | null = null;
+
 function hydrateDatingRecords(
   source: Partial<DatingRecordsData> | null | undefined,
   fallback: DatingRecordsData,
@@ -22,7 +24,11 @@ export function loadDatingRecords(
   fallback: DatingRecordsData = { savedDates: [], collectedDates: [] },
 ): DatingRecordsData {
   const persisted = loadJson<Partial<DatingRecordsData> | null>(STORAGE_KEYS.datingRecords, null);
-  return hydrateDatingRecords(persisted, fallback);
+  const hydrated = persisted
+    ? hydrateDatingRecords(persisted, fallback)
+    : (datingRecordsCache ?? fallback);
+  datingRecordsCache = hydrated;
+  return hydrated;
 }
 
 export async function loadPreferredDatingRecords(
@@ -31,16 +37,21 @@ export async function loadPreferredDatingRecords(
   try {
     const persisted = await loadJsonRecord<Partial<DatingRecordsData>>(STORAGE_KEYS.datingRecords);
     if (persisted) {
-      return hydrateDatingRecords(persisted, fallback);
+      const hydrated = hydrateDatingRecords(persisted, fallback);
+      datingRecordsCache = hydrated;
+      return hydrated;
     }
   } catch (error) {
     console.error('[datingRecordsStore] Failed to load dating records from IndexedDB', error);
   }
 
-  return loadDatingRecords(fallback);
+  const localRecords = loadDatingRecords(fallback);
+  datingRecordsCache = localRecords;
+  return localRecords;
 }
 
 export function saveDatingRecords(value: DatingRecordsData): Promise<void> {
+  datingRecordsCache = value;
   saveJson(STORAGE_KEYS.datingRecords, value);
 
   return saveJsonRecord(STORAGE_KEYS.datingRecords, value).catch((error) => {
@@ -57,6 +68,7 @@ export function patchDatingRecords(
 }
 
 export function resetDatingRecords(): void {
+  datingRecordsCache = null;
   removeStoredJson(STORAGE_KEYS.datingRecords);
   void removeJsonRecord(STORAGE_KEYS.datingRecords).catch((error) => {
     console.error('[datingRecordsStore] Failed to remove dating records from IndexedDB', error);

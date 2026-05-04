@@ -69,8 +69,15 @@ function detectLegacyPayloadPresence(): {
     };
   }
 
-  const hasLegacySettings = window.localStorage.getItem(STORAGE_KEYS.settings) != null;
-  const hasLegacyAppData = window.localStorage.getItem(STORAGE_KEYS.appData) != null;
+  let hasLegacySettings = false;
+  let hasLegacyAppData = false;
+
+  try {
+    hasLegacySettings = window.localStorage.getItem(STORAGE_KEYS.settings) != null;
+    hasLegacyAppData = window.localStorage.getItem(STORAGE_KEYS.appData) != null;
+  } catch (error) {
+    console.warn('[migrationStatusStore] Failed to inspect legacy localStorage payload', error);
+  }
 
   return {
     hasLegacyPayload: hasLegacySettings || hasLegacyAppData,

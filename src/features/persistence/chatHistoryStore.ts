@@ -30,6 +30,8 @@ export type PersistedChatHistoryData = {
   groupSessions: Record<string, PersistedGroupSession>;
 };
 
+let chatHistoryCache: PersistedChatHistoryData | null = null;
+
 function isChatMessageArray(value: unknown): value is ChatMessage[] {
   return Array.isArray(value);
 }
@@ -169,7 +171,11 @@ export function loadChatHistoryRecords(
   },
 ): PersistedChatHistoryData {
   const persisted = loadJson<Partial<PersistedChatHistoryData> | null>(STORAGE_KEYS.chatHistory, null);
-  return hydrateChatHistoryRecords(persisted, fallback);
+  const hydrated = persisted
+    ? hydrateChatHistoryRecords(persisted, fallback)
+    : (chatHistoryCache ?? fallback);
+  chatHistoryCache = hydrated;
+  return hydrated;
 }
 
 export async function loadPreferredChatHistoryRecords(
@@ -186,6 +192,7 @@ export async function loadPreferredChatHistoryRecords(
     const persisted = await loadJsonRecord<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
     if (persisted) {
       const indexedDbHistory = hydrateChatHistoryRecords(persisted, fallback);
+      chatHistoryCache = indexedDbHistory;
       const localSerialized = JSON.stringify(localHistory);
       const indexedDbSerialized = JSON.stringify(indexedDbHistory);
 
@@ -199,10 +206,12 @@ export async function loadPreferredChatHistoryRecords(
     console.error('[chatHistoryStore] Failed to load chat history from IndexedDB', error);
   }
 
+  chatHistoryCache = localHistory;
   return localHistory;
 }
 
 export function saveChatHistoryRecords(value: PersistedChatHistoryData): Promise<void> {
+  chatHistoryCache = value;
   saveJson(STORAGE_KEYS.chatHistory, value);
 
   return saveJsonRecord(STORAGE_KEYS.chatHistory, value).catch((error) => {
@@ -224,6 +233,7 @@ export function patchChatHistoryRecords(
 }
 
 export function resetChatHistoryRecords(): void {
+  chatHistoryCache = null;
   removeStoredJson(STORAGE_KEYS.chatHistory);
   void removeJsonRecord(STORAGE_KEYS.chatHistory).catch((error) => {
     console.error('[chatHistoryStore] Failed to remove chat history from IndexedDB', error);

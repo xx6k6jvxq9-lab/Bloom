@@ -35,7 +35,7 @@ import { evaluateMigrationStatusWithOptions, migrateCriticalRecordsIfNeeded } fr
 import {
   loadPreferredMoments,
 } from './momentsStore';
-import { loadPersistedMusicData } from './musicDataStore';
+import { loadPreferredMusicData } from './musicDataStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import {
@@ -94,10 +94,9 @@ const EMPTY_FORUM_DATA: ForumData = {
 function readStoredJson<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
 
-  const raw = window.localStorage.getItem(key);
-  if (!raw) return null;
-
   try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch (error) {
     console.error(`[bootstrapLocalAppState] Failed to parse key "${key}"`, error);
@@ -107,7 +106,13 @@ function readStoredJson<T>(key: string): T | null {
 
 function hasStoredJson(key: string): boolean {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(key) != null;
+
+  try {
+    return window.localStorage.getItem(key) != null;
+  } catch (error) {
+    console.warn(`[bootstrapLocalAppState] Failed to inspect localStorage key "${key}"`, error);
+    return false;
+  }
 }
 
 async function loadIndexedDbRecordSafe<T>(key: string): Promise<T | null> {
@@ -377,7 +382,7 @@ export async function bootstrapLocalAppState({
   const fallbackMusicData = !hasLocalMusicData && legacyAppData?.musicData
     ? { ...defaultAppData.musicData!, ...legacyAppData.musicData }
     : defaultAppData.musicData!;
-  const musicData = loadPersistedMusicData(fallbackMusicData);
+  const musicData = await loadPreferredMusicData(fallbackMusicData);
 
   const walletFallback =
     !hasIndexedDbWalletData && !hasLocalWalletData
