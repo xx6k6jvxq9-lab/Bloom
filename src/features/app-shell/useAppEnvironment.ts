@@ -39,6 +39,8 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isAndroid = /Android/i.test(window.navigator.userAgent || '');
     const isIosLike = /iphone|ipad|ipod/.test(userAgent);
+    let stableLayoutViewportHeight = 0;
+    let lastInnerWidth = window.innerWidth;
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -57,29 +59,47 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     }
 
     const updateViewportHeight = () => {
-      const layoutViewportHeight = window.innerHeight;
       const viewport = window.visualViewport;
-      const visualViewportHeight = viewport?.height ?? layoutViewportHeight;
-      const keyboardInset = Math.max(0, Math.round(layoutViewportHeight - visualViewportHeight - (viewport?.offsetTop ?? 0)));
+      const currentInnerHeight = Math.round(window.innerHeight);
+      const currentInnerWidth = window.innerWidth;
+      const visualViewportHeight = Math.round(viewport?.height ?? currentInnerHeight);
+      const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
+
+      if (
+        stableLayoutViewportHeight === 0
+        || currentInnerWidth !== lastInnerWidth
+        || currentInnerHeight > stableLayoutViewportHeight
+      ) {
+        stableLayoutViewportHeight = currentInnerHeight;
+      }
+
+      const keyboardInset = Math.max(0, Math.round(stableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop));
       const keyboardVisible = keyboardInset > 120;
-      setLayoutViewportHeight(Math.round(layoutViewportHeight));
-      setVisualViewportHeight(Math.round(visualViewportHeight));
+
+      if (!keyboardVisible) {
+        stableLayoutViewportHeight = currentInnerHeight;
+      }
+
+      lastInnerWidth = currentInnerWidth;
+
+      setLayoutViewportHeight(stableLayoutViewportHeight);
+      setVisualViewportHeight(visualViewportHeight);
       setKeyboardInset(keyboardInset);
       setKeyboardVisible(keyboardVisible);
       setAppKeyboardState({
         keyboardInset,
         keyboardVisible,
-        layoutViewportHeight: Math.round(layoutViewportHeight),
+        layoutViewportHeight: stableLayoutViewportHeight,
         manualKeyboardAvoidanceEnabled,
-        visualViewportHeight: Math.round(visualViewportHeight),
+        visualViewportHeight,
       });
 
       // The shell itself should keep the stable layout viewport height. The
       // visible viewport and keyboard inset are published separately so input
       // bars can move without collapsing the whole page into half-height.
-      root.style.setProperty('--app-layout-viewport-height', `${Math.round(layoutViewportHeight)}px`);
-      root.style.setProperty('--app-viewport-height', `${Math.round(layoutViewportHeight)}px`);
-      root.style.setProperty('--app-visible-viewport-height', `${Math.round(visualViewportHeight)}px`);
+      root.style.setProperty('--app-layout-viewport-height', `${stableLayoutViewportHeight}px`);
+      root.style.setProperty('--app-viewport-height', `${stableLayoutViewportHeight}px`);
+      root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${keyboardInset}px`);
       if (keyboardVisible) {
         root.setAttribute('data-keyboard-open', 'true');
