@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { createPortal } from 'react-dom';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
@@ -442,10 +441,6 @@ export function MomentsApp({
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
   const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
-  const overlayHost = typeof document !== 'undefined'
-    ? document.getElementById('phone-container') || document.body
-    : null;
-
   const handleComment = async (momentId: string) => {
     if (!commentText.trim()) return;
     const activeReplyTarget = replyTarget?.momentId === momentId ? replyTarget : null;
@@ -884,7 +879,7 @@ export function MomentsApp({
       </div>
       </div>
 
-      {overlayHost && commentingOn && activeCommentMoment && createPortal(
+      {commentingOn && activeCommentMoment && (
         <div
           className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
         >
@@ -932,8 +927,7 @@ export function MomentsApp({
             </div>
             </div>
           </div>
-        </div>,
-        overlayHost,
+        </div>
       )}
 
       {activeInnerVoiceMoment && activeInnerVoiceAuthor && (

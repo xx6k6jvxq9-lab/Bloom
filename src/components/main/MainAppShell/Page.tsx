@@ -10,6 +10,7 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
+import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 
 function ResolvedMainShellAvatar({
   value,
@@ -120,6 +121,7 @@ export function MainApp({
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
   const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
+  const shellRef = React.useRef<HTMLDivElement | null>(null);
   const swipeStateRef = React.useRef<{
     startX: number;
     startY: number;
@@ -135,6 +137,7 @@ export function MainApp({
     active: false,
     lockedAxis: null,
   });
+  const { keyboardVisible, viewportStyle } = useKeyboardSafeViewport({ containerRef: shellRef });
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => ({
@@ -247,8 +250,12 @@ export function MainApp({
 
   return (
     <motion.div 
+      ref={shellRef}
       className="absolute inset-0 flex flex-col bg-zinc-50"
-      style={appFontFamily ? { fontFamily: appFontFamily } : undefined}
+      style={{
+        ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
+        ...(viewportStyle || {}),
+      }}
     >
       {/* Header */}
       {!(activeTab === 'me' && meSection !== 'main') && (
@@ -625,6 +632,12 @@ export function MainApp({
       {!(activeTab === 'me' && meSection !== 'main') && (
       <div 
         className="absolute bottom-0 left-0 right-0 h-[84px] rounded-t-[32px] shadow-[0_-5px_20px_rgba(0,0,0,0.03)] flex items-center justify-around px-4 pb-4 z-20 backdrop-blur-md border-t bg-white border-zinc-100"
+        style={{
+          opacity: keyboardVisible ? 0 : 1,
+          transform: keyboardVisible ? 'translateY(100%)' : 'translateY(0)',
+          pointerEvents: keyboardVisible ? 'none' : 'auto',
+          transition: 'opacity 180ms ease, transform 180ms ease',
+        }}
       >
         <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
         <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
