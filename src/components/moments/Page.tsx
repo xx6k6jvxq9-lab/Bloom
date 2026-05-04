@@ -117,7 +117,6 @@ export function MomentsApp({
 }) {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const publishScreenRef = useRef<HTMLDivElement | null>(null);
-  const commentComposerRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -137,10 +136,6 @@ export function MomentsApp({
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
   const { viewportStyle: pageViewportStyle } = useKeyboardSafeViewport({ containerRef: pageRef, enabled: !showPublish });
   const { viewportStyle: publishViewportStyle } = useKeyboardSafeViewport({ containerRef: publishScreenRef, enabled: showPublish });
-  const { viewportStyle: commentComposerViewportStyle } = useKeyboardSafeViewport({
-    containerRef: commentComposerRef,
-    enabled: !!commentingOn,
-  });
 
   const { userProfile, moments, characters } = appData;
   const forumConfig = resolveSceneTextApiConfig({
@@ -447,7 +442,6 @@ export function MomentsApp({
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
   const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
-  const commentComposerShellStyle = commentComposerViewportStyle || { height: '100%', minHeight: '100%' };
   const overlayHost = typeof document !== 'undefined'
     ? document.getElementById('phone-container') || document.body
     : null;
@@ -892,9 +886,7 @@ export function MomentsApp({
 
       {overlayHost && commentingOn && activeCommentMoment && createPortal(
         <div
-          ref={commentComposerRef}
-          className="absolute inset-x-0 top-0 z-[60] flex flex-col pointer-events-none"
-          style={commentComposerShellStyle}
+          className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
         >
           <div className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]">
             <div className="mx-auto flex max-w-[560px] flex-col gap-2">
