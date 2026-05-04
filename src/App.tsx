@@ -45,6 +45,7 @@ import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
 import { AppSelect } from './components/shared/AppSelect';
 import { streamTextWithConfig } from './services/ai/runtimeClient';
+import { DREAM_BACKGROUND_EVENT } from './services/dream/dreamBackgroundGeneration';
 import { buildChatPrompt } from './services/ai/prompts/builders/buildChatPrompt';
 import { buildSummaryPrompt } from './services/ai/prompts/builders/buildSummaryPrompt';
 import {
@@ -83,8 +84,16 @@ import {
 } from './features/persistence/coupleSpaceStore';
 
 export default function App() {
+  const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [activeApp, setActiveApp] = useState<AppScreen>('home');
+  const [dreamResumeSignal, setDreamResumeSignal] = useState(0);
+  const [dreamGenerationToast, setDreamGenerationToast] = useState<null | {
+    kind: 'completed';
+    taskId: string;
+    title: string;
+    message: string;
+  }>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chat');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -125,6 +134,7 @@ export default function App() {
 
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
+  useAutoDismissToast(dreamGenerationToast, setDreamGenerationToast, 5200);
   useCoupleSpaceAutoChecks({
     activeApp,
     appData,
@@ -157,6 +167,10 @@ export default function App() {
       : 'bg-zinc-50';
 
   useEffect(() => {
+    activeAppRef.current = activeApp;
+  }, [activeApp]);
+
+  useEffect(() => {
     if (typeof document === 'undefined') {
       return;
     }
@@ -174,6 +188,35 @@ export default function App() {
       body.style.backgroundColor = previousBodyBackground;
     };
   }, [appChromeBackground]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleDreamBackgroundEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind: string; taskId: string; title: string; roleName: string }>).detail;
+      if (!detail || detail.kind !== 'completed') {
+        return;
+      }
+
+      if (activeAppRef.current === 'dream') {
+        return;
+      }
+
+      setDreamGenerationToast({
+        kind: 'completed',
+        taskId: detail.taskId,
+        title: detail.title || '梦境已生成',
+        message: `${detail.roleName} 的梦已经织好，点开继续进入。`,
+      });
+    };
+
+    window.addEventListener(DREAM_BACKGROUND_EVENT, handleDreamBackgroundEvent as EventListener);
+    return () => {
+      window.removeEventListener(DREAM_BACKGROUND_EVENT, handleDreamBackgroundEvent as EventListener);
+    };
+  }, []);
 
   return (
     <div
@@ -239,6 +282,8 @@ export default function App() {
             couplePartnerCharacter={couplePartnerCharacter}
             coupleSpaceUpdateToast={coupleSpaceUpdateToast}
             currentCoupleSpace={currentCoupleSpace}
+            dreamGenerationToast={dreamGenerationToast}
+            dreamResumeSignal={dreamResumeSignal}
             handleAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
             handleAddCharacter={handleAddCharacter}
             handleMergeCharacter={handleMergeCharacter}
@@ -264,6 +309,12 @@ export default function App() {
             setSettings={setSettings}
             setStatusBarVisible={setStatusBarVisible}
             settings={settings}
+            onOpenReadyDream={() => {
+              setDreamResumeSignal((prev) => prev + 1);
+              setActiveApp('dream');
+              setDreamGenerationToast(null);
+            }}
+            onDismissDreamToast={() => setDreamGenerationToast(null)}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center bg-zinc-50 px-8 text-center">

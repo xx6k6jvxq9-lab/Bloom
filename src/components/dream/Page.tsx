@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { generateDreamAftermath } from '../../services/dream/generateDreamAftermath';
+import { getCurrentDreamBackgroundTask, startDreamBackgroundGeneration } from '../../services/dream/dreamBackgroundGeneration';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
-import { generateDreamScenario } from '../../services/dream/generateDreamScenario';
 import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSummaries';
 import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
@@ -1397,6 +1397,7 @@ export function DreamAppPage({
   activeConfig,
   masks,
   worldBooks,
+  resumeBackgroundSignal = 0,
 }: {
   onBack: () => void;
   characters: Character[];
@@ -1404,6 +1405,7 @@ export function DreamAppPage({
   activeConfig: ApiConfig;
   masks: Mask[];
   worldBooks: WorldBookEntry[];
+  resumeBackgroundSignal?: number;
 }) {
   const roles = useMemo(() => buildRoles(characters), [characters]);
   const [time, setTime] = useState(formatDreamTime);
@@ -1606,7 +1608,7 @@ export function DreamAppPage({
       });
     }, 180);
 
-    generateDreamScenario({
+    const dreamOptions = {
       activeConfig,
       character: selectedCharacter,
       masks,
@@ -1617,7 +1619,9 @@ export function DreamAppPage({
         depth: dreamDepth,
         selectedTags,
       },
-    })
+    } as const;
+
+    startDreamBackgroundGeneration(dreamOptions)
       .then((generatedScenario) => {
         if (cancelled) return;
         window.clearInterval(progressTimer);
@@ -1654,6 +1658,32 @@ export function DreamAppPage({
       }
     }
   }, [stage]);
+
+  useEffect(() => {
+    if (!resumeBackgroundSignal) return;
+
+    const backgroundTask = getCurrentDreamBackgroundTask();
+    if (!backgroundTask || backgroundTask.status !== 'resolved') {
+      return;
+    }
+
+    const backgroundCharacterId = backgroundTask.options.character.id;
+    setSelectedRoleId(backgroundCharacterId);
+    setEntryMode(backgroundTask.options.selection.entryMode);
+    setSelectedDomain(backgroundTask.options.selection.domainId);
+    setDreamDepth(backgroundTask.options.selection.depth);
+    setSelectedTags(backgroundTask.options.selection.selectedTags);
+    setConfirmPreview(null);
+    setLoadingError(null);
+    setLoadingProgress(100);
+    setRuntimeScenario(backgroundTask.scenario);
+    setActIndex(0);
+    setSelectedChoice(null);
+    setClosingActId(null);
+    setCustomInput('');
+    setCustomInputOpen(false);
+    setStage('scene');
+  }, [resumeBackgroundSignal]);
 
   useEffect(() => {
     if (!runtimeScenario?.endingOutput || !selectedCharacter) return;
@@ -2191,6 +2221,22 @@ export function DreamAppPage({
     });
   };
 
+  const retryEndingGeneration = () => {
+    setLoadingError(null);
+    setStage('scene');
+    window.requestAnimationFrame(() => {
+      setStage('ending');
+    });
+  };
+
+  const retryAftermathGeneration = () => {
+    setLoadingError(null);
+    setStage('ending');
+    window.requestAnimationFrame(() => {
+      setStage('aftermath');
+    });
+  };
+
   const handleSaveAndExit = () => {
     if (runtimeScenario) {
       persistDreamProgress(runtimeScenario);
@@ -2537,6 +2583,9 @@ export function DreamAppPage({
                   <div className="mt-5 h-px w-20 bg-[rgba(196,169,106,.1)]">
                     <div className="h-px bg-[var(--gold)] transition-[width] duration-300 ease-linear" style={{ width: `${loadingProgress}%` }} />
                   </div>
+                  <div className="mt-8 w-full max-w-[334px]">
+                    <SecondaryAction label="返 回 首 页" onClick={onBack} />
+                  </div>
                 </>
               )}
             </div>
@@ -2810,6 +2859,12 @@ export function DreamAppPage({
                 <div className="mt-3 text-[12px] tracking-[0.26em]" style={{ color: presentation.accent }}>{endingView.chapter}</div>
               </div>
               {loadingError ? <div className="mt-6 px-8 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
+              {loadingError && !isGeneratingEnding ? (
+                <div className="mt-6 grid gap-3 px-8">
+                  <SecondaryAction label="重 试 结 局" onClick={retryEndingGeneration} presentation={presentation} />
+                  <SecondaryAction label="退 出 梦 境" onClick={onBack} presentation={presentation} />
+                </div>
+              ) : null}
               <div className="mt-10 grid gap-4 px-8">
                 <SecondaryAction
                   label={
@@ -2890,6 +2945,12 @@ export function DreamAppPage({
                 ) : null}
               </div>
               {loadingError ? <div className="mt-6 text-[12px] leading-[2] tracking-[0.12em] text-[rgba(255,190,190,.9)]">{loadingError}</div> : null}
+              {loadingError && !isGeneratingAftermath ? (
+                <div className="mt-6 grid gap-3">
+                  <SecondaryAction label="重 试 余 响" onClick={retryAftermathGeneration} presentation={presentation} />
+                  <SecondaryAction label="退 出 梦 境" onClick={onBack} presentation={presentation} />
+                </div>
+              ) : null}
               <div className="mt-8">
                 <SealButton
                   label={isGeneratingAftermath ? '余 响 正 在 回 流' : aftermathTextReady ? '再 入 一 梦' : '余 响 正 在 浮 出'}

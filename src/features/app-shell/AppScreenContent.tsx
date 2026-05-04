@@ -53,6 +53,13 @@ type AppScreenContentProps = {
   couplePartnerCharacter: Character;
   coupleSpaceUpdateToast: CoupleSpaceUpdateToast | null;
   currentCoupleSpace: CoupleSpaceData;
+  dreamGenerationToast: {
+    kind: 'completed';
+    taskId: string;
+    title: string;
+    message: string;
+  } | null;
+  dreamResumeSignal: number;
   handleAcceptCoupleSpaceInvite: (partnerId: string) => void;
   handleAddCharacter: (character: Character) => void;
   handleMergeCharacter: (character: Character) => void;
@@ -78,6 +85,8 @@ type AppScreenContentProps = {
   setSettings: Dispatch<SetStateAction<AppSettings>>;
   setStatusBarVisible: Dispatch<SetStateAction<boolean>>;
   settings: AppSettings;
+  onOpenReadyDream: () => void;
+  onDismissDreamToast: () => void;
 };
 
 export function AppScreenContent({
@@ -90,6 +99,8 @@ export function AppScreenContent({
   couplePartnerCharacter,
   coupleSpaceUpdateToast,
   currentCoupleSpace,
+  dreamGenerationToast,
+  dreamResumeSignal,
   handleAcceptCoupleSpaceInvite,
   handleAddCharacter,
   handleMergeCharacter,
@@ -115,6 +126,8 @@ export function AppScreenContent({
   setSettings,
   setStatusBarVisible,
   settings,
+  onOpenReadyDream,
+  onDismissDreamToast,
 }: AppScreenContentProps) {
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
@@ -234,6 +247,40 @@ export function AppScreenContent({
             </div>
           </div>
         </button>
+      )}
+      {dreamGenerationToast && (
+        <div
+          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-[rgba(196,169,106,.45)] bg-[rgba(8,12,24,.92)] p-4 text-left shadow-lg backdrop-blur-md`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(196,169,106,.12)] text-[#d9c08a]">
+              <Heart size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-[#9ebee2]">梦境提示</div>
+              <div className="mt-0.5 text-sm font-bold text-white">
+                {dreamGenerationToast.title}
+              </div>
+              <div className="mt-1 text-xs text-[rgba(237,230,214,.72)]">
+                {dreamGenerationToast.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenReadyDream}
+              className="rounded-full bg-[rgba(196,169,106,.14)] px-3 py-1 text-xs font-medium text-[#f1dfb2] transition hover:bg-[rgba(196,169,106,.2)]"
+            >
+              点开进入
+            </button>
+            <button
+              type="button"
+              onClick={onDismissDreamToast}
+              className="rounded-full px-2 py-1 text-xs text-[rgba(237,230,214,.68)]"
+            >
+              稍后再看
+            </button>
+          </div>
+        </div>
       )}
       {activeApp === 'home' && (
         <HomeScreen
@@ -465,6 +512,7 @@ export function AppScreenContent({
           activeConfig={activeConfig}
           masks={appData.masks || []}
           worldBooks={appData.worldBooks || []}
+          resumeBackgroundSignal={dreamResumeSignal}
         />
       )}
       {activeApp === 'worldbook' && (
