@@ -4260,7 +4260,9 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
   const messageCenterManageData = activeTab === 'notification' ? getMessageCenterData() : null;
 
   return (
-    <div className="forum-app-shell absolute inset-0 min-h-0 flex flex-col bg-white overflow-hidden">
+    <div
+      className="forum-app-shell absolute inset-0 min-h-0 flex flex-col bg-white overflow-hidden"
+    >
       {/* Header */}
       {currentView === 'list' && activeTab === 'home' && (
         <ForumHomeHeader
