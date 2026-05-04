@@ -1633,18 +1633,18 @@ export function ChatSessionScreen({
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
+    bottom: keyboardVisible && keyboardInset > 0
+      ? `${keyboardInset}px`
+      : '0px',
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
-    transform: keyboardVisible && keyboardInset > 0
-      ? `translateY(-${keyboardInset}px)`
-      : 'translateY(0)',
     ...footerStyleObj,
-    transition: 'padding-bottom 180ms ease, transform 180ms ease',
+    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${keyboardVisible && keyboardInset > 0 ? keyboardInset + 8 : 8}px`,
+    paddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
     minHeight: 0,
     scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
@@ -2618,7 +2618,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer ${footerClassName}`}
+        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (

@@ -1021,17 +1021,17 @@ export function GroupChatSessionScreen({
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
+    bottom: keyboardVisible && keyboardInset > 0
+      ? `${keyboardInset}px`
+      : '0px',
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
-    transform: keyboardVisible && keyboardInset > 0
-      ? `translateY(-${keyboardInset}px)`
-      : 'translateY(0)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
-    transition: 'padding-bottom 180ms ease, transform 180ms ease',
+    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `${keyboardVisible && keyboardInset > 0 ? keyboardInset + 8 : 8}px`,
+    paddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
     scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
@@ -3177,7 +3177,7 @@ export function GroupChatSessionScreen({
         <div ref={messagesEndRef} />
       </div>
 
-      <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${groupFooterClassName}`} style={chatFooterStyle}>
+      <div ref={chatFooterRef} className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${groupFooterClassName}`} style={chatFooterStyle}>
         {replyingTo && (
           <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">

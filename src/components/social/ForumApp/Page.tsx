@@ -4155,7 +4155,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
   // --- Main Render ---
 
-  const shouldShowForumBottomNav = currentView !== 'editor'
+  const shouldShowForumBottomNav = currentView === 'list'
     && currentView !== 'edit-profile'
     && currentView !== 'follow-list'
     && currentView !== 'forum-settings'

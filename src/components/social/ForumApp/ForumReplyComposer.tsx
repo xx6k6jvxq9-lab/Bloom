@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
-import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
+import { useEffect, useState } from 'react';
 import { ForumResolvedImage } from './ForumResolvedImage';
 
 type ForumReplyComposerProps = {
@@ -24,16 +22,10 @@ export function ForumReplyComposer({
   onSubmitSelfReply,
   onSubmitAnonymousReply,
 }: ForumReplyComposerProps) {
-  const composerRef = useRef<HTMLDivElement | null>(null);
   const [identity, setIdentity] = useState<'self' | 'anonymous'>('self');
   const [maskId, setMaskId] = useState<string | undefined>(defaultMaskId);
   const [showMaskPicker, setShowMaskPicker] = useState(false);
   const [preferPlainSelf, setPreferPlainSelf] = useState(() => !defaultMaskId);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
-    containerRef: composerRef,
-    enabled: true,
-  });
 
   const selectedMaskName = availableCommentMasks.find((mask) => mask.id === maskId)?.name;
   const displaySelfLabel = selectedMaskName || '本人';
@@ -70,16 +62,7 @@ export function ForumReplyComposer({
   };
 
   return (
-    <div
-      ref={composerRef}
-      className="z-20 shrink-0 border-t border-zinc-100 bg-white px-3 py-2 [padding-bottom:calc(var(--app-safe-area-bottom-ui,0px)+0.5rem)] flex items-center gap-3"
-      style={{
-        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-          ? `translateY(-${keyboardInset}px)`
-          : 'translateY(0)',
-        transition: 'transform 180ms ease',
-      }}
-    >
+    <div className="z-20 shrink-0 border-t border-zinc-100 bg-white px-3 py-2 [padding-bottom:calc(var(--app-safe-area-bottom-ui,0px)+0.5rem)] flex items-center gap-3">
       <ForumResolvedImage
         value={identity === 'anonymous' ? anonymousMainAvatar : currentUserAvatar}
         className="w-7 h-7 rounded-full object-cover"
