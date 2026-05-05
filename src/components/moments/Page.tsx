@@ -816,7 +816,7 @@ export function MomentsApp({
                         initial={{ opacity: 0, scale: 0.95, x: 10 }}
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.95, x: 10 }}
-                        className="absolute right-0 top-0 z-20 grid w-[min(calc(100vw-2.5rem),18rem)] grid-cols-3 gap-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur-md sm:right-8 sm:flex sm:w-auto sm:min-w-max sm:items-center sm:gap-0 sm:px-1 sm:py-1"
+                        className="absolute right-10 top-1/2 z-20 grid w-[min(calc(100vw-2.5rem),18rem)] -translate-y-1/2 grid-cols-3 gap-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur-md sm:right-8 sm:top-0 sm:w-auto sm:min-w-max sm:translate-y-0 sm:flex sm:items-center sm:gap-0 sm:px-1 sm:py-1"
                       >
                         <button
                           onClick={() => handleLike(moment.id)}
