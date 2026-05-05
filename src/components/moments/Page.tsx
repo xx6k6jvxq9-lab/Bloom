@@ -816,11 +816,11 @@ export function MomentsApp({
                         initial={{ opacity: 0, scale: 0.95, x: 10 }}
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.95, x: 10 }}
-                        className="absolute right-8 top-0 z-20 flex items-center overflow-hidden rounded-lg border border-zinc-200 bg-white/95 px-1 py-1 shadow-lg backdrop-blur-md"
+                        className="absolute right-0 top-0 z-20 grid w-[min(calc(100vw-2.5rem),18rem)] grid-cols-3 gap-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur-md sm:right-8 sm:flex sm:w-auto sm:min-w-max sm:items-center sm:gap-0 sm:px-1 sm:py-1"
                       >
                         <button
                           onClick={() => handleLike(moment.id)}
-                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
                         >
                           <Heart size={14} className={(moment.likedBy?.includes('user') || moment.isLiked) ? 'fill-red-500 text-red-500' : ''} />
                           {(moment.likedBy?.includes('user') || moment.isLiked) ? '取消' : '赞'}
@@ -830,21 +830,21 @@ export function MomentsApp({
                             toggleCommentComposer(moment.id, null);
                             setActiveMenuId(null);
                           }}
-                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
                         >
                           <MessageCircle size={14} />
                           评论
                         </button>
                         <button
                           onClick={() => handleCollect(moment.id)}
-                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
                         >
                           <Star size={14} className={effectiveCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
                           {effectiveCollected ? '已收藏' : '收藏'}
                         </button>
                         <button
                           onClick={() => handleTogglePin(moment.id)}
-                          className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] transition-colors ${
+                          className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] transition-colors sm:justify-start ${
                             moment.isPinned
                               ? 'bg-[#F2F2F7] text-[#5F6572] hover:bg-[#EAEAEE]'
                               : 'text-zinc-800 hover:bg-zinc-100'
@@ -855,7 +855,7 @@ export function MomentsApp({
                         </button>
                         <button
                             onClick={() => handleDelete(moment.id)}
-                            className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                            className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
                           >
                             <Trash2 size={14} />
                             删除
