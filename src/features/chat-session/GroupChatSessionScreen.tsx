@@ -1050,7 +1050,7 @@ export function GroupChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
+    : 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
     bottom: footerKeyboardOffset > 0
       ? `${footerKeyboardOffset}px`
