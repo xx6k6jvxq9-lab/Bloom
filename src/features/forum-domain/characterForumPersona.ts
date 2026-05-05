@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildForumCharacterContext } from './buildForumCharacterContext';
 import { FORUM_CHANNEL_LABELS } from './constants';
 import type { ForumChannel } from './types';
 
@@ -80,7 +81,15 @@ export function buildForumCharacterPostTitle(content: string) {
 }
 
 export function inferCharacterForumChannelAffinity(character: Character): ForumChannel[] {
-  const fingerprint = `${character.name} ${character.groupId || ''} ${character.signature || ''} ${character.corePersona || ''} ${character.setting || ''} ${character.sceneHints?.forum || ''}`;
+  const forumContext = buildForumCharacterContext(character);
+  const fingerprint = [
+    character.name,
+    character.groupId || '',
+    forumContext.signature,
+    forumContext.corePersona,
+    forumContext.forumSceneHint,
+    forumContext.longTermMemoryProfile,
+  ].filter(Boolean).join(' ');
   const matches: ForumChannel[] = [];
 
   if (/校园|打工|现实|日常|公司|上班|同学|都市/u.test(fingerprint)) matches.push('present');
@@ -98,12 +107,19 @@ export function inferCharacterForumChannelAffinity(character: Character): ForumC
 }
 
 export function buildCharacterForumHabit(character: Character, channel?: ForumChannel) {
+  const forumContext = buildForumCharacterContext(character);
   const affinity = inferCharacterForumChannelAffinity(character);
   const primaryChannel = channel && affinity.includes(channel) ? channel : affinity[0];
-  const styleFingerprint = `${character.expressionStyle || ''} ${character.signature || ''} ${character.corePersona || ''} ${character.sceneHints?.forum || ''}`;
+  const styleFingerprint = [
+    forumContext.expressionStyle,
+    forumContext.signature,
+    forumContext.corePersona,
+    forumContext.forumSceneHint,
+    forumContext.longTermMemoryProfile,
+  ].filter(Boolean).join(' ');
   const styleSeed = hashString(`${character.id}:${primaryChannel}`);
 
-  const speakingStyle = character.expressionStyle?.trim()
+  const speakingStyle = forumContext.expressionStyle
     || (/高冷|克制|冷淡|寡言/u.test(styleFingerprint)
       ? '短句克制，偶尔冷冷补一句'
       : /毒舌|嘴硬|刻薄|阴阳/u.test(styleFingerprint)
@@ -118,7 +134,7 @@ export function buildCharacterForumHabit(character: Character, channel?: ForumCh
                 ? '会先观察再发言'
                 : '更容易认真接话');
 
-  const preferredMove = character.sceneHints?.forum?.trim()
+  const preferredMove = forumContext.forumSceneHint
     || (/建议|照顾|稳/u.test(styleFingerprint)
       ? '看到求助帖会认真给建议'
       : /高冷|权限|规则|冷/u.test(styleFingerprint)
@@ -138,7 +154,7 @@ export function buildCharacterForumHabit(character: Character, channel?: ForumCh
                     : '更多是围观、接话和补充观察');
 
   const persona = [
-    character.corePersona?.trim() || character.setting?.trim() || '',
+    forumContext.corePersona,
     `论坛里更常出没在${FORUM_CHANNEL_LABELS[primaryChannel]}`,
     `发言习惯：${speakingStyle}`,
     `常见出手：${preferredMove}`,

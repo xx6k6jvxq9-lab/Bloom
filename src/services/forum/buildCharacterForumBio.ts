@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import { buildCharacterForumFlavor } from './buildCharacterForumFlavor';
 
 const BIO_PREFIX_TESTS = [
@@ -41,15 +42,15 @@ function pickBySeed(values: string[], seed: string) {
 }
 
 export function buildCharacterForumBio(character: Character) {
+  const forumContext = buildForumCharacterContext(character);
   const fingerprint = [
-    character.signature || '',
-    character.openingRemark || '',
-    character.corePersona || '',
-    character.expressionStyle || '',
-    character.setting || '',
-    character.sceneHints?.forum || '',
-    character.memorySummary || '',
-    character.longTermMemoryProfile || '',
+    forumContext.signature,
+    forumContext.openingRemark,
+    forumContext.corePersona,
+    forumContext.expressionStyle,
+    forumContext.forumSceneHint,
+    forumContext.longTermMemoryProfile,
+    forumContext.globalMemory,
   ].join(' ');
 
   const prefixPool = BIO_PREFIX_TESTS.find((item) => item.test.test(fingerprint))?.values || DEFAULT_PREFIXES;

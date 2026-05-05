@@ -319,13 +319,15 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
 
   const handleSave = () => {
     if (!name.trim()) return alert('请输入角色名称');
+    const normalizedSetting = setting.slice(0, CHARACTER_FIELD_LIMITS.setting);
     onSave({
       id: Date.now().toString(),
       name: name.trim().slice(0, CHARACTER_FIELD_LIMITS.name),
       remarkName: remarkName.trim().slice(0, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
       gender,
       avatar: avatar.trim().slice(0, CHARACTER_FIELD_LIMITS.avatar),
-      setting: setting.slice(0, CHARACTER_FIELD_LIMITS.setting),
+      setting: normalizedSetting,
+      corePersona: normalizedSetting || undefined,
       signature: signature.trim().slice(0, CHARACTER_FIELD_LIMITS.signature) || undefined,
       openingRemark: openingRemark.slice(0, CHARACTER_FIELD_LIMITS.openingRemark),
       groupId: groupId || undefined,

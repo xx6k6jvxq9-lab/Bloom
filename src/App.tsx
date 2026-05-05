@@ -1,4 +1,5 @@
 ﻿import React, { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { startTransition } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Upload, PlusCircle, Smile, Share2, Banknote, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Moon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -22,6 +23,7 @@ import {
 } from './features/app-shell/defaultSettings';
 import { createDefaultAppData } from './features/app-shell/defaultAppData';
 import { GlobalStyles } from './features/app-shell/AppShellPrimitives';
+import { ForumLaunchOverlay } from './features/app-shell/ForumLaunchOverlay';
 import type {
   CoupleSpaceUpdateToast,
   DatingGenerationToast,
@@ -30,6 +32,7 @@ import type {
 } from './features/app-shell/appShellTypes';
 import { AppScreenContent } from './features/app-shell/AppScreenContent';
 import { createAppShellHandlers, navigateToAppWithTransition, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
+import { preloadPanelForApp } from './features/app-shell/lazyPanels';
 import { useAppEnvironment } from './features/app-shell/useAppEnvironment';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
@@ -86,9 +89,19 @@ import {
   resolveCurrentCoupleSpace,
 } from './features/persistence/coupleSpaceStore';
 
+type ForumLaunchState = {
+  token: number;
+  ready: boolean;
+  entering: boolean;
+  targetPostId: string | null;
+};
+
 export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const forumLaunchTokenRef = useRef(0);
+  const forumLaunchEnterTimerRef = useRef<number | null>(null);
+  const forumLaunchDismissFrameRef = useRef<number | null>(null);
   const [activeApp, setActiveApp] = useState<AppScreen>('home');
   const [datingResumeSignal, setDatingResumeSignal] = useState(0);
   const [dreamResumeSignal, setDreamResumeSignal] = useState(0);
@@ -98,6 +111,7 @@ export default function App() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedForumPostId, setSelectedForumPostId] = useState<string | null>(null);
+  const [forumLaunchState, setForumLaunchState] = useState<ForumLaunchState | null>(null);
   const [characterMomentsBackApp, setCharacterMomentsBackApp] = useState<'chat' | 'chat-session' | 'character-profile'>('character-profile');
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
@@ -159,8 +173,107 @@ export default function App() {
     setAppDialogInput,
   } = useAppDialogBridge();
 
+  const clearForumLaunchTimer = useCallback(() => {
+    if (forumLaunchEnterTimerRef.current !== null) {
+      window.clearTimeout(forumLaunchEnterTimerRef.current);
+      forumLaunchEnterTimerRef.current = null;
+    }
+  }, []);
+
+  const clearForumLaunchDismissFrame = useCallback(() => {
+    if (forumLaunchDismissFrameRef.current !== null) {
+      window.cancelAnimationFrame(forumLaunchDismissFrameRef.current);
+      forumLaunchDismissFrameRef.current = null;
+    }
+  }, []);
+
+  const closeForumLaunch = useCallback(() => {
+    forumLaunchTokenRef.current += 1;
+    clearForumLaunchTimer();
+    clearForumLaunchDismissFrame();
+    setForumLaunchState(null);
+  }, [clearForumLaunchDismissFrame, clearForumLaunchTimer]);
+
+  const enterForumFromLaunch = useCallback((token: number, targetPostId: string | null) => {
+    if (forumLaunchTokenRef.current !== token) {
+      return;
+    }
+
+    clearForumLaunchTimer();
+    setForumLaunchState((current) => current?.token === token ? { ...current, ready: true, entering: true } : current);
+    startTransition(() => {
+      setSelectedForumPostId(targetPostId);
+      setActiveApp('forum');
+    });
+  }, [clearForumLaunchTimer]);
+
+  const openForumApp = useCallback((postId?: string | null) => {
+    const targetPostId = postId ?? null;
+    const token = forumLaunchTokenRef.current + 1;
+    forumLaunchTokenRef.current = token;
+    clearForumLaunchTimer();
+    setForumLaunchState({
+      token,
+      ready: false,
+      entering: false,
+      targetPostId,
+    });
+
+    const preloadTask = preloadPanelForApp('forum');
+    const minimumSplashTask = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 820);
+    });
+
+    void Promise.all([preloadTask ?? Promise.resolve(), minimumSplashTask])
+      .then(() => {
+        if (forumLaunchTokenRef.current !== token) {
+          return;
+        }
+
+        setForumLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
+        forumLaunchEnterTimerRef.current = window.setTimeout(() => {
+          enterForumFromLaunch(token, targetPostId);
+        }, 320);
+      })
+      .catch((error) => {
+        console.warn('[app-shell] Forum launch preload failed', error);
+        if (forumLaunchTokenRef.current !== token) {
+          return;
+        }
+        setForumLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
+      });
+  }, [clearForumLaunchTimer, enterForumFromLaunch]);
+
+  useEffect(() => () => {
+    clearForumLaunchTimer();
+    clearForumLaunchDismissFrame();
+  }, [clearForumLaunchDismissFrame, clearForumLaunchTimer]);
+
+  useEffect(() => {
+    if (activeApp !== 'forum' || !forumLaunchState?.entering) {
+      return undefined;
+    }
+
+    clearForumLaunchDismissFrame();
+    forumLaunchDismissFrameRef.current = window.requestAnimationFrame(() => {
+      forumLaunchDismissFrameRef.current = window.requestAnimationFrame(() => {
+        setForumLaunchState((current) => (
+          current?.token === forumLaunchState.token && current.entering
+            ? null
+            : current
+        ));
+        forumLaunchDismissFrameRef.current = null;
+      });
+    });
+
+    return () => {
+      clearForumLaunchDismissFrame();
+    };
+  }, [activeApp, clearForumLaunchDismissFrame, forumLaunchState]);
+
   const { handleAddCharacter, handleOpenApp, handleOpenChat } = createAppShellHandlers({
     handleUpsertCharacter,
+    openForumApp,
     setActiveApp,
     setActiveTab,
     setSelectedCharacterId,
@@ -423,6 +536,7 @@ export default function App() {
             setSettings={setSettings}
             setStatusBarVisible={setStatusBarVisible}
             settings={settings}
+            openForumApp={openForumApp}
             onOpenReadyDating={(characterId) => {
               setSelectedCharacterId(characterId);
               setDatingResumeSignal((prev) => prev + 1);
@@ -455,6 +569,19 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <ForumLaunchOverlay
+          visible={forumLaunchState != null}
+          ready={forumLaunchState?.ready ?? false}
+          time={time}
+          onEnter={() => {
+            if (!forumLaunchState) {
+              return;
+            }
+            enterForumFromLaunch(forumLaunchState.token, forumLaunchState.targetPostId);
+          }}
+          onCancel={closeForumLaunch}
+        />
 
         <AnimatePresence>
           {appDialog && (

@@ -468,6 +468,12 @@ export function ChatSessionScreen({
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+  const isStandaloneDisplayMode =
+    typeof window !== 'undefined'
+    && (
+      window.matchMedia?.('(display-mode: standalone)')?.matches
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1633,10 +1639,32 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
+  const useAndroidBrowserKeyboardViewport =
+    isAndroid
+    && !isStandaloneDisplayMode
+    && manualKeyboardAvoidanceEnabled
+    && keyboardVisible
+    && keyboardInset > 0;
+  const footerKeyboardOffset =
+    manualKeyboardAvoidanceEnabled
+    && keyboardVisible
+    && keyboardInset > 0
+    && !useAndroidBrowserKeyboardViewport
+      ? keyboardInset
+      : 0;
+
+  if (useAndroidBrowserKeyboardViewport) {
+    footerClassName = footerClassName
+      .replace('backdrop-blur-md', '')
+      .replace('backdrop-blur-xl', '');
+  }
+
+  const chatViewportHeight = useAndroidBrowserKeyboardViewport
+    ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
+    : 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
-      ? `${keyboardInset}px`
+    bottom: footerKeyboardOffset > 0
+      ? `${footerKeyboardOffset}px`
       : '0px',
     paddingBottom:
       keyboardVisible
@@ -1644,11 +1672,18 @@ export function ChatSessionScreen({
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
     transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    ...(useAndroidBrowserKeyboardViewport
+      ? {
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
+          backgroundColor: 'rgba(255, 255, 255, 0.98)',
+        }
+      : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
+    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
+    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
   };
 
   if (showSettings) {
@@ -1775,8 +1810,21 @@ export function ChatSessionScreen({
         style={chatMessageListStyle}
       >
         {error && (
-          <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
-            {error}
+          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                {error}
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="shrink-0 rounded-full p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-500"
+                aria-label="关闭错误提示"
+                title="关闭错误提示"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
         {showMemoryWindowHint && (
@@ -1815,9 +1863,20 @@ export function ChatSessionScreen({
                     </div>
                   </div>
                 )}
-                <div className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
-                  <div className="bg-zinc-200/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] text-zinc-500 font-medium">
-                    {msg.text}
+                <div className="mb-4 flex justify-center" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+                  <div className="relative max-w-[88%] rounded-full bg-zinc-200/60 px-3 py-1 pr-8 text-[11px] font-medium text-zinc-500 backdrop-blur-sm">
+                    <button
+                      type="button"
+                      onClick={() => deleteMessageAt(i)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-300/60 hover:text-zinc-600"
+                      aria-label="删除提示"
+                      title="删除提示"
+                    >
+                      <X size={12} />
+                    </button>
+                    <span className="block whitespace-pre-wrap break-words pr-1">
+                      {msg.text}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -2801,33 +2860,33 @@ export function ChatSessionScreen({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
+                className="chat-footer-panel chat-footer-sticker-panel overflow-hidden"
               >
                 <div className="pt-4">
-                  <div className="flex border-b border-zinc-100 mb-3">
+                  <div className="chat-footer-sticker-tabs flex border-b border-zinc-100 mb-3">
                     <button 
                       onClick={() => setStickerTab('basic')}
-                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'basic' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      className={`chat-footer-sticker-tab-button flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'basic' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
                     >
                       基础表情
                     </button>
                     <button 
                       onClick={() => setStickerTab('custom')}
-                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'custom' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      className={`chat-footer-sticker-tab-button flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'custom' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
                     >
                       自定义表情
                     </button>
                   </div>
-                  <div className="h-48 overflow-y-auto">
+                  <div className="chat-footer-sticker-scroll h-48 overflow-y-auto">
                     {stickerTab === 'basic' ? (
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="chat-footer-emoji-grid grid grid-cols-7 gap-2">
                         {basicEmojis.map((emoji, idx) => (
                           <button 
                             key={idx}
                             onClick={() => {
                               setInput(prev => prev + emoji);
                             }}
-                            className="text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
+                            className="chat-footer-emoji-grid-button text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
                           >
                             {emoji}
                           </button>
@@ -2836,7 +2895,7 @@ export function ChatSessionScreen({
                     ) : (
                       <div>
                         {availableCustomStickers.length > 0 ? (
-                          <div className="grid grid-cols-5 gap-2">
+                          <div className="chat-footer-custom-sticker-grid grid grid-cols-5 gap-2">
                             {availableCustomStickers.map((sticker, idx) => (
                               <button 
                                 key={idx}
@@ -2844,14 +2903,14 @@ export function ChatSessionScreen({
                                   sendStickerMessage(sticker);
                                   setShowStickerPanel(false);
                                 }}
-                                className="aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
+                                className="chat-footer-custom-sticker-button aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
                               >
                                 <PersistentImage value={sticker} className="w-full h-full object-cover" />
                               </button>
                             ))}
                           </div>
                         ) : (
-                          <div className="h-full flex flex-col items-center justify-center text-zinc-400 py-8">
+                          <div className="chat-footer-sticker-empty h-full flex flex-col items-center justify-center text-zinc-400 py-8">
                             <Smile size={32} className="mb-2 opacity-50" />
                             <p className="text-[12px]">暂无自定义表情</p>
                             <p className="text-[10px] mt-1">请在聊天设置中导入</p>
@@ -2872,14 +2931,14 @@ export function ChatSessionScreen({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
+                className="chat-footer-panel chat-footer-fun-panel overflow-hidden"
               >
-                <div className="pt-4 grid grid-cols-4 gap-4">
+                <div className="chat-footer-fun-grid pt-4 grid grid-cols-4 gap-4">
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <ImageIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">发送图片</span>
@@ -2894,9 +2953,9 @@ export function ChatSessionScreen({
                   
                   <button 
                     onClick={startVoiceCall}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Phone size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">语音通话</span>
@@ -2909,9 +2968,9 @@ export function ChatSessionScreen({
                       setShowTransferDialog(true);
                       setShowFunPanel(false);
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Banknote size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">转给Ta</span>
@@ -2927,9 +2986,9 @@ export function ChatSessionScreen({
                       setShowDatingModal(true);
                       setShowFunPanel(false);
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Coffee size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">线下约会</span>
@@ -2940,9 +2999,9 @@ export function ChatSessionScreen({
                       setShowFunPanel(false);
                       sendCoupleSpaceInvitation();
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <CoupleSpaceInviteIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">情侣空间</span>
@@ -2953,9 +3012,9 @@ export function ChatSessionScreen({
                       setShowGameCenter(true);
                       setShowFunPanel(false);
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Gamepad2 size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">小游戏</span>
@@ -2966,9 +3025,9 @@ export function ChatSessionScreen({
                       setShowLocationPicker(true);
                       setShowFunPanel(false);
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <MapPin size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">发送定位</span>
@@ -2979,9 +3038,9 @@ export function ChatSessionScreen({
                       setShowFunPanel(false);
                       sendInnerVoiceProbe();
                     }}
-                    className="flex flex-col items-center gap-2"
+                    className="chat-footer-fun-action flex flex-col items-center gap-2"
                   >
-                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Heart size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">心声</span>

@@ -644,6 +644,13 @@ export function GroupChatSessionScreen({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+  const isStandaloneDisplayMode =
+    typeof window !== 'undefined'
+    && (
+      window.matchMedia?.('(display-mode: standalone)')?.matches
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
   const {
     keyboardInset,
     keyboardVisible,
@@ -1021,20 +1028,49 @@ export function GroupChatSessionScreen({
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
+  const useAndroidBrowserKeyboardViewport =
+    isAndroid
+    && !isStandaloneDisplayMode
+    && manualKeyboardAvoidanceEnabled
+    && keyboardVisible
+    && keyboardInset > 0;
+  const footerKeyboardOffset =
+    manualKeyboardAvoidanceEnabled
+    && keyboardVisible
+    && keyboardInset > 0
+    && !useAndroidBrowserKeyboardViewport
+      ? keyboardInset
+      : 0;
+
+  if (useAndroidBrowserKeyboardViewport) {
+    groupFooterClassName = groupFooterClassName
+      .replace('backdrop-blur-md', '')
+      .replace('backdrop-blur-xl', '');
+  }
+
+  const chatViewportHeight = useAndroidBrowserKeyboardViewport
+    ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
+    : 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
-      ? `${keyboardInset}px`
+    bottom: footerKeyboardOffset > 0
+      ? `${footerKeyboardOffset}px`
       : '0px',
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
     transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    ...(useAndroidBrowserKeyboardViewport
+      ? {
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
+          backgroundColor: 'rgba(255, 255, 255, 0.98)',
+        }
+      : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 8}px`,
-    scrollPaddingBottom: `${chatFooterHeight + (manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
+    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig

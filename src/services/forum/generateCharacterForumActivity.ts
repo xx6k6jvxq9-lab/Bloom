@@ -7,6 +7,7 @@ import type {
   Mask,
   WorldBookEntry,
 } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumHabit } from '../../features/forum-domain/characterForumPersona';
 import { generateCharacterForumReply } from './generateCharacterForumContribution';
@@ -95,6 +96,7 @@ export async function maybeGenerateCharacterForumReplyActivity(
   const candidates = allCharacters
     .filter((character) => (character.postFrequency || 'medium') !== 'none')
     .map((character) => {
+      const forumContext = buildForumCharacterContext(character);
       const frequency = character.postFrequency || 'medium';
       const habit = buildCharacterForumHabit(character, channel);
       const recentReplyAt = getRecentCharacterReplyTimestamp(existingPosts, character.id);
@@ -110,7 +112,7 @@ export async function maybeGenerateCharacterForumReplyActivity(
       const mentioned = includesCharacterName(triggerText, character);
       const affinityScore = habit.affinity.includes(channel) ? 3 : 0;
       const frequencyScore = frequency === 'high' ? 4 : frequency === 'low' ? 1 : 2;
-      const backgroundScore = character.setting?.trim() || character.corePersona?.trim() ? 1 : 0;
+      const backgroundScore = forumContext.corePersona || forumContext.longTermMemoryProfile ? 1 : 0;
       const weight = frequencyScore
         + affinityScore
         + backgroundScore

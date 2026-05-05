@@ -6,6 +6,7 @@ import type {
   CharacterPresenceState,
   MemoryLibraryEntry,
 } from '../../types';
+import { resolveCharacterCorePersonaCompat, resolveCharacterLongTermMemoryCompat } from '../../services/character/characterCompat';
 import { normalizeMemoryLibraryEntries } from '../../services/memory/memoryLibrary';
 import type { CharacterSharedContextSnapshot } from '../../services/relationship-context/types';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
@@ -296,13 +297,11 @@ function createLegacyShortTermMemoryEntry(character: Character, content: string)
 }
 
 export function migrateCharacterShape(character: Character): Character {
-  const corePersona = normalizeOptionalText(character.corePersona)
-    ?? normalizeOptionalText(character.setting);
+  const corePersona = resolveCharacterCorePersonaCompat(character);
   const expressionStyle = normalizeOptionalText(character.expressionStyle);
   const boundaryPack = normalizeOptionalText(character.boundaryPack);
   const extendedLore = normalizeOptionalText(character.extendedLore);
-  const longTermMemoryProfile = normalizeOptionalText(character.longTermMemoryProfile)
-    ?? normalizeOptionalText(character.memorySummary);
+  const longTermMemoryProfile = resolveCharacterLongTermMemoryCompat(character);
   const shortTermSummary = normalizeOptionalText(character.shortTermSummary);
   const sceneHints = normalizeSceneHints(character.sceneHints);
   const replyLanguageMode = normalizeReplyLanguageMode(character.replyLanguageMode);

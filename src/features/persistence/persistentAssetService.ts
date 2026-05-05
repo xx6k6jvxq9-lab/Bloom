@@ -17,6 +17,34 @@ function isDirectDisplayValue(value: string): boolean {
   return /^(https?:)/i.test(value);
 }
 
+export type ImagePreviewOptions = {
+  maxWidth?: number;
+  maxHeight?: number;
+  mimeType?: 'image/png' | 'image/jpeg' | 'image/webp';
+  quality?: number;
+  backgroundColor?: string;
+};
+
+function clampPreviewDimensions(
+  width: number,
+  height: number,
+  maxWidth: number,
+  maxHeight: number,
+) {
+  if (width <= 0 || height <= 0) {
+    return { width: 1, height: 1 };
+  }
+
+  const safeMaxWidth = Math.max(1, maxWidth);
+  const safeMaxHeight = Math.max(1, maxHeight);
+  const scale = Math.min(1, safeMaxWidth / width, safeMaxHeight / height);
+
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
 export async function saveUploadedBlob(
   blob: Blob,
   options?: {
@@ -56,6 +84,47 @@ export async function saveUploadedDataUrl(dataUrl: string, fileName = 'uploaded-
     fileName,
     mimeType: blob.type || 'image/png',
   });
+}
+
+export async function createImagePreviewDataUrl(
+  blob: Blob,
+  options: ImagePreviewOptions = {},
+): Promise<string> {
+  const image = await blobToImage(blob);
+  const naturalWidth = image.naturalWidth || image.width || 1;
+  const naturalHeight = image.naturalHeight || image.height || 1;
+  const { width, height } = clampPreviewDimensions(
+    naturalWidth,
+    naturalHeight,
+    options.maxWidth ?? naturalWidth,
+    options.maxHeight ?? naturalHeight,
+  );
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Failed to build image preview canvas.');
+  }
+
+  if (options.backgroundColor) {
+    context.fillStyle = options.backgroundColor;
+    context.fillRect(0, 0, width, height);
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, width, height);
+
+  return canvas.toDataURL(options.mimeType || 'image/png', options.quality);
+}
+
+export async function createImagePreviewDataUrlFromFile(
+  file: File,
+  options?: ImagePreviewOptions,
+): Promise<string> {
+  return createImagePreviewDataUrl(file, options);
 }
 
 export async function resolveValueToDisplayUrl(value: string | null | undefined): Promise<string | null> {

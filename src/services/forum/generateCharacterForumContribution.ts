@@ -6,6 +6,7 @@ import type {
   Mask,
   WorldBookEntry,
 } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumHabit } from '../../features/forum-domain/characterForumPersona';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
@@ -58,6 +59,7 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
     userReplyTargetContent,
     userReplyTargetAuthorName,
   } = input;
+  const forumContext = buildForumCharacterContext(character);
   const forumHabit = buildCharacterForumHabit(character, channel);
   const generationContext = resolveForumGenerationContext({
     globalSettings,
@@ -70,14 +72,12 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
   const prompt = [
     '你要写一条角色本人会发在论坛楼里的回复。',
     `角色名：${character.name}`,
-    character.signature?.trim() ? `角色签名：${character.signature.trim()}` : '',
-    character.corePersona?.trim() ? `角色核心人格：${character.corePersona.trim()}` : '',
-    character.expressionStyle?.trim() ? `角色说话风格：${character.expressionStyle.trim()}` : '',
-    character.setting?.trim() ? `角色背景：${character.setting.trim()}` : '',
-    character.sceneHints?.forum?.trim() ? `角色论坛习惯补充：${character.sceneHints.forum.trim()}` : '',
-    character.globalMemory?.trim() ? `角色长期记忆：${character.globalMemory.trim()}` : '',
-    character.memorySummary?.trim() ? `角色记忆摘要：${character.memorySummary.trim()}` : '',
-    character.longTermMemoryProfile?.trim() ? `角色长期印象画像：${character.longTermMemoryProfile.trim()}` : '',
+    forumContext.signature ? `角色签名：${forumContext.signature}` : '',
+    forumContext.corePersona ? `角色核心人格：${forumContext.corePersona}` : '',
+    forumContext.expressionStyle ? `角色说话风格：${forumContext.expressionStyle}` : '',
+    forumContext.forumSceneHint ? `角色论坛习惯补充：${forumContext.forumSceneHint}` : '',
+    forumContext.globalMemory ? `角色长期记忆：${forumContext.globalMemory}` : '',
+    forumContext.longTermMemoryProfile ? `角色长期印象画像：${forumContext.longTermMemoryProfile}` : '',
     `论坛习惯：${forumHabit.persona}`,
     `说话方式：${forumHabit.speakingStyle}`,
     `常见出手：${forumHabit.preferredMove}`,

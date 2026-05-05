@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import type { DreamRuntimeAct } from './dreamRuntimeTypes';
 import type { DreamNarrativeLayoutPreset } from './dreamNarrativeLayouts';
 import type { DreamThemePreset } from './dreamThemePresets';
@@ -12,6 +13,7 @@ type BuildDreamNarrativePromptOptions = {
 
 export function buildDreamNarrativePrompt(options: BuildDreamNarrativePromptOptions) {
   const { character, act, layout, theme } = options;
+  const characterContext = buildCharacterContext({ character });
   const narrativeQualityRules = [
     'Preserve the original scene event, conflict, and turning point. Do not rewrite it into vague lyrical fragments.',
     'Each block should keep concrete actions, objects, dialogue, and consequence visible.',
@@ -59,7 +61,7 @@ ${narrativeQualityRules}
 
 当前角色：
 - 角色名：${character.remarkName?.trim() || character.name}
-- 角色核心人设：${character.corePersona?.trim() || character.setting?.trim() || '暂无'}
+- 角色核心人设：${characterContext.corePersona || '暂无'}
 
 当前幕：
 - 标题：${act.label}

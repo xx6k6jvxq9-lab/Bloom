@@ -46,7 +46,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    const manualKeyboardAvoidanceEnabled = isStandalone;
+    // Android browsers such as Via can keep the shell pinned to the stable
+    // viewport while the IME overlays the visual viewport, so bottom composers
+    // need the same manual lift that standalone mode uses.
+    const manualKeyboardAvoidanceEnabled = isStandalone || isAndroid;
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
@@ -79,12 +82,21 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       }
 
       const viewportHeightDelta = Math.max(0, nextStableLayoutViewportHeight - visualViewportHeight);
+      const innerHeightInset = Math.max(0, nextStableLayoutViewportHeight - currentInnerHeight);
       const viewportSettled = viewportHeightDelta <= 24 && viewportOffsetTop === 0;
-      const keyboardInset = Math.max(0, Math.round(nextStableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop));
+      const keyboardInset = Math.max(
+        0,
+        Math.round(
+          Math.max(
+            nextStableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop,
+            innerHeightInset,
+          ),
+        ),
+      );
       const keyboardVisible = hasTextEntryFocus && (
         keyboardInset > 120
         || viewportHeightDelta > 120
-        || (!manualKeyboardAvoidanceEnabled && currentInnerHeight < nextStableLayoutViewportHeight - 120)
+        || innerHeightInset > 120
         || (isIosLike && viewportOffsetTop > 0)
       );
 
@@ -158,7 +170,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || hasPrefetchedPanelChunksRef.current) {
+    if (
+      typeof window === 'undefined'
+      || hasPrefetchedPanelChunksRef.current
+      || PANEL_PRELOAD_LOADERS.length === 0
+    ) {
       return undefined;
     }
 
@@ -168,12 +184,8 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const isIosLike = /iphone|ipad|ipod/.test(userAgent);
-    const preloadDelayMs = isIosLike && isStandalone ? 3200 : 900;
-    const idleTimeoutMs = isIosLike && isStandalone ? 4000 : 1800;
-
-    if (!isStandalone && !isIosLike) {
-      return undefined;
-    }
+    const preloadDelayMs = isIosLike && isStandalone ? 3200 : isStandalone ? 900 : 1200;
+    const idleTimeoutMs = isIosLike && isStandalone ? 4000 : isStandalone ? 1800 : 2200;
 
     hasPrefetchedPanelChunksRef.current = true;
     let cancelled = false;

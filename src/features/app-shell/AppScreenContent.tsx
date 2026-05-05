@@ -34,7 +34,7 @@ import {
   handleCustomizationUpdateAppData,
 } from './customizationHandlers';
 import { formatMessagePreview } from './formatMessagePreview';
-import type { AppScreen, AppTab } from './appShellHandlers';
+import { navigateToAppWithTransition, type AppScreen, type AppTab } from './appShellHandlers';
 import type { CoupleSpaceUpdateToast, DatingGenerationToast, DreamGenerationToast, MomentPublishToast } from './appShellTypes';
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
@@ -87,6 +87,7 @@ type AppScreenContentProps = {
   onOpenReadyDream: () => void;
   onDismissDreamToast: () => void;
   onDreamResumeHandled: () => void;
+  openForumApp: (postId?: string | null) => void;
 };
 
 export function AppScreenContent({
@@ -133,11 +134,15 @@ export function AppScreenContent({
   onOpenReadyDream,
   onDismissDreamToast,
   onDreamResumeHandled,
+  openForumApp,
 }: AppScreenContentProps) {
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-transparent'
       : 'bg-zinc-50';
+  const transitionToApp = (nextApp: AppScreen) => {
+    navigateToAppWithTransition(nextApp, setActiveApp);
+  };
   const forumConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'forum',
@@ -188,7 +193,7 @@ export function AppScreenContent({
                 coupleSpace: switched.coupleSpace,
               };
             });
-            setActiveApp('couple-space');
+            transitionToApp('couple-space');
             setCoupleSpaceUpdateToast(null);
           }}
           className="absolute left-4 right-4 top-4 z-[70] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md"
@@ -221,7 +226,7 @@ export function AppScreenContent({
         <button
           type="button"
           onClick={() => {
-            setActiveApp('chat');
+            transitionToApp('chat');
             setActiveTab('moments');
             setMomentPublishToast(null);
           }}
@@ -341,7 +346,10 @@ export function AppScreenContent({
           </div>
         </div>
       )}
-      {activeApp === 'home' && (
+      <div
+        className={`absolute inset-0 ${activeApp === 'home' ? 'z-[1] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+        aria-hidden={activeApp === 'home' ? undefined : true}
+      >
         <HomeScreen
           key="home"
           onOpenApp={handleOpenApp}
@@ -352,7 +360,7 @@ export function AppScreenContent({
           appData={appData}
           setAppData={setAppData}
         />
-      )}
+      </div>
       {activeApp === 'chat' && (
         <MainApp
           key="chat"
@@ -363,14 +371,14 @@ export function AppScreenContent({
           onOpenChat={handleOpenChat}
           onOpenGroupChat={(id) => {
             setSelectedGroupId(id);
-            setActiveApp('group-chat-session');
+            transitionToApp('group-chat-session');
           }}
           onOpenProfile={(id) => {
             setSelectedCharacterId(id);
-            setActiveApp('character-profile');
+            transitionToApp('character-profile');
           }}
-          onAddCharacter={() => setActiveApp('add-character')}
-          onBack={() => setActiveApp('home')}
+          onAddCharacter={() => transitionToApp('add-character')}
+          onBack={() => transitionToApp('home')}
           settings={settings}
           MomentsAppComponent={MomentsApp}
           formatMessagePreview={formatMessagePreview}
@@ -379,13 +387,13 @@ export function AppScreenContent({
       {activeApp === 'character-profile' && selectedCharacter && (
         <CharacterProfile
           character={selectedCharacter}
-          onBack={() => setActiveApp('chat')}
+          onBack={() => transitionToApp('chat')}
           onChat={() => {
-            setActiveApp('chat-session');
+            transitionToApp('chat-session');
           }}
           onOpenMoments={() => {
             setCharacterMomentsBackApp('character-profile');
-            setActiveApp('character-moments');
+            transitionToApp('character-moments');
           }}
           onAddFriend={() => {
             alert('已发送好友请求');
@@ -409,7 +417,7 @@ export function AppScreenContent({
           setAppData={setAppData}
           settings={settings}
           moments={appData.moments || []}
-          onBack={() => setActiveApp(characterMomentsBackApp)}
+          onBack={() => transitionToApp(characterMomentsBackApp)}
         />
       )}
       <ChatSessionMount
@@ -462,10 +470,9 @@ export function AppScreenContent({
         setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
         updateCharacter={handleMergeCharacter}
         patchCharacter={handlePatchCharacterById}
-        onBackToChat={() => setActiveApp('chat')}
+        onBackToChat={() => transitionToApp('chat')}
         onViewForumPost={(postId) => {
-          setSelectedForumPostId(postId);
-          setActiveApp('forum');
+          openForumApp(postId);
         }}
         onPublishMoment={({ authorId, content, images, imageCard, isCollected, sourceChatMessage }) => {
           const author = appData.characters.find((character) => character.id === authorId) || null;
@@ -540,7 +547,7 @@ export function AppScreenContent({
         }}
         onOpenCharacterMoments={() => {
           setCharacterMomentsBackApp('chat-session');
-          setActiveApp('character-moments');
+          transitionToApp('character-moments');
         }}
         onStatusBarVisibilityChange={setStatusBarVisible}
         onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
@@ -549,14 +556,14 @@ export function AppScreenContent({
         <AddCharacterSheet
           key="add-character"
           onSave={handleAddCharacter}
-          onBack={() => setActiveApp('chat')}
+          onBack={() => transitionToApp('chat')}
           groups={appData.groups}
         />
       )}
       {activeApp === 'settings' && (
         <SettingsAppScreen
           key="settings"
-          onBack={() => setActiveApp('home')}
+          onBack={() => transitionToApp('home')}
           settings={settings}
           defaultConfig={DEFAULT_CONFIG}
           setSettings={setSettings}
@@ -566,7 +573,7 @@ export function AppScreenContent({
       {activeApp === 'dream' && (
         <DreamAppPage
           key="dream"
-          onBack={() => setActiveApp('home')}
+          onBack={() => transitionToApp('home')}
           characters={appData.characters}
           userName={appData.userProfile.name}
           activeConfig={activeConfig}
@@ -581,7 +588,7 @@ export function AppScreenContent({
           worldBooks={appData.worldBooks || []}
           characters={appData.characters}
           setWorldBooks={(wb) => setAppData((prev) => ({ ...prev, worldBooks: wb }))}
-          onBack={() => setActiveApp('home')}
+          onBack={() => transitionToApp('home')}
           globalBackground={appData.visualSettings?.globalBackground || ''}
           onAddCharacter={(char) => {
             const newChar: Character = {
@@ -597,7 +604,7 @@ export function AppScreenContent({
         <Suspense fallback={<AppPanelFallbackPrimitive label="监控中心" />}>
           <MonitorApp
             characters={appData.characters}
-            onBack={() => setActiveApp('home')}
+            onBack={() => transitionToApp('home')}
             visualSettings={appData.visualSettings}
           />
         </Suspense>
@@ -607,7 +614,7 @@ export function AppScreenContent({
           <CustomizationApp
             visualSettings={appData.visualSettings}
             setVisualSettings={(s) => setAppData((prev) => ({ ...prev, visualSettings: s }))}
-            onBack={() => setActiveApp('home')}
+            onBack={() => transitionToApp('home')}
             onResetData={handleCustomizationResetData}
             onExportData={() => handleCustomizationExportData(appData)}
             onImportData={(data) =>
@@ -630,7 +637,7 @@ export function AppScreenContent({
           <CoupleSpaceApp
             appData={appData}
             setAppData={setAppData}
-            onBack={() => setActiveApp('home')}
+            onBack={() => transitionToApp('home')}
             settings={settings}
           />
         </Suspense>
@@ -640,7 +647,7 @@ export function AppScreenContent({
           <PerceptionView
             coupleSpace={currentCoupleSpace}
             updateSpace={handleUpdateCurrentCoupleSpace}
-            onBack={() => setActiveApp('home')}
+            onBack={() => transitionToApp('home')}
           />
         </Suspense>
       )}
@@ -664,7 +671,7 @@ export function AppScreenContent({
             settings={settings}
             onPatchCharacter={handlePatchCharacterById}
             allCharacters={appData.characters}
-            onBack={() => setActiveApp('home')}
+            onBack={() => transitionToApp('home')}
             audioRef={audioRef}
           />
         </Suspense>
@@ -674,11 +681,11 @@ export function AppScreenContent({
           <ForumApp
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
-            onClose={() => setActiveApp('home')}
+            onClose={() => transitionToApp('home')}
             settings={settings}
             onOpenChat={(characterId) => {
               setSelectedCharacterId(characterId);
-              setActiveApp('chat-session');
+              transitionToApp('chat-session');
             }}
             initialPostId={selectedForumPostId}
           />
@@ -689,7 +696,7 @@ export function AppScreenContent({
           <WalletApp
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
-            onClose={() => setActiveApp('home')}
+            onClose={() => transitionToApp('home')}
           />
         </Suspense>
       )}

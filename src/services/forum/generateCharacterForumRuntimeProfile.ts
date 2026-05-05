@@ -1,4 +1,5 @@
 import type { ApiConfig, Character, ForumRuntimeAuthorProfile } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumRuntimeProfile, CHARACTER_FORUM_ALIAS_VERSION } from './buildCharacterForumRuntimeProfile';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
@@ -65,6 +66,7 @@ function parseGeneratedForumProfile(raw: string): ParsedForumProfile | null {
 }
 
 function buildPrompt(character: Character, fallbackProfile: ForumRuntimeAuthorProfile, channel?: ForumChannel) {
+  const forumContext = buildForumCharacterContext(character);
   return [
     '给这个角色生成第一次进论坛会长期使用的小号资料。',
     '只输出 JSON：{"displayName":"昵称","handle":"论坛ID","bio":"简介"}',
@@ -72,15 +74,13 @@ function buildPrompt(character: Character, fallbackProfile: ForumRuntimeAuthorPr
     '必须带出脾气、口味、雷点、习惯、职业碎片或记忆残留，不要写设定说明，不要出现 machine token。',
     `角色本名：${character.name}`,
     character.remarkName?.trim() ? `备注名：${character.remarkName.trim()}` : '',
-    character.signature?.trim() ? `签名：${character.signature.trim()}` : '',
-    character.openingRemark?.trim() ? `开场白：${character.openingRemark.trim()}` : '',
-    character.corePersona?.trim() ? `核心人设：${character.corePersona.trim()}` : '',
-    character.expressionStyle?.trim() ? `说话风格：${character.expressionStyle.trim()}` : '',
-    character.setting?.trim() ? `背景设定：${character.setting.trim()}` : '',
-    character.sceneHints?.forum?.trim() ? `论坛场景提示：${character.sceneHints.forum.trim()}` : '',
-    character.globalMemory?.trim() ? `长期记忆：${character.globalMemory.trim()}` : '',
-    character.memorySummary?.trim() ? `记忆摘要：${character.memorySummary.trim()}` : '',
-    character.longTermMemoryProfile?.trim() ? `长期记忆画像：${character.longTermMemoryProfile.trim()}` : '',
+    forumContext.signature ? `签名：${forumContext.signature}` : '',
+    forumContext.openingRemark ? `开场白：${forumContext.openingRemark}` : '',
+    forumContext.corePersona ? `核心人设：${forumContext.corePersona}` : '',
+    forumContext.expressionStyle ? `说话风格：${forumContext.expressionStyle}` : '',
+    forumContext.forumSceneHint ? `论坛场景提示：${forumContext.forumSceneHint}` : '',
+    forumContext.globalMemory ? `长期记忆：${forumContext.globalMemory}` : '',
+    forumContext.longTermMemoryProfile ? `长期记忆画像：${forumContext.longTermMemoryProfile}` : '',
     channel ? `当前更常发的分区：${channel}` : '',
     `兜底号感参考：昵称=${fallbackProfile.name}；ID=@${fallbackProfile.handle}；简介=${fallbackProfile.bio}`,
   ].filter(Boolean).join('\n');

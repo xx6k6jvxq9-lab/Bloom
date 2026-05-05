@@ -13,6 +13,7 @@ export function hydrateVisualSettings(
 
   return {
     globalBackground: source?.globalBackground || fallbackGlobalBackground,
+    globalBackgroundPreviewUrl: source?.globalBackgroundPreviewUrl || '',
     chatOpacity: source?.chatOpacity ?? 1,
     momentsBackground: source?.momentsBackground || '',
     themeScopedCss: source?.themeScopedCss || {},

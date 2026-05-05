@@ -8,7 +8,7 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { preloadPanelForApp } from '../../../features/app-shell/lazyPanels';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
-import { getDisplayableAssetValue } from '../../../features/persistence/persistentAssetRef';
+import { getDisplayableAssetValue, getPreviewAssetValue } from '../../../features/persistence/persistentAssetRef';
 import {
   buildDesktopIconPlacements,
   getDesktopLayoutMetrics,
@@ -489,7 +489,12 @@ export function HomeScreen({
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const hasWallpaperValue = Boolean(appData.visualSettings?.globalBackground?.trim());
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
+  const wallpaperDisplayUrl =
+    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedWallpaperUrl)
+    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
+  const finalWallpaperSrc = wallpaperDisplayUrl || (!hasWallpaperValue ? WALLPAPER_URL : undefined);
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(visualSettings.navBar?.backgroundImage);
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userProfile.avatar);
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
@@ -1536,12 +1541,14 @@ export function HomeScreen({
         } as React.CSSProperties
       }
     >
-      <img
-        src={resolvedWallpaperUrl || WALLPAPER_URL}
-        alt="Wallpaper"
-        className="homeDesktop__wallpaper"
-        referrerPolicy="no-referrer"
-      />
+      {finalWallpaperSrc ? (
+        <img
+          src={finalWallpaperSrc}
+          alt="Wallpaper"
+          className="homeDesktop__wallpaper"
+          referrerPolicy="no-referrer"
+        />
+      ) : null}
 
       <div className="absolute inset-0 z-30 overflow-hidden">
         <div
@@ -2214,10 +2221,15 @@ function DockAppIcon({
   app: AppDefinition;
   visualSettings: VisualSettings;
 }) {
-  const customIcon = visualSettings?.desktopIcons?.find(i => i.id === app.id)?.iconUrl;
+  const customIconConfig = visualSettings?.desktopIcons?.find(i => i.id === app.id);
+  const customIcon = customIconConfig?.iconUrl;
+  const customIconPreviewUrl = customIconConfig?.iconPreviewUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
   const hasCustomIcon = Boolean(customIcon?.trim());
-  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || (!hasCustomIcon ? app.icon : undefined);
+  const finalIcon =
+    getDisplayableAssetValue(customIcon, resolvedCustomIconUrl)
+    || getPreviewAssetValue(customIconPreviewUrl)
+    || (!hasCustomIcon ? app.icon : undefined);
 
   return (
     <ResilientAppIconImage src={finalIcon} fallbackSrc={app.icon} alt={app.name} />
@@ -2311,10 +2323,15 @@ function AppIcon({
   visualSettings?: VisualSettings;
   iconSize?: number;
 }) {
-  const customIcon = visualSettings?.desktopIcons?.find(i => i.id === id)?.iconUrl;
+  const customIconConfig = visualSettings?.desktopIcons?.find(i => i.id === id);
+  const customIcon = customIconConfig?.iconUrl;
+  const customIconPreviewUrl = customIconConfig?.iconPreviewUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
   const hasCustomIcon = Boolean(customIcon?.trim());
-  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || (!hasCustomIcon ? icon || APP_ICON_URL : undefined);
+  const finalIcon =
+    getDisplayableAssetValue(customIcon, resolvedCustomIconUrl)
+    || getPreviewAssetValue(customIconPreviewUrl)
+    || (!hasCustomIcon ? icon || APP_ICON_URL : undefined);
   const finalIconSize = iconSize ?? visualSettings?.desktop?.iconSize ?? 56;
 
   const fontSize = visualSettings?.desktop?.fontSize ?? 12;

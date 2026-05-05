@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 
 type CharacterForumFlavor = {
   likes: string[];
@@ -10,16 +11,15 @@ type CharacterForumFlavor = {
 };
 
 function collectText(character: Character) {
+  const forumContext = buildForumCharacterContext(character);
   return [
-    character.setting || '',
-    character.corePersona || '',
-    character.signature || '',
-    character.openingRemark || '',
-    character.expressionStyle || '',
-    character.sceneHints?.forum || '',
-    character.memorySummary || '',
-    character.longTermMemoryProfile || '',
-    character.globalMemory || '',
+    forumContext.corePersona,
+    forumContext.signature,
+    forumContext.openingRemark,
+    forumContext.expressionStyle,
+    forumContext.forumSceneHint,
+    forumContext.longTermMemoryProfile,
+    forumContext.globalMemory,
   ].join(' ');
 }
 

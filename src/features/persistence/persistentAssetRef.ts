@@ -35,3 +35,12 @@ export function getDisplayableAssetValue(
   if (isUploadedAssetRef(trimmed)) return null;
   return isValidDirectDisplayValue(trimmed) ? trimmed : null;
 }
+
+export function getPreviewAssetValue(
+  previewUrl: string | null | undefined,
+): string | null {
+  if (!previewUrl) return null;
+  const trimmed = previewUrl.trim();
+  if (!trimmed) return null;
+  return isValidDirectDisplayValue(trimmed) ? trimmed : null;
+}

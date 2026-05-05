@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { BellOff, ChevronLeft, Compass, MessageSquare, Pin, Plus, User, UserPlus2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppData, Character, AppSettings, ChatGroup } from '../../../types';
@@ -11,6 +11,7 @@ import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
 import { KeyboardAwareScreen } from '../../../features/app-shell/KeyboardAwareScreen';
+import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
 
 function ResolvedMainShellAvatar({
   value,
@@ -574,7 +575,7 @@ export function MainApp({
                   gender: char.gender || 'other',
                   avatar: char.avatar || DEFAULT_WHITE_AVATAR,
                   setting: char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
-                  corePersona: char.corePersona || char.setting || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
+                  corePersona: char.corePersona || buildCharacterContext({ character: char as Character }).corePersona || `你是一个新添加的 AI 好友，名字叫 ${char.name}。`,
                   openingRemark: char.openingRemark || `你好，很高兴认识你，我是 ${char.name}。`,
                   lastMessage: char.openingRemark || `你好，很高兴认识你，我是 ${char.name}。`,
                   lastTime: Date.now(),

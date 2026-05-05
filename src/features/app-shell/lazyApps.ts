@@ -1,23 +1,40 @@
 const CHUNK_RELOAD_ONCE_KEY = 'app:chunk-reload-once';
+const CHUNK_RETRY_DELAY_MS = 140;
 
 function shouldRecoverChunkLoadError(error: unknown) {
   if (!(error instanceof Error)) return false;
   return /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError/i.test(error.message);
 }
 
-function loadWithChunkRecovery<T>(loader: () => Promise<T>) {
-  return loader()
-    .then((module) => {
-      if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(CHUNK_RELOAD_ONCE_KEY);
-      }
-      return module;
-    })
-    .catch((error) => {
+function clearChunkReloadFlag() {
+  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem(CHUNK_RELOAD_ONCE_KEY);
+  }
+}
+
+async function loadWithChunkRecovery<T>(loader: () => Promise<T>) {
+  try {
+    const module = await loader();
+    clearChunkReloadFlag();
+    return module;
+  } catch (error) {
+    const isRecoverableChunkError = shouldRecoverChunkLoadError(error);
+    if (!isRecoverableChunkError) {
+      clearChunkReloadFlag();
+      throw error;
+    }
+
+    try {
+      await new Promise((resolve) => {
+        globalThis.setTimeout(resolve, CHUNK_RETRY_DELAY_MS);
+      });
+      const recoveredModule = await loader();
+      clearChunkReloadFlag();
+      return recoveredModule;
+    } catch (retryError) {
       if (
         typeof window !== 'undefined'
         && typeof sessionStorage !== 'undefined'
-        && shouldRecoverChunkLoadError(error)
         && sessionStorage.getItem(CHUNK_RELOAD_ONCE_KEY) !== '1'
       ) {
         sessionStorage.setItem(CHUNK_RELOAD_ONCE_KEY, '1');
@@ -25,11 +42,10 @@ function loadWithChunkRecovery<T>(loader: () => Promise<T>) {
         return new Promise<T>(() => {});
       }
 
-      if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(CHUNK_RELOAD_ONCE_KEY);
-      }
-      throw error;
-    });
+      clearChunkReloadFlag();
+      throw retryError;
+    }
+  }
 }
 
 export const loadMonitorApp = () =>

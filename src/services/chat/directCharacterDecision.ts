@@ -1,4 +1,5 @@
 import type { Character, ChatMessage } from '../../types';
+import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import type { DirectUserIntentAnalysis } from './intentAnalysis';
 
 export type RelationshipCloseness = 'low' | 'medium' | 'high';
@@ -35,12 +36,12 @@ function clampScore(value: number) {
 }
 
 function getCharacterProfileText(character: Character) {
+  const characterContext = buildCharacterContext({ character });
   return [
-    character.corePersona,
+    characterContext.corePersona,
     character.expressionStyle,
     character.signature,
     character.openingRemark,
-    character.setting,
   ]
     .filter(Boolean)
     .join('\n');

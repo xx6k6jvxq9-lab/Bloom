@@ -406,6 +406,14 @@
   pointer-events: none;
 }
 
+html[data-android='true'] .dating-scene__composer-wrap {
+  padding-bottom: calc(var(--app-safe-area-bottom-ui, 0px) + 10px);
+}
+
+html[data-android='true'] .dating-scene__composer-wrap::after {
+  height: calc(var(--app-safe-area-bottom-ui, 0px) + 10px);
+}
+
 .dating-scene__sticker-backdrop {
   position: fixed;
   inset: 0;

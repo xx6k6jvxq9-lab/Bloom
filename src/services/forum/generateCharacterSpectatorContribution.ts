@@ -1,4 +1,5 @@
 import type { ApiConfig, Character, ForumPost, Mask, WorldBookEntry } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import { buildCharacterForumHabit, buildForumCharacterPostTitle } from '../../features/forum-domain/characterForumPersona';
 import { SPECTATOR_BOARD_CATEGORY } from '../../features/forum-domain/spectatorBoard';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
@@ -91,6 +92,7 @@ export async function generateCharacterSpectatorPost(input: GenerateCharacterSpe
     now = Date.now(),
   } = input;
 
+  const forumContext = buildForumCharacterContext(character);
   const forumHabit = buildCharacterForumHabit(character, 'junction');
   const targetSummary = selectedCharacterNames.length
     ? `${currentUserName}、${selectedCharacterNames.join('、')}`
@@ -100,11 +102,12 @@ export async function generateCharacterSpectatorPost(input: GenerateCharacterSpe
     '你要生成一条角色本人会发在镜间里的公开帖子。',
     '镜间不是朋友圈，不是私聊，也不是系统说明，而是公共楼里角色本人偶尔留下的一条痕迹。',
     `角色名：${character.name}`,
-    character.signature?.trim() ? `角色签名：${character.signature.trim()}` : '',
-    character.corePersona?.trim() ? `角色核心人格：${character.corePersona.trim()}` : '',
-    character.expressionStyle?.trim() ? `角色表达风格：${character.expressionStyle.trim()}` : '',
-    character.setting?.trim() ? `角色背景：${character.setting.trim()}` : '',
-    character.sceneHints?.forum?.trim() ? `角色论坛习惯补充：${character.sceneHints.forum.trim()}` : '',
+    forumContext.signature ? `角色签名：${forumContext.signature}` : '',
+    forumContext.corePersona ? `角色核心人格：${forumContext.corePersona}` : '',
+    forumContext.expressionStyle ? `角色表达风格：${forumContext.expressionStyle}` : '',
+    forumContext.forumSceneHint ? `角色论坛习惯补充：${forumContext.forumSceneHint}` : '',
+    forumContext.longTermMemoryProfile ? `角色长期印象画像：${forumContext.longTermMemoryProfile}` : '',
+    forumContext.globalMemory ? `角色长期记忆：${forumContext.globalMemory}` : '',
     `论坛习惯：${forumHabit.persona}`,
     `说话方式：${forumHabit.speakingStyle}`,
     `常见出手：${forumHabit.preferredMove}`,

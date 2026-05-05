@@ -27,6 +27,7 @@ export function createDefaultAppData(): AppData {
     callHistory: [],
     visualSettings: {
       globalBackground: DEFAULT_DESKTOP_WALLPAPER,
+      globalBackgroundPreviewUrl: DEFAULT_DESKTOP_WALLPAPER,
       chatOpacity: 1,
       themeTypography: {
         importedFonts: [],

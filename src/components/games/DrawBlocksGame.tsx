@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { BrickWall, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import { Character } from '../../types';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 
 export type DrawBlocksCharacterRuntimeContext = {
   recentExchange: string[];
@@ -78,7 +79,8 @@ function createSeededRandom(seed: number) {
 }
 
 function resolveCharacterPlayStyle(character: Character): CharacterPlayStyle {
-  const fingerprint = `${character.name} ${character.setting} ${character.expressionStyle || ''} ${character.signature || ''}`.toLowerCase();
+  const characterContext = buildCharacterContext({ character });
+  const fingerprint = `${character.name} ${characterContext.corePersona || ''} ${character.expressionStyle || ''} ${character.signature || ''}`.toLowerCase();
 
   if (/冷静|清晰|理性|克制|测试|稳定|分析/.test(fingerprint)) {
     return 'strategist';

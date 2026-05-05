@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,12 +6,20 @@ import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset } 
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
+import { getDisplayableAssetValue, getPreviewAssetValue } from '../../../features/persistence/persistentAssetRef';
+import {
+  createImagePreviewDataUrl,
+  createImagePreviewDataUrlFromFile,
+  resolveValueToDisplayUrl,
+  type ImagePreviewOptions,
+} from '../../../features/persistence/persistentAssetService';
 import { KeyboardAwareScreen } from '../../../features/app-shell/KeyboardAwareScreen';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
   type BackupRestoreProgress,
+  buildModularBackupArchive,
   buildSplitModularBackupBundle,
   isFullBackupArchive,
   isModularBackupAssetsArchive,
@@ -49,6 +57,20 @@ const DESKTOP_ICON_ACCEPTED_IMAGE_TYPES = new Set([
   'image/bmp',
 ]);
 const MAX_DESKTOP_ICON_FILE_SIZE = 5 * 1024 * 1024;
+const DESKTOP_ICON_PREVIEW_OPTIONS: ImagePreviewOptions = {
+  maxWidth: 96,
+  maxHeight: 96,
+  mimeType: 'image/png',
+};
+const WALLPAPER_PREVIEW_OPTIONS: ImagePreviewOptions = {
+  maxWidth: 240,
+  maxHeight: 426,
+  mimeType: 'image/png',
+};
+
+type PersistentImageChangeMeta = {
+  previewUrl?: string;
+};
 
 function validateDesktopIconFile(file: File): Promise<void> {
   const normalizedType = (file.type || '').toLowerCase();
@@ -222,6 +244,10 @@ function CategoryCard({ icon, title, description, onClick }: { icon: React.React
   );
 }
 
+function resolveInstantPreviewUrl(value: string | null | undefined, previewUrl?: string | null) {
+  return getPreviewAssetValue(previewUrl) || getDisplayableAssetValue(value, null);
+}
+
 function ImageUploadControl({
   label,
   value,
@@ -291,16 +317,21 @@ function PersistentImageUploadControl({
   label,
   value,
   onChange,
+  previewUrl,
   fileValidator,
+  previewOptions,
 }: {
   label: string,
   value: string,
-  onChange: (val: string) => void,
+  onChange: (val: string, meta?: PersistentImageChangeMeta) => void,
+  previewUrl?: string,
   fileValidator?: (file: File) => Promise<void>,
+  previewOptions?: ImagePreviewOptions,
 }) {
   const [localValue, setLocalValue] = useState(value);
   const { resolvedUrl, loading, error } = useResolvedPersistentValue(localValue);
   const { setRemoteUrl, setUploadedFile, clearValue } = usePersistentFieldActions();
+  const previewDisplayUrl = resolvedUrl || resolveInstantPreviewUrl(localValue, previewUrl);
 
   useEffect(() => {
     setLocalValue(value);
@@ -308,17 +339,32 @@ function PersistentImageUploadControl({
 
   const handleConfirm = async () => {
     const nextValue = localValue.trim() ? await setRemoteUrl(localValue) : await clearValue();
+    let nextPreviewUrl = nextValue
+      ? resolveInstantPreviewUrl(nextValue, previewUrl) || ''
+      : '';
+    if (!nextPreviewUrl && nextValue) {
+      try {
+        const resolvedAssetUrl = await resolveValueToDisplayUrl(nextValue);
+        if (resolvedAssetUrl) {
+          const previewResponse = await fetch(resolvedAssetUrl);
+          const previewBlob = await previewResponse.blob();
+          nextPreviewUrl = await createImagePreviewDataUrl(previewBlob, previewOptions);
+        }
+      } catch {
+        nextPreviewUrl = '';
+      }
+    }
     setLocalValue(nextValue);
-    onChange(nextValue);
+    onChange(nextValue, { previewUrl: nextPreviewUrl });
   };
 
   return (
     <div className="space-y-2">
       <label className="text-xs font-bold text-zinc-500">{label}</label>
-      {(resolvedUrl || loading) && (
+      {(previewDisplayUrl || loading) && (
         <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-50">
-          {resolvedUrl ? (
-            <img src={resolvedUrl} alt={label} className="w-full h-28 object-cover" />
+          {previewDisplayUrl ? (
+            <img src={previewDisplayUrl} alt={label} className="w-full h-28 object-cover" />
           ) : (
             <div className="w-full h-28 flex items-center justify-center text-xs text-zinc-400">正在加载预览...</div>
           )}
@@ -351,8 +397,14 @@ function PersistentImageUploadControl({
                     await fileValidator(file);
                   }
                   const nextValue = await setUploadedFile(file);
+                  let nextPreviewUrl = '';
+                  try {
+                    nextPreviewUrl = await createImagePreviewDataUrlFromFile(file, previewOptions);
+                  } catch {
+                    nextPreviewUrl = '';
+                  }
                   setLocalValue(nextValue);
-                  onChange(nextValue);
+                  onChange(nextValue, { previewUrl: nextPreviewUrl });
                 } catch (uploadError) {
                   alert(uploadError instanceof Error ? `上传失败: ${uploadError.message}` : '上传失败，请稍后重试。');
                 }
@@ -395,14 +447,15 @@ function WidgetListThumbnail({ widget }: { widget: WidgetConfig }) {
   );
 }
 
-function PersistentSquareThumbnail({ value, alt }: { value?: string; alt: string }) {
+function PersistentSquareThumbnail({ value, previewUrl, alt }: { value?: string; previewUrl?: string; alt: string }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
+  const displayUrl = resolvedUrl || resolveInstantPreviewUrl(value, previewUrl);
 
-  if (!resolvedUrl) {
+  if (!displayUrl) {
     return null;
   }
 
-  return <img src={resolvedUrl} className="w-full h-full object-cover" alt={alt} />;
+  return <img src={displayUrl} className="w-full h-full object-cover" alt={alt} />;
 }
 
 // --- Desktop Settings ---
@@ -410,9 +463,9 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
-  const { setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground);
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(settings.navBar?.backgroundImage || '');
+  const wallpaperDisplayUrl = resolvedWallpaperUrl || resolveInstantPreviewUrl(settings.globalBackground, settings.globalBackgroundPreviewUrl);
   const typography = settings.themeTypography || {};
   const effectiveFontPriority = resolveThemeFontPriority(typography);
   const importedFonts: ThemeFontAsset[] = typography.importedFonts || [];
@@ -549,16 +602,20 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
     { id: 'wallet', name: '钱包', icon: 'Wallet' },
   ];
 
-  const handleIconUpdate = (appId: string, url: string) => {
+  const handleIconUpdate = (appId: string, url: string, previewUrl = '') => {
     const currentIcons = settings.desktopIcons || [];
     const existingIndex = currentIcons.findIndex((i: any) => i.id === appId);
     
     let newIcons;
     if (existingIndex >= 0) {
       newIcons = [...currentIcons];
-      newIcons[existingIndex] = { ...newIcons[existingIndex], iconUrl: url };
+      newIcons[existingIndex] = {
+        ...newIcons[existingIndex],
+        iconUrl: url,
+        iconPreviewUrl: previewUrl,
+      };
     } else {
-      newIcons = [...currentIcons, { id: appId, iconUrl: url }];
+      newIcons = [...currentIcons, { id: appId, iconUrl: url, iconPreviewUrl: previewUrl }];
     }
     setSettings({ ...settings, desktopIcons: newIcons });
   };
@@ -608,8 +665,8 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">全局壁纸设置</h3>
           <div className="aspect-[9/16] w-32 mx-auto bg-zinc-100 rounded-2xl overflow-hidden border-4 border-zinc-800 relative shadow-lg">
-            {resolvedWallpaperUrl ? (
-              <img src={resolvedWallpaperUrl} className="w-full h-full object-cover" alt="Wallpaper" />
+            {wallpaperDisplayUrl ? (
+              <img src={wallpaperDisplayUrl} className="w-full h-full object-cover" alt="Wallpaper" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-zinc-400">无壁纸</div>
             )}
@@ -617,7 +674,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
           <PersistentImageUploadControl 
             label="壁纸图片" 
             value={settings.globalBackground} 
-            onChange={(val) => setSettings({ ...settings, globalBackground: val })} 
+            previewUrl={settings.globalBackgroundPreviewUrl || ''}
+            previewOptions={WALLPAPER_PREVIEW_OPTIONS}
+            onChange={(val, meta) => setSettings({
+              ...settings,
+              globalBackground: val,
+              globalBackgroundPreviewUrl: meta?.previewUrl || '',
+            })} 
           />
           <p className="text-xs text-zinc-400 text-center">支持输入图片/视频链接或上传本地文件</p>
         </div>
@@ -672,7 +735,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 >
                   <div className="w-8 h-8 rounded-lg bg-zinc-200 overflow-hidden">
                     {settings.desktopIcons?.find((i: any) => i.id === app.id)?.iconUrl ? (
-                      <PersistentSquareThumbnail value={settings.desktopIcons.find((i: any) => i.id === app.id).iconUrl} alt={`${app.name} icon`} />
+                      <PersistentSquareThumbnail
+                        value={settings.desktopIcons.find((i: any) => i.id === app.id).iconUrl}
+                        previewUrl={settings.desktopIcons.find((i: any) => i.id === app.id).iconPreviewUrl}
+                        alt={`${app.name} icon`}
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-zinc-400 text-[10px]">{app.name[0]}</div>
                     )}
@@ -695,7 +762,9 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                 <PersistentImageUploadControl 
                   label="图标图片" 
                   value={settings.desktopIcons?.find((i: any) => i.id === selectedAppId)?.iconUrl || ''} 
-                  onChange={(val) => handleIconUpdate(selectedAppId, val)}
+                  previewUrl={settings.desktopIcons?.find((i: any) => i.id === selectedAppId)?.iconPreviewUrl || ''}
+                  previewOptions={DESKTOP_ICON_PREVIEW_OPTIONS}
+                  onChange={(val, meta) => handleIconUpdate(selectedAppId, val, meta?.previewUrl || '')}
                   fileValidator={validateDesktopIconFile}
                 />
               </motion.div>
@@ -1640,6 +1709,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const [isImporting, setIsImporting] = useState(false);
   const [importProgressText, setImportProgressText] = useState('');
   const [isExportingFull, setIsExportingFull] = useState(false);
+  const [isExportingSplit, setIsExportingSplit] = useState(false);
   const [migrationInfo, setMigrationInfo] = useState<MigrationCheckResult | null>(() => {
     const meta = loadMigrationMeta();
     return {
@@ -1712,23 +1782,41 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
   const handleExportFull = async () => {
     try {
       setIsExportingFull(true);
-      const bundle = await buildSplitModularBackupBundle({
+      const archive = await buildModularBackupArchive({
         appData,
         settings,
       });
       const timestamp = Date.now();
-      downloadJsonFile(bundle.dataArchive, `full_backup_${timestamp}_data.json`);
-      if (bundle.assetsArchive) {
-        downloadJsonFile(bundle.assetsArchive, `full_backup_${timestamp}_assets.json`);
-        alert(`全量备份导出成功！已生成主数据包和资源包，共包含 ${bundle.dataArchive.assetCount} 个本地资源。恢复时请先导入 data 包，再导入 assets 包。`);
-      } else {
-        alert('全量备份导出成功！已生成主数据包。当前没有需要单独打包的本地资源。');
-      }
+      downloadJsonFile(archive, `full_backup_${timestamp}.json`);
+      alert(`全量备份导出成功！已生成 1 个完整备份文件，共包含 ${archive.assets.length} 个本地资源。`);
     } catch (error) {
       console.error('Failed to export full backup archive', error);
       alert('全量备份导出失败，请稍后重试。');
     } finally {
       setIsExportingFull(false);
+    }
+  };
+
+  const handleExportSplit = async () => {
+    try {
+      setIsExportingSplit(true);
+      const bundle = await buildSplitModularBackupBundle({
+        appData,
+        settings,
+      });
+      const timestamp = Date.now();
+      downloadJsonFile(bundle.dataArchive, `split_backup_${timestamp}_data.json`);
+      if (bundle.assetsArchive) {
+        downloadJsonFile(bundle.assetsArchive, `split_backup_${timestamp}_assets.json`);
+        alert(`分批备份导出成功！已生成主数据包和资源包，共包含 ${bundle.dataArchive.assetCount} 个本地资源。恢复时请先导入 data 包，再导入 assets 包。`);
+      } else {
+        alert('分批备份导出成功！已生成主数据包。当前没有需要单独打包的本地资源。');
+      }
+    } catch (error) {
+      console.error('Failed to export split backup archive', error);
+      alert('分批备份导出失败，请稍后重试。');
+    } finally {
+      setIsExportingSplit(false);
     }
   };
 
@@ -2224,6 +2312,14 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
           >
             {isExportingFull ? <RefreshCw size={24} className="animate-spin" /> : <Database size={24} />}
             <span className="text-[14px] font-bold">全量备份</span>
+          </button>
+          <button 
+            onClick={() => void handleExportSplit()}
+            disabled={isExportingSplit}
+            className="flex flex-col items-center gap-2 rounded-3xl border border-zinc-200 bg-zinc-100 p-4 text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-95"
+          >
+            {isExportingSplit ? <RefreshCw size={24} className="animate-spin" /> : <Layers size={24} />}
+            <span className="text-[14px] font-bold">分批备份</span>
           </button>
           <button 
             onClick={() => {

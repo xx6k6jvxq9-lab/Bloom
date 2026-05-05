@@ -107,7 +107,7 @@ ${domainRule}
 
 本次角色现实底色：
 - 角色名：${options.character.remarkName?.trim() || options.character.name}
-- 核心人设：${characterContext.corePersona || options.character.setting?.trim() || '暂无'}
+- 核心人设：${characterContext.corePersona || '暂无'}
 - 表达风格：${characterContext.expressionStyle || '未提供'}
 - 边界与禁区：${characterContext.boundaryPack || '未提供'}
 - 扩展设定：${characterContext.extendedLore || '未提供'}

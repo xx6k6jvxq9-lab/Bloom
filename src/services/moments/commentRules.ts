@@ -1,4 +1,5 @@
 import type { Character, MomentComment, MomentItem } from '../../types';
+import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 
 type PickInitialCommentersOptions = {
   moment: MomentItem;
@@ -81,9 +82,9 @@ function shuffleCharacters(characters: Character[]) {
 }
 
 function getCharacterText(character: Character) {
+  const characterContext = buildCharacterContext({ character });
   return [
-    character.setting,
-    character.corePersona,
+    characterContext.corePersona,
     character.expressionStyle,
     character.signature,
     character.openingRemark,

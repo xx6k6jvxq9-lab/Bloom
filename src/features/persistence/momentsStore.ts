@@ -33,6 +33,7 @@ export type PersistedMoment = {
   likedBy?: string[];
   isLiked?: boolean;
   isCollected?: boolean;
+  isPinned?: boolean;
   comments: PersistedMomentComment[];
 };
 
@@ -97,6 +98,7 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
       : undefined,
     isLiked: moment.isLiked,
     isCollected: moment.isCollected,
+    isPinned: moment.isPinned,
     comments: Array.isArray(moment.comments)
       ? moment.comments.map((comment) => ({
           id: comment.id,

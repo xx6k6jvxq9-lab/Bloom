@@ -1,4 +1,5 @@
 import type { Character, ForumRuntimeAuthorProfile } from '../../types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumHabit } from '../../features/forum-domain/characterForumPersona';
 import { buildCharacterForumAlias } from './buildCharacterForumAlias';
@@ -10,11 +11,12 @@ export function buildCharacterForumRuntimeProfile(
   character: Character,
   channel?: ForumChannel,
 ): ForumRuntimeAuthorProfile {
+  const forumContext = buildForumCharacterContext(character);
   const forumHabit = buildCharacterForumHabit(character, channel);
   const identity = buildCharacterForumAlias(
     character,
     forumHabit.primaryChannel,
-    `${character.signature || ''} ${character.corePersona || ''} ${character.setting || ''}`,
+    `${forumContext.signature} ${forumContext.corePersona} ${forumContext.longTermMemoryProfile}`.trim(),
   );
 
   return {

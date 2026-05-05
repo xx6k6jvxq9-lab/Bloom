@@ -1,6 +1,6 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
 import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
-import { buildActBeatSummary, buildDreamMemorySummary, compactSummaryText } from './dreamRuntimeSummaries';
+import { buildActBeatSummary, compactSummaryText, resolveDreamMemorySummary } from './dreamRuntimeSummaries';
 import type { GenerateDreamContinuationOptions } from './dreamRuntimeTypes';
 
 function buildPastActSummary(options: GenerateDreamContinuationOptions) {
@@ -51,7 +51,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
-  const memorySummary = options.scenario.memorySummary || buildDreamMemorySummary(options.scenario);
+  const memorySummary = resolveDreamMemorySummary(options.scenario);
   const pastActs = buildPastActSummary(options);
   const decisionTrail = buildDecisionTrailSummary(options);
   const novelQualityRules = [

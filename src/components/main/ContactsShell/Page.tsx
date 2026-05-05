@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { useRef } from 'react';
@@ -16,6 +16,7 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
+import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
@@ -25,11 +26,11 @@ import {
 } from '../../../features/app-shell/formatMessagePreview';
 
 function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
+  const characterContext = buildCharacterContext({ character: character as Character });
   const candidates = [
     character.openingRemark,
     character.signature,
-    character.corePersona,
-    character.setting,
+    characterContext.corePersona,
   ];
 
   const structured = candidates.find((value) => looksLikeStructuredCardText(value));
@@ -554,8 +555,7 @@ export function ContactsApp({
                 const displayName = char.remarkName?.trim() || char.name;
                 const listPreview = sanitizePreviewText(char.signature)
                   || sanitizePreviewText(char.openingRemark)
-                  || sanitizePreviewText(char.corePersona)
-                  || sanitizePreviewText(char.setting)
+                  || sanitizePreviewText(buildCharacterContext({ character: char }).corePersona)
                   || '这个角色还没有简介。';
 
                 return (

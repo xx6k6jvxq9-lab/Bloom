@@ -2075,7 +2075,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSe
       /* Legacy co-note prompt path retained only as historical reference after migration.
       const activeConfig = settings.configs.find((c: any) => c.id === settings.activeConfigId) || settings.configs[0];
       if (memoSettings.writeCoNote.enabled && activeConfig.apiKey) {
-        const prompt = `你扮演 ${partner.name}，${partner.corePersona || partner.setting}。
+        const prompt = `你扮演 ${partner.name}，${partner.corePersona || '未提供人设'}。
 我和你正在使用情侣空间的“情侣互记”功能，记录想一起做的事情。
 我刚刚写了一条互记：“${newNote.content}”
 请你像在这条互记下面顺手回复我一样，接一句回应，简短自然，20字以内。`;

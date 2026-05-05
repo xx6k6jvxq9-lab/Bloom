@@ -675,8 +675,8 @@ export function MomentsApp({
                     <div className="flex items-center gap-2">
                       <h3 className="text-[15px] font-bold text-zinc-900">{author.name}</h3>
                       {moment.isPinned && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                          <Pin size={10} />
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#D8D8DE] bg-[#F2F2F7] px-2 py-0.5 text-[10px] font-medium text-[#6B7280] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                          <Pin size={10} className="text-[#7B8190]" />
                           置顶
                         </span>
                       )}
@@ -844,9 +844,13 @@ export function MomentsApp({
                         </button>
                         <button
                           onClick={() => handleTogglePin(moment.id)}
-                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                          className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] transition-colors ${
+                            moment.isPinned
+                              ? 'bg-[#F2F2F7] text-[#5F6572] hover:bg-[#EAEAEE]'
+                              : 'text-zinc-800 hover:bg-zinc-100'
+                          }`}
                         >
-                          <Pin size={14} className={moment.isPinned ? 'fill-amber-500 text-amber-500' : ''} />
+                          <Pin size={14} className={moment.isPinned ? 'fill-[#C7CCD6] text-[#7B8190]' : 'text-zinc-500'} />
                           {moment.isPinned ? '取消置顶' : '置顶'}
                         </button>
                         <button

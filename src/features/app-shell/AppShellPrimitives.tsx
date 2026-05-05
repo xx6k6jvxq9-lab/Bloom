@@ -14,12 +14,7 @@ export const GlobalStyles = ({ customCss }: { customCss?: string }) => (
   `}</style>
 );
 
-export const AppPanelFallback = ({ label }: { label: string }) => (
-  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 text-zinc-900">
-    <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
-    <p className="mt-4 text-sm font-medium">{label}加载中...</p>
-  </div>
-);
+export const AppPanelFallback = (_props: { label: string }) => null;
 
 export function ResolvedAssetImage({
   value,

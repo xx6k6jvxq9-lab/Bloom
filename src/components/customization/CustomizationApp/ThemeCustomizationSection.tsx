@@ -60,6 +60,26 @@ function buildThemeWorkbenchPreviewCss(rawCss: string): string {
   return buildThemePreviewCss(rawCss).replace(/\.chat-bubble-theme-scope\b/g, '.theme-preview-scope');
 }
 
+function extractGlobalCssFromImport(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as ImportedThemePayload;
+      if (typeof parsed?.theme?.globalCss === 'string') {
+        return parsed.theme.globalCss;
+      }
+    } catch {
+      // Treat invalid JSON payloads as plain CSS text.
+    }
+  }
+
+  return raw;
+}
+
 const THEME_PANEL_TEXT = {
   tabs: {
     globalTheme: '\u5168\u5c40\u4e3b\u9898',
@@ -375,6 +395,7 @@ function GlobalThemePanel({
   settings: VisualSettings;
   setSettings: (settings: VisualSettings) => void;
 }) {
+  const importCssInputRef = useRef<HTMLInputElement>(null);
   const previewCss = [settings.globalCss || '', buildThemeScopedCss(settings.themeScopedCss)]
     .filter(Boolean)
     .map((css) => buildThemeWorkbenchPreviewCss(css))
@@ -395,6 +416,34 @@ function GlobalThemePanel({
         description="这里写的是整套主题的主样式入口。支持完整 CSS、伪元素、动画和整段选择器，可覆盖页面结构、卡片、输入栏等主题区域。"
         icon={<Type size={16} className="text-zinc-900" />}
       >
+        <div className="mb-3 flex justify-end">
+          <input
+            ref={importCssInputRef}
+            type="file"
+            accept=".css,.txt,.theme,.json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+
+              const reader = new FileReader();
+              reader.onload = () => {
+                const raw = String(reader.result || '');
+                setSettings({ ...settings, globalCss: extractGlobalCssFromImport(raw) });
+                event.target.value = '';
+              };
+              reader.readAsText(file, 'utf-8');
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importCssInputRef.current?.click()}
+            className="inline-flex h-10 items-center justify-center rounded-2xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-50"
+          >
+            <Upload size={15} className="mr-2" />
+            导入 CSS
+          </button>
+        </div>
         <CodeEditor
           value={settings.globalCss || ''}
           onChange={(nextValue) => setSettings({ ...settings, globalCss: nextValue })}

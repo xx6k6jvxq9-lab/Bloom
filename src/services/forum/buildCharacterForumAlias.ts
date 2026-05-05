@@ -1,5 +1,6 @@
 import type { Character } from '../../types';
 import type { ForumChannel } from '../../features/forum-domain/types';
+import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import { buildCharacterForumFlavor } from './buildCharacterForumFlavor';
 
 type CharacterForumAlias = {
@@ -89,18 +90,17 @@ export function buildCharacterForumAlias(
   channel: ForumChannel,
   persona: string,
 ): CharacterForumAlias {
+  const forumContext = buildForumCharacterContext(character);
   const fingerprint = [
     character.name,
     character.remarkName || '',
-    character.signature || '',
-    character.corePersona || '',
-    character.setting || '',
-    character.expressionStyle || '',
-    character.openingRemark || '',
-    character.sceneHints?.forum || '',
-    character.globalMemory || '',
-    character.memorySummary || '',
-    character.longTermMemoryProfile || '',
+    forumContext.signature,
+    forumContext.corePersona,
+    forumContext.expressionStyle,
+    forumContext.openingRemark,
+    forumContext.forumSceneHint,
+    forumContext.globalMemory,
+    forumContext.longTermMemoryProfile,
     persona,
   ].join(' ');
   const style = STYLE_BANK.find((item) => item.test.test(fingerprint));

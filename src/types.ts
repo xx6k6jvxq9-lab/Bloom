@@ -53,6 +53,7 @@ export type DesktopIconConfig = {
   id: string; // app id like 'chat', 'settings', etc.
   page?: number;
   iconUrl?: string;
+  iconPreviewUrl?: string;
   borderRadius?: number;
   slotId?: string;
   x?: number;
@@ -135,6 +136,7 @@ export type ThemeTypographySettings = {
 
 export type VisualSettings = {
   globalBackground: string;
+  globalBackgroundPreviewUrl?: string;
   chatOpacity: number;
   momentsBackground?: string;
   themeScopedCss?: Record<string, string>;
@@ -600,6 +602,7 @@ export type Character = {
   name: string;
   gender: 'male' | 'female' | 'other';
   avatar: string;
+  // Legacy-compatible longform setting field. Active runtime paths should prefer corePersona.
   setting: string;
   corePersona?: string;
   expressionStyle?: string;
@@ -627,6 +630,7 @@ export type Character = {
   summaryInterval?: number;
   autoLongTermMinShortTermEntries?: number;
   autoLongTermMinDaySpan?: number;
+  // Deprecated compatibility field. Prefer longTermMemoryProfile on active runtime paths.
   memorySummary?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
@@ -825,6 +829,7 @@ export type MomentItem = {
   likedBy?: string[];
   isLiked?: boolean;
   isCollected?: boolean;
+  isPinned?: boolean;
   comments: MomentComment[];
 };
 

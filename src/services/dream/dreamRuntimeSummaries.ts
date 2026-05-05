@@ -43,6 +43,10 @@ export function buildDreamMemorySummary(scenario: DreamRuntimeScenario) {
   return compactSummaryText(parts.join('，'), 118) || compactSummaryText(scenario.coverTitle, 24) || '今夜的梦仍在继续。';
 }
 
+export function resolveDreamMemorySummary(scenario: DreamRuntimeScenario) {
+  return buildDreamMemorySummary(scenario);
+}
+
 export function hydrateDreamRuntimeScenario<T extends DreamRuntimeScenario>(scenario: T): T {
   const acts = scenario.acts.map((act) => ({
     ...act,
@@ -67,8 +71,9 @@ export function buildRecentBeatSummary(scenario: DreamRuntimeScenario, count: nu
 }
 
 export function buildEndingFocusSummary(scenario: DreamRuntimeScenario) {
+  const memorySummary = resolveDreamMemorySummary(scenario);
   const parts = [
-    `总纲：${scenario.memorySummary || buildDreamMemorySummary(scenario)}`,
+    `总纲：${memorySummary}`,
     `近幕：${buildRecentBeatSummary(scenario, 4) || 'n/a'}`,
     `收束：${compactSummaryText(scenario.endingInput.endingDirection, 24) || 'n/a'} / ${compactSummaryText(scenario.endingInput.keyActionSummary, 56) || 'n/a'}`,
   ];
@@ -77,12 +82,13 @@ export function buildEndingFocusSummary(scenario: DreamRuntimeScenario) {
 }
 
 export function buildAftermathFocusSummary(scenario: DreamRuntimeScenario) {
+  const memorySummary = resolveDreamMemorySummary(scenario);
   const endingSummary = scenario.endingOutput
     ? `${compactSummaryText(scenario.endingOutput.title, 14)}：${compactSummaryText(scenario.endingOutput.body, 56)}`
     : compactSummaryText(scenario.endingInput.keyActionSummary, 56);
 
   const parts = [
-    `总纲：${scenario.memorySummary || buildDreamMemorySummary(scenario)}`,
+    `总纲：${memorySummary}`,
     `近幕：${buildRecentBeatSummary(scenario, 3) || 'n/a'}`,
     `结尾：${endingSummary || 'n/a'}`,
     `余响提示：${compactSummaryText(scenario.aftermathInput.relationshipShift, 20) || 'n/a'} / ${compactSummaryText(scenario.aftermathInput.toneDrift, 24) || 'n/a'}`,

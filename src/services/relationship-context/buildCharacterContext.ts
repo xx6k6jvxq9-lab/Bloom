@@ -1,5 +1,6 @@
 import type { Character, Mask, WorldBookEntry } from '../../types';
 import type { CharacterContext } from './types';
+import { resolveCharacterCorePersonaCompat } from '../character/characterCompat';
 import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 
 type BuildCharacterContextInput = {
@@ -50,8 +51,7 @@ function normalizeSceneHints(value: Record<string, string> | undefined): Record<
 }
 
 export function buildCharacterContext(input: BuildCharacterContextInput): CharacterContext {
-  const corePersona = normalizeOptionalText(input.character.corePersona)
-    ?? normalizeOptionalText(input.character.setting);
+  const corePersona = resolveCharacterCorePersonaCompat(input.character);
 
   return {
     corePersona,
