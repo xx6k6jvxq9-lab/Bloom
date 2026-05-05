@@ -1683,14 +1683,16 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const useOverlayFooterLayout = isAndroid;
   const useAndroidBrowserKeyboardViewport =
-    isAndroid
+    useOverlayFooterLayout
     && !isStandaloneDisplayMode
     && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    manualKeyboardAvoidanceEnabled
+    useOverlayFooterLayout
+    && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1707,15 +1709,21 @@ export function ChatSessionScreen({
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
     : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: footerKeyboardOffset > 0
-      ? `${footerKeyboardOffset}px`
-      : '0px',
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    ...(useOverlayFooterLayout
+      ? {
+          bottom: footerKeyboardOffset > 0
+            ? `${footerKeyboardOffset}px`
+            : '0px',
+          transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+        }
+      : {
+          transition: 'padding-bottom 180ms ease',
+        }),
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1725,9 +1733,13 @@ export function ChatSessionScreen({
       : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    paddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 8}px`
+      : '8px',
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    scrollPaddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 12}px`
+      : `${chatFooterHeight + 12}px`,
   };
 
   if (showSettings) {
@@ -2767,7 +2779,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
+        className={`chat-session-footer chat-footer ${useOverlayFooterLayout ? 'absolute inset-x-0 z-20 ' : ''}${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (
