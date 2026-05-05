@@ -5,6 +5,7 @@ import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicD
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import { preloadPanelForApp } from '../../../features/app-shell/lazyPanels';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import { getDisplayableAssetValue } from '../../../features/persistence/persistentAssetRef';
@@ -1970,6 +1971,7 @@ export function HomeScreen({
 
       <StaticDock
         placement={dockPlacement}
+        safeAreaBottom={safeAreaBottom}
         visualSettings={visualSettings}
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
@@ -2156,22 +2158,31 @@ function DraggableAppIcon({
 
 function StaticDock({
   placement,
+  safeAreaBottom,
   visualSettings,
   apps,
   fontStyle,
   iconSize,
 }: {
   placement: { x: number; y: number; width: number; height: number };
+  safeAreaBottom: number;
   visualSettings: VisualSettings;
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
 }) {
+  const bottomExtension = safeAreaBottom > 0 ? safeAreaBottom + 8 : 0;
   return (
-    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height }}>
+    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height + bottomExtension }}>
       <div className="homeDesktop__dockBar">
         {apps.map(app => (
-          <button key={app.id} onClick={app.onClick} className="homeDesktop__dockItem">
+          <button
+            key={app.id}
+            onClick={app.onClick}
+            onPointerDown={() => warmAppPanel(app.id)}
+            onMouseEnter={() => warmAppPanel(app.id)}
+            className="homeDesktop__dockItem"
+          >
             <div
               className="homeDesktop__dockIcon"
               style={{
@@ -2192,6 +2203,10 @@ function StaticDock({
   );
 }
 
+function warmAppPanel(appId: string) {
+  void preloadPanelForApp(appId);
+}
+
 function DockAppIcon({
   app,
   visualSettings,
@@ -2201,7 +2216,8 @@ function DockAppIcon({
 }) {
   const customIcon = visualSettings?.desktopIcons?.find(i => i.id === app.id)?.iconUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
-  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || app.icon;
+  const hasCustomIcon = Boolean(customIcon?.trim());
+  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || (!hasCustomIcon ? app.icon : undefined);
 
   return (
     <ResilientAppIconImage src={finalIcon} fallbackSrc={app.icon} alt={app.name} />
@@ -2213,15 +2229,21 @@ function ResilientAppIconImage({
   fallbackSrc,
   alt,
 }: {
-  src: string;
-  fallbackSrc: string;
+  src?: string;
+  fallbackSrc?: string;
   alt: string;
 }) {
-  const [imageSrc, setImageSrc] = useState(src);
+  const [imageSrc, setImageSrc] = useState<string | null>(src || null);
 
   useEffect(() => {
-    setImageSrc(src);
+    if (src) {
+      setImageSrc(src);
+    }
   }, [src]);
+
+  if (!imageSrc) {
+    return <div className="absolute inset-0 bg-white/15 backdrop-blur-[1px]" aria-hidden="true" />;
+  }
 
   return (
     <img
@@ -2232,7 +2254,7 @@ function ResilientAppIconImage({
       draggable={false}
       onContextMenu={event => event.preventDefault()}
       onError={() => {
-        if (imageSrc !== fallbackSrc) {
+        if (fallbackSrc && imageSrc !== fallbackSrc) {
           setImageSrc(fallbackSrc);
         }
       }}
@@ -2291,7 +2313,8 @@ function AppIcon({
 }) {
   const customIcon = visualSettings?.desktopIcons?.find(i => i.id === id)?.iconUrl;
   const { resolvedUrl: resolvedCustomIconUrl } = useResolvedPersistentValue(customIcon);
-  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || icon || APP_ICON_URL;
+  const hasCustomIcon = Boolean(customIcon?.trim());
+  const finalIcon = getDisplayableAssetValue(customIcon, resolvedCustomIconUrl) || (!hasCustomIcon ? icon || APP_ICON_URL : undefined);
   const finalIconSize = iconSize ?? visualSettings?.desktop?.iconSize ?? 56;
 
   const fontSize = visualSettings?.desktop?.fontSize ?? 12;
@@ -2307,7 +2330,12 @@ function AppIcon({
   };
 
   return (
-    <div className="flex flex-col items-center gap-1.5 cursor-pointer group transition-transform active:scale-95" onClick={onClick}>
+    <div
+      className="flex flex-col items-center gap-1.5 cursor-pointer group transition-transform active:scale-95"
+      onClick={onClick}
+      onPointerDown={() => warmAppPanel(id)}
+      onMouseEnter={() => warmAppPanel(id)}
+    >
       <div
         className="homeDesktop__appIcon"
         style={{

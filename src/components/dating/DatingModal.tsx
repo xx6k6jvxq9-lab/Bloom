@@ -466,7 +466,10 @@ export const DatingModal: React.FC<DatingModalProps> = ({
               </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto px-4 pb-24">
+            <div
+              className="flex-1 overflow-y-auto px-4"
+              style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 5.5rem)' }}
+            >
               <div className="mx-auto flex w-full max-w-lg flex-col gap-4 py-4">
                 <section className="border-b border-zinc-200/80 pb-4">
                   <div className="flex items-center gap-3">

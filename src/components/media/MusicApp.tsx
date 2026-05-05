@@ -1332,7 +1332,7 @@ export default function MusicApp({
                   {lyrics.length > 0 ? (
                     <div
                       className="space-y-3 px-4 text-center sm:space-y-4 sm:px-6"
-                      style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
+                      style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)" }}
                     >
                       {lyrics.map((line, index) => {
                         const isActive = index === activeLyricIndex;
@@ -1599,7 +1599,7 @@ export default function MusicApp({
           className={`flex-1 overflow-y-auto px-6 ${
             hasSearchQuery ? "space-y-6 pt-3" : "space-y-10 pt-6"
           }`}
-          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
+          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)" }}
         >
           {hasSearchQuery ? (
             <div className="-mt-1">
@@ -1913,7 +1913,7 @@ export default function MusicApp({
 
         <div
           className="flex-1 overflow-y-auto px-6 pt-6 space-y-6"
-          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
+          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)" }}
         >
           {/* Quick Stats Grid - Smaller */}
           <div className="grid grid-cols-2 gap-3">
@@ -2525,10 +2525,10 @@ export default function MusicApp({
 
       {/* iOS Style Bottom Navigation */}
       <div
-        className="relative z-50 flex shrink-0 items-center justify-around border-t border-zinc-100/80 bg-white/85 px-8 pt-2 backdrop-blur-xl"
+        className="relative z-50 flex shrink-0 items-center justify-around border-t border-zinc-100/80 bg-white/78 px-6 pt-1 backdrop-blur-xl"
         style={{
-          minHeight: "calc(64px + var(--app-safe-area-bottom-ui, 0px) + 8px)",
-          paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 8px)",
+          minHeight: "calc(56px + var(--app-safe-area-bottom-ui, 0px) + 4px)",
+          paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 4px)",
         }}
       >
         <button

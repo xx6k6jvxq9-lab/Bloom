@@ -692,7 +692,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="pb-24 flex-shrink-0"
+              className="pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] flex-shrink-0"
             >
               {/* Cover Photo */}
               <div className="relative w-full h-64 bg-zinc-200">
@@ -784,7 +784,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           )}
 
           {activeView === 'settings' && (
-            <motion.div key="settings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 space-y-4 flex-1 overflow-y-auto pb-24 no-scrollbar">
+            <motion.div key="settings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 space-y-4 flex-1 overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
               <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-bold text-zinc-800">选择伴侣</h3>
@@ -2149,7 +2149,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSe
   };
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="mb-4 flex gap-2 shrink-0">
         <input
           type="text"
@@ -2259,7 +2259,7 @@ function LedgerView({ coupleSpace, updateSpace, recordSettlement, user, partner 
   const totalPartner = (coupleSpace.ledger || []).filter((l: LedgerEntry) => l.payerId !== 'user').reduce((sum: number, l: LedgerEntry) => sum + l.amount, 0);
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white mb-4 flex justify-between items-center shrink-0">
         <div className="text-center flex-1">
           <div className="relative w-10 h-10 mx-auto mb-2">
@@ -2554,7 +2554,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
   }
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="mb-4 text-[13px] font-medium text-zinc-400">
         当前 {activeLetters.length} 封
       </div>
@@ -2824,7 +2824,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, recordS
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="flex justify-between items-center mb-4 shrink-0">
         <span className="font-bold text-zinc-800">发布动态</span>
         <button onClick={handlePost} className="bg-rose-300 text-white px-5 py-1.5 rounded-full font-bold shadow-sm shadow-rose-200/50 active:scale-95 transition-transform">发布</button>
@@ -2936,7 +2936,7 @@ function AnniversariesView({ coupleSpace, updateSpace, user, partner }: any) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 space-y-3 shrink-0">
         <h3 className="font-bold text-zinc-800 text-sm">添加纪念日</h3>
         <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="纪念日名称（如：TA 的生日）" className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#f6b6cd]" />
@@ -3100,7 +3100,7 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, rec
   };
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-24 no-scrollbar">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 flex-1 flex flex-col w-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-white mb-4 shrink-0">
         <textarea 
           value={content}

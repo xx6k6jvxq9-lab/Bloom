@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
+import { Heart, Link2, MessageCircle, MoreHorizontal, Pin, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
@@ -173,6 +173,13 @@ export function MomentsApp({
         replyToAuthorName: isKnownMomentActorId(comment.replyToAuthorId) ? comment.replyToAuthorName : undefined,
       })),
     }));
+  const displayMoments = [...sanitizedMoments].sort((left, right) => {
+    if (!!left.isPinned !== !!right.isPinned) {
+      return left.isPinned ? -1 : 1;
+    }
+
+    return right.timestamp - left.timestamp;
+  });
   const serializedMoments = JSON.stringify(moments || []);
   const serializedSanitizedMoments = JSON.stringify(sanitizedMoments);
 
@@ -445,6 +452,18 @@ export function MomentsApp({
     setActiveMenuId(null);
   };
 
+  const handleTogglePin = (momentId: string) => {
+    setAppData((prev) => ({
+      ...prev,
+      moments: prev.moments.map((moment) => (
+        moment.id === momentId
+          ? { ...moment, isPinned: !moment.isPinned }
+          : moment
+      )),
+    }));
+    setActiveMenuId(null);
+  };
+
   const activeInnerVoiceMoment = (moments || []).find((moment) => moment.id === activeInnerVoiceMomentId) || null;
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
@@ -635,7 +654,7 @@ export function MomentsApp({
       </div>
 
       <div className="space-y-4 bg-transparent px-0 pt-4">
-        {(moments || []).map((moment) => {
+        {displayMoments.map((moment) => {
           const author = resolveMomentAuthor(moment.authorId);
           if (!author) return null;
           const effectiveCollected = getLinkedChatFavoriteState(appData, moment) ?? !!moment.isCollected;
@@ -651,8 +670,18 @@ export function MomentsApp({
             >
               <ResolvedMomentsAssetImage value={author.avatar} className="h-10 w-10 shrink-0 rounded-full border border-zinc-100 object-cover" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between">
-                  <h3 className="text-[15px] font-bold text-zinc-900">{author.name}</h3>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[15px] font-bold text-zinc-900">{author.name}</h3>
+                      {moment.isPinned && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          <Pin size={10} />
+                          置顶
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <span className="text-[12px] text-zinc-400">
                     {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -813,15 +842,20 @@ export function MomentsApp({
                           <Star size={14} className={effectiveCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
                           {effectiveCollected ? '已收藏' : '收藏'}
                         </button>
-                        {moment.authorId === 'user' && (
-                          <button
+                        <button
+                          onClick={() => handleTogglePin(moment.id)}
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
+                        >
+                          <Pin size={14} className={moment.isPinned ? 'fill-amber-500 text-amber-500' : ''} />
+                          {moment.isPinned ? '取消置顶' : '置顶'}
+                        </button>
+                        <button
                             onClick={() => handleDelete(moment.id)}
                             className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                           >
                             <Trash2 size={14} />
                             删除
                           </button>
-                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>

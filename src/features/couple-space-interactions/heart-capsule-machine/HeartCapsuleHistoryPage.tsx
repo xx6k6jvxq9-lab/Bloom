@@ -54,7 +54,7 @@ function getEntryPreview(entry: HeartCapsuleMachineHistoryEntry) {
 
 export function HeartCapsuleHistoryPage({ history, onBackToMachine, onClose, onOpenEntry }: Props) {
   return (
-    <div className="no-scrollbar h-full overflow-y-auto space-y-4 px-4 pb-24 pt-2">
+    <div className="no-scrollbar h-full overflow-y-auto space-y-4 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-2">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"

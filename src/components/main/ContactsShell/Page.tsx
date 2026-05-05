@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { useRef } from 'react';
@@ -429,7 +429,10 @@ export function ContactsApp({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-24">
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+      >
         {/* Top Items */}
         <div className="px-4 space-y-3 mt-2">
           <button 
@@ -922,7 +925,10 @@ export function CharacterMomentsProfile({
         <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">动态</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-24 relative bg-zinc-50">
+      <div
+        className="relative flex-1 overflow-y-auto bg-zinc-50"
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+      >
         <div className="relative pb-4">
           <div className="h-40 relative overflow-hidden">
             <div className={`absolute inset-0 bg-gradient-to-br ${heroGradient}`} />

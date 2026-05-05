@@ -29,7 +29,7 @@ import type {
   MomentPublishToast,
 } from './features/app-shell/appShellTypes';
 import { AppScreenContent } from './features/app-shell/AppScreenContent';
-import { createAppShellHandlers, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
+import { createAppShellHandlers, navigateToAppWithTransition, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
 import { useAppEnvironment } from './features/app-shell/useAppEnvironment';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
@@ -168,11 +168,8 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const isStorageReady = hasHydratedStorage;
-  const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
-  const phoneContainerBackgroundClass =
-    activeApp === 'home' || activeApp === 'dream'
-      ? 'bg-black'
-      : 'bg-zinc-50';
+  const appChromeBackground = '#09090b';
+  const phoneContainerBackgroundClass = 'bg-black';
   const browserKeyboardViewportCollapsed = !isStandalone
     && visualViewportHeight > 0
     && layoutViewportHeight > 0
@@ -429,13 +426,13 @@ export default function App() {
             onOpenReadyDating={(characterId) => {
               setSelectedCharacterId(characterId);
               setDatingResumeSignal((prev) => prev + 1);
-              setActiveApp('chat-session');
+              navigateToAppWithTransition('chat-session', setActiveApp);
               setDatingGenerationToast(null);
             }}
             onDismissDatingToast={() => setDatingGenerationToast(null)}
             onOpenReadyDream={() => {
               setDreamResumeSignal((prev) => prev + 1);
-              setActiveApp('dream');
+              navigateToAppWithTransition('dream', setActiveApp);
               if (typeof window !== 'undefined') {
                 window.localStorage.removeItem('dream_background_toast_pending');
               }
@@ -523,7 +520,7 @@ export default function App() {
           >
             <div
               className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
-              onClick={() => setActiveApp('home')}
+              onClick={() => navigateToAppWithTransition('home', setActiveApp)}
             />
           </div>
         )}

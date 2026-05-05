@@ -3298,7 +3298,7 @@ export function ChatSettingsPanel({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+6rem)]">
             {(!callHistory || callHistory.filter(r => r.characterId === character.id).length === 0) ? (
               <div className="text-center py-10 text-zinc-400 text-sm">暂无通话记录</div>
             ) : (

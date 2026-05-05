@@ -533,7 +533,7 @@ export function TogetherChatPanel({
 
       <div
         className="chat-session-footer border-t border-zinc-100 bg-white/95 backdrop-blur-md"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        style={{ paddingBottom: "var(--app-safe-area-bottom-ui, 0px)" }}
       >
         <div className="flex gap-3 items-end p-4">
           <button
@@ -613,7 +613,7 @@ export function TogetherChatPanel({
         {showStickerPanel && !isVoiceMode && (
           <div
             className="px-4"
-            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+            style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
           >
             <div className="rounded-[24px] border border-zinc-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex border-b border-zinc-100">

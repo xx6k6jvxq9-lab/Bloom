@@ -190,7 +190,7 @@ export function CoupleSpaceCalendarView({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-24 no-scrollbar"
+      className="px-4 flex-1 flex flex-col w-full relative overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar"
     >
       <button
         onClick={() => setShowAddModal(true)}

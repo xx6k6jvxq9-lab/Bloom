@@ -243,7 +243,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
 
         <div
           className="flex-1 overflow-y-auto p-6"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
         >
           {/* Category Filter */}
           <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
@@ -477,7 +477,7 @@ export function MonitorApp({ characters: initialCharacters, onBack, visualSettin
         {/* Content Panel */}
         <div
           className="min-h-0 w-full flex-1 overflow-y-auto p-4"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)' }}
         >
           {isScanning ? (
             <div className="h-full flex flex-col items-center justify-center space-y-4">

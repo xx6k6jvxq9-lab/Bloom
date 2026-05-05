@@ -229,7 +229,7 @@ export function CoupleSpaceArchiveCenter({
   ];
 
   return (
-    <div className="px-4 flex-1 overflow-y-auto pb-24 no-scrollbar">
+    <div className="px-4 flex-1 overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] no-scrollbar">
       <div className="mb-4">
         <div className="relative">
           <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-300" />

@@ -965,7 +965,7 @@ function Home({ time: _time, role: _role, onPickRole: _onPickRole, onEnter: _onE
 /*
 function HomeLegacyDeadCode() {
   return (
-    <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
+    <Shell time={time} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
       <div className="flex min-h-full flex-col">
         <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
@@ -1048,14 +1048,14 @@ function HomeV2({
   onExit: () => void;
 }) {
   return (
-    <Shell time={time} contentClassName="pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      <div className="flex flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))]">
+    <Shell time={time} contentClassName="pb-[calc(5.75rem+var(--app-safe-area-bottom-ui,0px))]">
+      <div className="flex flex-1 flex-col pb-[calc(2rem+var(--app-safe-area-bottom-ui,0px))]">
         <div className="flex items-center justify-between pb-4 text-[12px] tracking-[0.08em] text-[var(--mist)]">
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
         </div>
         <div className="pt-2 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
-        <div className="flex flex-col items-center justify-start gap-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-2 text-center sm:gap-6 sm:py-8">
+        <div className="flex flex-col items-center justify-start gap-4 pb-[calc(1.25rem+var(--app-safe-area-bottom-ui,0px))] pt-2 text-center sm:gap-6 sm:py-8">
           <button type="button" onClick={onPickRole}>
             <Avatar role={role} />
           </button>
@@ -1146,8 +1146,8 @@ function TagsStageV2({
   onConfirm: () => void;
 }) {
   return (
-    <Shell time={time} scrollable contentClassName="pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      <div className="flex flex-1 flex-col pb-[calc(9rem+env(safe-area-inset-bottom))]">
+    <Shell time={time} scrollable contentClassName="pb-[calc(5.75rem+var(--app-safe-area-bottom-ui,0px))]">
+      <div className="flex flex-1 flex-col pb-[calc(6rem+var(--app-safe-area-bottom-ui,0px))]">
         <div className="flex items-center gap-5 border-b border-[var(--border)] pb-5 pt-1">
           <button
             type="button"
@@ -1338,14 +1338,14 @@ function ConfirmStageV2({
   onConfirm: () => void;
 }) {
   return (
-    <Shell time={time} scrollable contentClassName="pb-[calc(7rem+env(safe-area-inset-bottom))]">
-      <div className="flex flex-1 flex-col pb-[calc(2rem+env(safe-area-inset-bottom))]">
+    <Shell time={time} scrollable contentClassName="pb-[calc(5rem+var(--app-safe-area-bottom-ui,0px))]">
+      <div className="flex flex-1 flex-col pb-[calc(1.5rem+var(--app-safe-area-bottom-ui,0px))]">
         <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">
           {entryMode === 'character' ? '角色入梦' : `${resolveDomainName(selectedDomain)} · ${scenario.coverTitle}`}
         </div>
 
         {entryMode === 'character' ? (
-          <div className="mt-10 flex flex-1 flex-col items-center justify-start pb-[calc(4rem+env(safe-area-inset-bottom))] text-center sm:mt-12 sm:justify-center">
+          <div className="mt-10 flex flex-1 flex-col items-center justify-start pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))] text-center sm:mt-12 sm:justify-center">
             <div className="relative px-7">
               <div className="absolute left-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
               <div className="absolute right-0 top-1/2 h-20 w-px -translate-y-1/2 bg-[var(--border-mid)]" />
@@ -1434,7 +1434,7 @@ function EntrySheet({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.65, ease: [0.2, 0.8, 0.4, 1] }}
-        className="absolute inset-x-0 bottom-0 max-h-[calc(100%-16px)] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(5rem+var(--app-safe-area-bottom-ui,0px))] pt-5 [webkit-overflow-scrolling:touch]"
+        className="absolute inset-x-0 bottom-0 max-h-[calc(100%-16px)] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(4.25rem+var(--app-safe-area-bottom-ui,0px))] pt-5 [webkit-overflow-scrolling:touch]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto h-[3px] w-10 rounded-[2px] bg-[var(--mist)] opacity-30" />
@@ -2466,7 +2466,7 @@ export function DreamAppPage({
   return (
     <>
         {stage === 'splash' && (
-          <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
             <div className="flex min-h-[calc(100%-5rem)] flex-1 items-start justify-center pt-[24vh] sm:pt-[22vh]">
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.4 }} className="space-y-6 text-center">
                 <div className="text-[72px] font-[200] tracking-[0.2em] text-[var(--paper)]">梦</div>
@@ -2530,8 +2530,8 @@ export function DreamAppPage({
           />
         )}
         {stage === 'role-picker' && (
-          <Shell time={time} scrollable contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col pb-[calc(2rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} scrollable contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col pb-[calc(1.5rem+var(--app-safe-area-bottom-ui,0px))]">
               <button type="button" onClick={() => setStage('home')} className="self-center border border-[var(--border)] px-6 py-2 text-[11px] tracking-[0.4em] text-[var(--mist)]">返 回</button>
               <div className="mt-10 text-center text-[14px] tracking-[0.36em] text-[var(--mist)]">选择入梦角色</div>
               <div className="mt-8 flex flex-1 flex-col gap-4">
@@ -2757,8 +2757,8 @@ export function DreamAppPage({
           </Shell>
         )} */}
         {stage === 'loading' && selectedRole && (
-          <Shell time={time} bottomTone={false} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col items-center justify-start pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[10vh] text-center sm:justify-center sm:pt-0">
+          <Shell time={time} bottomTone={false} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col items-center justify-start pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))] pt-[10vh] text-center sm:justify-center sm:pt-0">
               <div className="relative flex h-36 w-36 items-center justify-center">
                 <div className="absolute h-14 w-14 rounded-full border border-[rgba(196,169,106,.2)] bg-[radial-gradient(circle_at_40%_38%,rgba(196,169,106,.4),transparent_65%)] animate-[pulse_3s_ease-in-out_infinite]" />
                 <div className="absolute inset-[16%] rounded-full bg-[radial-gradient(circle,rgba(196,169,106,.06),transparent_70%)] animate-[pulse_3s_ease-in-out_infinite_reverse]" />
@@ -2787,8 +2787,8 @@ export function DreamAppPage({
           </Shell>
         )}
         {stage === 'scene' && act && (
-          <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))]">
               <div className="mt-5 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">{scenario.coverTitle} · {act.label}</div>
               <div className="mt-8 flex items-center justify-center gap-3">{scenario.acts.map((item, index) => <div key={item.id} className="h-[5px] w-[5px] border border-[var(--border)]">{index <= actIndex ? <div className="h-full w-full bg-[var(--gold)]" /> : null}</div>)}</div>
               <div className="mt-8">
@@ -2848,8 +2848,8 @@ export function DreamAppPage({
           </Shell>
         )}
         {choiceAct && (
-          <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))]">
               <div className="mt-4 flex items-center justify-center gap-2 text-[11px] tracking-[0.26em] text-[var(--gold)]">
                 <span className="inline-flex border border-[rgba(196,169,106,.18)] px-3 py-1">{resolveDomainName(selectedDomain)}</span>
                 <span className="text-[var(--mist)]">路</span>
@@ -2985,8 +2985,8 @@ export function DreamAppPage({
           </Shell>
         )}
         {stage === 'reaction' && selectedChoice && (
-          <Shell time={time} contentClassName="pb-[calc(6rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} contentClassName="pb-[calc(4.75rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))]">
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">角 色 反 应</div>
               <div className="mt-10 flex items-center gap-4">
                 <div className="h-px flex-1 bg-[rgba(196,169,106,.18)]" />
@@ -3040,7 +3040,7 @@ export function DreamAppPage({
           </Shell>
         )}
         {stage === 'ending' && (
-          <Shell time={time} bottomTone={false} contentClassName="pb-[calc(7rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} bottomTone={false} contentClassName="pb-[calc(5rem+var(--app-safe-area-bottom-ui,0px))]">
             <div className="flex flex-1 flex-col justify-center py-8">
               <div className="border-y py-10 text-center" style={{ borderColor: presentation.frameBorder, backgroundColor: presentation.frameFill }}>
                 <div className="text-[34px] font-[200] tracking-[0.22em] text-[var(--paper)]">{endingView.title}</div>
@@ -3095,8 +3095,8 @@ export function DreamAppPage({
           </Shell>
         )}
         {stage === 'aftermath' && (
-          <Shell time={time} scrollable contentClassName="pb-[calc(7rem+env(safe-area-inset-bottom))]">
-            <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]">
+          <Shell time={time} scrollable contentClassName="pb-[calc(5rem+var(--app-safe-area-bottom-ui,0px))]">
+            <div className="flex flex-1 flex-col pb-[calc(3rem+var(--app-safe-area-bottom-ui,0px))]">
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">余响</div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.72)] px-5 py-6">
                 <div className="flex items-center gap-3 border-b border-[var(--border)] pb-4">

@@ -101,8 +101,9 @@ export function MePage({
     <div className="flex-1 flex flex-col h-full overflow-hidden relative" style={containerBgStyle}>
       {resolvedGlobalBackgroundUrl && <img src={resolvedGlobalBackgroundUrl} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Background" />}
       {activeSection === 'main' && (
-          <div 
-            className="flex-1 overflow-y-auto pb-24"
+          <div
+            className="flex-1 overflow-y-auto"
+            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
           >
             {/* Profile Header */}
             <div className="px-6 pt-8 pb-6 rounded-b-[32px] shadow-sm border-b border-zinc-100 backdrop-blur-sm" style={bgStyle}>
@@ -270,11 +271,11 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
       className="absolute inset-0 z-[110] flex flex-col bg-white"
     >
       <div
-        className="flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-5 [webkit-overflow-scrolling:touch]"
+        className="flex-1 overflow-y-auto px-5 pt-5 [webkit-overflow-scrolling:touch]"
         style={{
           paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 24}px`
-            : undefined,
+            ? `${keyboardInset + 16}px`
+            : 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >
@@ -2083,7 +2084,7 @@ export function WorldBookManager({
             <span className="font-bold text-[17px]">{editForm.id ? '编辑设定' : '添加设定'}</span>
             <button onClick={handleSave} className="text-blue-500 font-bold hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors">保存</button>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] space-y-4">
             <div className="space-y-1.5">
               <label className="text-[13px] text-zinc-500">标题</label>
               <input 
@@ -2211,7 +2212,7 @@ export function WorldBookManager({
             ))}
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] space-y-4">
             {filtered.length === 0 && (
               <div className="py-20 text-center text-zinc-300">
                 <Book size={48} className="mx-auto mb-4 opacity-20" />

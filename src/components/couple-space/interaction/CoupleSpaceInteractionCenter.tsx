@@ -56,7 +56,7 @@ export function CoupleSpaceInteractionCenter({
   }
 
   return (
-    <div className="no-scrollbar space-y-4 overflow-y-auto px-4 pb-24 pt-1">
+    <div className="no-scrollbar space-y-4 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-1">
       <button
         type="button"
         onClick={() => setActiveFeature('remembered')}

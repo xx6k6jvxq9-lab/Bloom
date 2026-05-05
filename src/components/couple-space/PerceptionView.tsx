@@ -65,7 +65,7 @@ export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
         <div className="w-10" />
       </div>
 
-      <div className="no-scrollbar flex-1 space-y-6 overflow-y-auto p-4 pb-24">
+      <div className="no-scrollbar flex-1 space-y-6 overflow-y-auto p-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)]">
         <div className="relative overflow-hidden rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
           <div
             className={`absolute inset-0 opacity-10 transition-colors duration-500 ${

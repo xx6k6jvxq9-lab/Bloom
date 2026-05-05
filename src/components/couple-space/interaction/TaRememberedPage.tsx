@@ -182,7 +182,7 @@ export function TaRememberedPage({ user, partner, coupleSpace, chatHistory, onBa
   }, []);
 
   return (
-    <div className="relative overflow-hidden px-4 pb-24 pt-3">
+    <div className="relative overflow-hidden px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-3">
       <style>{`
         @keyframes ta-scroll-float {
           0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
