@@ -46,11 +46,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    // iOS should track the browser-driven visual viewport so installed PWAs and
-    // Safari keep the composer anchored without an extra manual lift. Android
-    // browsers such as Via can keep the shell pinned while the IME overlays the
-    // visual viewport, so they still need the manual path.
-    const manualKeyboardAvoidanceEnabled = isAndroid;
+    // Match the last known-good split:
+    // - iOS browser mode follows the browser-driven viewport on its own.
+    // - iOS standalone and Android browsers (for example Via) still need the
+    //   manual composer lift path.
+    const manualKeyboardAvoidanceEnabled = isStandalone || isAndroid;
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
