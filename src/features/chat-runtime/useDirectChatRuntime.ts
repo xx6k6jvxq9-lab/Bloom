@@ -137,6 +137,32 @@ function createMomentPublishedSystemMessage(characterName: string, timestamp: nu
   };
 }
 
+function appendSystemMessageIfNotDuplicate(messages: ChatMessage[], text: string): ChatMessage[] {
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    return messages;
+  }
+
+  const latestMessage = messages[messages.length - 1];
+  if (
+    latestMessage?.role === 'model'
+    && latestMessage.isSystem
+    && latestMessage.text.trim() === normalizedText
+  ) {
+    return messages;
+  }
+
+  return [
+    ...messages,
+    {
+      role: 'model',
+      text: normalizedText,
+      timestamp: Date.now(),
+      isSystem: true,
+    },
+  ];
+}
+
 function shouldApplyCharacterTts(character: Character) {
   return character.voiceProfile?.enabled === true;
 }
@@ -1701,15 +1727,11 @@ export function useDirectChatRuntime({
           const stabilizedHistory = latestHistory.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
           );
-          setHistory([
-            ...stabilizedHistory,
-            {
-              role: 'model',
-              text: formattedError,
-              timestamp: Date.now(),
-              isSystem: true,
-            },
-          ]);
+          setHistory(
+            latestPendingUserMessage
+              ? appendSystemMessageIfNotDuplicate(stabilizedHistory, formattedError)
+              : stabilizedHistory,
+          );
           setErrorState(formattedError);
           activeAssistantMessageIdRef.current = null;
           activeAssistantRenderCountRef.current = 0;
@@ -2576,7 +2598,7 @@ export function useDirectChatRuntime({
         return;
       }
       console.error('Chat error:', sendError);
-      setHistory([...newHistory, { role: 'model', text: formatChatApiError(sendError), timestamp: Date.now() }]);
+      setHistory(appendSystemMessageIfNotDuplicate(newHistory, formatChatApiError(sendError)));
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;

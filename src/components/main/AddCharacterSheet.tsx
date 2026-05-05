@@ -4,6 +4,7 @@ import { ChevronLeft, ImagePlus, Upload } from 'lucide-react';
 import type { Character } from '../../types';
 import { extractImageUrls } from '../../utils';
 import { extractCompatibleCharacterImport } from '../../features/import/importCompat';
+import { saveUploadedFile } from '../../features/persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
@@ -289,14 +290,6 @@ const buildImportedCharacterFromData = (
   } satisfies Character;
 };
 
-const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
-    reader.readAsDataURL(file);
-  });
-
 export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<'edit' | 'import'>('edit');
@@ -363,14 +356,14 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
 
     if (isPngCard) {
       try {
-        const [buffer, dataUrl] = await Promise.all([file.arrayBuffer(), readFileAsDataUrl(file)]);
+        const [buffer, persistedAvatar] = await Promise.all([file.arrayBuffer(), saveUploadedFile(file)]);
         const rawCard = extractTavernCharacterData(buffer);
         const normalized = extractCompatibleCharacterImport(JSON.stringify(rawCard));
         if (!normalized) {
           throw new Error('酒馆角色卡里缺少可导入的角色字段');
         }
         setImportJson(JSON.stringify(rawCard, null, 2).slice(0, CHARACTER_FIELD_LIMITS.importText));
-        onSave(buildImportedCharacterFromData(normalized, { avatar: dataUrl }));
+        onSave(buildImportedCharacterFromData(normalized, { avatar: persistedAvatar }));
       } catch (e: any) {
         alert(`导入失败：${e.message}`);
       }
@@ -448,12 +441,15 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        readFileAsDataUrl(file)
-                          .then((url) => setAvatar(url))
-                          .catch((error) => alert(error.message || '图片读取失败'));
+                        try {
+                          const persistedValue = await saveUploadedFile(file);
+                          setAvatar(persistedValue);
+                        } catch (error: any) {
+                          alert(error?.message || '图片读取失败');
+                        }
                         e.currentTarget.value = '';
                       }}
                     />

@@ -57,8 +57,22 @@ type EndingSequencePayload = {
   chatFollowup: string;
 };
 
+type EndingParticle = {
+  x: number;
+  y: number;
+  color: string;
+  size: number;
+  vx: number;
+  vy: number;
+  life: number;
+  decay: number;
+  delay: number;
+  wiggle: number;
+};
+
 const DATING_STICKERS = ['🥺', '😤', '😭', '😳', '😎', '❤️', '(贴贴)', '(抱抱)', '(委屈)', '(不理你了)'];
 const DEFAULT_DATING_ACCENT = '#92EBF2';
+const DATING_PROMPT_HARD_LIMIT = 45000;
 
 const createEmptyGeneratedContent = (session: DateSession, character: Character): DatingGeneratedContent => ({
   background: {
@@ -98,11 +112,15 @@ function hexToRgb(value: string): [number, number, number] | null {
   ];
 }
 
-function buildDatingAccentVars(session: DateSession, character: Character): React.CSSProperties {
+function resolveDatingAccentColor(session: DateSession, character: Character): string {
   const characterAccent = normalizeHexColor(character.bubbleColor) || DEFAULT_DATING_ACCENT;
-  const accent = session.accentColorMode === 'character'
+  return session.accentColorMode === 'character'
     ? characterAccent
     : normalizeHexColor(session.accentColor) || characterAccent;
+}
+
+function buildDatingAccentVars(session: DateSession, character: Character): React.CSSProperties {
+  const accent = resolveDatingAccentColor(session, character);
   const rgb = hexToRgb(accent) || [146, 235, 242];
 
   return {
@@ -110,7 +128,94 @@ function buildDatingAccentVars(session: DateSession, character: Character): Reac
     '--dating-accent-soft': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.16)`,
     '--dating-accent-strong': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.3)`,
     '--dating-accent-glow': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.45)`,
+    '--dating-accent-muted': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.35)`,
   } as React.CSSProperties;
+}
+
+function parseCssPx(value: string | null | undefined): number {
+  if (!value || value === 'normal') return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildCanvasFont(style: CSSStyleDeclaration): string {
+  const fontStyle = style.fontStyle || 'normal';
+  const fontVariant = style.fontVariant || 'normal';
+  const fontWeight = style.fontWeight || '400';
+  const fontSize = style.fontSize || '16px';
+  const fontFamily = style.fontFamily || 'sans-serif';
+  return `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize} ${fontFamily}`;
+}
+
+function drawTextWithLetterSpacing(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  letterSpacing: number,
+) {
+  if (!text) return;
+  if (!letterSpacing) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+
+  let cursor = x;
+  const chars = Array.from(text);
+  chars.forEach((char, index) => {
+    ctx.fillText(char, cursor, y);
+    const width = ctx.measureText(char).width;
+    cursor += width + (index < chars.length - 1 ? letterSpacing : 0);
+  });
+}
+
+function drawElementTextToCanvas(
+  ctx: CanvasRenderingContext2D,
+  element: HTMLElement,
+  containerRect: DOMRect,
+) {
+  const text = element.textContent?.trim();
+  if (!text) return;
+
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+
+  ctx.save();
+  ctx.font = buildCanvasFont(style);
+  ctx.fillStyle = style.color || '#ffffff';
+  ctx.textBaseline = 'top';
+  drawTextWithLetterSpacing(
+    ctx,
+    text,
+    rect.left - containerRect.left,
+    rect.top - containerRect.top,
+    parseCssPx(style.letterSpacing),
+  );
+  ctx.restore();
+}
+
+function formatEndingCharacterName(name: string): string {
+  const normalized = name.trim();
+  return normalized ? Array.from(normalized).join(' ') : '';
+}
+
+function splitEndingMonologue(text: string): string[] {
+  const normalized = text.replace(/\r/g, '').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const lines = normalized
+    .split('\n')
+    .flatMap((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return [];
+      const matches = trimmed.match(/[^。！？!?…]+(?:[。！？!?…]+|$)/g);
+      return (matches || [trimmed]).map((segment) => segment.trim()).filter(Boolean);
+    })
+    .slice(0, 4);
+
+  return lines.length > 0 ? lines : [normalized];
 }
 
 function extractCandidateJsonObjects(text: string): string[] {
@@ -204,6 +309,10 @@ function buildRawPreview(text: string, maxLength = 240): string {
   }
 
   return `${normalized.slice(0, maxLength)}...`;
+}
+
+function getSafeTextLength(value: string | null | undefined): number {
+  return typeof value === 'string' ? value.length : 0;
 }
 
 function parseGeneratedContent(text: string): Partial<DatingGeneratedContent> | null {
@@ -334,20 +443,59 @@ export function DatingScene({
   const [endingReturnText, setEndingReturnText] = useState('');
   const [endingError, setEndingError] = useState('');
   const [endingRipple, setEndingRipple] = useState<{ x: number; y: number; key: number } | null>(null);
+  const [endingCurtainVisible, setEndingCurtainVisible] = useState(false);
   const [showUnsavedBackDialog, setShowUnsavedBackDialog] = useState(false);
   const requestedStartTokenRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const endingScreenRef = useRef<HTMLButtonElement | null>(null);
+  const endingContentRef = useRef<HTMLDivElement | null>(null);
+  const endingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const endingFlowActiveRef = useRef(false);
   const generationInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const continueGeneratingAfterCloseRef = useRef(false);
+  const endingParticlesRef = useRef<EndingParticle[]>([]);
+  const endingAnimationFrameRef = useRef<number | null>(null);
+  const endingParticleKickoffTimeoutRef = useRef<number | null>(null);
+  const endingCurtainTimeoutRef = useRef<number | null>(null);
+  const endingCompleteTimeoutRef = useRef<number | null>(null);
+
+  const clearEndingVisualTimers = () => {
+    if (endingParticleKickoffTimeoutRef.current !== null) {
+      window.clearTimeout(endingParticleKickoffTimeoutRef.current);
+      endingParticleKickoffTimeoutRef.current = null;
+    }
+    if (endingCurtainTimeoutRef.current !== null) {
+      window.clearTimeout(endingCurtainTimeoutRef.current);
+      endingCurtainTimeoutRef.current = null;
+    }
+    if (endingCompleteTimeoutRef.current !== null) {
+      window.clearTimeout(endingCompleteTimeoutRef.current);
+      endingCompleteTimeoutRef.current = null;
+    }
+  };
+
+  const stopEndingParticleAnimation = () => {
+    if (endingAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(endingAnimationFrameRef.current);
+      endingAnimationFrameRef.current = null;
+    }
+
+    endingParticlesRef.current = [];
+    const canvas = endingCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      clearEndingVisualTimers();
+      stopEndingParticleAnimation();
     };
   }, []);
 
@@ -389,7 +537,10 @@ export function DatingScene({
     setEndingReturnText('');
     setEndingError('');
     setEndingRipple(null);
+    setEndingCurtainVisible(false);
     setShowUnsavedBackDialog(false);
+    clearEndingVisualTimers();
+    stopEndingParticleAnimation();
     setRetryPayload(
       session.pendingRoundRetry
         ? {
@@ -413,7 +564,7 @@ export function DatingScene({
   }, [input]);
 
   useEffect(() => {
-    if (endingState !== 'ready' || !endingMonologue) {
+    if (endingState !== 'ready' || endingDisplayLines.length === 0) {
       setEndingRevealCount(0);
       return;
     }
@@ -422,13 +573,13 @@ export function DatingScene({
     const timer = window.setInterval(() => {
       setEndingRevealCount(prev => {
         const next = prev + 1;
-        if (next >= endingMonologue.length) {
+        if (next >= endingDisplayLines.length) {
           window.clearInterval(timer);
-          return endingMonologue.length;
+          return endingDisplayLines.length;
         }
         return next;
       });
-    }, 42);
+    }, 350);
 
     return () => window.clearInterval(timer);
   }, [endingMonologue, endingState]);
@@ -465,6 +616,152 @@ export function DatingScene({
         backgroundInfo.source === 'character-avatar' ? character.avatar : backgroundInfo.image,
         resolvedBackgroundImageUrl,
       ) || '';
+  const endingDisplayName = formatEndingCharacterName(character.name);
+  const endingDisplayLines = splitEndingMonologue(endingMonologue);
+  const endingHighlightIndex = endingDisplayLines.length > 0 ? endingDisplayLines.length - 1 : -1;
+
+  const buildEndingParticles = () => {
+    const screen = endingScreenRef.current;
+    const content = endingContentRef.current;
+    const canvas = endingCanvasRef.current;
+
+    if (!screen || !content || !canvas) {
+      return [] as EndingParticle[];
+    }
+
+    const screenRect = screen.getBoundingClientRect();
+    const width = Math.max(1, Math.round(screenRect.width));
+    const height = Math.max(1, Math.round(screenRect.height));
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+    if (!offscreenCtx) {
+      return [] as EndingParticle[];
+    }
+
+    const drawableElements = content.querySelectorAll<HTMLElement>(
+      '.dating-scene__ending-name, .dating-scene__ending-line',
+    );
+
+    drawableElements.forEach((element) => {
+      drawElementTextToCanvas(offscreenCtx, element, screenRect);
+    });
+
+    const density = 2;
+    const imageData = offscreenCtx.getImageData(0, 0, width, height).data;
+    const particles: EndingParticle[] = [];
+
+    for (let y = 0; y < height; y += density) {
+      for (let x = 0; x < width; x += density) {
+        const index = (y * width + x) * 4;
+        const alpha = imageData[index + 3];
+        if (alpha <= 35) continue;
+
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.12 + Math.random() * 0.5;
+
+        particles.push({
+          x: x + (Math.random() - 0.5) * density,
+          y: y + (Math.random() - 0.5) * density,
+          color: `rgba(${imageData[index]}, ${imageData[index + 1]}, ${imageData[index + 2]}, ${(alpha / 255).toFixed(2)})`,
+          size: 0.55 + Math.random() * 0.9,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 0.15,
+          life: 1,
+          decay: 0.004 + Math.random() * 0.005,
+          delay: Math.random() * 55,
+          wiggle: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+
+    return particles;
+  };
+
+  const finalizeEndingReturn = (archivedSession: SceneSessionState) => {
+    clearEndingVisualTimers();
+    endingCompleteTimeoutRef.current = window.setTimeout(() => {
+      endingFlowActiveRef.current = false;
+      onEndDateComplete({
+        archivedSession,
+        returnChatText: endingReturnText.trim(),
+      });
+    }, 2800);
+  };
+
+  const revealEndingCurtain = (archivedSession: SceneSessionState) => {
+    stopEndingParticleAnimation();
+    setEndingCurtainVisible(true);
+    finalizeEndingReturn(archivedSession);
+  };
+
+  const startEndingParticleAnimation = (archivedSession: SceneSessionState) => {
+    const canvas = endingCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) {
+      revealEndingCurtain(archivedSession);
+      return;
+    }
+
+    const particles = buildEndingParticles();
+    if (particles.length === 0) {
+      revealEndingCurtain(archivedSession);
+      return;
+    }
+
+    endingParticlesRef.current = particles;
+
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      let alive = 0;
+      endingParticlesRef.current.forEach((particle) => {
+        if (particle.delay > 0) {
+          particle.delay -= 1;
+          alive += 1;
+          return;
+        }
+
+        particle.wiggle += 0.04;
+        particle.vx += Math.sin(particle.wiggle) * 0.007;
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.life -= particle.decay;
+
+        if (particle.life <= 0) {
+          return;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, particle.life * particle.life);
+        ctx.fillStyle = particle.color;
+        if (particle.size > 1.2) {
+          ctx.shadowBlur = 3;
+          ctx.shadowColor = particle.color;
+        }
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size * Math.max(particle.life, 0.35), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        alive += 1;
+      });
+
+      if (alive > 0) {
+        endingAnimationFrameRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      endingAnimationFrameRef.current = null;
+      revealEndingCurtain(archivedSession);
+    };
+
+    tick();
+  };
 
   const saveSession = (nextSession: SceneSessionState, options?: { preserveSaved?: boolean }) => {
     const normalizedMessages = normalizeDateSessionMessages(nextSession);
@@ -569,6 +866,7 @@ export function DatingScene({
       '要求：',
       '- monologue 必须是角色心里正在想的话，偏克制、收束、带回味，不要写动作说明。',
       '- monologue 只能 1 到 2 句。',
+      '- monologue 优先写成适合视觉断行的短句结构，最好能自然切成 2 到 4 行，最后一句更适合作为收束高亮。',
       '- chatFollowup 必须是线上聊天语境的一句话，不要再写线下现场动作，不要继续约会场景描写。',
       '- chatFollowup 要自然像回到聊天软件后的主动开口。',
       temporalContext,
@@ -625,6 +923,9 @@ export function DatingScene({
     setEndingReturnText('');
     setEndingRevealCount(0);
     setEndingRipple(null);
+    setEndingCurtainVisible(false);
+    clearEndingVisualTimers();
+    stopEndingParticleAnimation();
     endingFlowActiveRef.current = true;
     setEndingState('generating');
 
@@ -651,9 +952,9 @@ export function DatingScene({
       return;
     }
 
-    const monologueReady = !endingMonologue || endingRevealCount >= endingMonologue.length;
-    if (!monologueReady) {
-      setEndingRevealCount(endingMonologue.length);
+    const linesReady = endingDisplayLines.length === 0 || endingRevealCount >= endingDisplayLines.length;
+    if (!linesReady) {
+      setEndingRevealCount(endingDisplayLines.length);
       return;
     }
 
@@ -664,7 +965,9 @@ export function DatingScene({
       key: Date.now(),
     });
     setEndingState('returning');
-    endingFlowActiveRef.current = false;
+    setEndingCurtainVisible(false);
+    clearEndingVisualTimers();
+    stopEndingParticleAnimation();
 
     const archivedSession: SceneSessionState = {
       ...currentSession,
@@ -672,12 +975,17 @@ export function DatingScene({
       endedAt: currentSession.endedAt || Date.now(),
     };
 
-    window.setTimeout(() => {
-      onEndDateComplete({
-        archivedSession,
-        returnChatText: endingReturnText.trim(),
-      });
-    }, 720);
+    endingParticleKickoffTimeoutRef.current = window.setTimeout(() => {
+      const maybeFonts = typeof document !== 'undefined' && 'fonts' in document
+        ? (document.fonts.ready as Promise<unknown>)
+        : Promise.resolve();
+
+      maybeFonts
+        .catch(() => undefined)
+        .finally(() => {
+          startEndingParticleAnimation(archivedSession);
+        });
+    }, 90);
   };
 
   const replaceMessage = (messages: DateMessage[], messageId: string, updater: (message: DateMessage) => DateMessage) =>
@@ -759,6 +1067,19 @@ export function DatingScene({
           latestUserInput,
         }),
       });
+
+      console.info('[dating-scene] prompt diagnostics', {
+        promptLength: prompt.length,
+        avatarLength: getSafeTextLength(character.avatar),
+        backgroundImageLength: getSafeTextLength(pendingSession.backgroundImage),
+        shortTermSummaryLength: getSafeTextLength(character.shortTermSummary),
+        longTermMemoryProfileLength: getSafeTextLength(character.longTermMemoryProfile),
+        backgroundSource: pendingSession.backgroundSource || 'character-avatar',
+      });
+
+      if (prompt.length > DATING_PROMPT_HARD_LIMIT) {
+        throw new Error('本次约会上下文过大，已阻止发送。请优先检查该角色头像、约会背景或本地记忆数据是否异常。');
+      }
 
       const rawText = await generateTextFromMessagesWithConfig({
         activeConfig,
@@ -1327,28 +1648,61 @@ export function DatingScene({
             onClick={handleEndingScreenClick}
           >
             <div className="dating-scene__ending-backdrop" />
-            <div className="dating-scene__ending-content">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={endingState === 'generating' ? 'pending-thought' : 'ending-monologue'}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.32, ease: 'easeOut' }}
-                  className="dating-scene__ending-text"
-                >
-                  {endingState === 'generating' ? '他想说点什么' : endingMonologue.slice(0, endingRevealCount)}
-                </motion.div>
-              </AnimatePresence>
-              {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
-              {endingState === 'ready' && !endingError && endingMonologue && endingRevealCount >= endingMonologue.length ? (
-                <div className="dating-scene__ending-hint">
-                  轻触页面，回到聊天
+            {endingState === 'generating' ? (
+              <div className="dating-scene__ending-wait">
+                <div className="dating-scene__ending-stars" aria-hidden="true">
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--white" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
+                  <span className="dating-scene__ending-star dating-scene__ending-star--accent" />
                 </div>
-              ) : null}
-              {endingState === 'ready' && endingError ? (
-                <div className="dating-scene__ending-hint">轻触页面，结束约会并回到聊天</div>
-              ) : null}
+                <div className="dating-scene__ending-wait-copy">
+                  <div className="dating-scene__ending-wait-name">{endingDisplayName || character.name}</div>
+                  <div className="dating-scene__ending-wait-sub">正在回想今天</div>
+                </div>
+              </div>
+            ) : (
+              <div
+                ref={endingContentRef}
+                className={`dating-scene__ending-content ${endingState === 'returning' ? 'is-returning' : ''}`}
+              >
+                <div className={`dating-scene__ending-header ${endingDisplayLines.length > 0 || endingError ? 'is-visible' : ''}`}>
+                  <span className="dating-scene__ending-pip" />
+                  <span className="dating-scene__ending-name">{endingDisplayName || character.name}</span>
+                </div>
+                <div className="dating-scene__ending-lines">
+                  {endingDisplayLines.map((line, index) => (
+                    <span
+                      key={`ending-line-${index}-${line}`}
+                      className={`dating-scene__ending-line ${index === endingHighlightIndex ? 'dating-scene__ending-line--highlight' : ''} ${index < endingRevealCount ? 'is-visible' : ''}`}
+                    >
+                      {line}
+                    </span>
+                  ))}
+                </div>
+                <div className={`dating-scene__ending-rule ${endingDisplayLines.length > 0 && endingRevealCount >= endingDisplayLines.length ? 'is-visible' : ''}`} />
+                {endingError ? <div className="dating-scene__ending-error">{endingError}</div> : null}
+                {endingState === 'ready' && !endingError && endingDisplayLines.length > 0 && endingRevealCount >= endingDisplayLines.length ? (
+                  <div className="dating-scene__ending-hint">
+                    轻 触 离 开
+                  </div>
+                ) : null}
+                {endingState === 'ready' && endingError ? (
+                  <div className="dating-scene__ending-hint">轻触页面，结束约会并回到聊天</div>
+                ) : null}
+              </div>
+            )}
+            <canvas ref={endingCanvasRef} className="dating-scene__ending-canvas" />
+            <div className={`dating-scene__ending-curtain ${endingCurtainVisible ? 'is-visible' : ''}`}>
+              <div className="dating-scene__ending-curtain-text">已 离 开 约 会</div>
             </div>
             {endingRipple ? (
               <span
