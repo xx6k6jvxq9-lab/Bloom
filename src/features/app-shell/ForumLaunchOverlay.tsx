@@ -60,9 +60,7 @@ export function ForumLaunchOverlay({
                 <div className="text-[72px] font-[200] tracking-[0.24em] text-zinc-950">界隙</div>
                 <div className="mx-auto mt-6 h-px w-20 bg-[rgba(24,24,27,0.18)]" />
                 <div className="mt-6 text-[11px] tracking-[0.56em] text-zinc-500">白 日 之 下 的 裂 缝</div>
-                <div className="mt-8 text-[15px] font-[300] leading-[2.1] tracking-[0.16em] text-zinc-700">
-                  {ready ? '入口已经展开。轻触屏幕，进入今天的界隙。' : '正在翻开今天的界隙。'}
-                </div>
+                <div className="mt-8 text-[15px] font-[300] leading-[2.1] tracking-[0.16em] text-zinc-700">正在翻开今天的界隙。</div>
                 <div className="mt-8 flex items-center justify-center">
                   <div className="relative h-px w-28 bg-[rgba(24,24,27,0.1)]">
                     <motion.div
@@ -73,9 +71,7 @@ export function ForumLaunchOverlay({
                     />
                   </div>
                 </div>
-                <div className="mt-4 text-[11px] tracking-[0.42em] text-zinc-500">
-                  {ready ? '轻 触 进 入' : '界 面 汇 流 中'}
-                </div>
+                <div className="mt-4 text-[11px] tracking-[0.42em] text-zinc-500">界 面 汇 流 中</div>
               </motion.div>
             </div>
 
@@ -84,15 +80,11 @@ export function ForumLaunchOverlay({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (ready) {
-                    onEnter();
-                    return;
-                  }
                   onCancel();
                 }}
                 className="border border-zinc-300 bg-white/70 px-5 py-2 text-[11px] tracking-[0.36em] text-zinc-700 backdrop-blur-sm transition-colors hover:bg-white"
               >
-                {ready ? '进 入 界 隙' : '取 消'}
+                取 消
               </button>
             </div>
           </div>

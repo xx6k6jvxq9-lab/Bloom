@@ -233,7 +233,7 @@ export default function App() {
         setForumLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
         forumLaunchEnterTimerRef.current = window.setTimeout(() => {
           enterForumFromLaunch(token, targetPostId);
-        }, 320);
+        }, 160);
       })
       .catch((error) => {
         console.warn('[app-shell] Forum launch preload failed', error);
