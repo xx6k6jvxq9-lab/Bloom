@@ -72,6 +72,13 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
       const activeElement = document.activeElement;
       const hasTextEntryFocus = isTextEntryElement(activeElement);
+      const phoneContainer = document.getElementById('phone-container');
+      const renderedShellHeight = Math.round(phoneContainer?.getBoundingClientRect().height ?? 0);
+      const renderedRootHeight = Math.round(document.documentElement.clientHeight || 0);
+      const shellTracksVisualViewport = visualViewportHeight > 0 && (
+        (renderedShellHeight > 0 && Math.abs(renderedShellHeight - visualViewportHeight) <= 2)
+        || (renderedRootHeight > 0 && Math.abs(renderedRootHeight - visualViewportHeight) <= 2)
+      );
 
       let resolvedLayoutViewportHeight = currentInnerHeight;
       let resolvedKeyboardInset = 0;
@@ -115,12 +122,16 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       } else {
         // iOS should follow the browser-driven viewport like yesterday's
         // working behavior instead of keeping a synthetic stable layout height.
-        resolvedKeyboardInset = Math.max(
+        const rawKeyboardInset = Math.max(
           0,
           Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
         );
+        // Some iOS environments already shrink the rendered shell to the
+        // visual viewport. Lifting composers again creates the blank gap that
+        // users are seeing above the keyboard, so zero the manual inset there.
+        resolvedKeyboardInset = shellTracksVisualViewport ? 0 : rawKeyboardInset;
         resolvedKeyboardVisible = hasTextEntryFocus && (
-          resolvedKeyboardInset > 120
+          rawKeyboardInset > 120
           || currentInnerHeight - visualViewportHeight > 120
           || (isIosLike && viewportOffsetTop > 0)
         );
