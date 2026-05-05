@@ -46,10 +46,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    // Android browsers such as Via can keep the shell pinned to the stable
-    // viewport while the IME overlays the visual viewport, so bottom composers
-    // need the same manual lift that standalone mode uses.
-    const manualKeyboardAvoidanceEnabled = isStandalone || isAndroid;
+    // iOS should track the browser-driven visual viewport so installed PWAs and
+    // Safari keep the composer anchored without an extra manual lift. Android
+    // browsers such as Via can keep the shell pinned while the IME overlays the
+    // visual viewport, so they still need the manual path.
+    const manualKeyboardAvoidanceEnabled = isAndroid;
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
@@ -82,21 +83,13 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       }
 
       const viewportHeightDelta = Math.max(0, nextStableLayoutViewportHeight - visualViewportHeight);
-      const innerHeightInset = Math.max(0, nextStableLayoutViewportHeight - currentInnerHeight);
+      const browserViewportCollapsed = currentInnerHeight < nextStableLayoutViewportHeight - 120;
       const viewportSettled = viewportHeightDelta <= 24 && viewportOffsetTop === 0;
-      const keyboardInset = Math.max(
-        0,
-        Math.round(
-          Math.max(
-            nextStableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop,
-            innerHeightInset,
-          ),
-        ),
-      );
+      const keyboardInset = Math.max(0, Math.round(nextStableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop));
       const keyboardVisible = hasTextEntryFocus && (
         keyboardInset > 120
         || viewportHeightDelta > 120
-        || innerHeightInset > 120
+        || (!manualKeyboardAvoidanceEnabled && browserViewportCollapsed)
         || (isIosLike && viewportOffsetTop > 0)
       );
 

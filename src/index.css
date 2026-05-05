@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
+html {
+  --app-active-viewport-height: var(--app-viewport-height, 100dvh);
+}
+
 html,
 body,
 #root {
   height: 100%;
-  min-height: var(--app-viewport-height, 100dvh);
+  min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
 }
 
 html {
@@ -16,7 +20,7 @@ body {
   margin: 0;
   background: #09090b;
   overflow-x: hidden;
-  min-height: var(--app-viewport-height, 100dvh);
+  min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
 }
 
 .app-shell {
@@ -24,7 +28,7 @@ body {
   max-width: 100%;
   height: 100%;
   min-height: 100%;
-  min-height: var(--app-viewport-height, 100dvh);
+  min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
 }
 
 .app-phone-container {
@@ -82,8 +86,8 @@ body {
     inset: 0;
     width: 100%;
     max-width: 100%;
-    height: var(--app-viewport-height, 100dvh);
-    min-height: var(--app-viewport-height, 100dvh);
+    height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
+    min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
     overflow: hidden;
     background: #09090b;
   }
@@ -95,8 +99,8 @@ body {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0;
-    height: var(--app-viewport-height, 100dvh) !important;
-    min-height: var(--app-viewport-height, 100dvh);
+    height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh)) !important;
+    min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -206,6 +210,10 @@ body {
     background-color: #fff;
   }
 
+}
+
+html[data-keyboard-open='true']:not([data-android='true']) {
+  --app-active-viewport-height: var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh));
 }
 
 @media (display-mode: standalone) {

@@ -281,8 +281,11 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const isStorageReady = hasHydratedStorage;
-  const appChromeBackground = '#09090b';
-  const phoneContainerBackgroundClass = 'bg-black';
+  const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
+  const phoneContainerBackgroundClass =
+    activeApp === 'home' || activeApp === 'dream'
+      ? 'bg-black'
+      : 'bg-zinc-50';
   const browserKeyboardViewportCollapsed = !isStandalone
     && visualViewportHeight > 0
     && layoutViewportHeight > 0
@@ -337,15 +340,23 @@ export default function App() {
 
     const html = document.documentElement;
     const body = document.body;
+    const rootElement = document.getElementById('root');
     const previousHtmlBackground = html.style.backgroundColor;
     const previousBodyBackground = body.style.backgroundColor;
+    const previousRootBackground = rootElement?.style.backgroundColor ?? '';
 
     html.style.backgroundColor = appChromeBackground;
     body.style.backgroundColor = appChromeBackground;
+    if (rootElement) {
+      rootElement.style.backgroundColor = appChromeBackground;
+    }
 
     return () => {
       html.style.backgroundColor = previousHtmlBackground;
       body.style.backgroundColor = previousBodyBackground;
+      if (rootElement) {
+        rootElement.style.backgroundColor = previousRootBackground;
+      }
     };
   }, [appChromeBackground]);
 
