@@ -1332,7 +1332,7 @@ export default function MusicApp({
                   {lyrics.length > 0 ? (
                     <div
                       className="space-y-3 px-4 text-center sm:space-y-4 sm:px-6"
-                      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+                      style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
                     >
                       {lyrics.map((line, index) => {
                         const isActive = index === activeLyricIndex;
@@ -1599,7 +1599,7 @@ export default function MusicApp({
           className={`flex-1 overflow-y-auto px-6 ${
             hasSearchQuery ? "space-y-6 pt-3" : "space-y-10 pt-6"
           }`}
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}
+          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
         >
           {hasSearchQuery ? (
             <div className="-mt-1">
@@ -1913,7 +1913,7 @@ export default function MusicApp({
 
         <div
           className="flex-1 overflow-y-auto px-6 pt-6 space-y-6"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 32px)" }}
+          style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 16px)" }}
         >
           {/* Quick Stats Grid - Smaller */}
           <div className="grid grid-cols-2 gap-3">

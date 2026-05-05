@@ -178,6 +178,20 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
+  const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
+  const appSafeAreaBottomUi = isStandalone
+    ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
+    : hideMockSystemChrome
+      ? '0px'
+      : '12px';
+  const phoneContainerStyle = {
+    ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
+    backgroundColor: appChromeBackground,
+    '--app-safe-area-bottom-full': appSafeAreaBottomFull,
+    '--app-safe-area-bottom': appSafeAreaBottomFull,
+    '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
+    '--app-mock-home-indicator-space': !isStandalone && !hideMockSystemChrome ? '12px' : '0px',
+  } as React.CSSProperties;
 
   const loadPendingDreamToast = () => {
     if (typeof window === 'undefined') {
@@ -343,10 +357,7 @@ export default function App() {
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
         }`}
-        style={{
-          ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
-          backgroundColor: appChromeBackground,
-        }}
+        style={phoneContainerStyle}
       >
         
         {/* Status Bar */}

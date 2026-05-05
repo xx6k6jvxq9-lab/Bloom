@@ -1955,7 +1955,7 @@ export function HomeScreen({
       {pageCount > 1 && (
         <div
           className="homeDesktop__pageDots pointer-events-auto absolute left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2"
-          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + safeAreaBottom + 10}px` }}
+          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + 8}px` }}
         >
           {Array.from({ length: pageCount }, (_, page) => (
             <button

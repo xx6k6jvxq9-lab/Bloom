@@ -167,6 +167,7 @@ export function getDesktopLayoutMetrics({
   const topWidgetHeight = Math.round(preset.topWidgetHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 14 : 10) : 0));
   const dockHeight = Math.round(preset.dockHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 4 : 2) : 0));
   const dockBottomGap = sizeTier === 'compact' ? 0 : isTallPhone ? 2 : sizeTier === 'large' ? 4 : 2;
+  const effectiveSafeAreaBottom = Math.max(0, safeAreaBottom - 6);
   const desktopStartYBase = clamp(
     Math.round(safeHeight * (sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),
     preset.startY - 6,
@@ -177,7 +178,7 @@ export function getDesktopLayoutMetrics({
     desktopStartYBase - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 28 : 18) : sizeTier === 'regular' ? 4 : 0),
   );
   const usableTop = desktopStartY;
-  const usableBottom = safeHeight - safeAreaBottom - dockHeight - dockBottomGap + (isTallPhone && sizeTier !== 'compact' ? (isWideTallPhone ? 18 : 12) : 0);
+  const usableBottom = safeHeight - effectiveSafeAreaBottom - dockHeight - dockBottomGap + (isTallPhone && sizeTier !== 'compact' ? (isWideTallPhone ? 18 : 12) : 0);
   const usableHeight = Math.max(320, usableBottom - usableTop);
   const slotHeight = clamp(
     Math.round(
@@ -196,7 +197,7 @@ export function getDesktopLayoutMetrics({
     containerHeight: safeHeight,
     sizeTier,
     isTallPhone,
-    safeAreaBottom,
+    safeAreaBottom: effectiveSafeAreaBottom,
     dockBottomGap,
     desktopPaddingX,
     desktopStartY,

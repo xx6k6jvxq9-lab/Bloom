@@ -303,7 +303,8 @@ export function MainApp({
       }}
       footer={footer}
       hideFooterWhenKeyboardOpen
-      footerClassName="absolute bottom-0 left-0 right-0 z-20 flex h-[84px] items-center justify-around rounded-t-[32px] border-t border-zinc-100 bg-white px-4 pb-4 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
+      footerClassName="absolute bottom-0 left-0 right-0 z-20 flex min-h-[72px] items-center justify-around rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 pt-2 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
+      footerStyle={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 8px)' }}
     >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (
@@ -347,7 +348,7 @@ export function MainApp({
         </AnimatePresence>
 
         {activeTab === 'chat' && (
-          <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4 space-y-3">
+          <div className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+4.25rem)] pt-4 space-y-3">
             {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
               <div className="p-12 text-center text-zinc-300 space-y-3">
                 <Users size={48} className="mx-auto opacity-20" />

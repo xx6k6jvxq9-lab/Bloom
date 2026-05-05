@@ -507,7 +507,7 @@ function Shell({
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-48 bg-[linear-gradient(180deg,rgba(8,12,24,.92),rgba(8,12,24,0))]" />
       {bottomTone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-[linear-gradient(0deg,rgba(8,12,24,.96),rgba(8,12,24,0))]" /> : null}
       <div
-        className={`relative z-10 flex h-full min-h-full min-w-0 flex-col px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
+        className={`relative z-10 flex h-full min-h-full min-w-0 flex-col px-5 pb-[calc(2.75rem+var(--app-safe-area-bottom-ui,0px))] pt-8 sm:px-7 ${scrollable ? 'overflow-y-auto overscroll-contain touch-pan-y' : ''} ${contentClassName}`}
         style={scrollable ? { WebkitOverflowScrolling: 'touch' } : undefined}
       >
         {children}
@@ -1095,7 +1095,7 @@ function HomeV2({
             <div className="pt-2 text-[14px] font-[300] tracking-[0.22em] text-[var(--mist)]">点击头像，选择今夜入梦的角色</div>
           )}
         </div>
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur-md" style={{ borderColor: 'rgba(196,169,106,.26)', backgroundColor: 'rgba(9,14,25,.68)' }}>
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t px-5 pb-[calc(1rem+var(--app-safe-area-bottom-ui,0px))] pt-4 backdrop-blur-md" style={{ borderColor: 'rgba(196,169,106,.26)', backgroundColor: 'rgba(9,14,25,.68)' }}>
           <div className="grid grid-cols-3 text-center text-[12px] tracking-[0.28em]">
             <button type="button" className="space-y-2" style={{ color: '#D9C08A', textShadow: '0 0 14px rgba(196,169,106,.32)' }}>
               <div>今夜</div>
@@ -1292,7 +1292,7 @@ function TagsStageV2({
           </div>
         ) : null}
 
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-[calc(1rem+var(--app-safe-area-bottom-ui,0px))] pt-5">
           <div className="mx-auto flex max-w-[390px] items-center justify-between gap-4">
             <div className="text-[12px] tracking-[0.16em] text-[var(--jade)]">已选 {selectedLabels.length} 项</div>
             <button
@@ -1434,7 +1434,7 @@ function EntrySheet({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.65, ease: [0.2, 0.8, 0.4, 1] }}
-        className="absolute inset-x-0 bottom-0 max-h-[calc(100%-16px)] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-5 [webkit-overflow-scrolling:touch]"
+        className="absolute inset-x-0 bottom-0 max-h-[calc(100%-16px)] overflow-y-auto overscroll-contain touch-pan-y border-t border-[var(--border)] bg-[var(--deep)] px-8 pb-[calc(5rem+var(--app-safe-area-bottom-ui,0px))] pt-5 [webkit-overflow-scrolling:touch]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto h-[3px] w-10 rounded-[2px] bg-[var(--mist)] opacity-30" />

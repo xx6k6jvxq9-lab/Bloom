@@ -504,7 +504,7 @@ export function MomentsApp({
           </button>
         </div>
         <div
-          className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4"
+          className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-4"
           style={{
             paddingBottom: manualKeyboardAvoidanceEnabled && publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
               ? `${keyboardInset + 16}px`
@@ -584,14 +584,14 @@ export function MomentsApp({
   return (
     <div className="relative flex-1 min-h-0">
       <div
-        className="h-full overflow-y-auto pb-24"
+        className="h-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+4rem)]"
         style={{
           backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundColor: resolvedMomentsBackgroundUrl ? 'transparent' : '#fafafa',
           paddingBottom: commentingOn
-            ? 'calc(env(safe-area-inset-bottom, 0px) + 11rem)'
+            ? 'calc(var(--app-safe-area-bottom-ui, 0px) + 10rem)'
             : undefined,
         }}
       >
@@ -896,7 +896,7 @@ export function MomentsApp({
           className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
         >
           <div
-            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
+            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
             style={{
               transform: manualKeyboardAvoidanceEnabled && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
                 ? `translateY(-${keyboardInset}px)`
