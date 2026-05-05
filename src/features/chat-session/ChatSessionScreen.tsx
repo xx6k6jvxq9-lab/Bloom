@@ -51,6 +51,14 @@ import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/D
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
+const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
+
+type ParsedGameCardDisplayData = {
+  game: 'qna' | 'tod' | 'blocks';
+  type: 'question' | 'answer' | 'truth' | 'dare' | 'request_question' | 'result';
+  question?: string;
+  content: string;
+};
 
 function getDirectReplyPreviewClass(isUser: boolean) {
   return `chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 text-zinc-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] backdrop-blur-sm ${
@@ -247,10 +255,23 @@ function getDirectTextContentStyle({
   };
 }
 
-function parseGameCardPayload(message: ChatMessage) {
+type ParsedGameCardPayloadState =
+  | {
+      status: 'ok';
+      payload: {
+        data: ParsedGameCardDisplayData;
+        translation: string;
+      };
+    }
+  | { status: 'incomplete' }
+  | { status: 'invalid'; error: unknown };
+
+function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadState {
   const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
   const gameCardMatch = message.text.match(gameCardRegex);
-  if (!gameCardMatch) return null;
+  if (!gameCardMatch) {
+    return { status: 'invalid', error: new Error('Not a GAME_CARD payload.') };
+  }
 
   try {
     let jsonString = gameCardMatch[1].trim();
@@ -263,31 +284,55 @@ function parseGameCardPayload(message: ChatMessage) {
 
     const jsonStart = jsonString.indexOf('{');
     const jsonEnd = jsonString.lastIndexOf('}');
-    if (jsonStart !== -1 && jsonEnd !== -1) {
-      jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+      return { status: 'incomplete' };
     }
+    jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
 
-    const gameData = JSON.parse(jsonString);
+    const gameData = JSON.parse(jsonString) as Partial<ParsedGameCardDisplayData>;
     const legacyTranslationParts = getLegacyTranslationParts(message.text);
 
+    if (
+      (gameData.game !== 'qna' && gameData.game !== 'tod' && gameData.game !== 'blocks')
+      || (
+        gameData.type !== 'question'
+        && gameData.type !== 'answer'
+        && gameData.type !== 'truth'
+        && gameData.type !== 'dare'
+        && gameData.type !== 'request_question'
+        && gameData.type !== 'result'
+      )
+      || typeof gameData.content !== 'string'
+    ) {
+      return { status: 'invalid', error: new Error('GAME_CARD payload shape is invalid.') };
+    }
+
     return {
-      data: {
-        ...gameData,
-        ...(typeof gameData.content === 'string'
-          ? { content: sanitizePipeMarkers(gameData.content, '\n') }
-          : {}),
-        ...(typeof gameData.question === 'string'
-          ? { question: sanitizePipeMarkers(gameData.question, '\n') }
-          : {}),
+      status: 'ok',
+      payload: {
+        data: {
+          game: gameData.game,
+          type: gameData.type,
+          content: sanitizePipeMarkers(gameData.content, '\n'),
+          ...(typeof gameData.question === 'string'
+            ? { question: sanitizePipeMarkers(gameData.question, '\n') }
+            : {}),
+        },
+        translation: sanitizePipeMarkers(
+          message.translation?.trim() || legacyTranslationParts.translation,
+          '\n',
+        ),
       },
-      translation: sanitizePipeMarkers(
-        message.translation?.trim() || legacyTranslationParts.translation,
-        '\n',
-      ),
     };
   } catch (error) {
-    console.warn('Ignoring invalid game card payload.', error);
-    return null;
+    const messageText = error instanceof Error ? error.message : String(error ?? '');
+    if (
+      /unterminated string|unexpected end of json input|expected ',' or '}'/i.test(messageText)
+      || !message.text.trim().endsWith('}')
+    ) {
+      return { status: 'incomplete' };
+    }
+    return { status: 'invalid', error };
   }
 }
 
@@ -1479,7 +1524,6 @@ export function ChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
-      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
       || !keyboardInset
       || document.activeElement !== inputTextareaRef.current
@@ -1495,7 +1539,7 @@ export function ChatSessionScreen({
       }
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
+  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1661,7 +1705,7 @@ export function ChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-viewport-height, 100dvh)';
+    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
     bottom: footerKeyboardOffset > 0
       ? `${footerKeyboardOffset}px`
@@ -2053,9 +2097,37 @@ export function ChatSessionScreen({
                           );
                         }
 
-                        const gameCardPayload = parseGameCardPayload(msg);
+                        if (msg.text.trim() === GAME_CARD_FAILURE_TOKEN) {
+                          return (
+                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div className="w-64 rounded-2xl border border-red-100 bg-white/95 px-4 py-4 text-center shadow-sm">
+                                <div className="text-[12px] font-semibold text-red-500">卡片生成失败</div>
+                                <div className="mt-1 text-[10px] text-zinc-400">这次没有生成完整内容，可以手动重试一次</div>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void regenerateLatestReplyAt(i);
+                                  }}
+                                  disabled={isLoading}
+                                  className="mt-3 inline-flex items-center justify-center rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  重新生成卡片
+                                </button>
+                              </div>
+                              {showChatMessageTime && (
+                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                  {formatChatMessageTime(msg.timestamp)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
 
-                        if (gameCardPayload) {
+                        const gameCardPayloadState = parseGameCardPayloadState(msg);
+
+                        if (gameCardPayloadState.status === 'ok') {
+                          const gameCardPayload = gameCardPayloadState.payload;
                           return (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                 <div 
@@ -2079,6 +2151,22 @@ export function ChatSessionScreen({
                                 )}
                               </div>
                             );
+                        }
+
+                        if (gameCardPayloadState.status === 'incomplete') {
+                          return (
+                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div className="w-64 rounded-2xl border border-zinc-200 bg-white/90 px-4 py-4 text-center shadow-sm">
+                                <div className="text-[12px] font-semibold text-zinc-700">卡片生成中</div>
+                                <div className="mt-1 text-[10px] text-zinc-400">等待内容完整后展示</div>
+                              </div>
+                              {showChatMessageTime && (
+                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
+                                  {formatChatMessageTime(msg.timestamp)}
+                                </span>
+                              )}
+                            </div>
+                          );
                         }
 
                         if (msg.isVoiceCall) {

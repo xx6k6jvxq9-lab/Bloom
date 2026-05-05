@@ -768,7 +768,6 @@ export function GroupChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
-      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
       || !keyboardInset
       || document.activeElement !== textareaRef.current
@@ -784,7 +783,7 @@ export function GroupChatSessionScreen({
       chatFooterRef.current?.scrollIntoView({ block: 'end' });
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
+  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1050,7 +1049,7 @@ export function GroupChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-viewport-height, 100dvh)';
+    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
     bottom: footerKeyboardOffset > 0
       ? `${footerKeyboardOffset}px`
