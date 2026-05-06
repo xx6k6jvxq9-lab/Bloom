@@ -524,6 +524,7 @@ export function ChatSessionScreen({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
+    isIosBrowserMode,
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
@@ -1711,6 +1712,7 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const useIosBrowserFlowFooter = isIosBrowserMode;
   const useAndroidBrowserKeyboardViewport =
     isAndroid
     && !isStandaloneDisplayMode
@@ -1718,7 +1720,8 @@ export function ChatSessionScreen({
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    manualKeyboardAvoidanceEnabled
+    !useIosBrowserFlowFooter
+    && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1733,17 +1736,25 @@ export function ChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
+    : useIosBrowserFlowFooter
+      ? 'auto'
+      : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: footerKeyboardOffset > 0
-      ? `${footerKeyboardOffset}px`
-      : '0px',
+    ...(useIosBrowserFlowFooter
+      ? {}
+      : {
+          bottom: footerKeyboardOffset > 0
+            ? `${footerKeyboardOffset}px`
+            : '0px',
+        }),
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    transition: useIosBrowserFlowFooter
+      ? 'padding-bottom 180ms ease'
+      : 'bottom 180ms ease, padding-bottom 180ms ease',
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1753,9 +1764,13 @@ export function ChatSessionScreen({
       : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    paddingBottom: useIosBrowserFlowFooter
+      ? '8px'
+      : `${chatFooterHeight + footerKeyboardOffset + 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    scrollPaddingBottom: useIosBrowserFlowFooter
+      ? `${chatFooterHeight + 12}px`
+      : `${chatFooterHeight + footerKeyboardOffset + 12}px`,
   };
 
   if (showSettings) {
@@ -1783,10 +1798,16 @@ export function ChatSessionScreen({
 
   return (
     <motion.div 
-      className="absolute inset-0 flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope"
+      className={`${useIosBrowserFlowFooter ? 'relative' : 'absolute inset-0'} flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope`}
       style={{ 
-        height: chatViewportHeight,
-        minHeight: chatViewportHeight,
+        ...(useIosBrowserFlowFooter
+          ? {
+              minHeight: 'var(--app-ios-browser-height, var(--app-viewport-height, 100svh))',
+            }
+          : {
+              height: chatViewportHeight,
+              minHeight: chatViewportHeight,
+            }),
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -2795,7 +2816,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
+        className={`chat-session-footer chat-footer ${useIosBrowserFlowFooter ? '' : 'absolute inset-x-0 z-20'} ${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (
