@@ -1599,7 +1599,7 @@ export function ChatSessionScreen({
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
-  const directFooterClassName = 'relative z-10 px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
+  const directFooterClassName = 'px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
   let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};

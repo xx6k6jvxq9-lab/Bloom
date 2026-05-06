@@ -908,7 +908,11 @@ export function GroupChatSessionScreen({
     groupHeaderStyle.boxShadow = 'none';
   }
 
-  let groupFooterClassName = `${inputContainerClass} relative z-10`;
+  let groupFooterClassName = inputContainerClass
+    .replace(/\brelative\b/g, '')
+    .replace(/\bz-10\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const groupFooterStyle: React.CSSProperties = {};
   let groupFooterControlTone = {
     iconButton: 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',

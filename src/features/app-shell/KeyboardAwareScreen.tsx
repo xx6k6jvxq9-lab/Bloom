@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { useAppKeyboard } from './AppKeyboardContext';
 import { useKeyboardSafeViewport } from './useKeyboardSafeViewport';
 
@@ -28,12 +28,45 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef: shellRef,
-    enabled: hideFooterWhenKeyboardOpen || manualKeyboardAvoidanceEnabled,
+    enabled: true,
   });
   const keyboardVisible = ownsFocusedKeyboard && (appKeyboardVisible || keyboardInset > 120);
+
+  useEffect(() => {
+    if (
+      typeof window === 'undefined'
+      || typeof document === 'undefined'
+      || manualKeyboardAvoidanceEnabled
+      || !keyboardVisible
+    ) {
+      return undefined;
+    }
+
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement) || !shellRef.current?.contains(activeElement)) {
+      return undefined;
+    }
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        activeElement.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+        });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [keyboardVisible, manualKeyboardAvoidanceEnabled, viewportStyle]);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
@@ -61,10 +94,13 @@ export function KeyboardAwareScreen({
     <div
       ref={shellRef}
       className={className}
-      style={style}
+      style={{
+        ...(style || {}),
+        ...(viewportStyle || {}),
+      }}
     >
       {header}
-      <div {...bodyProps} className={bodyClassName} style={resolvedBodyStyle}>
+      <div {...bodyProps} ref={bodyRef} className={bodyClassName} style={resolvedBodyStyle}>
         {children}
       </div>
       {footer ? (
