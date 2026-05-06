@@ -31,6 +31,7 @@ type MePageProps = {
   masks: Mask[];
   setMasks: (m: Mask[]) => void;
   favorites: FavoriteMessage[];
+  setFavorites?: (favorites: FavoriteMessage[]) => void;
   visualSettings: VisualSettings;
   setVisualSettings: (s: VisualSettings) => void;
   chatHistory: any;
@@ -61,6 +62,7 @@ export function MePage({
   masks, 
   setMasks, 
   favorites, 
+  setFavorites,
   visualSettings, 
   setVisualSettings,
   chatHistory,
@@ -218,6 +220,7 @@ export function MePage({
         {activeSection === 'favorites' && (
           <FavoritesManager 
             favorites={favorites} 
+            setFavorites={setFavorites}
             moments={moments}
             collectedDates={collectedDates}
             characters={characters}
@@ -1212,7 +1215,7 @@ function BackupItem({ title, desc, onClick, globalBackground }: { title: string,
   );
 }
 
-function FavoritesManager({ favorites, moments, collectedDates, characters, onBack, globalBackground }: { favorites: FavoriteMessage[], moments?: any[], collectedDates?: any[], characters?: any[], onBack: () => void, globalBackground?: string }) {
+function FavoritesManager({ favorites, setFavorites, moments, collectedDates, characters, onBack, globalBackground }: { favorites: FavoriteMessage[], setFavorites?: (favorites: FavoriteMessage[]) => void, moments?: any[], collectedDates?: any[], characters?: any[], onBack: () => void, globalBackground?: string }) {
   const [activeCategory, setActiveCategory] = useState('全部');
   const collectedMoments = (moments || []).filter(m => m.isCollected);
   
@@ -1335,9 +1338,23 @@ function FavoritesManager({ favorites, moments, collectedDates, characters, onBa
               <span className="text-[10px] text-zinc-400">{new Date(fav.timestamp).toLocaleDateString()}</span>
             </div>
             <p className="text-[14px] text-zinc-700 leading-relaxed">{fav.text}</p>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="relative z-10 flex justify-end gap-2 pt-2">
               <button className="p-1.5 text-zinc-300 hover:text-zinc-900"><Share2 size={14} /></button>
-              <button className="p-1.5 text-zinc-300 hover:text-red-500"><Trash2 size={14} /></button>
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!setFavorites) return;
+                  setFavorites(favorites.filter((favorite) => favorite.id !== fav.id));
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full p-1.5 text-zinc-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95"
+                aria-label="删除收藏"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           </div>
         ))}

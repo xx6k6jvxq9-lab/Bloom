@@ -461,6 +461,7 @@ export function MainApp({
             masks={appData.masks}
             setMasks={(m) => setAppData(prev => ({ ...prev, masks: m }))}
             favorites={appData.favorites}
+            setFavorites={(favorites) => setAppData(prev => ({ ...prev, favorites }))}
             visualSettings={appData.visualSettings}
             setVisualSettings={(s) => setAppData(prev => ({ ...prev, visualSettings: s }))}
             chatHistory={appData.chatHistory}
