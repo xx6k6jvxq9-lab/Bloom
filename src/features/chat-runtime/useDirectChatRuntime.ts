@@ -16,9 +16,11 @@ import type {
   WorldBookEntry,
 } from '../../types';
 import {
+  evaluateAssistantOutput,
   generateQualityCheckedAssistantReply,
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
+import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -80,6 +82,7 @@ const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
+const STRUCTURED_BILINGUAL_REPLY_TOKEN = '[BILINGUAL_REPLY]';
 
 function isChineseLanguageName(value: string | null | undefined): boolean {
   const normalized = value?.trim().toLowerCase() || '';
@@ -129,6 +132,110 @@ function buildInlineReplyTranslationPrompt(character: Character): string {
     '如果正文被拆成多条短气泡，翻译部分也必须按完全相同的气泡顺序输出，并使用 `|||` 分隔每一条对应翻译。',
     '除 `---TRANSLATION---` 这条分隔线外，不要输出任何额外格式标记。',
   ].join('\n');
+}
+
+function buildStructuredBilingualReplyPrompt(character: Character): string {
+  const targetLanguage = character.replyLanguageMode === 'fixed'
+    ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
+    : (character.nativeLanguage?.trim() || '角色母语');
+
+  return [
+    '## 双语输出协议',
+    `如果本轮包含普通聊天正文，必须只输出一个可机读协议，格式固定为：${STRUCTURED_BILINGUAL_REPLY_TOKEN} {"segments":[{"text":"外语正文","translation":"对应的简体中文"}]}`,
+    `text 必须是角色真正会发出的 ${targetLanguage} 正文；translation 必须是与该条正文严格对应的简体中文翻译。`,
+    'segments 的顺序就是最终聊天气泡顺序；如果本轮只需要一个气泡，就只输出一个 segment。',
+    '每个 segment 的 text 和 translation 都必须是单行字符串，不要在字段里换行，不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
+    '如果需要 [reply: ...]、[recall]、[sticker] 这类轻量 cue，把 cue 直接写进 text 字段里；translation 仍然必须填写对应中文。',
+    '如果本轮是纯协议型消息（例如 [GAME_CARD]、[COUPLE_SPACE_INVITE_ACCEPTED]、转账协议）且没有普通正文，可以继续沿用原协议。',
+    '只要本轮存在普通正文，就绝对不要省略 translation，也不要改回旧的 ---TRANSLATION--- 写法。',
+  ].join('\n');
+}
+
+function normalizeStructuredBilingualProtocolLine(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return sanitizePipeMarkers(value, ' ')
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function parseStructuredBilingualReply(text: string): { segments: Array<{ text: string; translation: string }> } | null {
+  const trimmedText = text.trim();
+  if (!trimmedText.startsWith(STRUCTURED_BILINGUAL_REPLY_TOKEN)) {
+    return null;
+  }
+
+  let jsonString = trimmedText.replace(STRUCTURED_BILINGUAL_REPLY_TOKEN, '').trim();
+
+  if (jsonString.startsWith('```json')) {
+    jsonString = jsonString.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+  } else if (jsonString.startsWith('```')) {
+    jsonString = jsonString.replace(/^```\s*/i, '').replace(/\s*```$/, '');
+  }
+
+  const jsonStart = jsonString.indexOf('{');
+  const jsonEnd = jsonString.lastIndexOf('}');
+  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(jsonString.slice(jsonStart, jsonEnd + 1)) as {
+      segments?: Array<{ text?: unknown; translation?: unknown }>;
+    };
+    if (!parsed || !Array.isArray(parsed.segments)) {
+      return null;
+    }
+
+    const segments = parsed.segments
+      .map((segment) => ({
+        text: normalizeStructuredBilingualProtocolLine(segment?.text),
+        translation: normalizeStructuredBilingualProtocolLine(segment?.translation),
+      }))
+      .filter((segment) => segment.text);
+
+    if (!segments.length || segments.some((segment) => !segment.translation)) {
+      return null;
+    }
+
+    return { segments };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStructuredBilingualReplyToLegacyFormat(text: string): string {
+  const parsed = parseStructuredBilingualReply(text);
+  if (!parsed) {
+    return text;
+  }
+
+  const mainText = parsed.segments.map((segment) => segment.text).join('\n');
+  const translationText = parsed.segments.map((segment) => segment.translation).join(' ||| ');
+  return `${mainText}\n\n---TRANSLATION---\n${translationText}`;
+}
+
+function hasRequiredDirectReplyTranslation(text: string): boolean {
+  const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(text);
+  const { mainText, translation } = getLegacyTranslationParts(normalizedText);
+  const visibleMainText = stripCoupleSpaceTokens(stripTransferProtocolText(mainText)).trim();
+
+  if (!visibleMainText) {
+    return true;
+  }
+
+  if (
+    visibleMainText.startsWith('[GAME_CARD]')
+    || visibleMainText === COUPLE_SPACE_INVITE_TOKEN
+    || visibleMainText === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN
+  ) {
+    return true;
+  }
+
+  return translation.trim().length > 0;
 }
 
 function createMomentPublishedSystemMessage(characterName: string, timestamp: number): ChatMessage {
@@ -1531,7 +1638,7 @@ export function useDirectChatRuntime({
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
-          const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
+          const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
             sections: [
@@ -1554,7 +1661,7 @@ export function useDirectChatRuntime({
               buildAvatarActionPromptSection(character, historySnapshot),
               buildAutonomousAvatarLibraryPromptSection(character),
               buildAssistantStickerPromptSection(availableStickers),
-              inlineReplyTranslationEnabled ? buildInlineReplyTranslationPrompt(character) : '',
+              structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
             ].filter(Boolean),
           });
 
@@ -1573,25 +1680,52 @@ export function useDirectChatRuntime({
               ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
               : []),
           ];
-          const qualityResult = await generateQualityCheckedAssistantReply({
-            activeConfig,
-            messages: runtimeMessages,
-            allowBracketActions: shouldAllowBracketActions(character),
-            allowStructuredProtocols: true,
-            onInvalid: (result) => {
-              console.warn('[direct-chat] invalid generated reply rejected', {
-                reason: result.reason,
-                preview: result.cleanedText.slice(0, 120),
+          let finalQualityResult;
+          if (structuredBilingualReplyEnabled) {
+            const structuredConfig: ApiConfig = {
+              ...activeConfig,
+              temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
+            };
+            const responseText = await generateTextFromMessagesWithConfig({
+              activeConfig: structuredConfig,
+              messages: runtimeMessages,
+            });
+            const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(responseText);
+            finalQualityResult = evaluateAssistantOutput(normalizedText, {
+              allowBracketActions: shouldAllowBracketActions(character),
+              allowStructuredProtocols: true,
+            });
+            if (!finalQualityResult.ok) {
+              console.warn('[direct-chat] invalid structured bilingual reply rejected', {
+                reason: finalQualityResult.reason,
+                preview: finalQualityResult.cleanedText.slice(0, 120),
               });
-            },
-          });
+            }
+          } else {
+            finalQualityResult = await generateQualityCheckedAssistantReply({
+              activeConfig,
+              messages: runtimeMessages,
+              allowBracketActions: shouldAllowBracketActions(character),
+              allowStructuredProtocols: true,
+              onInvalid: (result) => {
+                console.warn('[direct-chat] invalid generated reply rejected', {
+                  reason: result.reason,
+                  preview: result.cleanedText.slice(0, 120),
+                });
+              },
+            });
+          }
 
-          if (!qualityResult.ok) {
-            throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
+          if (!finalQualityResult.ok) {
+            throw new Error(`模型返回无效内容：${finalQualityResult.reason || 'unknown'}`);
+          }
+
+          if (structuredBilingualReplyEnabled && !hasRequiredDirectReplyTranslation(finalQualityResult.cleanedText)) {
+            throw new Error('模型未按双语协议返回可显示的中文翻译。');
           }
 
           currentResponseText = applyDirectGameCardBridge({
-            replyText: qualityResult.cleanedText,
+            replyText: finalQualityResult.cleanedText,
             latestUserMessage: latestPendingUserMessage,
           });
           currentResponseText = applyDirectCoupleSpaceBridge({
@@ -1936,7 +2070,7 @@ export function useDirectChatRuntime({
         messages: newHistory,
         intentAnalysis: directIntentAnalysis,
       });
-      const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
+      const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
         sections: [
@@ -1958,7 +2092,7 @@ export function useDirectChatRuntime({
           buildAvatarActionPromptSection(character, newHistory),
           buildAutonomousAvatarLibraryPromptSection(character),
           buildAssistantStickerPromptSection(availableStickers),
-          inlineReplyTranslationEnabled ? buildInlineReplyTranslationPrompt(character) : '',
+          structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
         ].filter(Boolean),
       });
 
@@ -1974,30 +2108,53 @@ export function useDirectChatRuntime({
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
         })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
       ];
-      const qualityResult = await generateQualityCheckedAssistantReply({
-        activeConfig,
-        messages: runtimeMessages,
-        allowBracketActions: shouldAllowBracketActions(character),
-        allowStructuredProtocols: true,
-        onProgress: (streamingText) => {
-          if (activeGenerationIdRef.current !== generationId) {
-            return;
-          }
-
-          const previewText = stripPseudoMomentPrefix(getLegacyTranslationParts(streamingText).mainText);
-          if (!previewText.trim()) {
-            return;
-          }
-
-          updateAssistantMessage(previewText);
-        },
-        onInvalid: (result) => {
-          console.warn('[direct-chat] invalid generated reply rejected', {
-            reason: result.reason,
-            preview: result.cleanedText.slice(0, 120),
+      let qualityResult;
+      if (structuredBilingualReplyEnabled) {
+        const structuredConfig: ApiConfig = {
+          ...activeConfig,
+          temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
+        };
+        const responseText = await generateTextFromMessagesWithConfig({
+          activeConfig: structuredConfig,
+          messages: runtimeMessages,
+        });
+        const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(responseText);
+        qualityResult = evaluateAssistantOutput(normalizedText, {
+          allowBracketActions: shouldAllowBracketActions(character),
+          allowStructuredProtocols: true,
+        });
+        if (!qualityResult.ok) {
+          console.warn('[direct-chat] invalid structured bilingual reply rejected', {
+            reason: qualityResult.reason,
+            preview: qualityResult.cleanedText.slice(0, 120),
           });
-        },
-      });
+        }
+      } else {
+        qualityResult = await generateQualityCheckedAssistantReply({
+          activeConfig,
+          messages: runtimeMessages,
+          allowBracketActions: shouldAllowBracketActions(character),
+          allowStructuredProtocols: true,
+          onProgress: (streamingText) => {
+            if (activeGenerationIdRef.current !== generationId) {
+              return;
+            }
+
+            const previewText = stripPseudoMomentPrefix(getLegacyTranslationParts(streamingText).mainText);
+            if (!previewText.trim()) {
+              return;
+            }
+
+            updateAssistantMessage(previewText);
+          },
+          onInvalid: (result) => {
+            console.warn('[direct-chat] invalid generated reply rejected', {
+              reason: result.reason,
+              preview: result.cleanedText.slice(0, 120),
+            });
+          },
+        });
+      }
 
       if (!qualityResult.ok && effectiveLocationData) {
         activeAssistantMessageIdRef.current = null;
@@ -2008,6 +2165,9 @@ export function useDirectChatRuntime({
 
       if (!qualityResult.ok) {
         throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
+      }
+      if (structuredBilingualReplyEnabled && !hasRequiredDirectReplyTranslation(qualityResult.cleanedText)) {
+        throw new Error('模型未按双语协议返回可显示的中文翻译。');
       }
       if (activeGenerationIdRef.current !== generationId) {
         return;
