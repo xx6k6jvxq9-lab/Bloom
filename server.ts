@@ -2,6 +2,16 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { Readable } from "stream";
 import os from "os";
+import {
+  checkNeteaseQrLogin,
+  clearNeteaseAuthSession,
+  createNeteaseQrLoginImage,
+  createNeteaseQrLoginKey,
+  getAuthenticatedPlaylistDetail,
+  getAuthenticatedUserPlaylists,
+  getNeteaseAuthStatus,
+  resolveAuthenticatedSongUrl,
+} from "./server/neteaseAuth.js";
 
 function getLocalNetworkIp() {
   const interfaces = os.networkInterfaces();
@@ -57,9 +67,252 @@ async function startServer() {
     return finalUrl;
   };
 
+  const getNeteaseSongEntitlement = (song: any) => {
+    const fee = typeof song?.fee === "number" ? song.fee : song?.privilege?.fee;
+    const payed = song?.privilege?.payed;
+
+    if (fee === 1 || fee === 4 || fee === 16 || payed === 1) {
+      return "vip";
+    }
+
+    if (fee === 0 || fee === 8) {
+      return "free";
+    }
+
+    return "unknown";
+  };
+
+  const pickPreviewDurationMs = (song: any) => {
+    const directCandidates = [
+      song?.previewDurationMs,
+      song?.previewDuration,
+      song?.freeTrialInfo?.duration,
+      song?.freeTrialPrivilege?.duration,
+      song?.privilege?.freeTrialInfo?.duration,
+      song?.privilege?.freeTrialPrivilege?.duration,
+    ];
+
+    for (const candidate of directCandidates) {
+      if (Number.isFinite(candidate) && Number(candidate) > 0) {
+        return Number(candidate);
+      }
+    }
+
+    const rangedCandidates = [
+      song?.freeTrialInfo,
+      song?.freeTrialPrivilege,
+      song?.privilege?.freeTrialInfo,
+      song?.privilege?.freeTrialPrivilege,
+    ];
+
+    for (const candidate of rangedCandidates) {
+      const start = Number(candidate?.start);
+      const end = Number(candidate?.end);
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+        return end - start;
+      }
+    }
+
+    return null;
+  };
+
+  const pickPreviewDurationFromSongUrl = (freeTrialInfo: any) => {
+    if (!freeTrialInfo || typeof freeTrialInfo !== "object") {
+      return null;
+    }
+
+    const start = Number(freeTrialInfo.start);
+    const end = Number(freeTrialInfo.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return end - start;
+    }
+
+    const duration = Number(freeTrialInfo.duration);
+    if (Number.isFinite(duration) && duration > 0) {
+      return duration;
+    }
+
+    return null;
+  };
+
+  const fetchNeteaseSongDetail = async (id: string | number) => {
+    const response = await fetch(
+      `https://music.163.com/api/song/detail?ids=[${id}]`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Referer: "https://music.163.com/",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch from NetEase: ${response.status}`);
+    }
+
+    return response.json();
+  };
+
+  const resolveNeteaseSongAccess = async (id: string | number) => {
+    const [authStatus, authenticatedSongUrl, resolvedUrl, detail] = await Promise.all([
+      getNeteaseAuthStatus().catch(() => ({
+        loggedIn: false,
+        source: "none" as const,
+        profile: null,
+        vipType: 0,
+        isVip: false,
+        hasCookie: false,
+      })),
+      resolveAuthenticatedSongUrl(id).catch(() => null),
+      resolveNeteasePlayableUrl(id),
+      fetchNeteaseSongDetail(id).catch((error) => {
+        console.warn("Failed to fetch NetEase song detail for access resolution:", error);
+        return null;
+      }),
+    ]);
+
+    const track = detail?.songs?.[0] || null;
+    const entitlement = getNeteaseSongEntitlement(track);
+    const previewDurationMs = pickPreviewDurationMs(track);
+    const proxyUrl = `/api/netease/song?id=${id}`;
+
+    if (authStatus.loggedIn && authenticatedSongUrl?.url) {
+      const authenticatedPreviewDurationMs =
+        pickPreviewDurationFromSongUrl(authenticatedSongUrl.freeTrialInfo)
+        ?? previewDurationMs;
+
+      return {
+        id: String(id),
+        status: authenticatedSongUrl.freeTrialInfo ? "preview" : "full",
+        entitlement,
+        previewDurationMs: authenticatedPreviewDurationMs,
+        playUrl: authenticatedSongUrl.url,
+        proxyUrl,
+        note: authenticatedSongUrl.freeTrialInfo
+          ? "当前通过网易云登录态拿到了试听片段，时长以官方返回为准。"
+          : "当前通过网易云登录态播放。",
+      };
+    }
+
+    if (!resolvedUrl) {
+      return {
+        id: String(id),
+        status: "unavailable",
+        entitlement,
+        previewDurationMs,
+        proxyUrl,
+        note:
+          entitlement === "vip"
+            ? "当前链路没有拿到可播放的官方试听音频。"
+            : "当前没有拿到可播放音频。",
+      };
+    }
+
+    if (entitlement === "vip") {
+      return {
+        id: String(id),
+        status: "preview",
+        entitlement,
+        previewDurationMs,
+        playUrl: resolvedUrl,
+        proxyUrl,
+        note:
+          previewDurationMs && previewDurationMs > 0
+            ? `当前按官方可返回的试听片段播放，约 ${Math.ceil(previewDurationMs / 1000)} 秒。`
+            : "当前按官方可返回的试听片段播放，实际时长以上游返回为准。",
+      };
+    }
+
+    return {
+      id: String(id),
+      status: "full",
+      entitlement,
+      previewDurationMs,
+      playUrl: resolvedUrl,
+      proxyUrl,
+      note: "当前可以直接播放。",
+    };
+  };
+
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/api/netease/auth/status", async (req, res) => {
+    try {
+      const status = await getNeteaseAuthStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching NetEase auth status:", error);
+      res.status(500).json({ error: "Failed to fetch auth status" });
+    }
+  });
+
+  app.get("/api/netease/auth/qr/key", async (req, res) => {
+    try {
+      const payload = await createNeteaseQrLoginKey();
+      res.json(payload);
+    } catch (error) {
+      console.error("Error creating NetEase QR login key:", error);
+      res.status(500).json({ error: "Failed to create QR login key" });
+    }
+  });
+
+  app.get("/api/netease/auth/qr/create", async (req, res) => {
+    const key = String(req.query.key || "").trim();
+    if (!key) {
+      return res.status(400).json({ error: "Missing QR key" });
+    }
+
+    try {
+      const payload = await createNeteaseQrLoginImage(key);
+      res.json(payload);
+    } catch (error) {
+      console.error("Error creating NetEase QR login image:", error);
+      res.status(500).json({ error: "Failed to create QR login image" });
+    }
+  });
+
+  app.get("/api/netease/auth/qr/check", async (req, res) => {
+    const key = String(req.query.key || "").trim();
+    if (!key) {
+      return res.status(400).json({ error: "Missing QR key" });
+    }
+
+    try {
+      const payload = await checkNeteaseQrLogin(key);
+      res.json(payload);
+    } catch (error) {
+      console.error("Error checking NetEase QR login:", error);
+      res.status(500).json({ error: "Failed to check QR login status" });
+    }
+  });
+
+  app.post("/api/netease/auth/logout", (req, res) => {
+    try {
+      clearNeteaseAuthSession();
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error clearing NetEase auth session:", error);
+      res.status(500).json({ error: "Failed to clear auth session" });
+    }
+  });
+
+  app.get("/api/netease/song/access", async (req, res) => {
+    const id = req.query.id;
+    if (!id) {
+      return res.status(400).json({ error: "Missing song ID" });
+    }
+
+    try {
+      const access = await resolveNeteaseSongAccess(String(id));
+      res.json(access);
+    } catch (error) {
+      console.error("Error resolving NetEase song access:", error);
+      res.status(500).json({ error: "Failed to resolve song access" });
+    }
   });
 
   app.get("/api/netease/song", async (req, res) => {
@@ -69,11 +322,11 @@ async function startServer() {
     }
 
     try {
-      const finalUrl = await resolveNeteasePlayableUrl(String(id));
-      if (!finalUrl) {
+      const access = await resolveNeteaseSongAccess(String(id));
+      if (!access.playUrl) {
         return res
           .status(404)
-          .json({ error: "Song not found or is VIP/copyright restricted" });
+          .json({ error: access.note || "Song not found or is VIP/copyright restricted" });
       }
 
       const headers: Record<string, string> = {
@@ -86,7 +339,7 @@ async function startServer() {
         headers["Range"] = req.headers.range;
       }
 
-      const response = await fetch(finalUrl, { headers });
+      const response = await fetch(access.playUrl, { headers });
 
       if (!response.ok) {
         return res.status(response.status).send(response.statusText);
@@ -101,6 +354,10 @@ async function startServer() {
       if (contentLength) res.setHeader("Content-Length", contentLength);
       if (contentRange) res.setHeader("Content-Range", contentRange);
       if (acceptRanges) res.setHeader("Accept-Ranges", acceptRanges);
+      res.setHeader("x-bloom-playback-status", access.status);
+      if (access.previewDurationMs) {
+        res.setHeader("x-bloom-preview-duration-ms", String(access.previewDurationMs));
+      }
 
       res.status(response.status);
 
@@ -154,21 +411,7 @@ async function startServer() {
     }
 
     try {
-      const response = await fetch(
-        `https://music.163.com/api/song/detail?ids=[${id}]`,
-        {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch from NetEase: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await fetchNeteaseSongDetail(String(id));
       res.json(data);
     } catch (error) {
       console.error("Error fetching NetEase song detail:", error);
@@ -305,6 +548,11 @@ async function startServer() {
     }
 
     try {
+      const authenticatedPlaylist = await getAuthenticatedPlaylistDetail(String(id));
+      if (authenticatedPlaylist) {
+        return res.json(authenticatedPlaylist);
+      }
+
       const response = await fetch(
         `https://music.163.com/api/playlist/detail?id=${id}`,
         {
@@ -386,39 +634,33 @@ async function startServer() {
         return res.status(404).json({ error: "Playlist not found" });
       }
 
-      const playableTracks = [];
-      for (const track of playlist.tracks || []) {
-        const playableUrl = await resolveNeteasePlayableUrl(track.id);
-        if (!playableUrl) continue;
-        playableTracks.push(track);
-      }
-
-      const nextPlaylist = {
-        ...playlist,
-        tracks: playableTracks,
-      };
-
       res.json({
         ...data,
-        playlist: data.playlist ? nextPlaylist : undefined,
-        result: data.result ? nextPlaylist : undefined,
+        playlist: data.playlist ? playlist : undefined,
+        result: data.result ? playlist : undefined,
       });
     } catch (error) {
-      console.error("Error fetching playable NetEase playlist:", error);
-      res.status(500).json({ error: "Failed to fetch playable playlist data" });
+      console.error("Error fetching NetEase playlist:", error);
+      res.status(500).json({ error: "Failed to fetch playlist data" });
     }
   });
 
   app.get("/api/netease/user-playlists", async (req, res) => {
     const uid = String(req.query.uid || "").trim();
-    const limit = Math.max(1, Math.min(30, Number(req.query.limit || 12)));
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+    const offset = Math.max(0, Number(req.query.offset || 0));
     if (!uid) {
       return res.status(400).json({ error: "Missing user ID" });
     }
 
     try {
+      const authenticatedPlaylists = await getAuthenticatedUserPlaylists(uid, limit, offset);
+      if (authenticatedPlaylists) {
+        return res.json(authenticatedPlaylists);
+      }
+
       const response = await fetch(
-        `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
+        `https://music.163.com/api/user/playlist/?offset=${offset}&limit=${limit}&uid=${uid}`,
         {
           headers: {
             "User-Agent":

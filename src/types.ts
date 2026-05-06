@@ -875,6 +875,7 @@ export type MusicData = {
   togetherStartTime: number | null;
   chatHistory: ChatMessage[];
   queue: Song[];
+  songsById: Record<string, Song>;
   neteaseAccount?: {
     uid: string;
     profileUrl: string;
