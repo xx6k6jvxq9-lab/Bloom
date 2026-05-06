@@ -29,7 +29,12 @@ export function KeyboardAwareScreen({
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
+  const {
+    isIosBrowserMode,
+    keyboardVisible: appKeyboardVisible,
+    keyboardInset,
+    manualKeyboardAvoidanceEnabled,
+  } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef: shellRef,
     enabled: true,
@@ -41,6 +46,7 @@ export function KeyboardAwareScreen({
       typeof window === 'undefined'
       || typeof document === 'undefined'
       || manualKeyboardAvoidanceEnabled
+      || isIosBrowserMode
       || !keyboardVisible
     ) {
       return undefined;
@@ -66,7 +72,7 @@ export function KeyboardAwareScreen({
       window.cancelAnimationFrame(frameOne);
       window.cancelAnimationFrame(frameTwo);
     };
-  }, [keyboardVisible, manualKeyboardAvoidanceEnabled, viewportStyle]);
+  }, [isIosBrowserMode, keyboardVisible, manualKeyboardAvoidanceEnabled, viewportStyle]);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {

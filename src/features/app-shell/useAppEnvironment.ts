@@ -49,10 +49,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const isIosBrowserMode = isIosLike && !isAndroid && !isStandalone;
-    // iOS should follow the browser-driven viewport directly. Android browsers
-    // such as Via can keep the shell pinned while the IME overlays the visual
-    // viewport, so only Android keeps the manual composer-lift path.
-    const manualKeyboardAvoidanceEnabled = isAndroid;
+    // Match the last known-good split:
+    // - iOS browser mode follows the browser-driven viewport on its own.
+    // - iOS standalone and Android browsers still need the manual lift path.
+    const manualKeyboardAvoidanceEnabled = isStandalone || isAndroid;
     setIsIosBrowserMode(isIosBrowserMode);
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
