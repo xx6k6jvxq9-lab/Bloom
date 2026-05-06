@@ -8,8 +8,6 @@ type NeteaseUserPlaylistItem = {
 
 type NeteaseUserPlaylistResponse = {
   playlist?: NeteaseUserPlaylistItem[];
-  more?: boolean;
-  count?: number;
   error?: string;
 };
 
@@ -29,39 +27,12 @@ type NeteasePlaylistDetail = {
   name?: string;
   coverImgUrl?: string;
   tracks?: NeteaseTrack[];
-  trackCount?: number;
-  trackIds?: Array<{ id: number | string }>;
 };
 
 type NeteasePlaylistDetailResponse = {
   playlist?: NeteasePlaylistDetail;
   result?: NeteasePlaylistDetail;
   error?: string;
-};
-
-type SyncedPlaylistData = {
-  playlist: Playlist;
-  expectedSongCount: number;
-  importedSongCount: number;
-  rawPlaylistId: string;
-  rawPlaylistName: string;
-};
-
-export type SyncedNeteasePlaylistsResult = {
-  playlists: Playlist[];
-  stats: {
-    requestedPlaylistCount: number;
-    importedPlaylistCount: number;
-    expectedSongCount: number;
-    importedSongCount: number;
-    missingSongCount: number;
-    truncatedPlaylists: Array<{
-      id: string;
-      name: string;
-      expectedSongCount: number;
-      importedSongCount: number;
-    }>;
-  };
 };
 
 function mapTrackToSong(track: NeteaseTrack): Song {
@@ -105,17 +76,7 @@ async function readJsonResponse<T>(response: Response, offlineMessage: string): 
   return (await response.json()) as T;
 }
 
-function getExpectedSongCount(detailPlaylist: NeteasePlaylistDetail): number {
-  if (typeof detailPlaylist.trackCount === 'number' && detailPlaylist.trackCount > 0) {
-    return detailPlaylist.trackCount;
-  }
-  if (Array.isArray(detailPlaylist.trackIds) && detailPlaylist.trackIds.length > 0) {
-    return detailPlaylist.trackIds.length;
-  }
-  return (detailPlaylist.tracks || []).length;
-}
-
-async function fetchPlaylistData(rawPlaylist: NeteaseUserPlaylistItem): Promise<SyncedPlaylistData | null> {
+async function fetchPlayablePlaylist(rawPlaylist: NeteaseUserPlaylistItem): Promise<Playlist | null> {
   const detailResponse = await fetch(`/api/netease/playlist-playable?id=${rawPlaylist.id}`);
   const detailData = await readJsonResponse<NeteasePlaylistDetailResponse>(
     detailResponse,
@@ -131,83 +92,25 @@ async function fetchPlaylistData(rawPlaylist: NeteaseUserPlaylistItem): Promise<
     return null;
   }
 
-  return {
-    playlist: mapPlaylistToAppPlaylist(detailPlaylist),
-    expectedSongCount: getExpectedSongCount(detailPlaylist),
-    importedSongCount: (detailPlaylist.tracks || []).length,
-    rawPlaylistId: String(detailPlaylist.id ?? rawPlaylist.id),
-    rawPlaylistName: detailPlaylist.name || rawPlaylist.name || `网易云歌单 ${rawPlaylist.id}`,
-  };
+  return mapPlaylistToAppPlaylist(detailPlaylist);
 }
 
-async function fetchAllUserPlaylists(uid: string, pageSize: number): Promise<NeteaseUserPlaylistItem[]> {
-  const allPlaylists: NeteaseUserPlaylistItem[] = [];
-  let offset = 0;
-  let page = 0;
+export async function syncNeteasePlaylistsByUid(uid: string, limit = 12): Promise<Playlist[]> {
+  const response = await fetch(`/api/netease/user-playlists?uid=${encodeURIComponent(uid)}&limit=${limit}`);
+  const data = await readJsonResponse<NeteaseUserPlaylistResponse>(
+    response,
+    '歌单同步接口暂时不可用，请稍后再试。',
+  );
 
-  while (page < 20) {
-    const response = await fetch(
-      `/api/netease/user-playlists?uid=${encodeURIComponent(uid)}&limit=${pageSize}&offset=${offset}`,
-    );
-    const data = await readJsonResponse<NeteaseUserPlaylistResponse>(
-      response,
-      '歌单同步接口暂时不可用，请稍后再试。',
-    );
-
-    if (!response.ok) {
-      throw new Error(data.error || '获取网易云歌单列表失败');
-    }
-
-    const pagePlaylists = data.playlist || [];
-    allPlaylists.push(...pagePlaylists);
-
-    const hasMore =
-      data.more === true
-      || (typeof data.count === 'number' && allPlaylists.length < data.count);
-
-    if (!hasMore || pagePlaylists.length === 0) {
-      break;
-    }
-
-    offset += pagePlaylists.length;
-    page += 1;
+  if (!response.ok) {
+    throw new Error(data.error || '获取网易云歌单列表失败');
   }
 
-  return Array.from(
-    new Map(allPlaylists.map((playlist) => [String(playlist.id), playlist])).values(),
-  );
-}
+  const rawPlaylists = data.playlist || [];
+  const settled = await Promise.allSettled(rawPlaylists.map(fetchPlayablePlaylist));
 
-export async function syncNeteasePlaylistsByUid(uid: string, pageSize = 50): Promise<SyncedNeteasePlaylistsResult> {
-  const rawPlaylists = await fetchAllUserPlaylists(uid, Math.max(1, Math.min(pageSize, 100)));
-  const settled = await Promise.allSettled(rawPlaylists.map(fetchPlaylistData));
-
-  const importedPlaylists = settled
-    .filter((result): result is PromiseFulfilledResult<SyncedPlaylistData | null> => result.status === 'fulfilled')
+  return settled
+    .filter((result): result is PromiseFulfilledResult<Playlist | null> => result.status === 'fulfilled')
     .map((result) => result.value)
-    .filter((playlist): playlist is SyncedPlaylistData => Boolean(playlist));
-
-  const truncatedPlaylists = importedPlaylists
-    .filter((playlist) => playlist.importedSongCount < playlist.expectedSongCount)
-    .map((playlist) => ({
-      id: playlist.rawPlaylistId,
-      name: playlist.rawPlaylistName,
-      expectedSongCount: playlist.expectedSongCount,
-      importedSongCount: playlist.importedSongCount,
-    }));
-
-  const expectedSongCount = importedPlaylists.reduce((total, playlist) => total + playlist.expectedSongCount, 0);
-  const importedSongCount = importedPlaylists.reduce((total, playlist) => total + playlist.importedSongCount, 0);
-
-  return {
-    playlists: importedPlaylists.map((playlist) => playlist.playlist),
-    stats: {
-      requestedPlaylistCount: rawPlaylists.length,
-      importedPlaylistCount: importedPlaylists.length,
-      expectedSongCount,
-      importedSongCount,
-      missingSongCount: Math.max(0, expectedSongCount - importedSongCount),
-      truncatedPlaylists,
-    },
-  };
+    .filter((playlist): playlist is Playlist => Boolean(playlist));
 }

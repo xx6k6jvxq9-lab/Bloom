@@ -115,115 +115,12 @@ function isAudioLikeResponse(response) {
   );
 }
 
-function getNeteaseSongEntitlement(song) {
-  const fee = typeof song?.fee === "number" ? song.fee : song?.privilege?.fee;
-  const payed = song?.privilege?.payed;
-
-  if (fee === 1 || fee === 4 || fee === 16 || payed === 1) {
-    return "vip";
-  }
-
-  if (fee === 0 || fee === 8) {
-    return "free";
-  }
-
-  return "unknown";
-}
-
-function pickPreviewDurationMs(song) {
-  const directCandidates = [
-    song?.previewDurationMs,
-    song?.previewDuration,
-    song?.freeTrialInfo?.duration,
-    song?.freeTrialPrivilege?.duration,
-    song?.privilege?.freeTrialInfo?.duration,
-    song?.privilege?.freeTrialPrivilege?.duration,
-  ];
-
-  for (const candidate of directCandidates) {
-    if (Number.isFinite(candidate) && Number(candidate) > 0) {
-      return Number(candidate);
-    }
-  }
-
-  const rangedCandidates = [
-    song?.freeTrialInfo,
-    song?.freeTrialPrivilege,
-    song?.privilege?.freeTrialInfo,
-    song?.privilege?.freeTrialPrivilege,
-  ];
-
-  for (const candidate of rangedCandidates) {
-    const start = Number(candidate?.start);
-    const end = Number(candidate?.end);
-    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-      return end - start;
-    }
-  }
-
-  return null;
-}
-
-export async function resolveNeteaseSongAccess(id) {
-  const [resolvedUrl, detail] = await Promise.all([
-    resolveNeteasePlayableUrl(id),
-    fetchNeteaseSongDetail(id).catch((error) => {
-      console.warn("Failed to fetch NetEase song detail for access resolution", error);
-      return null;
-    }),
-  ]);
-
-  const track = detail?.songs?.[0] || null;
-  const entitlement = getNeteaseSongEntitlement(track);
-  const previewDurationMs = pickPreviewDurationMs(track);
-  const proxyUrl = `/api/netease/song?id=${id}`;
-
-  if (!resolvedUrl) {
-    return {
-      id: String(id),
-      status: "unavailable",
-      entitlement,
-      previewDurationMs,
-      proxyUrl,
-      note:
-        entitlement === "vip"
-          ? "当前链路没有拿到可播放的官方试听音频。"
-          : "当前没有拿到可播放音频。",
-    };
-  }
-
-  if (entitlement === "vip") {
-    return {
-      id: String(id),
-      status: "preview",
-      entitlement,
-      previewDurationMs,
-      playUrl: resolvedUrl,
-      proxyUrl,
-      note:
-        previewDurationMs && previewDurationMs > 0
-          ? `当前按官方可返回的试听片段播放，约 ${Math.ceil(previewDurationMs / 1000)} 秒。`
-          : "当前按官方可返回的试听片段播放，实际时长以上游返回为准。",
-    };
-  }
-
-  return {
-    id: String(id),
-    status: "full",
-    entitlement,
-    previewDurationMs,
-    playUrl: resolvedUrl,
-    proxyUrl,
-    note: "当前可以直接播放。",
-  };
-}
-
 export async function proxyNeteaseSong(request, id) {
   const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
-  const access = await resolveNeteaseSongAccess(id);
-  if (!access.playUrl) {
+  const resolvedUrl = await resolveNeteasePlayableUrl(id);
+  if (!resolvedUrl) {
     return json(
-      { error: access.note || "Song not found or is VIP/copyright restricted" },
+      { error: "Song not found or is VIP/copyright restricted" },
       { status: 404 },
     );
   }
@@ -234,12 +131,12 @@ export async function proxyNeteaseSong(request, id) {
     headers.set("Range", range);
   }
 
-  let response = await fetch(access.playUrl, {
+  let response = await fetch(resolvedUrl, {
     headers,
     redirect: "follow",
   });
 
-  if ((!response.ok || !isAudioLikeResponse(response)) && access.playUrl !== fallbackUrl) {
+  if ((!response.ok || !isAudioLikeResponse(response)) && resolvedUrl !== fallbackUrl) {
     response = await fetch(fallbackUrl, {
       headers,
       redirect: "follow",
@@ -267,11 +164,6 @@ export async function proxyNeteaseSong(request, id) {
     if (value) {
       passHeaders.set(headerName, value);
     }
-  }
-
-  passHeaders.set("x-bloom-playback-status", access.status);
-  if (access.previewDurationMs) {
-    passHeaders.set("x-bloom-preview-duration-ms", String(access.previewDurationMs));
   }
 
   return new Response(response.body, {
@@ -381,9 +273,9 @@ export async function fetchPlayableNeteasePlaylist(id) {
   };
 }
 
-export async function fetchNeteaseUserPlaylists(uid, limit, offset = 0) {
+export async function fetchNeteaseUserPlaylists(uid, limit) {
   return fetchJson(
-    `https://music.163.com/api/user/playlist/?offset=${offset}&limit=${limit}&uid=${uid}`,
+    `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
     {
       headers: NETEASE_HEADERS,
     },

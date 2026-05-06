@@ -3,8 +3,8 @@ import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonS
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
-function isTransientLocalSong(url?: string): boolean {
-  return Boolean(url && url.startsWith('blob:'));
+function isTransientLocalSong(url?: string, id?: string): boolean {
+  return Boolean((url && url.startsWith('blob:')) || (id && id.startsWith('local-')));
 }
 
 function normalizeSongSource<TSong extends MusicData['queue'][number]>(song: TSong): TSong {
@@ -19,57 +19,22 @@ function normalizeSongSource<TSong extends MusicData['queue'][number]>(song: TSo
   return song;
 }
 
-function sanitizeSong<TSong extends MusicData['queue'][number]>(song: TSong | null | undefined): TSong | null {
-  if (!song || isTransientLocalSong(song.url)) {
-    return null;
-  }
-  return normalizeSongSource(song);
-}
-
-function sanitizeSongList<TSong extends MusicData['queue'][number]>(songs: TSong[] | null | undefined): TSong[] {
-  return (songs || [])
-    .map((song) => sanitizeSong(song))
-    .filter((song): song is TSong => Boolean(song));
-}
-
-function buildSongsById<T extends MusicData>(
-  data: T,
-  queue: T['queue'],
-  playlists: T['playlists'],
-  currentSong: T['currentSong'],
-): T['songsById'] {
-  const songsById = Object.values(data.songsById || {}).reduce<T['songsById']>((acc, song) => {
-    const sanitizedSong = sanitizeSong(song);
-    if (sanitizedSong) {
-      acc[sanitizedSong.id] = sanitizedSong;
-    }
-    return acc;
-  }, {} as T['songsById']);
-
-  const registerSong = (song: MusicData['queue'][number] | null | undefined) => {
-    const sanitizedSong = sanitizeSong(song);
-    if (sanitizedSong) {
-      songsById[sanitizedSong.id] = sanitizedSong;
-    }
-  };
-
-  queue.forEach(registerSong);
-  playlists.forEach((playlist) => playlist.songs.forEach(registerSong));
-  registerSong(currentSong);
-
-  return songsById;
-}
-
 function sanitizeMusicData<T extends MusicData>(data: T, fallback: T): T {
-  const queue = sanitizeSongList(data.queue || []);
+  const sanitizeSongs = (songs: T['queue']) =>
+    songs
+      .filter((song) => !isTransientLocalSong(song.url, song.id))
+      .map((song) => normalizeSongSource(song));
+
+  const queue = sanitizeSongs(data.queue || []);
   const playlists = (data.playlists || []).map((playlist) => ({
     ...playlist,
-    songs: sanitizeSongList(playlist.songs || []),
+    songs: sanitizeSongs(playlist.songs || []),
   }));
 
-  const fallbackCurrentSong = sanitizeSong(fallback.currentSong) ?? null;
-  const currentSong = sanitizeSong(data.currentSong) ?? queue[0] ?? fallbackCurrentSong;
-  const songsById = buildSongsById(data, queue, playlists, currentSong);
+  const currentSong =
+    data.currentSong && !isTransientLocalSong(data.currentSong.url, data.currentSong.id)
+      ? normalizeSongSource(data.currentSong)
+      : queue[0] || fallback.currentSong;
 
   return {
     ...data,
@@ -77,7 +42,6 @@ function sanitizeMusicData<T extends MusicData>(data: T, fallback: T): T {
     isPlaying: currentSong ? data.isPlaying : false,
     queue,
     playlists,
-    songsById,
   };
 }
 

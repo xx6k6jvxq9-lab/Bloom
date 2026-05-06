@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
 import {
   Play,
@@ -37,7 +37,6 @@ import {
   AppSettings,
 } from "../../types";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
-import { resolveValueToDisplayUrl, saveUploadedFile } from "../../features/persistence/persistentAssetService";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
@@ -86,11 +85,11 @@ function ResolvedMusicCover({
 function normalizeBuiltinSong(song: Song): Song {
   if (!song) return song;
 
-  if (song.id === "1") {
+  if (song.id === "1" || song.title === "鏅村ぉ" || song.title === "鎌村お") {
     return { ...song, title: "晴天", artist: "周杰伦" };
   }
 
-  if (song.id === "3") {
+  if (song.id === "3" || song.title === "鍛婄櫧姘旂悆") {
     return { ...song, title: "告白气球", artist: "周杰伦" };
   }
 
@@ -100,114 +99,6 @@ function normalizeBuiltinSong(song: Song): Song {
 function normalizeSongList(songs: Song[] | null | undefined): Song[] {
   if (!Array.isArray(songs)) return [];
   return songs.map((song) => normalizeBuiltinSong(song));
-}
-
-function buildSongRegistry({
-  songsById,
-  currentSong,
-  queue,
-  playlists,
-}: {
-  songsById?: Record<string, Song>;
-  currentSong?: Song | null;
-  queue?: Song[];
-  playlists?: Playlist[];
-}): Record<string, Song> {
-  const registry: Record<string, Song> = {};
-
-  const registerSong = (song?: Song | null) => {
-    if (!song?.id) return;
-    registry[song.id] = normalizeBuiltinSong(song);
-  };
-
-  Object.values(songsById || {}).forEach(registerSong);
-  registerSong(currentSong);
-  (queue || []).forEach(registerSong);
-  (playlists || []).forEach((playlist) => playlist.songs.forEach(registerSong));
-
-  return registry;
-}
-
-function resolveSongFromRegistry(
-  song: Song | null | undefined,
-  registry: Record<string, Song>,
-): Song | null {
-  if (!song) return null;
-  return registry[song.id] || normalizeBuiltinSong(song);
-}
-
-function resolveSongListFromRegistry(
-  songs: Song[] | null | undefined,
-  registry: Record<string, Song>,
-): Song[] {
-  return (songs || [])
-    .map((song) => resolveSongFromRegistry(song, registry))
-    .filter((song): song is Song => Boolean(song));
-}
-
-function normalizeMusicDataState(data: MusicData): MusicData {
-  const songsById = buildSongRegistry(data);
-  return {
-    ...data,
-    currentSong: resolveSongFromRegistry(data.currentSong, songsById),
-    playlists: (data.playlists || []).map((playlist) => ({
-      ...playlist,
-      songs: resolveSongListFromRegistry(playlist.songs, songsById),
-    })),
-    queue: resolveSongListFromRegistry(data.queue, songsById),
-    songsById,
-  };
-}
-
-type NeteasePlaybackAccessStatus = "idle" | "loading" | "full" | "preview" | "unavailable";
-
-type NeteasePlaybackAccess = {
-  status: NeteasePlaybackAccessStatus;
-  entitlement?: "free" | "vip" | "unknown";
-  previewDurationMs?: number | null;
-  note?: string;
-  proxyUrl?: string;
-};
-
-function getPlaybackAccessBadge(access: NeteasePlaybackAccess) {
-  switch (access.status) {
-    case "full":
-      return {
-        label: "可完整播放",
-        className: "bg-emerald-100 text-emerald-600",
-      };
-    case "preview":
-      return {
-        label: "试听中",
-        className: "bg-amber-100 text-amber-600",
-      };
-    case "unavailable":
-      return {
-        label: "当前不可播",
-        className: "bg-rose-100 text-rose-600",
-      };
-    case "loading":
-      return {
-        label: "校验中",
-        className: "bg-zinc-100 text-zinc-500",
-      };
-    default:
-      return null;
-  }
-}
-
-function getExpectedPlaylistSongCount(playlist: {
-  trackCount?: number;
-  trackIds?: Array<{ id: number | string }>;
-  tracks?: Array<unknown>;
-}): number {
-  if (typeof playlist.trackCount === "number" && playlist.trackCount > 0) {
-    return playlist.trackCount;
-  }
-  if (Array.isArray(playlist.trackIds) && playlist.trackIds.length > 0) {
-    return playlist.trackIds.length;
-  }
-  return Array.isArray(playlist.tracks) ? playlist.tracks.length : 0;
 }
 
 type MusicAppProps = {
@@ -230,7 +121,7 @@ export default function MusicApp({
   userAvatar,
   userName,
   musicData,
-  onUpdateMusicData: onUpdateMusicDataProp,
+  onUpdateMusicData,
   directChatHistory,
   visualSettings,
   settings,
@@ -279,20 +170,14 @@ export default function MusicApp({
   const [playbackError, setPlaybackError] = useState("");
   const [isAudioActuallyPlaying, setIsAudioActuallyPlaying] = useState(false);
   const [isSyncingNeteasePlaylists, setIsSyncingNeteasePlaylists] = useState(false);
-  const [currentSongPlaybackAccess, setCurrentSongPlaybackAccess] = useState<NeteasePlaybackAccess>({
-    status: "idle",
-  });
   const lastRecordedPlaybackIdRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const playbackRequestIdRef = useRef(0);
   const currentMusicDataRef = useRef<MusicData | null>(null);
-  const currentSongPlaybackAccessRef = useRef<NeteasePlaybackAccess>({ status: "idle" });
-  const onUpdateMusicDataRef = useRef(onUpdateMusicDataProp);
+  const onUpdateMusicDataRef = useRef(onUpdateMusicData);
   const onPatchCharacterRef = useRef(onPatchCharacter);
   const neteaseFallbackAttemptedRef = useRef<string | null>(null);
-  const previewPlaybackStoppedSongIdRef = useRef<string | null>(null);
-  const neteasePlaybackAccessCacheRef = useRef<Record<string, NeteasePlaybackAccess>>({});
   const prefersDirectGesturePlaybackRef = useRef(false);
   const gesturePrimedSongIdRef = useRef<string | null>(null);
 
@@ -311,95 +196,12 @@ export default function MusicApp({
     prefersDirectGesturePlaybackRef.current = isMobileUa || prefersCoarsePointer;
   }, []);
 
-  const onUpdateMusicData = useCallback((nextMusicData: MusicData) => {
-    onUpdateMusicDataProp(normalizeMusicDataState(nextMusicData));
-  }, [onUpdateMusicDataProp]);
-
-  useEffect(() => {
-    currentSongPlaybackAccessRef.current = currentSongPlaybackAccess;
-  }, [currentSongPlaybackAccess]);
-
-  const resolveNeteaseSongAccess = useCallback(async (song: Song): Promise<NeteasePlaybackAccess> => {
-    const cached = neteasePlaybackAccessCacheRef.current[song.id];
-    if (cached) {
-      return cached;
-    }
-
-    const realId = song.id.replace("netease-", "");
-
-    try {
-      const response = await fetch(`/api/netease/song/access?id=${realId}`);
-      const data = await response.json().catch(() => ({}));
-
-      const nextAccess: NeteasePlaybackAccess = response.ok
-        ? {
-            status:
-              data?.status === "full" || data?.status === "preview" || data?.status === "unavailable"
-                ? data.status
-                : "unavailable",
-            entitlement:
-              data?.entitlement === "free" || data?.entitlement === "vip" || data?.entitlement === "unknown"
-                ? data.entitlement
-                : "unknown",
-            previewDurationMs:
-              typeof data?.previewDurationMs === "number" && Number.isFinite(data.previewDurationMs)
-                ? data.previewDurationMs
-                : null,
-            note: typeof data?.note === "string" ? data.note : "",
-            proxyUrl:
-              typeof data?.proxyUrl === "string" && data.proxyUrl
-                ? data.proxyUrl
-                : `/api/netease/song?id=${realId}`,
-          }
-        : {
-            status: "unavailable",
-            entitlement: "unknown",
-            previewDurationMs: null,
-            note: typeof data?.error === "string" ? data.error : "当前歌曲暂时无法播放。",
-            proxyUrl: `/api/netease/song?id=${realId}`,
-          };
-
-      if (nextAccess.status !== "unavailable") {
-        neteasePlaybackAccessCacheRef.current[song.id] = nextAccess;
-      }
-      return nextAccess;
-    } catch (error) {
-      console.error("Failed to resolve NetEase song access:", error);
-      return {
-        status: "unavailable",
-        entitlement: "unknown",
-        previewDurationMs: null,
-        note: "当前歌曲暂时无法完成播放校验。",
-        proxyUrl: `/api/netease/song?id=${realId}`,
-      };
-    }
-  }, []);
-
-  const resolveSongPlaybackUrl = async (song: Song | null | undefined) => {
-    if (!song) {
-      return "";
-    }
+  const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
+    if (!song) return "";
     if (song.id.startsWith("netease-")) {
-      if (currentMusicDataRef.current?.currentSong?.id === song.id) {
-        setCurrentSongPlaybackAccess({ status: "loading" });
-      }
-
-      const access = await resolveNeteaseSongAccess(song);
-      if (currentMusicDataRef.current?.currentSong?.id === song.id) {
-        setCurrentSongPlaybackAccess(access);
-      }
-
-      return access.status === "unavailable" ? "" : (access.proxyUrl || `/api/netease/song?id=${song.id.replace("netease-", "")}`);
+      return `/api/netease/song?id=${song.id.replace("netease-", "")}`;
     }
-
-    if (currentMusicDataRef.current?.currentSong?.id === song.id) {
-      setCurrentSongPlaybackAccess({
-        status: "full",
-        previewDurationMs: null,
-        note: "",
-      });
-    }
-    return (await resolveValueToDisplayUrl(song.url)) || "";
+    return song.url;
   };
 
   const resolveNeteaseFallbackUrl = (song: Song | null | undefined) => {
@@ -443,12 +245,7 @@ export default function MusicApp({
       return;
     }
 
-    const nextPlaybackUrl = await resolveSongPlaybackUrl(song);
-    if (!nextPlaybackUrl) {
-      gesturePrimedSongIdRef.current = null;
-      setPlaybackError(currentSongPlaybackAccessRef.current.note || "当前歌曲资源暂时不可用");
-      return;
-    }
+    const nextPlaybackUrl = resolveSongPlaybackUrl(song);
     const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
     const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
 
@@ -525,24 +322,24 @@ export default function MusicApp({
     chatHistory: [],
     queue: defaultSongs,
     collectedSongs: [],
-    songsById: {},
   }), [defaultSongs, safeCharacter.avatar, safeCharacter.id, safeCharacter.name]);
 
-  const currentMusicData = useMemo<MusicData>(() => normalizeMusicDataState({
+  const currentMusicData = useMemo<MusicData>(() => ({
     ...defaultMusicData,
     ...musicData,
-    currentSong: musicData?.currentSong ?? defaultMusicData.currentSong,
-    playlists: Array.isArray(musicData?.playlists) ? musicData.playlists : defaultMusicData.playlists,
+    currentSong: normalizeBuiltinSong(musicData?.currentSong ?? defaultMusicData.currentSong),
+    playlists: Array.isArray(musicData?.playlists)
+      ? musicData.playlists.map((playlist) => ({
+          ...playlist,
+          songs: normalizeSongList(playlist.songs),
+        }))
+      : defaultMusicData.playlists,
     likedSongs: Array.isArray(musicData?.likedSongs) ? musicData.likedSongs : defaultMusicData.likedSongs,
     collectedSongs: Array.isArray(musicData?.collectedSongs) ? musicData.collectedSongs : defaultMusicData.collectedSongs,
     history: Array.isArray(musicData?.history) ? musicData.history : defaultMusicData.history,
     recentlyPlayed: Array.isArray(musicData?.recentlyPlayed) ? musicData.recentlyPlayed : defaultMusicData.recentlyPlayed,
     chatHistory: Array.isArray(musicData?.chatHistory) ? musicData.chatHistory : defaultMusicData.chatHistory,
     queue: Array.isArray(musicData?.queue) ? normalizeSongList(musicData.queue) : defaultMusicData.queue,
-    songsById:
-      musicData?.songsById && typeof musicData.songsById === "object"
-        ? musicData.songsById
-        : defaultMusicData.songsById,
   }), [defaultMusicData, musicData]);
   const activeTogetherCharacter = useMemo(
     () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
@@ -575,13 +372,6 @@ export default function MusicApp({
     }
   }, [currentMusicData.chatHistory]);
 
-  useEffect(() => {
-    previewPlaybackStoppedSongIdRef.current = null;
-    if (!currentMusicData.currentSong) {
-      setCurrentSongPlaybackAccess({ status: "idle" });
-    }
-  }, [currentMusicData.currentSong?.id]);
-
   // Audio Playback Logic
   useEffect(() => {
     const audio = audioRef.current;
@@ -595,44 +385,10 @@ export default function MusicApp({
         setLocalProgress(progress);
         setLocalCurrentTime(audio.currentTime);
       }
-
-      const activeSong = currentMusicDataRef.current?.currentSong;
-      const activeAccess = currentSongPlaybackAccessRef.current;
-      const previewDurationMs = activeAccess.previewDurationMs || 0;
-
-      if (
-        activeSong
-        && activeAccess.status === "preview"
-        && previewDurationMs > 0
-        && audio.currentTime * 1000 >= previewDurationMs
-        && previewPlaybackStoppedSongIdRef.current !== activeSong.id
-      ) {
-        previewPlaybackStoppedSongIdRef.current = activeSong.id;
-        setPlaybackError(activeAccess.note || "当前歌曲仅支持试听片段。");
-        setIsAudioActuallyPlaying(false);
-        audio.pause();
-        if (currentMusicDataRef.current?.isPlaying) {
-          onUpdateMusicDataRef.current({
-            ...currentMusicDataRef.current,
-            isPlaying: false,
-          });
-        }
-      }
     };
 
     const handleEnded = () => {
-      const activeAccess = currentSongPlaybackAccessRef.current;
       setIsAudioActuallyPlaying(false);
-      if (activeAccess.status === "preview") {
-        setPlaybackError(activeAccess.note || "当前歌曲仅支持试听片段。");
-        if (currentMusicDataRef.current?.isPlaying) {
-          onUpdateMusicDataRef.current({
-            ...currentMusicDataRef.current,
-            isPlaying: false,
-          });
-        }
-        return;
-      }
       skipForward();
     };
 
@@ -669,7 +425,7 @@ export default function MusicApp({
         currentAudioUrl !== targetFallbackUrl
       ) {
         neteaseFallbackAttemptedRef.current = activeSong.id;
-        setPlaybackError("正在切换备用播放地址...");
+        setPlaybackError("正在切换备用播放地址…");
         setIsAudioActuallyPlaying(false);
         resetAudioElement(audio, fallbackUrl);
         if (currentMusicDataRef.current?.isPlaying) {
@@ -725,9 +481,8 @@ export default function MusicApp({
   // Fetch lyrics
   useEffect(() => {
     const fetchLyrics = async () => {
-      const currentSong = currentMusicData.currentSong;
-      if (!currentSong) return;
-      const songId = currentSong.id;
+      if (!currentMusicData.currentSong) return;
+      const songId = currentMusicData.currentSong.id;
 
       // Only fetch for NetEase songs
       if (!songId.startsWith("netease-")) {
@@ -813,33 +568,17 @@ export default function MusicApp({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentMusicData.currentSong) return;
-    const currentSong = currentMusicData.currentSong;
     if (currentMusicData.currentSong.id !== lastRecordedPlaybackIdRef.current) {
       lastRecordedPlaybackIdRef.current = null;
     }
-    if (neteaseFallbackAttemptedRef.current !== currentSong.id) {
+    if (neteaseFallbackAttemptedRef.current !== currentMusicData.currentSong.id) {
       neteaseFallbackAttemptedRef.current = null;
     }
 
     const syncPlayback = async () => {
       const requestId = ++playbackRequestIdRef.current;
       setPlaybackError("");
-      const nextPlaybackUrl = await resolveSongPlaybackUrl(currentMusicData.currentSong);
-      if (requestId !== playbackRequestIdRef.current) {
-        return;
-      }
-      if (!nextPlaybackUrl) {
-        setIsAudioActuallyPlaying(false);
-        setPlaybackError(currentSongPlaybackAccessRef.current.note || "当前歌曲资源暂时不可用");
-        resetAudioElement(audio);
-        if (currentMusicDataRef.current?.isPlaying) {
-          onUpdateMusicDataRef.current({
-            ...currentMusicDataRef.current,
-            isPlaying: false,
-          });
-        }
-        return;
-      }
+      const nextPlaybackUrl = resolveSongPlaybackUrl(currentMusicData.currentSong);
       const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
       let activeAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
 
@@ -862,7 +601,7 @@ export default function MusicApp({
 
       if (currentMusicData.isPlaying) {
         if (
-          gesturePrimedSongIdRef.current === currentSong.id &&
+          gesturePrimedSongIdRef.current === currentMusicData.currentSong.id &&
           activeAudioUrl === targetAudioUrl &&
           !audio.paused
         ) {
@@ -1061,28 +800,17 @@ export default function MusicApp({
   const handleImportNeteasePlaylist = async () => {
     if (!neteaseUrl.trim()) return;
 
+    // Extract ID from URL or use as ID directly
     let id = neteaseUrl.trim();
     const idMatch = neteaseUrl.match(/id=(\d+)/);
     if (idMatch) {
       id = idMatch[1];
     } else if (!/^\d+$/.test(id)) {
-      alert("请输入有效的网易云链接或 ID");
+      alert("请输入有效的网易云链接或ID");
       return;
     }
 
     const isSong = neteaseUrl.includes("song");
-    const mapTrackToSong = (track: any): Song => ({
-      id: `netease-${track.id}`,
-      title: track.name,
-      artist:
-        (track.ar || track.artists)?.map((artist: any) => artist.name).join(", ")
-        || "未知艺人",
-      albumArt:
-        (track.al || track.album)?.picUrl ||
-        "https://picsum.photos/seed/netease/300/300",
-      url: `/api/netease/song?id=${track.id}`,
-      duration: Math.floor((track.dt || track.duration || 240000) / 1000),
-    });
 
     setIsImporting(true);
     try {
@@ -1095,7 +823,20 @@ export default function MusicApp({
           throw new Error("歌曲解析失败");
         }
 
-        const newSong = mapTrackToSong(data.songs[0]);
+        const track = data.songs[0];
+        const newSong: Song = {
+          id: `netease-${track.id}`,
+          title: track.name,
+          artist:
+            (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
+            "未知艺人",
+          albumArt:
+            (track.al || track.album)?.picUrl ||
+            "https://picsum.photos/seed/netease/300/300",
+          url: `/api/netease/song?id=${track.id}`,
+          duration: Math.floor((track.dt || track.duration || 240000) / 1000),
+        };
+
         onUpdateMusicData({
           ...currentMusicData,
           currentSong: newSong,
@@ -1103,63 +844,73 @@ export default function MusicApp({
           queue: [newSong, ...currentMusicData.queue],
           recentlyPlayed: [
             newSong.id,
-            ...currentMusicData.recentlyPlayed.filter((rid) => rid !== newSong.id),
+            ...currentMusicData.recentlyPlayed.filter(
+              (rid) => rid !== newSong.id,
+            ),
           ],
         });
 
         setLocalProgress(0);
         setLocalCurrentTime(0);
         setActiveTab("player");
+
         setNeteaseUrl("");
         setShowAddMusicDialog(false);
-        return;
+      } else {
+        const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
+        if (!response.ok) throw new Error("获取歌单失败");
+
+        const data = await response.json();
+        if (!data.playlist && !data.result) {
+          throw new Error("歌单解析失败");
+        }
+
+        const playlist = data.playlist || data.result;
+        const tracks = playlist.tracks || [];
+
+        const newSongs: Song[] = tracks.map((track: any) => ({
+          id: `netease-${track.id}`,
+          title: track.name,
+          artist:
+            (track.ar || track.artists)?.map((a: any) => a.name).join(", ") ||
+            "未知艺人",
+          albumArt:
+            (track.al || track.album)?.picUrl ||
+            "https://picsum.photos/seed/netease/300/300",
+            url: `/api/netease/song?id=${track.id}`,
+          duration: Math.floor((track.dt || track.duration || 240000) / 1000),
+        }));
+
+        const newPlaylist: Playlist = {
+          id: `netease-pl-${playlist.id}`,
+          name: playlist.name,
+          cover:
+            playlist.coverImgUrl ||
+            "https://picsum.photos/seed/netease-pl/300/300",
+          songs: newSongs,
+          type: "user",
+        };
+
+        onUpdateMusicData({
+          ...currentMusicData,
+          playlists: [...currentMusicData.playlists, newPlaylist],
+          currentSong:
+            newSongs.length > 0 ? newSongs[0] : currentMusicData.currentSong,
+          isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
+          progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
+          queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
+        });
+
+        if (newSongs.length > 0) {
+          setLocalProgress(0);
+          setLocalCurrentTime(0);
+          setActiveTab("player");
+        }
+
+        setNeteaseUrl("");
+        setShowAddMusicDialog(false);
+        alert(`歌单导入完成，当前可播放 ${newSongs.length} 首。`);
       }
-
-      const response = await fetch(`/api/netease/playlist-playable?id=${id}`);
-      if (!response.ok) throw new Error("获取歌单失败");
-
-      const data = await response.json();
-      if (!data.playlist && !data.result) {
-        throw new Error("歌单解析失败");
-      }
-
-      const playlist = data.playlist || data.result;
-      const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-      const expectedSongCount = getExpectedPlaylistSongCount(playlist);
-      const newSongs = tracks.map(mapTrackToSong);
-
-      const newPlaylist: Playlist = {
-        id: `netease-pl-${playlist.id}`,
-        name: playlist.name || "网易云歌单",
-        cover:
-          playlist.coverImgUrl ||
-          "https://picsum.photos/seed/netease-pl/300/300",
-        songs: newSongs,
-        type: "user",
-      };
-
-      onUpdateMusicData({
-        ...currentMusicData,
-        playlists: [...currentMusicData.playlists, newPlaylist],
-        currentSong: newSongs.length > 0 ? newSongs[0] : currentMusicData.currentSong,
-        isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
-        progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
-        queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
-      });
-
-      if (newSongs.length > 0) {
-        setLocalProgress(0);
-        setLocalCurrentTime(0);
-        setActiveTab("player");
-      }
-
-      setNeteaseUrl("");
-      setShowAddMusicDialog(false);
-      alert(
-        newSongs.length < expectedSongCount
-          ? `歌单导入完成，已导入 ${newSongs.length}/${expectedSongCount} 首。缺少的歌曲通常是网易云当前接口没有返回，并不是本地又把它们过滤掉了。`
-          : `歌单导入完成，共导入 ${newSongs.length} 首。播放时会再检查这首歌当前是完整播放、试听还是暂不可播。`,
-      );
     } catch (error) {
       console.error("Import error:", error);
       alert("导入失败，请检查链接或稍后重试");
@@ -1174,8 +925,7 @@ export default function MusicApp({
 
     setIsSyncingNeteasePlaylists(true);
     try {
-      const syncResult = await syncNeteasePlaylistsByUid(uid);
-      const syncedPlaylists = syncResult.playlists;
+      const syncedPlaylists = await syncNeteasePlaylistsByUid(uid);
       if (syncedPlaylists.length === 0) {
         alert("没有拉到可导入的公开歌单，请先确认主页链接或歌单公开状态。");
         return;
@@ -1190,16 +940,11 @@ export default function MusicApp({
         playlists: [...preservedPlaylists, ...syncedPlaylists],
       });
 
-      const truncatedPlaylistSummary = syncResult.stats.truncatedPlaylists
-        .slice(0, 3)
-        .map((playlist) => `${playlist.name}(${playlist.importedSongCount}/${playlist.expectedSongCount})`)
-        .join("、");
-
-      alert(
-        syncResult.stats.missingSongCount > 0
-          ? `已同步 ${syncResult.stats.importedPlaylistCount}/${syncResult.stats.requestedPlaylistCount} 个网易云歌单，导入歌曲 ${syncResult.stats.importedSongCount}/${syncResult.stats.expectedSongCount} 首。缺少的部分通常是网易云当前接口没有返回。${truncatedPlaylistSummary ? ` 例如：${truncatedPlaylistSummary}` : ""}`
-          : `已同步 ${syncResult.stats.importedPlaylistCount} 个网易云歌单，共 ${syncResult.stats.importedSongCount} 首歌曲。播放时会再检查每首歌当前的播放状态。`,
+      const syncedSongCount = syncedPlaylists.reduce(
+        (total, playlist) => total + playlist.songs.length,
+        0,
       );
+      alert(`已同步 ${syncedPlaylists.length} 个网易云歌单，共 ${syncedSongCount} 首当前可播放歌曲。`);
     } catch (error) {
       console.error("NetEase playlist sync error:", error);
       alert("同步歌单失败，请稍后再试。");
@@ -1525,36 +1270,12 @@ export default function MusicApp({
         >
           {/* Song Info */}
           <div className="mb-2 mt-2 shrink-0 text-center sm:mt-4">
-            {currentMusicData.currentSong?.id.startsWith("netease-") ? (
-              <div className="mb-2 flex items-center justify-center gap-2">
-                {getPlaybackAccessBadge(currentSongPlaybackAccess) ? (
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold sm:text-[11px] ${getPlaybackAccessBadge(currentSongPlaybackAccess)?.className}`}
-                  >
-                    {getPlaybackAccessBadge(currentSongPlaybackAccess)?.label}
-                  </span>
-                ) : null}
-                {currentSongPlaybackAccess.entitlement === "vip" ? (
-                  <span className="rounded-full bg-pink-100 px-2.5 py-1 text-[10px] font-bold text-pink-600 sm:text-[11px]">
-                    VIP
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
             <h1 className="mb-0.5 truncate px-2 text-[17px] font-bold tracking-tight text-zinc-900 sm:px-4 sm:text-xl">
               {currentMusicData.currentSong?.title || "还没有歌曲"}
             </h1>
             <p className="truncate px-2 text-[13px] font-medium text-pink-500 sm:px-4 sm:text-[15px]">
               {currentMusicData.currentSong?.artist || "去“我的”里添加本地音乐、音频链接或网易云歌曲"}
             </p>
-            {!playbackError
-              && currentMusicData.currentSong?.id.startsWith("netease-")
-              && currentSongPlaybackAccess.note
-              && currentSongPlaybackAccess.status !== "full" ? (
-                <p className="mt-1.5 px-4 text-[10px] font-medium leading-5 text-zinc-400 sm:text-[11px]">
-                  {currentSongPlaybackAccess.note}
-                </p>
-              ) : null}
             {playbackError ? (
               <p className="mt-1.5 text-[11px] font-semibold text-rose-500 sm:mt-2 sm:text-[12px]">
                 {playbackError}
@@ -1723,7 +1444,7 @@ export default function MusicApp({
                         }
                       />
                       <span className="text-[13px] font-bold text-zinc-700">
-                        鍠滄
+                        喜欢
                       </span>
                     </button>
                     <button
@@ -1757,7 +1478,7 @@ export default function MusicApp({
                           currentMusicData.currentSong?.id || "",
                         )
                           ? "已收藏"
-                          : "鏀惰棌"}
+                          : "收藏"}
                       </span>
                     </button>
                     <button
@@ -1769,7 +1490,7 @@ export default function MusicApp({
                     >
                       <Share2 size={18} className="text-zinc-500" />
                       <span className="text-[13px] font-bold text-zinc-700">
-                        鍒嗕韩
+                        分享
                       </span>
                     </button>
                   </motion.div>
@@ -2075,41 +1796,34 @@ export default function MusicApp({
     );
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      const persistedUrl = await saveUploadedFile(file);
-      const newSong: Song = {
-        id: `local-${Date.now()}`,
-        title: file.name.replace(/\.[^/.]+$/, ""), // remove extension
-        artist: "本地音乐",
-        albumArt: "https://picsum.photos/seed/music_local/300/300",
-        url: persistedUrl,
-        duration: 0,
-      };
+    const url = URL.createObjectURL(file);
+    const newSong: Song = {
+      id: `local-${Date.now()}`,
+      title: file.name.replace(/\.[^/.]+$/, ""), // remove extension
+      artist: "本地音乐",
+      albumArt: "https://picsum.photos/seed/music_local/300/300",
+      url: url,
+      duration: 0,
+    };
 
-      onUpdateMusicData({
-        ...currentMusicData,
-        currentSong: newSong,
-        isPlaying: true,
-        queue: [newSong, ...currentMusicData.queue],
-        recentlyPlayed: [
-          newSong.id,
-          ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
-        ],
-      });
+    onUpdateMusicData({
+      ...currentMusicData,
+      currentSong: newSong,
+      isPlaying: true,
+      queue: [newSong, ...currentMusicData.queue],
+      recentlyPlayed: [
+        newSong.id,
+        ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
+      ],
+    });
 
-      setLocalProgress(0);
-      setLocalCurrentTime(0);
-      setShowAddMusicDialog(false);
-    } catch (error) {
-      console.error("Local music import error:", error);
-      alert("本地音乐导入失败，请稍后再试");
-    } finally {
-      e.target.value = "";
-    }
+    setLocalProgress(0);
+    setLocalCurrentTime(0);
+    setShowAddMusicDialog(false);
   };
 
   const handleAddDirectMusic = () => {
@@ -2145,7 +1859,6 @@ export default function MusicApp({
 
   const renderMe = () => {
     const allKnownSongs = [
-      ...Object.values(currentMusicData.songsById || {}),
       ...defaultSongs,
       ...(currentMusicData.currentSong ? [currentMusicData.currentSong] : []),
       ...currentMusicData.queue,
@@ -2330,7 +2043,7 @@ export default function MusicApp({
                 }
                 className="text-[12px] font-bold text-zinc-400"
               >
-                娓呴櫎
+                清除
               </button>
             </div>
             <div className="space-y-2">
@@ -2373,7 +2086,7 @@ export default function MusicApp({
                 ))
               ) : (
                 <div className="text-center py-8 text-zinc-300 text-sm font-bold">
-                  鏆傛棤鍘嗗彶璁板綍
+                  暂无历史记录
                 </div>
               )}
             </div>
@@ -2708,13 +2421,13 @@ export default function MusicApp({
     >
       <div className="px-6 pt-12 pb-4 flex items-center justify-between border-b border-zinc-100">
         <h2 className="text-xl font-black text-zinc-900 tracking-tighter">
-          寰呮挱娓呭崟
+          待播清单
         </h2>
         <button
           onClick={() => setShowQueue(false)}
           className="px-4 py-2 bg-zinc-100 rounded-full text-sm font-bold text-zinc-500"
         >
-          瀹屾垚
+          完成
         </button>
       </div>
 
@@ -2789,7 +2502,7 @@ export default function MusicApp({
         {currentMusicData.queue.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-zinc-300">
             <MusicIcon size={48} className="mb-4 opacity-20" />
-            <p className="font-bold">娓呭崟绌虹┖濡備篃</p>
+            <p className="font-bold">清单空空如也</p>
           </div>
         )}
       </div>
@@ -2948,7 +2661,7 @@ export default function MusicApp({
                   disabled={!newPlaylistName.trim()}
                   className="flex-1 py-4 bg-pink-500 rounded-2xl font-bold text-white shadow-lg shadow-pink-200 active:scale-95 transition-transform disabled:opacity-50 disabled:shadow-none"
                 >
-                  鍒涘缓
+                  创建
                 </button>
               </div>
             </motion.div>
@@ -3046,7 +2759,7 @@ export default function MusicApp({
                       {isImporting ? (
                         <RefreshCw size={18} className="animate-spin" />
                       ) : (
-                        "绔嬪嵆瀵煎叆"
+                        "立即导入"
                       )}
                     </button>
                   </div>
@@ -3058,7 +2771,7 @@ export default function MusicApp({
                   onClick={() => setShowAddMusicDialog(false)}
                   className="w-full py-3 bg-zinc-50 rounded-xl font-bold text-zinc-400 active:scale-95 transition-transform border border-zinc-100"
                 >
-                  鍙栨秷
+                  取消
                 </button>
               </div>
             </motion.div>
@@ -3096,7 +2809,7 @@ export default function MusicApp({
                     <div className="flex-1 text-left">
                       <p className="font-bold text-zinc-800">{char.name}</p>
                       <p className="text-xs text-zinc-400">
-                        {char.motto || "鍦ㄧ嚎"}
+                        {char.motto || "在线"}
                       </p>
                     </div>
                     <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900">
@@ -3110,7 +2823,7 @@ export default function MusicApp({
                 onClick={() => setShowInviteDialog(false)}
                 className="w-full mt-8 py-4 bg-zinc-100 rounded-2xl font-bold text-zinc-500 active:scale-95 transition-transform"
               >
-                鍙栨秷
+                取消
               </button>
             </motion.div>
           </div>

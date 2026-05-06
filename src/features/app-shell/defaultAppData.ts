@@ -92,7 +92,6 @@ export function createDefaultAppData(): AppData {
       togetherStartTime: null,
       chatHistory: [],
       queue: [],
-      songsById: {},
     },
   };
 }
