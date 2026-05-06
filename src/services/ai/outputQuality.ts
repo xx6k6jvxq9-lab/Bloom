@@ -18,12 +18,14 @@ export type OutputQualityResult = {
 
 export type AssistantOutputQualityOptions = {
   allowBracketActions?: boolean;
+  allowStructuredProtocols?: boolean;
 };
 
 export type GenerateQualityCheckedAssistantReplyParams = {
   activeConfig: ApiConfig;
   messages: RuntimeChatMessage[];
   allowBracketActions?: boolean;
+  allowStructuredProtocols?: boolean;
   temperature?: number;
   retryTemperature?: number;
   onInvalid?: (result: OutputQualityResult) => void;
@@ -57,6 +59,23 @@ function normalizeExcessivePunctuation(text: string): string {
     .replace(/[\u2026]{3,}/g, '\u2026')
     .replace(/\s{3,}/g, ' ')
     .trim();
+}
+
+function hasStructuredProtocolPayload(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return (
+    trimmed.startsWith('[GAME_CARD]')
+    || trimmed.includes('---TRANSLATION---')
+    || trimmed.startsWith('[COUPLE_SPACE_INVITE_ACCEPTED]')
+    || trimmed.startsWith('[COUPLE_SPACE_INVITE]')
+    || trimmed.startsWith('[transfer]')
+    || /^\[转账\s*[\d.]+\]/.test(trimmed)
+    || /^TRANSFER\|[\d.]+\|/i.test(trimmed)
+  );
 }
 
 function hasObviousRepetitionNoise(text: string): boolean {
@@ -226,7 +245,8 @@ export function evaluateAssistantOutput(
   const compactText = cleanedText.replace(/\s/g, '');
   const punctuationChars = countMatches(compactText, PUNCTUATION_CHARS_REGEX);
   const punctuationRatio = punctuationChars / Math.max(compactText.length, 1);
-  if (compactText.length >= 8 && punctuationRatio > 0.45) {
+  const isStructuredProtocol = !!options.allowStructuredProtocols && hasStructuredProtocolPayload(cleanedText);
+  if (!isStructuredProtocol && compactText.length >= 8 && punctuationRatio > 0.45) {
     return { ok: false, cleanedText, reason: 'punctuation_heavy' };
   }
 
@@ -250,29 +270,12 @@ export async function generateQualityCheckedAssistantReply(
   });
   const firstResult = evaluateAssistantOutput(firstText, {
     allowBracketActions: params.allowBracketActions,
+    allowStructuredProtocols: params.allowStructuredProtocols,
   });
   if (firstResult.ok) {
     return firstResult;
   }
 
   params.onInvalid?.(firstResult);
-
-  const retryText = await streamRuntimeReplyText({
-    activeConfig: params.activeConfig,
-    messages: [
-      ...params.messages,
-      {
-        role: 'user',
-        content: buildInvalidOutputRetryInstruction(firstResult.reason),
-      },
-    ],
-    temperature: params.retryTemperature ?? 0.4,
-    onProgress: (text) => {
-      params.onProgress?.(text, { attempt: 2 });
-    },
-  });
-
-  return evaluateAssistantOutput(retryText, {
-    allowBracketActions: params.allowBracketActions,
-  });
+  return firstResult;
 }

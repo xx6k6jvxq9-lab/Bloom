@@ -1167,7 +1167,7 @@ export function useGroupChatRuntime({
       temperature: 0.7,
       allowBracketActions: shouldAllowBracketActions(params.speaker),
       onInvalid: (result) => {
-        console.warn('[group-chat] invalid generated reply, retrying', {
+        console.warn('[group-chat] invalid generated reply rejected', {
           mode: params.mode,
           speakerId: params.speaker.id,
           speakerName: params.speaker.name,

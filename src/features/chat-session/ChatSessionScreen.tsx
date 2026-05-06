@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -630,6 +630,7 @@ export function ChatSessionScreen({
     quoteReplyAt,
     forwardMessageAt,
     createSharePayloadAt,
+    generateAudioForMessageAt,
     submitTransfer,
     handleReceiveTransfer,
     handleRejectTransfer,
@@ -701,6 +702,23 @@ export function ChatSessionScreen({
     const segment = getLatestDirectModelSegment();
     return !!segment && index >= segment.start && index <= segment.end;
   }, [getLatestDirectModelSegment, isLoading]);
+  const canGenerateMessageAudio = useCallback((message: ChatMessage | null | undefined) => (
+    !!message
+    && message.role === 'model'
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.audioUrl
+    && !message.imageUrl
+    && !message.isInnerVoice
+    && !!character.voiceProfile?.enabled
+    && !!message.text.trim()
+    && !message.text.startsWith('[GAME_CARD]')
+    && !message.text.startsWith('[COUPLE_SPACE_INVITE')
+    && !message.text.startsWith('[transfer]')
+    && !/^\[转账\s*[\d.]+\]/.test(message.text)
+    && !/^TRANSFER\|[\d.]+\|/i.test(message.text)
+    && !isLoading
+  ), [character.voiceProfile?.enabled, isLoading]);
   const canBacktrackMessage = useCallback((message: ChatMessage | null | undefined) => (
     !!message
     && !message.isSystem
@@ -1249,6 +1267,16 @@ export function ChatSessionScreen({
 
     closeContextMenu();
     await regenerateLatestReplyAt(contextMenuMessageIndex);
+  };
+
+  const handleGenerateAudio = async () => {
+    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canGenerateMessageAudio(contextMenuMessage)) {
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    await generateAudioForMessageAt(contextMenuMessageIndex);
   };
 
   const handleBacktrack = () => {
@@ -3612,6 +3640,15 @@ export function ChatSessionScreen({
                     title="重回"
                   >
                     <RefreshCw size={20} />
+                  </button>
+                )}
+                {canGenerateMessageAudio(contextMenuMessage) && (
+                  <button
+                    onClick={() => void handleGenerateAudio()}
+                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
+                    title="生成语音"
+                  >
+                    <Volume2 size={20} />
                   </button>
                 )}
                 {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (

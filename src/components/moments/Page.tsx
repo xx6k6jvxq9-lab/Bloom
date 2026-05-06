@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Pin, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
@@ -18,6 +18,26 @@ import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, Moment
 type UserProfile = UserProfileExtended;
 type Comment = MomentComment;
 type Moment = MomentItem;
+
+const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
+const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
+const CHAT_RUNTIME_IDLE_GRACE_MS = 4000;
+const MOMENT_AI_RETRY_DELAY_MS = 1800;
+
+function isChatRuntimeBusyNow() {
+  const scope = globalThis as typeof globalThis & Record<string, unknown>;
+  const activeCount = typeof scope[CHAT_RUNTIME_BUSY_COUNT_KEY] === 'number'
+    ? Math.max(0, scope[CHAT_RUNTIME_BUSY_COUNT_KEY] as number)
+    : 0;
+  if (activeCount > 0) {
+    return true;
+  }
+
+  const lastActiveAt = typeof scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] === 'number'
+    ? scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] as number
+    : 0;
+  return lastActiveAt > 0 && Date.now() - lastActiveAt < CHAT_RUNTIME_IDLE_GRACE_MS;
+}
 
 function ResolvedMomentsAssetImage({
   value,
@@ -118,6 +138,9 @@ export function MomentsApp({
   const publishRef = useRef<HTMLDivElement | null>(null);
   const commentComposerRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingMomentAiTasksRef = useRef<Array<() => Promise<void>>>([]);
+  const momentAiRunningRef = useRef(false);
+  const momentAiDrainTimerRef = useRef<number | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -282,6 +305,60 @@ export function MomentsApp({
     }));
   };
 
+  const scheduleMomentAiDrain = useCallback((delayMs = MOMENT_AI_RETRY_DELAY_MS) => {
+    if (typeof window === 'undefined' || momentAiDrainTimerRef.current !== null) {
+      return;
+    }
+
+    momentAiDrainTimerRef.current = window.setTimeout(() => {
+      momentAiDrainTimerRef.current = null;
+
+      if (momentAiRunningRef.current) {
+        scheduleMomentAiDrain(MOMENT_AI_RETRY_DELAY_MS);
+        return;
+      }
+
+      const nextTask = pendingMomentAiTasksRef.current[0];
+      if (!nextTask) {
+        return;
+      }
+
+      if (isChatRuntimeBusyNow()) {
+        scheduleMomentAiDrain(MOMENT_AI_RETRY_DELAY_MS);
+        return;
+      }
+
+      pendingMomentAiTasksRef.current.shift();
+      momentAiRunningRef.current = true;
+      void nextTask()
+        .catch((error) => {
+          console.error('Moment AI task failed', error);
+        })
+        .finally(() => {
+          momentAiRunningRef.current = false;
+          if (pendingMomentAiTasksRef.current.length > 0) {
+            scheduleMomentAiDrain(600);
+          }
+        });
+    }, delayMs);
+  }, []);
+
+  const enqueueMomentAiTask = useCallback((task: () => Promise<void>) => {
+    pendingMomentAiTasksRef.current.push(task);
+    scheduleMomentAiDrain();
+  }, [scheduleMomentAiDrain]);
+
+  useEffect(() => (
+    () => {
+      if (momentAiDrainTimerRef.current !== null) {
+        window.clearTimeout(momentAiDrainTimerRef.current);
+        momentAiDrainTimerRef.current = null;
+      }
+      pendingMomentAiTasksRef.current = [];
+      momentAiRunningRef.current = false;
+    }
+  ), []);
+
   const toggleCommentComposer = (momentId: string, nextReplyTarget: typeof replyTarget) => {
     const isSameMoment = commentingOn === momentId;
     const currentTargetId = replyTarget?.momentId === momentId ? replyTarget.commentId : null;
@@ -299,7 +376,7 @@ export function MomentsApp({
     setReplyTarget(nextReplyTarget);
   };
 
-  const handlePublish = () => {
+  const handlePublish = useCallback(() => {
     const newMoment: Moment = {
       id: Date.now().toString(),
       authorId: 'user',
@@ -340,15 +417,17 @@ export function MomentsApp({
     }
 
     if (activeConfig && replyCharacters.length > 0) {
-      void runMomentPublishCommentSequence({
-        activeConfig,
-        moment: newMoment,
-        characters,
-        userName: userProfile.name,
-        appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
+      enqueueMomentAiTask(async () => {
+        await runMomentPublishCommentSequence({
+          activeConfig,
+          moment: newMoment,
+          characters,
+          userName: userProfile.name,
+          appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
+        });
       });
     }
-  };
+  }, [appendCommentToMoment, characters, enqueueMomentAiTask, forumConfig, publishContent, publishImages, setAppData, userProfile.name]);
 
   const handleLike = (momentId: string) => {
     setAppData((prev) => ({
@@ -468,7 +547,7 @@ export function MomentsApp({
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
   const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
-  const handleComment = async (momentId: string) => {
+  const handleComment = useCallback(async (momentId: string) => {
     if (!commentText.trim()) return;
     const activeReplyTarget = replyTarget?.momentId === momentId ? replyTarget : null;
 
@@ -492,16 +571,18 @@ export function MomentsApp({
     if (!moment) return;
 
     if (forumConfig) {
-      void runMomentCommentReplySequence({
-        activeConfig: forumConfig,
-        moment,
-        characters,
-        userName: userProfile.name,
-        triggerComment: newComment,
-        appendComment: (comment) => appendCommentToMoment(momentId, comment),
+      enqueueMomentAiTask(async () => {
+        await runMomentCommentReplySequence({
+          activeConfig: forumConfig,
+          moment,
+          characters,
+          userName: userProfile.name,
+          triggerComment: newComment,
+          appendComment: (comment) => appendCommentToMoment(momentId, comment),
+        });
       });
     }
-  };
+  }, [appendCommentToMoment, characters, commentText, enqueueMomentAiTask, forumConfig, moments, replyTarget, userProfile.name]);
 
   if (showPublish) {
     return (
@@ -609,9 +690,6 @@ export function MomentsApp({
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundColor: resolvedMomentsBackgroundUrl ? 'transparent' : '#fafafa',
-          paddingBottom: commentingOn
-            ? 'calc(var(--app-safe-area-bottom-ui, 0px) + 10rem)'
-            : undefined,
         }}
       >
       <div className="relative pb-4">

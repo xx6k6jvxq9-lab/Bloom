@@ -15,22 +15,15 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
-import { generateTextFromMessagesWithConfig, streamTextWithConfig } from '../../services/ai/runtimeClient';
 import {
   generateQualityCheckedAssistantReply,
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
-import { buildSummaryPrompt } from '../../services/ai/prompts/builders/buildSummaryPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
-import { buildAutoLongTermRefreshPlan } from '../../services/memory/autoLongTermRefreshPlan';
-import { buildAutoSummarySourceLines, sanitizeAutoSummaryText } from '../../services/memory/autoSummaryHygiene';
-import { buildLongTermMemoryProfile } from '../../services/memory/buildLongTermMemoryProfile';
-import { compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { findNearestChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
-import { clampDirectMemoryLimit, getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
-import { appendMemoryLibraryEntry, createMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
+import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
@@ -73,10 +66,10 @@ import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../.
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
-import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
+import { handleCommandTriggeredMomentPublish } from '../../services/moments/orchestrator';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
-import { getMessageMainText, getSummaryHistoryWindow } from '../../utils';
+import { getMessageMainText } from '../../utils';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import type { BaseSessionRuntimeState } from './types';
@@ -86,6 +79,7 @@ const TRANSFER_BLOCK_REGEX = /\[transfer\]\s*([\d.]+)\s*\[\/transfer\]/i;
 const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
+const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
 
 function isChineseLanguageName(value: string | null | undefined): boolean {
   const normalized = value?.trim().toLowerCase() || '';
@@ -99,6 +93,14 @@ function isChineseLanguageName(value: string | null | undefined): boolean {
 
 function shouldInlineReplyTranslation(character: Character): boolean {
   if (!character.autoTranslate) {
+    return false;
+  }
+
+  if (character.replyLanguageMode === 'follow-user') {
+    return false;
+  }
+
+  if (character.replyLanguageMode === 'chinese-with-native-flavor') {
     return false;
   }
 
@@ -122,6 +124,7 @@ function buildInlineReplyTranslationPrompt(character: Character): string {
     '## 双语输出',
     `本轮请先只输出角色实际会说的 ${targetLanguage} 原文。`,
     '如果这轮回复里出现了正文内容，请在正文全部结束后另起一行输出 `---TRANSLATION---`，然后给出与正文严格对应的简体中文翻译。',
+    '如果这轮使用了协议型输出（例如 `GAME_CARD`），也要把翻译放在协议正文之后，用 `---TRANSLATION---` 分隔，不要把翻译塞进 JSON 字段里。',
     '翻译部分只做自然中文转写，不要补充解释、注释、语言标签、括号说明或额外寒暄。',
     '如果正文被拆成多条短气泡，翻译部分也必须按完全相同的气泡顺序输出，并使用 `|||` 分隔每一条对应翻译。',
     '除 `---TRANSLATION---` 这条分隔线外，不要输出任何额外格式标记。',
@@ -347,15 +350,6 @@ function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies
   }
 
   return Math.max(1, Math.min(Math.floor(character.maxReplies as number), 5));
-}
-
-function isRetryableSummaryStreamError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
-  return message.includes('failed to fetch') || message.includes('networkerror');
 }
 
 function isSameLocalDay(leftTimestamp: number, rightTimestamp: number): boolean {
@@ -789,8 +783,15 @@ const splitStreamingModelResponseIntoMessages = (
   return visibleMessages;
 };
 
-function parseGameCardData(text: string) {
-  if (!text.startsWith('[GAME_CARD]')) return null;
+type ParsedGameCardState =
+  | { status: 'ok'; data: Record<string, unknown> }
+  | { status: 'incomplete' }
+  | { status: 'invalid'; error: unknown };
+
+function parseGameCardState(text: string): ParsedGameCardState {
+  if (!text.startsWith('[GAME_CARD]')) {
+    return { status: 'invalid', error: new Error('Not a GAME_CARD payload.') };
+  }
 
   try {
     let jsonString = text.replace(/^\[GAME_CARD\]\s*/, '').trim();
@@ -803,14 +804,43 @@ function parseGameCardData(text: string) {
 
     const jsonStart = jsonString.indexOf('{');
     const jsonEnd = jsonString.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1) return null;
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+      return { status: 'incomplete' };
+    }
 
     const gameData = JSON.parse(jsonString.substring(jsonStart, jsonEnd + 1));
-    return gameData && typeof gameData === 'object' ? gameData : null;
+    return gameData && typeof gameData === 'object'
+      ? { status: 'ok', data: gameData as Record<string, unknown> }
+      : { status: 'invalid', error: new Error('GAME_CARD payload is not an object.') };
   } catch (error) {
-    console.warn('Ignoring invalid runtime game card payload.', error);
-    return null;
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (
+      /unterminated string|unexpected end of json input|expected ',' or '}'/i.test(message)
+      || text.trim().startsWith('[GAME_CARD]')
+    ) {
+      const trimmed = text.trim();
+      if (!trimmed.endsWith('}') || message.toLowerCase().includes('unterminated')) {
+        return { status: 'incomplete' };
+      }
+    }
+    return { status: 'invalid', error };
   }
+}
+
+function parseGameCardData(text: string, options?: { silent?: boolean }) {
+  const parsed = parseGameCardState(text);
+  if (parsed.status === 'ok') {
+    return parsed.data;
+  }
+  if (parsed.status === 'invalid' && !options?.silent) {
+    console.warn('Ignoring invalid runtime game card payload.', parsed.error);
+  }
+
+  return null;
+}
+
+function isIncompleteGameCardPayload(text: string) {
+  return parseGameCardState(text).status === 'incomplete';
 }
 
 function resolveGameCardReplyType(gameData: any): string | null {
@@ -844,7 +874,8 @@ function applyDirectGameCardBridge(params: {
   latestUserMessage: ChatMessage | null | undefined;
 }) {
   const { replyText, latestUserMessage } = params;
-  const trimmedReply = replyText.trim();
+  const replyParts = getLegacyTranslationParts(replyText);
+  const trimmedReply = replyParts.mainText.trim();
   if (!trimmedReply || trimmedReply.startsWith('[GAME_CARD]') || !latestUserMessage) {
     return replyText;
   }
@@ -864,7 +895,9 @@ function applyDirectGameCardBridge(params: {
     content: trimmedReply,
   };
 
-  return `[GAME_CARD] ${JSON.stringify(bridgedCard)}`;
+  return replyParts.translation.trim()
+    ? `[GAME_CARD] ${JSON.stringify(bridgedCard)}\n\n---TRANSLATION---\n${replyParts.translation.trim()}`
+    : `[GAME_CARD] ${JSON.stringify(bridgedCard)}`;
 }
 
 function applyDirectCoupleSpaceBridge(params: {
@@ -1035,6 +1068,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   quoteReplyAt: (index: number) => void;
   forwardMessageAt: (index: number) => void;
   createSharePayloadAt: (index: number) => ShareActionResult['payload'] | null;
+  generateAudioForMessageAt: (index: number) => Promise<boolean>;
   submitTransfer: (params: {
     transferAmount: string;
     transferType: 'toUser' | 'toCharacter';
@@ -1119,40 +1153,6 @@ function formatChatApiError(error: unknown): string {
   return `错误: ${normalized}`;
 }
 
-function cleanAutoTranslationResult(rawTranslation: string, sourceText: string): string {
-  const normalized = sanitizePipeMarkers(rawTranslation, '\n')
-    .replace(/\r/g, '')
-    .trim();
-  if (!normalized) {
-    return '';
-  }
-
-  const sourceLines = new Set(
-    sanitizePipeMarkers(sourceText, '\n')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean),
-  );
-
-  const cleanedLines = normalized
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^---+\s*translation\s*---+$/i.test(line))
-    .filter((line) => !/^(translation|translated text|中文翻译|翻译)[:：]?\s*$/i.test(line))
-    .filter((line) => !/^text\s*[:：]/i.test(line))
-    .filter((line) => !sourceLines.has(line));
-
-  const cleaned = cleanedLines.join('\n').trim();
-  if (!cleaned) {
-    return '';
-  }
-
-  return cleaned === sanitizePipeMarkers(sourceText, '\n').trim()
-    ? ''
-    : cleaned;
-}
-
 function extractSpeechTextForAudio(text: string): string {
   const normalized = text.trim();
   if (!normalized) {
@@ -1166,66 +1166,6 @@ function extractSpeechTextForAudio(text: string): string {
     .replace(/\s*\n\s*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function shouldAttachCharacterVoiceReply(character: Character): boolean {
-  if (character.voiceProfile?.enabled !== true) {
-    return false;
-  }
-
-  const replyMode = character.voiceProfile?.replyMode || 'voice';
-  if (replyMode === 'text') {
-    return false;
-  }
-
-  if (replyMode === 'voice') {
-    return true;
-  }
-
-  const frequency = character.voiceProfile?.replyFrequency || 'medium';
-  const probability = frequency === 'high' ? 0.75 : frequency === 'low' ? 0.3 : 0.55;
-  return Math.random() < probability;
-}
-
-function parseBatchTranslationResult(rawTranslation: string, expectedCount: number): string[] {
-  const normalized = sanitizePipeMarkers(rawTranslation, '\n')
-    .replace(/\r/g, '')
-    .trim();
-  if (!normalized) {
-    return [];
-  }
-
-  const exactDelimiter = '<<<ITEM_BREAK>>>';
-  if (normalized.includes(exactDelimiter)) {
-    return normalized
-      .split(exactDelimiter)
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .slice(0, expectedCount);
-  }
-
-  const taggedMatches = Array.from(
-    normalized.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi),
-  );
-  if (taggedMatches.length > 0) {
-    return taggedMatches
-      .map((match) => match[1]?.trim() || '')
-      .filter(Boolean)
-      .slice(0, expectedCount);
-  }
-
-  return [];
-}
-
-function shouldTranslateVoiceCallReply(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  const hasCjk = /[\u3400-\u9fff]/.test(trimmed);
-  const hasLatin = /[A-Za-z]/.test(trimmed);
-  return hasLatin && !hasCjk;
 }
 
 export function useDirectChatRuntime({
@@ -1283,8 +1223,6 @@ export function useDirectChatRuntime({
   const handleSendRef = useRef<(overrideText?: string | any, locationData?: any) => Promise<void>>(async () => {});
   const historyRef = useRef(history);
   const inputRef = useRef(input);
-  const translationWorkerRunningRef = useRef(false);
-  const translationFailureNoticeShownRef = useRef(false);
   const pendingCoupleSpaceInviteRef = useRef(false);
   const pendingTransferDecisionIdsRef = useRef<Set<string>>(new Set());
 
@@ -1394,46 +1332,6 @@ export function useDirectChatRuntime({
       return null;
     }
   }, [character, defaultTtsVoiceId, voiceRuntimeConfig]);
-
-  const attachAudioToLatestModelReply = useCallback(async (
-    messages: ChatMessage[],
-    fileNamePrefix: string,
-  ) => {
-    if (!shouldAttachCharacterVoiceReply(character)) {
-      return messages;
-    }
-
-    const latestReplySegment = getLatestModelReplySegment(messages);
-    if (!latestReplySegment) {
-      return messages;
-    }
-
-    const nextMessages = [...messages];
-    for (let index = latestReplySegment.start; index <= latestReplySegment.end; index += 1) {
-      const message = nextMessages[index];
-      const cleanText = message?.text?.trim();
-      if (!message || message.role !== 'model' || !cleanText || message.audioUrl) {
-        continue;
-      }
-
-      const audioResult = await synthesizeCharacterReplyAudio(
-        cleanText,
-        `${fileNamePrefix}-${index - latestReplySegment.start + 1}`,
-      );
-      if (!audioResult) {
-        continue;
-      }
-
-      nextMessages[index] = {
-        ...message,
-        audioUrl: audioResult.audioUrl,
-        audioMimeType: audioResult.audioMimeType,
-        audioTranscript: audioResult.spokenText,
-      };
-    }
-
-    return nextMessages;
-  }, [character, getLatestModelReplySegment, synthesizeCharacterReplyAudio]);
 
   const applyAvatarAction = useCallback((
     action: ParsedAvatarAction | null,
@@ -1633,6 +1531,7 @@ export function useDirectChatRuntime({
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
+          const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
             sections: [
@@ -1655,6 +1554,7 @@ export function useDirectChatRuntime({
               buildAvatarActionPromptSection(character, historySnapshot),
               buildAutonomousAvatarLibraryPromptSection(character),
               buildAssistantStickerPromptSection(availableStickers),
+              inlineReplyTranslationEnabled ? buildInlineReplyTranslationPrompt(character) : '',
             ].filter(Boolean),
           });
 
@@ -1677,8 +1577,9 @@ export function useDirectChatRuntime({
             activeConfig,
             messages: runtimeMessages,
             allowBracketActions: shouldAllowBracketActions(character),
+            allowStructuredProtocols: true,
             onInvalid: (result) => {
-              console.warn('[direct-chat] invalid generated reply, retrying', {
+              console.warn('[direct-chat] invalid generated reply rejected', {
                 reason: result.reason,
                 preview: result.cleanedText.slice(0, 120),
               });
@@ -1702,13 +1603,12 @@ export function useDirectChatRuntime({
             intentAnalysis: directIntentAnalysis,
             decision: directCharacterDecision,
           });
+          if (isIncompleteGameCardPayload(currentResponseText)) {
+            currentResponseText = GAME_CARD_FAILURE_TOKEN;
+          }
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
-          latestHistory = await attachAudioToLatestModelReply(
-            latestHistory,
-            `direct-generate-${character.id}-${assistantMsgId}`,
-          );
           setHistory(latestHistory);
           syncCharacterRuntimeState({
             history: latestHistory,
@@ -1737,243 +1637,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, syncCharacterRuntimeState, userName, worldBook]);
-
-  useEffect(() => {
-    const pendingUserBlock = getLatestPendingUserMessageBlock(history);
-    const pendingReplyIndex = pendingUserBlock?.end;
-    const pendingReplyMessage = typeof pendingReplyIndex === 'number' ? history[pendingReplyIndex] : undefined;
-    if (pendingReplyMessage?.needsReply && !isLoading) {
-      const reply = async () => {
-        const historySnapshot = history.map((message, index) => (
-          index === pendingReplyIndex ? { ...message, needsReply: false } : message
-        ));
-        setHistory(historySnapshot);
-        await generateDirectAssistantMessage(historySnapshot, 'reply');
-      };
-
-      void reply();
-    }
-  }, [generateDirectAssistantMessage, history, isLoading, setHistory]);
-
-  useEffect(() => {
-    const translateHistory = async () => {
-      if (!character.autoTranslate || !activeConfig) return;
-      if (translationWorkerRunningRef.current) return;
-
-      const isMostlyChinese = (text: string) => {
-        const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
-        if (!chineseChars) return false;
-        const textLength = text.replace(/\s/g, '').length;
-        return textLength > 0 && (chineseChars.length / textLength > 0.5);
-      };
-
-      const getMessageTranslationSource = (msg: ChatMessage) => {
-        let textToTranslate = msg.audioTranscript?.trim() || msg.text;
-        let isQnaAnswer = false;
-        let questionToTranslate = '';
-        const gameData = parseGameCardData(msg.text);
-
-        if (gameData) {
-          if (typeof gameData.content === 'string') {
-            textToTranslate = gameData.content;
-          }
-          if (
-            gameData.game === 'qna'
-            && gameData.type === 'answer'
-            && typeof gameData.question === 'string'
-          ) {
-            isQnaAnswer = true;
-            questionToTranslate = gameData.question;
-          }
-        }
-
-        return {
-          textToTranslate,
-          isQnaAnswer,
-          questionToTranslate,
-          isGameCard: !!gameData,
-        };
-      };
-
-      const canTranslateMessage = (msg: ChatMessage) => {
-        if (msg.role !== 'model' || msg.isSystem || msg.translation || msg.text.includes('---TRANSLATION---')) return false;
-        if (msg.imageUrl || msg.isInnerVoice) return false;
-        if (msg.audioUrl && !msg.audioTranscript?.trim()) return false;
-        if (msg.text.match(/^\[[^\]]*?转账[^\]]*?([\d\.]+)\]$/)) return false;
-
-        const { textToTranslate } = getMessageTranslationSource(msg);
-        const textToCheck = textToTranslate.replace(/\[[^\]]*?转账[^\]]*?([\d\.]+)\]/g, '').trim();
-        return !!textToCheck && !isMostlyChinese(textToCheck);
-      };
-
-      const isBatchableWithNeighbors = (msg: ChatMessage) => {
-        const { isGameCard, isQnaAnswer } = getMessageTranslationSource(msg);
-        return !isGameCard && !isQnaAnswer;
-      };
-
-      const findNextTranslationBatch = () => {
-        const latestHistory = historyRef.current;
-
-        for (let index = latestHistory.length - 1; index >= 0; index -= 1) {
-          const msg = latestHistory[index];
-          if (!canTranslateMessage(msg)) {
-            continue;
-          }
-
-          const batch = [{ msg, index }];
-          if (!isBatchableWithNeighbors(msg)) {
-            return batch;
-          }
-
-          let cursor = index - 1;
-          while (cursor >= 0) {
-            const candidate = latestHistory[cursor];
-            if (!canTranslateMessage(candidate) || candidate.role !== 'model' || candidate.isSystem) {
-              break;
-            }
-            if (!isBatchableWithNeighbors(candidate)) {
-              break;
-            }
-            batch.unshift({ msg: candidate, index: cursor });
-            cursor -= 1;
-          }
-
-          return batch;
-        }
-
-        return [];
-      };
-
-      const translateText = async (prompt: string) => {
-        try {
-          let responseText = '';
-          await streamTextWithConfig({
-            activeConfig,
-            temperature: 0.1,
-            messages: [{ role: 'user', content: prompt }],
-            onTextChunk: (chunkText) => {
-              responseText += chunkText;
-            },
-          });
-          return responseText;
-        } catch (streamError) {
-          console.warn('Streaming translation failed, falling back to non-stream request.', streamError);
-          return generateTextFromMessagesWithConfig({
-            activeConfig,
-            temperature: 0.1,
-            messages: [{ role: 'user', content: prompt }],
-          });
-        }
-      };
-
-      translationWorkerRunningRef.current = true;
-      try {
-        while (true) {
-          const batch = findNextTranslationBatch();
-          if (batch.length === 0) {
-            break;
-          }
-
-          try {
-            const singleSource = batch.length === 1
-              ? getMessageTranslationSource(batch[0].msg)
-              : null;
-
-            let translations: string[] = [];
-            if (batch.length === 1 && singleSource) {
-              const sourcePayload = singleSource.isQnaAnswer && singleSource.questionToTranslate
-                ? `<question>\n${singleSource.questionToTranslate}\n</question>\n<answer>\n${singleSource.textToTranslate}\n</answer>`
-                : `<source>\n${singleSource.textToTranslate}\n</source>`;
-              const prompt = singleSource.isQnaAnswer && singleSource.questionToTranslate
-                ? [
-                    'Translate the content below into Simplified Chinese.',
-                    'Return ONLY the Chinese translation.',
-                    'Do not include the original text, labels, explanations, or code fences.',
-                    'Translate the question first and the answer second, separated by a single line containing only ---.',
-                    '',
-                    sourcePayload,
-                  ].join('\n')
-                : [
-                    'Translate the content below into Simplified Chinese.',
-                    'Return ONLY the Chinese translation.',
-                    'Do not include the original text, labels, explanations, or code fences.',
-                    '',
-                    sourcePayload,
-                  ].join('\n');
-
-              const translation = cleanAutoTranslationResult(
-                await translateText(prompt),
-                singleSource.isQnaAnswer && singleSource.questionToTranslate
-                  ? `${singleSource.questionToTranslate}\n---\n${singleSource.textToTranslate}`
-                  : singleSource.textToTranslate,
-              );
-              translations = translation ? [translation] : [];
-            } else {
-              const batchPrompt = [
-                'Translate each item below into Simplified Chinese.',
-                'Keep the original order exactly.',
-                'Return ONLY the translations.',
-                'Separate each translated item with a line containing exactly <<<ITEM_BREAK>>>.',
-                'Do not include numbering, labels, explanations, the original text, or code fences.',
-                '',
-                ...batch.map(({ msg }, idx) => {
-                  const source = getMessageTranslationSource(msg);
-                  return `<item index="${idx + 1}">\n${source.textToTranslate}\n</item>`;
-                }),
-              ].join('\n');
-
-              const rawBatchTranslation = await translateText(batchPrompt);
-              const parsedTranslations = parseBatchTranslationResult(rawBatchTranslation, batch.length);
-              translations = parsedTranslations.map((translation, idx) => cleanAutoTranslationResult(
-                translation,
-                getMessageTranslationSource(batch[idx].msg).textToTranslate,
-              ));
-            }
-
-            if (translations.length > 0) {
-              const latestHistory = historyRef.current;
-              const allMessagesStillMatch = batch.every(({ msg, index }) => {
-                const liveMessage = latestHistory[index];
-                return !!liveMessage
-                  && liveMessage.timestamp === msg.timestamp
-                  && liveMessage.role === msg.role
-                  && liveMessage.text === msg.text
-                  && !liveMessage.translation;
-              });
-
-              if (allMessagesStillMatch) {
-                const nextHistory = [...latestHistory];
-                batch.forEach(({ index }, idx) => {
-                  const translation = translations[idx]?.trim();
-                  if (!translation) {
-                    return;
-                  }
-                  nextHistory[index] = {
-                    ...nextHistory[index],
-                    translation,
-                  };
-                });
-                setHistory(nextHistory);
-                translationFailureNoticeShownRef.current = false;
-              }
-            }
-          } catch (translationError) {
-            console.error('Translation failed for message batch', batch.map(item => item.index), translationError);
-            if (!translationFailureNoticeShownRef.current) {
-              setErrorState('Auto-translation failed for some messages. Please check API/network settings.');
-              translationFailureNoticeShownRef.current = true;
-            }
-            break;
-          }
-        }
-      } finally {
-        translationWorkerRunningRef.current = false;
-      }
-    };
-
-    translateHistory();
-  }, [activeConfig, character.autoTranslate, error, history, setHistory]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, syncCharacterRuntimeState, userName, worldBook]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
     text: string;
@@ -1995,6 +1659,7 @@ export function useDirectChatRuntime({
         nativeLanguage: character.nativeLanguage,
         fixedReplyLanguage: character.fixedReplyLanguage,
       });
+      const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
       const qualityResult = await generateQualityCheckedAssistantReply({
         activeConfig,
         messages: [
@@ -2006,6 +1671,7 @@ export function useDirectChatRuntime({
               languageRules,
               '请像电话里说话一样自然回应，尽量简短，控制在 50 字以内。',
               '不要输出动作括号、舞台提示、解释说明，也不要分点。',
+              inlineReplyTranslationEnabled ? buildInlineReplyTranslationPrompt(character) : '',
             ].join('\n'),
           },
           {
@@ -2014,40 +1680,20 @@ export function useDirectChatRuntime({
           },
         ],
         allowBracketActions: false,
+        allowStructuredProtocols: true,
       });
 
       if (!qualityResult.ok) {
         throw new Error(`语音通话模型返回无效内容：${qualityResult.reason || 'unknown'}`);
       }
 
-      const cleanResponseText = qualityResult.cleanedText.trim();
+      const responseParts = getLegacyTranslationParts(qualityResult.cleanedText.trim());
+      const cleanResponseText = responseParts.mainText.trim();
       if (!cleanResponseText) {
         return null;
       }
 
-      let translation = '';
-      if (shouldTranslateVoiceCallReply(cleanResponseText)) {
-        try {
-          const translationPrompt = [
-            'Translate the content below into Simplified Chinese.',
-            'Return ONLY the Chinese translation.',
-            'Do not include the original text, labels, explanations, or code fences.',
-            '',
-            `<source>\n${cleanResponseText}\n</source>`,
-          ].join('\n');
-
-          translation = cleanAutoTranslationResult(
-            await generateTextFromMessagesWithConfig({
-              activeConfig,
-              temperature: 0.1,
-              messages: [{ role: 'user', content: translationPrompt }],
-            }),
-            cleanResponseText,
-          );
-        } catch (translationError) {
-          console.warn('Voice call translation failed', translationError);
-        }
-      }
+      const translation = responseParts.translation.trim();
 
       let audioResult: Awaited<ReturnType<typeof synthesizeCharacterReplyAudio>> = null;
       try {
@@ -2332,6 +1978,7 @@ export function useDirectChatRuntime({
         activeConfig,
         messages: runtimeMessages,
         allowBracketActions: shouldAllowBracketActions(character),
+        allowStructuredProtocols: true,
         onProgress: (streamingText) => {
           if (activeGenerationIdRef.current !== generationId) {
             return;
@@ -2345,7 +1992,7 @@ export function useDirectChatRuntime({
           updateAssistantMessage(previewText);
         },
         onInvalid: (result) => {
-          console.warn('[direct-chat] invalid generated reply, retrying', {
+          console.warn('[direct-chat] invalid generated reply rejected', {
             reason: result.reason,
             preview: result.cleanedText.slice(0, 120),
           });
@@ -2379,14 +2026,13 @@ export function useDirectChatRuntime({
         intentAnalysis: directIntentAnalysis,
         decision: directCharacterDecision,
       });
+      if (isIncompleteGameCardPayload(currentResponseText)) {
+        currentResponseText = GAME_CARD_FAILURE_TOKEN;
+      }
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
-      let finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
-      finalHistory = await attachAudioToLatestModelReply(
-        finalHistory,
-        `direct-send-${character.id}-${assistantMsgId}`,
-      );
+      const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
       setHistory(finalHistory);
       syncCharacterRuntimeState({
         history: finalHistory,
@@ -2398,201 +2044,6 @@ export function useDirectChatRuntime({
       applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
-
-      try {
-        const autoMomentResult = await maybeAutoPublishMoment({
-          userText: userMsg.text,
-          assistantText: currentResponseText,
-          finalHistory,
-          recentContext: {
-            recentMessages: finalHistory.slice(-6).map(message => ({
-              role: message.role,
-              text: message.text,
-              timestamp: message.timestamp,
-            })),
-            recentMomentPublishedAt: lastMomentPublishAtRef.current,
-            now: Date.now(),
-          },
-          activeConfig: forumConfig || activeConfig,
-          character,
-          masks,
-          worldBook,
-        });
-
-        if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
-          const noticeTimestamp = Date.now();
-          const finalHistoryWithNotice = [
-            ...finalHistory,
-            createMomentPublishedSystemMessage(character.name, noticeTimestamp),
-          ];
-          setHistory(finalHistoryWithNotice);
-          onPublishMoment?.({
-            authorId: character.id,
-            content: autoMomentResult.momentContent,
-            imageCard: autoMomentResult.momentImageCard,
-          });
-          lastMomentPublishAtRef.current = Date.now();
-        }
-      } catch (autoMomentError) {
-        console.error('Auto moment publish failed:', autoMomentError);
-      }
-
-      const finalHistoryLength = finalHistory.length;
-      if (
-        character.autoSummaryEnabled &&
-        character.summaryInterval &&
-        finalHistoryLength > 0 &&
-        finalHistoryLength % character.summaryInterval === 0
-      ) {
-        try {
-          const summaryHistoryWindow = getSummaryHistoryWindow(finalHistory, clampDirectMemoryLimit(character.memoryLimit));
-          const summarySourceLines = buildAutoSummarySourceLines({
-            history: summaryHistoryWindow,
-            assistantName: character.name,
-          });
-
-          if (summarySourceLines.length === 0) {
-            return;
-          }
-
-          const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
-          const characterCorePersona = buildCharacterContext({
-            character,
-          }).corePersona ?? '';
-          const prompt = buildSummaryPrompt({
-            mode: 'small',
-            characterCore: {
-              characterSetting: characterCorePersona,
-            },
-            memoryContext: {
-              longTermMemoryProfile,
-            },
-            sections: [summarySourceLines.join('\n')],
-          });
-
-          let summaryText = '';
-          try {
-            await streamTextWithConfig({
-              activeConfig,
-              messages: [{ role: 'user', content: prompt }],
-              onTextChunk: (chunkText) => {
-                summaryText += chunkText;
-              },
-            });
-          } catch (error) {
-            if (!isRetryableSummaryStreamError(error)) {
-              throw error;
-            }
-
-            summaryText = await generateTextFromMessagesWithConfig({
-              activeConfig,
-              messages: [{ role: 'user', content: prompt }],
-            });
-          }
-
-          const safeSummaryText = sanitizeAutoSummaryText(summaryText);
-
-          if (safeSummaryText) {
-            const shortTermEntry = createMemoryLibraryEntry({
-              kind: 'short-term',
-              source: 'auto',
-              content: safeSummaryText,
-            });
-            let nextMemoryLibraryEntries = appendMemoryLibraryEntry(character, shortTermEntry);
-            let nextLongTermMemoryProfile: string | undefined;
-
-            const autoLongTermPlan = buildAutoLongTermRefreshPlan({
-              memoryLibraryEntries: character.memoryLibraryEntries,
-              latestShortTermSummary: safeSummaryText,
-              pendingEntries: nextMemoryLibraryEntries,
-            });
-
-            if (autoLongTermPlan.shouldRefresh) {
-              const longTermPrompt = buildSummaryPrompt({
-                mode: 'large',
-                characterCore: {
-                  characterSetting: characterCorePersona,
-                },
-                memoryContext: {
-                  shortTermSummary: safeSummaryText,
-                  longTermMemoryProfile,
-                },
-                sections: [summarySourceLines.join('\n')],
-              });
-
-              let longTermSummaryText = '';
-              try {
-                await streamTextWithConfig({
-                  activeConfig,
-                  messages: [{ role: 'user', content: longTermPrompt }],
-                  onTextChunk: (chunkText) => {
-                    longTermSummaryText += chunkText;
-                  },
-                });
-              } catch (error) {
-                if (!isRetryableSummaryStreamError(error)) {
-                  throw error;
-                }
-
-                longTermSummaryText = await generateTextFromMessagesWithConfig({
-                  activeConfig,
-                  messages: [{ role: 'user', content: longTermPrompt }],
-                });
-              }
-
-              const safeLongTermSummaryText = sanitizeAutoSummaryText(longTermSummaryText);
-
-              if (safeLongTermSummaryText) {
-                nextLongTermMemoryProfile = safeLongTermSummaryText;
-                nextMemoryLibraryEntries = appendMemoryLibraryEntry(
-                  { memoryLibraryEntries: nextMemoryLibraryEntries },
-                  createMemoryLibraryEntry({
-                    kind: 'long-term',
-                    source: 'auto',
-                    content: nextLongTermMemoryProfile,
-                  }),
-                );
-              }
-            }
-
-            const nextShortTermSummary = nextLongTermMemoryProfile
-              ? compressShortTermSummaryAfterLongTerm(safeSummaryText)
-              : safeSummaryText;
-
-            const runtimePatch = reconcileCharacterRuntimeState({
-              character: {
-                openLoopRegistry: character.openLoopRegistry,
-                presenceState: character.presenceState,
-                shortTermSummary: nextShortTermSummary,
-              },
-              history: finalHistory,
-              continuityMode: characterTemporalState.continuityMode,
-              nowTimestamp: Date.now(),
-              shortTermSummary: nextShortTermSummary,
-            });
-
-            const patch: Partial<Character> = {
-              shortTermSummary: nextShortTermSummary,
-              memoryLibraryEntries: nextMemoryLibraryEntries,
-              ...runtimePatch,
-              ...(nextLongTermMemoryProfile
-                ? { longTermMemoryProfile: nextLongTermMemoryProfile }
-                : {}),
-            };
-
-            if (onPatchCharacter) {
-              onPatchCharacter(patch);
-            } else {
-              onUpdateCharacter({
-                ...character,
-                ...patch,
-              });
-            }
-          }
-        } catch (summaryError) {
-          console.error('Auto-summarize failed:', summaryError);
-        }
-      }
     } catch (sendError: any) {
       if (activeGenerationIdRef.current !== generationId) {
         return;
@@ -2606,7 +2057,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, attachAudioToLatestModelReply, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
@@ -3043,6 +2494,51 @@ export function useDirectChatRuntime({
     return createShareAction(targetMessage).payload;
   }, [history]);
 
+  const generateAudioForMessageAt = useCallback(async (index: number) => {
+    const latestHistory = historyRef.current;
+    const targetMessage = latestHistory[index];
+    if (
+      !targetMessage
+      || targetMessage.role !== 'model'
+      || targetMessage.isSystem
+      || targetMessage.isRecalled
+      || targetMessage.audioUrl
+      || !shouldApplyCharacterTts(character)
+    ) {
+      return false;
+    }
+
+    const cleanText = targetMessage.text?.trim() || '';
+    if (
+      !cleanText
+      || cleanText.startsWith('[GAME_CARD]')
+      || cleanText.startsWith('[COUPLE_SPACE_INVITE')
+      || cleanText.startsWith('[transfer]')
+      || /^\[转账\s*[\d.]+\]/.test(cleanText)
+      || /^TRANSFER\|[\d.]+\|/i.test(cleanText)
+    ) {
+      return false;
+    }
+
+    const audioResult = await synthesizeCharacterReplyAudio(
+      cleanText,
+      `direct-manual-tts-${character.id}-${targetMessage.timestamp}`,
+    );
+    if (!audioResult) {
+      return false;
+    }
+
+    const nextHistory = [...latestHistory];
+    nextHistory[index] = {
+      ...targetMessage,
+      audioUrl: audioResult.audioUrl,
+      audioMimeType: audioResult.audioMimeType,
+      audioTranscript: audioResult.spokenText,
+    };
+    setHistory(nextHistory);
+    return true;
+  }, [character, setHistory, synthesizeCharacterReplyAudio]);
+
   const submitTransfer = useCallback((params: {
     transferAmount: string;
     transferType: 'toUser' | 'toCharacter';
@@ -3179,10 +2675,8 @@ export function useDirectChatRuntime({
       return;
     }
 
-    setHistory(latestHistory.map((message, index) => (
-      index === pendingUserBlock.end ? { ...message, needsReply: true } : message
-    )));
-  }, [generateDirectAssistantMessage, isLoading, setHistory]);
+    void generateDirectAssistantMessage(latestHistory, 'reply');
+  }, [generateDirectAssistantMessage, isLoading]);
 
   const handleRejectTransfer = useCallback((index: number) => {
     const msg = history[index];
@@ -3239,6 +2733,7 @@ export function useDirectChatRuntime({
     quoteReplyAt,
     forwardMessageAt,
     createSharePayloadAt,
+    generateAudioForMessageAt,
     submitTransfer,
     handleReceiveTransfer,
     handleRejectTransfer,

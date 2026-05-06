@@ -37,14 +37,6 @@ import { useAppEnvironment } from './features/app-shell/useAppEnvironment';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
 import { useCoupleSpaceAutoChecks } from './features/app-shell/useCoupleSpaceAutoChecks';
-import {
-  fetchSettingsModels,
-  filterAvailableModels,
-  fetchAllPagedModelNames,
-  extractModelNamesFromResponse,
-  resolveNextModelsPageUrl,
-  testSettingsConnection,
-} from './features/app-shell/settingsModelHelpers';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
@@ -117,6 +109,7 @@ export default function App() {
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const {
+    isIosBrowserMode,
     isStandalone,
     keyboardVisible,
     layoutViewportHeight,
@@ -290,10 +283,14 @@ export default function App() {
     && visualViewportHeight > 0
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
-  const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
+  const hideMockSystemChrome =
+    isIosBrowserMode
+    || (!useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed));
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
+    : isIosBrowserMode
+      ? '0px'
     : hideMockSystemChrome
       ? '0px'
       : '12px';

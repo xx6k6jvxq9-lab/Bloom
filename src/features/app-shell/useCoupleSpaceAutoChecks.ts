@@ -20,6 +20,10 @@ type UseCoupleSpaceAutoChecksParams = {
   settings: AppSettings;
 };
 
+const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
+const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
+const CHAT_RUNTIME_IDLE_GRACE_MS = 4000;
+
 export function useCoupleSpaceAutoChecks({
   activeApp,
   appData,
@@ -43,7 +47,10 @@ export function useCoupleSpaceAutoChecks({
   }, [settings]);
 
   useEffect(() => {
-    if (!hasHydratedStorage || activeApp === 'couple-space') {
+    if (
+      !hasHydratedStorage
+      || activeApp === 'couple-space'
+    ) {
       return;
     }
 
@@ -63,8 +70,26 @@ export function useCoupleSpaceAutoChecks({
       return /auth_unavailable|no auth available providers|503/i.test(message);
     };
 
+    const isChatRuntimeBusy = () => {
+      const scope = globalThis as typeof globalThis & Record<string, unknown>;
+      const activeCount = typeof scope[CHAT_RUNTIME_BUSY_COUNT_KEY] === 'number'
+        ? Math.max(0, scope[CHAT_RUNTIME_BUSY_COUNT_KEY] as number)
+        : 0;
+      if (activeCount > 0) {
+        return true;
+      }
+
+      const lastActiveAt = typeof scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] === 'number'
+        ? scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] as number
+        : 0;
+      return lastActiveAt > 0 && Date.now() - lastActiveAt < CHAT_RUNTIME_IDLE_GRACE_MS;
+    };
+
     const runBackgroundCoupleSpaceChecks = async () => {
       if (!hasUsableAutoCheckConfig()) {
+        return;
+      }
+      if (isChatRuntimeBusy()) {
         return;
       }
 

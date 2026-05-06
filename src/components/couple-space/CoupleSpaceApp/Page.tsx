@@ -57,6 +57,26 @@ import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteract
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
 
+const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
+const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
+const CHAT_RUNTIME_IDLE_GRACE_MS = 4000;
+const COUPLE_SPACE_AUTO_RETRY_DELAY_MS = 1800;
+
+function isChatRuntimeBusyNow() {
+  const scope = globalThis as typeof globalThis & Record<string, unknown>;
+  const activeCount = typeof scope[CHAT_RUNTIME_BUSY_COUNT_KEY] === 'number'
+    ? Math.max(0, scope[CHAT_RUNTIME_BUSY_COUNT_KEY] as number)
+    : 0;
+  if (activeCount > 0) {
+    return true;
+  }
+
+  const lastActiveAt = typeof scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] === 'number'
+    ? scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] as number
+    : 0;
+  return lastActiveAt > 0 && Date.now() - lastActiveAt < CHAT_RUNTIME_IDLE_GRACE_MS;
+}
+
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
   image.src = imageSrc;
@@ -189,6 +209,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   } | null>(null);
   const initiativeAutoCheckGateRef = React.useRef<any>(null);
   const initiativeRequestVersionRef = React.useRef(0);
+  const initiativeAutoRetryTimerRef = React.useRef<number | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -456,6 +477,21 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       return;
     }
 
+    if (isChatRuntimeBusyNow()) {
+      if (initiativeAutoRetryTimerRef.current === null) {
+        initiativeAutoRetryTimerRef.current = window.setTimeout(() => {
+          initiativeAutoRetryTimerRef.current = null;
+          setInitiativeAutoCheckTick((prev) => prev + 1);
+        }, COUPLE_SPACE_AUTO_RETRY_DELAY_MS);
+      }
+      return;
+    }
+
+    if (initiativeAutoRetryTimerRef.current !== null) {
+      window.clearTimeout(initiativeAutoRetryTimerRef.current);
+      initiativeAutoRetryTimerRef.current = null;
+    }
+
     const now = Date.now();
     const gateResult = evaluateCoupleSpaceInitiativeAutoCheckGate({
       now,
@@ -519,6 +555,15 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       cancelled = true;
     };
   }, [activeView, partner, initiativeCheckBusy, initiativeAutoCheckBusy, user, coupleSpace, appData.chatHistory, settings, initiativeAutoCheckTick]);
+
+  useEffect(() => (
+    () => {
+      if (initiativeAutoRetryTimerRef.current !== null) {
+        window.clearTimeout(initiativeAutoRetryTimerRef.current);
+        initiativeAutoRetryTimerRef.current = null;
+      }
+    }
+  ), []);
 
   if (!partner && activeView === 'main') {
     const selectedPartner = getCharacterById(selectedPartnerId);
