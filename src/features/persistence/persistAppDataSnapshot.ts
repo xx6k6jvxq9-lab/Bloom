@@ -122,9 +122,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
     Promise.resolve(persistCoupleSpace(coupleSpace)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, coupleSpaceState),
     ),
-    Promise.resolve(normalizedMusicData ? persistMusicData(normalizedMusicData) : undefined).then(() =>
-      normalizedMusicData ? persistIndexedDbOnly(STORAGE_KEYS.musicData, normalizedMusicData) : Promise.resolve(),
-    ),
+    normalizedMusicData ? persistMusicData(normalizedMusicData) : Promise.resolve(),
     Promise.resolve(persistWalletData(normalizedWalletData)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.walletData, normalizedWalletData),
     ),

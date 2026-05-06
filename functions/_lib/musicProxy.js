@@ -273,9 +273,9 @@ export async function fetchPlayableNeteasePlaylist(id) {
   };
 }
 
-export async function fetchNeteaseUserPlaylists(uid, limit) {
+export async function fetchNeteaseUserPlaylists(uid, limit, offset = 0) {
   return fetchJson(
-    `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
+    `https://music.163.com/api/user/playlist/?offset=${offset}&limit=${limit}&uid=${uid}`,
     {
       headers: NETEASE_HEADERS,
     },

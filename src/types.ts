@@ -875,6 +875,7 @@ export type MusicData = {
   togetherStartTime: number | null;
   chatHistory: ChatMessage[];
   queue: Song[];
+  songLibrary?: Song[]; // Persisted song snapshots used to resolve liked/collected/history across reloads.
   neteaseAccount?: {
     uid: string;
     profileUrl: string;

@@ -411,14 +411,17 @@ async function startServer() {
 
   app.get("/api/netease/user-playlists", async (req, res) => {
     const uid = String(req.query.uid || "").trim();
-    const limit = Math.max(1, Math.min(30, Number(req.query.limit || 12)));
+    const rawLimit = Number(req.query.limit || 30);
+    const rawOffset = Number(req.query.offset || 0);
+    const limit = Math.max(1, Math.min(100, Number.isFinite(rawLimit) ? rawLimit : 30));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
     if (!uid) {
       return res.status(400).json({ error: "Missing user ID" });
     }
 
     try {
       const response = await fetch(
-        `https://music.163.com/api/user/playlist/?offset=0&limit=${limit}&uid=${uid}`,
+        `https://music.163.com/api/user/playlist/?offset=${offset}&limit=${limit}&uid=${uid}`,
         {
           headers: {
             "User-Agent":

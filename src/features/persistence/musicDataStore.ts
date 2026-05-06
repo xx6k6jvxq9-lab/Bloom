@@ -19,11 +19,21 @@ function normalizeSongSource<TSong extends MusicData['queue'][number]>(song: TSo
   return song;
 }
 
+function dedupeSongs<TSong extends MusicData['queue'][number]>(
+  songs: Array<TSong | null | undefined>,
+): TSong[] {
+  const songMap = new Map<string, TSong>();
+
+  songs.forEach((song) => {
+    if (!song || isTransientLocalSong(song.url, song.id)) return;
+    songMap.set(song.id, normalizeSongSource(song));
+  });
+
+  return Array.from(songMap.values());
+}
+
 function sanitizeMusicData<T extends MusicData>(data: T, fallback: T): T {
-  const sanitizeSongs = (songs: T['queue']) =>
-    songs
-      .filter((song) => !isTransientLocalSong(song.url, song.id))
-      .map((song) => normalizeSongSource(song));
+  const sanitizeSongs = (songs: T['queue']) => dedupeSongs(songs || []);
 
   const queue = sanitizeSongs(data.queue || []);
   const playlists = (data.playlists || []).map((playlist) => ({
@@ -35,6 +45,20 @@ function sanitizeMusicData<T extends MusicData>(data: T, fallback: T): T {
     data.currentSong && !isTransientLocalSong(data.currentSong.url, data.currentSong.id)
       ? normalizeSongSource(data.currentSong)
       : queue[0] || fallback.currentSong;
+  const songLibrary = dedupeSongs([
+    ...((data.songLibrary || []) as T['queue']),
+    currentSong,
+    ...queue,
+    ...playlists.flatMap((playlist) => playlist.songs || []),
+  ]);
+  const availableSongIds = new Set(songLibrary.map((song) => song.id));
+  const sanitizeSongIdList = (ids: string[] | undefined) => Array.from(
+    new Set(
+      (Array.isArray(ids) ? ids : []).filter(
+        (id): id is string => typeof id === 'string' && availableSongIds.has(id),
+      ),
+    ),
+  );
 
   return {
     ...data,
@@ -42,6 +66,11 @@ function sanitizeMusicData<T extends MusicData>(data: T, fallback: T): T {
     isPlaying: currentSong ? data.isPlaying : false,
     queue,
     playlists,
+    songLibrary,
+    likedSongs: sanitizeSongIdList(data.likedSongs),
+    collectedSongs: sanitizeSongIdList(data.collectedSongs),
+    history: sanitizeSongIdList(data.history),
+    recentlyPlayed: sanitizeSongIdList(data.recentlyPlayed),
   };
 }
 

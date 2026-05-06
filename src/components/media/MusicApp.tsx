@@ -37,6 +37,10 @@ import {
   AppSettings,
 } from "../../types";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
+import {
+  resolveValueToDisplayUrl,
+  saveUploadedBlob,
+} from "../../features/persistence/persistentAssetService";
 import { MusicSearchResults } from "../../features/music-search/MusicSearchResults";
 import { NeteaseAccountPanel } from "../../features/music-netease/NeteaseAccountPanel";
 import { syncNeteasePlaylistsByUid } from "../../features/music-netease/syncNeteasePlaylists";
@@ -99,6 +103,30 @@ function normalizeBuiltinSong(song: Song): Song {
 function normalizeSongList(songs: Song[] | null | undefined): Song[] {
   if (!Array.isArray(songs)) return [];
   return songs.map((song) => normalizeBuiltinSong(song));
+}
+
+function dedupeSongsById(songs: Array<Song | null | undefined>): Song[] {
+  const songMap = new Map<string, Song>();
+
+  songs.forEach((song) => {
+    if (!song?.id) return;
+    songMap.set(song.id, normalizeBuiltinSong(song));
+  });
+
+  return Array.from(songMap.values());
+}
+
+function withSongLibrary(data: MusicData, extraSongs: Song[] = []): MusicData {
+  return {
+    ...data,
+    songLibrary: dedupeSongsById([
+      ...(Array.isArray(data.songLibrary) ? data.songLibrary : []),
+      data.currentSong,
+      ...(data.queue || []),
+      ...(data.playlists || []).flatMap((playlist) => playlist.songs || []),
+      ...extraSongs,
+    ]),
+  };
 }
 
 type MusicAppProps = {
@@ -196,12 +224,12 @@ export default function MusicApp({
     prefersDirectGesturePlaybackRef.current = isMobileUa || prefersCoarsePointer;
   }, []);
 
-  const resolveSongPlaybackUrl = (song: Song | null | undefined) => {
+  const resolveSongPlaybackUrl = async (song: Song | null | undefined) => {
     if (!song) return "";
     if (song.id.startsWith("netease-")) {
       return `/api/netease/song?id=${song.id.replace("netease-", "")}`;
     }
-    return song.url;
+    return (await resolveValueToDisplayUrl(song.url)) || "";
   };
 
   const resolveNeteaseFallbackUrl = (song: Song | null | undefined) => {
@@ -245,7 +273,11 @@ export default function MusicApp({
       return;
     }
 
-    const nextPlaybackUrl = resolveSongPlaybackUrl(song);
+    const nextPlaybackUrl = await resolveSongPlaybackUrl(song);
+    if (!nextPlaybackUrl) {
+      gesturePrimedSongIdRef.current = null;
+      return;
+    }
     const currentAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
     const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
 
@@ -274,11 +306,11 @@ export default function MusicApp({
     ...ids.filter((id) => id !== songId),
   ];
 
-  const recordSongPlayback = (song: Song, data: MusicData) => ({
+  const recordSongPlayback = (song: Song, data: MusicData) => withSongLibrary({
     ...data,
     history: appendSongOnce(data.history || [], song.id),
     recentlyPlayed: appendSongOnce(data.recentlyPlayed || [], song.id),
-  });
+  }, [song]);
 
   const toggleSongInList = (ids: string[], songId: string) =>
     ids.includes(songId) ? ids.filter((id) => id !== songId) : [...ids, songId];
@@ -322,25 +354,39 @@ export default function MusicApp({
     chatHistory: [],
     queue: defaultSongs,
     collectedSongs: [],
+    songLibrary: defaultSongs,
   }), [defaultSongs, safeCharacter.avatar, safeCharacter.id, safeCharacter.name]);
 
-  const currentMusicData = useMemo<MusicData>(() => ({
-    ...defaultMusicData,
-    ...musicData,
-    currentSong: normalizeBuiltinSong(musicData?.currentSong ?? defaultMusicData.currentSong),
-    playlists: Array.isArray(musicData?.playlists)
+  const currentMusicData = useMemo<MusicData>(() => {
+    const normalizedCurrentSong = normalizeBuiltinSong(musicData?.currentSong ?? defaultMusicData.currentSong);
+    const normalizedPlaylists = Array.isArray(musicData?.playlists)
       ? musicData.playlists.map((playlist) => ({
           ...playlist,
           songs: normalizeSongList(playlist.songs),
         }))
-      : defaultMusicData.playlists,
-    likedSongs: Array.isArray(musicData?.likedSongs) ? musicData.likedSongs : defaultMusicData.likedSongs,
-    collectedSongs: Array.isArray(musicData?.collectedSongs) ? musicData.collectedSongs : defaultMusicData.collectedSongs,
-    history: Array.isArray(musicData?.history) ? musicData.history : defaultMusicData.history,
-    recentlyPlayed: Array.isArray(musicData?.recentlyPlayed) ? musicData.recentlyPlayed : defaultMusicData.recentlyPlayed,
-    chatHistory: Array.isArray(musicData?.chatHistory) ? musicData.chatHistory : defaultMusicData.chatHistory,
-    queue: Array.isArray(musicData?.queue) ? normalizeSongList(musicData.queue) : defaultMusicData.queue,
-  }), [defaultMusicData, musicData]);
+      : defaultMusicData.playlists;
+    const normalizedQueue = Array.isArray(musicData?.queue) ? normalizeSongList(musicData.queue) : defaultMusicData.queue;
+    const normalizedSongLibrary = dedupeSongsById([
+      ...(Array.isArray(musicData?.songLibrary) ? normalizeSongList(musicData.songLibrary) : []),
+      normalizedCurrentSong,
+      ...normalizedQueue,
+      ...normalizedPlaylists.flatMap((playlist) => playlist.songs),
+    ]);
+
+    return {
+      ...defaultMusicData,
+      ...musicData,
+      currentSong: normalizedCurrentSong,
+      playlists: normalizedPlaylists,
+      likedSongs: Array.isArray(musicData?.likedSongs) ? musicData.likedSongs : defaultMusicData.likedSongs,
+      collectedSongs: Array.isArray(musicData?.collectedSongs) ? musicData.collectedSongs : defaultMusicData.collectedSongs,
+      history: Array.isArray(musicData?.history) ? musicData.history : defaultMusicData.history,
+      recentlyPlayed: Array.isArray(musicData?.recentlyPlayed) ? musicData.recentlyPlayed : defaultMusicData.recentlyPlayed,
+      chatHistory: Array.isArray(musicData?.chatHistory) ? musicData.chatHistory : defaultMusicData.chatHistory,
+      queue: normalizedQueue,
+      songLibrary: normalizedSongLibrary,
+    };
+  }, [defaultMusicData, musicData]);
   const activeTogetherCharacter = useMemo(
     () => allCharacters.find((item) => item.id === currentMusicData.togetherWith) || safeCharacter,
     [allCharacters, safeCharacter, currentMusicData.togetherWith],
@@ -481,8 +527,9 @@ export default function MusicApp({
   // Fetch lyrics
   useEffect(() => {
     const fetchLyrics = async () => {
-      if (!currentMusicData.currentSong) return;
-      const songId = currentMusicData.currentSong.id;
+      const currentSong = currentMusicData.currentSong;
+      if (!currentSong) return;
+      const songId = currentSong.id;
 
       // Only fetch for NetEase songs
       if (!songId.startsWith("netease-")) {
@@ -567,18 +614,35 @@ export default function MusicApp({
   // Sync song source and play state
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentMusicData.currentSong) return;
-    if (currentMusicData.currentSong.id !== lastRecordedPlaybackIdRef.current) {
+    const currentSong = currentMusicData.currentSong;
+    if (!audio || !currentSong) return;
+    if (currentSong.id !== lastRecordedPlaybackIdRef.current) {
       lastRecordedPlaybackIdRef.current = null;
     }
-    if (neteaseFallbackAttemptedRef.current !== currentMusicData.currentSong.id) {
+    if (neteaseFallbackAttemptedRef.current !== currentSong.id) {
       neteaseFallbackAttemptedRef.current = null;
     }
 
     const syncPlayback = async () => {
       const requestId = ++playbackRequestIdRef.current;
       setPlaybackError("");
-      const nextPlaybackUrl = resolveSongPlaybackUrl(currentMusicData.currentSong);
+      const nextPlaybackUrl = await resolveSongPlaybackUrl(currentMusicData.currentSong);
+      if (requestId !== playbackRequestIdRef.current) {
+        return;
+      }
+      if (!nextPlaybackUrl) {
+        gesturePrimedSongIdRef.current = null;
+        setIsAudioActuallyPlaying(false);
+        setPlaybackError("褰撳墠姝屾洸鏆傛椂鏃犳硶鎾斁");
+        resetAudioElement(audio);
+        if (currentMusicDataRef.current?.isPlaying) {
+          onUpdateMusicDataRef.current({
+            ...currentMusicDataRef.current,
+            isPlaying: false,
+          });
+        }
+        return;
+      }
       const targetAudioUrl = normalizePlaybackUrl(nextPlaybackUrl);
       let activeAudioUrl = normalizePlaybackUrl(audio.currentSrc || audio.src);
 
@@ -601,7 +665,7 @@ export default function MusicApp({
 
       if (currentMusicData.isPlaying) {
         if (
-          gesturePrimedSongIdRef.current === currentMusicData.currentSong.id &&
+          gesturePrimedSongIdRef.current === currentSong.id &&
           activeAudioUrl === targetAudioUrl &&
           !audio.paused
         ) {
@@ -723,12 +787,12 @@ export default function MusicApp({
   const playSong = async (song: Song) => {
     await primePlaybackFromGesture(song);
     setPlaybackError("");
-    onUpdateMusicData({
+    onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
       currentSong: song,
       progress: 0,
       isPlaying: true,
-    });
+    }, [song]));
     setLocalProgress(0);
     setLocalCurrentTime(0);
     setActiveTab("player");
@@ -743,10 +807,10 @@ export default function MusicApp({
 
   const addToQueue = (song: Song) => {
     if (currentMusicData.queue.some((s) => s.id === song.id)) return;
-    onUpdateMusicData({
+    onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
       queue: [...currentMusicData.queue, song],
-    });
+    }, [song]));
   };
 
   const inviteTogether = (charId: string) => {
@@ -837,7 +901,7 @@ export default function MusicApp({
           duration: Math.floor((track.dt || track.duration || 240000) / 1000),
         };
 
-        onUpdateMusicData({
+        onUpdateMusicData(withSongLibrary({
           ...currentMusicData,
           currentSong: newSong,
           isPlaying: true,
@@ -848,7 +912,7 @@ export default function MusicApp({
               (rid) => rid !== newSong.id,
             ),
           ],
-        });
+        }, [newSong]));
 
         setLocalProgress(0);
         setLocalCurrentTime(0);
@@ -891,7 +955,7 @@ export default function MusicApp({
           type: "user",
         };
 
-        onUpdateMusicData({
+        onUpdateMusicData(withSongLibrary({
           ...currentMusicData,
           playlists: [...currentMusicData.playlists, newPlaylist],
           currentSong:
@@ -899,7 +963,7 @@ export default function MusicApp({
           isPlaying: newSongs.length > 0 ? true : currentMusicData.isPlaying,
           progress: newSongs.length > 0 ? 0 : currentMusicData.progress,
           queue: newSongs.length > 0 ? newSongs : currentMusicData.queue,
-        });
+        }, newSongs));
 
         if (newSongs.length > 0) {
           setLocalProgress(0);
@@ -935,10 +999,10 @@ export default function MusicApp({
         (playlist) => !playlist.id.startsWith("netease-pl-"),
       );
 
-      onUpdateMusicData({
+      onUpdateMusicData(withSongLibrary({
         ...currentMusicData,
         playlists: [...preservedPlaylists, ...syncedPlaylists],
-      });
+      }, syncedPlaylists.flatMap((playlist) => playlist.songs)));
 
       const syncedSongCount = syncedPlaylists.reduce(
         (total, playlist) => total + playlist.songs.length,
@@ -1425,10 +1489,10 @@ export default function MusicApp({
                           currentMusicData.likedSongs || [],
                           songId,
                         );
-                        onUpdateMusicData({
+                        onUpdateMusicData(withSongLibrary({
                           ...currentMusicData,
                           likedSongs: newLiked,
-                        });
+                        }, currentMusicData.currentSong ? [currentMusicData.currentSong] : []));
                         setShowPlayerMoreMenu(false);
                       }}
                       className="flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-50 rounded-xl transition-colors w-full text-left"
@@ -1455,10 +1519,10 @@ export default function MusicApp({
                           currentMusicData.collectedSongs || [],
                           songId,
                         );
-                        onUpdateMusicData({
+                        onUpdateMusicData(withSongLibrary({
                           ...currentMusicData,
                           collectedSongs: newCollected,
-                        });
+                        }, currentMusicData.currentSong ? [currentMusicData.currentSong] : []));
                         setShowPlayerMoreMenu(false);
                       }}
                       className="flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-50 rounded-xl transition-colors w-full text-left"
@@ -1796,21 +1860,24 @@ export default function MusicApp({
     );
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    const persistedUrl = await saveUploadedBlob(file, {
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+    });
     const newSong: Song = {
-      id: `local-${Date.now()}`,
+      id: `uploaded-${Date.now()}`,
       title: file.name.replace(/\.[^/.]+$/, ""), // remove extension
       artist: "本地音乐",
       albumArt: "https://picsum.photos/seed/music_local/300/300",
-      url: url,
+      url: persistedUrl,
       duration: 0,
     };
 
-    onUpdateMusicData({
+    onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
       currentSong: newSong,
       isPlaying: true,
@@ -1819,7 +1886,7 @@ export default function MusicApp({
         newSong.id,
         ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
       ],
-    });
+    }, [newSong]));
 
     setLocalProgress(0);
     setLocalCurrentTime(0);
@@ -1838,7 +1905,7 @@ export default function MusicApp({
       duration: 0,
     };
 
-    onUpdateMusicData({
+    onUpdateMusicData(withSongLibrary({
       ...currentMusicData,
       currentSong: newSong,
       isPlaying: true,
@@ -1847,7 +1914,7 @@ export default function MusicApp({
         newSong.id,
         ...currentMusicData.recentlyPlayed.filter((id) => id !== newSong.id),
       ],
-    });
+    }, [newSong]));
 
     setLocalProgress(0);
     setLocalCurrentTime(0);
@@ -1858,27 +1925,24 @@ export default function MusicApp({
   };
 
   const renderMe = () => {
-    const allKnownSongs = [
-      ...defaultSongs,
+    const uniqueSongs = dedupeSongsById([
+      ...(currentMusicData.songLibrary || []),
       ...(currentMusicData.currentSong ? [currentMusicData.currentSong] : []),
       ...currentMusicData.queue,
       ...currentMusicData.playlists.flatMap((p) => p.songs),
-    ];
-    // Deduplicate by ID
-    const uniqueSongs = Array.from(
-      new Map(allKnownSongs.map((s) => [s.id, s])).values(),
-    );
+    ]);
+    const uniqueSongMap = new Map(uniqueSongs.map((song) => [song.id, song]));
 
     const collectedSongsList = (currentMusicData.collectedSongs || [])
-      .map((id) => uniqueSongs.find((s) => s.id === id))
+      .map((id) => uniqueSongMap.get(id))
       .filter((s): s is Song => !!s);
 
     const likedSongsList = currentMusicData.likedSongs
-      .map((id) => uniqueSongs.find((s) => s.id === id))
+      .map((id) => uniqueSongMap.get(id))
       .filter((s): s is Song => !!s);
 
     const historySongs = currentMusicData.recentlyPlayed
-      .map((id) => uniqueSongs.find((s) => s.id === id))
+      .map((id) => uniqueSongMap.get(id))
       .filter((s): s is Song => !!s);
 
     return (
