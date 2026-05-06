@@ -196,6 +196,17 @@ async function startServer() {
     }
 
     if (!resolvedUrl) {
+      if (entitlement !== "vip") {
+        return {
+          id: String(id),
+          status: "full",
+          entitlement,
+          previewDurationMs,
+          proxyUrl,
+          note: "将尝试公开链路播放，最终以实际播放结果为准。",
+        };
+      }
+
       return {
         id: String(id),
         status: "unavailable",
@@ -323,11 +334,6 @@ async function startServer() {
 
     try {
       const access = await resolveNeteaseSongAccess(String(id));
-      if (!access.playUrl) {
-        return res
-          .status(404)
-          .json({ error: access.note || "Song not found or is VIP/copyright restricted" });
-      }
 
       const headers: Record<string, string> = {
         "User-Agent":
@@ -339,10 +345,33 @@ async function startServer() {
         headers["Range"] = req.headers.range;
       }
 
-      const response = await fetch(access.playUrl, { headers });
+      const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+      const candidateUrls = [];
+      if (access.playUrl) {
+        candidateUrls.push(access.playUrl);
+      }
+      if (access.entitlement !== "vip" && !candidateUrls.includes(fallbackUrl)) {
+        candidateUrls.push(fallbackUrl);
+      }
 
-      if (!response.ok) {
-        return res.status(response.status).send(response.statusText);
+      let response: Response | null = null;
+      for (const candidateUrl of candidateUrls) {
+        const nextResponse = await fetch(candidateUrl, { headers, redirect: "follow" });
+        const contentType = (nextResponse.headers.get("content-type") || "").toLowerCase();
+        const isAudioLike =
+          contentType.startsWith("audio/")
+          || contentType.includes("application/octet-stream")
+          || contentType.includes("binary/octet-stream");
+        if (nextResponse.ok && isAudioLike) {
+          response = nextResponse;
+          break;
+        }
+      }
+
+      if (!response) {
+        return res
+          .status(access.entitlement === "vip" ? 404 : 502)
+          .json({ error: access.note || "Song not found or is temporarily unavailable" });
       }
 
       const contentType = response.headers.get("content-type");

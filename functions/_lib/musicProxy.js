@@ -179,6 +179,17 @@ export async function resolveNeteaseSongAccess(id) {
   const proxyUrl = `/api/netease/song?id=${id}`;
 
   if (!resolvedUrl) {
+    if (entitlement !== "vip") {
+      return {
+        id: String(id),
+        status: "full",
+        entitlement,
+        previewDurationMs,
+        proxyUrl,
+        note: "将尝试公开链路播放，最终以实际播放结果为准。",
+      };
+    }
+
     return {
       id: String(id),
       status: "unavailable",
@@ -221,35 +232,36 @@ export async function resolveNeteaseSongAccess(id) {
 export async function proxyNeteaseSong(request, id) {
   const fallbackUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
   const access = await resolveNeteaseSongAccess(id);
-  if (!access.playUrl) {
-    return json(
-      { error: access.note || "Song not found or is VIP/copyright restricted" },
-      { status: 404 },
-    );
-  }
-
   const headers = new Headers(NETEASE_HEADERS);
   const range = request.headers.get("range");
   if (range) {
     headers.set("Range", range);
   }
 
-  let response = await fetch(access.playUrl, {
-    headers,
-    redirect: "follow",
-  });
+  const candidateUrls = [];
+  if (access.playUrl) {
+    candidateUrls.push(access.playUrl);
+  }
+  if (access.entitlement !== "vip" && !candidateUrls.includes(fallbackUrl)) {
+    candidateUrls.push(fallbackUrl);
+  }
 
-  if ((!response.ok || !isAudioLikeResponse(response)) && access.playUrl !== fallbackUrl) {
-    response = await fetch(fallbackUrl, {
+  let response = null;
+  for (const candidateUrl of candidateUrls) {
+    const nextResponse = await fetch(candidateUrl, {
       headers,
       redirect: "follow",
     });
+    if (nextResponse.ok && isAudioLikeResponse(nextResponse)) {
+      response = nextResponse;
+      break;
+    }
   }
 
-  if (!response.ok || !isAudioLikeResponse(response)) {
+  if (!response) {
     return json(
-      { error: "Song not found or is temporarily unavailable" },
-      { status: response.status >= 400 ? response.status : 502 },
+      { error: access.note || "Song not found or is temporarily unavailable" },
+      { status: access.entitlement === "vip" ? 404 : 502 },
     );
   }
 
