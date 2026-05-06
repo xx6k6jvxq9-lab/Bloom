@@ -85,7 +85,7 @@ body {
   html[data-ios-browser='true'] body,
   html[data-ios-browser='true'] #root {
     height: auto;
-    min-height: var(--app-viewport-height, 100svh);
+    min-height: 100dvh;
     overflow-x: hidden;
     overflow-y: visible;
   }
@@ -109,7 +109,7 @@ body {
     position: relative;
     inset: auto;
     height: auto;
-    min-height: var(--app-viewport-height, 100svh);
+    min-height: 100dvh;
     overflow: visible;
   }
 
@@ -136,7 +136,7 @@ body {
     position: relative;
     inset: auto;
     height: auto !important;
-    min-height: var(--app-viewport-height, 100svh);
+    min-height: 100dvh;
   }
 
   .app-phone-container.is-dating-scene {
@@ -153,7 +153,7 @@ body {
 
   html[data-ios-browser='true'] .phone-screen-root {
     height: auto;
-    min-height: var(--app-viewport-height, 100svh);
+    min-height: 100dvh;
   }
 
   html[data-android='true'] .phone-screen-root,

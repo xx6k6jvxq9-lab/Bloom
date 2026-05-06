@@ -588,7 +588,7 @@ export function MomentsApp({
     return (
       <div
         ref={publishRef}
-        className="absolute inset-x-0 top-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
+        className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
         style={publishViewportStyle}
       >
         <div
@@ -1010,7 +1010,7 @@ export function MomentsApp({
       {commentingOn && activeCommentMoment && (
         <div
           ref={commentComposerRef}
-          className="absolute inset-x-0 top-0 z-[60] flex flex-col pointer-events-none"
+          className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
           style={commentViewportStyle}
         >
           <div

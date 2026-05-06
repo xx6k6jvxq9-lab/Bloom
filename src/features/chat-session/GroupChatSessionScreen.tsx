@@ -2664,7 +2664,7 @@ export function GroupChatSessionScreen({
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
         ...(useIosBrowserFlowFooter
           ? {
-              minHeight: 'var(--app-viewport-height, 100svh)',
+              minHeight: '100dvh',
             }
           : {
               height: chatViewportHeight,

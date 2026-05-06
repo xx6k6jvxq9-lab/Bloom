@@ -12,6 +12,7 @@ export function useKeyboardSafeViewport({
   enabled = true,
 }: UseKeyboardSafeViewportOptions) {
   const {
+    isIosBrowserMode,
     keyboardVisible: appKeyboardVisible,
     manualKeyboardAvoidanceEnabled,
     visualViewportHeight,
@@ -51,10 +52,10 @@ export function useKeyboardSafeViewport({
   const keyboardVisible = ownsFocusedKeyboard && appKeyboardVisible;
 
   const viewportStyle = useMemo(
-    () => (!manualKeyboardAvoidanceEnabled && keyboardVisible && visualViewportHeight > 0
+    () => (!isIosBrowserMode && !manualKeyboardAvoidanceEnabled && keyboardVisible && visualViewportHeight > 0
       ? { height: `${visualViewportHeight}px`, minHeight: `${visualViewportHeight}px` }
       : undefined),
-    [keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight],
+    [isIosBrowserMode, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight],
   );
 
   return {
