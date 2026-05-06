@@ -82,6 +82,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const hasTextEntryFocus = isTextEntryElement(activeElement);
 
       let resolvedLayoutViewportHeight = currentInnerHeight;
+      let resolvedShellViewportHeight = currentInnerHeight;
       let resolvedKeyboardInset = 0;
       let resolvedKeyboardVisible = false;
 
@@ -120,6 +121,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
         stableLayoutViewportHeight = nextStableLayoutViewportHeight;
         resolvedLayoutViewportHeight = nextStableLayoutViewportHeight;
+        resolvedShellViewportHeight = nextStableLayoutViewportHeight;
       } else {
         // Apple mobile browsers and standalone apps should follow the visual
         // viewport directly instead of mixing in a synthetic stable height.
@@ -129,12 +131,14 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         );
         resolvedKeyboardInset = rawKeyboardInset;
         resolvedKeyboardVisible = hasTextEntryFocus && (
-          rawKeyboardInset > 120
+          usesVisualViewportKeyboardLayout
+          || rawKeyboardInset > 120
           || currentInnerHeight - visualViewportHeight > 120
           || (isIosLike && viewportOffsetTop > 0)
         );
         stableLayoutViewportHeight = 0;
         resolvedLayoutViewportHeight = currentInnerHeight;
+        resolvedShellViewportHeight = visualViewportHeight;
       }
 
       lastInnerWidth = currentInnerWidth;
@@ -154,7 +158,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       });
 
       root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
-      root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
+      root.style.setProperty('--app-viewport-height', `${resolvedShellViewportHeight}px`);
       root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
       if (resolvedKeyboardVisible) {

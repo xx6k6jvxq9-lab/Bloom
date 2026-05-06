@@ -2182,7 +2182,7 @@ function StaticDock({
   fontStyle: React.CSSProperties;
   iconSize: number;
 }) {
-  const bottomExtension = safeAreaBottom > 0 ? safeAreaBottom + 8 : 0;
+  const bottomExtension = safeAreaBottom > 0 ? Math.max(0, safeAreaBottom - 6) : 0;
   return (
     <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height + bottomExtension }}>
       <div className="homeDesktop__dockBar">
