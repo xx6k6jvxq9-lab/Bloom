@@ -328,7 +328,10 @@ export function HomeScreen({
 
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
-      const safeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim() || '0';
+      const safeAreaVar =
+        computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
+        || computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+        || '0';
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
         if (safeAreaVar.endsWith('px')) {

@@ -43,16 +43,16 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const hasTouchMacUa = userAgent.includes('macintosh') && (window.navigator.maxTouchPoints || 0) > 1;
     const isAndroid = /Android/i.test(window.navigator.userAgent || '');
     const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
+    const usesVisualViewportKeyboardLayout = isIosLike && !isAndroid;
     let stableLayoutViewportHeight = 0;
     let lastInnerWidth = window.innerWidth;
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const isIosBrowserMode = isIosLike && !isAndroid && !isStandalone;
-    // Match the last known-good split:
-    // - iOS browser mode follows the browser-driven viewport on its own.
-    // - iOS standalone and Android browsers still need the manual lift path.
-    const manualKeyboardAvoidanceEnabled = isStandalone || isAndroid;
+    // Android browsers still need explicit inset-driven lifting. Apple mobile
+    // browsers and standalone shells track the visual viewport directly.
+    const manualKeyboardAvoidanceEnabled = isAndroid;
     setIsIosBrowserMode(isIosBrowserMode);
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
@@ -80,13 +80,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
       const activeElement = document.activeElement;
       const hasTextEntryFocus = isTextEntryElement(activeElement);
-      const phoneContainer = document.getElementById('phone-container');
-      const renderedShellHeight = Math.round(phoneContainer?.getBoundingClientRect().height ?? 0);
-      const renderedRootHeight = Math.round(document.documentElement.clientHeight || 0);
-      const shellTracksVisualViewport = visualViewportHeight > 0 && (
-        (renderedShellHeight > 0 && Math.abs(renderedShellHeight - visualViewportHeight) <= 2)
-        || (renderedRootHeight > 0 && Math.abs(renderedRootHeight - visualViewportHeight) <= 2)
-      );
 
       let resolvedLayoutViewportHeight = currentInnerHeight;
       let resolvedKeyboardInset = 0;
@@ -128,16 +121,13 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         stableLayoutViewportHeight = nextStableLayoutViewportHeight;
         resolvedLayoutViewportHeight = nextStableLayoutViewportHeight;
       } else {
-        // iOS should follow the browser-driven viewport like yesterday's
-        // working behavior instead of keeping a synthetic stable layout height.
+        // Apple mobile browsers and standalone apps should follow the visual
+        // viewport directly instead of mixing in a synthetic stable height.
         const rawKeyboardInset = Math.max(
           0,
           Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
         );
-        // Installed shells and non-iOS browsers can already track the visual
-        // viewport. In iOS browser mode we still need the raw inset so focused
-        // forms across the app know how much space the keyboard is taking.
-        resolvedKeyboardInset = shellTracksVisualViewport && !isIosBrowserMode ? 0 : rawKeyboardInset;
+        resolvedKeyboardInset = rawKeyboardInset;
         resolvedKeyboardVisible = hasTextEntryFocus && (
           rawKeyboardInset > 120
           || currentInnerHeight - visualViewportHeight > 120
@@ -155,6 +145,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       setKeyboardVisible(resolvedKeyboardVisible);
       setAppKeyboardState({
         isIosBrowserMode,
+        usesVisualViewportKeyboardLayout,
         keyboardInset: resolvedKeyboardInset,
         keyboardVisible: resolvedKeyboardVisible,
         layoutViewportHeight: resolvedLayoutViewportHeight,
@@ -202,6 +193,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.removeAttribute('data-standalone');
       setAppKeyboardState({
         isIosBrowserMode: false,
+        usesVisualViewportKeyboardLayout: false,
         keyboardInset: 0,
         keyboardVisible: false,
         layoutViewportHeight: 0,

@@ -524,11 +524,11 @@ export function ChatSessionScreen({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
-    isIosBrowserMode,
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
     manualKeyboardAvoidanceEnabled,
+    usesVisualViewportKeyboardLayout,
   } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1712,7 +1712,6 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useIosBrowserFlowFooter = isIosBrowserMode;
   const useAndroidBrowserKeyboardViewport =
     isAndroid
     && !isStandaloneDisplayMode
@@ -1720,8 +1719,7 @@ export function ChatSessionScreen({
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    !useIosBrowserFlowFooter
-    && manualKeyboardAvoidanceEnabled
+    manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1736,25 +1734,17 @@ export function ChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : useIosBrowserFlowFooter
-      ? 'auto'
-      : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
+    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    ...(useIosBrowserFlowFooter
-      ? {}
-      : {
-          bottom: footerKeyboardOffset > 0
-            ? `${footerKeyboardOffset}px`
-            : '0px',
-        }),
+    bottom: footerKeyboardOffset > 0
+      ? `${footerKeyboardOffset}px`
+      : '0px',
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: useIosBrowserFlowFooter
-      ? 'padding-bottom 180ms ease'
-      : 'bottom 180ms ease, padding-bottom 180ms ease',
+    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1764,13 +1754,9 @@ export function ChatSessionScreen({
       : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: useIosBrowserFlowFooter
-      ? '8px'
-      : `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: useIosBrowserFlowFooter
-      ? `${chatFooterHeight + 12}px`
-      : `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
   };
 
   if (showSettings) {
@@ -1798,16 +1784,10 @@ export function ChatSessionScreen({
 
   return (
     <motion.div 
-      className={`${useIosBrowserFlowFooter ? 'relative' : 'absolute inset-0'} flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope`}
+      className="absolute inset-0 flex min-h-0 flex-col bg-zinc-50 z-[60] chat-bubble-theme-scope"
       style={{ 
-        ...(useIosBrowserFlowFooter
-          ? {
-              minHeight: 'var(--app-ios-browser-height, var(--app-viewport-height, 100svh))',
-            }
-          : {
-              height: chatViewportHeight,
-              minHeight: chatViewportHeight,
-            }),
+        height: chatViewportHeight,
+        minHeight: chatViewportHeight,
         backgroundImage: activeBackground ? `url(${activeBackground})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -1815,9 +1795,9 @@ export function ChatSessionScreen({
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
         // Android WebView/Chrome is prone to black-screen repaint glitches when
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
-        // browser mode is also prone to lifting the whole page when a focused
+        // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...(!isAndroid && !keyboardVisible ? {
+        ...(!isAndroid && !usesVisualViewportKeyboardLayout && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -2816,7 +2796,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer ${useIosBrowserFlowFooter ? '' : 'absolute inset-x-0 z-20'} ${footerClassName}`}
+        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (
