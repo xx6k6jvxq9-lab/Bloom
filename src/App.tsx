@@ -586,7 +586,7 @@ export default function App() {
             onDreamResumeHandled={() => setDreamResumeSignal(0)}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center bg-zinc-50 px-8 text-center">
+          <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center bg-zinc-50 px-8 text-center">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
             <div className="mt-5 text-[16px] font-semibold text-zinc-900">正在读取本地数据</div>
             <div className="mt-2 text-[13px] leading-6 text-zinc-500">

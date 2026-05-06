@@ -134,10 +134,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
           0,
           Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
         );
-        // Some iOS environments already shrink the rendered shell to the
-        // visual viewport. Lifting composers again creates the blank gap that
-        // users are seeing above the keyboard, so zero the manual inset there.
-        resolvedKeyboardInset = shellTracksVisualViewport ? 0 : rawKeyboardInset;
+        // Installed shells and non-iOS browsers can already track the visual
+        // viewport. In iOS browser mode we still need the raw inset so focused
+        // forms across the app know how much space the keyboard is taking.
+        resolvedKeyboardInset = shellTracksVisualViewport && !isIosBrowserMode ? 0 : rawKeyboardInset;
         resolvedKeyboardVisible = hasTextEntryFocus && (
           rawKeyboardInset > 120
           || currentInnerHeight - visualViewportHeight > 120

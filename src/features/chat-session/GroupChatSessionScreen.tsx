@@ -652,7 +652,6 @@ export function GroupChatSessionScreen({
       || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
     );
   const {
-    isIosBrowserMode,
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
@@ -1032,7 +1031,6 @@ export function GroupChatSessionScreen({
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useIosBrowserFlowFooter = isIosBrowserMode;
   const useAndroidBrowserKeyboardViewport =
     isAndroid
     && !isStandaloneDisplayMode
@@ -1040,8 +1038,7 @@ export function GroupChatSessionScreen({
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    !useIosBrowserFlowFooter
-    && manualKeyboardAvoidanceEnabled
+    manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1056,23 +1053,15 @@ export function GroupChatSessionScreen({
 
   const chatViewportHeight = useAndroidBrowserKeyboardViewport
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : useIosBrowserFlowFooter
-      ? 'auto'
-      : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
+    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    ...(useIosBrowserFlowFooter
-      ? {}
-      : {
-          bottom: footerKeyboardOffset > 0
-            ? `${footerKeyboardOffset}px`
-            : '0px',
-        }),
+    bottom: footerKeyboardOffset > 0
+      ? `${footerKeyboardOffset}px`
+      : '0px',
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
-    transition: useIosBrowserFlowFooter
-      ? 'padding-bottom 180ms ease'
-      : 'bottom 180ms ease, padding-bottom 180ms ease',
+    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1083,12 +1072,8 @@ export function GroupChatSessionScreen({
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: useIosBrowserFlowFooter
-      ? '8px'
-      : `${chatFooterHeight + footerKeyboardOffset + 8}px`,
-    scrollPaddingBottom: useIosBrowserFlowFooter
-      ? `${chatFooterHeight + 12}px`
-      : `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig
@@ -2659,17 +2644,11 @@ export function GroupChatSessionScreen({
 
   return (
     <div
-      className={`${useIosBrowserFlowFooter ? 'relative' : 'absolute inset-0'} z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope`}
+      className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope"
       style={{
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
-        ...(useIosBrowserFlowFooter
-          ? {
-              minHeight: 'var(--app-ios-browser-height, var(--app-viewport-height, 100svh))',
-            }
-          : {
-              height: chatViewportHeight,
-              minHeight: chatViewportHeight,
-            }),
+        height: chatViewportHeight,
+        minHeight: chatViewportHeight,
       }}
     >
       {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss || groupCharacterBubbleThemeCss || groupChatFontCss) && (
@@ -3239,7 +3218,7 @@ export function GroupChatSessionScreen({
         <div ref={messagesEndRef} />
       </div>
 
-      <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${useIosBrowserFlowFooter ? '' : 'absolute inset-x-0 z-20'} ${groupFooterClassName}`} style={chatFooterStyle}>
+      <div ref={chatFooterRef} className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${groupFooterClassName}`} style={chatFooterStyle}>
         {replyingTo && (
           <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
