@@ -471,6 +471,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const effectiveFontPriority = resolveThemeFontPriority(typography);
   const importedFonts: ThemeFontAsset[] = typography.importedFonts || [];
   const { resolvedFonts } = useResolvedThemeTypographyCss(typography);
+  const selectedResolvedFont = resolvedFonts.find((font) => font.id === typography.selectedFontId);
   const previewFontFamily =
     typography.selectedFontId && effectiveFontPriority !== 'css-only'
       ? `"${getThemeImportedFontFamily(typography.selectedFontId)}"`
@@ -1114,17 +1115,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
       {subTab === 'font' && (
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">字体设置</h3>
-          {resolvedFonts.length > 0 ? (
+          {selectedResolvedFont ? (
             <style>
-              {resolvedFonts
-                .map(
-                  font => `@font-face {
-  font-family: "${font.familyName}";
-  src: url("${font.resolvedUrl}");
+              {`@font-face {
+  font-family: "${selectedResolvedFont.familyName}";
+  src: url("${selectedResolvedFont.resolvedUrl}");
   font-display: swap;
-}`,
-                )
-                .join('\n\n')}
+}`}
             </style>
           ) : null}
 

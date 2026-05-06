@@ -64,7 +64,12 @@ export function buildThemeTypographyCss(
     return '';
   }
 
-  const fontFaces = resolvedFonts
+  const selectedFontId = typography.selectedFontId?.trim();
+  const fontsToLoad = selectedFontId
+    ? resolvedFonts.filter((font) => font.id === selectedFontId)
+    : [];
+
+  const fontFaces = fontsToLoad
     .map((font) => `@font-face {
   font-family: ${quoteFontFamily(font.familyName)};
   src: url("${font.resolvedUrl}");

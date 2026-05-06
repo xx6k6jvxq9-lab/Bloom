@@ -148,13 +148,14 @@ export function HomeScreen({
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
   const { resolvedFonts } = useResolvedThemeTypographyCss(visualSettings?.themeTypography);
-  const desktopFontFaceCss = resolvedFonts
-    .map((font) => `@font-face {
-  font-family: "${font.familyName}";
-  src: url("${font.resolvedUrl}");
+  const selectedResolvedFont = resolvedFonts.find((font) => font.id === visualSettings?.themeTypography?.selectedFontId);
+  const desktopFontFaceCss = selectedResolvedFont
+    ? `@font-face {
+  font-family: "${selectedResolvedFont.familyName}";
+  src: url("${selectedResolvedFont.resolvedUrl}");
   font-display: swap;
-}`)
-    .join('\n\n');
+}`
+    : '';
 
   const fontSize = visualSettings?.desktop?.fontSize ?? 12;
   const fontColor = visualSettings?.desktop?.fontColor ?? '#ffffff';
