@@ -39,16 +39,26 @@ async function fetchJson(url, init) {
 }
 
 async function searchNeteaseByType(keywords, limit, type) {
-  const searchUrl = new URL("https://music.163.com/api/search/get");
-  searchUrl.searchParams.set("s", keywords);
-  searchUrl.searchParams.set("type", String(type));
-  searchUrl.searchParams.set("offset", "0");
-  searchUrl.searchParams.set("limit", String(limit));
-  searchUrl.searchParams.set("total", "true");
-
-  return fetchJson(searchUrl, {
-    headers: NETEASE_HEADERS,
+  const response = await fetch("https://music.163.com/api/search/get/web?csrf_token=", {
+    method: "POST",
+    headers: {
+      ...NETEASE_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      s: keywords,
+      type: String(type),
+      offset: "0",
+      limit: String(limit),
+      total: "true",
+    }),
   });
+
+  if (!response.ok) {
+    throw new Error(`Upstream request failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 async function mapWithConcurrency(items, concurrency, mapper) {
