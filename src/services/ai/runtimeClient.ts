@@ -34,7 +34,16 @@ function inferMimeTypeFromImageUrl(value: string): string {
 async function resolveRuntimeMessagesForModel(messages: RuntimeChatMessage[]): Promise<RuntimeChatMessage[]> {
   return Promise.all(messages.map(async (message) => {
     const [resolvedImageUrl, resolvedAudioUrl] = await Promise.all([
-      message.imageUrl ? resolveValueToModelInput(message.imageUrl, { assetType: 'image' }) : Promise.resolve(null),
+      message.imageUrl
+        ? resolveValueToModelInput(message.imageUrl, { assetType: 'image' }).catch((error) => {
+            console.warn('[runtimeClient] Failed to resolve image input for model, falling back to text-only content.', {
+              role: message.role,
+              contentPreview: message.content.slice(0, 120),
+              error,
+            });
+            return null;
+          })
+        : Promise.resolve(null),
       message.audioUrl ? resolveValueToModelInput(message.audioUrl, { assetType: 'audio' }) : Promise.resolve(null),
     ]);
 
