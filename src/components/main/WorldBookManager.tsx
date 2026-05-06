@@ -137,7 +137,7 @@ export function WorldBookManager({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -291,7 +291,7 @@ export function WorldBookManager({
   };
 
   return (
-    <div ref={containerRef} className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
+    <div ref={containerRef} className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`} style={viewportStyle}>
       {showAdd ? (
         <div className={`flex h-full min-h-0 flex-1 flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
           <div className={`flex items-center justify-between border-b px-4 pb-4 pt-12 ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>

@@ -81,6 +81,19 @@ body {
     overflow: hidden;
   }
 
+  html[data-ios-browser='true'],
+  html[data-ios-browser='true'] body,
+  html[data-ios-browser='true'] #root {
+    height: auto;
+    min-height: var(--app-viewport-height, 100svh);
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+
+  html[data-ios-browser='true'] body {
+    -webkit-overflow-scrolling: touch;
+  }
+
   .app-shell {
     position: fixed;
     inset: 0;
@@ -90,6 +103,14 @@ body {
     min-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
     overflow: hidden;
     background: #09090b;
+  }
+
+  html[data-ios-browser='true'] .app-shell {
+    position: relative;
+    inset: auto;
+    height: auto;
+    min-height: var(--app-viewport-height, 100svh);
+    overflow: visible;
   }
 
   .app-phone-container {
@@ -111,6 +132,13 @@ body {
     padding-left: 0;
   }
 
+  html[data-ios-browser='true'] .app-phone-container {
+    position: relative;
+    inset: auto;
+    height: auto !important;
+    min-height: var(--app-viewport-height, 100svh);
+  }
+
   .app-phone-container.is-dating-scene {
     background: #050608 !important;
   }
@@ -121,6 +149,11 @@ body {
     min-height: 0;
     height: 100%;
     margin-right: 0;
+  }
+
+  html[data-ios-browser='true'] .phone-screen-root {
+    height: auto;
+    min-height: var(--app-viewport-height, 100svh);
   }
 
   html[data-android='true'] .phone-screen-root,
@@ -212,7 +245,7 @@ body {
 
 }
 
-html[data-keyboard-open='true']:not([data-android='true']) {
+html[data-keyboard-open='true']:not([data-android='true']):not([data-ios-browser='true']) {
   --app-active-viewport-height: var(--app-visible-viewport-height, var(--app-viewport-height, 100dvh));
 }
 

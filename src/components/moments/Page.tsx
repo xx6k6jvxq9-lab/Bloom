@@ -157,12 +157,12 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: publishKeyboardVisible } = useKeyboardSafeViewport({
+  const { isIosBrowserMode, keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
+  const { keyboardVisible: publishKeyboardVisible, viewportStyle: publishViewportStyle } = useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
   });
-  const { keyboardVisible: commentKeyboardVisible } = useKeyboardSafeViewport({
+  const { keyboardVisible: commentKeyboardVisible, viewportStyle: commentViewportStyle } = useKeyboardSafeViewport({
     containerRef: commentComposerRef,
     enabled: !!commentingOn,
   });
@@ -588,7 +588,8 @@ export function MomentsApp({
     return (
       <div
         ref={publishRef}
-        className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
+        className="absolute inset-x-0 top-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
+        style={publishViewportStyle}
       >
         <div
           className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
@@ -1009,12 +1010,13 @@ export function MomentsApp({
       {commentingOn && activeCommentMoment && (
         <div
           ref={commentComposerRef}
-          className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
+          className="absolute inset-x-0 top-0 z-[60] flex flex-col pointer-events-none"
+          style={commentViewportStyle}
         >
           <div
             className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
             style={{
-              transform: manualKeyboardAvoidanceEnabled && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+              transform: manualKeyboardAvoidanceEnabled && !isIosBrowserMode && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
                 ? `translateY(-${keyboardInset}px)`
                 : 'translateY(0)',
               transition: 'transform 180ms ease',

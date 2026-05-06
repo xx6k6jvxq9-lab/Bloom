@@ -7,6 +7,7 @@ import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
 type UseAppEnvironmentResult = {
+  isIosBrowserMode: boolean;
   isStandalone: boolean;
   keyboardInset: number;
   keyboardVisible: boolean;
@@ -20,6 +21,7 @@ type UseAppEnvironmentResult = {
 export function useAppEnvironment(): UseAppEnvironmentResult {
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isIosBrowserMode, setIsIosBrowserMode] = useState(false);
   const [layoutViewportHeight, setLayoutViewportHeight] = useState(0);
   const [manualKeyboardAvoidanceEnabled, setManualKeyboardAvoidanceEnabled] = useState(false);
   const [time, setTime] = useState('');
@@ -46,10 +48,12 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isIosBrowserMode = isIosLike && !isAndroid && !isStandalone;
     // iOS should follow the browser-driven viewport directly. Android browsers
     // such as Via can keep the shell pinned while the IME overlays the visual
     // viewport, so only Android keeps the manual composer-lift path.
     const manualKeyboardAvoidanceEnabled = isAndroid;
+    setIsIosBrowserMode(isIosBrowserMode);
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
@@ -61,6 +65,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.setAttribute('data-standalone', 'true');
     } else {
       root.removeAttribute('data-standalone');
+    }
+    if (isIosBrowserMode) {
+      root.setAttribute('data-ios-browser', 'true');
+    } else {
+      root.removeAttribute('data-ios-browser');
     }
 
     const updateViewportHeight = () => {
@@ -145,6 +154,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       setKeyboardInset(resolvedKeyboardInset);
       setKeyboardVisible(resolvedKeyboardVisible);
       setAppKeyboardState({
+        isIosBrowserMode,
         keyboardInset: resolvedKeyboardInset,
         keyboardVisible: resolvedKeyboardVisible,
         layoutViewportHeight: resolvedLayoutViewportHeight,
@@ -187,9 +197,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.style.removeProperty('--app-visible-viewport-height');
       root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
+      root.removeAttribute('data-ios-browser');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');
       setAppKeyboardState({
+        isIosBrowserMode: false,
         keyboardInset: 0,
         keyboardVisible: false,
         layoutViewportHeight: 0,
@@ -288,6 +300,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   }, []);
 
   return {
+    isIosBrowserMode,
     isStandalone,
     keyboardInset,
     keyboardVisible,

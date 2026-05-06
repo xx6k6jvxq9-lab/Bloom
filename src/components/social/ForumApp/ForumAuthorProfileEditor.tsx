@@ -33,13 +33,13 @@ export function ForumAuthorProfileEditor({
 }: ForumAuthorProfileEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
 
   return (
-    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col" style={viewportStyle}>
       <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={topInsetStyle}>
         <div className="flex items-center gap-6">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">

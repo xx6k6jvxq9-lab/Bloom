@@ -304,7 +304,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
   const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -389,6 +389,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
     <motion.div
       ref={containerRef}
       className="absolute inset-0 z-50 flex flex-col bg-white"
+      style={viewportStyle}
     >
       <div className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 pt-12 flex items-center justify-between">
         <div className="flex items-center gap-2">

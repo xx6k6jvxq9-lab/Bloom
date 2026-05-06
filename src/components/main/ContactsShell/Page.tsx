@@ -1086,7 +1086,7 @@ export function AddFriendModal({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState('');
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1097,8 +1097,9 @@ export function AddFriendModal({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
+        ...(viewportStyle?.height ? { maxHeight: `calc(${viewportStyle.height} - 6rem)` } : {}),
         transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,
@@ -1161,7 +1162,7 @@ export function GroupManagementModal({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [newGroup, setNewGroup] = useState('');
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1172,8 +1173,9 @@ export function GroupManagementModal({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
+        ...(viewportStyle?.height ? { maxHeight: `calc(${viewportStyle.height} - 6rem)` } : {}),
         transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,

@@ -40,13 +40,13 @@ export function NewFriendsPage({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
 
   return (
-    <div ref={containerRef} className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
+    <div ref={containerRef} className="absolute inset-0 bg-zinc-50 flex flex-col z-50" style={viewportStyle}>
       {/* Header */}
       <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center gap-2 bg-white border-b border-zinc-100">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">

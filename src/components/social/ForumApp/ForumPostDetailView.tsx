@@ -135,7 +135,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
   const postImages = post.images || [];
   const hotBadge = getForumHotBadgeLabel(post);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -173,7 +173,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
   }, []);
 
   return (
-    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col relative">
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col relative" style={viewportStyle}>
       <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-2 flex items-center gap-6" style={topInsetStyle}>
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
           <ArrowLeft size={20} />
