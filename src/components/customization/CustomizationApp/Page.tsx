@@ -463,6 +463,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  const { setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground);
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(settings.navBar?.backgroundImage || '');
   const wallpaperDisplayUrl = resolvedWallpaperUrl || resolveInstantPreviewUrl(settings.globalBackground, settings.globalBackgroundPreviewUrl);
