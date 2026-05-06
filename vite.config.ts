@@ -1,3 +1,4 @@
+import legacy from '@vitejs/plugin-legacy';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -7,9 +8,19 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      legacy({
+        targets: [
+          'chrome >= 52',
+          'chromeAndroid >= 52',
+          'safari >= 11',
+          'iOS >= 11',
+        ],
+      }),
+      tailwindcss(),
+    ],
     build: {
-      target: 'es2019',
       cssTarget: 'chrome88',
       rollupOptions: {
         output: {
