@@ -81,11 +81,19 @@ body {
     overflow: hidden;
   }
 
+  html[data-ios-browser='true'] {
+    --app-ios-browser-height: var(--app-viewport-height, 100svh);
+  }
+
+  html[data-ios-browser='true'][data-keyboard-open='true'] {
+    --app-ios-browser-height: 100dvh;
+  }
+
   html[data-ios-browser='true'],
   html[data-ios-browser='true'] body,
   html[data-ios-browser='true'] #root {
     height: auto;
-    min-height: 100dvh;
+    min-height: var(--app-ios-browser-height, var(--app-viewport-height, 100svh));
     overflow-x: hidden;
     overflow-y: visible;
   }
@@ -109,7 +117,7 @@ body {
     position: relative;
     inset: auto;
     height: auto;
-    min-height: 100dvh;
+    min-height: var(--app-ios-browser-height, var(--app-viewport-height, 100svh));
     overflow: visible;
   }
 
@@ -136,7 +144,7 @@ body {
     position: relative;
     inset: auto;
     height: auto !important;
-    min-height: 100dvh;
+    min-height: var(--app-ios-browser-height, var(--app-viewport-height, 100svh));
   }
 
   .app-phone-container.is-dating-scene {
@@ -153,7 +161,7 @@ body {
 
   html[data-ios-browser='true'] .phone-screen-root {
     height: auto;
-    min-height: 100dvh;
+    min-height: var(--app-ios-browser-height, var(--app-viewport-height, 100svh));
   }
 
   html[data-android='true'] .phone-screen-root,

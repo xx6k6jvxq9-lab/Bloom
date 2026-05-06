@@ -1802,7 +1802,7 @@ export function ChatSessionScreen({
       style={{ 
         ...(useIosBrowserFlowFooter
           ? {
-              minHeight: '100dvh',
+              minHeight: 'var(--app-ios-browser-height, var(--app-viewport-height, 100svh))',
             }
           : {
               height: chatViewportHeight,

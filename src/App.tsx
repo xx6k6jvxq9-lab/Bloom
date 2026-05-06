@@ -74,6 +74,8 @@ import { useCoupleSpaceStateActions } from './features/persistence/useCoupleSpac
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
+import { getDisplayableAssetValue, getPreviewAssetValue } from './features/persistence/persistentAssetRef';
+import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
@@ -273,6 +275,10 @@ export default function App() {
   });
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
+  const { resolvedUrl: resolvedHomeWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
+  const homeWallpaperDisplayUrl =
+    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedHomeWallpaperUrl)
+    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
   const isStorageReady = hasHydratedStorage;
   const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
   const phoneContainerBackgroundClass =
@@ -294,9 +300,19 @@ export default function App() {
     : hideMockSystemChrome
       ? '0px'
       : '12px';
+  const homeWallpaperBackgroundStyle =
+    activeApp === 'home' && homeWallpaperDisplayUrl
+      ? {
+          backgroundImage: `url(${homeWallpaperDisplayUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }
+      : {};
+  const shellWallpaperBackgroundStyle = useDesktopStageLayout ? {} : homeWallpaperBackgroundStyle;
   const phoneContainerStyle = {
     ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
     backgroundColor: appChromeBackground,
+    ...homeWallpaperBackgroundStyle,
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
@@ -462,6 +478,7 @@ export default function App() {
       style={{
         ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
         backgroundColor: appChromeBackground,
+        ...shellWallpaperBackgroundStyle,
       }}
     >
       <GlobalStyles
