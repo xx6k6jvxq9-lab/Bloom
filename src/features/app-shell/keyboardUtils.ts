@@ -36,3 +36,15 @@ export function isTextEntryElement(element: Element | null): element is HTMLElem
 export function containerOwnsFocusedTextEntry(container: HTMLElement | null, activeElement: Element | null) {
   return !!container && container.contains(activeElement) && isTextEntryElement(activeElement);
 }
+
+export function focusTextEntryElement(element: HTMLElement | null) {
+  if (!element) {
+    return;
+  }
+
+  try {
+    element.focus({ preventScroll: true });
+  } catch {
+    element.focus();
+  }
+}

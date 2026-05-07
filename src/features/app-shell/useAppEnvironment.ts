@@ -7,7 +7,6 @@ import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
 type UseAppEnvironmentResult = {
-  isIosBrowserMode: boolean;
   isStandalone: boolean;
   keyboardInset: number;
   keyboardVisible: boolean;
@@ -21,7 +20,6 @@ type UseAppEnvironmentResult = {
 export function useAppEnvironment(): UseAppEnvironmentResult {
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [isIosBrowserMode, setIsIosBrowserMode] = useState(false);
   const [layoutViewportHeight, setLayoutViewportHeight] = useState(0);
   const [manualKeyboardAvoidanceEnabled, setManualKeyboardAvoidanceEnabled] = useState(false);
   const [time, setTime] = useState('');
@@ -43,17 +41,15 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const hasTouchMacUa = userAgent.includes('macintosh') && (window.navigator.maxTouchPoints || 0) > 1;
     const isAndroid = /Android/i.test(window.navigator.userAgent || '');
     const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
-    const usesVisualViewportKeyboardLayout = isIosLike && !isAndroid;
     let stableLayoutViewportHeight = 0;
     let lastInnerWidth = window.innerWidth;
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    const isIosBrowserMode = isIosLike && !isAndroid && !isStandalone;
-    // Android browsers still need explicit inset-driven lifting. Apple mobile
-    // browsers and standalone shells track the visual viewport directly.
+    // iOS browsers should follow the shrinking visual viewport directly.
+    // Android browsers are more likely to pin the shell while the IME overlays
+    // it, so Android keeps the manual inset-driven path.
     const manualKeyboardAvoidanceEnabled = isAndroid;
-    setIsIosBrowserMode(isIosBrowserMode);
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
@@ -66,11 +62,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     } else {
       root.removeAttribute('data-standalone');
     }
-    if (isIosBrowserMode) {
-      root.setAttribute('data-ios-browser', 'true');
-    } else {
-      root.removeAttribute('data-ios-browser');
-    }
 
     const updateViewportHeight = () => {
       const viewport = window.visualViewport;
@@ -80,9 +71,15 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
       const activeElement = document.activeElement;
       const hasTextEntryFocus = isTextEntryElement(activeElement);
+      const phoneContainer = document.getElementById('phone-container');
+      const renderedShellHeight = Math.round(phoneContainer?.getBoundingClientRect().height ?? 0);
+      const renderedRootHeight = Math.round(document.documentElement.clientHeight || 0);
+      const shellTracksVisualViewport = visualViewportHeight > 0 && (
+        (renderedShellHeight > 0 && Math.abs(renderedShellHeight - visualViewportHeight) <= 2)
+        || (renderedRootHeight > 0 && Math.abs(renderedRootHeight - visualViewportHeight) <= 2)
+      );
 
       let resolvedLayoutViewportHeight = currentInnerHeight;
-      let resolvedShellViewportHeight = currentInnerHeight;
       let resolvedKeyboardInset = 0;
       let resolvedKeyboardVisible = false;
 
@@ -121,24 +118,21 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
         stableLayoutViewportHeight = nextStableLayoutViewportHeight;
         resolvedLayoutViewportHeight = nextStableLayoutViewportHeight;
-        resolvedShellViewportHeight = nextStableLayoutViewportHeight;
       } else {
-        // Apple mobile browsers and standalone apps should follow the visual
-        // viewport directly instead of mixing in a synthetic stable height.
         const rawKeyboardInset = Math.max(
           0,
           Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
         );
-        resolvedKeyboardInset = rawKeyboardInset;
+
+        // If the rendered shell already follows the browser viewport, lifting
+        // again creates the blank gap above the keyboard.
+        resolvedKeyboardInset = shellTracksVisualViewport ? 0 : rawKeyboardInset;
         resolvedKeyboardVisible = hasTextEntryFocus && (
-          usesVisualViewportKeyboardLayout
-          || rawKeyboardInset > 120
+          rawKeyboardInset > 120
           || currentInnerHeight - visualViewportHeight > 120
           || (isIosLike && viewportOffsetTop > 0)
         );
         stableLayoutViewportHeight = 0;
-        resolvedLayoutViewportHeight = currentInnerHeight;
-        resolvedShellViewportHeight = visualViewportHeight;
       }
 
       lastInnerWidth = currentInnerWidth;
@@ -148,8 +142,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       setKeyboardInset(resolvedKeyboardInset);
       setKeyboardVisible(resolvedKeyboardVisible);
       setAppKeyboardState({
-        isIosBrowserMode,
-        usesVisualViewportKeyboardLayout,
         keyboardInset: resolvedKeyboardInset,
         keyboardVisible: resolvedKeyboardVisible,
         layoutViewportHeight: resolvedLayoutViewportHeight,
@@ -158,7 +150,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       });
 
       root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
-      root.style.setProperty('--app-viewport-height', `${resolvedShellViewportHeight}px`);
+      root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
       if (resolvedKeyboardVisible) {
@@ -192,12 +184,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.style.removeProperty('--app-visible-viewport-height');
       root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
-      root.removeAttribute('data-ios-browser');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');
       setAppKeyboardState({
-        isIosBrowserMode: false,
-        usesVisualViewportKeyboardLayout: false,
         keyboardInset: 0,
         keyboardVisible: false,
         layoutViewportHeight: 0,
@@ -296,7 +285,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   }, []);
 
   return {
-    isIosBrowserMode,
     isStandalone,
     keyboardInset,
     keyboardVisible,

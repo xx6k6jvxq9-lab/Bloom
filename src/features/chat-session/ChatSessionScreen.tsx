@@ -44,6 +44,7 @@ import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from './InnerVoiceUn
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
+import { focusTextEntryElement } from '../app-shell/keyboardUtils';
 import { getMessageMainText } from '../../utils';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
@@ -528,7 +529,6 @@ export function ChatSessionScreen({
     keyboardVisible,
     visualViewportHeight,
     manualKeyboardAvoidanceEnabled,
-    usesVisualViewportKeyboardLayout,
   } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -713,6 +713,8 @@ export function ChatSessionScreen({
     && !message.isInnerVoice
     && !!character.voiceProfile?.enabled
     && !!message.text.trim()
+    && message.contentType !== 'game-card'
+    && message.contentType !== 'game-card-error'
     && !message.text.startsWith('[GAME_CARD]')
     && !message.text.startsWith('[COUPLE_SPACE_INVITE')
     && !message.text.startsWith('[transfer]')
@@ -730,9 +732,18 @@ export function ChatSessionScreen({
   const canUseManualSpeakButton = !isLoading;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
   const activeInnerVoiceMessage = activeInnerVoiceIndex !== null ? history[activeInnerVoiceIndex] : null;
-  const activeInnerVoiceCard = activeInnerVoiceMessage?.isInnerVoice && activeInnerVoiceMessage.role === 'model'
-    ? parseInnerVoiceCardContent(sanitizePipeMarkers(activeInnerVoiceMessage.text, '\n'))
+  const activeInnerVoiceParts = activeInnerVoiceMessage?.isInnerVoice
+    ? getLegacyTranslationParts(activeInnerVoiceMessage.text)
     : null;
+  const activeInnerVoiceCard = activeInnerVoiceMessage?.isInnerVoice && activeInnerVoiceMessage.role === 'model'
+    ? parseInnerVoiceCardContent(sanitizePipeMarkers(activeInnerVoiceParts?.mainText || activeInnerVoiceMessage.text, '\n'))
+    : null;
+  const activeInnerVoiceTranslation = activeInnerVoiceMessage?.isInnerVoice
+    ? sanitizePipeMarkers(
+        activeInnerVoiceMessage.translation?.trim() || activeInnerVoiceParts?.translation || '',
+        '\n',
+      )
+    : '';
   const sendCurrentText = useCallback(async () => {
     const speechText = input.trim();
     const actionText = actionInput.trim();
@@ -1251,7 +1262,7 @@ export function ChatSessionScreen({
     setReplyingTo(null);
     setIsVoiceMode(false);
     closeContextMenu();
-    requestAnimationFrame(() => inputTextareaRef.current?.focus());
+    requestAnimationFrame(() => focusTextEntryElement(inputTextareaRef.current));
   };
 
   const handleCancelEdit = () => {
@@ -1326,7 +1337,8 @@ export function ChatSessionScreen({
       return;
     }
 
-    const parsedCard = parseInnerVoiceCardContent(sanitizePipeMarkers(message.text, '\n'));
+    const legacyParts = getLegacyTranslationParts(message.text);
+    const parsedCard = parseInnerVoiceCardContent(sanitizePipeMarkers(legacyParts.mainText || message.text, '\n'));
     const content = [
       parsedCard.headline,
       '',
@@ -1712,14 +1724,16 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const useOverlayFooterLayout = isAndroid;
   const useAndroidBrowserKeyboardViewport =
-    isAndroid
+    useOverlayFooterLayout
     && !isStandaloneDisplayMode
     && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    manualKeyboardAvoidanceEnabled
+    useOverlayFooterLayout
+    && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1736,15 +1750,21 @@ export function ChatSessionScreen({
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
     : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: footerKeyboardOffset > 0
-      ? `${footerKeyboardOffset}px`
-      : '0px',
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    ...(useOverlayFooterLayout
+      ? {
+          bottom: footerKeyboardOffset > 0
+            ? `${footerKeyboardOffset}px`
+            : '0px',
+          transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+        }
+      : {
+          transition: 'padding-bottom 180ms ease',
+        }),
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1754,9 +1774,13 @@ export function ChatSessionScreen({
       : {}),
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    paddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 8}px`
+      : '8px',
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    scrollPaddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 12}px`
+      : `${chatFooterHeight + 12}px`,
   };
 
   if (showSettings) {
@@ -1797,7 +1821,7 @@ export function ChatSessionScreen({
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
         // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...(!isAndroid && !usesVisualViewportKeyboardLayout && !keyboardVisible ? {
+        ...(!isAndroid && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -2126,7 +2150,7 @@ export function ChatSessionScreen({
                           );
                         }
 
-                        if (msg.text.trim() === GAME_CARD_FAILURE_TOKEN) {
+                        if (msg.contentType === 'game-card-error' || msg.text.trim() === GAME_CARD_FAILURE_TOKEN) {
                           return (
                             <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                               <div className="w-64 rounded-2xl border border-red-100 bg-white/95 px-4 py-4 text-center shadow-sm">
@@ -2153,7 +2177,12 @@ export function ChatSessionScreen({
                           );
                         }
 
-                        const gameCardPayloadState = parseGameCardPayloadState(msg);
+                        const shouldRenderGameCard =
+                          msg.contentType === 'game-card'
+                          || msg.text.trim().startsWith('[GAME_CARD]');
+                        const gameCardPayloadState = shouldRenderGameCard
+                          ? parseGameCardPayloadState(msg)
+                          : { status: 'invalid' as const, error: null };
 
                         if (gameCardPayloadState.status === 'ok') {
                           const gameCardPayload = gameCardPayloadState.payload;
@@ -2577,7 +2606,14 @@ export function ChatSessionScreen({
                             )}
 
                             {msg.isInnerVoice && (() => {
-                              const parsedCard = parseInnerVoiceCardContent(sanitizePipeMarkers(msg.text, '\n'));
+                              const legacyInnerVoiceParts = getLegacyTranslationParts(msg.text);
+                              const parsedCard = parseInnerVoiceCardContent(
+                                sanitizePipeMarkers(legacyInnerVoiceParts.mainText || msg.text, '\n'),
+                              );
+                              const innerVoiceTranslation = sanitizePipeMarkers(
+                                msg.translation?.trim() || legacyInnerVoiceParts.translation,
+                                '\n',
+                              );
                               const teaserLines = parsedCard.headline.split('\n').filter(Boolean).slice(0, 2);
 
                               return (
@@ -2652,6 +2688,13 @@ export function ChatSessionScreen({
                                           <p className="mt-3 line-clamp-2 whitespace-pre-wrap break-words text-[12px] leading-6 text-[#7A6A5A]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>
                                             {parsedCard.body}
                                           </p>
+                                          {innerVoiceTranslation ? (
+                                            <div className="mt-3 border-t border-[rgba(160,140,120,0.1)] pt-3">
+                                              <p className="line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-[#A08F82]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' }}>
+                                                {innerVoiceTranslation}
+                                              </p>
+                                            </div>
+                                          ) : null}
                                         </div>
                                         <div className="flex items-center justify-between border-t border-[rgba(160,140,120,0.1)] px-4 py-2.5 text-[10px] text-[#B0A090]">
                                           <span>{`- ${character.name}`}</span>
@@ -2796,7 +2839,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
+        className={`chat-session-footer chat-footer ${useOverlayFooterLayout ? 'absolute inset-x-0 z-20 ' : ''}${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (
@@ -3744,6 +3787,7 @@ export function ChatSessionScreen({
                   })}
                   headline={activeInnerVoiceCard.headline}
                   body={activeInnerVoiceCard.body}
+                  translation={activeInnerVoiceTranslation || undefined}
                   ps={activeInnerVoiceCard.ps}
                   isSaved={!!activeInnerVoiceMessage.isFavorited}
                   onSave={() => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { useAppKeyboard } from './AppKeyboardContext';
 import { containerOwnsFocusedTextEntry } from './keyboardUtils';
 
@@ -11,12 +11,7 @@ export function useKeyboardSafeViewport({
   containerRef,
   enabled = true,
 }: UseKeyboardSafeViewportOptions) {
-  const {
-    usesVisualViewportKeyboardLayout,
-    keyboardVisible: appKeyboardVisible,
-    manualKeyboardAvoidanceEnabled,
-    visualViewportHeight,
-  } = useAppKeyboard();
+  const { keyboardVisible: appKeyboardVisible } = useAppKeyboard();
   const [ownsFocusedKeyboard, setOwnsFocusedKeyboard] = useState(false);
 
   useEffect(() => {
@@ -51,15 +46,7 @@ export function useKeyboardSafeViewport({
 
   const keyboardVisible = ownsFocusedKeyboard && appKeyboardVisible;
 
-  const viewportStyle = useMemo(
-    () => ((manualKeyboardAvoidanceEnabled || usesVisualViewportKeyboardLayout) && keyboardVisible && visualViewportHeight > 0
-      ? { height: `${visualViewportHeight}px`, minHeight: `${visualViewportHeight}px` }
-      : undefined),
-    [keyboardVisible, manualKeyboardAvoidanceEnabled, usesVisualViewportKeyboardLayout, visualViewportHeight],
-  );
-
   return {
     keyboardVisible,
-    viewportStyle,
   };
 }

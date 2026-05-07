@@ -111,7 +111,6 @@ export default function App() {
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const {
-    isIosBrowserMode,
     isStandalone,
     keyboardVisible,
     layoutViewportHeight,
@@ -289,14 +288,10 @@ export default function App() {
     && visualViewportHeight > 0
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
-  const hideMockSystemChrome =
-    isIosBrowserMode
-    || (!useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed));
+  const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
-    : isIosBrowserMode
-      ? '0px'
     : hideMockSystemChrome
       ? '0px'
       : '12px';

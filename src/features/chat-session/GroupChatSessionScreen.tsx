@@ -96,6 +96,7 @@ import { usePressToRecordInteraction } from './usePressToRecordInteraction';
 import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGroupWorldBooks';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
+import { focusTextEntryElement } from '../app-shell/keyboardUtils';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 const getGroupMessageSelectionKey = (message: ChatMessage) => (
@@ -1031,14 +1032,16 @@ export function GroupChatSessionScreen({
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
+  const useOverlayFooterLayout = isAndroid;
   const useAndroidBrowserKeyboardViewport =
-    isAndroid
+    useOverlayFooterLayout
     && !isStandaloneDisplayMode
     && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0;
   const footerKeyboardOffset =
-    manualKeyboardAvoidanceEnabled
+    useOverlayFooterLayout
+    && manualKeyboardAvoidanceEnabled
     && keyboardVisible
     && keyboardInset > 0
     && !useAndroidBrowserKeyboardViewport
@@ -1055,13 +1058,19 @@ export function GroupChatSessionScreen({
     ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
     : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: footerKeyboardOffset > 0
-      ? `${footerKeyboardOffset}px`
-      : '0px',
     paddingBottom: keyboardVisible ? '1px' : 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
-    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+    ...(useOverlayFooterLayout
+      ? {
+          bottom: footerKeyboardOffset > 0
+            ? `${footerKeyboardOffset}px`
+            : '0px',
+          transition: 'bottom 180ms ease, padding-bottom 180ms ease',
+        }
+      : {
+          transition: 'padding-bottom 180ms ease',
+        }),
     ...(useAndroidBrowserKeyboardViewport
       ? {
           backdropFilter: 'none',
@@ -1072,8 +1081,12 @@ export function GroupChatSessionScreen({
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
-    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    paddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 8}px`
+      : '8px',
+    scrollPaddingBottom: useOverlayFooterLayout
+      ? `${chatFooterHeight + footerKeyboardOffset + 12}px`
+      : `${chatFooterHeight + 12}px`,
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig
@@ -1488,7 +1501,7 @@ export function GroupChatSessionScreen({
     setReplyingTo(null);
     setIsVoiceMode(false);
     closeContextMenu();
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => focusTextEntryElement(textareaRef.current));
   };
 
   const handleCancelEdit = () => {
@@ -1669,7 +1682,7 @@ export function GroupChatSessionScreen({
   const handleMentionInsert = (member: Character) => {
     setInput((prev) => prev.replace(/@([^\s@]*)$/, `@${member.name} `));
     requestAnimationFrame(() => {
-      textareaRef.current?.focus();
+      focusTextEntryElement(textareaRef.current);
     });
   };
 
@@ -3218,7 +3231,7 @@ export function GroupChatSessionScreen({
         <div ref={messagesEndRef} />
       </div>
 
-      <div ref={chatFooterRef} className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${groupFooterClassName}`} style={chatFooterStyle}>
+      <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${useOverlayFooterLayout ? 'absolute inset-x-0 z-20 ' : ''}${groupFooterClassName}`} style={chatFooterStyle}>
         {replyingTo && (
           <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
