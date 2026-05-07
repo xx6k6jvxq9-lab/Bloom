@@ -410,7 +410,7 @@ export function ChatSettingsPanel({
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
   });
@@ -1228,7 +1228,6 @@ export function ChatSettingsPanel({
       exit={{ x: '100%' }}
       className="absolute inset-0 flex flex-col z-[70]"
       style={{
-        ...(viewportStyle || {}),
         backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
         backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
         backgroundSize: 'cover',
@@ -2879,6 +2878,7 @@ export function ChatSettingsPanel({
                   </div>
                 </div>
               </SettingsSection>
+
             </div>
           </motion.div>
         )}

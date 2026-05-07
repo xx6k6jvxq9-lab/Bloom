@@ -528,7 +528,6 @@ export function ChatSessionScreen({
     keyboardVisible,
     visualViewportHeight,
     manualKeyboardAvoidanceEnabled,
-    usesVisualViewportKeyboardLayout,
   } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1797,7 +1796,7 @@ export function ChatSessionScreen({
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
         // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...(!isAndroid && !usesVisualViewportKeyboardLayout && !keyboardVisible ? {
+        ...(!isAndroid && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),

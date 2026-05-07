@@ -59,7 +59,7 @@ export function ExpandedInputSheet({
     <div className="absolute inset-0 z-[120] flex items-end bg-black/28 backdrop-blur-[2px]">
       <div
         className="w-full rounded-t-[28px] border border-zinc-200 bg-white/98 px-4 pb-4 pt-3 shadow-2xl"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)' }}
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-zinc-900">
