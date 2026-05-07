@@ -29,6 +29,7 @@ type BuildCharacterTemporalStateInput = {
   directChatHistory?: ChatHistory;
   groupMessages?: ChatMessage[];
   coupleSpace?: CoupleSpaceData;
+  sceneScope?: 'direct' | 'group';
 };
 
 function deriveEnergyState(
@@ -48,18 +49,29 @@ function deriveSocialState(
 ): CharacterTemporalState['socialState'] {
   if (topicHeatState.hasPendingEmotionalThread) return 'open';
   if (interactionGapState.recentInteractionDensity === 'high') return 'open';
-  if (interactionGapState.minutesSinceLastDirectChat !== null && interactionGapState.minutesSinceLastDirectChat > 12 * 60) return 'reserved';
+  if (
+    interactionGapState.minutesSinceLastContinuityChat !== null
+    && interactionGapState.minutesSinceLastContinuityChat > 12 * 60
+  ) return 'reserved';
   return 'neutral';
 }
 
 function deriveAttentionState(
   temporalFacts: TemporalFacts,
   interactionGapState: InteractionGapState,
+  sceneScope: 'direct' | 'group',
 ): CharacterTemporalState['attentionState'] {
   if (temporalFacts.isLateNight) return 'resting';
   if (interactionGapState.recentInteractionDensity === 'high') return 'focused';
-  if (interactionGapState.minutesSinceLastDirectChat !== null && interactionGapState.minutesSinceLastDirectChat <= 30) return 'focused';
-  if (interactionGapState.minutesSinceLastGroupChat !== null && interactionGapState.minutesSinceLastGroupChat <= 30) return 'split';
+  if (
+    interactionGapState.minutesSinceLastContinuityChat !== null
+    && interactionGapState.minutesSinceLastContinuityChat <= 30
+  ) return 'focused';
+  if (
+    sceneScope === 'direct'
+    && interactionGapState.minutesSinceLastGroupChat !== null
+    && interactionGapState.minutesSinceLastGroupChat <= 30
+  ) return 'split';
   return 'drifting';
 }
 
@@ -68,7 +80,10 @@ function deriveRelationshipPull(
   interactionGapState: InteractionGapState,
 ): CharacterTemporalState['relationshipPull'] {
   if (topicHeatState.hasPendingEmotionalThread) return 'high';
-  if (interactionGapState.minutesSinceLastDirectChat !== null && interactionGapState.minutesSinceLastDirectChat <= 60) return 'medium';
+  if (
+    interactionGapState.minutesSinceLastContinuityChat !== null
+    && interactionGapState.minutesSinceLastContinuityChat <= 60
+  ) return 'medium';
   return 'low';
 }
 
@@ -79,7 +94,10 @@ function deriveInitiativeReadiness(
 ): CharacterTemporalState['initiativeReadiness'] {
   if (temporalFacts.isLateNight) return 'low';
   if (topicHeatState.topicDecayStage === 'overextended') return 'hold';
-  if (interactionGapState.minutesSinceLastDirectChat !== null && interactionGapState.minutesSinceLastDirectChat <= 20) return 'hold';
+  if (
+    interactionGapState.minutesSinceLastContinuityChat !== null
+    && interactionGapState.minutesSinceLastContinuityChat <= 20
+  ) return 'hold';
   return topicHeatState.hasPendingEmotionalThread ? 'ready' : 'low';
 }
 
@@ -187,20 +205,22 @@ export function buildCharacterTemporalState(
     perception: input.perception,
   });
   const directMessages = input.directChatHistory?.[input.characterId] || [];
+  const sceneScope = input.sceneScope ?? 'direct';
   const interactionGapState = buildInteractionGapState({
     nowTimestamp: temporalFacts.nowTimestamp,
     characterId: input.characterId,
     directChatHistory: input.directChatHistory,
     groupMessages: input.groupMessages,
     coupleSpace: input.coupleSpace,
+    continuityScope: sceneScope,
   });
   const topicHeatState = buildTopicHeatState({
     nowTimestamp: temporalFacts.nowTimestamp,
-    directMessages,
+    messages: sceneScope === 'group' ? input.groupMessages : directMessages,
   });
   const energyState = deriveEnergyState(temporalFacts, interactionGapState);
   const socialState = deriveSocialState(topicHeatState, interactionGapState);
-  const attentionState = deriveAttentionState(temporalFacts, interactionGapState);
+  const attentionState = deriveAttentionState(temporalFacts, interactionGapState, sceneScope);
   const relationshipPull = deriveRelationshipPull(topicHeatState, interactionGapState);
   const initiativeReadiness = deriveInitiativeReadiness(temporalFacts, topicHeatState, interactionGapState);
   const resumeStyle = deriveResumeStyle(interactionGapState.continuityMode);

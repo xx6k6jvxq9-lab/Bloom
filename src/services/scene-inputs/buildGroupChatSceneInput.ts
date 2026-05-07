@@ -538,6 +538,11 @@ export function buildGroupChatSceneInput(
   const mode = options.mode ?? 'reply';
   const groupStage = options.group?.groupStage ?? 'new';
   const worldBookRetrievalOptions = buildGroupWorldBookRetrievalOptions(options.history);
+  const latestGroupUserText = [...options.history]
+    .reverse()
+    .find((message) => message.role === 'user' && extractGroupRecallText(message))
+    ?.text
+    ?.trim();
   const characterContext = buildCharacterContext({
     character: options.speaker,
     activeWorldBooks: options.activeWorldBooks,
@@ -564,7 +569,9 @@ export function buildGroupChatSceneInput(
     perception: options.perception,
     directChatHistory: options.directChatHistory,
     groupMessages: options.history,
+    sceneScope: 'group',
   });
+  const shouldUseLiveGroupContext = characterTemporalState.continuityMode !== 'resume_after_gap';
   const memberRelationshipState = [
     getMemberRelationshipStateLabel(options.group?.memberRelationshipState),
     options.group?.memberRelationshipNote?.trim() || '',
@@ -598,23 +605,32 @@ export function buildGroupChatSceneInput(
       topicAnchors: filterTopicAnchorsForPrompt(
         sceneScopedSignals.topicAnchors,
         characterTemporalState.continuityMode,
+        latestGroupUserText,
       ).slice(0, 2),
       taskResidue: limitResidueItems(sceneScopedSignals.taskResidue, 2),
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
       temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
       activeDatingSummary: options.speaker.activeDatingState?.summary,
       groupSceneHint: characterContext.sceneHints?.groupChat,
-      groupShortTermSummary: options.group?.groupShortTermSummary?.trim() || undefined,
-      groupMemberPerspectiveSummary: options.group?.groupMemberPerspectiveSummaries?.[options.speaker.id]?.trim() || undefined,
+      groupShortTermSummary: shouldUseLiveGroupContext
+        ? (options.group?.groupShortTermSummary?.trim() || undefined)
+        : undefined,
+      groupMemberPerspectiveSummary: shouldUseLiveGroupContext
+        ? (options.group?.groupMemberPerspectiveSummaries?.[options.speaker.id]?.trim() || undefined)
+        : undefined,
       groupLongTermAtmosphere: options.group?.groupLongTermMemory?.atmosphere?.trim() || undefined,
       groupRecurringDynamics: options.group?.groupLongTermMemory?.recurringDynamics?.trim() || undefined,
       groupSharedHistory: options.group?.groupLongTermMemory?.sharedHistory?.trim() || undefined,
       speakerLongTermGroupRole: options.group?.groupLongTermMemory?.memberRoles?.[options.speaker.id]?.trim() || undefined,
       backgroundSummary: options.group?.backgroundSummary?.trim() || undefined,
       memberRelationshipState,
-      currentScene: options.group?.currentScene?.trim() || undefined,
+      currentScene: shouldUseLiveGroupContext
+        ? (options.group?.currentScene?.trim() || undefined)
+        : undefined,
       publicFacts: options.group?.publicFacts?.trim() || undefined,
-      topicStatePrompt: formatGroupTopicStateForPrompt(options.group?.topicState),
+      topicStatePrompt: shouldUseLiveGroupContext
+        ? formatGroupTopicStateForPrompt(options.group?.topicState)
+        : '',
       worldBookPrompt: buildGroupWorldBookPrompt(options.activeWorldBooks, worldBookRetrievalOptions),
       expressionStyle: characterContext.expressionStyle,
       boundaryPack: characterContext.boundaryPack,

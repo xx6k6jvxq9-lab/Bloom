@@ -11,7 +11,11 @@ export function useKeyboardSafeViewport({
   containerRef,
   enabled = true,
 }: UseKeyboardSafeViewportOptions) {
-  const { keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const {
+    keyboardVisible: appKeyboardVisible,
+    manualKeyboardAvoidanceEnabled,
+    visualViewportHeight,
+  } = useAppKeyboard();
   const [ownsFocusedKeyboard, setOwnsFocusedKeyboard] = useState(false);
 
   useEffect(() => {
@@ -45,6 +49,65 @@ export function useKeyboardSafeViewport({
   }, [containerRef, enabled]);
 
   const keyboardVisible = ownsFocusedKeyboard && appKeyboardVisible;
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    const shouldClampToVisibleViewport =
+      !manualKeyboardAvoidanceEnabled
+      && ownsFocusedKeyboard
+      && keyboardVisible
+      && visualViewportHeight > 0;
+
+    if (!shouldClampToVisibleViewport) {
+      container.style.removeProperty('height');
+      container.style.removeProperty('min-height');
+      return undefined;
+    }
+
+    container.style.height = `${visualViewportHeight}px`;
+    container.style.minHeight = `${visualViewportHeight}px`;
+
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement) || !container.contains(activeElement)) {
+      return () => {
+        container.style.removeProperty('height');
+        container.style.removeProperty('min-height');
+      };
+    }
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        activeElement.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+        });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+      container.style.removeProperty('height');
+      container.style.removeProperty('min-height');
+    };
+  }, [
+    containerRef,
+    enabled,
+    keyboardVisible,
+    manualKeyboardAvoidanceEnabled,
+    ownsFocusedKeyboard,
+    visualViewportHeight,
+  ]);
 
   return {
     keyboardVisible,

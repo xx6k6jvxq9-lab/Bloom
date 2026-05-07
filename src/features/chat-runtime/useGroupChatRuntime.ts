@@ -9,7 +9,7 @@ import {
 import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGroupChatPrompt';
 import { buildGroupContextLayers } from '../../services/chat/buildGroupContextLayers';
 import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
-import { stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
@@ -63,6 +63,7 @@ type UseGroupChatRuntimeArgs = {
   userName: string;
   directChatHistory: ChatHistory;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
+  availableStickers?: string[];
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
@@ -889,6 +890,8 @@ function normalizeConversationalParticleLead(text: string): string[] {
   return [`${particle} ${trimmedTail}`.trim()];
 }
 
+const GROUP_MAX_BUBBLES = 3;
+
 function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimestamp = Date.now()): ChatMessage[] {
   const normalized = text.replace(/\r\n/g, '\n').trim();
   if (!normalized) {
@@ -899,33 +902,31 @@ function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimes
     .split(/\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
+  const sourceSegments = paragraphParts.length > 1 ? paragraphParts : [normalized];
+  const parts: string[] = [];
 
-  const sentenceRegex = /[^\u3002\uFF01\uFF1F!?;\uFF1B\n]+(?:[\u3002\uFF01\uFF1F!?;\uFF1B]+)?/g;
+  for (const segment of sourceSegments) {
+    if (parts.length >= GROUP_MAX_BUBBLES) {
+      break;
+    }
 
-  const sentenceParts = paragraphParts.length > 1
-    ? paragraphParts
-        .flatMap((part) => (
-          part.match(sentenceRegex)
-            ?.map((sentence) => sentence.trim())
-            .filter(Boolean)
-          ?? [part]
-        ))
-    : (
-      normalized.match(sentenceRegex)
-        ?.map((part) => part.trim())
-        .filter(Boolean)
-      ?? [normalized]
-    );
+    const cue = parseActionCue(segment);
+    if (cue.kind !== 'normal') {
+      parts.push(segment);
+      continue;
+    }
 
-  const parts = (sentenceParts.length > 0 ? sentenceParts : [normalized])
-    .flatMap((part) => splitLongChatClause(part))
-    .flatMap((part) => splitByNaturalChatBeats(part))
-    .map((part) => normalizeChatMessageEnding(part))
-    .flatMap((part) => normalizeConversationalParticleLead(part))
-    .map((part) => part.trim())
-    .map(normalizeChatPunctuationNoise)
-    .filter(isUsableChatText)
-    .slice(0, 3);
+    const remainingBubbleSlots = GROUP_MAX_BUBBLES - parts.length;
+    const splitParts = splitDirectAssistantReplyText(segment, remainingBubbleSlots)
+      .map((part) => normalizeChatPunctuationNoise(part).trim())
+      .filter(Boolean);
+
+    if (splitParts.length === 0) {
+      continue;
+    }
+
+    parts.push(...splitParts.slice(0, remainingBubbleSlots));
+  }
 
   console.info('[group-chat] split reply parts', {
     speakerId: speaker.id,
@@ -959,6 +960,7 @@ export function useGroupChatRuntime({
   userName,
   directChatHistory,
   patchCharacter,
+  availableStickers = [],
   worldBooks = [],
   perception,
   settings,
@@ -983,6 +985,13 @@ export function useGroupChatRuntime({
   const secondarySpeakerRequestIdRef = useRef(0);
   const historyRef = useRef(history);
   const manualReplyModeEnabled = groupMeta?.manualReplyEnabled !== false;
+  const runtimeAvailableStickers = Array.from(
+    new Set(
+      availableStickers
+        .filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
+        .map((sticker) => sticker.trim()),
+    ),
+  );
 
   const recordGroupSpeakerSettlement = useCallback((speaker: Character, messages: ChatMessage[]) => {
     const mainText = messages
@@ -1014,6 +1023,25 @@ export function useGroupChatRuntime({
       delayedSpeakerTimerRef.current = null;
     }
   }, []);
+
+  const getUsableGroupTopicState = useCallback((currentHistory: ChatMessage[]) => {
+    const topicState = groupMeta?.topicState;
+    if (!topicState?.anchor.trim() || topicState.phase === 'closing') {
+      return undefined;
+    }
+
+    const latestVisibleTimestamp = [...currentHistory]
+      .reverse()
+      .find((message) => !message.isSystem && !message.isRecalled && (message.text || message.imageUrl || message.audioUrl))
+      ?.timestamp ?? Date.now();
+    const gapMs = latestVisibleTimestamp - topicState.lastUpdatedAt;
+    const crossedDay = new Date(latestVisibleTimestamp).toDateString() !== new Date(topicState.lastUpdatedAt).toDateString();
+    if (crossedDay || gapMs > 3 * 60 * 60 * 1000) {
+      return undefined;
+    }
+
+    return topicState;
+  }, [groupMeta?.topicState]);
 
   useEffect(() => {
     historyRef.current = history;
@@ -1053,6 +1081,7 @@ export function useGroupChatRuntime({
       perception,
       directChatHistory,
       groupMessages: currentHistory,
+      sceneScope: 'group',
     });
 
     return computeGroupPresenceParticipationWeight(temporalState);
@@ -1075,6 +1104,7 @@ export function useGroupChatRuntime({
       perception,
       directChatHistory,
       groupMessages: params.currentHistory,
+      sceneScope: 'group',
     });
     const contextLayers = buildGroupContextLayers({
       messages: params.currentHistory,
@@ -1129,9 +1159,11 @@ export function useGroupChatRuntime({
         recentMessages: contextLayers.memoryMessages,
       }),
       contextLayers.memoryContextPrompt,
-      buildAssistantStickerPromptSection([
-        ...(params.speaker.stickers || []),
-      ]),
+      buildAssistantStickerPromptSection(
+        runtimeAvailableStickers.length > 0
+          ? runtimeAvailableStickers
+          : (params.speaker.stickers || []),
+      ),
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -1221,6 +1253,7 @@ export function useGroupChatRuntime({
     };
   }, [
     activeConfig,
+    runtimeAvailableStickers,
     groupMeta?.backgroundSummary,
     groupMeta?.currentScene,
     groupMeta?.groupStage,
@@ -1412,9 +1445,12 @@ export function useGroupChatRuntime({
       const rawContent = getMessageMainText(message);
       const cue = parseActionCue(rawContent);
       const pickedSticker = cue.kind === 'sticker'
-        ? pickAssistantSticker(cue.content, [
-            ...(speaker.stickers || []),
-          ])
+        ? pickAssistantSticker(
+            cue.content,
+            runtimeAvailableStickers.length > 0
+              ? runtimeAvailableStickers
+              : (speaker.stickers || []),
+          )
         : null;
       const cleanedText = cue.kind === 'sticker'
         ? `[sticker] ${cue.content || '...'}`
@@ -1470,7 +1506,7 @@ export function useGroupChatRuntime({
     }
     void attachAudioToSpeakerMessages(speaker, structuredMessages);
     return structuredMessages;
-  }, [attachAudioToSpeakerMessages, recordGroupSpeakerSettlement, resolveReplyTarget, setHistory]);
+  }, [attachAudioToSpeakerMessages, recordGroupSpeakerSettlement, resolveReplyTarget, runtimeAvailableStickers, setHistory]);
 
   const triggerAISpeaker = useCallback(async (
     speaker: Character,
@@ -2057,35 +2093,55 @@ export function useGroupChatRuntime({
       const memberCount = members.length;
       const isFirstFollowUp = usedSpeakerCount <= 1;
       const isSecondFollowUp = usedSpeakerCount === 2;
+      const explicitFollowUpAsk =
+        wantsAnotherSpeaker(contextText)
+        || intent.kind === 'open_floor'
+        || intent.kind === 'force_targets'
+        || intent.kind === 'force_all_members';
+      const liveTopicContinuation =
+        intent.kind === 'group_topic'
+        && conversationHeat >= 1.2
+        && conversationMomentum >= 0.72
+        && !isTopicClosing;
+      const hasStrongHook =
+        explicitFollowUpAsk
+        || /[?!\uFF1F\uFF01]/.test(latestResponse)
+        || latestResponse.trim().length <= 14
+        || /@/.test(latestResponse);
+
+      if (!hasStrongHook && !liveTopicContinuation) {
+        return false;
+      }
+
+      if (chainDepth > 0 && !explicitFollowUpAsk && conversationMomentum < 0.95) {
+        return false;
+      }
       const hotFloorTarget = conversationHeat >= 1.8
         ? (memberCount >= 7 ? 4 : memberCount >= 4 ? 3 : 2)
         : conversationHeat >= 1.2
           ? (memberCount >= 5 ? 3 : 2)
           : 1;
       const baseChance = isFirstFollowUp
-        ? (memberCount >= 5 ? 0.84 : memberCount >= 3 ? 0.76 : 0.58)
+        ? (memberCount >= 5 ? 0.56 : memberCount >= 3 ? 0.48 : 0.34)
         : isSecondFollowUp
-          ? (memberCount >= 8 ? 0.62 : memberCount >= 5 ? 0.5 : 0.34)
-          : (memberCount >= 8 ? 0.32 : 0.2);
+          ? (memberCount >= 8 ? 0.28 : memberCount >= 5 ? 0.22 : 0.15)
+          : 0.08;
       const followUpEnergy =
-        (wantsAnotherSpeaker(contextText) ? 0.24 : 0)
-        + (/[?!\uFF1F\uFF01]/.test(latestResponse) ? 0.16 : 0)
-        + (latestResponse.length <= 18 ? 0.12 : 0)
-        + (memberCount >= 4 ? 0.08 : 0)
-        + (memberCount >= 6 ? 0.06 : 0)
-        + (usedSpeakerCount <= 2 ? 0.08 : -0.18)
-        + (usedSpeakerCount < hotFloorTarget ? 0.24 : 0)
-        + (chainDepth <= 1 ? 0.06 : 0)
-        + conversationHeat * 0.18
-        + conversationMomentum * 0.14
-        + (intent.kind === 'group_topic' ? 0.16 : 0);
+        (explicitFollowUpAsk ? 0.16 : 0)
+        + (/[?!\uFF1F\uFF01]/.test(latestResponse) ? 0.1 : 0)
+        + (latestResponse.length <= 18 ? 0.08 : 0)
+        + (usedSpeakerCount < hotFloorTarget ? 0.12 : 0)
+        + (chainDepth === 0 ? 0.04 : -0.12)
+        + conversationHeat * 0.1
+        + conversationMomentum * 0.08
+        + (liveTopicContinuation ? 0.12 : 0);
 
-      const followUpChance = Math.max(0.08, Math.min(0.9, baseChance + followUpEnergy - (isTopicClosing ? 0.38 : 0)));
+      const followUpChance = Math.max(0.02, Math.min(0.72, baseChance + followUpEnergy - (isTopicClosing ? 0.3 : 0)));
       if (Math.random() <= followUpChance) {
         return true;
       }
 
-      return shouldUseActivityFloor({
+      return (explicitFollowUpAsk || liveTopicContinuation) && shouldUseActivityFloor({
         memberCount,
         conversationHeat,
         conversationMomentum,
@@ -2132,6 +2188,7 @@ export function useGroupChatRuntime({
       contextText: string;
       previousSpeaker: Character;
       latestResponse: string;
+      latestHistory: ChatMessage[];
       usedSpeakerIds: string[];
     }) => {
       const explicitMention = followUpParams.intent.kind === 'stop_followups'
@@ -2189,7 +2246,7 @@ export function useGroupChatRuntime({
           weight -= 1.8;
         }
 
-        const topicState = groupMeta?.topicState;
+        const topicState = getUsableGroupTopicState(followUpParams.latestHistory);
         if (topicState?.lastSpeaker === 'character' && topicState.lastSpeakerId && member.id !== topicState.lastSpeakerId) {
           weight += 0.18;
         }
@@ -2282,6 +2339,7 @@ export function useGroupChatRuntime({
       contextText: string,
       latestResponse: string,
       previousSpeaker: Character,
+      currentHistory: ChatMessage[],
     ) => {
       if (intent.kind === 'stop_followups') {
         return null;
@@ -2297,7 +2355,7 @@ export function useGroupChatRuntime({
       const referencesPreviousSpeaker =
         latestResponse.includes(previousSpeaker.name)
         || contextText.includes(previousSpeaker.name);
-      const topicState = groupMeta?.topicState;
+      const topicState = getUsableGroupTopicState(currentHistory);
       const shouldKeepLatestCharacterBeat =
         topicState?.lastSpeaker === 'character'
         && topicState.lastSpeakerId === previousSpeaker.id
@@ -2306,8 +2364,7 @@ export function useGroupChatRuntime({
         !!explicitReply
         || !!responseReply
         || referencesPreviousSpeaker
-        || shouldKeepLatestCharacterBeat
-        || (!isTopicClosing && Math.random() < 0.24);
+        || shouldKeepLatestCharacterBeat;
       if (!shouldAttachReply) {
         return null;
       }
@@ -2397,6 +2454,7 @@ export function useGroupChatRuntime({
             contextText: followUpParams.contextText,
             previousSpeaker: followUpParams.previousSpeaker,
             latestResponse: followUpParams.latestResponse,
+            latestHistory: followUpParams.latestHistory,
             usedSpeakerIds: followUpParams.usedSpeakerIds,
           });
       if (!nextSpeaker) {
@@ -2424,6 +2482,7 @@ export function useGroupChatRuntime({
           followUpParams.contextText,
           followUpParams.latestResponse,
           followUpParams.previousSpeaker,
+          followUpParams.latestHistory,
         );
 
         const speechActInstruction = buildGroupSpeechActInstruction({
@@ -2606,6 +2665,8 @@ export function useGroupChatRuntime({
     appendSpeakerMessage,
     appendSystemFailure,
     generateMessageForSpeaker,
+    getPresenceParticipationWeight,
+    getUsableGroupTopicState,
     groupMeta?.groupStage,
     groupMeta?.groupMemberPerspectiveSummaries,
     manualReplyModeEnabled,

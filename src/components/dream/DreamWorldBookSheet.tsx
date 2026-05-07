@@ -327,6 +327,9 @@ export function DreamWorldBookSheet({
                   <div className="mt-3 text-[10px] leading-[1.9] tracking-[0.14em] text-[var(--mist)]">
                     这里的开关只影响这一场梦。你在这里临时导入的书页，也只会被今夜的梦读到。
                   </div>
+                  <div className="mt-2 text-[10px] leading-[1.9] tracking-[0.14em] text-[var(--mist)]">
+                    导入后可以先整理、筛掉或合并书页；如果书页和本局标签撞了，以标签为准，世界书只补兼容细节。
+                  </div>
                 </div>
 
                 <div className="space-y-3">

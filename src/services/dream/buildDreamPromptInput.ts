@@ -248,6 +248,15 @@ export function buildDreamPersonaGuardrails(input: {
   ].join('\n');
 }
 
+export function buildDreamTagWorldBookGuardrails() {
+  return [
+    'Selected tags have higher priority than world books when shaping this dream.',
+    'Selected tags define the dream world and genre, dream identities, relationship shell, camps and factions, active rules or taboos, and ending tendency.',
+    'World books may only add compatible details such as locations, organization texture, customs, item logic, rule details, or background context.',
+    'If any world-book detail conflicts with the selected tags, ignore the conflicting world-book detail instead of trying to reconcile it.',
+  ].join('\n');
+}
+
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
   const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);

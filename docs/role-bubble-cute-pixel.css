@@ -1,0 +1,49 @@
+/* Cute pixel role bubble for character-specific bubble CSS */
+
+.bot-bubble,
+.message-bubble.bot-bubble,
+.chat-bubble.bot-bubble,
+.left,
+.chat-bubble-left {
+  position: relative;
+  border: 2px solid #7d6a88;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #fffef3 0%, #eef8df 100%);
+  box-shadow:
+    0 4px 0 rgba(173, 160, 117, 0.35),
+    0 10px 22px rgba(125, 106, 136, 0.08);
+  color: #5a4f66;
+}
+
+.bot-bubble::before,
+.message-bubble.bot-bubble::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed rgba(125, 106, 136, 0.28);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.corner,
+.bubble-corner {
+  border-color: #7d6a88 !important;
+  background: #fffef3 !important;
+  box-shadow: 0 2px 0 rgba(173, 160, 117, 0.28);
+}
+
+.sticker-skull,
+.bubble-sticker-skull {
+  background: #cfeec9 !important;
+  border: 2px solid #7d6a88 !important;
+  box-shadow: 0 3px 0 rgba(125, 106, 136, 0.12);
+}
+
+.chat-message-image,
+.chat-transfer-card,
+.chat-location-card {
+  border: 2px solid #7d6a88;
+  border-radius: 16px;
+  box-shadow: 0 4px 0 rgba(173, 160, 117, 0.28);
+}

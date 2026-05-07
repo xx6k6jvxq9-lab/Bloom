@@ -13,6 +13,9 @@ export const CHAT_THEME_TARGET_GROUPS = [
       '.user-left-bubble / .user-right-bubble',
       '.corner.tl / .tr / .bl / .br',
       '.sticker-skull',
+      '.bubble-charm',
+      '.bubble-charm-string',
+      '.bubble-charm-body / .bubble-charm-core',
     ],
   },
   {

@@ -15,6 +15,8 @@ import {
   normalizeDreamWorldBookConfig,
   resolveDreamInheritedWorldBooks,
 } from '../../services/dream/dreamWorldBooks';
+import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
+import { getWorldBookPriorityWeight, normalizeWorldBookCategory } from '../../services/world-book/worldBookMeta';
 import type {
   DreamDecisionRecord,
   DreamGeneratedChoice,
@@ -25,6 +27,7 @@ import type {
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import { DreamWorldBookGlyph, DreamWorldBookSheet } from './DreamWorldBookSheet';
+import { DreamWorldBookImportReviewSheet, type DreamWorldBookImportDraft } from './DreamWorldBookImportReviewSheet';
 import { DreamArchiveStage } from './DreamArchiveStage';
 import { buildDreamArchiveRecord, exportDreamArchiveRecords, getSelectedTagLabels, loadDreamArchiveRecords, saveDreamArchiveRecords, upsertDreamArchiveRecord, type DreamArchiveRecord } from './dreamArchive';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
@@ -145,6 +148,93 @@ const dreamThemeStyle = {
 } as CSSProperties;
 
 const dreamNoise = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E")`;
+
+function buildDreamWorldBookImportDrafts(entries: WorldBookEntry[]): DreamWorldBookImportDraft[] {
+  return entries.map((entry, index) => ({
+    ...entry,
+    draftId: `${entry.id || 'dream-import'}-${index}-${Math.random().toString(16).slice(2)}`,
+    include: true,
+    mergeGroup: '',
+  }));
+}
+
+function toDreamImportedWorldBookEntry(draft: DreamWorldBookImportDraft): WorldBookEntry {
+  const nextId = draft.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const content = draft.content.trim();
+
+  return {
+    id: nextId,
+    title: draft.title.trim(),
+    content,
+    category: normalizeWorldBookCategory(draft.category),
+    priorityLevel: draft.priorityLevel || 'normal',
+    isActive: draft.isActive !== false,
+    isGlobal: draft.isGlobal !== false,
+    characterIds: Array.from(new Set(
+      (draft.characterIds || []).filter((characterId): characterId is string => Boolean(characterId?.trim())),
+    )),
+    pinMode: draft.pinMode === 'always' ? 'always' : 'none',
+    chunkCache: buildWorldBookChunkCache({
+      id: nextId,
+      content,
+    }),
+  };
+}
+
+function mergeDreamImportedDraftGroup(groupName: string, drafts: DreamWorldBookImportDraft[]): WorldBookEntry {
+  const normalizedGroupName = groupName.trim();
+  const categories = Array.from(new Set(drafts.map((draft) => normalizeWorldBookCategory(draft.category))));
+  const mergedPriority = drafts.reduce<WorldBookEntry['priorityLevel']>((best, current) => {
+    const currentWeight = getWorldBookPriorityWeight(current.priorityLevel);
+    const bestWeight = getWorldBookPriorityWeight(best);
+    return currentWeight >= bestWeight ? current.priorityLevel : best;
+  }, 'normal');
+  const mergedCharacterIds = Array.from(new Set(drafts.flatMap((draft) => draft.characterIds || [])));
+  const mergedContent = drafts
+    .map((draft) => [drafts.length > 1 ? `## ${draft.title.trim()}` : '', draft.content.trim()].filter(Boolean).join('\n'))
+    .join('\n\n');
+  const nextId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return {
+    id: nextId,
+    title: normalizedGroupName || drafts[0].title.trim(),
+    content: mergedContent,
+    category: categories.length === 1 ? categories[0] : '其他',
+    priorityLevel: mergedPriority,
+    isActive: drafts.some((draft) => draft.isActive !== false),
+    isGlobal: mergedCharacterIds.length === 0,
+    characterIds: mergedCharacterIds,
+    pinMode: drafts.some((draft) => draft.pinMode === 'always') ? 'always' : 'none',
+    chunkCache: buildWorldBookChunkCache({
+      id: nextId,
+      content: mergedContent,
+    }),
+  };
+}
+
+function buildDreamImportedWorldBooksFromDrafts(drafts: DreamWorldBookImportDraft[]): WorldBookEntry[] {
+  const selectedDrafts = drafts.filter((draft) => draft.include);
+  const groupedDrafts = new Map<string, DreamWorldBookImportDraft[]>();
+  const standaloneEntries: WorldBookEntry[] = [];
+
+  selectedDrafts.forEach((draft) => {
+    const groupName = draft.mergeGroup.trim();
+    if (!groupName) {
+      standaloneEntries.push(toDreamImportedWorldBookEntry(draft));
+      return;
+    }
+
+    const bucket = groupedDrafts.get(groupName) || [];
+    bucket.push(draft);
+    groupedDrafts.set(groupName, bucket);
+  });
+
+  const mergedEntries = Array.from(groupedDrafts.entries()).map(([groupName, grouped]) => (
+    mergeDreamImportedDraftGroup(groupName, grouped)
+  ));
+
+  return [...mergedEntries, ...standaloneEntries];
+}
 
 function formatDreamTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1426,8 +1516,8 @@ function ConfirmStageV2({
             </div>
             <div className="mt-10 flex-1">
               <div className="flex flex-wrap justify-center gap-3">
-                {selectedLabels.map((label) => (
-                  <div key={label} className="border px-4 py-3 text-[12px] tracking-[0.2em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.7)' }}>
+                {selectedLabels.map((label, index) => (
+                  <div key={`${label}-${index}`} className="border px-4 py-3 text-[12px] tracking-[0.2em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.7)' }}>
                     {label}
                   </div>
                 ))}
@@ -1580,6 +1670,8 @@ export function DreamAppPage({
     tone: 'info' | 'success' | 'error';
     text: string;
   } | null>(null);
+  const [dreamWorldBookImportDrafts, setDreamWorldBookImportDrafts] = useState<DreamWorldBookImportDraft[] | null>(null);
+  const [showAdvancedDreamWorldBookImportReview, setShowAdvancedDreamWorldBookImportReview] = useState(false);
   const endingRequestActiveRef = useRef(false);
   const aftermathRequestActiveRef = useRef(false);
   const dreamWorldBookImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -1748,6 +1840,68 @@ export function DreamAppPage({
     }));
     setDreamWorldBookNote(null);
   };
+  const closeDreamWorldBookImportReview = () => {
+    setDreamWorldBookImportDrafts(null);
+    setShowAdvancedDreamWorldBookImportReview(false);
+  };
+  const commitDreamImportedWorldBooks = (entries: WorldBookEntry[]) => {
+    if (!selectedCharacter) {
+      setDreamWorldBookNote({
+        tone: 'info',
+        text: '先选一个入梦角色，再决定今夜私藏书页要带给谁。',
+      });
+      closeDreamWorldBookImportReview();
+      return;
+    }
+
+    if (entries.length === 0) {
+      setDreamWorldBookNote({
+        tone: 'info',
+        text: '至少选一条书页，再把它带进今夜。',
+      });
+      return;
+    }
+
+    updateDreamWorldBookConfig((prev) => ({
+      ...prev,
+      localEntries: mergeDreamLocalWorldBooks(prev.localEntries || [], entries, selectedCharacter.id),
+    }));
+    closeDreamWorldBookImportReview();
+    setDreamWorldBookNote({
+      tone: 'success',
+      text: entries.length > 1
+        ? `整理后带进今夜 ${entries.length} 条书页。`
+        : `整理后带进今夜 1 条书页。`,
+    });
+  };
+  const handleDreamWorldBookImportDefault = () => {
+    if (!dreamWorldBookImportDrafts) return;
+    commitDreamImportedWorldBooks(buildDreamImportedWorldBooksFromDrafts(
+      dreamWorldBookImportDrafts.map((draft) => ({ ...draft, mergeGroup: '' })),
+    ));
+  };
+  const toggleDreamWorldBookImportDraftInclude = (draftId: string) => {
+    setDreamWorldBookImportDrafts((prev) => prev
+      ? prev.map((draft) => (
+        draft.draftId === draftId
+          ? { ...draft, include: !draft.include }
+          : draft
+      ))
+      : prev);
+  };
+  const updateDreamWorldBookImportDraftMergeGroup = (draftId: string, value: string) => {
+    setDreamWorldBookImportDrafts((prev) => prev
+      ? prev.map((draft) => (
+        draft.draftId === draftId
+          ? { ...draft, mergeGroup: value }
+          : draft
+      ))
+      : prev);
+  };
+  const confirmReviewedDreamWorldBookImport = () => {
+    if (!dreamWorldBookImportDrafts) return;
+    commitDreamImportedWorldBooks(buildDreamImportedWorldBooksFromDrafts(dreamWorldBookImportDrafts));
+  };
   const handleImportDreamWorldBookFile = async (file?: File | null) => {
     if (!file) return;
     if (!selectedCharacter) {
@@ -1765,13 +1919,11 @@ export function DreamAppPage({
         throw new Error('没有认出可导入的世界书内容。');
       }
 
-      updateDreamWorldBookConfig((prev) => ({
-        ...prev,
-        localEntries: mergeDreamLocalWorldBooks(prev.localEntries || [], importedEntries, selectedCharacter.id),
-      }));
+      setDreamWorldBookImportDrafts(buildDreamWorldBookImportDrafts(importedEntries));
+      setShowAdvancedDreamWorldBookImportReview(false);
       setDreamWorldBookNote({
-        tone: 'success',
-        text: `今夜多带进来了 ${importedEntries.length} 条书页。`,
+        tone: 'info',
+        text: `识别到 ${importedEntries.length} 条书页，先整理一下再带进今夜吧。`,
       });
     } catch (error) {
       setDreamWorldBookNote({
@@ -2747,10 +2899,11 @@ export function DreamAppPage({
           />
             <AnimatePresence initial={false}>
               {stage === 'entry' && selectedRole ? (
-                <EntrySheet role={selectedRole} onChoose={chooseMode} onClose={() => setStage('home')} />
+                <EntrySheet key="dream-entry-sheet" role={selectedRole} onChoose={chooseMode} onClose={() => setStage('home')} />
               ) : null}
               {showDreamWorldBookSheet ? (
                 <DreamWorldBookSheet
+                  key="dream-worldbook-sheet"
                   roleName={selectedRole?.name}
                   inheritedWorldBooks={inheritedDreamWorldBooks}
                   excludedInheritedIds={normalizedDreamWorldBookConfig.excludedInheritedIds || []}
@@ -2772,6 +2925,19 @@ export function DreamAppPage({
                   onSelectAllInherited={restoreAllInheritedDreamWorldBooks}
                   onMuteInherited={muteAllInheritedDreamWorldBooks}
                   onReset={resetDreamWorldBookOverrides}
+                />
+              ) : null}
+              {dreamWorldBookImportDrafts ? (
+                <DreamWorldBookImportReviewSheet
+                  key="dream-worldbook-import-review"
+                  drafts={dreamWorldBookImportDrafts}
+                  advancedMode={showAdvancedDreamWorldBookImportReview}
+                  onBack={closeDreamWorldBookImportReview}
+                  onImportDefault={handleDreamWorldBookImportDefault}
+                  onToggleAdvancedMode={() => setShowAdvancedDreamWorldBookImportReview((prev) => !prev)}
+                  onConfirmImport={confirmReviewedDreamWorldBookImport}
+                  onToggleInclude={toggleDreamWorldBookImportDraftInclude}
+                  onChangeMergeGroup={updateDreamWorldBookImportDraftMergeGroup}
                 />
               ) : null}
             </AnimatePresence>
@@ -2984,7 +3150,7 @@ export function DreamAppPage({
               ) : (
                 <div className="mt-10 flex-1">
                   <div className="flex flex-wrap justify-center gap-3">
-                    {selectedLabels.map((label) => <div key={label} className="border px-4 py-3 text-[12px] tracking-[0.2em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.7)' }}>{label}</div>)}
+                    {selectedLabels.map((label, index) => <div key={`${label}-${index}`} className="border px-4 py-3 text-[12px] tracking-[0.2em] text-[var(--gold)]" style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.7)' }}>{label}</div>)}
                   </div>
                   <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{scenario.confirmHint}</div>
                 </div>
@@ -3430,7 +3596,7 @@ export function DreamAppPage({
               <div className="mt-6 text-center text-[11px] tracking-[0.52em] text-[var(--mist)]">余 响</div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.72)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">明日聊天预览</div>
-                <div className="mt-5 space-y-3">{aftermathView.previewMessages.map((message) => <div key={message} className="border border-[rgba(123,168,196,.18)] bg-[rgba(123,168,196,.08)] px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]">{message}</div>)}</div>
+                <div className="mt-5 space-y-3">{aftermathView.previewMessages.map((message, index) => <div key={`${message}-${index}`} className="border border-[rgba(123,168,196,.18)] bg-[rgba(123,168,196,.08)] px-4 py-4 text-[13px] leading-[2] tracking-[0.12em] text-[var(--paper)]">{message}</div>)}</div>
               </div>
               <div className="mt-8 border border-[var(--border)] bg-[rgba(13,18,32,.62)] px-5 py-6">
                 <div className="text-[12px] tracking-[0.26em] text-[var(--mist)]">回流说明</div>

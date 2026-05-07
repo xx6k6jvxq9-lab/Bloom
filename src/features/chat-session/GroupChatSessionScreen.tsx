@@ -98,6 +98,7 @@ import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGro
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../app-shell/keyboardUtils';
+import { useKeyboardSafeViewport } from '../app-shell/useKeyboardSafeViewport';
 import { AvatarFrame } from '../../components/chat/AvatarFrame';
 import {
   FOOTER_REPLY_PREVIEW_ICON_STYLE,
@@ -578,6 +579,12 @@ function BubbleThemeAnchors() {
       <span aria-hidden="true" className="corner bubble-corner bl pointer-events-none absolute" />
       <span aria-hidden="true" className="corner bubble-corner br pointer-events-none absolute" />
       <span aria-hidden="true" className="sticker-skull bubble-sticker-skull pointer-events-none absolute" />
+      <span aria-hidden="true" className="bubble-charm pointer-events-none absolute">
+        <span aria-hidden="true" className="bubble-charm-string pointer-events-none absolute" />
+        <span aria-hidden="true" className="bubble-charm-body pointer-events-none absolute">
+          <span aria-hidden="true" className="bubble-charm-core pointer-events-none absolute" />
+        </span>
+      </span>
     </>
   );
 }
@@ -678,6 +685,7 @@ export function GroupChatSessionScreen({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
+  const chatRootRef = useRef<HTMLDivElement | null>(null);
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
   const isStandaloneDisplayMode =
     typeof window !== 'undefined'
@@ -691,6 +699,10 @@ export function GroupChatSessionScreen({
     visualViewportHeight,
     manualKeyboardAvoidanceEnabled,
   } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef: chatRootRef,
+    enabled: true,
+  });
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -819,32 +831,6 @@ export function GroupChatSessionScreen({
   }, [input, isInputExpanded, isVoiceMode]);
 
   useEffect(() => {
-    if (
-      typeof document === 'undefined'
-      || !keyboardVisible
-      || document.activeElement !== textareaRef.current
-    ) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        return;
-      }
-      chatFooterRef.current?.scrollIntoView({ block: 'end' });
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
-    });
-  }, [
-    history,
-    isLoading,
-    keyboardVisible,
-    pendingMessage?.text,
-    pendingMessage?.timestamp,
-    visualViewportHeight,
-  ]);
-
-  useEffect(() => {
     const footerNode = chatFooterRef.current;
     if (!footerNode || typeof window === 'undefined') {
       return;
@@ -916,11 +902,13 @@ export function GroupChatSessionScreen({
   }): React.CSSProperties => ({
     paddingInline: `${basePaddingX * bubbleScale}px`,
     paddingBlock: `${basePaddingY * bubbleScale}px`,
-    ...(maxWidthPercent && maxWidthRem
-      ? { maxWidth: `min(${maxWidthPercent}%, ${maxWidthRem * bubbleScale}rem)` }
-      : {}),
+    ...(maxWidthRem
+      ? { maxWidth: `${maxWidthRem * bubbleScale}rem` }
+      : maxWidthPercent
+        ? { maxWidth: `${maxWidthPercent}%` }
+        : {}),
   });
-  let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 shadow-sm';
+  let groupHeaderClassName = 'sticky top-0 z-20 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 shadow-sm';
   const groupHeaderStyle: React.CSSProperties = {};
   groupHeaderStyle.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const getDefaultGroupBubbleSurfaceStyle = (params: {
@@ -1027,6 +1015,7 @@ export function GroupChatSessionScreen({
     reactToNoticeUpdate,
   } = useGroupChatRuntime({
     members,
+    availableStickers: availableCustomStickers,
     worldBooks,
     groupMeta: {
       lastMessage: group.lastMessage,
@@ -1089,6 +1078,33 @@ export function GroupChatSessionScreen({
         isPending: true,
       }]
     : history;
+  useEffect(() => {
+    if (
+      typeof document === 'undefined'
+      || !keyboardVisible
+      || !ownsFocusedKeyboard
+      || document.activeElement !== textareaRef.current
+    ) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        return;
+      }
+      chatFooterRef.current?.scrollIntoView({ block: 'end' });
+      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    });
+  }, [
+    history,
+    isLoading,
+    keyboardVisible,
+    ownsFocusedKeyboard,
+    pendingMessage?.text,
+    pendingMessage?.timestamp,
+    visualViewportHeight,
+  ]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const useOverlayFooterLayout = manualKeyboardAvoidanceEnabled;
@@ -2728,6 +2744,7 @@ export function GroupChatSessionScreen({
 
   return (
     <div
+      ref={chatRootRef}
       className={chatRootClassName}
       style={{
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
@@ -3029,7 +3046,9 @@ export function GroupChatSessionScreen({
           const senderBubbleStyleCss = !isUser ? senderCharacter?.bubbleStyleCss : undefined;
           const hasSenderBubbleThemeCss = hasBubbleThemeCss(senderBubbleStyleCss);
           const senderBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(senderBubbleStyleCss));
-          const hasSenderBubbleCustomization = !!senderBubbleStyleCss?.trim();
+          const hasSenderBubbleInlineSurfaceStyle = Object.keys(senderBubbleStyle).length > 0;
+          const hasRoleBubbleTheme = isUser ? hasGroupUserTheme : hasGroupRoleTheme;
+          const shouldRespectThemeSurface = hasSharedBubbleTheme || hasRoleBubbleTheme || hasSenderBubbleThemeCss;
           const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
           const effectiveBubbleColor = bubbleColor || senderBubbleColor;
           const shouldUseCustomMemberBubble =
@@ -3037,7 +3056,8 @@ export function GroupChatSessionScreen({
             && !msg.imageUrl
             && visualKind !== 'sticker'
             && !isPendingMessage
-            && !hasSenderBubbleCustomization
+            && !shouldRespectThemeSurface
+            && !hasSenderBubbleInlineSurfaceStyle
             && !(isUser ? false : senderCharacter?.bubbleImage)
             && !!effectiveBubbleColor;
           const memberBubbleTextColor = shouldUseCustomMemberBubble ? getReadableTextColor(effectiveBubbleColor!) : '#111827';
@@ -3125,25 +3145,24 @@ export function GroupChatSessionScreen({
                     !isStandaloneMedia
                     && !shouldUseCustomMemberBubble
                     && !hasSenderBubbleThemeCss
-                    && !hasSharedBubbleTheme
-                    && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme);
+                    && !shouldRespectThemeSurface;
 
                   return (
                   <GroupBubbleResolvedImageStyle value={!isUser ? senderCharacter?.bubbleImage : undefined}>
                     {(senderBubbleImageUrl) => {
                       const shouldApplySenderBubbleSurfaceOverride =
-                        !hasSharedBubbleTheme
-                        && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme)
-                        && !hasSenderBubbleThemeCss;
+                        !shouldRespectThemeSurface;
                       const hasSenderBubbleSurfaceCustomization =
                         shouldApplySenderBubbleSurfaceOverride
                         && (!!senderBubbleImageUrl || (!!senderBubbleColor && !bubbleColor));
-                      const hasSenderBubbleOverride = hasSenderBubbleThemeCss || hasSenderBubbleSurfaceCustomization;
+                      const hasSenderBubbleOverride =
+                        hasSenderBubbleThemeCss || hasSenderBubbleInlineSurfaceStyle || hasSenderBubbleSurfaceCustomization;
                       const shouldUseResolvedMemberBubble =
                         !msg.isSystem
                         && !msg.imageUrl
                         && visualKind !== 'sticker'
                         && !isPendingMessage
+                        && !shouldRespectThemeSurface
                         && !hasSenderBubbleOverride
                         && !hasSenderBubbleSurfaceCustomization
                         && !!effectiveBubbleColor;
@@ -3163,8 +3182,7 @@ export function GroupChatSessionScreen({
                         !isStandaloneMedia
                         && !shouldUseResolvedMemberBubble
                         && !hasSenderBubbleOverride
-                        && !hasSharedBubbleTheme
-                        && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme);
+                        && !shouldRespectThemeSurface;
 
                       return (
                         <div
@@ -3197,28 +3215,28 @@ export function GroupChatSessionScreen({
                                   basePaddingX: 16,
                                   basePaddingY: 10,
                                   maxWidthPercent: groupTextBubbleWidthPercent,
-                                  maxWidthRem: 28,
+                                  maxWidthRem: 32,
                                 }),
                                 ...getDefaultGroupBubbleSurfaceStyle({
                                   isUser,
                                   shouldUseDefaultSurface: resolvedDefaultBubbleSurface,
                                 }),
                                 ...(hasSenderBubbleOverride ? {} : resolvedMemberBubbleStyle),
-                                ...(!hasSenderBubbleCustomization && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleImageUrl
+                                ...(!hasSenderBubbleInlineSurfaceStyle && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleImageUrl
                                   ? {
                                       backgroundImage: `url(${senderBubbleImageUrl})`,
                                       backgroundSize: 'cover',
                                       backgroundPosition: 'center',
                                       border: 'none',
                                     }
-                                  : !hasSenderBubbleCustomization && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleColor
+                                  : !hasSenderBubbleInlineSurfaceStyle && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleColor
                                     ? {
                                         backgroundColor: senderBubbleColor,
                                         borderColor: senderBubbleColor,
                                       }
                                     : {}),
                                 ...(hasSenderBubbleOverride || hasSharedBubbleTheme ? {} : sharedBubbleStyle),
-                                ...(hasSenderBubbleOverride || (isUser ? hasGroupUserTheme : hasGroupRoleTheme)
+                                ...(hasSenderBubbleOverride || hasRoleBubbleTheme
                                   ? {}
                                   : (isUser ? groupUserBubbleStyle : groupRoleBubbleStyle)),
                                 ...senderBubbleStyle,

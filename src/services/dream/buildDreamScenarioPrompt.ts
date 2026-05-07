@@ -1,5 +1,5 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
-import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildDreamPersonaGuardrails, buildDreamPromptInput, buildDreamTagWorldBookGuardrails } from './buildDreamPromptInput';
 import { resolveDreamPresentation } from './resolveDreamPresentation';
 import { buildDreamVariation } from './buildDreamVariation';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
@@ -13,6 +13,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
   const promptInput = buildDreamPromptInput(options);
   const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext, variationTone } = promptInput;
   const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
+  const worldBookGuardrails = buildDreamTagWorldBookGuardrails();
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const depthLabel = resolvedSelection.depth === 'deep' ? '深梦' : '浅梦';
   const actCount =
@@ -30,6 +31,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     'Use the selected tags as story DNA, but weave them into natural events instead of listing world rules or explaining every setting term up front.',
     'Translate relationship, identity, mood, and drive tags into behavior, objects, address terms, boundaries, power distance, timing, hesitation, and concrete choices. Do not name the tag as an explanation inside the prose.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
+    'If world-book details conflict with selected tags, selected tags win. World books may only add compatible details and must not override this dream\'s chosen world, identity, relationship, faction, taboo, or ending direction.',
     'For custom-entry dreams, the selected tags are the only source of concrete setting. Dream domains are only narrative lenses; they must not add unselected world mechanics, institutions, dangers, rules, factions, identities, or relationship premises.',
     storyFrameGuidance,
     'The first act should open with an on-page moment that makes the chosen hook felt through action, object, or dialogue.',
@@ -62,6 +64,8 @@ Novel prose and plot quality rules:
 ${novelQualityRules}
 Persona guardrails:
 ${personaGuardrails}
+World-book conflict policy:
+${worldBookGuardrails}
 
 你是 Bloom 项目的梦境剧情生成器。你的任务是为“梦境 App”生成一局结构清晰、逻辑完整、可分幕展开的梦中小故事。
 

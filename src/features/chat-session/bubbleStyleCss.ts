@@ -164,6 +164,60 @@ function wrapDeclarationsAsCss(styleText: string, selector: string): string {
   return `${selector} {\n${declarationBody}\n}`;
 }
 
+function protectKeyframesBlocks(styleText: string): { css: string; blocks: string[] } {
+  const blocks: string[] = [];
+  let nextCss = '';
+  let cursor = 0;
+
+  while (cursor < styleText.length) {
+    const standardIndex = styleText.indexOf('@keyframes', cursor);
+    const webkitIndex = styleText.indexOf('@-webkit-keyframes', cursor);
+    const candidates = [standardIndex, webkitIndex].filter((index) => index >= 0);
+    const nextIndex = candidates.length ? Math.min(...candidates) : -1;
+
+    if (nextIndex === -1) {
+      nextCss += styleText.slice(cursor);
+      break;
+    }
+
+    nextCss += styleText.slice(cursor, nextIndex);
+    const openBraceIndex = styleText.indexOf('{', nextIndex);
+    if (openBraceIndex === -1) {
+      nextCss += styleText.slice(nextIndex);
+      break;
+    }
+
+    let depth = 0;
+    let endIndex = openBraceIndex;
+    for (; endIndex < styleText.length; endIndex += 1) {
+      const char = styleText[endIndex];
+      if (char === '{') {
+        depth += 1;
+      } else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          endIndex += 1;
+          break;
+        }
+      }
+    }
+
+    const token = `__BUBBLE_KEYFRAMES_${blocks.length}__`;
+    blocks.push(styleText.slice(nextIndex, endIndex));
+    nextCss += token;
+    cursor = endIndex;
+  }
+
+  return { css: nextCss, blocks };
+}
+
+function restoreProtectedBlocks(styleText: string, blocks: string[]): string {
+  return blocks.reduce(
+    (nextCss, block, index) => nextCss.replace(`__BUBBLE_KEYFRAMES_${index}__`, block),
+    styleText,
+  );
+}
+
 function scopeSelectorList(selectorList: string, scopeClass: string): string {
   return selectorList
     .split(',')
@@ -310,7 +364,8 @@ export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeCl
     return '';
   }
 
-  return normalized.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+  const { css: protectedCss, blocks } = protectKeyframesBlocks(normalized);
+  const scopedCss = protectedCss.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
     const scopedSelectors = selectors
       .split(',')
       .map((selector) => selector.trim())
@@ -319,6 +374,8 @@ export function buildScopedBubbleThemeCss(styleText: string | undefined, scopeCl
       .join(', ');
     return `${prefix} ${scopedSelectors}{`;
   });
+
+  return restoreProtectedBlocks(scopedCss, blocks);
 }
 
 export function buildScopedBubbleVariantCss(
@@ -337,7 +394,8 @@ export function buildScopedBubbleVariantCss(
     return wrapDeclarationsAsCss(trimmed, scopedVariantSelector);
   }
 
-  return trimmed.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+  const { css: protectedCss, blocks } = protectKeyframesBlocks(trimmed);
+  const scopedCss = protectedCss.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
     const scopedSelectors = selectors
       .split(',')
       .map((selector) => selector.trim())
@@ -346,6 +404,8 @@ export function buildScopedBubbleVariantCss(
       .join(', ');
     return `${prefix} ${scopedSelectors}{`;
   });
+
+  return restoreProtectedBlocks(scopedCss, blocks);
 }
 
 export function buildScopedElementThemeCss(
@@ -362,7 +422,8 @@ export function buildScopedElementThemeCss(
     return wrapDeclarationsAsCss(trimmed, scopeSelector);
   }
 
-  return trimmed.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
+  const { css: protectedCss, blocks } = protectKeyframesBlocks(trimmed);
+  const scopedCss = protectedCss.replace(/(^|})\s*([^@}{][^{]+)\{/g, (match, prefix: string, selectors: string) => {
     const scopedSelectors = selectors
       .split(',')
       .map((selector) => selector.trim())
@@ -387,4 +448,6 @@ export function buildScopedElementThemeCss(
 
     return `${prefix} ${scopedSelectors}{`;
   });
+
+  return restoreProtectedBlocks(scopedCss, blocks);
 }

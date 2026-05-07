@@ -1,5 +1,5 @@
 import { buildDreamTagSummary, resolveDreamDomainDisplay } from './dreamTagMeta';
-import { buildDreamPersonaGuardrails, buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildDreamPersonaGuardrails, buildDreamPromptInput, buildDreamTagWorldBookGuardrails } from './buildDreamPromptInput';
 import { buildActBeatSummary, compactSummaryText, resolveDreamMemorySummary } from './dreamRuntimeSummaries';
 import type { GenerateDreamContinuationOptions } from './dreamRuntimeTypes';
 
@@ -48,6 +48,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
   const promptInput = buildDreamPromptInput(options);
   const { characterContext, resolvedSelection, domainRule, tagCategoryContext } = promptInput;
   const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
+  const worldBookGuardrails = buildDreamTagWorldBookGuardrails();
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
   const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
@@ -60,6 +61,7 @@ export function buildDreamContinuationPrompt(options: GenerateDreamContinuationO
     'Continue with a natural 1500-1800 Chinese character novel scene built from action, object, dialogue, hesitation, pressure, and emotional subtext. Do not reset, summarize, or write only atmosphere.',
     'Let new information and relationship movement emerge from the scene instead of announcing them as required beats.',
     'Only user-selected tags are hard constraints. If a tag category is empty, treat it as creative freedom and do not invent a hidden default tag for that category.',
+    'If world-book details conflict with selected tags, selected tags win. World books may only add compatible details and must not override this dream\'s chosen world, identity, relationship, faction, taboo, or ending direction.',
     'Continue translating tags into behavior, objects, address terms, boundaries, power distance, timing, hesitation, and concrete choices. Do not name the tag as an explanation inside the prose.',
     'Open the next act from the direct after-effect of the chosen action. Do not jump to a distant summary or restart the room from zero.',
     'In the first paragraph of the new act, make the chosen action physically land in the scene: someone answers it, resists it, leans into it, hides from it, or pays a price for it.',
@@ -276,6 +278,8 @@ ${novelQualityRules}
 
 Persona guardrails:
 ${personaGuardrails}
+World-book conflict policy:
+${worldBookGuardrails}
 
 Current domain: ${domain.name}
 Domain rule: ${domainRule}

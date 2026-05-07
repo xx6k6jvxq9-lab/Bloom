@@ -23,6 +23,12 @@ function PreviewAnchors() {
       <span aria-hidden="true" className="corner bubble-corner bl pointer-events-none absolute" />
       <span aria-hidden="true" className="corner bubble-corner br pointer-events-none absolute" />
       <span aria-hidden="true" className="sticker-skull bubble-sticker-skull pointer-events-none absolute" />
+      <span aria-hidden="true" className="bubble-charm pointer-events-none absolute">
+        <span aria-hidden="true" className="bubble-charm-string pointer-events-none absolute" />
+        <span aria-hidden="true" className="bubble-charm-body pointer-events-none absolute">
+          <span aria-hidden="true" className="bubble-charm-core pointer-events-none absolute" />
+        </span>
+      </span>
     </>
   );
 }
@@ -327,7 +333,7 @@ export function ChatBubbleThemeCustomizationSection({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <label className="text-xs font-bold text-zinc-500">全局气泡 CSS</label>
-                <p className="mt-1 text-xs text-zinc-500">只作用于消息气泡及其内部元素，不影响整个聊天主题。支持 `.chat-bubble`、`.message-bubble`、`.corner`、`.sticker-skull` 和左右气泡选择器。</p>
+                <p className="mt-1 text-xs text-zinc-500">只作用于消息气泡及其内部元素，不影响整个聊天主题。支持 `.chat-bubble`、`.message-bubble`、`.corner`、`.sticker-skull`、`.bubble-charm` 和左右气泡选择器。</p>
               </div>
               <ImportStyleButton
                 label="导入气泡"
@@ -337,7 +343,7 @@ export function ChatBubbleThemeCustomizationSection({
             <CodeEditor
               value={settings.chat.bubbleStyleCss || ''}
               onChange={(nextValue) => setSettings({ ...settings, chat: { ...settings.chat, bubbleStyleCss: nextValue } })}
-              placeholder={'/* 只作用于气泡及气泡内容 */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  position: relative;\n  border-radius: 22px;\n}\n\n.corner {\n  opacity: 1;\n}'}
+              placeholder={'/* 只作用于气泡及气泡内容 */\n.chat-bubble,\n.message-bubble,\n.user-bubble,\n.bot-bubble {\n  position: relative;\n  border-radius: 22px;\n}\n\n.corner,\n.bubble-charm {\n  opacity: 1;\n}'}
               heightClass="h-64"
             />
           </div>

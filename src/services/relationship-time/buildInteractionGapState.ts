@@ -3,12 +3,15 @@ import type { ChatHistory, ChatMessage, CoupleSpaceData } from '../../types';
 export type InteractionGapState = {
   minutesSinceLastDirectChat: number | null;
   minutesSinceLastGroupChat: number | null;
+  minutesSinceLastContinuityChat: number | null;
   minutesSinceLastUserMessage: number | null;
   minutesSinceLastCharacterReply: number | null;
   minutesSinceLastCoupleSpaceActivity: number | null;
   recentInteractionDensity: 'high' | 'medium' | 'low';
   continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+  continuitySource: 'direct' | 'group';
   crossedCalendarDaySinceLastDirectChat: boolean;
+  crossedCalendarDaySinceLastContinuityChat: boolean;
 };
 
 type BuildInteractionGapStateInput = {
@@ -17,6 +20,7 @@ type BuildInteractionGapStateInput = {
   directChatHistory?: ChatHistory;
   groupMessages?: ChatMessage[];
   coupleSpace?: CoupleSpaceData;
+  continuityScope?: 'direct' | 'group';
 };
 
 function getMinutesSince(nowTimestamp: number, timestamp: number | null): number | null {
@@ -68,6 +72,10 @@ export function buildInteractionGapState(input: BuildInteractionGapStateInput): 
   const latestCharacterReplyTimestamp = getLatestTimestamp(directMessages.filter((message) => message.role === 'model' && !message.isSystem).map((message) => message.timestamp));
   const latestGroupChatTimestamp = getLatestTimestamp(input.groupMessages?.map((message) => message.timestamp) || []);
   const latestCoupleSpaceTimestamp = getLatestCoupleSpaceTimestamp(input.coupleSpace);
+  const continuitySource: InteractionGapState['continuitySource'] = input.continuityScope ?? 'direct';
+  const latestContinuityTimestamp = continuitySource === 'group'
+    ? latestGroupChatTimestamp
+    : latestDirectChatTimestamp;
 
   const interactionWindowStart = input.nowTimestamp - (6 * 60 * 60 * 1000);
   const recentInteractionCount = [
@@ -83,28 +91,39 @@ export function buildInteractionGapState(input: BuildInteractionGapStateInput): 
   }
 
   const minutesSinceLastDirectChat = getMinutesSince(input.nowTimestamp, latestDirectChatTimestamp);
+  const minutesSinceLastContinuityChat = getMinutesSince(input.nowTimestamp, latestContinuityTimestamp);
   const crossedCalendarDaySinceLastDirectChat = latestDirectChatTimestamp == null
     ? false
     : !isSameLocalDay(input.nowTimestamp, latestDirectChatTimestamp);
+  const crossedCalendarDaySinceLastContinuityChat = latestContinuityTimestamp == null
+    ? false
+    : !isSameLocalDay(input.nowTimestamp, latestContinuityTimestamp);
   let continuityMode: InteractionGapState['continuityMode'] = 'resume_after_gap';
-  if (minutesSinceLastDirectChat !== null && minutesSinceLastDirectChat <= 45 && !crossedCalendarDaySinceLastDirectChat) {
+  if (
+    minutesSinceLastContinuityChat !== null
+    && minutesSinceLastContinuityChat <= 45
+    && !crossedCalendarDaySinceLastContinuityChat
+  ) {
     continuityMode = 'continuous_scene';
   } else if (
-    minutesSinceLastDirectChat !== null
-    && minutesSinceLastDirectChat <= 6 * 60
-    && !crossedCalendarDaySinceLastDirectChat
+    minutesSinceLastContinuityChat !== null
+    && minutesSinceLastContinuityChat <= 6 * 60
+    && !crossedCalendarDaySinceLastContinuityChat
   ) {
     continuityMode = 'same_day_resume';
   }
 
   return {
     minutesSinceLastDirectChat,
+    minutesSinceLastContinuityChat,
     minutesSinceLastGroupChat: getMinutesSince(input.nowTimestamp, latestGroupChatTimestamp),
     minutesSinceLastUserMessage: getMinutesSince(input.nowTimestamp, latestUserMessageTimestamp),
     minutesSinceLastCharacterReply: getMinutesSince(input.nowTimestamp, latestCharacterReplyTimestamp),
     minutesSinceLastCoupleSpaceActivity: getMinutesSince(input.nowTimestamp, latestCoupleSpaceTimestamp),
     recentInteractionDensity,
     continuityMode,
+    continuitySource,
     crossedCalendarDaySinceLastDirectChat,
+    crossedCalendarDaySinceLastContinuityChat,
   };
 }

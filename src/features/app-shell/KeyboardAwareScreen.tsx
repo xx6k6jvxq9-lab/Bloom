@@ -64,7 +64,7 @@ export function KeyboardAwareScreen({
       style={style}
     >
       {header}
-      <div {...bodyProps} className={bodyClassName} style={resolvedBodyStyle}>
+      <div {...bodyProps} className={`min-h-0 ${bodyClassName}`} style={resolvedBodyStyle}>
         {children}
       </div>
       {footer ? (

@@ -1,0 +1,100 @@
+/* Cute pixel theme for the global theme panel */
+
+.chat-bubble-theme-scope {
+  --pixel-cream: #fff8df;
+  --pixel-pink: #ffd8ea;
+  --pixel-rose: #f6a9c9;
+  --pixel-lilac: #d9cbff;
+  --pixel-mint: #cfeec9;
+  --pixel-ink: #5e506c;
+  --pixel-border: #7f6d8d;
+  --pixel-shadow: #caa6bb;
+  background:
+    linear-gradient(0deg, rgba(255, 248, 223, 0.9), rgba(255, 248, 223, 0.9)),
+    linear-gradient(45deg, rgba(255, 216, 234, 0.45) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(207, 238, 201, 0.4) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(217, 203, 255, 0.35) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 216, 234, 0.35) 75%);
+  background-size: auto, 24px 24px, 24px 24px, 24px 24px, 24px 24px;
+  background-position: 0 0, 0 0, 0 12px, 12px -12px, -12px 0;
+  color: var(--pixel-ink);
+}
+
+.chat-bubble-theme-scope .chat-session-header {
+  background: linear-gradient(180deg, #fff8ff 0%, #ffeef6 100%);
+  border-bottom: 3px solid var(--pixel-border);
+  box-shadow: 0 4px 0 rgba(127, 109, 141, 0.15);
+}
+
+.chat-bubble-theme-scope .chat-header-title,
+.chat-bubble-theme-scope .chat-header-subtitle,
+.chat-bubble-theme-scope .chat-session-header,
+.chat-bubble-theme-scope .chat-session-footer,
+.chat-bubble-theme-scope .chat-bubble,
+.chat-bubble-theme-scope .chat-bubble * {
+  font-family: "Press Start 2P", "Pixelify Sans", "Zpix", "Fusion Pixel 12px", monospace;
+  letter-spacing: 0.02em;
+}
+
+.chat-bubble-theme-scope .chat-session-footer {
+  background: linear-gradient(180deg, rgba(255, 248, 255, 0.96) 0%, rgba(255, 238, 246, 0.96) 100%);
+  border-top: 3px solid var(--pixel-border);
+  box-shadow: 0 -4px 0 rgba(127, 109, 141, 0.12);
+}
+
+.chat-bubble-theme-scope .chat-footer-input-shell,
+.chat-bubble-theme-scope .chat-footer-textarea {
+  background: #fffdf4;
+  border: 2px solid var(--pixel-border);
+  border-radius: 14px;
+  box-shadow: inset 0 -2px 0 rgba(127, 109, 141, 0.08);
+  color: var(--pixel-ink);
+}
+
+.chat-bubble-theme-scope .chat-footer-send-button,
+.chat-bubble-theme-scope .chat-footer-plus-button,
+.chat-bubble-theme-scope .chat-footer-emoji-button {
+  border: 2px solid var(--pixel-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff9ff 0%, #ffdcea 100%);
+  box-shadow: 0 3px 0 rgba(127, 109, 141, 0.16);
+}
+
+.chat-bubble-theme-scope .chat-bubble,
+.chat-bubble-theme-scope .message-bubble {
+  position: relative;
+  border: 2px solid var(--pixel-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 rgba(202, 166, 187, 0.7);
+}
+
+.chat-bubble-theme-scope .bot-bubble {
+  background: linear-gradient(180deg, #fffef1 0%, #eef9df 100%);
+  color: var(--pixel-ink);
+}
+
+.chat-bubble-theme-scope .user-bubble {
+  background: linear-gradient(180deg, #ffe9f4 0%, #ffd7ea 100%);
+  color: #7c3559;
+}
+
+.chat-bubble-theme-scope .corner,
+.chat-bubble-theme-scope .corner::before {
+  background: var(--pixel-cream);
+  border-color: var(--pixel-border);
+}
+
+.chat-bubble-theme-scope .sticker-skull {
+  background: var(--pixel-mint);
+  border-color: var(--pixel-border);
+  box-shadow: 0 3px 0 rgba(127, 109, 141, 0.16);
+}
+
+.chat-bubble-theme-scope .chat-message-image,
+.chat-bubble-theme-scope .chat-transfer-card,
+.chat-bubble-theme-scope .chat-location-card {
+  border: 2px solid var(--pixel-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 rgba(202, 166, 187, 0.45);
+  overflow: hidden;
+}

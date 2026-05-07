@@ -1,0 +1,329 @@
+/* Role avatar frame: gothic cathedral style with swinging charm */
+
+@keyframes gothicRoleFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes gothicRoleGlow {
+  0%, 100% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes gothicRoleCharmSway {
+  0%, 100% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes gothicRoleSparkBlink {
+  0%, 100% {
+    opacity: 0.35;
+    transform: rotate(45deg) scale(0.88);
+  }
+  50% {
+    opacity: 0.92;
+    transform: rotate(45deg) scale(1.08);
+  }
+}
+
+.avatar-frame-shell {
+  position: relative;
+  padding: 15%;
+  border-radius: calc(var(--avatar-frame-radius) + 12px);
+  background:
+    radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.16) 0 8%, transparent 9%),
+    radial-gradient(circle at 78% 18%, rgba(190, 164, 214, 0.16) 0 10%, transparent 11%),
+    linear-gradient(180deg, #221826 0%, #120d16 100%);
+  box-shadow:
+    0 14px 30px rgba(18, 12, 22, 0.38),
+    inset 0 0 0 2px rgba(207, 194, 219, 0.18),
+    inset 0 0 24px rgba(112, 92, 140, 0.2);
+  overflow: visible;
+  animation: gothicRoleFloat 3.2s ease-in-out infinite;
+}
+
+.avatar-frame-shell::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  border-radius: calc(var(--avatar-frame-radius) + 10px);
+  border: 1.5px solid rgba(208, 195, 221, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.avatar-frame-shell::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: calc(var(--avatar-frame-radius) + 8px);
+  background:
+    linear-gradient(90deg, transparent 0 16%, rgba(219, 209, 227, 0.08) 16% 18%, transparent 18% 32%, rgba(219, 209, 227, 0.08) 32% 34%, transparent 34% 48%, rgba(219, 209, 227, 0.08) 48% 50%, transparent 50%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.avatar-frame-media {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #231b29;
+  box-shadow:
+    0 0 0 3px rgba(242, 238, 246, 0.92),
+    0 0 0 7px rgba(130, 108, 155, 0.5),
+    0 10px 22px rgba(12, 8, 18, 0.32);
+}
+
+.avatar-frame-ring {
+  display: block;
+  border: 2px dashed rgba(202, 190, 214, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(146, 118, 176, 0.16);
+  animation: gothicRoleGlow 2.8s ease-in-out infinite;
+}
+
+.avatar-frame-badge {
+  position: absolute;
+  top: 4%;
+  right: 4%;
+  z-index: 4;
+  width: 28%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f4eef9 0%, #d4c4e3 100%);
+  border: 2px solid rgba(94, 74, 118, 0.88);
+  box-shadow: 0 5px 12px rgba(18, 12, 22, 0.18);
+}
+
+.avatar-frame-badge::before,
+.avatar-frame-badge::after {
+  content: "";
+  position: absolute;
+  top: 18%;
+  width: 18%;
+  height: 18%;
+  border-radius: 999px;
+  background: #4f3d63;
+}
+
+.avatar-frame-badge::before {
+  left: 24%;
+}
+
+.avatar-frame-badge::after {
+  right: 24%;
+}
+
+.avatar-frame-badge-core {
+  left: 50%;
+  bottom: 22%;
+  width: 28%;
+  height: 18%;
+  margin-left: -14%;
+  border-radius: 999px 999px 70% 70%;
+  background: #6d537f;
+}
+
+.avatar-frame-clover {
+  position: absolute;
+  z-index: 3;
+  width: 16%;
+  height: 16%;
+  background: linear-gradient(180deg, #f7f2fb 0%, #decde9 100%);
+  border: 2px solid rgba(101, 79, 126, 0.84);
+  transform: rotate(45deg);
+  box-shadow: 0 3px 0 rgba(18, 12, 22, 0.12);
+}
+
+.avatar-frame-clover::before,
+.avatar-frame-clover::after {
+  content: "";
+  position: absolute;
+  inset: 24%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.avatar-frame-clover-top-left {
+  top: 16%;
+  left: -2%;
+}
+
+.avatar-frame-clover-top-right {
+  top: 36%;
+  right: -2%;
+}
+
+.avatar-frame-clover-bottom-right {
+  right: 12%;
+  bottom: -2%;
+}
+
+.avatar-frame-spark {
+  position: absolute;
+  z-index: 5;
+  width: 10%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1.5px solid rgba(228, 214, 239, 0.88);
+  background: linear-gradient(180deg, #fffdf9 0%, #d6c2e6 100%);
+  transform: rotate(45deg);
+  animation: gothicRoleSparkBlink 1.9s ease-in-out infinite;
+}
+
+.avatar-frame-spark-left {
+  left: 7%;
+  bottom: 18%;
+}
+
+.avatar-frame-spark-right {
+  right: 20%;
+  top: 18%;
+  animation-delay: 0.8s;
+}
+
+.avatar-frame-heart {
+  position: absolute;
+  top: 18%;
+  left: 8%;
+  z-index: 4;
+  width: 14%;
+  height: 16%;
+  transform: rotate(45deg);
+  background: linear-gradient(180deg, #f5effa 0%, #c9b4d8 100%);
+  border: 2px solid rgba(94, 74, 118, 0.82);
+}
+
+.avatar-frame-heart::before,
+.avatar-frame-heart::after {
+  content: "";
+  position: absolute;
+  width: 70%;
+  height: 70%;
+  border-radius: 999px;
+  background: inherit;
+  border: inherit;
+}
+
+.avatar-frame-heart::before {
+  left: -36%;
+  top: 0;
+}
+
+.avatar-frame-heart::after {
+  top: -36%;
+  left: 0;
+}
+
+.avatar-frame-charm {
+  position: absolute;
+  top: -22%;
+  left: 50%;
+  z-index: 7;
+  width: 26%;
+  height: 52%;
+  margin-left: -13%;
+  transform-origin: top center;
+  animation: gothicRoleCharmSway 2.8s ease-in-out infinite;
+}
+
+.avatar-frame-charm-string {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 46%;
+  margin-left: -1px;
+  background: linear-gradient(180deg, rgba(214, 202, 224, 0.18), rgba(214, 202, 224, 0.96));
+  border-radius: 999px;
+}
+
+.avatar-frame-charm-body {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 72%;
+  aspect-ratio: 0.9;
+  margin-left: -36%;
+  background: linear-gradient(180deg, #f6f1fa 0%, #cdb8dd 100%);
+  border: 2px solid rgba(96, 74, 120, 0.9);
+  border-radius: 10px 10px 16px 16px;
+  box-shadow: 0 6px 14px rgba(18, 12, 22, 0.18);
+}
+
+.avatar-frame-charm-body::before,
+.avatar-frame-charm-body::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 18%;
+  height: 78%;
+  top: 10%;
+  margin-left: -9%;
+  background: rgba(88, 68, 112, 0.84);
+}
+
+.avatar-frame-charm-body::before {
+  transform: rotate(45deg);
+}
+
+.avatar-frame-charm-body::after {
+  transform: rotate(-45deg);
+}
+
+.avatar-frame-charm-core {
+  left: 50%;
+  top: 10%;
+  width: 20%;
+  height: 20%;
+  margin-left: -10%;
+  border-radius: 999px;
+  background: #6c537f;
+}
+
+.avatar-frame-dot {
+  position: absolute;
+  z-index: 2;
+  border-radius: 999px;
+  background: rgba(235, 228, 241, 0.82);
+  box-shadow: 0 0 0 2px rgba(129, 104, 154, 0.36);
+}
+
+.avatar-frame-dot-a {
+  width: 8%;
+  height: 8%;
+  right: 6%;
+  top: 42%;
+}
+
+.avatar-frame-dot-b {
+  width: 6%;
+  height: 6%;
+  left: 24%;
+  top: 10%;
+}
+
+.avatar-frame-dot-c {
+  width: 6%;
+  height: 6%;
+  right: 14%;
+  bottom: 12%;
+}

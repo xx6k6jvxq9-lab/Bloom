@@ -82,6 +82,12 @@ export function AvatarFrame({
         <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-left pointer-events-none" />
         <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-right pointer-events-none" />
         <span aria-hidden="true" className="avatar-frame-heart pointer-events-none" />
+        <span aria-hidden="true" className="avatar-frame-charm pointer-events-none">
+          <span aria-hidden="true" className="avatar-frame-charm-string pointer-events-none" />
+          <span aria-hidden="true" className="avatar-frame-charm-body pointer-events-none">
+            <span aria-hidden="true" className="avatar-frame-charm-core pointer-events-none absolute" />
+          </span>
+        </span>
         <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-a pointer-events-none" />
         <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-b pointer-events-none" />
         <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-c pointer-events-none" />

@@ -46,6 +46,7 @@ import { buildCharacterTemporalState } from '../../services/relationship-time/bu
 import { buildRelationshipProjection } from '../../services/relationship-context/buildRelationshipProjection';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../app-shell/keyboardUtils';
+import { useKeyboardSafeViewport } from '../app-shell/useKeyboardSafeViewport';
 import { getMessageMainText } from '../../utils';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import {
@@ -121,6 +122,12 @@ function BubbleThemeAnchors() {
       <span aria-hidden="true" className="corner bubble-corner bl pointer-events-none absolute" />
       <span aria-hidden="true" className="corner bubble-corner br pointer-events-none absolute" />
       <span aria-hidden="true" className="sticker-skull bubble-sticker-skull pointer-events-none absolute" />
+      <span aria-hidden="true" className="bubble-charm pointer-events-none absolute">
+        <span aria-hidden="true" className="bubble-charm-string pointer-events-none absolute" />
+        <span aria-hidden="true" className="bubble-charm-body pointer-events-none absolute">
+          <span aria-hidden="true" className="bubble-charm-core pointer-events-none absolute" />
+        </span>
+      </span>
     </>
   );
 }
@@ -510,6 +517,7 @@ export function ChatSessionScreen({
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatRootRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     keyboardInset,
@@ -517,6 +525,10 @@ export function ChatSessionScreen({
     visualViewportHeight,
     manualKeyboardAvoidanceEnabled,
   } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+    containerRef: chatRootRef,
+    enabled: true,
+  });
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1572,6 +1584,7 @@ export function ChatSessionScreen({
     if (
       typeof document === 'undefined'
       || !keyboardVisible
+      || !ownsFocusedKeyboard
       || document.activeElement !== inputTextareaRef.current
     ) {
       return;
@@ -1585,7 +1598,7 @@ export function ChatSessionScreen({
       }
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [history, isLoading, keyboardVisible, visualViewportHeight]);
+  }, [history, isLoading, keyboardVisible, ownsFocusedKeyboard, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1646,7 +1659,7 @@ export function ChatSessionScreen({
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
   const directFooterClassName = 'px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
-  let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
+  let headerClasses = `sticky top-0 z-20 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
   const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
@@ -1825,6 +1838,7 @@ export function ChatSessionScreen({
 
   return (
     <motion.div 
+      ref={chatRootRef}
       className={chatRootClassName}
       style={{ 
         ...chatRootSizeStyle,

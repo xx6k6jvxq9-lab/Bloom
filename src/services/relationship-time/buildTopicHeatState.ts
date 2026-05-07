@@ -11,6 +11,7 @@ export type TopicHeatState = {
 
 type BuildTopicHeatStateInput = {
   nowTimestamp: number;
+  messages?: ChatMessage[];
   directMessages?: ChatMessage[];
 };
 
@@ -53,7 +54,7 @@ function countRecentTurns(messages: ChatMessage[]): number {
 }
 
 export function buildTopicHeatState(input: BuildTopicHeatStateInput): TopicHeatState {
-  const messages = (input.directMessages || []).filter((message) => !message.isSystem);
+  const messages = (input.messages || input.directMessages || []).filter((message) => !message.isSystem);
   const latestMessage = messages[messages.length - 1];
   const latestTimestamp = latestMessage?.timestamp ?? null;
   const minutesSinceLatest = latestTimestamp == null
