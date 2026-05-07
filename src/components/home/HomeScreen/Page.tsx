@@ -329,8 +329,8 @@ export function HomeScreen({
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const safeAreaVar =
-        computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
-        || computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+        computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+        || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
         || '0';
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
@@ -1982,7 +1982,6 @@ export function HomeScreen({
 
       <StaticDock
         placement={dockPlacement}
-        safeAreaBottom={safeAreaBottom}
         visualSettings={visualSettings}
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
@@ -2169,22 +2168,19 @@ function DraggableAppIcon({
 
 function StaticDock({
   placement,
-  safeAreaBottom,
   visualSettings,
   apps,
   fontStyle,
   iconSize,
 }: {
   placement: { x: number; y: number; width: number; height: number };
-  safeAreaBottom: number;
   visualSettings: VisualSettings;
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
 }) {
-  const bottomExtension = safeAreaBottom > 0 ? Math.max(0, safeAreaBottom - 6) : 0;
   return (
-    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height + bottomExtension }}>
+    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height }}>
       <div className="homeDesktop__dockBar">
         {apps.map(app => (
           <button

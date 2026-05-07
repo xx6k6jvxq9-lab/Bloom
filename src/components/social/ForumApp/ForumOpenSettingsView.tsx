@@ -1,6 +1,5 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { FORUM_CHANNEL_TABS, FORUM_FILTER_THREAD_TYPES } from '../../../features/forum-domain/forumPresentation';
 import { FORUM_THREAD_TYPE_LABELS } from '../../../features/forum-domain/constants';
@@ -265,8 +264,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
     threadType: false,
     topics: true,
   });
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -316,9 +314,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
       <div
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 20}px`
-            : undefined,
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 20px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >

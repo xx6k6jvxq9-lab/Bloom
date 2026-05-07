@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BellOff, Check, ChevronLeft, Pin, Plus, Trash2, Users, X } from 'lucide-react';
 import type { Character, ChatGroup } from '../../types';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
@@ -101,8 +100,7 @@ export function GroupChatManagerPage({
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: createKeyboardVisible } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef: createModalRef,
     enabled: showCreate,
   });
@@ -188,10 +186,7 @@ export function GroupChatManagerPage({
               exit={{ y: '100%' }}
               className="flex max-h-[80vh] w-full flex-col rounded-t-[32px] bg-white p-6 shadow-2xl sm:w-[90%] sm:rounded-2xl"
               style={{
-                transform: manualKeyboardAvoidanceEnabled && createKeyboardVisible && appKeyboardVisible && keyboardInset > 0
-                  ? `translateY(-${keyboardInset}px)`
-                  : undefined,
-                transition: 'transform 180ms ease',
+                paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 24px)',
               }}
             >
               <div className="mb-6 flex items-center justify-between">

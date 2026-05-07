@@ -30,7 +30,6 @@ import { useResolvedPersistentValue } from '../../features/persistence/useResolv
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { saveUploadedDataUrl } from '../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import {
   extractCompatibleChatSettingsImport,
@@ -411,8 +410,7 @@ export function ChatSettingsPanel({
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
   });
@@ -1376,9 +1374,7 @@ export function ChatSettingsPanel({
       <div
         className="flex-1 overflow-y-auto pb-10"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 20}px`
-            : undefined,
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 20px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >
@@ -2711,9 +2707,7 @@ export function ChatSettingsPanel({
             <div
               className="flex-1 overflow-y-auto pb-6"
               style={{
-                paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-                  ? `${keyboardInset + 16}px`
-                  : undefined,
+                paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
                 transition: 'padding-bottom 180ms ease',
               }}
             >
@@ -2839,7 +2833,10 @@ export function ChatSettingsPanel({
               backgroundPosition: 'center',
             }}
           >
-            <div className="flex items-center justify-between px-4 py-3 bg-white/30 backdrop-blur-md border-b border-white/20 sticky top-0 z-10 shrink-0">
+            <div
+              className="flex items-center justify-between px-4 pb-3 bg-white/30 backdrop-blur-md border-b border-white/20 sticky top-0 z-10 shrink-0"
+              style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+            >
               <button 
                 onClick={() => setShowStickers(false)}
                 className="w-10 h-10 flex items-center justify-center -ml-2 text-zinc-600 active:bg-white/20 rounded-full transition-colors"

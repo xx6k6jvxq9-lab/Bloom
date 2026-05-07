@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Book, Check, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import type { WorldBookEntry } from '../../types';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
@@ -147,8 +146,7 @@ export function WorldBookManager({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -503,9 +501,7 @@ export function WorldBookManager({
           <div
             className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4"
             style={{
-              paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-                ? `${keyboardInset + 24}px`
-                : undefined,
+              paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 24px)',
               transition: 'padding-bottom 180ms ease',
             }}
           >

@@ -5,11 +5,37 @@ import { containerOwnsFocusedTextEntry } from './keyboardUtils';
 type UseKeyboardSafeViewportOptions = {
   containerRef: RefObject<HTMLElement | null>;
   enabled?: boolean;
+  scrollFocusedIntoView?: boolean;
+  clampViewportHeight?: boolean;
 };
+
+function findNearestScrollableAncestor(
+  element: HTMLElement | null,
+  boundary: HTMLElement | null,
+) {
+  if (!element) {
+    return null;
+  }
+
+  let current = element.parentElement;
+  while (current && current !== boundary) {
+    const styles = window.getComputedStyle(current);
+    const overflowY = styles.overflowY || styles.overflow;
+    const canScroll = /(auto|scroll|overlay)/.test(overflowY) && current.scrollHeight > current.clientHeight + 2;
+    if (canScroll) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
 
 export function useKeyboardSafeViewport({
   containerRef,
   enabled = true,
+  scrollFocusedIntoView = true,
+  clampViewportHeight = false,
 }: UseKeyboardSafeViewportOptions) {
   const {
     keyboardVisible: appKeyboardVisible,
@@ -60,23 +86,43 @@ export function useKeyboardSafeViewport({
       return undefined;
     }
 
-    const shouldClampToVisibleViewport =
+    const shouldTrackVisibleViewport =
       !manualKeyboardAvoidanceEnabled
       && ownsFocusedKeyboard
       && keyboardVisible
       && visualViewportHeight > 0;
 
-    if (!shouldClampToVisibleViewport) {
+    if (!shouldTrackVisibleViewport) {
       container.style.removeProperty('height');
       container.style.removeProperty('min-height');
       return undefined;
     }
 
-    container.style.height = `${visualViewportHeight}px`;
-    container.style.minHeight = `${visualViewportHeight}px`;
+    if (clampViewportHeight) {
+      container.style.height = `${visualViewportHeight}px`;
+      container.style.minHeight = `${visualViewportHeight}px`;
+    } else {
+      container.style.removeProperty('height');
+      container.style.removeProperty('min-height');
+    }
+
+    if (!scrollFocusedIntoView) {
+      return () => {
+        container.style.removeProperty('height');
+        container.style.removeProperty('min-height');
+      };
+    }
 
     const activeElement = document.activeElement;
     if (!(activeElement instanceof HTMLElement) || !container.contains(activeElement)) {
+      return () => {
+        container.style.removeProperty('height');
+        container.style.removeProperty('min-height');
+      };
+    }
+
+    const scrollContainer = findNearestScrollableAncestor(activeElement, container);
+    if (!scrollContainer) {
       return () => {
         container.style.removeProperty('height');
         container.style.removeProperty('min-height');
@@ -87,10 +133,16 @@ export function useKeyboardSafeViewport({
     let frameTwo = 0;
     frameOne = window.requestAnimationFrame(() => {
       frameTwo = window.requestAnimationFrame(() => {
-        activeElement.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-        });
+        const inputRect = activeElement.getBoundingClientRect();
+        const scrollRect = scrollContainer.getBoundingClientRect();
+        const topOverflow = inputRect.top - scrollRect.top - 12;
+        const bottomOverflow = inputRect.bottom - scrollRect.bottom + 12;
+
+        if (topOverflow < 0) {
+          scrollContainer.scrollTop += topOverflow;
+        } else if (bottomOverflow > 0) {
+          scrollContainer.scrollTop += bottomOverflow;
+        }
       });
     });
 
@@ -106,6 +158,8 @@ export function useKeyboardSafeViewport({
     keyboardVisible,
     manualKeyboardAvoidanceEnabled,
     ownsFocusedKeyboard,
+    scrollFocusedIntoView,
+    clampViewportHeight,
     visualViewportHeight,
   ]);
 

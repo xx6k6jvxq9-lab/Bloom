@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppData, AppSettings, Character, ChatGroup, FriendRequest, MomentComment, MomentItem } from '../../../types';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
@@ -1085,8 +1084,7 @@ export function AddFriendModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1098,12 +1096,6 @@ export function AddFriendModal({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
-      style={{
-        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-          ? `translateY(-${keyboardInset}px)`
-          : undefined,
-        transition: 'transform 180ms ease',
-      }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">添加 AI 好友</h2>
@@ -1160,8 +1152,7 @@ export function GroupManagementModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [newGroup, setNewGroup] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1173,12 +1164,6 @@ export function GroupManagementModal({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
-      style={{
-        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-          ? `translateY(-${keyboardInset}px)`
-          : undefined,
-        transition: 'transform 180ms ease',
-      }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">管理分组</h2>

@@ -28,12 +28,12 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
+  const { keyboardVisible: appKeyboardVisible } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: shellRef,
-    enabled: hideFooterWhenKeyboardOpen || manualKeyboardAvoidanceEnabled,
+    enabled: hideFooterWhenKeyboardOpen,
   });
-  const keyboardVisible = ownsFocusedKeyboard && (appKeyboardVisible || keyboardInset > 120);
+  const keyboardVisible = ownsFocusedKeyboard && appKeyboardVisible;
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
@@ -51,9 +51,6 @@ export function KeyboardAwareScreen({
 
   const resolvedBodyStyle: CSSProperties | undefined = {
     ...(bodyProps?.style || {}),
-    ...(manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
-      ? { paddingBottom: `${keyboardInset}px` }
-      : {}),
     transition: 'padding-bottom 180ms ease',
   };
 

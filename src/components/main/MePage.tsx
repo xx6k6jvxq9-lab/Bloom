@@ -21,7 +21,6 @@ import {
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
 import { sanitizePreviewText } from '../../features/app-shell/formatMessagePreview';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 
@@ -259,8 +258,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
   const [tempUrl, setTempUrl] = useState('');
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedTempAvatarUrl } = useResolvedPersistentValue(tempProfile.avatar);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -276,9 +274,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
       <div
         className="flex-1 overflow-y-auto px-5 pt-5 [webkit-overflow-scrolling:touch]"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 16}px`
-            : 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Pin, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../../features/app-shell/keyboardUtils';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { InnerVoiceUnlockCard, parseInnerVoiceCardContent } from '../../features/chat-session/InnerVoiceUnlockCard';
@@ -158,12 +157,11 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: publishKeyboardVisible } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
   });
-  const { keyboardVisible: commentKeyboardVisible } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef: commentComposerRef,
     enabled: !!commentingOn,
   });
@@ -607,9 +605,7 @@ export function MomentsApp({
         <div
           className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-4"
           style={{
-            paddingBottom: manualKeyboardAvoidanceEnabled && publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
-              ? `${keyboardInset + 16}px`
-              : undefined,
+            paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
             transition: 'padding-bottom 180ms ease',
           }}
         >
@@ -1013,13 +1009,7 @@ export function MomentsApp({
           className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
         >
           <div
-            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
-            style={{
-              transform: manualKeyboardAvoidanceEnabled && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
-                ? `translateY(-${keyboardInset}px)`
-                : 'translateY(0)',
-              transition: 'transform 180ms ease',
-            }}
+            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
           >
             <div className="mx-auto flex max-w-[560px] flex-col gap-2">
             <div className="flex items-center justify-between gap-3 px-1">

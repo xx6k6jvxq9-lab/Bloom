@@ -7,7 +7,6 @@ import { extractCompatibleCharacterImport } from '../../features/import/importCo
 import { saveUploadedFile } from '../../features/persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
-import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 
 type AddCharacterSheetProps = {
@@ -303,8 +302,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
-  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -405,9 +403,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       <div
         className="flex-1 overflow-y-auto p-5"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 20}px`
-            : undefined,
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 20px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >

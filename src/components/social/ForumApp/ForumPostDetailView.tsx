@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ForumComment, ForumPost } from '../../../types';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumCommentItem } from './ForumCommentItem';
 import { ForumResolvedImage } from './ForumResolvedImage';
@@ -134,8 +133,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
 
   const postImages = post.images || [];
   const hotBadge = getForumHotBadgeLabel(post);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -184,7 +182,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
       <div
         className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-6"
         style={{
-          paddingBottom: `${composerHeight + (manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 24}px`,
+          paddingBottom: `${composerHeight + 24}px`,
           transition: 'padding-bottom 180ms ease',
         }}
       >
@@ -368,12 +366,6 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
       <div
         ref={composerShellRef}
         className="absolute inset-x-0 bottom-0 z-20"
-        style={{
-          bottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset}px`
-            : '0px',
-          transition: 'bottom 180ms ease',
-        }}
       >
         <ForumReplyComposer
           currentUserAvatar={currentUserAvatar}

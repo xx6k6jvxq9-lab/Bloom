@@ -506,28 +506,19 @@ export function ChatSessionScreen({
   const [expandedAudioTranscriptKeys, setExpandedAudioTranscriptKeys] = useState<Set<string>>(new Set());
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
-  const [chatFooterHeight, setChatFooterHeight] = useState(64);
-  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
-  const isStandaloneDisplayMode =
-    typeof window !== 'undefined'
-    && (
-      window.matchMedia?.('(display-mode: standalone)')?.matches
-      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-    );
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
-    keyboardInset,
     keyboardVisible,
     visualViewportHeight,
-    manualKeyboardAvoidanceEnabled,
   } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
+    scrollFocusedIntoView: false,
   });
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1601,38 +1592,6 @@ export function ChatSessionScreen({
   }, [history, isLoading, keyboardVisible, ownsFocusedKeyboard, visualViewportHeight]);
 
   useEffect(() => {
-    const footerNode = chatFooterRef.current;
-    if (!footerNode || typeof window === 'undefined') {
-      return;
-    }
-
-    const updateFooterHeight = () => {
-      const measuredHeight = Math.ceil(footerNode.getBoundingClientRect().height);
-      setChatFooterHeight(measuredHeight > 0 ? measuredHeight : 64);
-    };
-
-    updateFooterHeight();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateFooterHeight);
-      return () => {
-        window.removeEventListener('resize', updateFooterHeight);
-      };
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateFooterHeight();
-    });
-    observer.observe(footerNode);
-    window.addEventListener('resize', updateFooterHeight);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateFooterHeight);
-    };
-  }, [replyingTo, isVoiceMode, input, actionInput, showActionInput, visualSettings?.chat?.uiScale]);
-
-  useEffect(() => {
     const textarea = inputTextareaRef.current;
     if (!textarea || isVoiceMode) {
       return;
@@ -1659,7 +1618,7 @@ export function ChatSessionScreen({
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
   const directFooterClassName = 'px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
-  let headerClasses = `sticky top-0 z-20 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
+  let headerClasses = 'relative z-20 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 ';
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
   const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
@@ -1742,76 +1701,24 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useOverlayFooterLayout = manualKeyboardAvoidanceEnabled;
-  const useAndroidBrowserKeyboardViewport =
-    useOverlayFooterLayout
-    && !isStandaloneDisplayMode
-    && manualKeyboardAvoidanceEnabled
-    && keyboardVisible
-    && keyboardInset > 0;
-  const footerKeyboardOffset =
-    useOverlayFooterLayout
-    && manualKeyboardAvoidanceEnabled
-    && keyboardVisible
-    && keyboardInset > 0
-    && !useAndroidBrowserKeyboardViewport
-      ? keyboardInset
-      : 0;
-
-  if (useAndroidBrowserKeyboardViewport) {
-    footerClassName = footerClassName
-      .replace('backdrop-blur-md', '')
-      .replace('backdrop-blur-xl', '');
-  }
-
-  const chatViewportHeight = useAndroidBrowserKeyboardViewport
-    ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    ...(useOverlayFooterLayout
-      ? {
-          bottom: footerKeyboardOffset > 0
-            ? `${footerKeyboardOffset}px`
-            : '0px',
-          transition: 'bottom 180ms ease, padding-bottom 180ms ease',
-        }
-      : {
-          transition: 'padding-bottom 180ms ease',
-        }),
-    ...(useAndroidBrowserKeyboardViewport
-      ? {
-          backdropFilter: 'none',
-          WebkitBackdropFilter: 'none',
-          backgroundColor: 'rgba(255, 255, 255, 0.98)',
-        }
-      : {}),
+    transition: 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: useOverlayFooterLayout
-      ? `${chatFooterHeight + footerKeyboardOffset + 8}px`
-      : '8px',
+    paddingBottom: '8px',
     minHeight: 0,
-    scrollPaddingBottom: useOverlayFooterLayout
-      ? `${chatFooterHeight + footerKeyboardOffset + 12}px`
-      : `${chatFooterHeight + 12}px`,
+    scrollPaddingBottom: '12px',
   };
-  const chatRootClassName = useOverlayFooterLayout
-    ? 'absolute inset-0 z-[60] flex min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope'
-    : 'relative z-[60] flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
-  const chatRootSizeStyle: React.CSSProperties = useOverlayFooterLayout
-    ? {
-        height: chatViewportHeight,
-        minHeight: chatViewportHeight,
-      }
-    : {
-        height: '100%',
-        minHeight: 0,
-      };
+  const chatRootClassName = 'relative z-[60] flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
+  const chatRootSizeStyle: React.CSSProperties = {
+    height: '100%',
+    minHeight: 0,
+  };
 
   if (showSettings) {
     return settingsPanel;
@@ -1851,7 +1758,7 @@ export function ChatSessionScreen({
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
         // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...(!isAndroid && !keyboardVisible ? {
+        ...((visualSettings?.chat?.uiScale ?? 1) !== 1 && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -2853,7 +2760,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer ${useOverlayFooterLayout ? 'absolute inset-x-0 z-20 ' : ''}${footerClassName}`}
+        className={`chat-session-footer chat-footer shrink-0 ${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (

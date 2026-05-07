@@ -289,12 +289,15 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
-  const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
+  const appBrowserBottomInset = 'var(--app-browser-bottom-inset, 0px)';
+  const appSafeAreaBottomFull = isStandalone
+    ? 'env(safe-area-inset-bottom, 0px)'
+    : `max(env(safe-area-inset-bottom, 0px), ${appBrowserBottomInset})`;
   const appSafeAreaBottomUi = isStandalone
     ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
     : hideMockSystemChrome
       ? '0px'
-      : '12px';
+      : `max(12px, ${appBrowserBottomInset})`;
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {
@@ -312,7 +315,7 @@ export default function App() {
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
     '--app-mock-home-indicator-space': !isStandalone && !hideMockSystemChrome ? '12px' : '0px',
-  } as React.CSSProperties;
+  } as React.CSSProperties & Record<string, string>;
 
   const loadPendingDreamToast = () => {
     if (typeof window === 'undefined') {

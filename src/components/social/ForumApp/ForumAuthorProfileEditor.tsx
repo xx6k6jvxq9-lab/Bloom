@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumResolvedImage } from './ForumResolvedImage';
 
@@ -32,8 +31,7 @@ export function ForumAuthorProfileEditor({
   onChangeBio,
 }: ForumAuthorProfileEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -60,9 +58,7 @@ export function ForumAuthorProfileEditor({
       <div
         className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 16}px`
-            : undefined,
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >

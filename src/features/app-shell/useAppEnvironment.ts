@@ -69,6 +69,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       const currentInnerWidth = window.innerWidth;
       const visualViewportHeight = Math.round(viewport?.height ?? currentInnerHeight);
       const viewportOffsetTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
+      const rawViewportBottomInset = Math.max(
+        0,
+        Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
+      );
       const activeElement = document.activeElement;
       const hasTextEntryFocus = isTextEntryElement(activeElement);
       const phoneContainer = document.getElementById('phone-container');
@@ -119,10 +123,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         stableLayoutViewportHeight = nextStableLayoutViewportHeight;
         resolvedLayoutViewportHeight = nextStableLayoutViewportHeight;
       } else {
-        const rawKeyboardInset = Math.max(
-          0,
-          Math.round(currentInnerHeight - visualViewportHeight - viewportOffsetTop),
-        );
+        const rawKeyboardInset = rawViewportBottomInset;
 
         // If the rendered shell already follows the browser viewport, lifting
         // again creates the blank gap above the keyboard.
@@ -153,11 +154,15 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         visualViewportHeight,
       });
 
+      const browserBottomInset = !isStandalone && !resolvedKeyboardVisible && rawViewportBottomInset > 2
+        ? rawViewportBottomInset
+        : 0;
       root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-active-viewport-height', `${activeViewportHeight}px`);
       root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
+      root.style.setProperty('--app-browser-bottom-inset', `${browserBottomInset}px`);
       if (resolvedKeyboardVisible) {
         root.setAttribute('data-keyboard-open', 'true');
       } else {
@@ -189,6 +194,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         root.style.removeProperty('--app-viewport-height');
         root.style.removeProperty('--app-visible-viewport-height');
         root.style.removeProperty('--app-keyboard-inset');
+        root.style.removeProperty('--app-browser-bottom-inset');
       root.removeAttribute('data-android');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');

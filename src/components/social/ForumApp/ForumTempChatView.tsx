@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { ForumTempChatSession } from '../../../types';
-import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { ForumResolvedImage } from './ForumResolvedImage';
 
@@ -62,8 +61,7 @@ export function ForumTempChatView({
   const pendingReply = session.pendingReply;
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
+  useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -99,9 +97,7 @@ export function ForumTempChatView({
       <div
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset + 16}px`
-            : undefined,
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
           transition: 'padding-bottom 180ms ease',
         }}
       >
@@ -154,10 +150,7 @@ export function ForumTempChatView({
       <div
         className="border-t border-zinc-100 px-3 py-2 flex items-center gap-3"
         style={{
-          transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `translateY(-${keyboardInset}px)`
-            : 'translateY(0)',
-          transition: 'transform 180ms ease',
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 8px)',
         }}
       >
         <ForumResolvedImage value={currentUserAvatar} className="h-8 w-8 rounded-full object-cover" />
