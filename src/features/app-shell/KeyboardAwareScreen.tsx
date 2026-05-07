@@ -28,51 +28,12 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const {
-    usesVisualViewportKeyboardLayout,
-    keyboardVisible: appKeyboardVisible,
-    keyboardInset,
-    manualKeyboardAvoidanceEnabled,
-  } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: shellRef,
-    enabled: true,
+    enabled: hideFooterWhenKeyboardOpen || manualKeyboardAvoidanceEnabled,
   });
   const keyboardVisible = ownsFocusedKeyboard && (appKeyboardVisible || keyboardInset > 120);
-
-  useEffect(() => {
-    if (
-      typeof window === 'undefined'
-      || typeof document === 'undefined'
-      || manualKeyboardAvoidanceEnabled
-      || usesVisualViewportKeyboardLayout
-      || !keyboardVisible
-    ) {
-      return undefined;
-    }
-
-    const activeElement = document.activeElement;
-    if (!(activeElement instanceof HTMLElement) || !shellRef.current?.contains(activeElement)) {
-      return undefined;
-    }
-
-    let frameOne = 0;
-    let frameTwo = 0;
-    frameOne = window.requestAnimationFrame(() => {
-      frameTwo = window.requestAnimationFrame(() => {
-        activeElement.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-        });
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameOne);
-      window.cancelAnimationFrame(frameTwo);
-    };
-  }, [keyboardVisible, manualKeyboardAvoidanceEnabled, usesVisualViewportKeyboardLayout, viewportStyle]);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
@@ -100,13 +61,10 @@ export function KeyboardAwareScreen({
     <div
       ref={shellRef}
       className={className}
-      style={{
-        ...(style || {}),
-        ...(viewportStyle || {}),
-      }}
+      style={style}
     >
       {header}
-      <div {...bodyProps} ref={bodyRef} className={bodyClassName} style={resolvedBodyStyle}>
+      <div {...bodyProps} className={bodyClassName} style={resolvedBodyStyle}>
         {children}
       </div>
       {footer ? (

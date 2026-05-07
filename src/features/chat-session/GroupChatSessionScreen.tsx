@@ -769,6 +769,7 @@ export function GroupChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
+      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
       || !keyboardInset
       || document.activeElement !== textareaRef.current
@@ -784,7 +785,7 @@ export function GroupChatSessionScreen({
       chatFooterRef.current?.scrollIntoView({ block: 'end' });
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
+  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -3319,11 +3320,14 @@ export function GroupChatSessionScreen({
               </button>
             ) : (
               <>
-	                <textarea
-	                  ref={textareaRef}
+              <textarea
+                  ref={textareaRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onFocus={() => {
+                if (!manualKeyboardAvoidanceEnabled) {
+                  return;
+                }
                 requestAnimationFrame(() => {
                   if (scrollRef.current) {
                     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
