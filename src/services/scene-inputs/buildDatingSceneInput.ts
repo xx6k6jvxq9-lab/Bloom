@@ -65,7 +65,7 @@ const DATING_PROMPT_BUDGET = {
   maxPlaylistNoteChars: 90,
   maxSectionChars: 1200,
   maxSections: 7,
-  maxCorePersonaChars: 1200,
+  maxCorePersonaChars: 2000,
   maxSignatureChars: 120,
   maxTaskChars: 320,
   maxStyleCustomChars: 240,

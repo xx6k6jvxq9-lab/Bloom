@@ -335,9 +335,11 @@ export function ChatSettingsPanel({
   const CHARACTER_EDITOR_LIMITS = {
     remarkName: 32,
     signature: 200,
-    corePersona: 6000,
+    corePersona: 12000,
+    extendedLore: 6000,
     expressionStyle: 3000,
     boundaryPack: 2000,
+    sceneHint: 1200,
   } as const;
 
   const { setUploadedFile } = usePersistentFieldActions();
@@ -437,8 +439,15 @@ export function ChatSettingsPanel({
   const remarkName = character.remarkName?.trim() || '';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = buildCharacterContext({ character }).corePersona ?? '';
+  const extendedLore = character.extendedLore ?? '';
   const expressionStyle = character.expressionStyle ?? '';
   const boundaryPack = character.boundaryPack ?? '';
+  const sceneHints = character.sceneHints ?? {};
+  const chatSceneHint = sceneHints.chat ?? '';
+  const datingSceneHint = sceneHints.dating ?? '';
+  const groupChatSceneHint = sceneHints.groupChat ?? '';
+  const musicTogetherSceneHint = sceneHints.musicTogether ?? '';
+  const forumSceneHint = sceneHints.forum ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const shortTermMemoryEntries = getMemoryLibraryEntries(character, 'short-term');
@@ -450,6 +459,58 @@ export function ChatSettingsPanel({
   const updateMemoryLimit = (value: unknown) => {
     onUpdate({ ...character, memoryLimit: clampDirectMemoryLimit(value) });
   };
+  const updateSceneHint = (key: string, rawValue: string) => {
+    const nextValue = rawValue.slice(0, CHARACTER_EDITOR_LIMITS.sceneHint);
+    const nextSceneHints = { ...(character.sceneHints || {}) };
+
+    if (nextValue.trim()) {
+      nextSceneHints[key] = nextValue;
+    } else {
+      delete nextSceneHints[key];
+    }
+
+    onUpdate({
+      ...character,
+      sceneHints: Object.keys(nextSceneHints).length > 0 ? nextSceneHints : undefined,
+    });
+  };
+  const sceneHintEditors = [
+    {
+      key: 'chat',
+      label: '单聊提示',
+      summary: '补充一对一聊天里要抓住的气氛、距离感和互动重点。',
+      placeholder: '例如：单聊里更克制一点，优先接住情绪和微小生活感，不要一上来就把关系推进得很满。',
+      value: chatSceneHint,
+    },
+    {
+      key: 'dating',
+      label: '约会提示',
+      summary: '补充约会场景里的节奏、描写重点和关系推进方式。',
+      placeholder: '例如：约会里允许更细一点的动作和环境感，但不要写成模板恋爱文案，保持这个角色自己的别扭和克制。',
+      value: datingSceneHint,
+    },
+    {
+      key: 'groupChat',
+      label: '群聊提示',
+      summary: '补充角色在多人场景里怎么发言、怎么抢话和怎么收着存在感。',
+      placeholder: '例如：群里不抢中心位，更多是看准时机插一句，偶尔会轻描淡写地护一下你。',
+      value: groupChatSceneHint,
+    },
+    {
+      key: 'musicTogether',
+      label: '一起听提示',
+      summary: '补充一起听歌时更适合的语气、联想方式和互动密度。',
+      placeholder: '例如：一起听时说话更轻，更多借歌词和气氛旁敲侧击，不要讲成乐评。',
+      value: musicTogetherSceneHint,
+    },
+    {
+      key: 'forum',
+      label: '论坛 / 镜间提示',
+      summary: '补充公开场域里适合被看见的外显人设和行为印象。',
+      placeholder: '例如：公开场合更会收住私人情绪，外人看过去只会觉得他冷、稳、有点难接近。',
+      value: forumSceneHint,
+    },
+  ] as const;
   const activeMemoryStatCards = [
     {
       label: '总记忆条数',
@@ -2841,6 +2902,26 @@ export function ChatSettingsPanel({
               </SettingsSection>
 
               <SettingsSection
+                title="扩展设定与长期补充"
+                summary="放核心人设之外，但仍长期有效的背景信息"
+              >
+                <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4 mb-4">
+                  <p className="text-[11px] text-zinc-500 mb-3">
+                    写不必每轮都重说、但长期有效的补充背景。这里适合放成长经历、关系惯性、固定偏好或长期世界信息；特别长的资料仍然更建议放进 World Book。
+                  </p>
+                  <textarea
+                    value={extendedLore}
+                    onChange={e => onUpdate({ ...character, extendedLore: e.target.value.slice(0, CHARACTER_EDITOR_LIMITS.extendedLore) })}
+                    placeholder="例如：长期住在怎样的环境里；对某类话题天然敏感；某段关系史如何影响他现在的防备方式。"
+                    className="w-full bg-white/50 border border-white/30 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
+                  />
+                  <div className="mt-2 text-[11px] text-zinc-400 text-right">
+                    {extendedLore.length}/{CHARACTER_EDITOR_LIMITS.extendedLore}
+                  </div>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
                 title="表达风格与相处方式"
                 summary="角色怎么说话、怎么靠近你、怎么收着表达"
               >
@@ -2876,6 +2957,34 @@ export function ChatSettingsPanel({
                   />
                   <div className="mt-2 text-[11px] text-zinc-400 text-right">
                     {boundaryPack.length}/{CHARACTER_EDITOR_LIMITS.boundaryPack}
+                  </div>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="场景提示"
+                summary="按单聊、约会、群聊等场景补一层轻量提示"
+              >
+                <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
+                  <p className="text-[11px] text-zinc-500 mb-4">
+                    这些是场景补丁，不要重复核心人设。更适合写“这个场景下要抓什么感觉、维持什么距离、避免什么常见跑偏”。
+                  </p>
+                  <div className="space-y-4">
+                    {sceneHintEditors.map((entry) => (
+                      <div key={entry.key} className="rounded-2xl border border-white/35 bg-white/45 p-3">
+                        <div className="text-[13px] font-medium text-zinc-700">{entry.label}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">{entry.summary}</div>
+                        <textarea
+                          value={entry.value}
+                          onChange={e => updateSceneHint(entry.key, e.target.value)}
+                          placeholder={entry.placeholder}
+                          className="mt-3 w-full bg-white/65 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[110px] resize-none"
+                        />
+                        <div className="mt-2 text-[11px] text-zinc-400 text-right">
+                          {entry.value.length}/{CHARACTER_EDITOR_LIMITS.sceneHint}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </SettingsSection>

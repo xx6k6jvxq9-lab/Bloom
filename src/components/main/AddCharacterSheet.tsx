@@ -19,7 +19,7 @@ type AddCharacterSheetProps = {
 const CHARACTER_FIELD_LIMITS = {
   name: 32,
   remarkName: 32,
-  setting: 6000,
+  setting: 12000,
   signature: 200,
   openingRemark: 300,
   avatar: 2_000_000,
