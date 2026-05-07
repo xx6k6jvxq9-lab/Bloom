@@ -193,7 +193,10 @@ export function TaRememberedPage({ user, partner, coupleSpace, chatHistory, onBa
         }
       `}</style>
 
-      <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex items-start justify-start px-1">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-start px-1"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+      >
         <button
           type="button"
           onClick={onBack}
