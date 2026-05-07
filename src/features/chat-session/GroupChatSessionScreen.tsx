@@ -1032,7 +1032,7 @@ export function GroupChatSessionScreen({
     : history;
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useOverlayFooterLayout = isAndroid;
+  const useOverlayFooterLayout = manualKeyboardAvoidanceEnabled;
   const useAndroidBrowserKeyboardViewport =
     useOverlayFooterLayout
     && !isStandaloneDisplayMode

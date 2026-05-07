@@ -1724,7 +1724,7 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useOverlayFooterLayout = isAndroid;
+  const useOverlayFooterLayout = manualKeyboardAvoidanceEnabled;
   const useAndroidBrowserKeyboardViewport =
     useOverlayFooterLayout
     && !isStandaloneDisplayMode
