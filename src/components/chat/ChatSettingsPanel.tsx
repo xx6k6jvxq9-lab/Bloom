@@ -417,6 +417,8 @@ export function ChatSettingsPanel({
 
   if (!character) return null;
 
+  const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 24px)';
+
   const voiceProfile = {
     enabled: character.voiceProfile?.enabled !== false,
     mode: character.voiceProfile?.mode || 'default',
@@ -1361,10 +1363,13 @@ export function ChatSettingsPanel({
         className="hidden"
         onChange={handleMemoryImportFileChange}
       />
-      <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+      <div
+        className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
+        style={{ paddingTop: settingsHeaderTopPadding }}
+      >
         <button
           onClick={onBack}
-          className="p-1 -ml-1 text-zinc-600 active:text-zinc-800"
+          className="flex h-11 w-11 -ml-1 items-center justify-center rounded-full text-zinc-600 active:bg-white/20 active:text-zinc-800"
         >
           <ChevronLeft size={24} />
         </button>
@@ -2697,8 +2702,14 @@ export function ChatSettingsPanel({
               backgroundPosition: 'center',
             }}
           >
-            <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
-              <button onClick={() => setShowSettingEditor(false)} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+            <div
+              className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
+              style={{ paddingTop: settingsHeaderTopPadding }}
+            >
+              <button
+                onClick={() => setShowSettingEditor(false)}
+                className="flex h-11 w-11 -ml-1 items-center justify-center rounded-full text-zinc-600 active:bg-white/20 active:text-zinc-800"
+              >
                 <ChevronLeft size={24} />
               </button>
               <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">编辑角色设定</h1>
@@ -2835,16 +2846,16 @@ export function ChatSettingsPanel({
           >
             <div
               className="flex items-center justify-between px-4 pb-3 bg-white/30 backdrop-blur-md border-b border-white/20 sticky top-0 z-10 shrink-0"
-              style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+              style={{ paddingTop: settingsHeaderTopPadding }}
             >
               <button 
                 onClick={() => setShowStickers(false)}
-                className="w-10 h-10 flex items-center justify-center -ml-2 text-zinc-600 active:bg-white/20 rounded-full transition-colors"
+                className="h-11 w-11 flex items-center justify-center -ml-2 text-zinc-600 active:bg-white/20 rounded-full transition-colors"
               >
                 <ChevronLeft size={24} />
               </button>
               <h1 className="text-[17px] font-semibold text-zinc-800">表情包管理</h1>
-              <div className="w-10" />
+              <div className="w-11" />
             </div>
             
             <div className="flex-1 overflow-y-auto p-4">
@@ -3267,7 +3278,10 @@ export function ChatSettingsPanel({
 
       {showCallHistory && (
         <div className="absolute inset-0 bg-zinc-50 z-[80] flex flex-col">
-          <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white border-b border-zinc-100 flex items-center justify-between shrink-0 relative">
+          <div
+            className="min-h-[64px] pb-3 px-4 bg-white border-b border-zinc-100 flex items-center justify-between shrink-0 relative"
+            style={{ paddingTop: settingsHeaderTopPadding }}
+          >
             {isBatchMode ? (
               <button 
                 onClick={() => {
@@ -3279,7 +3293,10 @@ export function ChatSettingsPanel({
                 取消
               </button>
             ) : (
-              <button onClick={() => setShowCallHistory(false)} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+              <button
+                onClick={() => setShowCallHistory(false)}
+                className="flex h-11 w-11 -ml-1 items-center justify-center rounded-full text-zinc-600 active:bg-zinc-100 active:text-zinc-800"
+              >
                 <ChevronLeft size={24} />
               </button>
             )}
