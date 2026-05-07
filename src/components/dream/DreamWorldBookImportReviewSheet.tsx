@@ -85,7 +85,7 @@ export function DreamWorldBookImportReviewSheet({
             <button
               type="button"
               onClick={onBack}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-[var(--gold)] transition duration-300 hover:text-[var(--gold-bright)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)]"
               style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(196,169,106,.04)' }}
               aria-label="返回梦境世界书"
             >
@@ -105,7 +105,7 @@ export function DreamWorldBookImportReviewSheet({
               type="button"
               onClick={onConfirmImport}
               disabled={selectedCount === 0}
-              className="rounded-full border px-4 py-2 text-[11px] tracking-[0.2em] text-[var(--gold)] transition duration-300 hover:text-[var(--gold-bright)] disabled:opacity-40"
+              className="rounded-full border px-4 py-2 text-[11px] tracking-[0.2em] text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)] disabled:opacity-40"
               style={{ borderColor: 'rgba(196,169,106,.24)', backgroundColor: 'rgba(196,169,106,.06)' }}
             >
               带入今夜
@@ -118,7 +118,7 @@ export function DreamWorldBookImportReviewSheet({
             <button
               type="button"
               onClick={onImportDefault}
-              className="rounded-full border px-3 py-2 text-[11px] tracking-[0.18em] text-[var(--gold)] transition duration-300 hover:text-[var(--gold-bright)]"
+              className="rounded-full border px-3 py-2 text-[11px] tracking-[0.18em] text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)]"
               style={{ borderColor: 'rgba(196,169,106,.24)', backgroundColor: 'rgba(196,169,106,.06)' }}
             >
               按默认导入
