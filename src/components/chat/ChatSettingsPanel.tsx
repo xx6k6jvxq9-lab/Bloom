@@ -28,7 +28,6 @@ import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAp
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
-import { saveUploadedDataUrl } from '../../features/persistence/persistentAssetService';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
@@ -228,71 +227,48 @@ function getWorldBookDiscardReasonLabel(reason?: WorldBookSelectionDiagnostic['d
   }
 }
 
-function readFileAsText(file: File) {
-  return new Promise<string>((resolve, reject) => {
+function importStickerFiles(files: File[], onComplete: (stickers: string[]) => void) {
+  if (files.length === 0) return;
+
+  let newStickers: string[] = [];
+  let loaded = 0;
+
+  files.forEach((file) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
-    reader.readAsText(file);
-  });
-}
+    reader.onload = () => {
+      if (file.type === 'application/json' || file.name.endsWith('.json')) {
+        const data = parseJsonFileContent(reader.result as string);
+        newStickers = [...newStickers, ...extractStickerEntriesFromJson(data)];
+      } else if (
+        file.type === 'text/plain'
+        || file.type === 'text/csv'
+        || file.name.endsWith('.txt')
+        || file.name.endsWith('.csv')
+      ) {
+        newStickers = [...newStickers, ...extractStickerEntriesFromText(reader.result as string)];
+      } else {
+        newStickers.push(reader.result as string);
+      }
 
-function isInlineDataImage(value: string) {
-  return /^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,/i.test(value.trim());
-}
-
-function areStickerListsEqual(left: string[], right: string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-async function migrateLegacyStickerEntries(
-  values: string[],
-  persistDataUrl: (dataUrl: string, fileName?: string) => Promise<string>,
-) {
-  let changed = false;
-  const nextValues = await Promise.all(values.map(async (value, index) => {
-    const normalized = value.trim();
-    if (!isInlineDataImage(normalized)) {
-      return normalized;
-    }
-
-    changed = true;
-    return persistDataUrl(normalized, `sticker-${index + 1}.png`);
-  }));
-
-  return {
-    changed,
-    values: normalizeStickerEntries(nextValues),
-  };
-}
-
-async function importStickerFiles(
-  files: File[],
-  persistUploadedFile: (file: File) => Promise<string>,
-) {
-  if (files.length === 0) return [];
-
-  const stickerGroups = await Promise.all(files.map(async (file) => {
-    if (file.type === 'application/json' || file.name.endsWith('.json')) {
-      const raw = await readFileAsText(file);
-      return extractStickerEntriesFromJson(parseJsonFileContent(raw));
-    }
+      loaded += 1;
+      if (loaded === files.length) {
+        onComplete(normalizeStickerEntries(newStickers));
+      }
+    };
 
     if (
-      file.type === 'text/plain'
+      file.type === 'application/json'
+      || file.type === 'text/plain'
       || file.type === 'text/csv'
+      || file.name.endsWith('.json')
       || file.name.endsWith('.txt')
       || file.name.endsWith('.csv')
     ) {
-      const raw = await readFileAsText(file);
-      return extractStickerEntriesFromText(raw);
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
     }
-
-    const assetRef = await persistUploadedFile(file);
-    return [assetRef];
-  }));
-
-  return normalizeStickerEntries(stickerGroups.flat());
+  });
 }
 
 export function ChatSettingsPanel({ 
@@ -409,8 +385,8 @@ export function ChatSettingsPanel({
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
   });
@@ -505,51 +481,6 @@ export function ChatSettingsPanel({
   useEffect(() => {
     setMaxRepliesDraft(String(character.maxReplies || 3));
   }, [character.maxReplies]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const migrateLegacyStickers = async () => {
-      const sharedStickers = settings.sharedStickers || [];
-      const characterStickers = character.stickers || [];
-      const hasLegacyShared = sharedStickers.some(isInlineDataImage);
-      const hasLegacyCharacter = characterStickers.some(isInlineDataImage);
-
-      if (!hasLegacyShared && !hasLegacyCharacter) {
-        return;
-      }
-
-      try {
-        if (hasLegacyShared) {
-          const migratedShared = await migrateLegacyStickerEntries(sharedStickers, saveUploadedDataUrl);
-          if (!cancelled && migratedShared.changed && !areStickerListsEqual(sharedStickers, migratedShared.values)) {
-            onUpdateSettings({
-              ...settings,
-              sharedStickers: migratedShared.values,
-            });
-          }
-        }
-
-        if (hasLegacyCharacter) {
-          const migratedCharacter = await migrateLegacyStickerEntries(characterStickers, saveUploadedDataUrl);
-          if (!cancelled && migratedCharacter.changed && !areStickerListsEqual(characterStickers, migratedCharacter.values)) {
-            onUpdate({
-              ...character,
-              stickers: migratedCharacter.values,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('[chat-settings] Failed to migrate legacy sticker entries.', error);
-      }
-    };
-
-    void migrateLegacyStickers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [character, onUpdate, onUpdateSettings, settings]);
 
   useEffect(() => {
     if (!activeMemoryDetail) {
@@ -1228,7 +1159,6 @@ export function ChatSettingsPanel({
       exit={{ x: '100%' }}
       className="absolute inset-0 flex flex-col z-[70]"
       style={{
-        ...(viewportStyle || {}),
         backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
         backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
         backgroundSize: 'cover',
@@ -1316,7 +1246,7 @@ export function ChatSettingsPanel({
       <div
         className="flex-1 overflow-y-auto pb-10"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 20}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',
@@ -2816,7 +2746,7 @@ export function ChatSettingsPanel({
             <div
               className="flex-1 overflow-y-auto pb-6"
               style={{
-                paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+                paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
                   ? `${keyboardInset + 16}px`
                   : undefined,
                 transition: 'padding-bottom 180ms ease',
@@ -2925,21 +2855,11 @@ export function ChatSettingsPanel({
                       multiple
                       accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv"
                       className="hidden"
-                      onChange={async e => {
-                        const input = e.currentTarget;
-                        const files = Array.from(input.files || []);
-
-                        try {
-                          const newStickers = await importStickerFiles(files, setUploadedFile);
-                          if (newStickers.length > 0) {
-                            appendSharedStickers(newStickers);
-                          }
-                        } catch (error) {
-                          console.error('[chat-settings] Failed to import shared stickers.', error);
-                          await showInAppAlert('导入共享表情包失败，请重试。');
-                        } finally {
-                          input.value = '';
-                        }
+                      onChange={e => {
+                        const files = Array.from(e.target.files || []);
+                        importStickerFiles(files, (newStickers) => {
+                          appendSharedStickers(newStickers);
+                        });
                       }}
                     />
                   </label>
@@ -3012,21 +2932,11 @@ export function ChatSettingsPanel({
                     multiple 
                     accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv" 
                     className="hidden" 
-                    onChange={async e => {
-                      const input = e.currentTarget;
-                      const files = Array.from(input.files || []);
-
-                      try {
-                        const newStickers = await importStickerFiles(files, setUploadedFile);
-                        if (newStickers.length > 0) {
-                          appendCharacterStickers(newStickers);
-                        }
-                      } catch (error) {
-                        console.error('[chat-settings] Failed to import character stickers.', error);
-                        await showInAppAlert('导入角色表情包失败，请重试。');
-                      } finally {
-                        input.value = '';
-                      }
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      importStickerFiles(files, (newStickers) => {
+                        appendCharacterStickers(newStickers);
+                      });
                     }}
                   />
                 </label>
@@ -3388,7 +3298,7 @@ export function ChatSettingsPanel({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+6rem)]">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
             {(!callHistory || callHistory.filter(r => r.characterId === character.id).length === 0) ? (
               <div className="text-center py-10 text-zinc-400 text-sm">暂无通话记录</div>
             ) : (

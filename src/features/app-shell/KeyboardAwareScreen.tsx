@@ -1,6 +1,5 @@
-import { useEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+import React, { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { useAppKeyboard } from './AppKeyboardContext';
-import { useKeyboardSafeViewport } from './useKeyboardSafeViewport';
 
 type KeyboardAwareScreenProps = {
   children: ReactNode;
@@ -28,51 +27,43 @@ export function KeyboardAwareScreen({
   footerStyle,
 }: KeyboardAwareScreenProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const {
-    usesVisualViewportKeyboardLayout,
-    keyboardVisible: appKeyboardVisible,
-    keyboardInset,
-    manualKeyboardAvoidanceEnabled,
-  } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
-    containerRef: shellRef,
-    enabled: true,
-  });
-  const keyboardVisible = ownsFocusedKeyboard && (appKeyboardVisible || keyboardInset > 120);
+  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
-    if (
-      typeof window === 'undefined'
-      || typeof document === 'undefined'
-      || manualKeyboardAvoidanceEnabled
-      || usesVisualViewportKeyboardLayout
-      || !keyboardVisible
-    ) {
+    if (!hideFooterWhenKeyboardOpen || typeof document === 'undefined') {
+      setKeyboardVisible(false);
       return undefined;
     }
 
-    const activeElement = document.activeElement;
-    if (!(activeElement instanceof HTMLElement) || !shellRef.current?.contains(activeElement)) {
-      return undefined;
-    }
+    const updateKeyboardVisibility = () => {
+      const shell = shellRef.current;
+      const activeElement = document.activeElement;
+      const ownsFocusedField = !!shell
+        && activeElement instanceof HTMLElement
+        && shell.contains(activeElement)
+        && (
+          activeElement.isContentEditable
+          || (activeElement instanceof HTMLInputElement && !activeElement.readOnly && !activeElement.disabled)
+          || (activeElement instanceof HTMLTextAreaElement && !activeElement.readOnly && !activeElement.disabled)
+        );
 
-    let frameOne = 0;
-    let frameTwo = 0;
-    frameOne = window.requestAnimationFrame(() => {
-      frameTwo = window.requestAnimationFrame(() => {
-        activeElement.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-        });
-      });
-    });
+      setKeyboardVisible(ownsFocusedField && (appKeyboardVisible || keyboardInset > 120));
+    };
+
+    const scheduleUpdate = () => {
+      window.requestAnimationFrame(updateKeyboardVisibility);
+    };
+
+    updateKeyboardVisibility();
+    document.addEventListener('focusin', scheduleUpdate, true);
+    document.addEventListener('focusout', scheduleUpdate, true);
 
     return () => {
-      window.cancelAnimationFrame(frameOne);
-      window.cancelAnimationFrame(frameTwo);
+      document.removeEventListener('focusin', scheduleUpdate, true);
+      document.removeEventListener('focusout', scheduleUpdate, true);
     };
-  }, [keyboardVisible, manualKeyboardAvoidanceEnabled, usesVisualViewportKeyboardLayout, viewportStyle]);
+  }, [appKeyboardVisible, hideFooterWhenKeyboardOpen, keyboardInset]);
 
   const resolvedFooterStyle: CSSProperties | undefined = footer
     ? {
@@ -90,7 +81,7 @@ export function KeyboardAwareScreen({
 
   const resolvedBodyStyle: CSSProperties | undefined = {
     ...(bodyProps?.style || {}),
-    ...(manualKeyboardAvoidanceEnabled && keyboardVisible && keyboardInset > 0
+    ...(keyboardVisible && keyboardInset > 0
       ? { paddingBottom: `${keyboardInset}px` }
       : {}),
     transition: 'padding-bottom 180ms ease',
@@ -100,13 +91,10 @@ export function KeyboardAwareScreen({
     <div
       ref={shellRef}
       className={className}
-      style={{
-        ...(style || {}),
-        ...(viewportStyle || {}),
-      }}
+      style={style}
     >
       {header}
-      <div {...bodyProps} ref={bodyRef} className={bodyClassName} style={resolvedBodyStyle}>
+      <div {...bodyProps} className={bodyClassName} style={resolvedBodyStyle}>
         {children}
       </div>
       {footer ? (

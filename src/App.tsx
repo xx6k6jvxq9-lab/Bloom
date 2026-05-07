@@ -1,5 +1,4 @@
 ﻿import React, { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { startTransition } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, ChevronDown, Upload, PlusCircle, Smile, Share2, Banknote, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Moon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -23,7 +22,6 @@ import {
 } from './features/app-shell/defaultSettings';
 import { createDefaultAppData } from './features/app-shell/defaultAppData';
 import { GlobalStyles } from './features/app-shell/AppShellPrimitives';
-import { ForumLaunchOverlay } from './features/app-shell/ForumLaunchOverlay';
 import type {
   CoupleSpaceUpdateToast,
   DatingGenerationToast,
@@ -31,12 +29,19 @@ import type {
   MomentPublishToast,
 } from './features/app-shell/appShellTypes';
 import { AppScreenContent } from './features/app-shell/AppScreenContent';
-import { createAppShellHandlers, navigateToAppWithTransition, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
-import { preloadPanelForApp } from './features/app-shell/lazyPanels';
+import { createAppShellHandlers, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
 import { useAppEnvironment } from './features/app-shell/useAppEnvironment';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
 import { useCoupleSpaceAutoChecks } from './features/app-shell/useCoupleSpaceAutoChecks';
+import {
+  fetchSettingsModels,
+  filterAvailableModels,
+  fetchAllPagedModelNames,
+  extractModelNamesFromResponse,
+  resolveNextModelsPageUrl,
+  testSettingsConnection,
+} from './features/app-shell/settingsModelHelpers';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
@@ -74,8 +79,6 @@ import { useCoupleSpaceStateActions } from './features/persistence/useCoupleSpac
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
-import { getDisplayableAssetValue, getPreviewAssetValue } from './features/persistence/persistentAssetRef';
-import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
@@ -83,19 +86,9 @@ import {
   resolveCurrentCoupleSpace,
 } from './features/persistence/coupleSpaceStore';
 
-type ForumLaunchState = {
-  token: number;
-  ready: boolean;
-  entering: boolean;
-  targetPostId: string | null;
-};
-
 export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const forumLaunchTokenRef = useRef(0);
-  const forumLaunchEnterTimerRef = useRef<number | null>(null);
-  const forumLaunchDismissFrameRef = useRef<number | null>(null);
   const [activeApp, setActiveApp] = useState<AppScreen>('home');
   const [datingResumeSignal, setDatingResumeSignal] = useState(0);
   const [dreamResumeSignal, setDreamResumeSignal] = useState(0);
@@ -105,13 +98,11 @@ export default function App() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedForumPostId, setSelectedForumPostId] = useState<string | null>(null);
-  const [forumLaunchState, setForumLaunchState] = useState<ForumLaunchState | null>(null);
   const [characterMomentsBackApp, setCharacterMomentsBackApp] = useState<'chat' | 'chat-session' | 'character-profile'>('character-profile');
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
   const {
-    isIosBrowserMode,
     isStandalone,
     keyboardVisible,
     layoutViewportHeight,
@@ -168,117 +159,14 @@ export default function App() {
     setAppDialogInput,
   } = useAppDialogBridge();
 
-  const clearForumLaunchTimer = useCallback(() => {
-    if (forumLaunchEnterTimerRef.current !== null) {
-      window.clearTimeout(forumLaunchEnterTimerRef.current);
-      forumLaunchEnterTimerRef.current = null;
-    }
-  }, []);
-
-  const clearForumLaunchDismissFrame = useCallback(() => {
-    if (forumLaunchDismissFrameRef.current !== null) {
-      window.cancelAnimationFrame(forumLaunchDismissFrameRef.current);
-      forumLaunchDismissFrameRef.current = null;
-    }
-  }, []);
-
-  const closeForumLaunch = useCallback(() => {
-    forumLaunchTokenRef.current += 1;
-    clearForumLaunchTimer();
-    clearForumLaunchDismissFrame();
-    setForumLaunchState(null);
-  }, [clearForumLaunchDismissFrame, clearForumLaunchTimer]);
-
-  const enterForumFromLaunch = useCallback((token: number, targetPostId: string | null) => {
-    if (forumLaunchTokenRef.current !== token) {
-      return;
-    }
-
-    clearForumLaunchTimer();
-    setForumLaunchState((current) => current?.token === token ? { ...current, ready: true, entering: true } : current);
-    startTransition(() => {
-      setSelectedForumPostId(targetPostId);
-      setActiveApp('forum');
-    });
-  }, [clearForumLaunchTimer]);
-
-  const openForumApp = useCallback((postId?: string | null) => {
-    const targetPostId = postId ?? null;
-    const token = forumLaunchTokenRef.current + 1;
-    forumLaunchTokenRef.current = token;
-    clearForumLaunchTimer();
-    setForumLaunchState({
-      token,
-      ready: false,
-      entering: false,
-      targetPostId,
-    });
-
-    const preloadTask = preloadPanelForApp('forum');
-    const minimumSplashTask = new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 820);
-    });
-
-    void Promise.all([preloadTask ?? Promise.resolve(), minimumSplashTask])
-      .then(() => {
-        if (forumLaunchTokenRef.current !== token) {
-          return;
-        }
-
-        setForumLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
-        forumLaunchEnterTimerRef.current = window.setTimeout(() => {
-          enterForumFromLaunch(token, targetPostId);
-        }, 160);
-      })
-      .catch((error) => {
-        console.warn('[app-shell] Forum launch preload failed', error);
-        if (forumLaunchTokenRef.current !== token) {
-          return;
-        }
-        setForumLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
-      });
-  }, [clearForumLaunchTimer, enterForumFromLaunch]);
-
-  useEffect(() => () => {
-    clearForumLaunchTimer();
-    clearForumLaunchDismissFrame();
-  }, [clearForumLaunchDismissFrame, clearForumLaunchTimer]);
-
-  useEffect(() => {
-    if (activeApp !== 'forum' || !forumLaunchState?.entering) {
-      return undefined;
-    }
-
-    clearForumLaunchDismissFrame();
-    forumLaunchDismissFrameRef.current = window.requestAnimationFrame(() => {
-      forumLaunchDismissFrameRef.current = window.requestAnimationFrame(() => {
-        setForumLaunchState((current) => (
-          current?.token === forumLaunchState.token && current.entering
-            ? null
-            : current
-        ));
-        forumLaunchDismissFrameRef.current = null;
-      });
-    });
-
-    return () => {
-      clearForumLaunchDismissFrame();
-    };
-  }, [activeApp, clearForumLaunchDismissFrame, forumLaunchState]);
-
   const { handleAddCharacter, handleOpenApp, handleOpenChat } = createAppShellHandlers({
     handleUpsertCharacter,
-    openForumApp,
     setActiveApp,
     setActiveTab,
     setSelectedCharacterId,
   });
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
-  const { resolvedUrl: resolvedHomeWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
-  const homeWallpaperDisplayUrl =
-    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedHomeWallpaperUrl)
-    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
   const isStorageReady = hasHydratedStorage;
   const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
   const phoneContainerBackgroundClass =
@@ -289,35 +177,7 @@ export default function App() {
     && visualViewportHeight > 0
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
-  const hideMockSystemChrome =
-    isIosBrowserMode
-    || (!useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed));
-  const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
-  const appSafeAreaBottomUi = isStandalone
-    ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
-    : isIosBrowserMode
-      ? '0px'
-    : hideMockSystemChrome
-      ? '0px'
-      : '12px';
-  const homeWallpaperBackgroundStyle =
-    activeApp === 'home' && homeWallpaperDisplayUrl
-      ? {
-          backgroundImage: `url(${homeWallpaperDisplayUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }
-      : {};
-  const shellWallpaperBackgroundStyle = useDesktopStageLayout ? {} : homeWallpaperBackgroundStyle;
-  const phoneContainerStyle = {
-    ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
-    backgroundColor: appChromeBackground,
-    ...homeWallpaperBackgroundStyle,
-    '--app-safe-area-bottom-full': appSafeAreaBottomFull,
-    '--app-safe-area-bottom': appSafeAreaBottomFull,
-    '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
-    '--app-mock-home-indicator-space': !isStandalone && !hideMockSystemChrome ? '12px' : '0px',
-  } as React.CSSProperties;
+  const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
 
   const loadPendingDreamToast = () => {
     if (typeof window === 'undefined') {
@@ -353,23 +213,15 @@ export default function App() {
 
     const html = document.documentElement;
     const body = document.body;
-    const rootElement = document.getElementById('root');
     const previousHtmlBackground = html.style.backgroundColor;
     const previousBodyBackground = body.style.backgroundColor;
-    const previousRootBackground = rootElement?.style.backgroundColor ?? '';
 
     html.style.backgroundColor = appChromeBackground;
     body.style.backgroundColor = appChromeBackground;
-    if (rootElement) {
-      rootElement.style.backgroundColor = appChromeBackground;
-    }
 
     return () => {
       html.style.backgroundColor = previousHtmlBackground;
       body.style.backgroundColor = previousBodyBackground;
-      if (rootElement) {
-        rootElement.style.backgroundColor = previousRootBackground;
-      }
     };
   }, [appChromeBackground]);
 
@@ -478,7 +330,6 @@ export default function App() {
       style={{
         ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
         backgroundColor: appChromeBackground,
-        ...shellWallpaperBackgroundStyle,
       }}
     >
       <GlobalStyles
@@ -492,7 +343,10 @@ export default function App() {
             ? 'md:h-[720px] md:w-[360px] md:rounded-[50px] md:border-[8px] md:border-white md:bg-black md:shadow-2xl md:ring-1 md:ring-black/5'
             : ''
         }`}
-        style={phoneContainerStyle}
+        style={{
+          ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
+          backgroundColor: appChromeBackground,
+        }}
       >
         
         {/* Status Bar */}
@@ -561,17 +415,16 @@ export default function App() {
             setSettings={setSettings}
             setStatusBarVisible={setStatusBarVisible}
             settings={settings}
-            openForumApp={openForumApp}
             onOpenReadyDating={(characterId) => {
               setSelectedCharacterId(characterId);
               setDatingResumeSignal((prev) => prev + 1);
-              navigateToAppWithTransition('chat-session', setActiveApp);
+              setActiveApp('chat-session');
               setDatingGenerationToast(null);
             }}
             onDismissDatingToast={() => setDatingGenerationToast(null)}
             onOpenReadyDream={() => {
               setDreamResumeSignal((prev) => prev + 1);
-              navigateToAppWithTransition('dream', setActiveApp);
+              setActiveApp('dream');
               if (typeof window !== 'undefined') {
                 window.localStorage.removeItem('dream_background_toast_pending');
               }
@@ -586,7 +439,7 @@ export default function App() {
             onDreamResumeHandled={() => setDreamResumeSignal(0)}
           />
         ) : (
-          <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center bg-zinc-50 px-8 text-center">
+          <div className="flex h-full flex-col items-center justify-center bg-zinc-50 px-8 text-center">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
             <div className="mt-5 text-[16px] font-semibold text-zinc-900">正在读取本地数据</div>
             <div className="mt-2 text-[13px] leading-6 text-zinc-500">
@@ -594,19 +447,6 @@ export default function App() {
             </div>
           </div>
         )}
-
-        <ForumLaunchOverlay
-          visible={forumLaunchState != null}
-          ready={forumLaunchState?.ready ?? false}
-          time={time}
-          onEnter={() => {
-            if (!forumLaunchState) {
-              return;
-            }
-            enterForumFromLaunch(forumLaunchState.token, forumLaunchState.targetPostId);
-          }}
-          onCancel={closeForumLaunch}
-        />
 
         <AnimatePresence>
           {appDialog && (
@@ -672,11 +512,10 @@ export default function App() {
           >
             <div
               className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
-              onClick={() => navigateToAppWithTransition('home', setActiveApp)}
+              onClick={() => setActiveApp('home')}
             />
           </div>
         )}
-
       </div>
     </div>
   );

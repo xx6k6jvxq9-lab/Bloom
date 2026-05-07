@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart, Link2, MessageCircle, MoreHorizontal, Pin, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Heart, Link2, MessageCircle, MoreHorizontal, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
@@ -18,26 +18,6 @@ import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, Moment
 type UserProfile = UserProfileExtended;
 type Comment = MomentComment;
 type Moment = MomentItem;
-
-const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
-const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
-const CHAT_RUNTIME_IDLE_GRACE_MS = 4000;
-const MOMENT_AI_RETRY_DELAY_MS = 1800;
-
-function isChatRuntimeBusyNow() {
-  const scope = globalThis as typeof globalThis & Record<string, unknown>;
-  const activeCount = typeof scope[CHAT_RUNTIME_BUSY_COUNT_KEY] === 'number'
-    ? Math.max(0, scope[CHAT_RUNTIME_BUSY_COUNT_KEY] as number)
-    : 0;
-  if (activeCount > 0) {
-    return true;
-  }
-
-  const lastActiveAt = typeof scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] === 'number'
-    ? scope[CHAT_RUNTIME_LAST_ACTIVE_AT_KEY] as number
-    : 0;
-  return lastActiveAt > 0 && Date.now() - lastActiveAt < CHAT_RUNTIME_IDLE_GRACE_MS;
-}
 
 function ResolvedMomentsAssetImage({
   value,
@@ -138,9 +118,6 @@ export function MomentsApp({
   const publishRef = useRef<HTMLDivElement | null>(null);
   const commentComposerRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingMomentAiTasksRef = useRef<Array<() => Promise<void>>>([]);
-  const momentAiRunningRef = useRef(false);
-  const momentAiDrainTimerRef = useRef<number | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -157,12 +134,12 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
-  const { isIosBrowserMode, keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: publishKeyboardVisible, viewportStyle: publishViewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: publishKeyboardVisible } = useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
   });
-  const { keyboardVisible: commentKeyboardVisible, viewportStyle: commentViewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: commentKeyboardVisible } = useKeyboardSafeViewport({
     containerRef: commentComposerRef,
     enabled: !!commentingOn,
   });
@@ -196,13 +173,6 @@ export function MomentsApp({
         replyToAuthorName: isKnownMomentActorId(comment.replyToAuthorId) ? comment.replyToAuthorName : undefined,
       })),
     }));
-  const displayMoments = [...sanitizedMoments].sort((left, right) => {
-    if (!!left.isPinned !== !!right.isPinned) {
-      return left.isPinned ? -1 : 1;
-    }
-
-    return right.timestamp - left.timestamp;
-  });
   const serializedMoments = JSON.stringify(moments || []);
   const serializedSanitizedMoments = JSON.stringify(sanitizedMoments);
 
@@ -305,60 +275,6 @@ export function MomentsApp({
     }));
   };
 
-  const scheduleMomentAiDrain = useCallback((delayMs = MOMENT_AI_RETRY_DELAY_MS) => {
-    if (typeof window === 'undefined' || momentAiDrainTimerRef.current !== null) {
-      return;
-    }
-
-    momentAiDrainTimerRef.current = window.setTimeout(() => {
-      momentAiDrainTimerRef.current = null;
-
-      if (momentAiRunningRef.current) {
-        scheduleMomentAiDrain(MOMENT_AI_RETRY_DELAY_MS);
-        return;
-      }
-
-      const nextTask = pendingMomentAiTasksRef.current[0];
-      if (!nextTask) {
-        return;
-      }
-
-      if (isChatRuntimeBusyNow()) {
-        scheduleMomentAiDrain(MOMENT_AI_RETRY_DELAY_MS);
-        return;
-      }
-
-      pendingMomentAiTasksRef.current.shift();
-      momentAiRunningRef.current = true;
-      void nextTask()
-        .catch((error) => {
-          console.error('Moment AI task failed', error);
-        })
-        .finally(() => {
-          momentAiRunningRef.current = false;
-          if (pendingMomentAiTasksRef.current.length > 0) {
-            scheduleMomentAiDrain(600);
-          }
-        });
-    }, delayMs);
-  }, []);
-
-  const enqueueMomentAiTask = useCallback((task: () => Promise<void>) => {
-    pendingMomentAiTasksRef.current.push(task);
-    scheduleMomentAiDrain();
-  }, [scheduleMomentAiDrain]);
-
-  useEffect(() => (
-    () => {
-      if (momentAiDrainTimerRef.current !== null) {
-        window.clearTimeout(momentAiDrainTimerRef.current);
-        momentAiDrainTimerRef.current = null;
-      }
-      pendingMomentAiTasksRef.current = [];
-      momentAiRunningRef.current = false;
-    }
-  ), []);
-
   const toggleCommentComposer = (momentId: string, nextReplyTarget: typeof replyTarget) => {
     const isSameMoment = commentingOn === momentId;
     const currentTargetId = replyTarget?.momentId === momentId ? replyTarget.commentId : null;
@@ -376,7 +292,7 @@ export function MomentsApp({
     setReplyTarget(nextReplyTarget);
   };
 
-  const handlePublish = useCallback(() => {
+  const handlePublish = () => {
     const newMoment: Moment = {
       id: Date.now().toString(),
       authorId: 'user',
@@ -417,17 +333,15 @@ export function MomentsApp({
     }
 
     if (activeConfig && replyCharacters.length > 0) {
-      enqueueMomentAiTask(async () => {
-        await runMomentPublishCommentSequence({
-          activeConfig,
-          moment: newMoment,
-          characters,
-          userName: userProfile.name,
-          appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
-        });
+      void runMomentPublishCommentSequence({
+        activeConfig,
+        moment: newMoment,
+        characters,
+        userName: userProfile.name,
+        appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
       });
     }
-  }, [appendCommentToMoment, characters, enqueueMomentAiTask, forumConfig, publishContent, publishImages, setAppData, userProfile.name]);
+  };
 
   const handleLike = (momentId: string) => {
     setAppData((prev) => ({
@@ -531,23 +445,11 @@ export function MomentsApp({
     setActiveMenuId(null);
   };
 
-  const handleTogglePin = (momentId: string) => {
-    setAppData((prev) => ({
-      ...prev,
-      moments: prev.moments.map((moment) => (
-        moment.id === momentId
-          ? { ...moment, isPinned: !moment.isPinned }
-          : moment
-      )),
-    }));
-    setActiveMenuId(null);
-  };
-
   const activeInnerVoiceMoment = (moments || []).find((moment) => moment.id === activeInnerVoiceMomentId) || null;
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
   const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
   const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
-  const handleComment = useCallback(async (momentId: string) => {
+  const handleComment = async (momentId: string) => {
     if (!commentText.trim()) return;
     const activeReplyTarget = replyTarget?.momentId === momentId ? replyTarget : null;
 
@@ -571,25 +473,22 @@ export function MomentsApp({
     if (!moment) return;
 
     if (forumConfig) {
-      enqueueMomentAiTask(async () => {
-        await runMomentCommentReplySequence({
-          activeConfig: forumConfig,
-          moment,
-          characters,
-          userName: userProfile.name,
-          triggerComment: newComment,
-          appendComment: (comment) => appendCommentToMoment(momentId, comment),
-        });
+      void runMomentCommentReplySequence({
+        activeConfig: forumConfig,
+        moment,
+        characters,
+        userName: userProfile.name,
+        triggerComment: newComment,
+        appendComment: (comment) => appendCommentToMoment(momentId, comment),
       });
     }
-  }, [appendCommentToMoment, characters, commentText, enqueueMomentAiTask, forumConfig, moments, replyTarget, userProfile.name]);
+  };
 
   if (showPublish) {
     return (
       <div
         ref={publishRef}
         className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
-        style={publishViewportStyle}
       >
         <div
           className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
@@ -605,9 +504,9 @@ export function MomentsApp({
           </button>
         </div>
         <div
-          className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+16px)] pt-4"
+          className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] pt-4"
           style={{
-            paddingBottom: manualKeyboardAvoidanceEnabled && publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+            paddingBottom: publishKeyboardVisible && appKeyboardVisible && keyboardInset > 0
               ? `${keyboardInset + 16}px`
               : undefined,
             transition: 'padding-bottom 180ms ease',
@@ -685,12 +584,15 @@ export function MomentsApp({
   return (
     <div className="relative flex-1 min-h-0">
       <div
-        className="h-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+4rem)]"
+        className="h-full overflow-y-auto pb-24"
         style={{
           backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundColor: resolvedMomentsBackgroundUrl ? 'transparent' : '#fafafa',
+          paddingBottom: commentingOn
+            ? 'calc(env(safe-area-inset-bottom, 0px) + 11rem)'
+            : undefined,
         }}
       >
       <div className="relative pb-4">
@@ -733,7 +635,7 @@ export function MomentsApp({
       </div>
 
       <div className="space-y-4 bg-transparent px-0 pt-4">
-        {displayMoments.map((moment) => {
+        {(moments || []).map((moment) => {
           const author = resolveMomentAuthor(moment.authorId);
           if (!author) return null;
           const effectiveCollected = getLinkedChatFavoriteState(appData, moment) ?? !!moment.isCollected;
@@ -749,18 +651,8 @@ export function MomentsApp({
             >
               <ResolvedMomentsAssetImage value={author.avatar} className="h-10 w-10 shrink-0 rounded-full border border-zinc-100 object-cover" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[15px] font-bold text-zinc-900">{author.name}</h3>
-                      {moment.isPinned && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[#D8D8DE] bg-[#F2F2F7] px-2 py-0.5 text-[10px] font-medium text-[#6B7280] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                          <Pin size={10} className="text-[#7B8190]" />
-                          置顶
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                <div className="flex items-start justify-between">
+                  <h3 className="text-[15px] font-bold text-zinc-900">{author.name}</h3>
                   <span className="text-[12px] text-zinc-400">
                     {new Date(moment.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -895,11 +787,11 @@ export function MomentsApp({
                         initial={{ opacity: 0, scale: 0.95, x: 10 }}
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         exit={{ opacity: 0, scale: 0.95, x: 10 }}
-                        className="absolute right-10 top-1/2 z-20 grid w-[min(calc(100vw-2.5rem),18rem)] -translate-y-1/2 grid-cols-3 gap-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur-md sm:right-8 sm:top-0 sm:w-auto sm:min-w-max sm:translate-y-0 sm:flex sm:items-center sm:gap-0 sm:px-1 sm:py-1"
+                        className="absolute right-8 top-0 z-20 flex items-center overflow-hidden rounded-lg border border-zinc-200 bg-white/95 px-1 py-1 shadow-lg backdrop-blur-md"
                       >
                         <button
                           onClick={() => handleLike(moment.id)}
-                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <Heart size={14} className={(moment.likedBy?.includes('user') || moment.isLiked) ? 'fill-red-500 text-red-500' : ''} />
                           {(moment.likedBy?.includes('user') || moment.isLiked) ? '取消' : '赞'}
@@ -909,36 +801,27 @@ export function MomentsApp({
                             toggleCommentComposer(moment.id, null);
                             setActiveMenuId(null);
                           }}
-                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <MessageCircle size={14} />
                           评论
                         </button>
                         <button
                           onClick={() => handleCollect(moment.id)}
-                          className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
+                          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                         >
                           <Star size={14} className={effectiveCollected ? 'fill-yellow-400 text-yellow-400' : ''} />
                           {effectiveCollected ? '已收藏' : '收藏'}
                         </button>
-                        <button
-                          onClick={() => handleTogglePin(moment.id)}
-                          className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] transition-colors sm:justify-start ${
-                            moment.isPinned
-                              ? 'bg-[#F2F2F7] text-[#5F6572] hover:bg-[#EAEAEE]'
-                              : 'text-zinc-800 hover:bg-zinc-100'
-                          }`}
-                        >
-                          <Pin size={14} className={moment.isPinned ? 'fill-[#C7CCD6] text-[#7B8190]' : 'text-zinc-500'} />
-                          {moment.isPinned ? '取消置顶' : '置顶'}
-                        </button>
-                        <button
+                        {moment.authorId === 'user' && (
+                          <button
                             onClick={() => handleDelete(moment.id)}
-                            className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100 sm:justify-start"
+                            className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] text-zinc-800 transition-colors hover:bg-zinc-100"
                           >
                             <Trash2 size={14} />
                             删除
                           </button>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1011,12 +894,11 @@ export function MomentsApp({
         <div
           ref={commentComposerRef}
           className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
-          style={commentViewportStyle}
         >
           <div
-            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
+            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
             style={{
-              transform: manualKeyboardAvoidanceEnabled && !isIosBrowserMode && commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
+              transform: commentKeyboardVisible && appKeyboardVisible && keyboardInset > 0
                 ? `translateY(-${keyboardInset}px)`
                 : 'translateY(0)',
               transition: 'transform 180ms ease',

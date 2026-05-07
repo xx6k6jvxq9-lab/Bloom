@@ -39,14 +39,14 @@ export function NewFriendsPage({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
 
   return (
-    <div ref={containerRef} className="absolute inset-0 bg-zinc-50 flex flex-col z-50" style={viewportStyle}>
+    <div ref={containerRef} className="absolute inset-0 bg-zinc-50 flex flex-col z-50">
       {/* Header */}
       <div className="min-h-[64px] pt-12 pb-3 px-4 flex items-center gap-2 bg-white border-b border-zinc-100">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
@@ -79,7 +79,7 @@ export function NewFriendsPage({
       <div
         className="flex-1 overflow-y-auto"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 16}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',

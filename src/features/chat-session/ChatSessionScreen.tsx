@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2 } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -51,14 +51,6 @@ import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/D
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
-const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
-
-type ParsedGameCardDisplayData = {
-  game: 'qna' | 'tod' | 'blocks';
-  type: 'question' | 'answer' | 'truth' | 'dare' | 'request_question' | 'result';
-  question?: string;
-  content: string;
-};
 
 function getDirectReplyPreviewClass(isUser: boolean) {
   return `chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 text-zinc-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] backdrop-blur-sm ${
@@ -255,23 +247,10 @@ function getDirectTextContentStyle({
   };
 }
 
-type ParsedGameCardPayloadState =
-  | {
-      status: 'ok';
-      payload: {
-        data: ParsedGameCardDisplayData;
-        translation: string;
-      };
-    }
-  | { status: 'incomplete' }
-  | { status: 'invalid'; error: unknown };
-
-function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadState {
+function parseGameCardPayload(message: ChatMessage) {
   const gameCardRegex = /^\[GAME_CARD\]\s*([\s\S]*?)(?:\n\n---TRANSLATION---\s*[\s\S]*)?$/;
   const gameCardMatch = message.text.match(gameCardRegex);
-  if (!gameCardMatch) {
-    return { status: 'invalid', error: new Error('Not a GAME_CARD payload.') };
-  }
+  if (!gameCardMatch) return null;
 
   try {
     let jsonString = gameCardMatch[1].trim();
@@ -284,55 +263,31 @@ function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadS
 
     const jsonStart = jsonString.indexOf('{');
     const jsonEnd = jsonString.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
-      return { status: 'incomplete' };
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
     }
-    jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
 
-    const gameData = JSON.parse(jsonString) as Partial<ParsedGameCardDisplayData>;
+    const gameData = JSON.parse(jsonString);
     const legacyTranslationParts = getLegacyTranslationParts(message.text);
 
-    if (
-      (gameData.game !== 'qna' && gameData.game !== 'tod' && gameData.game !== 'blocks')
-      || (
-        gameData.type !== 'question'
-        && gameData.type !== 'answer'
-        && gameData.type !== 'truth'
-        && gameData.type !== 'dare'
-        && gameData.type !== 'request_question'
-        && gameData.type !== 'result'
-      )
-      || typeof gameData.content !== 'string'
-    ) {
-      return { status: 'invalid', error: new Error('GAME_CARD payload shape is invalid.') };
-    }
-
     return {
-      status: 'ok',
-      payload: {
-        data: {
-          game: gameData.game,
-          type: gameData.type,
-          content: sanitizePipeMarkers(gameData.content, '\n'),
-          ...(typeof gameData.question === 'string'
-            ? { question: sanitizePipeMarkers(gameData.question, '\n') }
-            : {}),
-        },
-        translation: sanitizePipeMarkers(
-          message.translation?.trim() || legacyTranslationParts.translation,
-          '\n',
-        ),
+      data: {
+        ...gameData,
+        ...(typeof gameData.content === 'string'
+          ? { content: sanitizePipeMarkers(gameData.content, '\n') }
+          : {}),
+        ...(typeof gameData.question === 'string'
+          ? { question: sanitizePipeMarkers(gameData.question, '\n') }
+          : {}),
       },
+      translation: sanitizePipeMarkers(
+        message.translation?.trim() || legacyTranslationParts.translation,
+        '\n',
+      ),
     };
   } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error ?? '');
-    if (
-      /unterminated string|unexpected end of json input|expected ',' or '}'/i.test(messageText)
-      || !message.text.trim().endsWith('}')
-    ) {
-      return { status: 'incomplete' };
-    }
-    return { status: 'invalid', error };
+    console.warn('Ignoring invalid game card payload.', error);
+    return null;
   }
 }
 
@@ -513,12 +468,6 @@ export function ChatSessionScreen({
   const [showMemoryWindowHint, setShowMemoryWindowHint] = useState(false);
   const [chatFooterHeight, setChatFooterHeight] = useState(64);
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
-  const isStandaloneDisplayMode =
-    typeof window !== 'undefined'
-    && (
-      window.matchMedia?.('(display-mode: standalone)')?.matches
-      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-    );
   const inputTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatFooterRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -527,8 +476,6 @@ export function ChatSessionScreen({
     keyboardInset,
     keyboardVisible,
     visualViewportHeight,
-    manualKeyboardAvoidanceEnabled,
-    usesVisualViewportKeyboardLayout,
   } = useAppKeyboard();
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -631,7 +578,6 @@ export function ChatSessionScreen({
     quoteReplyAt,
     forwardMessageAt,
     createSharePayloadAt,
-    generateAudioForMessageAt,
     submitTransfer,
     handleReceiveTransfer,
     handleRejectTransfer,
@@ -703,23 +649,6 @@ export function ChatSessionScreen({
     const segment = getLatestDirectModelSegment();
     return !!segment && index >= segment.start && index <= segment.end;
   }, [getLatestDirectModelSegment, isLoading]);
-  const canGenerateMessageAudio = useCallback((message: ChatMessage | null | undefined) => (
-    !!message
-    && message.role === 'model'
-    && !message.isSystem
-    && !message.isRecalled
-    && !message.audioUrl
-    && !message.imageUrl
-    && !message.isInnerVoice
-    && !!character.voiceProfile?.enabled
-    && !!message.text.trim()
-    && !message.text.startsWith('[GAME_CARD]')
-    && !message.text.startsWith('[COUPLE_SPACE_INVITE')
-    && !message.text.startsWith('[transfer]')
-    && !/^\[转账\s*[\d.]+\]/.test(message.text)
-    && !/^TRANSFER\|[\d.]+\|/i.test(message.text)
-    && !isLoading
-  ), [character.voiceProfile?.enabled, isLoading]);
   const canBacktrackMessage = useCallback((message: ChatMessage | null | undefined) => (
     !!message
     && !message.isSystem
@@ -1270,16 +1199,6 @@ export function ChatSessionScreen({
     await regenerateLatestReplyAt(contextMenuMessageIndex);
   };
 
-  const handleGenerateAudio = async () => {
-    if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canGenerateMessageAudio(contextMenuMessage)) {
-      closeContextMenu();
-      return;
-    }
-
-    closeContextMenu();
-    await generateAudioForMessageAt(contextMenuMessageIndex);
-  };
-
   const handleBacktrack = () => {
     if (!contextMenuMessage || contextMenuMessageIndex < 0 || !canBacktrackMessage(contextMenuMessage)) {
       closeContextMenu();
@@ -1628,7 +1547,7 @@ export function ChatSessionScreen({
   
   const headerStyleType = visualSettings?.chat?.headerStyle || 'default';
   const footerStyleType = visualSettings?.chat?.footerStyle || 'default';
-  const directFooterClassName = 'px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
+  const directFooterClassName = 'relative z-10 px-3 pt-1 border-t backdrop-blur-md flex flex-col gap-1.5';
   let headerClasses = `relative z-10 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 `;
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
@@ -1712,51 +1631,22 @@ export function ChatSessionScreen({
   }
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
-  const useAndroidBrowserKeyboardViewport =
-    isAndroid
-    && !isStandaloneDisplayMode
-    && manualKeyboardAvoidanceEnabled
-    && keyboardVisible
-    && keyboardInset > 0;
-  const footerKeyboardOffset =
-    manualKeyboardAvoidanceEnabled
-    && keyboardVisible
-    && keyboardInset > 0
-    && !useAndroidBrowserKeyboardViewport
-      ? keyboardInset
-      : 0;
-
-  if (useAndroidBrowserKeyboardViewport) {
-    footerClassName = footerClassName
-      .replace('backdrop-blur-md', '')
-      .replace('backdrop-blur-xl', '');
-  }
-
-  const chatViewportHeight = useAndroidBrowserKeyboardViewport
-    ? `calc(var(--app-viewport-height, 100dvh) - ${keyboardInset}px)`
-    : 'var(--app-active-viewport-height, var(--app-viewport-height, 100dvh))';
+  const chatViewportHeight = 'var(--app-viewport-height, 100dvh)';
   const chatFooterStyle: React.CSSProperties = {
-    bottom: footerKeyboardOffset > 0
-      ? `${footerKeyboardOffset}px`
-      : '0px',
     paddingBottom:
       keyboardVisible
         ? '1px'
         : 'var(--app-safe-area-bottom-ui, 0px)',
+    transform: keyboardVisible && keyboardInset > 0
+      ? `translateY(-${keyboardInset}px)`
+      : 'translateY(0)',
     ...footerStyleObj,
-    transition: 'bottom 180ms ease, padding-bottom 180ms ease',
-    ...(useAndroidBrowserKeyboardViewport
-      ? {
-          backdropFilter: 'none',
-          WebkitBackdropFilter: 'none',
-          backgroundColor: 'rgba(255, 255, 255, 0.98)',
-        }
-      : {}),
+    transition: 'padding-bottom 180ms ease, transform 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `${chatFooterHeight + footerKeyboardOffset + 8}px`,
+    paddingBottom: `${keyboardVisible && keyboardInset > 0 ? keyboardInset + 8 : 8}px`,
     minHeight: 0,
-    scrollPaddingBottom: `${chatFooterHeight + footerKeyboardOffset + 12}px`,
+    scrollPaddingBottom: `${chatFooterHeight + (keyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 12}px`,
   };
 
   if (showSettings) {
@@ -1795,9 +1685,9 @@ export function ChatSessionScreen({
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
         // Android WebView/Chrome is prone to black-screen repaint glitches when
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
-        // viewports are also prone to lifting the whole page when a focused
+        // browser mode is also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...(!isAndroid && !usesVisualViewportKeyboardLayout && !keyboardVisible ? {
+        ...(!isAndroid && !keyboardVisible ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -1883,21 +1773,8 @@ export function ChatSessionScreen({
         style={chatMessageListStyle}
       >
         {error && (
-          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-                {error}
-              </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="shrink-0 rounded-full p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-500"
-                aria-label="关闭错误提示"
-                title="关闭错误提示"
-              >
-                <X size={14} />
-              </button>
-            </div>
+          <div className="bg-red-50 text-red-500 p-3 rounded-xl text-[13px] border border-red-100 mb-4">
+            {error}
           </div>
         )}
         {showMemoryWindowHint && (
@@ -1936,20 +1813,9 @@ export function ChatSessionScreen({
                     </div>
                   </div>
                 )}
-                <div className="mb-4 flex justify-center" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
-                  <div className="relative max-w-[88%] rounded-full bg-zinc-200/60 px-3 py-1 pr-8 text-[11px] font-medium text-zinc-500 backdrop-blur-sm">
-                    <button
-                      type="button"
-                      onClick={() => deleteMessageAt(i)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-300/60 hover:text-zinc-600"
-                      aria-label="删除提示"
-                      title="删除提示"
-                    >
-                      <X size={12} />
-                    </button>
-                    <span className="block whitespace-pre-wrap break-words pr-1">
-                      {msg.text}
-                    </span>
+                <div className="flex justify-center mb-4" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
+                  <div className="bg-zinc-200/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] text-zinc-500 font-medium">
+                    {msg.text}
                   </div>
                 </div>
               </div>
@@ -2126,37 +1992,9 @@ export function ChatSessionScreen({
                           );
                         }
 
-                        if (msg.text.trim() === GAME_CARD_FAILURE_TOKEN) {
-                          return (
-                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                              <div className="w-64 rounded-2xl border border-red-100 bg-white/95 px-4 py-4 text-center shadow-sm">
-                                <div className="text-[12px] font-semibold text-red-500">卡片生成失败</div>
-                                <div className="mt-1 text-[10px] text-zinc-400">这次没有生成完整内容，可以手动重试一次</div>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void regenerateLatestReplyAt(i);
-                                  }}
-                                  disabled={isLoading}
-                                  className="mt-3 inline-flex items-center justify-center rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  重新生成卡片
-                                </button>
-                              </div>
-                              {showChatMessageTime && (
-                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                  {formatChatMessageTime(msg.timestamp)}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        }
+                        const gameCardPayload = parseGameCardPayload(msg);
 
-                        const gameCardPayloadState = parseGameCardPayloadState(msg);
-
-                        if (gameCardPayloadState.status === 'ok') {
-                          const gameCardPayload = gameCardPayloadState.payload;
+                        if (gameCardPayload) {
                           return (
                               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                 <div 
@@ -2180,22 +2018,6 @@ export function ChatSessionScreen({
                                 )}
                               </div>
                             );
-                        }
-
-                        if (gameCardPayloadState.status === 'incomplete') {
-                          return (
-                            <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                              <div className="w-64 rounded-2xl border border-zinc-200 bg-white/90 px-4 py-4 text-center shadow-sm">
-                                <div className="text-[12px] font-semibold text-zinc-700">卡片生成中</div>
-                                <div className="mt-1 text-[10px] text-zinc-400">等待内容完整后展示</div>
-                              </div>
-                              {showChatMessageTime && (
-                                <span className="text-[10px] text-zinc-400 shrink-0 mb-1">
-                                  {formatChatMessageTime(msg.timestamp)}
-                                </span>
-                              )}
-                            </div>
-                          );
                         }
 
                         if (msg.isVoiceCall) {
@@ -2796,7 +2618,7 @@ export function ChatSessionScreen({
       {/* Input */}
       <div 
         ref={chatFooterRef}
-        className={`chat-session-footer chat-footer absolute inset-x-0 z-20 ${footerClassName}`}
+        className={`chat-session-footer chat-footer ${footerClassName}`}
         style={chatFooterStyle}
       >
         {replyingTo && (
@@ -2977,33 +2799,33 @@ export function ChatSessionScreen({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="chat-footer-panel chat-footer-sticker-panel overflow-hidden"
+                className="overflow-hidden"
               >
                 <div className="pt-4">
-                  <div className="chat-footer-sticker-tabs flex border-b border-zinc-100 mb-3">
+                  <div className="flex border-b border-zinc-100 mb-3">
                     <button 
                       onClick={() => setStickerTab('basic')}
-                      className={`chat-footer-sticker-tab-button flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'basic' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'basic' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
                     >
                       基础表情
                     </button>
                     <button 
                       onClick={() => setStickerTab('custom')}
-                      className={`chat-footer-sticker-tab-button flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'custom' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
+                      className={`flex-1 py-2 text-[13px] font-medium transition-colors ${stickerTab === 'custom' ? 'text-zinc-900 border-b-2 border-zinc-900' : 'text-zinc-500 hover:bg-zinc-50'}`}
                     >
                       自定义表情
                     </button>
                   </div>
-                  <div className="chat-footer-sticker-scroll h-48 overflow-y-auto">
+                  <div className="h-48 overflow-y-auto">
                     {stickerTab === 'basic' ? (
-                      <div className="chat-footer-emoji-grid grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-7 gap-2">
                         {basicEmojis.map((emoji, idx) => (
                           <button 
                             key={idx}
                             onClick={() => {
                               setInput(prev => prev + emoji);
                             }}
-                            className="chat-footer-emoji-grid-button text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
+                            className="text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
                           >
                             {emoji}
                           </button>
@@ -3012,7 +2834,7 @@ export function ChatSessionScreen({
                     ) : (
                       <div>
                         {availableCustomStickers.length > 0 ? (
-                          <div className="chat-footer-custom-sticker-grid grid grid-cols-5 gap-2">
+                          <div className="grid grid-cols-5 gap-2">
                             {availableCustomStickers.map((sticker, idx) => (
                               <button 
                                 key={idx}
@@ -3020,14 +2842,14 @@ export function ChatSessionScreen({
                                   sendStickerMessage(sticker);
                                   setShowStickerPanel(false);
                                 }}
-                                className="chat-footer-custom-sticker-button aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
+                                className="aspect-square rounded-lg overflow-hidden border border-zinc-100 hover:border-blue-300 transition-colors"
                               >
                                 <PersistentImage value={sticker} className="w-full h-full object-cover" />
                               </button>
                             ))}
                           </div>
                         ) : (
-                          <div className="chat-footer-sticker-empty h-full flex flex-col items-center justify-center text-zinc-400 py-8">
+                          <div className="h-full flex flex-col items-center justify-center text-zinc-400 py-8">
                             <Smile size={32} className="mb-2 opacity-50" />
                             <p className="text-[12px]">暂无自定义表情</p>
                             <p className="text-[10px] mt-1">请在聊天设置中导入</p>
@@ -3048,14 +2870,14 @@ export function ChatSessionScreen({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="chat-footer-panel chat-footer-fun-panel overflow-hidden"
+                className="overflow-hidden"
               >
-                <div className="chat-footer-fun-grid pt-4 grid grid-cols-4 gap-4">
+                <div className="pt-4 grid grid-cols-4 gap-4">
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <ImageIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">发送图片</span>
@@ -3070,9 +2892,9 @@ export function ChatSessionScreen({
                   
                   <button 
                     onClick={startVoiceCall}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Phone size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">语音通话</span>
@@ -3085,9 +2907,9 @@ export function ChatSessionScreen({
                       setShowTransferDialog(true);
                       setShowFunPanel(false);
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Banknote size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">转给Ta</span>
@@ -3103,9 +2925,9 @@ export function ChatSessionScreen({
                       setShowDatingModal(true);
                       setShowFunPanel(false);
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Coffee size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">线下约会</span>
@@ -3116,9 +2938,9 @@ export function ChatSessionScreen({
                       setShowFunPanel(false);
                       sendCoupleSpaceInvitation();
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <CoupleSpaceInviteIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">情侣空间</span>
@@ -3129,9 +2951,9 @@ export function ChatSessionScreen({
                       setShowGameCenter(true);
                       setShowFunPanel(false);
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Gamepad2 size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">小游戏</span>
@@ -3142,9 +2964,9 @@ export function ChatSessionScreen({
                       setShowLocationPicker(true);
                       setShowFunPanel(false);
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <MapPin size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">发送定位</span>
@@ -3155,9 +2977,9 @@ export function ChatSessionScreen({
                       setShowFunPanel(false);
                       sendInnerVoiceProbe();
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-2"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
                       <Heart size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">心声</span>
@@ -3641,15 +3463,6 @@ export function ChatSessionScreen({
                     title="重回"
                   >
                     <RefreshCw size={20} />
-                  </button>
-                )}
-                {canGenerateMessageAudio(contextMenuMessage) && (
-                  <button
-                    onClick={() => void handleGenerateAudio()}
-                    className="p-2 text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors"
-                    title="生成语音"
-                  >
-                    <Volume2 size={20} />
                   </button>
                 )}
                 {contextMenuMessage.role === 'user' && !contextMenuMessage.isRecalled && (

@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { ForumComment, ForumPost } from '../../../types';
 import { useAppKeyboard } from '../../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
@@ -79,7 +79,6 @@ type ForumPostDetailViewProps = {
 
 export function ForumPostDetailView(props: ForumPostDetailViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const composerShellRef = useRef<HTMLDivElement | null>(null);
   const {
     post,
     author,
@@ -134,46 +133,14 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
 
   const postImages = post.images || [];
   const hotBadge = getForumHotBadgeLabel(post);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
-  const [composerHeight, setComposerHeight] = useState(76);
-
-  useEffect(() => {
-    const node = composerShellRef.current;
-    if (!node || typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const updateHeight = () => {
-      const nextHeight = Math.ceil(node.getBoundingClientRect().height);
-      if (nextHeight > 0) {
-        setComposerHeight(nextHeight);
-      }
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateHeight);
-      return () => {
-        window.removeEventListener('resize', updateHeight);
-      };
-    }
-
-    const observer = new ResizeObserver(() => updateHeight());
-    observer.observe(node);
-    window.addEventListener('resize', updateHeight);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, []);
 
   return (
-    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col relative" style={viewportStyle}>
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col relative">
       <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 px-4 pb-2 flex items-center gap-6" style={topInsetStyle}>
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
           <ArrowLeft size={20} />
@@ -184,7 +151,9 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
       <div
         className="px-4 pt-2 flex-1 min-h-0 overflow-y-auto pb-6"
         style={{
-          paddingBottom: `${composerHeight + (manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0 ? keyboardInset : 0) + 24}px`,
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+            ? `${keyboardInset + 24}px`
+            : undefined,
           transition: 'padding-bottom 180ms ease',
         }}
       >
@@ -365,27 +334,16 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
         </div>
       </div>
 
-      <div
-        ref={composerShellRef}
-        className="absolute inset-x-0 bottom-0 z-20"
-        style={{
-          bottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
-            ? `${keyboardInset}px`
-            : '0px',
-          transition: 'bottom 180ms ease',
-        }}
-      >
-        <ForumReplyComposer
-          currentUserAvatar={currentUserAvatar}
-          anonymousMainAvatar={anonymousMainAvatar}
-          defaultMaskId={defaultCommentMaskId}
-          availableCommentMasks={availableCommentMasks}
-          mainReplyText={mainReplyText}
-          onMainReplyTextChange={onMainReplyTextChange}
-          onSubmitSelfReply={onSubmitSelfReply}
-          onSubmitAnonymousReply={onSubmitAnonymousReply}
-        />
-      </div>
+      <ForumReplyComposer
+        currentUserAvatar={currentUserAvatar}
+        anonymousMainAvatar={anonymousMainAvatar}
+        defaultMaskId={defaultCommentMaskId}
+        availableCommentMasks={availableCommentMasks}
+        mainReplyText={mainReplyText}
+        onMainReplyTextChange={onMainReplyTextChange}
+        onSubmitSelfReply={onSubmitSelfReply}
+        onSubmitAnonymousReply={onSubmitAnonymousReply}
+      />
 
       {children}
     </div>

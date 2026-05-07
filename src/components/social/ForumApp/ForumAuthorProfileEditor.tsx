@@ -32,14 +32,14 @@ export function ForumAuthorProfileEditor({
   onChangeBio,
 }: ForumAuthorProfileEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
 
   return (
-    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col" style={viewportStyle}>
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
       <div className="px-4 pb-3 flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10" style={topInsetStyle}>
         <div className="flex items-center gap-6">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">
@@ -60,7 +60,7 @@ export function ForumAuthorProfileEditor({
       <div
         className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 16}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',

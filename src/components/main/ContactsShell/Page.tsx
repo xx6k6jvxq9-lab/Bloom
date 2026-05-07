@@ -16,7 +16,6 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
-import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
@@ -26,11 +25,11 @@ import {
 } from '../../../features/app-shell/formatMessagePreview';
 
 function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
-  const characterContext = buildCharacterContext({ character: character as Character });
   const candidates = [
     character.openingRemark,
     character.signature,
-    characterContext.corePersona,
+    character.corePersona,
+    character.setting,
   ];
 
   const structured = candidates.find((value) => looksLikeStructuredCardText(value));
@@ -430,10 +429,7 @@ export function ContactsApp({
         </div>
       </div>
 
-      <div
-        className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
-      >
+      <div className="flex-1 overflow-y-auto pb-24">
         {/* Top Items */}
         <div className="px-4 space-y-3 mt-2">
           <button 
@@ -555,7 +551,8 @@ export function ContactsApp({
                 const displayName = char.remarkName?.trim() || char.name;
                 const listPreview = sanitizePreviewText(char.signature)
                   || sanitizePreviewText(char.openingRemark)
-                  || sanitizePreviewText(buildCharacterContext({ character: char }).corePersona)
+                  || sanitizePreviewText(char.corePersona)
+                  || sanitizePreviewText(char.setting)
                   || '这个角色还没有简介。';
 
                 return (
@@ -925,10 +922,7 @@ export function CharacterMomentsProfile({
         <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">动态</h1>
       </div>
 
-      <div
-        className="relative flex-1 overflow-y-auto bg-zinc-50"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
-      >
+      <div className="flex-1 overflow-y-auto pb-24 relative bg-zinc-50">
         <div className="relative pb-4">
           <div className="h-40 relative overflow-hidden">
             <div className={`absolute inset-0 bg-gradient-to-br ${heroGradient}`} />
@@ -1085,8 +1079,8 @@ export function AddFriendModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1097,10 +1091,9 @@ export function AddFriendModal({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
-        ...(viewportStyle?.height ? { maxHeight: `calc(${viewportStyle.height} - 6rem)` } : {}),
-        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,
         transition: 'transform 180ms ease',
@@ -1161,8 +1154,8 @@ export function GroupManagementModal({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [newGroup, setNewGroup] = useState('');
-  const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardInset, keyboardVisible: appKeyboardVisible } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -1173,10 +1166,9 @@ export function GroupManagementModal({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 top-24 bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
       style={{
-        ...(viewportStyle?.height ? { maxHeight: `calc(${viewportStyle.height} - 6rem)` } : {}),
-        transform: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+        transform: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
           ? `translateY(-${keyboardInset}px)`
           : undefined,
         transition: 'transform 180ms ease',

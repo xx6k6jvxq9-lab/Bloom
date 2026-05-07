@@ -4,7 +4,6 @@ import { ChevronLeft, ImagePlus, Upload } from 'lucide-react';
 import type { Character } from '../../types';
 import { extractImageUrls } from '../../utils';
 import { extractCompatibleCharacterImport } from '../../features/import/importCompat';
-import { saveUploadedFile } from '../../features/persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
@@ -290,6 +289,14 @@ const buildImportedCharacterFromData = (
   } satisfies Character;
 };
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
+
 export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<'edit' | 'import'>('edit');
@@ -303,8 +310,8 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   const [openingRemark, setOpeningRemark] = useState('');
   const [groupId, setGroupId] = useState<string>('');
   const [importJson, setImportJson] = useState('');
-  const { keyboardVisible: appKeyboardVisible, keyboardInset, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: appKeyboardVisible, keyboardInset } = useAppKeyboard();
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -319,15 +326,13 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
 
   const handleSave = () => {
     if (!name.trim()) return alert('请输入角色名称');
-    const normalizedSetting = setting.slice(0, CHARACTER_FIELD_LIMITS.setting);
     onSave({
       id: Date.now().toString(),
       name: name.trim().slice(0, CHARACTER_FIELD_LIMITS.name),
       remarkName: remarkName.trim().slice(0, CHARACTER_FIELD_LIMITS.remarkName) || undefined,
       gender,
       avatar: avatar.trim().slice(0, CHARACTER_FIELD_LIMITS.avatar),
-      setting: normalizedSetting,
-      corePersona: normalizedSetting || undefined,
+      setting: setting.slice(0, CHARACTER_FIELD_LIMITS.setting),
       signature: signature.trim().slice(0, CHARACTER_FIELD_LIMITS.signature) || undefined,
       openingRemark: openingRemark.slice(0, CHARACTER_FIELD_LIMITS.openingRemark),
       groupId: groupId || undefined,
@@ -358,14 +363,14 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
 
     if (isPngCard) {
       try {
-        const [buffer, persistedAvatar] = await Promise.all([file.arrayBuffer(), saveUploadedFile(file)]);
+        const [buffer, dataUrl] = await Promise.all([file.arrayBuffer(), readFileAsDataUrl(file)]);
         const rawCard = extractTavernCharacterData(buffer);
         const normalized = extractCompatibleCharacterImport(JSON.stringify(rawCard));
         if (!normalized) {
           throw new Error('酒馆角色卡里缺少可导入的角色字段');
         }
         setImportJson(JSON.stringify(rawCard, null, 2).slice(0, CHARACTER_FIELD_LIMITS.importText));
-        onSave(buildImportedCharacterFromData(normalized, { avatar: persistedAvatar }));
+        onSave(buildImportedCharacterFromData(normalized, { avatar: dataUrl }));
       } catch (e: any) {
         alert(`导入失败：${e.message}`);
       }
@@ -389,7 +394,6 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
     <motion.div
       ref={containerRef}
       className="absolute inset-0 z-50 flex flex-col bg-white"
-      style={viewportStyle}
     >
       <div className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 pt-12 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -406,7 +410,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       <div
         className="flex-1 overflow-y-auto p-5"
         style={{
-          paddingBottom: manualKeyboardAvoidanceEnabled && ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
+          paddingBottom: ownsFocusedKeyboard && appKeyboardVisible && keyboardInset > 0
             ? `${keyboardInset + 20}px`
             : undefined,
           transition: 'padding-bottom 180ms ease',
@@ -444,15 +448,12 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        try {
-                          const persistedValue = await saveUploadedFile(file);
-                          setAvatar(persistedValue);
-                        } catch (error: any) {
-                          alert(error?.message || '图片读取失败');
-                        }
+                        readFileAsDataUrl(file)
+                          .then((url) => setAvatar(url))
+                          .catch((error) => alert(error.message || '图片读取失败'));
                         e.currentTarget.value = '';
                       }}
                     />

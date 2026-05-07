@@ -1,22 +1,16 @@
 import { useSyncExternalStore } from 'react';
 
 export type AppKeyboardState = {
-  isIosBrowserMode: boolean;
-  usesVisualViewportKeyboardLayout: boolean;
   keyboardVisible: boolean;
   keyboardInset: number;
   layoutViewportHeight: number;
-  manualKeyboardAvoidanceEnabled: boolean;
   visualViewportHeight: number;
 };
 
 const DEFAULT_KEYBOARD_STATE: AppKeyboardState = {
-  isIosBrowserMode: false,
-  usesVisualViewportKeyboardLayout: false,
   keyboardVisible: false,
   keyboardInset: 0,
   layoutViewportHeight: 0,
-  manualKeyboardAvoidanceEnabled: false,
   visualViewportHeight: 0,
 };
 
@@ -29,12 +23,9 @@ function emitKeyboardChange() {
 
 export function setAppKeyboardState(nextState: AppKeyboardState) {
   const changed = (
-    currentKeyboardState.isIosBrowserMode !== nextState.isIosBrowserMode
-    || currentKeyboardState.usesVisualViewportKeyboardLayout !== nextState.usesVisualViewportKeyboardLayout
-    || currentKeyboardState.keyboardVisible !== nextState.keyboardVisible
+    currentKeyboardState.keyboardVisible !== nextState.keyboardVisible
     || currentKeyboardState.keyboardInset !== nextState.keyboardInset
     || currentKeyboardState.layoutViewportHeight !== nextState.layoutViewportHeight
-    || currentKeyboardState.manualKeyboardAvoidanceEnabled !== nextState.manualKeyboardAvoidanceEnabled
     || currentKeyboardState.visualViewportHeight !== nextState.visualViewportHeight
   );
 
