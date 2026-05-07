@@ -1,6 +1,31 @@
-import { ensureApiCenterConfig } from './defaults';
+import {
+  convertLegacyApiConfigToProviderConfig,
+  ensureApiCenterConfig,
+  resolveLegacyActiveApiConfig,
+} from './defaults';
 import { matchSingleChatRule } from './matchSingleChatRule';
 import type { ResolveTextCallConfigParams, ResolvedTextCallConfig } from './types';
+
+function resolveDefaultTextFallback(
+  params: ResolveTextCallConfigParams,
+  apiCenterConfig: ReturnType<typeof ensureApiCenterConfig>,
+): ResolvedTextCallConfig {
+  const legacyActiveConfig = resolveLegacyActiveApiConfig(params.settings);
+  if (legacyActiveConfig) {
+    return {
+      source: 'legacy-active',
+      config: convertLegacyApiConfigToProviderConfig(legacyActiveConfig),
+      legacyConfig: legacyActiveConfig,
+    };
+  }
+
+  return {
+    source: 'default',
+    config: apiCenterConfig.defaultTextCall.enabled
+      ? apiCenterConfig.defaultTextCall.config
+      : null,
+  };
+}
 
 export function resolveTextCallConfig(
   params: ResolveTextCallConfigParams,
@@ -39,10 +64,5 @@ export function resolveTextCallConfig(
     };
   }
 
-  return {
-    source: 'default',
-    config: apiCenterConfig.defaultTextCall.enabled
-      ? apiCenterConfig.defaultTextCall.config
-      : null,
-  };
+  return resolveDefaultTextFallback(params, apiCenterConfig);
 }

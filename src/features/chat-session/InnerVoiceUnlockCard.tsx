@@ -9,6 +9,7 @@ export type InnerVoiceUnlockCardProps = {
   date: string;
   headline: string;
   body: string;
+  translation?: string;
   ps?: string;
   isSaved?: boolean;
   onSave: () => void;
@@ -109,6 +110,7 @@ export function InnerVoiceUnlockCard({
   date,
   headline,
   body,
+  translation,
   ps,
   isSaved = false,
   onSave,
@@ -119,6 +121,10 @@ export function InnerVoiceUnlockCard({
   const bodyParagraphs = useMemo(
     () => body.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean),
     [body],
+  );
+  const translationParagraphs = useMemo(
+    () => (translation || '').split(/\n{2,}/).map((item) => item.trim()).filter(Boolean),
+    [translation],
   );
 
   return (
@@ -195,6 +201,31 @@ export function InnerVoiceUnlockCard({
             </motion.p>
           ))}
         </div>
+
+        {translationParagraphs.length > 0 ? (
+          <div className="mt-4 border-t border-[rgba(160,140,120,0.1)] pt-4">
+            <div
+              className="mb-2 text-[11px] font-medium tracking-[0.12em]"
+              style={{ color: '#B0A090', fontFamily: SERIF_FONT }}
+            >
+              中文翻译
+            </div>
+            <div className="space-y-3">
+              {translationParagraphs.map((paragraph, index) => (
+                <motion.p
+                  key={`${paragraph}-${index}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.38, delay: 0.36 + index * 0.12, ease: 'easeOut' }}
+                  className="whitespace-pre-wrap break-words text-[12px] font-light leading-[1.9]"
+                  style={{ color: '#938275', fontFamily: SERIF_FONT }}
+                >
+                  {paragraph}
+                </motion.p>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {ps ? (
           <motion.p

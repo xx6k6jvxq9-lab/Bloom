@@ -1,3 +1,6 @@
+import type { ChatMessage } from '../../types';
+import { getLegacyTranslationParts } from '../../services/chat/messageText';
+
 const HTML_BLOCK_TAG_REGEX = /<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const HTML_LINEBREAK_TAG_REGEX = /<(br|\/p|\/div|\/li|\/summary|\/h[1-6])\b[^>]*>/gi;
 const HTML_TAG_REGEX = /<[^>]+>/g;
@@ -74,3 +77,40 @@ export const formatMessagePreview = (text: string | undefined): string => {
 
   return sanitizePreviewText(text);
 };
+
+export function formatChatMessagePreview(
+  message: Pick<ChatMessage, 'role' | 'text' | 'contentType' | 'isInnerVoice' | 'transferDisplayLabel'> | null | undefined,
+): string {
+  if (!message) {
+    return '';
+  }
+
+  if (message.contentType === 'inner-voice' || message.isInnerVoice) {
+    return message.role === 'user' ? '[倾听心声]' : '[对方的心声]';
+  }
+
+  if (message.contentType === 'game-card-error') {
+    return '[卡片生成失败]';
+  }
+
+  if (message.contentType === 'game-card') {
+    return '[游戏卡片]';
+  }
+
+  if (message.contentType === 'transfer') {
+    return message.transferDisplayLabel?.trim()
+      ? `[${message.transferDisplayLabel.trim()}]`
+      : '[转账消息]';
+  }
+
+  if (message.contentType === 'couple-space-invite') {
+    return '[情侣空间邀请]';
+  }
+
+  if (message.contentType === 'couple-space-invite-accepted') {
+    return '[情侣空间已建立]';
+  }
+
+  const mainText = getLegacyTranslationParts(message.text || '').mainText;
+  return formatMessagePreview(mainText || message.text || '');
+}

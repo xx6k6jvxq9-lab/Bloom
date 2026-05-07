@@ -7,6 +7,7 @@ import type {
   ChatGroup,
   ChatHistory,
   ChatMessage,
+  ChatMessageContentType,
   CoupleSpaceData,
   FavoriteMessage,
   Mask,
@@ -53,7 +54,11 @@ import {
 import { buildDirectContextLayers } from '../../services/chat/buildDirectContextLayers';
 import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
 import { reconcileCharacterRuntimeState } from '../../services/chat/reconcileCharacterRuntimeState';
-import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import {
+  isDisplayableAssistantBubbleText,
+  splitDirectAssistantReplyText,
+  stripAssistantSpeakerPrefix,
+} from '../../services/chat/assistantText';
 import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
 import {
   buildAutonomousAvatarLibraryPromptSection,
@@ -83,6 +88,47 @@ const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
 const STRUCTURED_BILINGUAL_REPLY_TOKEN = '[BILINGUAL_REPLY]';
+const CJK_TEXT_REGEX = /[\u4e00-\u9fff]/u;
+const LATIN_TOKEN_REGEX = /[A-Za-z]{2,}/g;
+const AUTONOMOUS_AVATAR_TRIGGER_REGEX = /头像|照片|图片|样子|长相|看起来|外形|形象|自拍|封面|这张|那张|换成|换这张|像你|像不像|气质|profile|avatar|photo|picture|look/i;
+
+function isGameCardText(value: string | null | undefined): boolean {
+  return (value?.trim() || '').startsWith('[GAME_CARD]');
+}
+
+function resolveChatMessageContentType(params: {
+  text?: string | null;
+  isInnerVoice?: boolean;
+  transferStatus?: ChatMessage['transferStatus'];
+}): ChatMessageContentType | undefined {
+  const trimmedText = params.text?.trim() || '';
+
+  if (params.isInnerVoice) {
+    return 'inner-voice';
+  }
+
+  if (trimmedText === GAME_CARD_FAILURE_TOKEN) {
+    return 'game-card-error';
+  }
+
+  if (isGameCardText(trimmedText)) {
+    return 'game-card';
+  }
+
+  if (trimmedText === COUPLE_SPACE_INVITE_TOKEN) {
+    return 'couple-space-invite';
+  }
+
+  if (trimmedText === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN) {
+    return 'couple-space-invite-accepted';
+  }
+
+  if (params.transferStatus || parseTransferProtocol(trimmedText)) {
+    return 'transfer';
+  }
+
+  return trimmedText ? 'text' : undefined;
+}
 
 function isChineseLanguageName(value: string | null | undefined): boolean {
   const normalized = value?.trim().toLowerCase() || '';
@@ -130,6 +176,7 @@ function buildInlineReplyTranslationPrompt(character: Character): string {
     '如果这轮使用了协议型输出（例如 `GAME_CARD`），也要把翻译放在协议正文之后，用 `---TRANSLATION---` 分隔，不要把翻译塞进 JSON 字段里。',
     '翻译部分只做自然中文转写，不要补充解释、注释、语言标签、括号说明或额外寒暄。',
     '如果正文被拆成多条短气泡，翻译部分也必须按完全相同的气泡顺序输出，并使用 `|||` 分隔每一条对应翻译。',
+    '如果你不确定如何把翻译一一对应到多个气泡，请优先把正文控制成一个气泡，再给出一整段对应翻译，不要出现“正文拆开了但翻译只剩一部分”的情况。',
     '除 `---TRANSLATION---` 这条分隔线外，不要输出任何额外格式标记。',
   ].join('\n');
 }
@@ -146,7 +193,9 @@ function buildStructuredBilingualReplyPrompt(character: Character): string {
     'segments 的顺序就是最终聊天气泡顺序；如果本轮只需要一个气泡，就只输出一个 segment。',
     '每个 segment 的 text 和 translation 都必须是单行字符串，不要在字段里换行，不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
     '如果需要 [reply: ...]、[recall]、[sticker] 这类轻量 cue，把 cue 直接写进 text 字段里；translation 仍然必须填写对应中文。',
-    '如果本轮是纯协议型消息（例如 [GAME_CARD]、[COUPLE_SPACE_INVITE_ACCEPTED]、转账协议）且没有普通正文，可以继续沿用原协议。',
+    '如果本轮是纯协议型消息（例如 [COUPLE_SPACE_INVITE_ACCEPTED]、转账协议）且没有普通正文，可以继续沿用原协议。',
+    '如果本轮输出的是 GAME_CARD，并且卡片里的 question/content 不是中文，那么仍然必须在协议正文后追加 `---TRANSLATION---`，给出对应的简体中文翻译。',
+    '如果你不确定该分成几个 segment，请优先只输出一个 segment，把正文和翻译都写完整；不要出现多个 text，但 translation 数量或内容对不齐的情况。',
     '只要本轮存在普通正文，就绝对不要省略 translation，也不要改回旧的 ---TRANSLATION--- 写法。',
   ].join('\n');
 }
@@ -218,6 +267,31 @@ function normalizeStructuredBilingualReplyToLegacyFormat(text: string): string {
   return `${mainText}\n\n---TRANSLATION---\n${translationText}`;
 }
 
+function shouldRequireGameCardTranslation(text: string): boolean {
+  const gameCard = parseGameCardData(text, { silent: true });
+  if (!gameCard) {
+    return false;
+  }
+
+  const combined = [
+    typeof gameCard.question === 'string' ? gameCard.question.trim() : '',
+    typeof gameCard.content === 'string' ? gameCard.content.trim() : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+
+  if (!combined) {
+    return false;
+  }
+
+  if (CJK_TEXT_REGEX.test(combined)) {
+    return false;
+  }
+
+  return (combined.match(LATIN_TOKEN_REGEX)?.length ?? 0) > 0;
+}
+
 function hasRequiredDirectReplyTranslation(text: string): boolean {
   const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(text);
   const { mainText, translation } = getLegacyTranslationParts(normalizedText);
@@ -229,7 +303,12 @@ function hasRequiredDirectReplyTranslation(text: string): boolean {
 
   if (
     visibleMainText.startsWith('[GAME_CARD]')
-    || visibleMainText === COUPLE_SPACE_INVITE_TOKEN
+  ) {
+    return !shouldRequireGameCardTranslation(visibleMainText) || translation.trim().length > 0;
+  }
+
+  if (
+    visibleMainText === COUPLE_SPACE_INVITE_TOKEN
     || visibleMainText === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN
   ) {
     return true;
@@ -766,7 +845,9 @@ const splitStreamingModelResponseIntoMessages = (
   const transferProtocol = parseTransferProtocol(trimmedText);
 
   if (options.isInnerVoice) {
-    const innerVoiceText = stripTransferProtocolText(text);
+    const innerVoiceParts = getLegacyTranslationParts(stripTransferProtocolText(text));
+    const innerVoiceText = innerVoiceParts.mainText.trim();
+    const innerVoiceTranslation = innerVoiceParts.translation.trim();
     const messages: ChatMessage[] = [];
 
     if (innerVoiceText) {
@@ -775,6 +856,8 @@ const splitStreamingModelResponseIntoMessages = (
         text: innerVoiceText,
         timestamp: baseTimestamp,
         isInnerVoice: true,
+        contentType: 'inner-voice',
+        ...(innerVoiceTranslation ? { translation: innerVoiceTranslation } : {}),
       });
     }
 
@@ -785,14 +868,17 @@ const splitStreamingModelResponseIntoMessages = (
         timestamp: baseTimestamp + messages.length,
         transferStatus: 'pending',
         transferTargetLabel: options.transferTargetLabel,
+        contentType: 'transfer',
       });
     }
 
     return messages.length > 0 ? messages : [{
       role: 'model',
-      text,
+      text: innerVoiceText || text,
       timestamp: baseTimestamp,
       isInnerVoice: true,
+      contentType: 'inner-voice',
+      ...(innerVoiceTranslation ? { translation: innerVoiceTranslation } : {}),
     }];
   }
 
@@ -804,6 +890,14 @@ const splitStreamingModelResponseIntoMessages = (
       role: 'model',
       text,
       timestamp: baseTimestamp,
+      ...(trimmedText
+        ? {
+            contentType:
+              trimmedText === GAME_CARD_FAILURE_TOKEN
+                ? 'game-card-error' as const
+                : 'game-card' as const,
+          }
+        : {}),
     }];
   }
 
@@ -822,7 +916,16 @@ const splitStreamingModelResponseIntoMessages = (
         options.maxDirectReplyBubbles,
       )
     : [];
-  const mappedMessages = parts.map((part, index) => {
+  const shouldCollapseForTranslation =
+    !!legacyTranslationParts.translation.trim()
+    && parts.length > 1
+    && translationParts.filter(Boolean).length <= 1
+    && parts.every((part) => parseDirectActionCue(part).kind === 'normal');
+  const effectiveParts = shouldCollapseForTranslation ? [mainText] : parts;
+  const effectiveTranslationParts = shouldCollapseForTranslation
+    ? [sanitizePipeMarkers(legacyTranslationParts.translation, '\n')]
+    : translationParts;
+  const mappedMessages = effectiveParts.map((part, index) => {
     const cue = parseDirectActionCue(part);
     const pickedSticker = cue.kind === 'sticker'
       ? pickAssistantSticker(cue.content, options.availableStickers || [])
@@ -844,16 +947,17 @@ const splitStreamingModelResponseIntoMessages = (
     return {
       role: 'model' as const,
       text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : bodyText,
+      contentType: 'text' as const,
       ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
       ...(replyTo ? { replyTo } : {}),
-      ...(translationParts[index] ? { translation: translationParts[index] } : {}),
+      ...(effectiveTranslationParts[index] ? { translation: effectiveTranslationParts[index] } : {}),
       timestamp: baseTimestamp + index,
     };
   });
 
   const visibleMessages: ChatMessage[] = mappedMessages.filter((message) => (
     !!message.imageUrl
-    || isUsableChatText(message.text || '')
+    || isDisplayableAssistantBubbleText(message.text || '')
   ));
   if (transferProtocol) {
     const nextMessages: ChatMessage[] = [
@@ -864,6 +968,7 @@ const splitStreamingModelResponseIntoMessages = (
         timestamp: baseTimestamp + visibleMessages.length,
         transferStatus: 'pending',
         transferTargetLabel: options.transferTargetLabel,
+        contentType: 'transfer',
       },
     ];
     if (hasCoupleSpaceAcceptedToken) {
@@ -871,6 +976,7 @@ const splitStreamingModelResponseIntoMessages = (
         role: 'model' as const,
         text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
         timestamp: baseTimestamp + nextMessages.length,
+        contentType: 'couple-space-invite-accepted',
       });
     }
     return nextMessages;
@@ -883,6 +989,7 @@ const splitStreamingModelResponseIntoMessages = (
         role: 'model' as const,
         text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
         timestamp: baseTimestamp + visibleMessages.length,
+        contentType: 'couple-space-invite-accepted',
       },
     ];
   }
@@ -939,7 +1046,7 @@ function parseGameCardData(text: string, options?: { silent?: boolean }) {
   if (parsed.status === 'ok') {
     return parsed.data;
   }
-  if (parsed.status === 'invalid' && !options?.silent) {
+  if (parsed.status === 'invalid' && !options?.silent && isGameCardText(text)) {
     console.warn('Ignoring invalid runtime game card payload.', parsed.error);
   }
 
@@ -987,7 +1094,14 @@ function applyDirectGameCardBridge(params: {
     return replyText;
   }
 
-  const gameData = parseGameCardData(latestUserMessage.text || '');
+  const shouldInspectGameCard =
+    latestUserMessage.contentType === 'game-card'
+    || isGameCardText(latestUserMessage.text || '');
+  if (!shouldInspectGameCard) {
+    return replyText;
+  }
+
+  const gameData = parseGameCardData(latestUserMessage.text || '', { silent: true });
   const responseType = resolveGameCardReplyType(gameData);
   if (!gameData || !responseType) {
     return replyText;
@@ -1002,8 +1116,18 @@ function applyDirectGameCardBridge(params: {
     content: trimmedReply,
   };
 
-  return replyParts.translation.trim()
-    ? `[GAME_CARD] ${JSON.stringify(bridgedCard)}\n\n---TRANSLATION---\n${replyParts.translation.trim()}`
+  const latestCardTranslation = (
+    latestUserMessage.translation?.trim()
+    || getLegacyTranslationParts(latestUserMessage.text || '').translation.trim()
+  );
+  const responseTranslation = replyParts.translation.trim();
+  const combinedTranslation =
+    responseType === 'answer' && latestCardTranslation && responseTranslation
+      ? `${latestCardTranslation}---${responseTranslation}`
+      : responseTranslation;
+
+  return combinedTranslation
+    ? `[GAME_CARD] ${JSON.stringify(bridgedCard)}\n\n---TRANSLATION---\n${combinedTranslation}`
     : `[GAME_CARD] ${JSON.stringify(bridgedCard)}`;
 }
 
@@ -1045,7 +1169,12 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
     ].join('\n');
   }
 
-  const gameCard = parseGameCardData(message.text || '');
+  const shouldInspectGameCard =
+    message.contentType === 'game-card'
+    || isGameCardText(message.text || '');
+  const gameCard = shouldInspectGameCard
+    ? parseGameCardData(message.text || '', { silent: true })
+    : null;
   if (gameCard && typeof gameCard.content === 'string') {
     const cardType = (() => {
       if (gameCard.game === 'qna') {
@@ -1079,6 +1208,7 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
       cardType.instruction,
       `建议协议骨架： [GAME_CARD] {"game":"${gameCard.game}","type":"${cardType.responseType}","question":${JSON.stringify(typeof gameCard.question === 'string' ? gameCard.question : '')},"content":"角色真正会说的话"}`,
       '要求：卡片内容要像这个角色本人说出来的，不要写成系统说明；最终输出优先直接给出可解析的 GAME_CARD，不要先写普通文本再解释。',
+      '如果卡片里的自然语言不是中文，并且当前回复需要双语展示，那么必须在 GAME_CARD 协议正文后追加 `---TRANSLATION---`，写对应的简体中文翻译。',
     ].join('\n');
   }
 
@@ -1258,6 +1388,27 @@ function formatChatApiError(error: unknown): string {
   }
 
   return `错误: ${normalized}`;
+}
+
+function shouldInjectAutonomousAvatarPrompt(input: {
+  character: Character;
+  messages: ChatMessage[];
+  latestUserText?: string;
+}): boolean {
+  if ((input.character.avatarLibrary?.entries || []).length === 0) {
+    return false;
+  }
+
+  if (latestUserMessageHasAvatarIntent(input.messages)) {
+    return true;
+  }
+
+  const normalizedText = input.latestUserText?.trim() || '';
+  if (!normalizedText) {
+    return false;
+  }
+
+  return AUTONOMOUS_AVATAR_TRIGGER_REGEX.test(normalizedText);
 }
 
 function extractSpeechTextForAudio(text: string): string {
@@ -1659,7 +1810,13 @@ export function useDirectChatRuntime({
               }),
               contextLayers.memoryContextPrompt,
               buildAvatarActionPromptSection(character, historySnapshot),
-              buildAutonomousAvatarLibraryPromptSection(character),
+              shouldInjectAutonomousAvatarPrompt({
+                character,
+                messages: historySnapshot,
+                latestUserText: latestPendingUserMessage?.text,
+              })
+                ? buildAutonomousAvatarLibraryPromptSection(character)
+                : '',
               buildAssistantStickerPromptSection(availableStickers),
               structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
             ].filter(Boolean),
@@ -1886,11 +2043,18 @@ export function useDirectChatRuntime({
     }
 
     const shouldSuppressUserText = !!overridePayload?.suppressUserText && !!effectiveLocationData;
+    const userMessageText = shouldSuppressUserText
+      ? ''
+      : (overridePayload?.userText?.trim() || textToSend.trim() || (effectiveLocationData ? `[位置分享] ${effectiveLocationData.name}` : ''));
+    const isInnerVoiceOverride = overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]';
+    const userMessageContentType = resolveChatMessageContentType({
+      text: userMessageText,
+      isInnerVoice: isInnerVoiceOverride,
+    });
     const userMsg: ChatMessage = {
       role: 'user',
-      text: shouldSuppressUserText
-        ? ''
-        : (overridePayload?.userText?.trim() || textToSend.trim() || (effectiveLocationData ? `[位置分享] ${effectiveLocationData.name}` : '')),
+      text: userMessageText,
+      ...(userMessageContentType ? { contentType: userMessageContentType } : {}),
       timestamp: Date.now(),
       ...(replyingTo ? { replyTo: replyingTo } : {}),
       ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
@@ -1898,7 +2062,7 @@ export function useDirectChatRuntime({
       ...(overridePayload?.audioUrl ? { audioUrl: overridePayload.audioUrl, audioMimeType: overridePayload.audioMimeType } : {}),
       ...(typeof overridePayload?.duration === 'number' ? { duration: overridePayload.duration } : {}),
       ...(overridePayload?.stickerLabel ? { stickerLabel: overridePayload.stickerLabel } : {}),
-      ...((overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]') ? { isInnerVoice: true } : {}),
+      ...(isInnerVoiceOverride ? { isInnerVoice: true } : {}),
     };
     const newHistory = [...baseHistory, userMsg];
     setHistory(newHistory);
@@ -1913,7 +2077,7 @@ export function useDirectChatRuntime({
       return;
     }
 
-    const isInnerVoiceRequest = overridePayload?.isInnerVoice || textToSend.trim() === '[倾听心声]';
+    const isInnerVoiceRequest = isInnerVoiceOverride;
     const directSpecialReplyPrompt = buildDirectSpecialReplyPrompt(userMsg);
     const assistantMsgId = Date.now() + 1;
     activeAssistantMessageIdRef.current = assistantMsgId;
@@ -2090,7 +2254,13 @@ export function useDirectChatRuntime({
           }),
           contextLayers.memoryContextPrompt,
           buildAvatarActionPromptSection(character, newHistory),
-          buildAutonomousAvatarLibraryPromptSection(character),
+          shouldInjectAutonomousAvatarPrompt({
+            character,
+            messages: newHistory,
+            latestUserText: userMsg.text,
+          })
+            ? buildAutonomousAvatarLibraryPromptSection(character)
+            : '',
           buildAssistantStickerPromptSection(availableStickers),
           structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
         ].filter(Boolean),
@@ -2302,6 +2472,7 @@ export function useDirectChatRuntime({
     const userMsg: ChatMessage = {
       role: 'user',
       text: '[COUPLE_SPACE_INVITE]',
+      contentType: 'couple-space-invite',
       timestamp: Date.now(),
     };
     const nextHistory = [...historyRef.current, userMsg];
@@ -2322,14 +2493,17 @@ export function useDirectChatRuntime({
         });
 
         const latestHistory = historyRef.current;
+        const inviteReplyContentType = resolveChatMessageContentType({ text: replyText });
         const modelReply: ChatMessage = {
           role: 'model',
           text: replyText,
+          ...(inviteReplyContentType ? { contentType: inviteReplyContentType } : {}),
           timestamp: Date.now(),
         };
         const acceptedCard: ChatMessage = {
           role: 'model',
           text: '[COUPLE_SPACE_INVITE_ACCEPTED]',
+          contentType: 'couple-space-invite-accepted',
           timestamp: Date.now() + 1,
         };
         setHistory([...latestHistory, modelReply, acceptedCard]);
@@ -2671,6 +2845,11 @@ export function useDirectChatRuntime({
     const cleanText = targetMessage.text?.trim() || '';
     if (
       !cleanText
+      || targetMessage.contentType === 'game-card'
+      || targetMessage.contentType === 'game-card-error'
+      || targetMessage.contentType === 'transfer'
+      || targetMessage.contentType === 'couple-space-invite'
+      || targetMessage.contentType === 'couple-space-invite-accepted'
       || cleanText.startsWith('[GAME_CARD]')
       || cleanText.startsWith('[COUPLE_SPACE_INVITE')
       || cleanText.startsWith('[transfer]')
@@ -2750,6 +2929,7 @@ export function useDirectChatRuntime({
       const transferMessage: ChatMessage = {
         role: 'user',
         text: `[转账 ${transferAmount}]`,
+        contentType: 'transfer',
         timestamp: Date.now(),
         transferStatus: 'pending',
         transferId,
@@ -2768,6 +2948,7 @@ export function useDirectChatRuntime({
     const modelMsg: ChatMessage = {
       role: 'model',
       text: `[转账 ${transferAmount}]`,
+      contentType: 'transfer',
       timestamp: Date.now(),
       transferStatus: 'pending',
       transferId: `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2788,6 +2969,7 @@ export function useDirectChatRuntime({
     const receiptCard: ChatMessage = {
       role: 'user',
       text: `[转账 ${amountStr}]`,
+      contentType: 'transfer',
       timestamp: Date.now(),
       transferStatus: 'received',
       transferDisplayLabel: '已收款',
@@ -2849,6 +3031,7 @@ export function useDirectChatRuntime({
     nextHistory.push({
       role: 'user',
       text: `[转账 ${amountStr}]`,
+      contentType: 'transfer',
       timestamp: Date.now(),
       transferStatus: 'rejected',
       transferDisplayLabel: '已退回',

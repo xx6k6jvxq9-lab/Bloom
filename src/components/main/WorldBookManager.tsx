@@ -1,20 +1,22 @@
 import React, { useRef, useState } from 'react';
-import { Book, Check, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import { Book, Check, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import type { WorldBookEntry } from '../../types';
 import { useAppKeyboard } from '../../features/app-shell/AppKeyboardContext';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
   getWorldBookPriorityLabel,
+  getWorldBookPriorityWeight,
   normalizeWorldBookCategory,
   normalizeWorldBookPriorityLevel,
   sortWorldBooksByPriority,
   WORLD_BOOK_CATEGORY_PRESETS,
   WORLD_BOOK_PRIORITY_OPTIONS,
 } from '../../services/world-book/worldBookMeta';
-import { extractCompatibleWorldBookEntries } from '../../features/import/importCompat';
+import { extractCompatibleWorldBookEntriesFromFile } from '../../features/import/importCompat';
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 import { showInAppConfirm } from '../../utils';
+import { WorldBookImportReviewSheet, type WorldBookImportDraft } from './WorldBookImportReviewSheet';
 
 type WorldBookManagerProps = {
   worldBooks: WorldBookEntry[];
@@ -134,10 +136,19 @@ export function WorldBookManager({
   });
 
   const [editForm, setEditForm] = useState<Partial<WorldBookEntry>>(createEmptyForm());
+  const [importDrafts, setImportDrafts] = useState<WorldBookImportDraft[] | null>(null);
+  const [showAdvancedImportReview, setShowAdvancedImportReview] = useState(false);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedWorldBookIds, setSelectedWorldBookIds] = useState<Set<string>>(new Set());
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [batchCategoryDraft, setBatchCategoryDraft] = useState('');
+  const [batchScopeMode, setBatchScopeMode] = useState<'keep' | 'global' | 'character'>('keep');
+  const [batchCharacterIdsDraft, setBatchCharacterIdsDraft] = useState<string[]>([]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
@@ -155,6 +166,9 @@ export function WorldBookManager({
       ? worldBooks
       : worldBooks.filter((worldBook) => normalizeWorldBookCategory(worldBook.category) === activeCategory),
   );
+  const selectedWorldBooks = worldBooks.filter((worldBook) => selectedWorldBookIds.has(worldBook.id));
+  const filteredWorldBookIds = filtered.map((worldBook) => worldBook.id);
+  const allFilteredSelected = filteredWorldBookIds.length > 0 && filteredWorldBookIds.every((id) => selectedWorldBookIds.has(id));
 
   const selectedScopeNames = getWorldBookScopeNames(
     {
@@ -169,6 +183,211 @@ export function WorldBookManager({
     },
     characters,
   );
+
+  const buildImportDrafts = (entries: WorldBookEntry[]): WorldBookImportDraft[] => (
+    entries.map((entry, index) => ({
+      ...entry,
+      draftId: `${entry.id || 'import'}-${index}-${Math.random().toString(16).slice(2)}`,
+      include: true,
+      mergeGroup: '',
+    }))
+  );
+
+  const mergeImportedDraftGroup = (groupName: string, drafts: WorldBookImportDraft[]): WorldBookEntry => {
+    const normalizedGroupName = groupName.trim();
+    const categories = Array.from(new Set(drafts.map((draft) => normalizeWorldBookCategory(draft.category))));
+    const mergedPriority = drafts.reduce<WorldBookEntry['priorityLevel']>((best, current) => {
+      const currentWeight = getWorldBookPriorityWeight(current.priorityLevel);
+      const bestWeight = getWorldBookPriorityWeight(best);
+      return currentWeight >= bestWeight ? current.priorityLevel : best;
+    }, 'normal');
+    const mergedCharacterIds = Array.from(new Set(drafts.flatMap((draft) => draft.characterIds || [])));
+    const mergedContent = drafts
+      .map((draft) => [drafts.length > 1 ? `## ${draft.title}` : '', draft.content.trim()].filter(Boolean).join('\n'))
+      .join('\n\n');
+    const nextId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return {
+      id: nextId,
+      title: normalizedGroupName || drafts[0].title,
+      content: mergedContent,
+      category: categories.length === 1 ? categories[0] : '其他',
+      priorityLevel: mergedPriority,
+      isActive: drafts.some((draft) => draft.isActive !== false),
+      isGlobal: mergedCharacterIds.length === 0,
+      characterIds: mergedCharacterIds,
+      pinMode: drafts.some((draft) => draft.pinMode === 'always') ? 'always' : 'none',
+      chunkCache: buildWorldBookChunkCache({
+        id: nextId,
+        content: mergedContent,
+      }),
+    };
+  };
+
+  const buildImportedWorldBooksFromDrafts = (drafts: WorldBookImportDraft[]): WorldBookEntry[] => {
+    const selectedDrafts = drafts.filter((draft) => draft.include);
+    const groupedDrafts = new Map<string, WorldBookImportDraft[]>();
+    const standaloneEntries: WorldBookEntry[] = [];
+
+    selectedDrafts.forEach((draft) => {
+      const groupName = draft.mergeGroup.trim();
+      if (!groupName) {
+        standaloneEntries.push({
+          ...draft,
+          chunkCache: buildWorldBookChunkCache({
+            id: draft.id,
+            content: draft.content,
+          }),
+        });
+        return;
+      }
+
+      const bucket = groupedDrafts.get(groupName) || [];
+      bucket.push(draft);
+      groupedDrafts.set(groupName, bucket);
+    });
+
+    const mergedEntries = Array.from(groupedDrafts.entries()).map(([groupName, grouped]) => (
+      mergeImportedDraftGroup(groupName, grouped)
+    ));
+
+    return [...mergedEntries, ...standaloneEntries];
+  };
+
+  const commitImportedWorldBooks = (entries: WorldBookEntry[]) => {
+    if (entries.length === 0) {
+      alert('至少选一条再导入。');
+      return;
+    }
+
+    setWorldBooks([...entries, ...worldBooks]);
+    setImportDrafts(null);
+    setShowAdvancedImportReview(false);
+    alert(`成功导入 ${entries.length} 条世界书。`);
+  };
+
+  const handleImportDefault = () => {
+    if (!importDrafts) return;
+    commitImportedWorldBooks(buildImportedWorldBooksFromDrafts(
+      importDrafts.map((draft) => ({ ...draft, mergeGroup: '' })),
+    ));
+  };
+
+  const toggleImportDraftInclude = (draftId: string) => {
+    setImportDrafts((prev) => prev
+      ? prev.map((draft) => (
+        draft.draftId === draftId
+          ? { ...draft, include: !draft.include }
+          : draft
+      ))
+      : prev);
+  };
+
+  const updateImportDraftMergeGroup = (draftId: string, value: string) => {
+    setImportDrafts((prev) => prev
+      ? prev.map((draft) => (
+        draft.draftId === draftId
+          ? { ...draft, mergeGroup: value }
+          : draft
+      ))
+      : prev);
+  };
+
+  const confirmReviewedImport = () => {
+    if (!importDrafts) return;
+    commitImportedWorldBooks(buildImportedWorldBooksFromDrafts(importDrafts));
+  };
+
+  const toggleBatchSelection = (worldBookId: string) => {
+    setSelectedWorldBookIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(worldBookId)) {
+        next.delete(worldBookId);
+      } else {
+        next.add(worldBookId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedWorldBookIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredWorldBookIds.forEach((id) => next.delete(id));
+      } else {
+        filteredWorldBookIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const exitBatchMode = () => {
+    setIsBatchMode(false);
+    setSelectedWorldBookIds(new Set());
+    setBatchCategoryDraft('');
+    setBatchScopeMode('keep');
+    setBatchCharacterIdsDraft([]);
+  };
+
+  const applyBatchActiveState = (active: boolean) => {
+    if (selectedWorldBookIds.size === 0) return;
+    setWorldBooks(worldBooks.map((worldBook) => (
+      selectedWorldBookIds.has(worldBook.id)
+        ? { ...worldBook, isActive: active }
+        : worldBook
+    )));
+  };
+
+  const applyBatchCategory = () => {
+    const normalizedCategory = normalizeWorldBookCategory(batchCategoryDraft);
+    if (!normalizedCategory || selectedWorldBookIds.size === 0) return;
+
+    setWorldBooks(worldBooks.map((worldBook) => (
+      selectedWorldBookIds.has(worldBook.id)
+        ? { ...worldBook, category: normalizedCategory }
+        : worldBook
+    )));
+  };
+
+  const applyBatchScope = () => {
+    if (selectedWorldBookIds.size === 0 || batchScopeMode === 'keep') return;
+
+    if (batchScopeMode === 'character' && batchCharacterIdsDraft.length === 0) {
+      alert('请先选至少一个角色。');
+      return;
+    }
+
+    setWorldBooks(worldBooks.map((worldBook) => {
+      if (!selectedWorldBookIds.has(worldBook.id)) {
+        return worldBook;
+      }
+
+      if (batchScopeMode === 'global') {
+        return {
+          ...worldBook,
+          isGlobal: true,
+          characterIds: [],
+        };
+      }
+
+      return {
+        ...worldBook,
+        isGlobal: false,
+        characterIds: batchCharacterIdsDraft,
+      };
+    }));
+  };
+
+  const deleteSelectedWorldBooks = async () => {
+    if (selectedWorldBookIds.size === 0) return;
+    if (!(await showInAppConfirm(`确定要删除选中的 ${selectedWorldBookIds.size} 条世界书吗？`))) {
+      return;
+    }
+
+    setWorldBooks(worldBooks.filter((worldBook) => !selectedWorldBookIds.has(worldBook.id)));
+    exitBatchMode();
+  };
 
   const handleSave = () => {
     const title = editForm.title?.trim();
@@ -212,50 +431,27 @@ export function WorldBookManager({
     }
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const compatibleEntries = extractCompatibleWorldBookEntries(content);
+    try {
+      const compatibleEntries = await extractCompatibleWorldBookEntriesFromFile(file);
       if (compatibleEntries.length > 0) {
-        setWorldBooks([...compatibleEntries, ...worldBooks]);
-        alert(`成功导入 ${compatibleEntries.length} 条设定`);
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(content);
-
-        if (!Array.isArray(parsed)) {
-          alert('文件格式不正确，需要是包含设定的 JSON 数组');
-          return;
+        if (compatibleEntries.length === 1) {
+          commitImportedWorldBooks(compatibleEntries);
+        } else {
+          setImportDrafts(buildImportDrafts(compatibleEntries));
+          setShowAdvancedImportReview(false);
         }
-
-        const validEntries = parsed
-          .filter((item) => item.title && item.content)
-          .map((item) => ({
-            id: item.id || `${Date.now()}-${Math.random()}`,
-            title: String(item.title),
-            content: String(item.content),
-            category: normalizeWorldBookCategory(item.category),
-            priorityLevel: normalizeWorldBookPriorityLevel(item.priorityLevel),
-            isActive: item.isActive ?? true,
-            isGlobal: item.isGlobal ?? true,
-            characterIds: Array.isArray(item.characterIds) ? item.characterIds : [],
-          }));
-
-        setWorldBooks([...validEntries, ...worldBooks]);
-        alert(`成功导入 ${validEntries.length} 条设定`);
-      } catch {
-        alert('解析文件失败，请确认这是有效的 JSON 文件');
+      } else {
+        alert('没有识别到可导入的世界书内容。现在支持 JSON、TXT / MD、CSV / TSV、DOCX。');
       }
-    };
-
-    reader.readAsText(file);
-    e.target.value = '';
+    } catch {
+      alert('导入失败。请确认文件是可读的 JSON、TXT / MD、CSV / TSV 或 DOCX。');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleRepairLegacyWorldBooks = async () => {
@@ -291,7 +487,7 @@ export function WorldBookManager({
   };
 
   return (
-    <div ref={containerRef} className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`} style={viewportStyle}>
+    <div ref={containerRef} className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       {showAdd ? (
         <div className={`flex h-full min-h-0 flex-1 flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
           <div className={`flex items-center justify-between border-b px-4 pb-4 pt-12 ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>
@@ -449,7 +645,7 @@ export function WorldBookManager({
         </div>
       ) : (
         <>
-          <div className={`flex items-center justify-between border-b px-4 pb-4 pt-12 backdrop-blur-2xl ${globalBackground ? 'border-white/20 bg-white/70' : 'border-zinc-100 bg-white'}`}>
+          <div className={`relative z-[20] flex items-center justify-between border-b px-4 pb-4 pt-12 backdrop-blur-2xl ${globalBackground ? 'border-white/20 bg-white/70' : 'border-zinc-100 bg-white'}`}>
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="-ml-2 rounded-full p-2 text-zinc-400 transition-colors hover:bg-black/5">
                 <X size={24} />
@@ -457,20 +653,91 @@ export function WorldBookManager({
               <h3 className="text-[17px] font-bold">世界书</h3>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleRepairLegacyWorldBooks}
-                className="rounded-full p-2 text-emerald-600 transition-colors hover:bg-emerald-50"
-                title="批量修复旧世界书数据"
-              >
-                <RefreshCw size={18} />
-              </button>
-              <label className="cursor-pointer rounded-full p-2 text-zinc-600 transition-colors hover:bg-black/5">
-                <Upload size={20} />
-                <input type="file" accept=".json" className="hidden" onChange={handleImport} />
-              </label>
-              <button onClick={() => { setEditForm(createEmptyForm()); setShowAdd(true); }} className="rounded-full p-2 text-blue-500 transition-colors hover:bg-blue-50">
-                <Plus size={20} />
-              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,.txt,.md,.csv,.tsv,.yml,.yaml,.docx"
+                className="hidden"
+                onChange={handleImport}
+              />
+              {isBatchMode ? (
+                <>
+                  <button
+                    onClick={toggleSelectAllFiltered}
+                    className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                  >
+                    {allFilteredSelected ? '取消全选' : '全选当前'}
+                  </button>
+                  <button
+                    onClick={exitBatchMode}
+                    className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                  >
+                    完成
+                  </button>
+                </>
+              ) : (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowActionMenu((prev) => !prev)}
+                    className="rounded-full p-2 text-zinc-600 transition-colors hover:bg-black/5"
+                    aria-label="世界书更多操作"
+                  >
+                    <MoreHorizontal size={20} />
+                  </button>
+                  {showActionMenu && (
+                    <>
+                      <div className="fixed inset-0 z-[109]" onClick={() => setShowActionMenu(false)} />
+                      <div className="absolute right-0 top-full z-[120] mt-2 w-40 overflow-hidden rounded-2xl border border-zinc-100 bg-white py-1 shadow-xl">
+                        <button
+                          onClick={() => {
+                            setShowActionMenu(false);
+                            importInputRef.current?.click();
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[14px] text-zinc-700 hover:bg-zinc-50"
+                        >
+                          <Upload size={15} />
+                          <span>导入世界书</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowActionMenu(false);
+                            setEditForm(createEmptyForm());
+                            setShowAdd(true);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[14px] text-zinc-700 hover:bg-zinc-50"
+                        >
+                          <Plus size={15} />
+                          <span>添加世界书</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowActionMenu(false);
+                            setIsBatchMode(true);
+                            setSelectedWorldBookIds(new Set());
+                            setBatchCategoryDraft('');
+                            setBatchScopeMode('keep');
+                            setBatchCharacterIdsDraft([]);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[14px] text-zinc-700 hover:bg-zinc-50"
+                        >
+                          <Check size={15} />
+                          <span>批量管理</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowActionMenu(false);
+                            void handleRepairLegacyWorldBooks();
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[14px] text-zinc-700 hover:bg-zinc-50"
+                        >
+                          <RefreshCw size={15} />
+                          <span>修复旧数据</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -490,7 +757,7 @@ export function WorldBookManager({
             ))}
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className={`flex-1 space-y-4 overflow-y-auto p-4 ${isBatchMode ? "pb-[24rem]" : ""}`}> 
             {filtered.length === 0 && (
               <div className="py-20 text-center text-zinc-300">
                 <Book size={48} className="mx-auto mb-4 opacity-20" />
@@ -500,17 +767,34 @@ export function WorldBookManager({
 
             {filtered.map((worldBook) => {
               const scopeNames = getWorldBookScopeNames(worldBook, characters);
+              const isSelected = selectedWorldBookIds.has(worldBook.id);
 
               return (
                 <div
                   key={worldBook.id}
                   className={`rounded-2xl border p-4 shadow-sm backdrop-blur-xl transition-all active:scale-[0.98] ${
                     globalBackground ? 'border-white/30 bg-white/60 hover:bg-white/70' : 'border-zinc-100 bg-white hover:bg-zinc-50'
-                  } ${!worldBook.isActive ? 'opacity-60' : ''}`}
+                  } ${!worldBook.isActive ? 'opacity-60' : ''} ${isBatchMode && isSelected ? 'border-blue-400 bg-blue-50/40' : ''}`}
+                  onClick={() => {
+                    if (isBatchMode) {
+                      toggleBatchSelection(worldBook.id);
+                    }
+                  }}
                 >
                   <div className="mb-2 flex items-start justify-between">
                     <div>
                       <h4 className="flex items-center gap-2 text-[15px] font-bold text-zinc-900">
+                        {isBatchMode && (
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded-full border text-[11px] transition-colors ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-500 text-white'
+                                : 'border-zinc-300 bg-white text-transparent'
+                            }`}
+                          >
+                            <Check size={11} />
+                          </span>
+                        )}
                         {worldBook.title}
                         {!worldBook.isActive && (
                           <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500">未启用</span>
@@ -540,34 +824,36 @@ export function WorldBookManager({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setWorldBooks(worldBooks.map((item) => (item.id === worldBook.id ? { ...item, isActive: !item.isActive } : item)))}
-                        className={`rounded-lg p-1.5 transition-colors ${worldBook.isActive ? 'text-zinc-900 hover:bg-zinc-100' : 'text-zinc-400 hover:bg-zinc-100'}`}
-                        title={worldBook.isActive ? '点击停用' : '点击启用'}
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditForm({
-                            ...worldBook,
-                            category: normalizeWorldBookCategory(worldBook.category),
-                            priorityLevel: normalizeWorldBookPriorityLevel(worldBook.priorityLevel),
-                          });
-                          setShowAdd(true);
-                        }}
-                        className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-blue-50 hover:text-blue-500"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(worldBook.id)}
-                        className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    {!isBatchMode && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setWorldBooks(worldBooks.map((item) => (item.id === worldBook.id ? { ...item, isActive: !item.isActive } : item)))}
+                          className={`rounded-lg p-1.5 transition-colors ${worldBook.isActive ? 'text-zinc-900 hover:bg-zinc-100' : 'text-zinc-400 hover:bg-zinc-100'}`}
+                          title={worldBook.isActive ? '点击停用' : '点击启用'}
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditForm({
+                              ...worldBook,
+                              category: normalizeWorldBookCategory(worldBook.category),
+                              priorityLevel: normalizeWorldBookPriorityLevel(worldBook.priorityLevel),
+                            });
+                            setShowAdd(true);
+                          }}
+                          className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-blue-50 hover:text-blue-500"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(worldBook.id)}
+                          className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <p className="line-clamp-3 text-[13px] leading-relaxed text-zinc-600">{worldBook.content}</p>
@@ -608,8 +894,132 @@ export function WorldBookManager({
                 </div>
               );
             })}
+          {isBatchMode && (
+            <div className="absolute inset-x-0 bottom-0 z-[115] border-t border-zinc-100 bg-white/96 px-4 pb-[calc(1.5rem+var(--app-safe-area-bottom-ui,0px))] pt-4 shadow-[0_-8px_28px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+              <div className="mx-auto w-full max-w-[520px]">
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <span className="text-[13px] text-zinc-500">已选 {selectedWorldBooks.length} 条</span>
+                  <span className="text-[13px] text-zinc-400">当前分类 {filtered.length} 条</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => applyBatchActiveState(true)}
+                    disabled={selectedWorldBooks.length === 0}
+                    className="flex flex-col items-center gap-1 rounded-xl py-2 text-zinc-600 transition-colors disabled:opacity-40 active:bg-zinc-50"
+                  >
+                    <Check size={20} />
+                    <span className="text-[11px]">批量启用</span>
+                  </button>
+                  <button
+                    onClick={() => applyBatchActiveState(false)}
+                    disabled={selectedWorldBooks.length === 0}
+                    className="flex flex-col items-center gap-1 rounded-xl py-2 text-zinc-600 transition-colors disabled:opacity-40 active:bg-zinc-50"
+                  >
+                    <X size={20} />
+                    <span className="text-[11px]">批量停用</span>
+                  </button>
+                  <button
+                    onClick={() => { void deleteSelectedWorldBooks(); }}
+                    disabled={selectedWorldBooks.length === 0}
+                    className="flex flex-col items-center gap-1 rounded-xl py-2 text-red-500 transition-colors disabled:opacity-40 active:bg-red-50"
+                  >
+                    <Trash2 size={20} />
+                    <span className="text-[11px]">批量删除</span>
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-4 rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+                  <div className="space-y-2">
+                    <div className="text-[12px] font-medium text-zinc-700">批量改分类</div>
+                    <div className="flex gap-2">
+                      <select
+                        value={batchCategoryDraft}
+                        onChange={(event) => setBatchCategoryDraft(event.target.value)}
+                        className="flex-1 appearance-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-500"
+                      >
+                        <option value="">选择分类</option>
+                        {WORLD_BOOK_CATEGORY_PRESETS.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={applyBatchCategory}
+                        disabled={selectedWorldBooks.length === 0 || !batchCategoryDraft}
+                        className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors disabled:opacity-40 hover:bg-zinc-100"
+                      >
+                        应用
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-[12px] font-medium text-zinc-700">批量改作用域</div>
+                    <div className="flex gap-2">
+                      <select
+                        value={batchScopeMode}
+                        onChange={(event) => setBatchScopeMode(event.target.value as 'keep' | 'global' | 'character')}
+                        className="flex-1 appearance-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-500"
+                      >
+                        <option value="keep">不改</option>
+                        <option value="global">设为全局</option>
+                        <option value="character">设为角色专属</option>
+                      </select>
+                      <button
+                        onClick={applyBatchScope}
+                        disabled={selectedWorldBooks.length === 0 || batchScopeMode === 'keep'}
+                        className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors disabled:opacity-40 hover:bg-zinc-100"
+                      >
+                        应用
+                      </button>
+                    </div>
+                    {batchScopeMode === 'character' && (
+                      <div className="max-h-28 space-y-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2">
+                        {characters.map((char) => {
+                          const active = batchCharacterIdsDraft.includes(char.id);
+                          return (
+                            <button
+                              key={char.id}
+                              type="button"
+                              onClick={() => {
+                                setBatchCharacterIdsDraft((prev) => (
+                                  prev.includes(char.id)
+                                    ? prev.filter((id) => id !== char.id)
+                                    : [...prev, char.id]
+                                ));
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[13px] transition-colors ${
+                                active ? 'bg-blue-50 text-blue-700' : 'text-zinc-700 hover:bg-zinc-50'
+                              }`}
+                            >
+                              <span>{char.name}</span>
+                              <span className={`h-4 w-4 rounded-full border ${active ? 'border-blue-500 bg-blue-500' : 'border-zinc-300'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         </>
+      )}
+      {importDrafts && (
+        <WorldBookImportReviewSheet
+          drafts={importDrafts}
+          advancedMode={showAdvancedImportReview}
+          onBack={() => {
+            setImportDrafts(null);
+            setShowAdvancedImportReview(false);
+          }}
+          onImportDefault={handleImportDefault}
+          onToggleAdvancedMode={() => setShowAdvancedImportReview((prev) => !prev)}
+          onConfirmImport={confirmReviewedImport}
+          onToggleInclude={toggleImportDraftInclude}
+          onChangeMergeGroup={updateImportDraftMergeGroup}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import type { ApiCenterConfig, AppSettings, Character, CharacterVoiceProfile } from '../../../types';
+import type { ApiCenterConfig, ApiConfig, AppSettings, Character, CharacterVoiceProfile } from '../../../types';
 
 export type TextCallScene =
   | 'default'
@@ -27,6 +27,7 @@ export type ResolvedTextCallConfig = {
   source: 'default' | 'single-chat-rule' | 'group-chat' | 'forum' | 'dating' | 'legacy-active';
   ruleId?: string;
   config: NonNullable<ApiCenterConfig['defaultTextCall']>['config'] | null;
+  legacyConfig?: ApiConfig | null;
 };
 
 export type ResolvedVoiceCallConfig = {

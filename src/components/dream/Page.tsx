@@ -8,9 +8,23 @@ import { buildDreamBackgroundRequestKey, getCurrentDreamBackgroundTask, startDre
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
 import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSummaries';
-import type { DreamDecisionRecord, DreamGeneratedChoice, DreamRuntimeAct, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import {
+  buildDreamPromptWorldBooks,
+  createDreamLocalWorldBooksFromFile,
+  mergeDreamLocalWorldBooks,
+  normalizeDreamWorldBookConfig,
+  resolveDreamInheritedWorldBooks,
+} from '../../services/dream/dreamWorldBooks';
+import type {
+  DreamDecisionRecord,
+  DreamGeneratedChoice,
+  DreamRuntimeAct,
+  DreamRuntimeScenario,
+  DreamWorldBookConfig,
+} from '../../services/dream/dreamRuntimeTypes';
 import type { DreamNarrativeBlock } from '../../services/dream/dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
+import { DreamWorldBookGlyph, DreamWorldBookSheet } from './DreamWorldBookSheet';
 import { DreamArchiveStage } from './DreamArchiveStage';
 import { buildDreamArchiveRecord, exportDreamArchiveRecords, getSelectedTagLabels, loadDreamArchiveRecords, saveDreamArchiveRecords, upsertDreamArchiveRecord, type DreamArchiveRecord } from './dreamArchive';
 import { defaultTagSelection, dreamTagGroups, resolveDomainName, resolveScenario } from './dreamContent';
@@ -84,6 +98,7 @@ type PersistedDreamSession = {
   domain: DreamDomainId;
   depth: DreamDepth;
   selectedTags: Record<DreamTagCategory, string[]>;
+  dreamWorldBookConfig?: DreamWorldBookConfig;
   scenario: DreamRuntimeScenario;
   createdAt: number;
   progress?: {
@@ -100,6 +115,7 @@ type DreamResumableState =
   | {
       source: 'saved';
       roleId: string;
+      dreamWorldBookConfig?: DreamWorldBookConfig;
       scenario: DreamRuntimeScenario;
       createdAt: number;
       progress?: PersistedDreamSession['progress'];
@@ -107,6 +123,7 @@ type DreamResumableState =
   | {
       source: 'background';
       roleId: string;
+      dreamWorldBookConfig?: DreamWorldBookConfig;
       scenario: DreamRuntimeScenario;
       createdAt: number;
       progress?: PersistedDreamSession['progress'];
@@ -242,6 +259,7 @@ function buildDreamResumableState(
     ? {
         source: 'saved' as const,
         roleId: savedSession.roleId,
+        dreamWorldBookConfig: savedSession.dreamWorldBookConfig,
         scenario: savedSession.scenario,
         createdAt: savedSession.createdAt,
         progress: savedSession.progress,
@@ -1028,7 +1046,10 @@ function HomeV2({
   unfinishedDreamTitle,
   unfinishedDreamMeta,
   canContinueDream,
+  hasWorldBookConfig,
+  hasWorldBookSignal,
   onPickRole,
+  onOpenWorldBooks,
   onEnter,
   onContinueDream,
   onOpenArchive,
@@ -1041,7 +1062,10 @@ function HomeV2({
   unfinishedDreamTitle?: string;
   unfinishedDreamMeta?: string;
   canContinueDream?: boolean;
+  hasWorldBookConfig?: boolean;
+  hasWorldBookSignal?: boolean;
   onPickRole: () => void;
+  onOpenWorldBooks: () => void;
   onEnter: () => void;
   onContinueDream: () => void;
   onOpenArchive: (view: 'all' | 'deep') => void;
@@ -1054,7 +1078,33 @@ function HomeV2({
           <div>{time}</div>
           <div className="h-[6px] w-[6px] rounded-full bg-[var(--gold)] animate-[pulse_2.4s_ease-in-out_infinite]" />
         </div>
-        <div className="pt-2 text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
+        <div className="flex items-center justify-between gap-4 pt-2">
+          <div className="text-[30px] font-[200] tracking-[0.32em] text-[var(--paper)]">梦境</div>
+          <button
+            type="button"
+            onClick={onOpenWorldBooks}
+            aria-label="打开梦境世界书"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition duration-300 hover:scale-[1.02]"
+            style={{
+              borderColor: hasWorldBookSignal ? 'rgba(196,169,106,.34)' : 'rgba(123,168,196,.18)',
+              background: hasWorldBookSignal
+                ? 'radial-gradient(circle, rgba(196,169,106,.14) 0%, rgba(123,168,196,.08) 58%, transparent 100%)'
+                : 'radial-gradient(circle, rgba(123,168,196,.08) 0%, rgba(123,168,196,.03) 58%, transparent 100%)',
+              boxShadow: hasWorldBookSignal ? '0 0 24px rgba(196,169,106,.12)' : 'none',
+            }}
+          >
+            <DreamWorldBookGlyph active={hasWorldBookSignal} className={`h-5 w-5 ${hasWorldBookSignal ? 'text-[var(--gold)]' : 'text-[var(--mist)]'}`} />
+            {(hasWorldBookConfig || hasWorldBookSignal) ? (
+              <span
+                className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full"
+                style={{
+                  backgroundColor: hasWorldBookConfig ? 'var(--gold)' : '#7BA8C4',
+                  boxShadow: hasWorldBookConfig ? '0 0 12px rgba(196,169,106,.44)' : '0 0 12px rgba(123,168,196,.36)',
+                }}
+              />
+            ) : null}
+          </button>
+        </div>
         <div className="flex flex-col items-center justify-start gap-4 pb-[calc(1.25rem+var(--app-safe-area-bottom-ui,0px))] pt-2 text-center sm:gap-6 sm:py-8">
           <button type="button" onClick={onPickRole}>
             <Avatar role={role} />
@@ -1522,8 +1572,17 @@ export function DreamAppPage({
   const [archiveView, setArchiveView] = useState<'all' | 'deep'>('all');
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [latestSavedSession, setLatestSavedSession] = useState<PersistedDreamSession | null>(() => readPersistedDreamSession());
+  const [showDreamWorldBookSheet, setShowDreamWorldBookSheet] = useState(false);
+  const [dreamWorldBookConfig, setDreamWorldBookConfig] = useState<DreamWorldBookConfig>(() => (
+    normalizeDreamWorldBookConfig(readPersistedDreamSession()?.dreamWorldBookConfig)
+  ));
+  const [dreamWorldBookNote, setDreamWorldBookNote] = useState<{
+    tone: 'info' | 'success' | 'error';
+    text: string;
+  } | null>(null);
   const endingRequestActiveRef = useRef(false);
   const aftermathRequestActiveRef = useRef(false);
+  const dreamWorldBookImportInputRef = useRef<HTMLInputElement | null>(null);
   const backgroundTask = getCurrentDreamBackgroundTask();
   const persistedLatestSession = readPersistedDreamSession();
   const resumableDream = buildDreamResumableState(persistedLatestSession, backgroundTask);
@@ -1532,6 +1591,31 @@ export function DreamAppPage({
     [characters, selectedRoleId],
   );
   const selectedRole = useMemo(() => roles.find((role) => role.id === selectedRoleId) ?? roles[0] ?? null, [roles, selectedRoleId]);
+  const normalizedDreamWorldBookConfig = useMemo(
+    () => normalizeDreamWorldBookConfig(dreamWorldBookConfig),
+    [dreamWorldBookConfig],
+  );
+  const inheritedDreamWorldBooks = useMemo(
+    () => (selectedCharacter ? resolveDreamInheritedWorldBooks(selectedCharacter, worldBooks) : []),
+    [selectedCharacter, worldBooks],
+  );
+  const dreamPromptWorldBooks = useMemo(
+    () => (
+      selectedCharacter
+        ? buildDreamPromptWorldBooks({
+            character: selectedCharacter,
+            inheritedWorldBooks: inheritedDreamWorldBooks,
+            config: normalizedDreamWorldBookConfig,
+          })
+        : []
+    ),
+    [selectedCharacter, inheritedDreamWorldBooks, normalizedDreamWorldBookConfig],
+  );
+  const hasDreamWorldBookConfig = (
+    (normalizedDreamWorldBookConfig.excludedInheritedIds?.length || 0)
+    + (normalizedDreamWorldBookConfig.localEntries?.length || 0)
+  ) > 0;
+  const hasDreamWorldBookSignal = dreamPromptWorldBooks.length > 0;
   const previewScenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
   const scenario = runtimeScenario ?? previewScenario;
   const act = runtimeScenario?.acts[actIndex] ?? null;
@@ -1632,6 +1716,70 @@ export function DreamAppPage({
   const typedAftermathSummary = typedAftermathTextBlocks[0]?.text || '';
   const typedAftermathDetail = typedAftermathTextBlocks[1]?.text || '';
   const choiceHoldTimerRef = useRef<number | null>(null);
+  const updateDreamWorldBookConfig = (
+    updater: DreamWorldBookConfig | ((prev: DreamWorldBookConfig) => DreamWorldBookConfig),
+  ) => {
+    setDreamWorldBookConfig((prev) => {
+      const resolved = typeof updater === 'function'
+        ? (updater as (prev: DreamWorldBookConfig) => DreamWorldBookConfig)(prev)
+        : updater;
+      return normalizeDreamWorldBookConfig(resolved);
+    });
+  };
+  const toggleDreamInheritedWorldBook = (worldBookId: string) => {
+    updateDreamWorldBookConfig((prev) => {
+      const excluded = new Set(prev.excludedInheritedIds || []);
+      if (excluded.has(worldBookId)) {
+        excluded.delete(worldBookId);
+      } else {
+        excluded.add(worldBookId);
+      }
+      return {
+        ...prev,
+        excludedInheritedIds: Array.from(excluded),
+      };
+    });
+    setDreamWorldBookNote(null);
+  };
+  const removeDreamLocalWorldBook = (worldBookId: string) => {
+    updateDreamWorldBookConfig((prev) => ({
+      ...prev,
+      localEntries: (prev.localEntries || []).filter((entry) => entry.id !== worldBookId),
+    }));
+    setDreamWorldBookNote(null);
+  };
+  const handleImportDreamWorldBookFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!selectedCharacter) {
+      setDreamWorldBookNote({
+        tone: 'info',
+        text: '先选一个入梦角色，再把今夜要读的书页放进来。',
+      });
+      setStage('role-picker');
+      return;
+    }
+
+    try {
+      const importedEntries = await createDreamLocalWorldBooksFromFile(file, selectedCharacter.id);
+      if (importedEntries.length === 0) {
+        throw new Error('没有认出可导入的世界书内容。');
+      }
+
+      updateDreamWorldBookConfig((prev) => ({
+        ...prev,
+        localEntries: mergeDreamLocalWorldBooks(prev.localEntries || [], importedEntries, selectedCharacter.id),
+      }));
+      setDreamWorldBookNote({
+        tone: 'success',
+        text: `今夜多带进来了 ${importedEntries.length} 条书页。`,
+      });
+    } catch (error) {
+      setDreamWorldBookNote({
+        tone: 'error',
+        text: error instanceof Error ? error.message : '导入失败了，换一个 JSON 或 TXT 文件再试试。',
+      });
+    }
+  };
 
   const persistDreamProgress = (
     scenarioToPersist: DreamRuntimeScenario,
@@ -1647,6 +1795,7 @@ export function DreamAppPage({
       domain: selectedDomain,
       depth: dreamDepth,
       selectedTags,
+      dreamWorldBookConfig: normalizedDreamWorldBookConfig,
       scenario: scenarioToPersist,
       createdAt: Date.now(),
       progress: isDreamResumeStage(progressStage)
@@ -1669,6 +1818,8 @@ export function DreamAppPage({
     clearPersistedDreamSession();
     clearDreamBackgroundResumeRequest();
     setLatestSavedSession(null);
+    setDreamWorldBookConfig(normalizeDreamWorldBookConfig());
+    setDreamWorldBookNote(null);
   };
 
   const refreshLatestSavedSession = () => {
@@ -1713,7 +1864,8 @@ export function DreamAppPage({
       activeConfig,
       character: selectedCharacter,
       masks,
-      worldBooks,
+      worldBooks: dreamPromptWorldBooks,
+      dreamWorldBookConfig: normalizedDreamWorldBookConfig,
       selection: {
         entryMode,
         domainId: selectedDomain,
@@ -1747,7 +1899,19 @@ export function DreamAppPage({
       cancelled = true;
       window.clearInterval(progressTimer);
     };
-  }, [activeConfig, dreamDepth, entryMode, masks, selectedCharacter, selectedDomain, selectedRole, selectedTags, stage, worldBooks]);
+  }, [
+    activeConfig,
+    dreamDepth,
+    dreamPromptWorldBooks,
+    entryMode,
+    masks,
+    normalizedDreamWorldBookConfig,
+    selectedCharacter,
+    selectedDomain,
+    selectedRole,
+    selectedTags,
+    stage,
+  ]);
 
   useEffect(() => {
     if (stage !== 'choices') {
@@ -1771,6 +1935,8 @@ export function DreamAppPage({
       setSelectedDomain(backgroundTask.options.selection.domainId);
       setDreamDepth(backgroundTask.options.selection.depth);
       setSelectedTags(backgroundTask.options.selection.selectedTags);
+      setDreamWorldBookConfig(normalizeDreamWorldBookConfig(backgroundTask.options.dreamWorldBookConfig));
+      setDreamWorldBookNote(null);
       setConfirmPreview(null);
       setLoadingError(null);
       setLoadingProgress(100);
@@ -1797,6 +1963,8 @@ export function DreamAppPage({
     setSelectedDomain(persisted.domain);
     setDreamDepth(persisted.depth);
     setSelectedTags(persisted.selectedTags);
+    setDreamWorldBookConfig(normalizeDreamWorldBookConfig(persisted.dreamWorldBookConfig));
+    setDreamWorldBookNote(null);
     setConfirmPreview(null);
     setLoadingError(null);
     setLoadingProgress(100);
@@ -1890,7 +2058,8 @@ export function DreamAppPage({
       activeConfig,
       character: selectedCharacter,
       masks,
-      worldBooks,
+      worldBooks: dreamPromptWorldBooks,
+      dreamWorldBookConfig: normalizedDreamWorldBookConfig,
       selection: {
         entryMode,
         domainId: selectedDomain,
@@ -1943,15 +2112,16 @@ export function DreamAppPage({
   }, [
     activeConfig,
     dreamDepth,
+    dreamPromptWorldBooks,
     entryMode,
     masks,
+    normalizedDreamWorldBookConfig,
     runtimeScenario,
     selectedCharacter,
     selectedDomain,
     selectedTags,
     stage,
     userName,
-    worldBooks,
   ]);
 
   useEffect(() => {
@@ -1981,7 +2151,8 @@ export function DreamAppPage({
       activeConfig,
       character: selectedCharacter,
       masks,
-      worldBooks,
+      worldBooks: dreamPromptWorldBooks,
+      dreamWorldBookConfig: normalizedDreamWorldBookConfig,
       selection: {
         entryMode,
         domainId: selectedDomain,
@@ -2033,15 +2204,16 @@ export function DreamAppPage({
   }, [
     activeConfig,
     dreamDepth,
+    dreamPromptWorldBooks,
     entryMode,
     masks,
+    normalizedDreamWorldBookConfig,
     runtimeScenario,
     selectedCharacter,
     selectedDomain,
     selectedTags,
     stage,
     userName,
-    worldBooks,
   ]);
 
   const openEntry = () => {
@@ -2117,7 +2289,8 @@ export function DreamAppPage({
         activeConfig,
         character: selectedCharacter,
         masks,
-        worldBooks,
+        worldBooks: dreamPromptWorldBooks,
+        dreamWorldBookConfig: normalizedDreamWorldBookConfig,
         selection: {
           entryMode,
           domainId: selectedDomain,
@@ -2164,7 +2337,8 @@ export function DreamAppPage({
         activeConfig,
         character: selectedCharacter,
         masks,
-        worldBooks,
+        worldBooks: dreamPromptWorldBooks,
+        dreamWorldBookConfig: normalizedDreamWorldBookConfig,
         selection: {
           entryMode,
           domainId: selectedDomain,
@@ -2231,7 +2405,8 @@ export function DreamAppPage({
         activeConfig,
         character: selectedCharacter,
         masks,
-        worldBooks,
+        worldBooks: dreamPromptWorldBooks,
+        dreamWorldBookConfig: normalizedDreamWorldBookConfig,
         selection: {
           entryMode,
           domainId: selectedDomain,
@@ -2288,6 +2463,9 @@ export function DreamAppPage({
     setSelectedDomain('shared');
     setDreamDepth('shallow');
     setSelectedTags(defaultTagSelection);
+    setDreamWorldBookConfig(normalizeDreamWorldBookConfig());
+    setDreamWorldBookNote(null);
+    setShowDreamWorldBookSheet(false);
     setDetailExpanded(false);
     setActIndex(0);
     setSelectedChoice(null);
@@ -2322,6 +2500,49 @@ export function DreamAppPage({
     const record = archiveRecords.find((item) => item.id === id);
     if (!record) return;
     exportDreamArchiveRecords([record], `dream-${record.id}.json`);
+  };
+  const openDreamWorldBookSheet = () => {
+    setDreamWorldBookNote(null);
+    setShowDreamWorldBookSheet(true);
+  };
+  const triggerDreamWorldBookImport = () => {
+    if (!selectedCharacter) {
+      setDreamWorldBookNote({
+        tone: 'info',
+        text: '先选角色，再给这场梦带书页。',
+      });
+      setShowDreamWorldBookSheet(true);
+      return;
+    }
+
+    dreamWorldBookImportInputRef.current?.click();
+  };
+  const restoreAllInheritedDreamWorldBooks = () => {
+    updateDreamWorldBookConfig((prev) => ({
+      ...prev,
+      excludedInheritedIds: [],
+    }));
+    setDreamWorldBookNote({
+      tone: 'info',
+      text: '这一场梦会重新读取角色原本能读到的世界书。',
+    });
+  };
+  const muteAllInheritedDreamWorldBooks = () => {
+    updateDreamWorldBookConfig((prev) => ({
+      ...prev,
+      excludedInheritedIds: inheritedDreamWorldBooks.map((entry) => entry.id),
+    }));
+    setDreamWorldBookNote({
+      tone: 'info',
+      text: inheritedDreamWorldBooks.length > 0 ? '角色自带的世界书先都静下来了。' : '这个角色现在没有可继承的世界书。',
+    });
+  };
+  const resetDreamWorldBookOverrides = () => {
+    setDreamWorldBookConfig(normalizeDreamWorldBookConfig());
+    setDreamWorldBookNote({
+      tone: 'info',
+      text: '已经回到默认状态，只读角色原本能读到的世界书。',
+    });
   };
 
   const selectedLabels = getSelectedTagLabels(selectedTags);
@@ -2381,7 +2602,8 @@ export function DreamAppPage({
           activeConfig,
           character: selectedCharacter,
           masks,
-          worldBooks,
+          worldBooks: dreamPromptWorldBooks,
+          dreamWorldBookConfig: normalizedDreamWorldBookConfig,
           selection: {
             entryMode,
             domainId: selectedDomain,
@@ -2448,6 +2670,11 @@ export function DreamAppPage({
       setDreamDepth(savedSession.depth);
       setSelectedTags(savedSession.selectedTags);
     }
+    setDreamWorldBookConfig(normalizeDreamWorldBookConfig(
+      resumable.dreamWorldBookConfig
+      ?? savedSession?.dreamWorldBookConfig,
+    ));
+    setDreamWorldBookNote(null);
     setConfirmPreview(null);
     setLoadingError(null);
     setRuntimeScenario(hydrateDreamRuntimeScenario(resumable.scenario));
@@ -2478,6 +2705,18 @@ export function DreamAppPage({
         )}
         {(stage === 'home' || stage === 'entry') && (
           <div className="relative h-full min-h-0">
+            <input
+              ref={dreamWorldBookImportInputRef}
+              type="file"
+              accept="application/json,.json,text/plain,.txt,.md,.csv,.tsv,.yml,.yaml,.docx"
+              className="hidden"
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                await handleImportDreamWorldBookFile(file);
+                input.value = '';
+              }}
+            />
           <HomeV2
             time={time}
             role={selectedRole}
@@ -2493,7 +2732,10 @@ export function DreamAppPage({
                 : ''
             }
             canContinueDream={canContinueDream}
+            hasWorldBookConfig={hasDreamWorldBookConfig}
+            hasWorldBookSignal={hasDreamWorldBookSignal}
             onPickRole={() => setStage('role-picker')}
+            onOpenWorldBooks={openDreamWorldBookSheet}
             onEnter={openEntry}
             onContinueDream={handleResumeLatestDream}
             onOpenArchive={(view) => {
@@ -2506,6 +2748,31 @@ export function DreamAppPage({
             <AnimatePresence initial={false}>
               {stage === 'entry' && selectedRole ? (
                 <EntrySheet role={selectedRole} onChoose={chooseMode} onClose={() => setStage('home')} />
+              ) : null}
+              {showDreamWorldBookSheet ? (
+                <DreamWorldBookSheet
+                  roleName={selectedRole?.name}
+                  inheritedWorldBooks={inheritedDreamWorldBooks}
+                  excludedInheritedIds={normalizedDreamWorldBookConfig.excludedInheritedIds || []}
+                  localWorldBooks={normalizedDreamWorldBookConfig.localEntries || []}
+                  activeWorldBookCount={dreamPromptWorldBooks.length}
+                  note={dreamWorldBookNote}
+                  onClose={() => {
+                    setShowDreamWorldBookSheet(false);
+                    setDreamWorldBookNote(null);
+                  }}
+                  onPickRole={() => {
+                    setShowDreamWorldBookSheet(false);
+                    setDreamWorldBookNote(null);
+                    setStage('role-picker');
+                  }}
+                  onImport={triggerDreamWorldBookImport}
+                  onToggleInherited={toggleDreamInheritedWorldBook}
+                  onRemoveLocal={removeDreamLocalWorldBook}
+                  onSelectAllInherited={restoreAllInheritedDreamWorldBooks}
+                  onMuteInherited={muteAllInheritedDreamWorldBooks}
+                  onReset={resetDreamWorldBookOverrides}
+                />
               ) : null}
             </AnimatePresence>
           </div>

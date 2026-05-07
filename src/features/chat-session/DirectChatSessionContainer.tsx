@@ -5,6 +5,7 @@ import type {
   Character,
   ChatGroup,
   ChatHistory,
+  ChatMessage,
   CoupleSpaceData,
   DateSession,
   FavoriteMessage,
@@ -17,6 +18,7 @@ import type {
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { areChatMemorySnapshotsEqual, createChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
 import { buildActiveDatingSharedState } from '../../services/dating/buildDatingSharedState';
+import { formatChatMessagePreview, formatMessagePreview } from '../app-shell/formatMessagePreview';
 import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
@@ -92,6 +94,9 @@ export function DirectChatSessionContainer({
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
+  const findLatestPreviewableMessage = (messages: ChatMessage[]) => [...messages]
+    .reverse()
+    .find((message) => !message.isSystem && !message.isRecalled) || null;
 
   useEffect(() => {
     let lastMessageIndex = -1;
@@ -138,9 +143,12 @@ export function DirectChatSessionContainer({
           ...chatHistory,
           [character.id]: newHistory,
         });
+        const latestPreviewableMessage = findLatestPreviewableMessage(newHistory);
         patchCharacter(character.id, {
-          lastMessage: newHistory[newHistory.length - 1]?.text || character.openingRemark,
-          lastTime: Date.now(),
+          lastMessage: latestPreviewableMessage
+            ? formatChatMessagePreview(latestPreviewableMessage)
+            : formatMessagePreview(character.openingRemark),
+          lastTime: latestPreviewableMessage?.timestamp ?? character.lastTime,
         });
       }}
       onUpdateCharacter={updateCharacter}

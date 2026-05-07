@@ -11,6 +11,7 @@ import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { patchCharacterById, removeCharacterById, upsertCharacter, updateCharacterById } from '../../../features/character-domain/characterMutations';
 import { getThemeSelectedFontStack } from '../../../features/theme/themeTypography';
 import { KeyboardAwareScreen } from '../../../features/app-shell/KeyboardAwareScreen';
+import { formatChatMessagePreview } from '../../../features/app-shell/formatMessagePreview';
 import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
 
 function ResolvedMainShellAvatar({
@@ -138,21 +139,36 @@ export function MainApp({
     lockedAxis: null,
   });
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
+  const findLatestPreviewableMessage = (messages: AppData['chatHistory'][string] | undefined) => [...(messages || [])]
+    .reverse()
+    .find((message) => !message.isSystem && !message.isRecalled) || null;
   const sortedChatEntries = [
-    ...(appData.chatGroups || []).map((group) => ({
-      kind: 'group' as const,
-      id: group.id,
-      pinned: !!group.pinChat,
-      lastTime: group.lastTime || 0,
-      group,
-    })),
-    ...appData.characters.map((character) => ({
-      kind: 'direct' as const,
-      id: character.id,
-      pinned: !!character.isPinned,
-      lastTime: character.lastTime || 0,
-      character,
-    })),
+    ...(appData.chatGroups || []).map((group) => {
+      const latestPreviewableMessage = findLatestPreviewableMessage(group.history);
+      return {
+        kind: 'group' as const,
+        id: group.id,
+        pinned: !!group.pinChat,
+        lastTime: latestPreviewableMessage?.timestamp || group.lastTime || 0,
+        previewText: latestPreviewableMessage
+          ? formatChatMessagePreview(latestPreviewableMessage)
+          : formatMessagePreview(group.lastMessage) || '',
+        group,
+      };
+    }),
+    ...appData.characters.map((character) => {
+      const latestPreviewableMessage = findLatestPreviewableMessage(appData.chatHistory?.[character.id]);
+      return {
+        kind: 'direct' as const,
+        id: character.id,
+        pinned: !!character.isPinned,
+        lastTime: latestPreviewableMessage?.timestamp || character.lastTime || 0,
+        previewText: latestPreviewableMessage
+          ? formatChatMessagePreview(latestPreviewableMessage)
+          : formatMessagePreview(character.lastMessage) || formatMessagePreview(character.openingRemark) || '',
+        character,
+      };
+    }),
   ].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
@@ -379,11 +395,11 @@ export function MainApp({
                       <div className="flex justify-between items-center mb-0.5">
                         <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
                         <span className="text-[11px] text-zinc-400">
-                          {group.lastTime ? new Date(group.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {entry.lastTime ? new Date(entry.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
                       <div className="flex justify-between items-center gap-2">
-                        <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(group.lastMessage) || '暂无消息'}</p>
+                        <p className="text-[13px] text-zinc-500 truncate flex-1">{entry.previewText || '暂无消息'}</p>
                         <div className="flex items-center gap-1">
                           {group.muteNotifications && <BellOff size={12} className="text-zinc-400" />}
                           {group.pinChat && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
@@ -416,11 +432,11 @@ export function MainApp({
                     <div className="flex justify-between items-center mb-0.5">
                       <h3 className="text-[15px] font-semibold text-zinc-900 truncate">{displayName}</h3>
                       <span className="text-[11px] text-zinc-400">
-                        {char.lastTime ? new Date(char.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {entry.lastTime ? new Date(entry.lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
                     </div>
                     <div className="flex justify-between items-center gap-2">
-                      <p className="text-[13px] text-zinc-500 truncate flex-1">{formatMessagePreview(char.lastMessage) || formatMessagePreview(char.openingRemark)}</p>
+                      <p className="text-[13px] text-zinc-500 truncate flex-1">{entry.previewText || formatMessagePreview(char.openingRemark)}</p>
                       <div className="flex items-center gap-1">
                         {char.isMuted && <BellOff size={12} className="text-zinc-400" />}
                         {char.isPinned && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}

@@ -184,10 +184,7 @@ export function buildOpenLoopRegistryPrompt(
 ): string {
   const registry = buildRuntimeOpenLoopRegistry(input);
   if (registry.length === 0) {
-    return [
-      '## Open Loop Registry',
-      '[当前结论] 这一轮没有必须立刻续写的旧节点，默认先按当前在线状态和当前用户输入接话。',
-    ].join('\n');
+    return '';
   }
 
   return [

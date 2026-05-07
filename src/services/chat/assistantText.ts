@@ -72,6 +72,8 @@ const DIRECT_ENDING_PUNCTUATION = /[\u3002\uFF01\uFF1F!?]+$/u;
 const DIRECT_SENTENCE_REGEX = /[^\u3002\uFF01\uFF1F!?\n]+(?:[\u3002\uFF01\uFF1F!?]+)?/gu;
 const DIRECT_SHORT_REACTION = /^(?:嗯|哦|喔|行|行吧|行啊|好|好吧|知道了|在呢|来了|收到|别闹|别急|没事|可以)$/u;
 const DIRECT_BREAK_STARTERS = /^(?:然后|而且|不过|所以|那|那就|还有|顺便|提前|另外|其实|反正|我先|我再|我就|你先|你就|要么|不然|别|过来|现在)/u;
+const DISPLAYABLE_EFFECTIVE_CHAR_REGEX = /[\p{L}\p{N}]/u;
+const DISPLAYABLE_PROTOCOL_ONLY_REGEX = /^\[(?:game_card|game_card_error|transfer|sticker|image|audio|notice|system)\b/i;
 
 function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
   const normalized = text.trim();
@@ -230,6 +232,27 @@ function mergeRhythmParts(parts: string[], maxBubbles = DIRECT_MAX_BUBBLES): str
   return merged;
 }
 
+export function isDisplayableAssistantBubbleText(text: string): boolean {
+  const normalized = normalizeChatPunctuationNoise(text);
+  if (!normalized) {
+    return false;
+  }
+
+  if (isUsableChatText(normalized)) {
+    return true;
+  }
+
+  if (!DISPLAYABLE_EFFECTIVE_CHAR_REGEX.test(normalized)) {
+    return false;
+  }
+
+  if (DISPLAYABLE_PROTOCOL_ONLY_REGEX.test(normalized)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function splitDirectAssistantReplyText(text: string, maxBubbles?: number): string[] {
   const bubbleCap = resolveDirectBubbleCap(maxBubbles);
   const normalized = text.trim();
@@ -243,7 +266,7 @@ export function splitDirectAssistantReplyText(text: string, maxBubbles?: number)
     .filter(Boolean);
 
   if (explicitLines.length > 1) {
-    return explicitLines
+    return mergeRhythmParts(explicitLines, bubbleCap)
       .slice(0, bubbleCap)
       .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1));
   }
@@ -256,9 +279,23 @@ export function splitDirectAssistantReplyText(text: string, maxBubbles?: number)
     .filter(Boolean);
 
   const resolvedParts = parts.length > 0 ? parts : [normalized];
-
-  return mergeRhythmParts(resolvedParts, bubbleCap)
+  const normalizedParts = mergeRhythmParts(resolvedParts, bubbleCap)
     .slice(0, bubbleCap)
-    .map((part, index, allParts) => normalizeChatPunctuationNoise(normalizeBubbleEnding(part, index === allParts.length - 1)))
-    .filter(isUsableChatText);
+    .map((part, index, allParts) => normalizeChatPunctuationNoise(normalizeBubbleEnding(part, index === allParts.length - 1)));
+  const displayableParts = normalizedParts.filter(isDisplayableAssistantBubbleText);
+
+  if (displayableParts.length === 0) {
+    return [normalizeChatPunctuationNoise(normalized)];
+  }
+
+  const compactOriginal = normalizeChatPunctuationNoise(normalized).replace(/\s/gu, '');
+  const compactDisplayable = displayableParts.join('').replace(/\s/gu, '');
+  if (
+    compactOriginal.length >= 12
+    && compactDisplayable.length / Math.max(compactOriginal.length, 1) < 0.6
+  ) {
+    return [normalizeChatPunctuationNoise(normalized)];
+  }
+
+  return displayableParts;
 }

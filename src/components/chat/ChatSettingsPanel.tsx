@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Palette, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
+import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
@@ -412,7 +412,7 @@ export function ChatSettingsPanel({
   const memoryImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const voiceSampleInputRef = React.useRef<HTMLInputElement | null>(null);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
   });
@@ -477,37 +477,37 @@ export function ChatSettingsPanel({
   const sceneHintEditors = [
     {
       key: 'chat',
-      label: '单聊提示',
-      summary: '补充一对一聊天里要抓住的气氛、距离感和互动重点。',
-      placeholder: '例如：单聊里更克制一点，优先接住情绪和微小生活感，不要一上来就把关系推进得很满。',
+      label: '单聊时',
+      summary: '写私聊的时候。比如回消息快慢、说话轻重、会不会多说一点。',
+      placeholder: '比如：私聊里回得不算慢，话不多，但也不会让你一个人把话说完。',
       value: chatSceneHint,
     },
     {
       key: 'dating',
-      label: '约会提示',
-      summary: '补充约会场景里的节奏、描写重点和关系推进方式。',
-      placeholder: '例如：约会里允许更细一点的动作和环境感，但不要写成模板恋爱文案，保持这个角色自己的别扭和克制。',
+      label: '约会时',
+      summary: '写你们单独见面、出门、散步、吃饭这种时候。',
+      placeholder: '比如：出门时会比平时松一点，走路会等你，气氛慢下来以后才会多说。',
       value: datingSceneHint,
     },
     {
       key: 'groupChat',
-      label: '群聊提示',
-      summary: '补充角色在多人场景里怎么发言、怎么抢话和怎么收着存在感。',
-      placeholder: '例如：群里不抢中心位，更多是看准时机插一句，偶尔会轻描淡写地护一下你。',
+      label: '群里',
+      summary: '写群聊、朋友局、很多人都在的时候。',
+      placeholder: '比如：人多时先听着，不抢话；真轮到你这里，会顺手替你圆一句。',
       value: groupChatSceneHint,
     },
     {
       key: 'musicTogether',
-      label: '一起听提示',
-      summary: '补充一起听歌时更适合的语气、联想方式和互动密度。',
-      placeholder: '例如：一起听时说话更轻，更多借歌词和气氛旁敲侧击，不要讲成乐评。',
+      label: '一起听歌时',
+      summary: '写一起听歌、安静待着、气氛比较轻的时候。',
+      placeholder: '比如：这种时候话会更轻，偶尔顺着歌词说一句，但不会一直分析歌。',
       value: musicTogetherSceneHint,
     },
     {
       key: 'forum',
-      label: '论坛 / 镜间提示',
-      summary: '补充公开场域里适合被看见的外显人设和行为印象。',
-      placeholder: '例如：公开场合更会收住私人情绪，外人看过去只会觉得他冷、稳、有点难接近。',
+      label: '论坛 / 界隙提示',
+      summary: '写公开发言、旁人围观、外人看你们的时候。',
+      placeholder: '比如：外人先看到的是冷静和分寸，不太看得出他私下那一面。',
       value: forumSceneHint,
     },
   ] as const;
@@ -1289,7 +1289,6 @@ export function ChatSettingsPanel({
       exit={{ x: '100%' }}
       className="absolute inset-0 flex flex-col z-[70]"
       style={{
-        ...(viewportStyle || {}),
         backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
         backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
         backgroundSize: 'cover',
@@ -2326,171 +2325,6 @@ export function ChatSettingsPanel({
               )}
             </div>
 
-            <div className="p-4 space-y-4">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
-                  <Palette size={18} />
-                </div>
-                <span className="text-[15px] text-zinc-700 font-medium">聊天气泡设置</span>
-              </div>
-              
-              {/* Character Bubble */}
-              <div className="flex items-center justify-between bg-white/40 p-3 rounded-xl">
-                <span className="text-[14px] text-zinc-600">角色气泡</span>
-                <div className="flex items-center gap-3">
-                  <label className="text-zinc-900 text-[13px] font-medium cursor-pointer">
-                    上传图片
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => onUpdate({ ...character, bubbleImage: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-                  {character.bubbleImage && (
-                    <button 
-                      onClick={() => onUpdate({ ...character, bubbleImage: undefined })}
-                      className="text-red-500 text-[13px] font-medium"
-                    >
-                      清除
-                    </button>
-                  )}
-                  <input 
-                    type="color" 
-                    value={character.bubbleColor || '#ffffff'}
-                    onChange={e => onUpdate({ ...character, bubbleColor: e.target.value })}
-                    className="w-6 h-6 rounded overflow-hidden border-none p-0 bg-transparent cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-white/40 p-3 rounded-xl space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[14px] text-zinc-700 font-medium">角色气泡 CSS 美化</div>
-                    <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖当前角色发出的气泡，不影响全局默认和别的角色。</div>
-                  </div>
-                  <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
-                    导入样式
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".css,.txt,.json"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          onUpdate({ ...character, bubbleStyleCss: String(reader.result || '') });
-                          e.target.value = '';
-                        };
-                        reader.readAsText(file, 'utf-8');
-                      }}
-                    />
-                  </label>
-                </div>
-                <textarea
-                  value={character.bubbleStyleCss || ''}
-                  onChange={e => onUpdate({ ...character, bubbleStyleCss: e.target.value })}
-                  placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);\nborder: 1px solid rgba(255, 255, 255, 0.65);'}
-                  className="min-h-[132px] w-full resize-y rounded-2xl border border-zinc-200 bg-white px-4 py-3 font-mono text-[12px] leading-6 text-zinc-800 outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200/70"
-                  spellCheck="false"
-                />
-                {character.bubbleStyleCss && (
-                  <button
-                    onClick={() => onUpdate({ ...character, bubbleStyleCss: '' })}
-                    className="text-[12px] font-medium text-rose-500"
-                  >
-                    清除角色气泡 CSS
-                  </button>
-                )}
-              </div>
-
-              {/* User Bubble */}
-              <div className="flex items-center justify-between bg-white/40 p-3 rounded-xl">
-                <span className="text-[14px] text-zinc-600">用户气泡</span>
-                <div className="flex items-center gap-3">
-                  <label className="text-zinc-900 text-[13px] font-medium cursor-pointer">
-                    上传图片
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => onUpdate({ ...character, userBubbleImage: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-                  {character.userBubbleImage && (
-                    <button 
-                      onClick={() => onUpdate({ ...character, userBubbleImage: undefined })}
-                      className="text-red-500 text-[13px] font-medium"
-                    >
-                      清除
-                    </button>
-                  )}
-                  <input 
-                    type="color" 
-                    value={character.userBubbleColor || '#3b82f6'}
-                    onChange={e => onUpdate({ ...character, userBubbleColor: e.target.value })}
-                    className="w-6 h-6 rounded overflow-hidden border-none p-0 bg-transparent cursor-pointer"
-                  />
-                </div>
-              </div>
-              <div className="bg-white/40 p-3 rounded-xl space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[14px] text-zinc-700 font-medium">用户气泡 CSS 美化</div>
-                    <div className="text-[12px] text-zinc-500 mt-1">这里只覆盖你在当前单聊里发出的气泡，不影响全局默认。</div>
-                  </div>
-                  <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
-                    导入样式
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".css,.txt,.json"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          onUpdate({ ...character, userBubbleStyleCss: String(reader.result || '') });
-                          e.target.value = '';
-                        };
-                        reader.readAsText(file, 'utf-8');
-                      }}
-                    />
-                  </label>
-                </div>
-                <textarea
-                  value={character.userBubbleStyleCss || ''}
-                  onChange={e => onUpdate({ ...character, userBubbleStyleCss: e.target.value })}
-                  placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);\nborder: 1px solid rgba(255, 255, 255, 0.35);'}
-                  className="min-h-[132px] w-full resize-y rounded-2xl border border-zinc-200 bg-white px-4 py-3 font-mono text-[12px] leading-6 text-zinc-800 outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200/70"
-                  spellCheck="false"
-                />
-                {character.userBubbleStyleCss && (
-                  <button
-                    onClick={() => onUpdate({ ...character, userBubbleStyleCss: '' })}
-                    className="text-[12px] font-medium text-rose-500"
-                  >
-                    清除用户气泡 CSS
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
 
         </SettingsSection>
@@ -2514,7 +2348,7 @@ export function ChatSettingsPanel({
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[15px] text-zinc-700">记忆对话轮数</span>
-                    <span className="text-[11px] text-zinc-400">模型每次最多读取最近 {DIRECT_MEMORY_LIMIT_MIN}-{DIRECT_MEMORY_LIMIT_MAX} 轮；更早内容交给短期/长期记忆延续。</span>
+                    <span className="text-[11px] text-zinc-400">用户设多少就实际读取多少轮；未设置时默认 20 轮。更早内容交给短期/长期记忆延续。</span>
                   </div>
                 </div>
                 <input
@@ -2963,11 +2797,11 @@ export function ChatSettingsPanel({
 
               <SettingsSection
                 title="场景提示"
-                summary="按单聊、约会、群聊等场景补一层轻量提示"
+                summary="写角色在不同场合下是什么样子"
               >
                 <div className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm p-4">
                   <p className="text-[11px] text-zinc-500 mb-4">
-                    这些是场景补丁，不要重复核心人设。更适合写“这个场景下要抓什么感觉、维持什么距离、避免什么常见跑偏”。
+                    这里写的是场合里的样子，不是重写人设。单聊、约会、群里、一起听歌、论坛 / 界隙这些都可以分别写一点。梦境不读这里。
                   </p>
                   <div className="space-y-4">
                     {sceneHintEditors.map((entry) => (

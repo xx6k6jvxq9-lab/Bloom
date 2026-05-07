@@ -274,6 +274,7 @@ export function TogetherChatPanel({
         : activeTogetherCharacter.userBubbleStyleCss;
     const hasCharacterRoleTheme = hasBubbleThemeCss(characterRoleBubbleStyleCss);
     const shouldUseDefaultBubbleSurface = !hasGlobalTheme && !hasRoleTheme && !hasCharacterRoleTheme;
+    const shouldApplyRoleBubbleSurfaceOverride = !hasGlobalTheme && !hasRoleTheme && !hasCharacterRoleTheme;
     const globalBubbleStyle = sanitizeBubbleSurfaceStyle(
       parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss),
     );
@@ -302,31 +303,33 @@ export function TogetherChatPanel({
               role === "user"
                 ? "0 10px 24px rgba(59, 130, 246, 0.18)"
                 : "0 10px 24px rgba(15, 23, 42, 0.08)",
-            backgroundColor:
-              role === "user"
-                ? visualSettings?.chat?.messageBackgroundColorUser || "rgba(59,130,246,1)"
+              backgroundColor:
+                role === "user"
+                  ? visualSettings?.chat?.messageBackgroundColorUser || "rgba(59,130,246,1)"
                 : visualSettings?.chat?.messageBackgroundColorModel || "rgba(255,255,255,0.95)",
             borderColor:
               role === "user"
                 ? visualSettings?.chat?.messageBackgroundColorUser || "rgba(59,130,246,1)"
                 : "rgba(228, 228, 231, 1)",
-          }
+              }
+            : {}),
+      ...(shouldApplyRoleBubbleSurfaceOverride
+        ? (resolvedRoleBubbleImageUrl
+            ? {
+                backgroundImage: `url(${resolvedRoleBubbleImageUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                border: "none",
+              }
+            : roleBubbleColor
+              ? {
+                  backgroundColor: roleBubbleColor,
+                  borderColor: roleBubbleColor,
+                }
+              : {})
         : {}),
       ...(hasCharacterRoleTheme ? {} : globalBubbleStyle),
       ...(hasCharacterRoleTheme ? {} : globalRoleBubbleStyle),
-      ...(resolvedRoleBubbleImageUrl
-        ? {
-            backgroundImage: `url(${resolvedRoleBubbleImageUrl})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            border: "none",
-          }
-        : roleBubbleColor
-          ? {
-              backgroundColor: roleBubbleColor,
-              borderColor: roleBubbleColor,
-            }
-          : {}),
       ...characterBubbleStyle,
     };
   };

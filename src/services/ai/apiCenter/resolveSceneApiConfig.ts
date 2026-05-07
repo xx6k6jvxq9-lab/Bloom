@@ -15,12 +15,14 @@ export function resolveSceneTextApiConfig(
   const resolved = resolveTextCallConfig(params);
   return {
     ...resolved,
-    runtimeConfig: resolved.config
-      ? convertProviderConfigToLegacyApiConfig(resolved.config, {
-        id: `api-center-${params.scene}`,
-        name: `API Center ${params.scene}`,
-      })
-      : null,
+    runtimeConfig: resolved.legacyConfig
+      ? resolved.legacyConfig
+      : resolved.config
+        ? convertProviderConfigToLegacyApiConfig(resolved.config, {
+          id: `api-center-${params.scene}`,
+          name: `API Center ${params.scene}`,
+        })
+        : null,
   };
 }
 

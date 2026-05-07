@@ -18,6 +18,19 @@ interface GameCardProps {
 export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, translation }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const normalizedTranslation = (translation || '').trim();
+  const translationSegments = normalizedTranslation
+    .split('---')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const frontTranslation = data.question
+    ? (translationSegments.length > 1 ? translationSegments[0] : '')
+    : normalizedTranslation;
+  const backTranslation = data.question
+    ? (translationSegments.length > 1
+      ? translationSegments[translationSegments.length - 1]
+      : normalizedTranslation)
+    : normalizedTranslation;
 
   const getIcon = () => {
     if (data.game === 'qna') return <Heart size={16} className="text-pink-500 fill-pink-500" />;
@@ -99,11 +112,9 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
               <p className="font-bold text-sm text-zinc-800 line-clamp-3 leading-relaxed">
                 {data.question ? data.question : cleanContent}
               </p>
-              {translation && (
+              {frontTranslation && (
                 <p className="font-medium text-[10px] text-zinc-500 line-clamp-2 leading-relaxed mt-1">
-                  {data.question && translation.includes('---') 
-                    ? translation.split('---')[0].trim() 
-                    : translation}
+                  {frontTranslation}
                 </p>
               )}
               {transferAmount && (
@@ -142,11 +153,9 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
             >
               {cleanContent}
             </p>
-            {translation && (
+            {backTranslation && (
               <p className="font-medium text-[10px] text-zinc-500 line-clamp-2 leading-relaxed mt-1">
-                {data.question && translation.includes('---') 
-                  ? translation.split('---').pop()?.trim() 
-                  : translation}
+                {backTranslation}
               </p>
             )}
             {transferAmount && (
@@ -194,12 +203,10 @@ export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, tran
                   <p className="text-zinc-800 leading-relaxed whitespace-pre-wrap text-sm font-medium text-center px-2">
                     {cleanContent}
                   </p>
-                  {translation && (
+                  {backTranslation && (
                     <div className="mt-4 pt-4 border-t border-zinc-100 px-2">
                       <p className="text-zinc-500 leading-relaxed whitespace-pre-wrap text-xs font-medium text-center">
-                        {data.question && translation.includes('---') 
-                          ? translation.split('---').pop()?.trim() 
-                          : translation}
+                        {backTranslation}
                       </p>
                     </div>
                   )}

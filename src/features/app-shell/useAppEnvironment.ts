@@ -46,9 +46,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    // Mobile browsers should let the browser own the viewport. Standalone
-    // shells are the only mode that still needs explicit composer lifting.
-    const manualKeyboardAvoidanceEnabled = isStandalone;
+    // The app now lets the browser / standalone shell own keyboard viewport
+    // changes on every platform. The old manual lift path was creating the
+    // repeated white gaps, header drift, and duplicated bottom spacing.
+    const manualKeyboardAvoidanceEnabled = false;
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
@@ -82,7 +83,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       let resolvedKeyboardInset = 0;
       let resolvedKeyboardVisible = false;
 
-      if (isAndroid) {
+      if (isAndroid && manualKeyboardAvoidanceEnabled) {
         let nextStableLayoutViewportHeight = stableLayoutViewportHeight;
 
         if (
@@ -136,6 +137,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
       lastInnerWidth = currentInnerWidth;
 
+      const activeViewportHeight = resolvedKeyboardVisible
+        ? visualViewportHeight
+        : resolvedLayoutViewportHeight;
+
       setLayoutViewportHeight(resolvedLayoutViewportHeight);
       setVisualViewportHeight(visualViewportHeight);
       setKeyboardInset(resolvedKeyboardInset);
@@ -149,6 +154,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       });
 
       root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
+      root.style.setProperty('--app-active-viewport-height', `${activeViewportHeight}px`);
       root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
@@ -178,10 +184,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       window.removeEventListener('orientationchange', updateViewportHeight);
       document.removeEventListener('focusin', scheduleViewportHeightUpdate, true);
       document.removeEventListener('focusout', scheduleViewportHeightUpdate, true);
-      root.style.removeProperty('--app-layout-viewport-height');
-      root.style.removeProperty('--app-viewport-height');
-      root.style.removeProperty('--app-visible-viewport-height');
-      root.style.removeProperty('--app-keyboard-inset');
+        root.style.removeProperty('--app-layout-viewport-height');
+        root.style.removeProperty('--app-active-viewport-height');
+        root.style.removeProperty('--app-viewport-height');
+        root.style.removeProperty('--app-visible-viewport-height');
+        root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');

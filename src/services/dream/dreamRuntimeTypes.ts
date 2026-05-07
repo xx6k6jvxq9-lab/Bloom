@@ -138,11 +138,17 @@ export type DreamRuntimeScenario = {
   aftermathOutput?: DreamAftermathOutput;
 };
 
+export type DreamWorldBookConfig = {
+  excludedInheritedIds?: string[];
+  localEntries?: WorldBookEntry[];
+};
+
 export type GenerateDreamScenarioOptions = {
   activeConfig: ApiConfig;
   character: Character;
   masks: Mask[];
   worldBooks: WorldBookEntry[];
+  dreamWorldBookConfig?: DreamWorldBookConfig;
   selection: DreamSelection;
 };
 

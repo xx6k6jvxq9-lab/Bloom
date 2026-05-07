@@ -7,6 +7,7 @@ import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-ch
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
 import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
+import { formatChatMessagePreview } from '../app-shell/formatMessagePreview';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
@@ -62,6 +63,10 @@ function isFactTraceArray(value: unknown): value is FactTraceRecord[] {
   return Array.isArray(value);
 }
 
+function findLatestPreviewableMessage(messages: ChatMessage[]): ChatMessage | null {
+  return [...messages].reverse().find((message) => !message.isSystem && !message.isRecalled) || null;
+}
+
 function sanitizeDirectRelationshipWaves(
   value: unknown,
   fallback: Record<string, RelationshipWaveRecord[]>,
@@ -110,10 +115,11 @@ function sanitizeGroupSessions(
   for (const [key, session] of Object.entries(value as Record<string, unknown>)) {
     if (isChatMessageArray(session)) {
       const history = session;
+      const latestPreviewableMessage = findLatestPreviewableMessage(history);
       result[key] = {
         history,
-        lastMessage: history[history.length - 1]?.text,
-        lastTime: history[history.length - 1]?.timestamp,
+        lastMessage: latestPreviewableMessage ? formatChatMessagePreview(latestPreviewableMessage) : undefined,
+        lastTime: latestPreviewableMessage?.timestamp,
         relationshipWaves: [],
         factTraces: [],
       };
@@ -121,10 +127,17 @@ function sanitizeGroupSessions(
     }
 
     if (isPersistedGroupSession(session)) {
+      const latestPreviewableMessage = findLatestPreviewableMessage(session.history);
       result[key] = {
         history: session.history,
-        lastMessage: typeof session.lastMessage === 'string' ? session.lastMessage : undefined,
-        lastTime: typeof session.lastTime === 'number' ? session.lastTime : undefined,
+        lastMessage: typeof session.lastMessage === 'string'
+          ? session.lastMessage
+          : latestPreviewableMessage
+            ? formatChatMessagePreview(latestPreviewableMessage)
+            : undefined,
+        lastTime: typeof session.lastTime === 'number'
+          ? session.lastTime
+          : latestPreviewableMessage?.timestamp,
         relationshipWaves: isRelationshipWaveArray(session.relationshipWaves) ? session.relationshipWaves : [],
         factTraces: isFactTraceArray(session.factTraces) ? session.factTraces : [],
         topicState: session.topicState,

@@ -38,6 +38,39 @@ type BuildChatSceneInputParams = {
   latestUserText?: string;
 };
 
+const GROUP_INTEROP_TRIGGER_REGEX = /群|群聊|大家|你们|他们|别人|公开|论坛|朋友圈|朋友|同事|室友|家人|外人|社交|一起|聚会/u;
+
+function shouldInjectSharedGroupInterop(params: {
+  groups: ChatGroup[];
+  latestUserText?: string;
+}): boolean {
+  if (params.groups.length === 0) {
+    return false;
+  }
+
+  const normalizedText = params.latestUserText?.trim() || '';
+  if (!normalizedText) {
+    return false;
+  }
+
+  if (GROUP_INTEROP_TRIGGER_REGEX.test(normalizedText)) {
+    return true;
+  }
+
+  return params.groups.some((group) => {
+    const groupName = group.name?.trim();
+    const groupRemark = group.groupRemark?.trim();
+    return !!(
+      (groupName && normalizedText.includes(groupName))
+      || (groupRemark && normalizedText.includes(groupRemark))
+    );
+  });
+}
+
+function shouldInjectPresenceCue(state: ReturnType<typeof buildCharacterTemporalState>): boolean {
+  return state.continuityMode !== 'continuous_scene';
+}
+
 function getDirectMemoryReadableGroups(
   chatGroups: ChatGroup[] | undefined,
   characterId: string,
@@ -381,12 +414,19 @@ export function buildChatSceneInput(
       extendedLore: characterContext.extendedLore,
       chatSceneHint: characterContext.sceneHints?.chat,
     }).concat(
-      formatPresenceCuePrompt(characterTemporalState),
-      buildSharedGroupInteropSections(
-        directMemoryReadableGroups,
-        params.character,
-        params.worldBooks,
-      ),
+      shouldInjectPresenceCue(characterTemporalState)
+        ? formatPresenceCuePrompt(characterTemporalState)
+        : '',
+      shouldInjectSharedGroupInterop({
+        groups: directMemoryReadableGroups,
+        latestUserText: params.latestUserText,
+      })
+        ? buildSharedGroupInteropSections(
+          directMemoryReadableGroups,
+          params.character,
+          params.worldBooks,
+        )
+        : '',
     ),
   });
 

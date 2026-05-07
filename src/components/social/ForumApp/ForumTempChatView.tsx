@@ -63,13 +63,13 @@ export function ForumTempChatView({
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
   const { keyboardInset, keyboardVisible: appKeyboardVisible, manualKeyboardAvoidanceEnabled } = useAppKeyboard();
-  const { keyboardVisible: ownsFocusedKeyboard, viewportStyle } = useKeyboardSafeViewport({
+  const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef,
     enabled: true,
   });
 
   return (
-    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col" style={viewportStyle}>
+    <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
       <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 px-4 pb-3 flex items-center justify-between" style={topInsetStyle}>
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-900 hover:bg-zinc-100 rounded-full transition-colors">

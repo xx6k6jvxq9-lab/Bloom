@@ -1,7 +1,6 @@
 export const DIRECT_MEMORY_LIMIT_MIN = 4;
-export const DIRECT_MEMORY_LIMIT_DEFAULT = 30;
+export const DIRECT_MEMORY_LIMIT_DEFAULT = 20;
 export const DIRECT_MEMORY_LIMIT_MAX = 50;
-export const DIRECT_MEMORY_MESSAGES_PER_ROUND = 2;
 
 export function clampDirectMemoryLimit(value: unknown): number {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -16,5 +15,5 @@ export function clampDirectMemoryLimit(value: unknown): number {
 }
 
 export function getDirectMemoryMessageLimit(value: unknown): number {
-  return clampDirectMemoryLimit(value) * DIRECT_MEMORY_MESSAGES_PER_ROUND;
+  return clampDirectMemoryLimit(value);
 }

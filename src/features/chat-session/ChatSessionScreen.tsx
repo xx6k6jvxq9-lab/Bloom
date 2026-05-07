@@ -35,6 +35,7 @@ import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
+import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
 import { usePressToRecordInteraction } from './usePressToRecordInteraction';
@@ -47,7 +48,19 @@ import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../app-shell/keyboardUtils';
 import { getMessageMainText } from '../../utils';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
+import {
+  FOOTER_REPLY_PREVIEW_ICON_STYLE,
+  MESSAGE_REPLY_PREVIEW_ICON_STYLE,
+  MESSAGE_REPLY_PREVIEW_LABEL_CLASS,
+  MESSAGE_REPLY_PREVIEW_LABEL_STYLE,
+  MESSAGE_REPLY_PREVIEW_TEXT_CLASS,
+  MESSAGE_REPLY_PREVIEW_TEXT_STYLE,
+  getFooterReplyCloseButtonClass,
+  getFooterReplyPreviewClass,
+  getMessageReplyPreviewClass,
+} from './replyPreviewStyles';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
+import { AvatarFrame } from '../../components/chat/AvatarFrame';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -60,20 +73,6 @@ type ParsedGameCardDisplayData = {
   question?: string;
   content: string;
 };
-
-function getDirectReplyPreviewClass(isUser: boolean) {
-  return `chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 text-zinc-700 shadow-[0_6px_16px_rgba(15,23,42,0.05)] backdrop-blur-sm ${
-    isUser
-      ? 'border-white/18 bg-white/16 text-white'
-      : 'border-zinc-200/85 bg-white/72 text-zinc-700'
-  }`;
-}
-
-function getDirectReplyPreviewTextClass(isUser: boolean) {
-  return `mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 break-words ${
-    isUser ? 'text-white/82' : 'text-zinc-600'
-  }`;
-}
 
 function formatChatMessageTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -174,6 +173,7 @@ function getDirectTextBubbleStyle({
   const characterRoleBubbleStyleCss = role === 'model' ? character.bubbleStyleCss : character.userBubbleStyleCss;
   const hasCharacterRoleTheme = hasBubbleThemeCss(characterRoleBubbleStyleCss);
   const shouldUseDefaultBubbleSurface = !hasGlobalTheme && !hasRoleTheme && !hasCharacterRoleTheme;
+  const shouldApplyRoleBubbleSurfaceOverride = !hasGlobalTheme && !hasRoleTheme && !hasCharacterRoleTheme;
   const globalBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(visualSettings?.chat?.bubbleStyleCss));
   const globalRoleBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(
     role === 'model' ? visualSettings?.chat?.modelBubbleStyleCss : visualSettings?.chat?.userBubbleStyleCss,
@@ -201,7 +201,7 @@ function getDirectTextBubbleStyle({
         role === 'user'
           ? (visualSettings?.chat?.messageBackgroundColorUser ||
               `rgba(59, 130, 246, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`)
-          : (visualSettings?.chat?.messageBackgroundColorModel ||
+      : (visualSettings?.chat?.messageBackgroundColorModel ||
               `rgba(255, 255, 255, ${activeBackground ? (visualSettings?.chatOpacity ?? 0.9) : 1})`),
       borderColor:
         role === 'user'
@@ -217,21 +217,23 @@ function getDirectTextBubbleStyle({
           border: 'none',
         }
       : {}),
+    ...(shouldApplyRoleBubbleSurfaceOverride
+      ? (resolvedRoleBubbleImageUrl
+          ? {
+              backgroundImage: `url(${resolvedRoleBubbleImageUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              border: 'none',
+            }
+          : roleBubbleColor
+          ? {
+              backgroundColor: roleBubbleColor,
+              borderColor: roleBubbleColor,
+            }
+          : {})
+      : {}),
     ...(hasCharacterRoleTheme ? {} : globalBubbleStyle),
     ...(hasCharacterRoleTheme ? {} : globalRoleBubbleStyle),
-    ...(resolvedRoleBubbleImageUrl
-      ? {
-          backgroundImage: `url(${resolvedRoleBubbleImageUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          border: 'none',
-        }
-      : roleBubbleColor
-      ? {
-          backgroundColor: roleBubbleColor,
-          borderColor: roleBubbleColor,
-        }
-      : {}),
     ...characterBubbleStyle,
   };
 }
@@ -362,21 +364,6 @@ function PersistentImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} style={style} referrerPolicy={referrerPolicy} />;
-}
-
-function InlineResolvedImage({
-  src,
-  className,
-  style,
-  alt,
-}: {
-  src?: string | null;
-  className?: string;
-  style?: React.CSSProperties;
-  alt?: string;
-}) {
-  if (!src) return null;
-  return <img src={src} className={className} style={style} alt={alt} />;
 }
 
 function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
@@ -1473,7 +1460,6 @@ export function ChatSessionScreen({
 
 
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.background);
-  const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(visualSettings?.chat?.avatarFrameUrl);
   const { resolvedUrl: resolvedChatMessageBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.messageBackgroundImageUrl);
   const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
@@ -1522,6 +1508,26 @@ export function ChatSessionScreen({
   const directCharacterUserBubbleThemeCss = hasBubbleThemeCss(character.userBubbleStyleCss)
     ? buildScopedBubbleThemeCss(character.userBubbleStyleCss, '.chat-bubble-theme-scope')
     : buildScopedBubbleVariantCss(character.userBubbleStyleCss, '.chat-bubble-theme-scope', '.chat-bubble-right');
+  const directAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    visualSettings?.chat?.avatarFrameCss,
+    '.chat-avatar-frame-theme',
+  );
+  const directModelAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    visualSettings?.chat?.modelAvatarFrameCss,
+    '.chat-avatar-frame-model',
+  );
+  const directUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    visualSettings?.chat?.userAvatarFrameCss,
+    '.chat-avatar-frame-user',
+  );
+  const directCharacterAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    character.avatarFrameCss,
+    '.chat-avatar-frame-model',
+  );
+  const directCharacterUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    character.userAvatarFrameCss,
+    '.chat-avatar-frame-user',
+  );
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
   const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
@@ -1566,7 +1572,6 @@ export function ChatSessionScreen({
     if (
       typeof document === 'undefined'
       || !keyboardVisible
-      || !keyboardInset
       || document.activeElement !== inputTextareaRef.current
     ) {
       return;
@@ -1580,7 +1585,7 @@ export function ChatSessionScreen({
       }
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, visualViewportHeight]);
+  }, [history, isLoading, keyboardVisible, visualViewportHeight]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -1844,6 +1849,11 @@ export function ChatSessionScreen({
         || directUserBubbleThemeCss
         || directCharacterBubbleThemeCss
         || directCharacterUserBubbleThemeCss
+        || directAvatarFrameThemeCss
+        || directModelAvatarFrameThemeCss
+        || directUserAvatarFrameThemeCss
+        || directCharacterAvatarFrameThemeCss
+        || directCharacterUserAvatarFrameThemeCss
         || directChatFontCss
       ) && (
         <style>
@@ -1853,6 +1863,11 @@ export function ChatSessionScreen({
             directUserBubbleThemeCss,
             directCharacterBubbleThemeCss,
             directCharacterUserBubbleThemeCss,
+            directAvatarFrameThemeCss,
+            directModelAvatarFrameThemeCss,
+            directUserAvatarFrameThemeCss,
+            directCharacterAvatarFrameThemeCss,
+            directCharacterUserAvatarFrameThemeCss,
             directChatFontCss,
           ].filter(Boolean).join('\n\n')}
         </style>
@@ -2019,58 +2034,32 @@ export function ChatSessionScreen({
                 {/* Avatars */}
                 {msg.role === 'model' && (
                   <div className="w-10 shrink-0 flex justify-center pt-0.5">
-                    <div 
-                      className="relative cursor-pointer"
+                    <AvatarFrame
+                      src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl)}
+                      alt={character.name}
+                      size={visualSettings?.chat?.avatarSize ?? 32}
+                      borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
+                      borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
+                      borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      scopeClassName="chat-avatar-frame-theme chat-avatar-frame-model"
+                      className="cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
-                    >
-                      <InlineResolvedImage
-                        src={getDisplayableAssetValue(character.avatar, resolvedCharacterAvatarUrl)}
-                        className="object-cover"
-                        style={{
-                          width: visualSettings?.chat?.avatarSize ?? 32,
-                          height: visualSettings?.chat?.avatarSize ?? 32,
-                          borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
-                          borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
-                          borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
-                          borderStyle: 'solid'
-                        }}
-                      />
-                      {resolvedChatAvatarFrameUrl && (
-                        <img 
-                          src={resolvedChatAvatarFrameUrl} 
-                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
-                          style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
-                        />
-                      )}
-                    </div>
+                    />
                   </div>
                 )}
                 {msg.role === 'user' && (
                   <div className="w-10 shrink-0 flex justify-center pt-0.5">
-                    <div 
-                      className="relative cursor-pointer"
+                    <AvatarFrame
+                      src={getDisplayableAssetValue(userAvatar, resolvedUserAvatarUrl)}
+                      alt={userName}
+                      size={visualSettings?.chat?.avatarSize ?? 32}
+                      borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
+                      borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
+                      borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      scopeClassName="chat-avatar-frame-theme chat-avatar-frame-user"
+                      className="cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
-                    >
-                      <InlineResolvedImage
-                        src={getDisplayableAssetValue(userAvatar, resolvedUserAvatarUrl)}
-                        className="object-cover"
-                        style={{
-                          width: visualSettings?.chat?.avatarSize ?? 32,
-                          height: visualSettings?.chat?.avatarSize ?? 32,
-                          borderRadius: visualSettings?.chat?.avatarBorderRadius ?? 16,
-                          borderWidth: visualSettings?.chat?.avatarBorderWidth ?? 0,
-                          borderColor: visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7',
-                          borderStyle: 'solid'
-                        }}
-                      />
-                      {resolvedChatAvatarFrameUrl && (
-                        <img 
-                          src={resolvedChatAvatarFrameUrl} 
-                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
-                          style={{ width: (visualSettings?.chat?.avatarSize ?? 32) * 1.4, height: (visualSettings?.chat?.avatarSize ?? 32) * 1.4 }}
-                        />
-                      )}
-                    </div>
+                    />
                   </div>
                 )}
                 
@@ -2289,13 +2278,13 @@ export function ChatSessionScreen({
                             {msg.audioUrl && !msg.isInnerVoice && (
                               <>
                                 {msg.replyTo && (
-                                  <div className={getDirectReplyPreviewClass(msg.role === 'user')}>
-                                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                                  <div className={getMessageReplyPreviewClass(msg.role === 'user')}>
+                                    <Reply size={13} className="mt-0.5 shrink-0" style={MESSAGE_REPLY_PREVIEW_ICON_STYLE} />
                                     <div className="min-w-0">
-                                      <div className="text-[11px] font-medium text-zinc-500">
+                                      <div className={MESSAGE_REPLY_PREVIEW_LABEL_CLASS} style={MESSAGE_REPLY_PREVIEW_LABEL_STYLE}>
                                         回复 {msg.replyTo.authorLabel}
                                       </div>
-                                      <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
+                                      <div className={MESSAGE_REPLY_PREVIEW_TEXT_CLASS} style={MESSAGE_REPLY_PREVIEW_TEXT_STYLE}>
                                         {getReplyPreviewText(msg)}
                                       </div>
                                     </div>
@@ -2338,14 +2327,14 @@ export function ChatSessionScreen({
                               <>
                                 {msg.replyTo && (
                                   <div
-                                    className={getDirectReplyPreviewClass(msg.role === 'user')}
+                                    className={getMessageReplyPreviewClass(msg.role === 'user')}
                                   >
-                                    <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                                    <Reply size={13} className="mt-0.5 shrink-0" style={MESSAGE_REPLY_PREVIEW_ICON_STYLE} />
                                     <div className="min-w-0">
-                                      <div className="text-[11px] font-medium text-zinc-500">
+                                      <div className={MESSAGE_REPLY_PREVIEW_LABEL_CLASS} style={MESSAGE_REPLY_PREVIEW_LABEL_STYLE}>
                                         回复 {msg.replyTo.authorLabel}
                                       </div>
-                                      <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
+                                      <div className={MESSAGE_REPLY_PREVIEW_TEXT_CLASS} style={MESSAGE_REPLY_PREVIEW_TEXT_STYLE}>
                                         {getReplyPreviewText(msg)}
                                       </div>
                                     </div>
@@ -2413,14 +2402,14 @@ export function ChatSessionScreen({
                                 <>
                                   {msg.replyTo && (
                                     <div
-                                      className={getDirectReplyPreviewClass(msg.role === 'user')}
+                                      className={getMessageReplyPreviewClass(msg.role === 'user')}
                                     >
-                                      <Reply size={13} className="mt-0.5 shrink-0 text-zinc-400" />
+                                      <Reply size={13} className="mt-0.5 shrink-0" style={MESSAGE_REPLY_PREVIEW_ICON_STYLE} />
                                       <div className="min-w-0">
-                                        <div className="text-[11px] font-medium text-zinc-500">
+                                        <div className={MESSAGE_REPLY_PREVIEW_LABEL_CLASS} style={MESSAGE_REPLY_PREVIEW_LABEL_STYLE}>
                                           回复 {msg.replyTo.authorLabel}
                                         </div>
-                                        <div className={getDirectReplyPreviewTextClass(msg.role === 'user')}>
+                                        <div className={MESSAGE_REPLY_PREVIEW_TEXT_CLASS} style={MESSAGE_REPLY_PREVIEW_TEXT_STYLE}>
                                           {getReplyPreviewText(msg)}
                                         </div>
                                       </div>
@@ -2854,25 +2843,25 @@ export function ChatSessionScreen({
         style={chatFooterStyle}
       >
         {replyingTo && (
-          <div className="chat-footer-reply-preview flex items-center justify-between bg-zinc-100/80 backdrop-blur-sm rounded-xl px-3 py-2 text-[13px] text-zinc-600 border border-zinc-200/50">
+          <div className={getFooterReplyPreviewClass()}>
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
-              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" />
+              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" style={FOOTER_REPLY_PREVIEW_ICON_STYLE} />
               <span className="font-medium shrink-0">{replyingTo.authorLabel}:</span>
               <span className="truncate">{replyingTo.preview}</span>
             </div>
-            <button onClick={() => setReplyingTo(null)} className="chat-footer-reply-close-button p-1 hover:bg-zinc-200 rounded-full shrink-0">
+            <button onClick={() => setReplyingTo(null)} className={getFooterReplyCloseButtonClass()}>
               <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
         )}
         {editingMessageIndex !== null && history[editingMessageIndex] && (
-          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-[13px] text-amber-700 backdrop-blur-sm">
+          <div className={getFooterReplyPreviewClass('editing')}>
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
               <Pencil size={14} className="shrink-0" />
               <span className="shrink-0 font-medium">编辑消息</span>
               <span className="truncate">{history[editingMessageIndex]?.text}</span>
             </div>
-            <button onClick={handleCancelEdit} className="chat-footer-reply-close-button p-1 hover:bg-amber-100 rounded-full shrink-0">
+            <button onClick={handleCancelEdit} className={getFooterReplyCloseButtonClass('editing')}>
               <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>

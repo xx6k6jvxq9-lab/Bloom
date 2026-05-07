@@ -81,7 +81,9 @@ export type ChatCustomization = {
   avatarBorderRadius: number;
   avatarBorderColor: string;
   avatarBorderWidth: number;
-  avatarFrameUrl?: string;
+  avatarFrameCss?: string;
+  modelAvatarFrameCss?: string;
+  userAvatarFrameCss?: string;
   messageBorderRadius: number;
   messageBackgroundColorUser: string;
   messageBackgroundColorModel: string;
@@ -646,6 +648,8 @@ export type Character = {
   motto?: string;
   bubbleStyleCss?: string;
   userBubbleStyleCss?: string;
+  avatarFrameCss?: string;
+  userAvatarFrameCss?: string;
   showTokenCount?: boolean;
   minReplies?: number;
   maxReplies?: number;
@@ -724,9 +728,19 @@ export type GroupTaskCard = {
   entries: GroupTaskEntry[];
 };
 
+export type ChatMessageContentType =
+  | 'text'
+  | 'game-card'
+  | 'game-card-error'
+  | 'inner-voice'
+  | 'transfer'
+  | 'couple-space-invite'
+  | 'couple-space-invite-accepted';
+
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
+  contentType?: ChatMessageContentType;
   source?: 'app';
   channel?: 'app';
   channelConversationId?: string;

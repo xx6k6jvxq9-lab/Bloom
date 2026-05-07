@@ -2,7 +2,7 @@
 import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset } from '../../../types';
+import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset, type Character } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { extractSingleImageUrl, showInAppConfirm } from '../../../utils';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
@@ -48,6 +48,11 @@ import {
 } from '../../../features/persistence/chatHistoryStore';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
+import { AvatarFrame } from '../../chat/AvatarFrame';
+import {
+  AVATAR_FRAME_THEME_TARGETS,
+  buildScopedAvatarFrameThemeCss,
+} from '../../../features/chat-session/avatarFrameStyleCss';
 
 const DESKTOP_ICON_ACCEPTED_IMAGE_TYPES = new Set([
   'image/png',
@@ -204,6 +209,8 @@ export function CustomizationApp({
               setSettings={setVisualSettings} 
               subTab={chatSubTab} 
               setSubTab={setChatSubTab} 
+              appData={appData}
+              setAppData={setAppData}
             />
           )}
           {activeTab === 'theme' && (
@@ -1335,13 +1342,145 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   );
 }
 
+function CodeEditor({
+  value,
+  onChange,
+  placeholder,
+  heightClass = 'h-48',
+}: {
+  value: string;
+  onChange: (nextValue: string) => void;
+  placeholder: string;
+  heightClass?: string;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      onInput={(event) => onChange((event.target as HTMLTextAreaElement).value)}
+      placeholder={placeholder}
+      spellCheck="false"
+      autoCapitalize="off"
+      autoCorrect="off"
+      autoComplete="off"
+      className={`${heightClass} w-full resize-y rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[13px] leading-6 text-zinc-800 caret-zinc-900 outline-none transition-colors placeholder:text-zinc-400 shadow-inner shadow-white/60 focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-200`}
+    />
+  );
+}
+
+function ImportStyleButton({
+  onImport,
+  label = '导入 CSS',
+}: {
+  onImport: (content: string) => void;
+  label?: string;
+}) {
+  return (
+    <label className="shrink-0 cursor-pointer rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200">
+      {label}
+      <input
+        type="file"
+        className="hidden"
+        accept=".css,.txt"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            onImport(String(reader.result || ''));
+            event.target.value = '';
+          };
+          reader.readAsText(file, 'utf-8');
+        }}
+      />
+    </label>
+  );
+}
+
+function CharacterSelect({
+  characters,
+  selectedCharacterId,
+  onChange,
+  label = '选择角色',
+}: {
+  characters: Character[];
+  selectedCharacterId: string;
+  onChange: (nextValue: string) => void;
+  label?: string;
+}) {
+  if (!characters.length) {
+    return (
+      <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[12px] text-zinc-500">
+        暂无可配置角色。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-zinc-500">{label}</label>
+      <select
+        value={selectedCharacterId}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200"
+      >
+        {characters.map((character) => (
+          <option key={character.id} value={character.id}>
+            {character.remarkName?.trim() || character.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // --- Chat Settings ---
-function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
+function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAppData }: any) {
+  const characters = Array.isArray(appData?.characters) ? appData.characters : [];
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => characters[0]?.id || '');
+  const selectedCharacter = useMemo(
+    () => characters.find((character: Character) => character.id === selectedCharacterId) || null,
+    [characters, selectedCharacterId],
+  );
   const { resolvedUrl: resolvedGlobalWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground || '');
   const { resolvedUrl: resolvedDynamicsBackgroundUrl } = useResolvedPersistentValue(settings.dynamics?.background || '');
-  const { resolvedUrl: resolvedChatAvatarFrameUrl } = useResolvedPersistentValue(settings.chat?.avatarFrameUrl || '');
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
+  const { resolvedUrl: resolvedSelectedCharacterAvatarUrl } = useResolvedPersistentValue(selectedCharacter?.avatar || '');
+  const { resolvedUrl: resolvedSelectedUserAvatarUrl } = useResolvedPersistentValue(appData?.userProfile?.avatar || '');
+  const previewAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(settings.chat?.avatarFrameCss, '.avatar-frame-preview-theme');
+  const previewModelAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(settings.chat?.modelAvatarFrameCss, '.avatar-frame-preview-model');
+  const previewUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(settings.chat?.userAvatarFrameCss, '.avatar-frame-preview-user');
+  const previewCharacterAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(selectedCharacter?.avatarFrameCss, '.avatar-frame-preview-model');
+  const previewCharacterUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(selectedCharacter?.userAvatarFrameCss, '.avatar-frame-preview-user');
+
+  useEffect(() => {
+    if (!characters.length) {
+      if (selectedCharacterId) {
+        setSelectedCharacterId('');
+      }
+      return;
+    }
+
+    if (!characters.some((character: Character) => character.id === selectedCharacterId)) {
+      setSelectedCharacterId(characters[0]?.id || '');
+    }
+  }, [characters, selectedCharacterId]);
+
+  const patchSelectedCharacter = (patch: Partial<Character>) => {
+    if (!selectedCharacter || typeof setAppData !== 'function') {
+      return;
+    }
+
+    setAppData({
+      ...appData,
+      characters: characters.map((character: Character) => (
+        character.id === selectedCharacter.id
+          ? { ...character, ...patch }
+          : character
+      )),
+    });
+  };
   const headerStyles = [
     { value: 'default', label: '默认' },
     { value: 'glass', label: '毛玻璃' },
@@ -1378,35 +1517,217 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
           <h3 className="text-sm font-bold text-zinc-800">头像设置</h3>
           <div className="flex justify-center py-4 relative">
-            <div className="relative">
-              <div 
-                style={{ 
-                  width: settings.chat.avatarSize, 
-                  height: settings.chat.avatarSize, 
-                  borderRadius: settings.chat.avatarBorderRadius,
-                  borderWidth: settings.chat.avatarBorderWidth,
-                  borderColor: settings.chat.avatarBorderColor,
-                  borderStyle: 'solid'
-                }} 
-                className="bg-zinc-100 flex items-center justify-center overflow-hidden relative z-10"
-              >
-                <img src="https://picsum.photos/seed/preview/100" className="w-full h-full object-cover" />
-              </div>
-              {resolvedChatAvatarFrameUrl && (
-                <img 
-                  src={resolvedChatAvatarFrameUrl} 
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20"
-                  style={{ width: settings.chat.avatarSize * 1.4, height: settings.chat.avatarSize * 1.4 }}
+            {(previewAvatarFrameThemeCss
+              || previewModelAvatarFrameThemeCss
+              || previewUserAvatarFrameThemeCss
+              || previewCharacterAvatarFrameThemeCss
+              || previewCharacterUserAvatarFrameThemeCss) ? (
+              <style>{[
+                previewAvatarFrameThemeCss,
+                previewModelAvatarFrameThemeCss,
+                previewUserAvatarFrameThemeCss,
+                previewCharacterAvatarFrameThemeCss,
+                previewCharacterUserAvatarFrameThemeCss,
+              ].filter(Boolean).join('\n\n')}</style>
+            ) : null}
+            <div className="flex items-center justify-center gap-10">
+              <div className="flex flex-col items-center gap-2">
+                <AvatarFrame
+                  src={getDisplayableAssetValue(selectedCharacter?.avatar, resolvedSelectedCharacterAvatarUrl) || 'https://picsum.photos/seed/model-preview/100'}
+                  alt="角色头像框预览"
+                  size={settings.chat.avatarSize}
+                  borderRadius={settings.chat.avatarBorderRadius}
+                  borderWidth={settings.chat.avatarBorderWidth}
+                  borderColor={settings.chat.avatarBorderColor}
+                  scopeClassName="avatar-frame-preview-theme avatar-frame-preview-model"
                 />
+                <span className="text-[11px] text-zinc-500">角色</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <AvatarFrame
+                  src={getDisplayableAssetValue(appData?.userProfile?.avatar, resolvedSelectedUserAvatarUrl) || 'https://picsum.photos/seed/user-preview/100'}
+                  alt="用户头像框预览"
+                  size={settings.chat.avatarSize}
+                  borderRadius={settings.chat.avatarBorderRadius}
+                  borderWidth={settings.chat.avatarBorderWidth}
+                  borderColor={settings.chat.avatarBorderColor}
+                  scopeClassName="avatar-frame-preview-theme avatar-frame-preview-user"
+                />
+                <span className="text-[11px] text-zinc-500">用户</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-zinc-800">公共头像框 CSS</div>
+                <p className="text-xs leading-5 text-zinc-500">
+                  这是角色和用户都会先应用的基础层。下面的“角色头像框 CSS”和“用户头像框 CSS”会在它上面继续覆盖。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ImportStyleButton
+                  onImport={(content) => setSettings({ ...settings, chat: { ...settings.chat, avatarFrameCss: content } })}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {AVATAR_FRAME_THEME_TARGETS.map((target) => (
+                <span key={target} className="rounded-full bg-white px-3 py-1 text-[11px] text-zinc-600 shadow-sm ring-1 ring-zinc-100">
+                  {target}
+                </span>
+              ))}
+            </div>
+
+            <CodeEditor
+              value={settings.chat.avatarFrameCss || ''}
+              onChange={(nextValue) => setSettings({ ...settings, chat: { ...settings.chat, avatarFrameCss: nextValue } })}
+              placeholder={'.avatar-frame-shell {\n  padding: 12%;\n  border-radius: calc(var(--avatar-frame-radius) + 8px);\n  background: linear-gradient(180deg, #f7fbef 0%, #edf6e2 100%);\n}\n\n.avatar-frame-media {\n  border-radius: 999px;\n  box-shadow: 0 0 0 3px rgba(255,255,255,0.92), 0 0 0 6px rgba(185,212,163,0.92);\n}'}
+              heightClass="h-64"
+            />
+
+            <div className="text-[11px] leading-5 text-zinc-500">
+              直接写 `padding: 12%; background: ...;` 也可以，系统会自动把它包到 `.avatar-frame-shell` 上。
+            </div>
+
+            {settings.chat.avatarFrameCss?.trim() && (
+              <button
+                onClick={() => setSettings({ ...settings, chat: { ...settings.chat, avatarFrameCss: '' } })}
+                className="text-[12px] font-medium text-rose-500"
+              >
+                清除公共头像框 CSS
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-zinc-800">角色头像框 CSS</div>
+                  <p className="text-xs leading-5 text-zinc-500">
+                    只作用在所有聊天里的角色头像，不会碰用户头像。
+                  </p>
+                </div>
+                <ImportStyleButton
+                  onImport={(content) => setSettings({ ...settings, chat: { ...settings.chat, modelAvatarFrameCss: content } })}
+                />
+              </div>
+              <CodeEditor
+                value={settings.chat.modelAvatarFrameCss || ''}
+                onChange={(nextValue) => setSettings({ ...settings, chat: { ...settings.chat, modelAvatarFrameCss: nextValue } })}
+                placeholder={'.avatar-frame-shell {\n  background: linear-gradient(180deg, #f7fbef 0%, #edf6e2 100%);\n}\n\n.avatar-frame-clover {\n  display: block;\n}'}
+                heightClass="h-44"
+              />
+              {settings.chat.modelAvatarFrameCss?.trim() && (
+                <button
+                  onClick={() => setSettings({ ...settings, chat: { ...settings.chat, modelAvatarFrameCss: '' } })}
+                  className="text-[12px] font-medium text-rose-500"
+                >
+                  清除角色头像框 CSS
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-zinc-800">用户头像框 CSS</div>
+                  <p className="text-xs leading-5 text-zinc-500">
+                    只作用在所有聊天里的用户头像，不会碰角色头像。
+                  </p>
+                </div>
+                <ImportStyleButton
+                  onImport={(content) => setSettings({ ...settings, chat: { ...settings.chat, userAvatarFrameCss: content } })}
+                />
+              </div>
+              <CodeEditor
+                value={settings.chat.userAvatarFrameCss || ''}
+                onChange={(nextValue) => setSettings({ ...settings, chat: { ...settings.chat, userAvatarFrameCss: nextValue } })}
+                placeholder={'.avatar-frame-shell {\n  background: linear-gradient(180deg, #fff6f7 0%, #ffe9f0 100%);\n}\n\n.avatar-frame-heart {\n  display: block;\n}'}
+                heightClass="h-44"
+              />
+              {settings.chat.userAvatarFrameCss?.trim() && (
+                <button
+                  onClick={() => setSettings({ ...settings, chat: { ...settings.chat, userAvatarFrameCss: '' } })}
+                  className="text-[12px] font-medium text-rose-500"
+                >
+                  清除用户头像框 CSS
+                </button>
               )}
             </div>
           </div>
-          
-          <PersistentImageUploadControl 
-            label="头像框图片" 
-            value={settings.chat.avatarFrameUrl || ''} 
-            onChange={(val) => setSettings({ ...settings, chat: { ...settings.chat, avatarFrameUrl: val } })} 
-          />
+
+          <div className="space-y-3 rounded-2xl border border-zinc-100 bg-white p-4">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-zinc-800">当前角色专属头像框</div>
+              <p className="text-xs leading-5 text-zinc-500">
+                这里选哪个角色，改的就是哪个角色自己的头像框。单聊和群聊里该角色头像都会读到这套样式。
+              </p>
+            </div>
+            <CharacterSelect
+              characters={characters}
+              selectedCharacterId={selectedCharacterId}
+              onChange={setSelectedCharacterId}
+            />
+            {selectedCharacter && (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-zinc-800">{selectedCharacter.remarkName?.trim() || selectedCharacter.name} 角色头像框</div>
+                      <p className="text-xs leading-5 text-zinc-500">覆盖这个角色自己的头像框。</p>
+                    </div>
+                    <ImportStyleButton onImport={(content) => patchSelectedCharacter({ avatarFrameCss: content })} />
+                  </div>
+                  <CodeEditor
+                    value={selectedCharacter.avatarFrameCss || ''}
+                    onChange={(nextValue) => patchSelectedCharacter({ avatarFrameCss: nextValue })}
+                    placeholder={'.avatar-frame-shell {\n  background: linear-gradient(180deg, #f7fbef 0%, #edf6e2 100%);\n}'}
+                    heightClass="h-44"
+                  />
+                  {selectedCharacter.avatarFrameCss?.trim() && (
+                    <button
+                      onClick={() => patchSelectedCharacter({ avatarFrameCss: '' })}
+                      className="text-[12px] font-medium text-rose-500"
+                    >
+                      清除该角色头像框 CSS
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-zinc-800">{selectedCharacter.remarkName?.trim() || selectedCharacter.name} 对话里的用户头像框</div>
+                      <p className="text-xs leading-5 text-zinc-500">只影响你和这个角色单聊时的用户头像框，不会影响别的角色。</p>
+                    </div>
+                    <ImportStyleButton onImport={(content) => patchSelectedCharacter({ userAvatarFrameCss: content })} />
+                  </div>
+                  <CodeEditor
+                    value={selectedCharacter.userAvatarFrameCss || ''}
+                    onChange={(nextValue) => patchSelectedCharacter({ userAvatarFrameCss: nextValue })}
+                    placeholder={'.avatar-frame-shell {\n  background: linear-gradient(180deg, #fff6f7 0%, #ffe9f0 100%);\n}'}
+                    heightClass="h-44"
+                  />
+                  {selectedCharacter.userAvatarFrameCss?.trim() && (
+                    <button
+                      onClick={() => patchSelectedCharacter({ userAvatarFrameCss: '' })}
+                      className="text-[12px] font-medium text-rose-500"
+                    >
+                      清除该角色用户头像框 CSS
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="text-[11px] leading-5 text-zinc-500">
+            A 角色和 B 角色的专属头像框现在都可以直接在这里切换角色后编辑，不需要再去聊天设置页。
+          </div>
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500 flex justify-between">
@@ -1426,7 +1747,132 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab }: any) {
       )}
 
       {subTab === 'bubble' && (
-        <ChatBubbleThemeCustomizationSection settings={settings} setSettings={setSettings} />
+        <div className="space-y-4">
+          <ChatBubbleThemeCustomizationSection settings={settings} setSettings={setSettings} />
+
+          <div className="space-y-4 rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-zinc-800">当前角色专属气泡</h3>
+              <p className="text-xs leading-5 text-zinc-500">
+                这里选哪个角色，改的就是哪个角色自己的气泡。群聊里该角色发言会读角色气泡；单聊里你对这个角色发言会读“用户气泡”。
+              </p>
+            </div>
+
+            <CharacterSelect
+              characters={characters}
+              selectedCharacterId={selectedCharacterId}
+              onChange={setSelectedCharacterId}
+            />
+
+            {selectedCharacter && (
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                    <div className="text-sm font-semibold text-zinc-800">{selectedCharacter.remarkName?.trim() || selectedCharacter.name} 角色气泡</div>
+                    <PersistentImageUploadControl
+                      label="角色气泡图片"
+                      value={selectedCharacter.bubbleImage || ''}
+                      onChange={(val) => patchSelectedCharacter({ bubbleImage: val || undefined })}
+                    />
+                    <div className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-3 py-3">
+                      <span className="text-[13px] text-zinc-600">角色气泡颜色</span>
+                      <div className="flex items-center gap-3">
+                        {selectedCharacter.bubbleColor && (
+                          <button
+                            onClick={() => patchSelectedCharacter({ bubbleColor: undefined })}
+                            className="text-[12px] font-medium text-amber-600"
+                          >
+                            清除颜色
+                          </button>
+                        )}
+                        <input
+                          type="color"
+                          value={selectedCharacter.bubbleColor || '#ffffff'}
+                          onChange={(e) => patchSelectedCharacter({ bubbleColor: e.target.value })}
+                          className="h-7 w-7 cursor-pointer rounded overflow-hidden border-none bg-transparent p-0"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[14px] font-medium text-zinc-700">角色气泡 CSS</div>
+                          <div className="text-[12px] text-zinc-500">只覆盖这个角色发出的气泡，单聊和群聊都会读。</div>
+                        </div>
+                        <ImportStyleButton onImport={(content) => patchSelectedCharacter({ bubbleStyleCss: content })} />
+                      </div>
+                      <CodeEditor
+                        value={selectedCharacter.bubbleStyleCss || ''}
+                        onChange={(nextValue) => patchSelectedCharacter({ bubbleStyleCss: nextValue })}
+                        placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);\nborder: 1px solid rgba(255, 255, 255, 0.65);'}
+                        heightClass="h-44"
+                      />
+                      {selectedCharacter.bubbleStyleCss?.trim() && (
+                        <button
+                          onClick={() => patchSelectedCharacter({ bubbleStyleCss: '' })}
+                          className="text-[12px] font-medium text-rose-500"
+                        >
+                          清除该角色气泡 CSS
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                    <div className="text-sm font-semibold text-zinc-800">你和 {selectedCharacter.remarkName?.trim() || selectedCharacter.name} 对话时的用户气泡</div>
+                    <PersistentImageUploadControl
+                      label="用户气泡图片"
+                      value={selectedCharacter.userBubbleImage || ''}
+                      onChange={(val) => patchSelectedCharacter({ userBubbleImage: val || undefined })}
+                    />
+                    <div className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-3 py-3">
+                      <span className="text-[13px] text-zinc-600">用户气泡颜色</span>
+                      <div className="flex items-center gap-3">
+                        {selectedCharacter.userBubbleColor && (
+                          <button
+                            onClick={() => patchSelectedCharacter({ userBubbleColor: undefined })}
+                            className="text-[12px] font-medium text-amber-600"
+                          >
+                            清除颜色
+                          </button>
+                        )}
+                        <input
+                          type="color"
+                          value={selectedCharacter.userBubbleColor || '#3b82f6'}
+                          onChange={(e) => patchSelectedCharacter({ userBubbleColor: e.target.value })}
+                          className="h-7 w-7 cursor-pointer rounded overflow-hidden border-none bg-transparent p-0"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[14px] font-medium text-zinc-700">用户气泡 CSS</div>
+                          <div className="text-[12px] text-zinc-500">只覆盖你和这个角色单聊时自己发出的气泡，不影响别的角色。</div>
+                        </div>
+                        <ImportStyleButton onImport={(content) => patchSelectedCharacter({ userBubbleStyleCss: content })} />
+                      </div>
+                      <CodeEditor
+                        value={selectedCharacter.userBubbleStyleCss || ''}
+                        onChange={(nextValue) => patchSelectedCharacter({ userBubbleStyleCss: nextValue })}
+                        placeholder={'border-radius: 24px;\nbox-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);\nborder: 1px solid rgba(255, 255, 255, 0.35);'}
+                        heightClass="h-44"
+                      />
+                      {selectedCharacter.userBubbleStyleCss?.trim() && (
+                        <button
+                          onClick={() => patchSelectedCharacter({ userBubbleStyleCss: '' })}
+                          className="text-[12px] font-medium text-rose-500"
+                        >
+                          清除该角色用户气泡 CSS
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {subTab === 'background' && (

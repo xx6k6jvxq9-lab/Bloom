@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
+import { formatChatMessagePreview } from '../app-shell/formatMessagePreview';
 import {
   deriveGroupMemberPerspectiveSummariesFromHistory,
   deriveGroupShortTermSummaryFromHistory,
@@ -53,6 +54,9 @@ export function GroupChatSessionContainer({
     ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
       .map((sticker) => sticker.trim())),
   );
+  const findLatestPreviewableMessage = (messages: ChatGroup['history']) => [...(messages || [])]
+    .reverse()
+    .find((message) => !message.isSystem && !message.isRecalled) || null;
 
   return (
     <GroupChatSessionScreen
@@ -80,6 +84,7 @@ export function GroupChatSessionContainer({
             const memberNames = Object.fromEntries(
               members.map((member) => [member.id, member.name]),
             );
+            const latestPreviewableMessage = findLatestPreviewableMessage(resolvedHistory);
 
             return {
               ...item,
@@ -101,10 +106,10 @@ export function GroupChatSessionContainer({
                 backgroundSummary: item.backgroundSummary,
                 publicFacts: item.publicFacts,
               }),
-              lastMessage: resolvedHistory[resolvedHistory.length - 1]?.text || '',
-              lastTime: resolvedHistory.length > 0
-                ? resolvedHistory[resolvedHistory.length - 1].timestamp
-                : (item.lastTime || Date.now()),
+              lastMessage: latestPreviewableMessage
+                ? formatChatMessagePreview(latestPreviewableMessage)
+                : '',
+              lastTime: latestPreviewableMessage?.timestamp ?? item.lastTime,
             };
           }),
         );

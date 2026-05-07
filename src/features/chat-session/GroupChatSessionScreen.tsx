@@ -89,6 +89,7 @@ import {
   voteOnGroupPollMessage,
 } from './groupFeatureCards';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
+import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
 import { AudioMessageCard } from './AudioMessageCard';
 import { useAudioMessageRecorder } from './useAudioMessageRecorder';
@@ -97,6 +98,18 @@ import { selectActiveGroupWorldBooks } from '../group-world-book/selectActiveGro
 import { ExpandedInputSheet } from './ExpandedInputSheet';
 import { useAppKeyboard } from '../app-shell/AppKeyboardContext';
 import { focusTextEntryElement } from '../app-shell/keyboardUtils';
+import { AvatarFrame } from '../../components/chat/AvatarFrame';
+import {
+  FOOTER_REPLY_PREVIEW_ICON_STYLE,
+  MESSAGE_REPLY_PREVIEW_ICON_STYLE,
+  MESSAGE_REPLY_PREVIEW_LABEL_CLASS,
+  MESSAGE_REPLY_PREVIEW_LABEL_STYLE,
+  MESSAGE_REPLY_PREVIEW_TEXT_CLASS,
+  MESSAGE_REPLY_PREVIEW_TEXT_STYLE,
+  getFooterReplyCloseButtonClass,
+  getFooterReplyPreviewClass,
+  getMessageReplyPreviewClass,
+} from './replyPreviewStyles';
 
 const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 const getGroupMessageSelectionKey = (message: ChatMessage) => (
@@ -429,16 +442,30 @@ function parseSenderLabel(text: string): { senderLabel: string; content: string 
   return parseAssistantSpeakerLabel(text);
 }
 
+function toAvatarFrameScopeId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
 function GroupMessageAvatar({
   value,
   fallbackValue,
   alt,
   fit = 'cover',
+  scopeClassName,
+  size = 40,
+  borderRadius = 20,
+  borderWidth = 0,
+  borderColor = '#e4e4e7',
 }: {
   value?: string | null;
   fallbackValue?: string | null;
   alt: string;
   fit?: 'cover' | 'contain';
+  scopeClassName?: string;
+  size?: number;
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
 }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
@@ -453,15 +480,21 @@ function GroupMessageAvatar({
   }, [src, value, fallbackValue]);
 
   if (!src || hasError) {
-    return <div className="h-10 w-10 shrink-0 rounded-full bg-zinc-200" aria-label={alt} />;
+    return <div className="shrink-0 rounded-full bg-zinc-200" style={{ width: size, height: size }} aria-label={alt} />;
   }
 
   return (
-    <img
+    <AvatarFrame
       src={src}
       alt={alt}
-      className={`h-10 w-10 shrink-0 rounded-full border border-zinc-200 shadow-[0_2px_6px_rgba(15,23,42,0.05)] ${fit === 'contain' ? 'bg-white p-0.5 object-contain' : 'bg-zinc-200 object-cover'}`}
-      onError={() => setHasError(true)}
+      size={size}
+      borderRadius={borderRadius}
+      borderWidth={borderWidth}
+      borderColor={borderColor}
+      fit={fit}
+      onImageError={() => setHasError(true)}
+      scopeClassName={scopeClassName}
+      className="shrink-0 shadow-[0_2px_6px_rgba(15,23,42,0.05)]"
     />
   );
 }
@@ -697,6 +730,25 @@ export function GroupChatSessionScreen({
     '.chat-bubble-theme-scope',
     '.user-bubble',
   );
+  const groupAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    settings.visualSettings?.chat?.avatarFrameCss,
+    '.group-avatar-frame-theme',
+  );
+  const groupModelAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    settings.visualSettings?.chat?.modelAvatarFrameCss,
+    '.group-avatar-frame-model',
+  );
+  const groupUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(
+    settings.visualSettings?.chat?.userAvatarFrameCss,
+    '.group-avatar-frame-user',
+  );
+  const groupCharacterAvatarFrameThemeCss = members
+    .map((member) => buildScopedAvatarFrameThemeCss(
+      member.avatarFrameCss,
+      `.group-avatar-frame-char-${toAvatarFrameScopeId(member.id)}`,
+    ))
+    .filter(Boolean)
+    .join('\n\n');
   const buildGroupCharacterBubbleThemeCss = (characters: Character[]) => characters
     .map((member) => {
       const scopedSelector = `.chat-bubble-theme-scope [data-character-bubble-scope="${member.id}"]`;
@@ -769,9 +821,7 @@ export function GroupChatSessionScreen({
   useEffect(() => {
     if (
       typeof document === 'undefined'
-      || !manualKeyboardAvoidanceEnabled
       || !keyboardVisible
-      || !keyboardInset
       || document.activeElement !== textareaRef.current
     ) {
       return;
@@ -785,7 +835,14 @@ export function GroupChatSessionScreen({
       chatFooterRef.current?.scrollIntoView({ block: 'end' });
       messagesEndRef.current?.scrollIntoView({ block: 'end' });
     });
-  }, [keyboardInset, keyboardVisible, manualKeyboardAvoidanceEnabled, visualViewportHeight]);
+  }, [
+    history,
+    isLoading,
+    keyboardVisible,
+    pendingMessage?.text,
+    pendingMessage?.timestamp,
+    visualViewportHeight,
+  ]);
 
   useEffect(() => {
     const footerNode = chatFooterRef.current;
@@ -863,8 +920,9 @@ export function GroupChatSessionScreen({
       ? { maxWidth: `min(${maxWidthPercent}%, ${maxWidthRem * bubbleScale}rem)` }
       : {}),
   });
-  let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 pt-12 shadow-sm';
+  let groupHeaderClassName = 'relative z-10 flex min-h-[64px] items-center justify-between border-b px-4 pb-3 shadow-sm';
   const groupHeaderStyle: React.CSSProperties = {};
+  groupHeaderStyle.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const getDefaultGroupBubbleSurfaceStyle = (params: {
     isUser: boolean;
     shouldUseDefaultSurface: boolean;
@@ -1132,7 +1190,7 @@ export function GroupChatSessionScreen({
       start = index;
     }
     return { start, end };
-  }, [history]);
+  }, [history, pendingMessage?.text, pendingMessage?.timestamp]);
   const isEditableMessage = useCallback((message: ChatMessage | null | undefined) => (
     !!message
     && !message.isSystem
@@ -2676,8 +2734,26 @@ export function GroupChatSessionScreen({
         ...chatRootSizeStyle,
       }}
     >
-      {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss || groupCharacterBubbleThemeCss || groupChatFontCss) && (
-        <style>{[groupBubbleThemeCss, groupModelBubbleThemeCss, groupUserBubbleThemeCss, groupCharacterBubbleThemeCss, groupChatFontCss].filter(Boolean).join('\n\n')}</style>
+      {(groupBubbleThemeCss
+        || groupModelBubbleThemeCss
+        || groupUserBubbleThemeCss
+        || groupCharacterBubbleThemeCss
+        || groupAvatarFrameThemeCss
+        || groupModelAvatarFrameThemeCss
+        || groupUserAvatarFrameThemeCss
+        || groupCharacterAvatarFrameThemeCss
+        || groupChatFontCss) && (
+        <style>{[
+          groupBubbleThemeCss,
+          groupModelBubbleThemeCss,
+          groupUserBubbleThemeCss,
+          groupCharacterBubbleThemeCss,
+          groupAvatarFrameThemeCss,
+          groupModelAvatarFrameThemeCss,
+          groupUserAvatarFrameThemeCss,
+          groupCharacterAvatarFrameThemeCss,
+          groupChatFontCss,
+        ].filter(Boolean).join('\n\n')}</style>
       )}
       {groupBackgroundUrl ? (
         <>
@@ -3001,6 +3077,12 @@ export function GroupChatSessionScreen({
                   fallbackValue={undefined}
                   alt={isUser ? groupUserDisplayName : senderName}
                   fit={isUser ? 'contain' : 'cover'}
+                  scopeClassName={isUser
+                    ? 'group-avatar-frame-theme group-avatar-frame-user'
+                    : `group-avatar-frame-theme group-avatar-frame-model ${senderCharacter?.id ? `group-avatar-frame-char-${toAvatarFrameScopeId(senderCharacter.id)}` : ''}`}
+                  borderRadius={settings.visualSettings?.chat?.avatarBorderRadius ?? 20}
+                  borderWidth={settings.visualSettings?.chat?.avatarBorderWidth ?? 0}
+                  borderColor={settings.visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
                 />
               )}
               <div
@@ -3025,17 +3107,13 @@ export function GroupChatSessionScreen({
                   </div>
                 )}
                 {msg.replyTo && (
-                  <div className={`chat-reply-preview mb-1 inline-flex max-w-[min(82%,32rem)] items-start gap-2 rounded-2xl border px-3 py-2 backdrop-blur-sm ${
-                    isUser
-                      ? 'border-white/18 bg-white/16 text-white'
-                      : 'border-zinc-200/80 bg-white/70 text-zinc-700'
-                  }`}>
-                    <Reply size={13} className={`mt-0.5 shrink-0 ${isUser ? 'text-white/72' : 'text-zinc-400'}`} />
+                  <div className={getMessageReplyPreviewClass(isUser)}>
+                    <Reply size={13} className="mt-0.5 shrink-0" style={MESSAGE_REPLY_PREVIEW_ICON_STYLE} />
                     <div className="min-w-0">
-                      <div className={`text-[11px] font-medium ${isUser ? 'text-white/72' : 'text-zinc-500'}`}>
+                      <div className={MESSAGE_REPLY_PREVIEW_LABEL_CLASS} style={MESSAGE_REPLY_PREVIEW_LABEL_STYLE}>
                         回复 {msg.replyTo.authorLabel}
                       </div>
-                      <div className={`mt-0.5 max-w-[min(60vw,24rem)] line-clamp-2 text-[12px] leading-5 break-words ${isUser ? 'text-white/82' : 'text-zinc-600'}`}>
+                      <div className={MESSAGE_REPLY_PREVIEW_TEXT_CLASS} style={MESSAGE_REPLY_PREVIEW_TEXT_STYLE}>
                         {getReplyPreviewText(msg)}
                       </div>
                     </div>
@@ -3053,9 +3131,14 @@ export function GroupChatSessionScreen({
                   return (
                   <GroupBubbleResolvedImageStyle value={!isUser ? senderCharacter?.bubbleImage : undefined}>
                     {(senderBubbleImageUrl) => {
-                      const hasSenderBubbleSurfaceCustomization = !!senderBubbleImageUrl || (!!senderBubbleColor && !bubbleColor);
-                      const hasSenderBubbleOverride =
-                        !!senderBubbleStyleCss?.trim() || hasSenderBubbleSurfaceCustomization;
+                      const shouldApplySenderBubbleSurfaceOverride =
+                        !hasSharedBubbleTheme
+                        && !(isUser ? hasGroupUserTheme : hasGroupRoleTheme)
+                        && !hasSenderBubbleThemeCss;
+                      const hasSenderBubbleSurfaceCustomization =
+                        shouldApplySenderBubbleSurfaceOverride
+                        && (!!senderBubbleImageUrl || (!!senderBubbleColor && !bubbleColor));
+                      const hasSenderBubbleOverride = hasSenderBubbleThemeCss || hasSenderBubbleSurfaceCustomization;
                       const shouldUseResolvedMemberBubble =
                         !msg.isSystem
                         && !msg.imageUrl
@@ -3121,14 +3204,14 @@ export function GroupChatSessionScreen({
                                   shouldUseDefaultSurface: resolvedDefaultBubbleSurface,
                                 }),
                                 ...(hasSenderBubbleOverride ? {} : resolvedMemberBubbleStyle),
-                                ...(!hasSenderBubbleCustomization && !isUser && senderBubbleImageUrl
+                                ...(!hasSenderBubbleCustomization && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleImageUrl
                                   ? {
                                       backgroundImage: `url(${senderBubbleImageUrl})`,
                                       backgroundSize: 'cover',
                                       backgroundPosition: 'center',
                                       border: 'none',
                                     }
-                                  : !hasSenderBubbleCustomization && !isUser && senderBubbleColor
+                                  : !hasSenderBubbleCustomization && !isUser && shouldApplySenderBubbleSurfaceOverride && senderBubbleColor
                                     ? {
                                         backgroundColor: senderBubbleColor,
                                         borderColor: senderBubbleColor,
@@ -3245,25 +3328,25 @@ export function GroupChatSessionScreen({
 
       <div ref={chatFooterRef} className={`chat-session-footer chat-footer ${useOverlayFooterLayout ? 'absolute inset-x-0 z-20 ' : ''}${groupFooterClassName}`} style={chatFooterStyle}>
         {replyingTo && (
-          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-zinc-200/50 bg-zinc-100/80 px-3 py-2 text-[13px] text-zinc-600">
+          <div className={getFooterReplyPreviewClass()}>
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
-              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" />
+              <Reply size={14} className="chat-footer-reply-preview-icon shrink-0" style={FOOTER_REPLY_PREVIEW_ICON_STYLE} />
               <span className="shrink-0 font-medium">{replyingTo.authorLabel}:</span>
               <span className="truncate">{replyingTo.preview}</span>
             </div>
-            <button onClick={() => setReplyingTo(null)} className="chat-footer-reply-close-button shrink-0 rounded-full p-1 hover:bg-zinc-200">
+            <button onClick={() => setReplyingTo(null)} className={getFooterReplyCloseButtonClass()}>
               <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
         )}
         {editingMessageIndex !== null && history[editingMessageIndex] && (
-          <div className="chat-footer-reply-preview flex items-center justify-between rounded-xl border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-[13px] text-amber-700">
+          <div className={getFooterReplyPreviewClass('editing')}>
             <div className="chat-footer-reply-preview-content flex items-center gap-2 truncate">
               <Pencil size={14} className="shrink-0" />
               <span className="shrink-0 font-medium">编辑消息</span>
               <span className="truncate">{history[editingMessageIndex]?.text}</span>
             </div>
-            <button onClick={handleCancelEdit} className="chat-footer-reply-close-button shrink-0 rounded-full p-1 hover:bg-amber-100">
+            <button onClick={handleCancelEdit} className={getFooterReplyCloseButtonClass('editing')}>
               <X size={14} className="chat-footer-reply-close-icon" />
             </button>
           </div>
@@ -3325,9 +3408,6 @@ export function GroupChatSessionScreen({
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onFocus={() => {
-                if (!manualKeyboardAvoidanceEnabled) {
-                  return;
-                }
                 requestAnimationFrame(() => {
                   if (scrollRef.current) {
                     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -3426,7 +3506,14 @@ export function GroupChatSessionScreen({
 	                      onClick={() => handleMentionInsert(member)}
 	                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-zinc-50"
 	                    >
-	                      <GroupMessageAvatar value={member.avatar} alt={member.name} />
+	                      <GroupMessageAvatar
+                          value={member.avatar}
+                          alt={member.name}
+                          scopeClassName={`group-avatar-frame-theme group-avatar-frame-model group-avatar-frame-char-${toAvatarFrameScopeId(member.id)}`}
+                          borderRadius={settings.visualSettings?.chat?.avatarBorderRadius ?? 20}
+                          borderWidth={settings.visualSettings?.chat?.avatarBorderWidth ?? 0}
+                          borderColor={settings.visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                        />
 	                      <div className="min-w-0">
 	                        <div className="truncate text-sm font-medium text-zinc-900">
 	                          {member.remarkName?.trim() || member.name}
