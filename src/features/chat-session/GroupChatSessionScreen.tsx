@@ -1088,6 +1088,18 @@ export function GroupChatSessionScreen({
       ? `${chatFooterHeight + footerKeyboardOffset + 12}px`
       : `${chatFooterHeight + 12}px`,
   };
+  const chatRootClassName = useOverlayFooterLayout
+    ? 'absolute inset-0 z-50 isolate flex min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope'
+    : 'relative z-50 isolate flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
+  const chatRootSizeStyle: React.CSSProperties = useOverlayFooterLayout
+    ? {
+        height: chatViewportHeight,
+        minHeight: chatViewportHeight,
+      }
+    : {
+        height: '100%',
+        minHeight: 0,
+      };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig
     && !isLoading
@@ -2657,11 +2669,10 @@ export function GroupChatSessionScreen({
 
   return (
     <div
-      className="absolute inset-0 z-50 isolate flex flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope"
+      className={chatRootClassName}
       style={{
         ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
-        height: chatViewportHeight,
-        minHeight: chatViewportHeight,
+        ...chatRootSizeStyle,
       }}
     >
       {(groupBubbleThemeCss || groupModelBubbleThemeCss || groupUserBubbleThemeCss || groupCharacterBubbleThemeCss || groupChatFontCss) && (
