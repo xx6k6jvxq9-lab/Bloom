@@ -46,9 +46,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    // Browsers on iOS should let the browser own the viewport. Android and
-    // standalone shells are more likely to need explicit composer lifting.
-    const manualKeyboardAvoidanceEnabled = isAndroid || isStandalone;
+    // Mobile browsers should let the browser own the viewport. Standalone
+    // shells are the only mode that still needs explicit composer lifting.
+    const manualKeyboardAvoidanceEnabled = isStandalone;
     setIsStandalone(isStandalone);
     setManualKeyboardAvoidanceEnabled(manualKeyboardAvoidanceEnabled);
     if (isAndroid) {
