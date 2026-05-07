@@ -328,9 +328,14 @@ export function HomeScreen({
 
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
+      const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
       const safeAreaVar =
-        computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
-        || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
+        (isStandaloneMode
+          ? computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
+          : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
+        || (isStandaloneMode
+          ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+          : computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim())
         || '0';
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;

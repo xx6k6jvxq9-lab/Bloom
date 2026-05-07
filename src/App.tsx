@@ -289,15 +289,12 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
-  const appBrowserBottomInset = 'var(--app-browser-bottom-inset, 0px)';
-  const appSafeAreaBottomFull = isStandalone
-    ? 'env(safe-area-inset-bottom, 0px)'
-    : `max(env(safe-area-inset-bottom, 0px), ${appBrowserBottomInset})`;
+  const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
     : hideMockSystemChrome
       ? '0px'
-      : `max(12px, ${appBrowserBottomInset})`;
+      : '12px';
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {

@@ -138,7 +138,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
       lastInnerWidth = currentInnerWidth;
 
-      const activeViewportHeight = resolvedKeyboardVisible
+      const activeViewportHeight = visualViewportHeight > 0
         ? visualViewportHeight
         : resolvedLayoutViewportHeight;
 
@@ -154,15 +154,11 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         visualViewportHeight,
       });
 
-      const browserBottomInset = !isStandalone && !resolvedKeyboardVisible && rawViewportBottomInset > 2
-        ? rawViewportBottomInset
-        : 0;
       root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-active-viewport-height', `${activeViewportHeight}px`);
       root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
       root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
       root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
-      root.style.setProperty('--app-browser-bottom-inset', `${browserBottomInset}px`);
       if (resolvedKeyboardVisible) {
         root.setAttribute('data-keyboard-open', 'true');
       } else {
@@ -194,7 +190,6 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         root.style.removeProperty('--app-viewport-height');
         root.style.removeProperty('--app-visible-viewport-height');
         root.style.removeProperty('--app-keyboard-inset');
-        root.style.removeProperty('--app-browser-bottom-inset');
       root.removeAttribute('data-android');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');

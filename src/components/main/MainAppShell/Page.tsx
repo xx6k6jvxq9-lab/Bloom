@@ -319,7 +319,6 @@ export function MainApp({
         onTouchCancel: handleTouchEnd,
       }}
       footer={footer}
-      hideFooterWhenKeyboardOpen
       footerClassName="absolute bottom-0 left-0 right-0 z-20 flex min-h-[72px] items-center justify-around rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 pt-2 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
       footerStyle={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 8px)' }}
     >
