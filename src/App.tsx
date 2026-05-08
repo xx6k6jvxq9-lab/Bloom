@@ -90,6 +90,158 @@ type ForumLaunchState = {
   targetPostId: string | null;
 };
 
+type SafeAreaDebugSnapshot = {
+  innerHeight: number;
+  visualViewportHeight: number;
+  visualViewportOffsetTop: number;
+  activeViewportHeight: number;
+  layoutViewportHeightVar: number;
+  shellHeight: number;
+  containerHeight: number;
+  safeAreaFull: number;
+  safeAreaUi: number;
+  safeAreaTab: number;
+  safeAreaDock: number;
+};
+
+function resolveCssLengthValue(container: HTMLElement | null, rawValue: string): number {
+  if (!container || !rawValue) {
+    return 0;
+  }
+
+  if (rawValue.endsWith('px')) {
+    return Math.round((parseFloat(rawValue) || 0) * 10) / 10;
+  }
+
+  const probe = document.createElement('div');
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.pointerEvents = 'none';
+  probe.style.inset = 'auto';
+  probe.style.height = rawValue;
+  probe.style.width = '0';
+  probe.style.overflow = 'hidden';
+  container.appendChild(probe);
+  const measured = Math.round((parseFloat(window.getComputedStyle(probe).height) || 0) * 10) / 10;
+  container.removeChild(probe);
+  return measured;
+}
+
+function SafeAreaDebugHud({
+  activeApp,
+  isStandalone,
+  useDesktopStageLayout,
+}: {
+  activeApp: AppScreen;
+  isStandalone: boolean;
+  useDesktopStageLayout: boolean;
+}) {
+  const [snapshot, setSnapshot] = useState<SafeAreaDebugSnapshot | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const readSnapshot = () => {
+      const viewport = window.visualViewport;
+      const root = document.documentElement;
+      const phoneContainer = document.getElementById('phone-container');
+      const appShell = phoneContainer?.closest('.app-shell') as HTMLElement | null;
+      const rootComputed = window.getComputedStyle(root);
+      const containerComputed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
+
+      const readContainerVar = (name: string) => containerComputed?.getPropertyValue(name)?.trim() || '';
+      const readRootVar = (name: string) => rootComputed.getPropertyValue(name)?.trim() || '';
+
+      setSnapshot({
+        innerHeight: Math.round(window.innerHeight),
+        visualViewportHeight: Math.round(viewport?.height ?? window.innerHeight),
+        visualViewportOffsetTop: Math.round(viewport?.offsetTop ?? 0),
+        activeViewportHeight: resolveCssLengthValue(phoneContainer, readRootVar('--app-active-viewport-height')),
+        layoutViewportHeightVar: resolveCssLengthValue(phoneContainer, readRootVar('--app-layout-viewport-height')),
+        shellHeight: Math.round(appShell?.getBoundingClientRect().height ?? 0),
+        containerHeight: Math.round(phoneContainer?.getBoundingClientRect().height ?? 0),
+        safeAreaFull: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-full')),
+        safeAreaUi: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-ui')),
+        safeAreaTab: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-tab')),
+        safeAreaDock: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-dock')),
+      });
+    };
+
+    const scheduleSnapshot = () => {
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(readSnapshot);
+        return;
+      }
+      window.setTimeout(readSnapshot, 16);
+    };
+
+    readSnapshot();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', scheduleSnapshot);
+    viewport?.addEventListener('scroll', scheduleSnapshot);
+    window.addEventListener('resize', scheduleSnapshot);
+    window.addEventListener('orientationchange', scheduleSnapshot);
+    window.addEventListener('pageshow', scheduleSnapshot);
+    const intervalId = window.setInterval(readSnapshot, 1200);
+
+    return () => {
+      viewport?.removeEventListener('resize', scheduleSnapshot);
+      viewport?.removeEventListener('scroll', scheduleSnapshot);
+      window.removeEventListener('resize', scheduleSnapshot);
+      window.removeEventListener('orientationchange', scheduleSnapshot);
+      window.removeEventListener('pageshow', scheduleSnapshot);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  if (useDesktopStageLayout || !snapshot) {
+    return null;
+  }
+
+  return (
+    <div
+      className="pointer-events-none absolute right-2 z-[190] w-[214px] rounded-2xl border border-emerald-400/35 bg-black/78 px-3 py-2 text-[10px] font-medium text-emerald-50 shadow-2xl backdrop-blur-xl"
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
+    >
+      <div className="mb-1 flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.18em] text-emerald-200/75">
+        <span>Debug</span>
+        <span>{activeApp}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">standalone</span>
+        <span>{isStandalone ? 'yes' : 'no'}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">inner / vv</span>
+        <span>{snapshot.innerHeight} / {snapshot.visualViewportHeight}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">vv top</span>
+        <span>{snapshot.visualViewportOffsetTop}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">active / layout</span>
+        <span>{snapshot.activeViewportHeight} / {snapshot.layoutViewportHeightVar}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">shell / box</span>
+        <span>{snapshot.shellHeight} / {snapshot.containerHeight}</span>
+      </div>
+      <div className="mt-1 h-px bg-white/10" />
+      <div className="mt-1 flex justify-between gap-3">
+        <span className="text-emerald-200/70">full / ui</span>
+        <span>{snapshot.safeAreaFull} / {snapshot.safeAreaUi}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">tab / dock</span>
+        <span>{snapshot.safeAreaTab} / {snapshot.safeAreaDock}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -520,6 +672,12 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <SafeAreaDebugHud
+          activeApp={activeApp}
+          isStandalone={isStandalone}
+          useDesktopStageLayout={useDesktopStageLayout}
+        />
         
         {/* Screen Content */}
         {isStorageReady || !shouldShowHydrationFallback ? (
