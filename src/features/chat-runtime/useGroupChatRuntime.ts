@@ -15,6 +15,7 @@ import {
   buildAssistantStickerPromptSection,
   pickAssistantSticker,
   resolveAssistantStickerCandidates,
+  type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput, type GroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
@@ -166,6 +167,44 @@ function buildStickerRecentTexts(messages: ChatMessage[]): string[] {
       return (getMessageMainText(message) || message.text || '').trim();
     })
     .filter(Boolean);
+}
+
+function isStickerChatMessage(message: Pick<ChatMessage, 'imageUrl' | 'text'>): boolean {
+  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
+}
+
+function buildSpeakerStickerUsageContext(
+  messages: ChatMessage[],
+  speakerId: string,
+): Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker'> {
+  const ownMessages = messages.filter((message) => (
+    message.role === 'model'
+    && message.senderCharacterId === speakerId
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.isInnerVoice
+  ));
+
+  const latestOwnVisibleMessage = [...ownMessages].reverse().find((message) => (
+    isUsableChatText((message.text || '').trim()) || !!message.imageUrl
+  ));
+  const recentStickerMessages = [...ownMessages].reverse()
+    .filter((message) => isStickerChatMessage(message))
+    .slice(0, 6);
+
+  return {
+    recentStickerRefs: recentStickerMessages
+      .map((message) => message.imageUrl?.trim() || '')
+      .filter(Boolean),
+    recentStickerLabels: recentStickerMessages
+      .map((message) => (
+        message.stickerLabel?.trim()
+        || inferStickerSemanticLabel(message.imageUrl, message.text)
+        || ''
+      ))
+      .filter(Boolean),
+    lastOwnMessageWasSticker: !!latestOwnVisibleMessage && isStickerChatMessage(latestOwnVisibleMessage),
+  };
 }
 
 function buildGroupStickerSceneHints(sceneInput: GroupChatSceneInput): string[] {
@@ -1232,6 +1271,7 @@ export function useGroupChatRuntime({
         now: requestTimestamp,
       }),
     });
+    const speakerStickerContext = buildSpeakerStickerUsageContext(contextLayers.liveMessages, params.speaker.id);
     const runtimeStickerPool = resolveAssistantStickerCandidates(getSpeakerStickerPool(params.speaker), {
       character: params.speaker,
       scene: 'group',
@@ -1242,6 +1282,7 @@ export function useGroupChatRuntime({
         ?.trim(),
       recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
       sceneHints: buildGroupStickerSceneHints(sceneInput),
+      ...speakerStickerContext,
     }).map((candidate) => candidate.sticker);
     const systemPrompt = [
       buildGroupChatPrompt({
@@ -1263,6 +1304,7 @@ export function useGroupChatRuntime({
           ?.trim(),
         recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
         sceneHints: buildGroupStickerSceneHints(sceneInput),
+        ...speakerStickerContext,
       }),
     ]
       .filter(Boolean)
@@ -1560,6 +1602,9 @@ export function useGroupChatRuntime({
             : message
         ))
       : currentHistory;
+    const speakerStickerContext = buildSpeakerStickerUsageContext(currentHistory, speaker.id);
+    const stagedStickerRefs: string[] = [];
+    const stagedStickerLabels: string[] = [];
 
     const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
@@ -1567,6 +1612,12 @@ export function useGroupChatRuntime({
       const effectiveStickerPool = resolvedStickerPool?.length
         ? resolvedStickerPool
         : getSpeakerStickerPool(speaker);
+      const stickerContext = {
+        ...speakerStickerContext,
+        recentStickerRefs: [...stagedStickerRefs].reverse().concat(speakerStickerContext.recentStickerRefs || []),
+        recentStickerLabels: [...stagedStickerLabels].reverse().concat(speakerStickerContext.recentStickerLabels || []),
+        lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!speakerStickerContext.lastOwnMessageWasSticker,
+      };
       const pickedSticker = cue.kind === 'sticker'
         ? pickAssistantSticker(
             cue.content,
@@ -1582,11 +1633,16 @@ export function useGroupChatRuntime({
                 groupMeta?.publicFacts || '',
                 groupMeta?.groupShortTermSummary || '',
               ].filter(Boolean),
+              ...stickerContext,
             },
           )
         : null;
+      if (pickedSticker) {
+        stagedStickerRefs.push(pickedSticker.sticker);
+        stagedStickerLabels.push(pickedSticker.label);
+      }
       const cleanedText = cue.kind === 'sticker'
-        ? `[sticker] ${cue.content || '...'}`
+        ? cue.content.trim()
         : cue.kind === 'reply'
           ? cue.content || rawContent
           : cue.kind === 'recall'
@@ -1609,7 +1665,7 @@ export function useGroupChatRuntime({
         ...message,
         text: cue.kind === 'notice'
           ? `[notice] ${cue.content || rawContent}`
-          : `${speaker.name}: ${cue.kind === 'sticker' && pickedSticker ? '[sticker]' : cleanedText}`,
+          : `${speaker.name}: ${cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : cleanedText) : cleanedText}`,
         ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
         isSystem: cue.kind === 'notice' ? true : undefined,
         replyTo: replyPayload || undefined,

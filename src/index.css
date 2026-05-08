@@ -215,7 +215,7 @@ body {
     --app-safe-area-bottom-full: env(safe-area-inset-bottom, 0px);
     --app-safe-area-bottom: var(--app-safe-area-bottom-full);
     --app-safe-area-bottom-ui: env(safe-area-inset-bottom, 0px);
-    --app-safe-area-bottom-tab: env(safe-area-inset-bottom, 0px);
+    --app-safe-area-bottom-tab: max(0px, calc(env(safe-area-inset-bottom, 0px) - 16px));
     --app-safe-area-bottom-dock: env(safe-area-inset-bottom, 0px);
   }
 

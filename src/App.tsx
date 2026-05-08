@@ -476,7 +476,7 @@ export default function App() {
     ? appSafeAreaBottomFull
     : '12px';
   const appSafeAreaBottomTab = isStandalone
-    ? appSafeAreaBottomFull
+    ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 16px))'
     : '12px';
   const appSafeAreaBottomDock = isStandalone
     ? appSafeAreaBottomFull

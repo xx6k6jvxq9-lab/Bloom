@@ -174,7 +174,6 @@ export function HomeScreen({
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
-  const [dockSafeFill, setDockSafeFill] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -383,7 +382,6 @@ export function HomeScreen({
           ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || '0';
-      const fullSafeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim() || safeAreaVar;
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
         if (safeAreaVar.endsWith('px')) {
@@ -403,31 +401,8 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const resolvedFullSafeAreaBottom = (() => {
-        if (!phoneContainer || !computed) return 0;
-        if (fullSafeAreaVar.endsWith('px')) {
-          return parseFloat(fullSafeAreaVar) || 0;
-        }
-        if (fullSafeAreaVar && fullSafeAreaVar !== '0') {
-          const probe = document.createElement('div');
-          probe.style.position = 'absolute';
-          probe.style.visibility = 'hidden';
-          probe.style.pointerEvents = 'none';
-          probe.style.inset = 'auto';
-          probe.style.height = fullSafeAreaVar;
-          phoneContainer.appendChild(probe);
-          const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
-          phoneContainer.removeChild(probe);
-          return measured;
-        }
-        return parseFloat(computed.paddingBottom) || 0;
-      })();
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
-      const nextDockSafeFill = isStandaloneMode
-        ? Math.round(Math.min(resolvedFullSafeAreaBottom, 18))
-        : 0;
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
-      setDockSafeFill(current => (current === nextDockSafeFill ? current : nextDockSafeFill));
     };
 
     updateViewport();
@@ -2243,7 +2218,6 @@ export function HomeScreen({
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
         iconSize={dockIconSize}
-        safeAreaFill={dockSafeFill}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
     </div>
@@ -2431,7 +2405,6 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
-  safeAreaFill,
   backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
@@ -2439,19 +2412,17 @@ function StaticDock({
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
-  safeAreaFill: number;
   backgroundImageUrl?: string;
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
-  const resolvedSafeAreaFill = Math.max(0, safeAreaFill);
 
   return (
     <motion.div
       className="homeDesktop__dock"
       initial={false}
       animate={{ x: placement.x, y: placement.y }}
-      style={{ width: placement.width, height: placement.height + resolvedSafeAreaFill }}
+      style={{ width: placement.width, height: placement.height }}
     >
       <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
         {(backgroundImageUrl || dockTintOpacity > 0) ? (
@@ -2487,19 +2458,6 @@ function StaticDock({
           </button>
         ))}
       </div>
-      {resolvedSafeAreaFill > 0 ? (
-        <div className="homeDesktop__dockSafeFill" style={{ height: resolvedSafeAreaFill }}>
-          {(backgroundImageUrl || dockTintOpacity > 0) ? (
-            <div className="homeDesktop__dockMedia" aria-hidden="true">
-              {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
-              <div
-                className="homeDesktop__dockTintLayer"
-                style={{ backgroundColor: dockTintColor, opacity: dockTintOpacity }}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </motion.div>
   );
 }

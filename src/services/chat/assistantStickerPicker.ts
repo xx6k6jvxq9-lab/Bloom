@@ -12,6 +12,9 @@ export type AssistantStickerContext = {
   latestUserText?: string;
   recentTexts?: string[];
   sceneHints?: string[];
+  recentStickerRefs?: string[];
+  recentStickerLabels?: string[];
+  lastOwnMessageWasSticker?: boolean;
 };
 
 type PersonaTrait = 'gentle' | 'reserved' | 'playful' | 'sharp' | 'affectionate' | 'steady';
@@ -45,6 +48,46 @@ function hashCueText(text: string): number {
 
 function normalizeCueText(text: string): string {
   return text.trim().toLowerCase();
+}
+
+function normalizeStickerUsageValue(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase();
+}
+
+function isLowInformationStickerCue(cueText: string, cueLabel?: string): boolean {
+  const normalizedText = normalizeStickerUsageValue(cueText);
+  if (!normalizedText) {
+    return true;
+  }
+
+  if (/^[.…~!！?？,，。、、_\-=\s]+$/u.test(normalizedText)) {
+    return true;
+  }
+
+  if (new Set([
+    'sticker',
+    'image',
+    'emoji',
+    'meme',
+    '表情包',
+    '表情',
+    '图片',
+    '图',
+    '嗯',
+    '哈',
+    '哈哈',
+    '呵',
+    '额',
+    '呃',
+  ]).has(normalizedText)) {
+    return true;
+  }
+
+  if (cueLabel && normalizeStickerUsageValue(cueLabel) !== normalizedText) {
+    return false;
+  }
+
+  return false;
 }
 
 const PERSONA_TRAIT_PATTERNS: Array<{ trait: PersonaTrait; weight: number; patterns: RegExp[] }> = [
@@ -240,14 +283,50 @@ function scoreStickerForContext(
   label: string,
   context: AssistantStickerContext | undefined,
   index: number,
+  stickerRef: string,
 ): { score: number; blocked: boolean } {
   const personaTraits = inferPersonaTraits(context);
   const sceneSignals = inferSceneSignals(context);
   const stickerTraits = inferStickerTraits(label);
+  const normalizedStickerRef = normalizeStickerUsageValue(stickerRef);
+  const normalizedStickerLabel = normalizeStickerUsageValue(label);
+  const recentStickerRefs = (context?.recentStickerRefs || [])
+    .map((value) => normalizeStickerUsageValue(value))
+    .filter(Boolean);
+  const recentStickerLabels = (context?.recentStickerLabels || [])
+    .map((value) => normalizeStickerUsageValue(value))
+    .filter(Boolean);
   let score = 12 - (index * 0.02);
 
   if (label) {
     score += 2;
+  }
+
+  const recentRefIndex = normalizedStickerRef
+    ? recentStickerRefs.indexOf(normalizedStickerRef)
+    : -1;
+  if (recentRefIndex === 0) {
+    score -= 16;
+  } else if (recentRefIndex > 0 && recentRefIndex < 4) {
+    score -= 10 - recentRefIndex;
+  }
+
+  const recentLabelIndex = normalizedStickerLabel
+    ? recentStickerLabels.indexOf(normalizedStickerLabel)
+    : -1;
+  if (recentLabelIndex === 0) {
+    score -= 8;
+  } else if (recentLabelIndex > 0 && recentLabelIndex < 3) {
+    score -= 5 - recentLabelIndex;
+  }
+
+  if (context?.lastOwnMessageWasSticker) {
+    if (recentRefIndex === 0) {
+      score -= 6;
+    }
+    if (recentLabelIndex === 0) {
+      score -= 3;
+    }
   }
 
   if (personaTraits.gentle >= 3) {
@@ -404,7 +483,7 @@ export function resolveAssistantStickerCandidates(
 
   const scoredCandidates: StickerCandidate[] = stickerCandidates.map((sticker, index) => {
     const label = fallbackLabel(sticker);
-    const { score, blocked } = scoreStickerForContext(label, context, index);
+    const { score, blocked } = scoreStickerForContext(label, context, index, sticker);
     return {
       sticker,
       label,
@@ -443,36 +522,93 @@ export function pickAssistantSticker(
   }
 
   const normalizedCueText = normalizeCueText(cueText);
+  const cueLabel = inferStickerSemanticLabel(undefined, cueText)?.trim().toLowerCase() || '';
+  const lowInformationCue = isLowInformationStickerCue(cueText, cueLabel);
+  const immediatePreviousStickerRef = normalizeStickerUsageValue(context?.recentStickerRefs?.[0]);
+  const recentStickerCooldownRefs = new Set(
+    (context?.recentStickerRefs || [])
+      .slice(0, 4)
+      .map((value) => normalizeStickerUsageValue(value))
+      .filter(Boolean),
+  );
+
+  if (context?.lastOwnMessageWasSticker && lowInformationCue) {
+    return null;
+  }
+
   if (!normalizedCueText) {
-    const fallbackSticker = stickerCandidates[0];
+    const fallbackSticker = stickerCandidates.find((candidate) => (
+      !recentStickerCooldownRefs.has(normalizeStickerUsageValue(candidate.sticker))
+    )) || stickerCandidates[0];
+
+    if (
+      recentStickerCooldownRefs.has(normalizeStickerUsageValue(fallbackSticker.sticker))
+    ) {
+      return null;
+    }
+
     return {
       sticker: fallbackSticker.sticker,
       label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker),
     };
   }
 
-  const cueLabel = inferStickerSemanticLabel(undefined, cueText)?.trim().toLowerCase() || '';
-  let bestMatch: PickedSticker | null = null;
-  let bestScore = Number.NEGATIVE_INFINITY;
+  const rankedMatches = stickerCandidates
+    .map((candidate, index) => {
+      const stickerLabel = candidate.label?.trim() || fallbackLabel(candidate.sticker, cueText);
+      const normalizedStickerLabel = stickerLabel.toLowerCase();
+      const cueScore = scoreStickerMatch(normalizedCueText, cueLabel, normalizedStickerLabel);
+      return {
+        candidate,
+        index,
+        label: stickerLabel || cueText.trim(),
+        totalScore: candidate.score + cueScore,
+      };
+    })
+    .sort((left, right) => {
+      if (right.totalScore !== left.totalScore) {
+        return right.totalScore - left.totalScore;
+      }
+      return left.index - right.index;
+    });
 
-  for (const candidate of stickerCandidates) {
-    const stickerLabel = candidate.label?.trim() || fallbackLabel(candidate.sticker, cueText);
-    const normalizedStickerLabel = stickerLabel.toLowerCase();
-    const cueScore = scoreStickerMatch(normalizedCueText, cueLabel, normalizedStickerLabel);
-    const totalScore = candidate.score + cueScore;
-    if (totalScore <= bestScore) continue;
-    bestScore = totalScore;
-    bestMatch = {
-      sticker: candidate.sticker,
-      label: stickerLabel || cueText.trim(),
+  let chosen = rankedMatches[0];
+  if (
+    chosen
+    && recentStickerCooldownRefs.has(normalizeStickerUsageValue(chosen.candidate.sticker))
+  ) {
+    const alternative = rankedMatches.find((entry) => (
+      !recentStickerCooldownRefs.has(normalizeStickerUsageValue(entry.candidate.sticker))
+    ));
+
+    if (alternative) {
+      chosen = alternative;
+    }
+  }
+
+  if (
+    chosen
+    && !recentStickerCooldownRefs.has(normalizeStickerUsageValue(chosen.candidate.sticker))
+    && !(lowInformationCue
+      && immediatePreviousStickerRef
+      && normalizeStickerUsageValue(chosen.candidate.sticker) === immediatePreviousStickerRef)
+  ) {
+    return {
+      sticker: chosen.candidate.sticker,
+      label: chosen.label,
     };
   }
 
-  if (bestMatch) {
-    return bestMatch;
+  const fallbackSticker = stickerCandidates.find((candidate) => (
+    !recentStickerCooldownRefs.has(normalizeStickerUsageValue(candidate.sticker))
+  )) || stickerCandidates[hashCueText(normalizedCueText) % stickerCandidates.length];
+
+  if (
+    recentStickerCooldownRefs.has(normalizeStickerUsageValue(fallbackSticker.sticker))
+  ) {
+    return null;
   }
 
-  const fallbackSticker = stickerCandidates[hashCueText(normalizedCueText) % stickerCandidates.length];
   return {
     sticker: fallbackSticker.sticker,
     label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker, cueText),
@@ -525,12 +661,23 @@ export function buildAssistantStickerPromptSection(
 
   const characterVibe = buildCharacterStickerVibe(context);
   const sceneTilt = buildSceneStickerTilt(context);
+  const recentStickerLabels = Array.from(new Set(
+    (context?.recentStickerLabels || [])
+      .map((label) => label?.trim())
+      .filter((label): label is string => !!label),
+  )).slice(0, 2);
 
   return [
     '## Available stickers',
     'Only use a sticker if it still feels like this character and fits the current moment.',
     characterVibe ? `Character sticker vibe: ${characterVibe}` : '',
     sceneTilt ? `Scene tilt right now: ${sceneTilt}` : '',
+    context?.lastOwnMessageWasSticker
+      ? 'Your last visible message was already a sticker. Do not immediately send another one unless it clearly adds a new beat.'
+      : '',
+    recentStickerLabels.length > 0
+      ? `Recently used sticker moods: ${recentStickerLabels.join(' / ')}. Avoid repeating the same sticker mood back-to-back unless the moment truly calls for it.`
+      : '',
     `Available sticker meanings for this turn: ${labels.join(' / ')}`,
     'To send a sticker, output a separate line exactly like: [sticker] meaning',
     'You may send only a sticker for a tiny emotional reaction, or send text first and then a sticker on the next line.',

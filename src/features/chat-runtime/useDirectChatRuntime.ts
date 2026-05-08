@@ -64,6 +64,7 @@ import {
   buildAssistantStickerPromptSection,
   pickAssistantSticker,
   resolveAssistantStickerCandidates,
+  type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
 import {
   buildAutonomousAvatarLibraryPromptSection,
@@ -840,6 +841,7 @@ const splitStreamingModelResponseIntoMessages = (
     transferTargetLabel?: string;
     assistantAliases?: string[];
     availableStickers?: string[];
+    stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker'>;
     maxDirectReplyBubbles?: number;
     currentHistory?: ChatMessage[];
     userLabel?: string;
@@ -930,10 +932,18 @@ const splitStreamingModelResponseIntoMessages = (
   const effectiveTranslationParts = shouldCollapseForTranslation
     ? [sanitizePipeMarkers(legacyTranslationParts.translation, '\n')]
     : translationParts;
+  const stagedStickerRefs: string[] = [];
+  const stagedStickerLabels: string[] = [];
   const mappedMessages = effectiveParts.map((part, index) => {
     const cue = parseDirectActionCue(part);
+    const stickerContext = {
+      ...(options.stickerContext || {}),
+      recentStickerRefs: [...stagedStickerRefs].reverse().concat(options.stickerContext?.recentStickerRefs || []),
+      recentStickerLabels: [...stagedStickerLabels].reverse().concat(options.stickerContext?.recentStickerLabels || []),
+      lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!options.stickerContext?.lastOwnMessageWasSticker,
+    };
     const pickedSticker = cue.kind === 'sticker'
-      ? pickAssistantSticker(cue.content, options.availableStickers || [])
+      ? pickAssistantSticker(cue.content, options.availableStickers || [], stickerContext)
       : null;
     const replyTo = cue.kind === 'reply'
       ? resolveDirectReplyTarget(
@@ -943,15 +953,22 @@ const splitStreamingModelResponseIntoMessages = (
           options.modelLabel || '对方',
         )
       : undefined;
-    const bodyText = cue.kind === 'recall'
-      ? cue.content
-      : cue.kind === 'reply'
-        ? cue.content || part
-        : cue.content || part;
+    const bodyText = cue.kind === 'sticker'
+      ? cue.content.trim()
+      : cue.kind === 'recall'
+        ? cue.content
+        : cue.kind === 'reply'
+          ? cue.content || part
+          : cue.content || part;
+
+    if (pickedSticker) {
+      stagedStickerRefs.push(pickedSticker.sticker);
+      stagedStickerLabels.push(pickedSticker.label);
+    }
 
     return {
       role: 'model' as const,
-      text: cue.kind === 'sticker' && pickedSticker ? '[sticker]' : bodyText,
+      text: cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : bodyText) : bodyText,
       contentType: 'text' as const,
       ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
       ...(replyTo ? { replyTo } : {}),
@@ -1077,6 +1094,46 @@ function buildStickerRecentTexts(messages: ChatMessage[]): string[] {
       return getMessageMainText(message).trim();
     })
     .filter(Boolean);
+}
+
+function isStickerChatMessage(message: Pick<ChatMessage, 'imageUrl' | 'text'>): boolean {
+  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
+}
+
+function buildDirectStickerUsageContext(
+  messages: ChatMessage[],
+  options: {
+    excludeAfterTimestamp?: number;
+  } = {},
+): Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker'> {
+  const ownMessages = messages.filter((message) => (
+    message.role === 'model'
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.isInnerVoice
+    && (options.excludeAfterTimestamp == null || message.timestamp < options.excludeAfterTimestamp)
+  ));
+
+  const latestOwnVisibleMessage = [...ownMessages].reverse().find((message) => (
+    isDisplayableAssistantBubbleText(message.text || '') || !!message.imageUrl
+  ));
+  const recentStickerMessages = [...ownMessages].reverse()
+    .filter((message) => isStickerChatMessage(message))
+    .slice(0, 6);
+
+  return {
+    recentStickerRefs: recentStickerMessages
+      .map((message) => message.imageUrl?.trim() || '')
+      .filter(Boolean),
+    recentStickerLabels: recentStickerMessages
+      .map((message) => (
+        message.stickerLabel?.trim()
+        || inferStickerSemanticLabel(message.imageUrl, message.text)
+        || ''
+      ))
+      .filter(Boolean),
+    lastOwnMessageWasSticker: !!latestOwnVisibleMessage && isStickerChatMessage(latestOwnVisibleMessage),
+  };
 }
 
 function isIncompleteGameCardPayload(text: string) {
@@ -1721,11 +1778,15 @@ export function useDirectChatRuntime({
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
           });
+          const stickerContext = buildDirectStickerUsageContext(messages, {
+            excludeAfterTimestamp: assistantMsgId,
+          });
           const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
             isInnerVoice: isInnerVoiceRequest,
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: runtimeStickerPool,
+            stickerContext,
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
             currentHistory: messages,
             userLabel: userName,
@@ -1849,12 +1910,14 @@ export function useDirectChatRuntime({
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
           const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
+          const directStickerContext = buildDirectStickerUsageContext(historySnapshot);
           runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
             character,
             scene: 'direct',
             latestUserText: latestPendingUserMessage?.text,
             recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
             sceneHints: chatSceneInput.sections || [],
+            ...directStickerContext,
           }).map((candidate) => candidate.sticker);
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
@@ -1889,6 +1952,7 @@ export function useDirectChatRuntime({
                 latestUserText: latestPendingUserMessage?.text,
                 recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
                 sceneHints: chatSceneInput.sections || [],
+                ...directStickerContext,
               }),
               structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
             ].filter(Boolean),
@@ -2167,11 +2231,15 @@ export function useDirectChatRuntime({
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
       });
+      const stickerContext = buildDirectStickerUsageContext(messages, {
+        excludeAfterTimestamp: assistantMsgId,
+      });
       const nextAssistantMessages = splitStreamingModelResponseIntoMessages(displayText, assistantMsgId, {
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         availableStickers: runtimeStickerPool,
+        stickerContext,
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
         currentHistory: messages,
         userLabel: userName,
@@ -2326,12 +2394,14 @@ export function useDirectChatRuntime({
         intentAnalysis: directIntentAnalysis,
       });
       const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
+      const directStickerContext = buildDirectStickerUsageContext(newHistory);
       runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
         character,
         scene: 'direct',
         latestUserText: userMsg.text,
         recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
         sceneHints: chatSceneInput.sections || [],
+        ...directStickerContext,
       }).map((candidate) => candidate.sticker);
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
@@ -2365,6 +2435,7 @@ export function useDirectChatRuntime({
             latestUserText: userMsg.text,
             recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
             sceneHints: chatSceneInput.sections || [],
+            ...directStickerContext,
           }),
           structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
         ].filter(Boolean),
