@@ -60,7 +60,11 @@ import {
   splitDirectAssistantReplyText,
   stripAssistantSpeakerPrefix,
 } from '../../services/chat/assistantText';
-import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
+import {
+  buildAssistantStickerPromptSection,
+  pickAssistantSticker,
+  resolveAssistantStickerCandidates,
+} from '../../services/chat/assistantStickerPicker';
 import {
   buildAutonomousAvatarLibraryPromptSection,
   buildAvatarActionPromptSection,
@@ -1054,6 +1058,27 @@ function parseGameCardData(text: string, options?: { silent?: boolean }) {
   return null;
 }
 
+function buildStickerRecentTexts(messages: ChatMessage[]): string[] {
+  return messages
+    .slice(-6)
+    .map((message) => {
+      if (message.audioUrl) {
+        return message.audioTranscript?.trim() || '[audio]';
+      }
+
+      if (message.imageUrl) {
+        if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
+          return message.stickerLabel?.trim() ? `[sticker] ${message.stickerLabel.trim()}` : '[sticker]';
+        }
+
+        return '[image]';
+      }
+
+      return getMessageMainText(message).trim();
+    })
+    .filter(Boolean);
+}
+
 function isIncompleteGameCardPayload(text: string) {
   return parseGameCardState(text).status === 'incomplete';
 }
@@ -1358,6 +1383,16 @@ function buildDirectActionDescriptionPrompt(inputEnabled?: boolean, characterEna
       '用户可能会用中文全角括号“（）”描述动作、神态、环境或场景，括号外是说出口的话。',
       '你必须同时理解括号内的动作/场景和括号外的对话内容。',
       '你也可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
+      '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
+    ].join('\n');
+  }
+
+  if (!inputEnabled && characterEnabled) {
+    return [
+      '## 场景动作描述格式',
+      '如果用户消息里出现中文全角括号“（）”，括号内代表动作、神态、环境或场景，括号外代表说出口的话，你需要理解两部分。',
+      '当前未开启用户侧动作输入入口，所以不要假设用户会频繁这样输入。',
+      '但角色主动括号表达已开启；你可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
       '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
     ].join('\n');
   }
@@ -1674,6 +1709,7 @@ export function useDirectChatRuntime({
         let currentResponseText = '';
         let latestHistory = historySnapshot;
         let renderedAssistantMessageCount = 0;
+        let runtimeStickerPool = availableStickers;
         const latestPendingUserBlock = getLatestPendingUserMessageBlock(historySnapshot);
         const latestPendingUserMessage = latestPendingUserBlock
           ? historySnapshot[latestPendingUserBlock.end]
@@ -1689,7 +1725,7 @@ export function useDirectChatRuntime({
             isInnerVoice: isInnerVoiceRequest,
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
-            availableStickers,
+            availableStickers: runtimeStickerPool,
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
             currentHistory: messages,
             userLabel: userName,
@@ -1813,6 +1849,13 @@ export function useDirectChatRuntime({
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
           const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
+          runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
+            character,
+            scene: 'direct',
+            latestUserText: latestPendingUserMessage?.text,
+            recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+            sceneHints: chatSceneInput.sections || [],
+          }).map((candidate) => candidate.sticker);
           const systemPrompt = buildChatPrompt({
             ...chatSceneInput,
             sections: [
@@ -1840,7 +1883,13 @@ export function useDirectChatRuntime({
               })
                 ? buildAutonomousAvatarLibraryPromptSection(character)
                 : '',
-              buildAssistantStickerPromptSection(availableStickers),
+              buildAssistantStickerPromptSection(runtimeStickerPool, {
+                character,
+                scene: 'direct',
+                latestUserText: latestPendingUserMessage?.text,
+                recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+                sceneHints: chatSceneInput.sections || [],
+              }),
               structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
             ].filter(Boolean),
           });
@@ -2108,6 +2157,7 @@ export function useDirectChatRuntime({
     let currentResponseText = '';
     let latestHistory = newHistory;
     let renderedAssistantMessageCount = 0;
+    let runtimeStickerPool = availableStickers;
     const stripPseudoMomentPrefix = (text: string) =>
       text.replace(/^\s*(动态|状态|朋友圈说说)[:：]\s*/u, '').trim();
 
@@ -2121,7 +2171,7 @@ export function useDirectChatRuntime({
         isInnerVoice: isInnerVoiceRequest,
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
-        availableStickers,
+        availableStickers: runtimeStickerPool,
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
         currentHistory: messages,
         userLabel: userName,
@@ -2276,6 +2326,13 @@ export function useDirectChatRuntime({
         intentAnalysis: directIntentAnalysis,
       });
       const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
+      runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
+        character,
+        scene: 'direct',
+        latestUserText: userMsg.text,
+        recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+        sceneHints: chatSceneInput.sections || [],
+      }).map((candidate) => candidate.sticker);
       const systemPrompt = buildChatPrompt({
         ...chatSceneInput,
         sections: [
@@ -2302,7 +2359,13 @@ export function useDirectChatRuntime({
           })
             ? buildAutonomousAvatarLibraryPromptSection(character)
             : '',
-          buildAssistantStickerPromptSection(availableStickers),
+          buildAssistantStickerPromptSection(runtimeStickerPool, {
+            character,
+            scene: 'direct',
+            latestUserText: userMsg.text,
+            recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+            sceneHints: chatSceneInput.sections || [],
+          }),
           structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
         ].filter(Boolean),
       });

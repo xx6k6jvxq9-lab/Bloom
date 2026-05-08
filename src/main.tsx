@@ -1,15 +1,19 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
 type BootWindow = Window & {
   __BLOOM_BOOTED__?: boolean;
+  __BLOOM_BOOT_ENTRY_STARTED__?: boolean;
   __BLOOM_BOOT_ERROR_TIMEOUT__?: number;
   __BLOOM_SHOW_BOOT_FALLBACK__?: (reason?: string) => void;
+  __BLOOM_HIDE_BOOT_FALLBACK__?: () => void;
 };
 
 const bootWindow = window as BootWindow;
+bootWindow.__BLOOM_BOOT_ENTRY_STARTED__ = true;
+
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
@@ -17,37 +21,30 @@ if (!rootElement) {
   throw new Error('Root element #root was not found.');
 }
 
-const hideBootFallback = () => {
+const markBooted = () => {
   bootWindow.__BLOOM_BOOTED__ = true;
   if (typeof bootWindow.__BLOOM_BOOT_ERROR_TIMEOUT__ === 'number') {
     window.clearTimeout(bootWindow.__BLOOM_BOOT_ERROR_TIMEOUT__);
   }
 
-  document.getElementById('boot-fallback')?.setAttribute('hidden', '');
+  bootWindow.__BLOOM_HIDE_BOOT_FALLBACK__?.();
 };
 
-const scheduleBootCheck = () => {
-  if (rootElement.childNodes.length > 0) {
-    hideBootFallback();
-    return;
-  }
+function BootReadySignal() {
+  useEffect(() => {
+    markBooted();
+  }, []);
 
-  if (typeof window.requestAnimationFrame === 'function') {
-    window.requestAnimationFrame(scheduleBootCheck);
-    return;
-  }
-
-  window.setTimeout(scheduleBootCheck, 16);
-};
+  return null;
+}
 
 try {
   createRoot(rootElement).render(
     <StrictMode>
+      <BootReadySignal />
       <App />
     </StrictMode>,
   );
-
-  scheduleBootCheck();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error ?? '');
   bootWindow.__BLOOM_SHOW_BOOT_FALLBACK__?.(message);

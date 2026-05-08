@@ -5,6 +5,7 @@ import type {
   TaskResidueItem,
   TopicAnchorItem,
 } from '../relationship-context/types';
+import { buildSharedStateWritePatch } from '../relationship-context/buildSharedCharacterState';
 import { looksLikeTopicText } from '../chat/topicRecall';
 
 type CoupleSpaceSettlementEventType =
@@ -26,6 +27,7 @@ type CoupleSpaceSharedSettlementResult = {
   sharedContextSnapshots: CharacterSharedContextSnapshot[];
   shortTermSummary?: string;
   openLoopRegistry?: CharacterOpenLoopEntry[];
+  sharedState?: Character['sharedState'];
 };
 
 const TASK_MARKERS = /(答应|约定|确认|回复|处理|完成|安排|计划|改天|下次|补上|兑现|去做|办完|一起|记得|要去|要做)/;
@@ -178,7 +180,7 @@ function appendOpenLoopEntries(
 }
 
 export function buildCoupleSpaceSharedSettlement(
-  character: Pick<Character, 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry'>,
+  character: Pick<Character, 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry' | 'presenceState' | 'sharedState'>,
   event: CoupleSpaceSettlementEvent,
 ): CoupleSpaceSharedSettlementResult {
   const relationshipResidue = dedupeBySummary(buildRelationshipResidue(event));
@@ -208,5 +210,16 @@ export function buildCoupleSpaceSharedSettlement(
       taskResidue.map((item) => item.summary).join('\n'),
     ),
     openLoopRegistry: appendOpenLoopEntries(character.openLoopRegistry, taskResidue, topicAnchors, event.timestamp),
+    sharedState: buildSharedStateWritePatch({
+      character,
+      sourceScene: 'couple_space',
+      updatedAt: event.timestamp,
+      publicSummaries: relationshipResidue.map((item) => item.summary),
+      privateSummaries: [
+        ...relationshipResidue.map((item) => item.summary),
+        ...topicAnchors.map((item) => item.summary),
+        ...taskResidue.map((item) => item.summary),
+      ],
+    }),
   };
 }

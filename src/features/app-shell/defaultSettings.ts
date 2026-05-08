@@ -12,7 +12,7 @@ export const DEFAULT_USER: UserProfile = {
 
 export const DEFAULT_CONFIG: ApiConfig = {
   id: 'default',
-  name: 'Google Gemini (默认)',
+  name: 'Google Gemini（默认）',
   provider: 'Google Gemini',
   apiKey: '',
   baseUrl: '',

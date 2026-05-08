@@ -1,9 +1,12 @@
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildTemporalContextPrompt } from '../relationship-time/buildTemporalContextPrompt';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
+import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { compressShortTermSummaryAfterLongTerm } from '../memory/buildShortTermSummary';
 import type {
   Character,
+  ChatHistory,
   ChatMessage,
   DateDescriptionDensity,
   DateDialogueFormat,
@@ -257,6 +260,7 @@ function formatTypedResidueLines<T extends { summary: string }>(
 }
 
 function buildExtraSections(input: {
+  sharedCharacterStatePrompt?: string;
   temporalContext?: string;
   expressionStyle?: string;
   boundaryPack?: string;
@@ -271,6 +275,7 @@ function buildExtraSections(input: {
   sharedRecentRelationshipSummary?: string;
 }): string[] {
   return [
+    input.sharedCharacterStatePrompt || '',
     input.temporalContext || '',
     input.expressionStyle ? ['## 表达风格与相处方式', input.expressionStyle].join('\n') : '',
     input.boundaryPack ? ['## 边界与禁区', input.boundaryPack].join('\n') : '',
@@ -308,16 +313,31 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
   const characterContext = buildCharacterContext({
     character: options.character,
   });
+  const directChatHistory: ChatHistory = {
+    [options.character.id]: options.chatHistory,
+  };
   const relationshipProjection = buildRelationshipProjection({
     character: options.character,
     userName: options.userProfile.name,
     directMessages: options.chatHistory,
+  });
+  const characterTemporalState = buildCharacterTemporalState({
+    characterId: options.character.id,
+    perception: options.perception,
+    directChatHistory,
+    sceneScope: 'direct',
+  });
+  const sharedCharacterState = buildSharedCharacterState({
+    character: options.character,
+    temporalState: characterTemporalState,
+    sceneScopedSignals: relationshipProjection.sceneScopedSignals,
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
   const shortTermSummary = characterScopedMemory.longTermMemoryProfile
     ? compressShortTermSummaryAfterLongTerm(characterScopedMemory.shortTermSummary || '')
     : characterScopedMemory.shortTermSummary;
   const sections = budgetSections(buildExtraSections({
+    sharedCharacterStatePrompt: truncateFromStart(sharedCharacterState.directPrompt, DATING_PROMPT_BUDGET.maxSectionChars),
     temporalContext: buildTemporalContextPrompt({
       perception: options.perception,
       now: Date.now(),

@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw, Moon } from 'lucide-react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset, type Character } from '../../../types';
@@ -142,7 +142,7 @@ export function CustomizationApp({
   setSettings
 }: CustomizationAppProps) {
   const [activeTab, setActiveTab] = useState<'home' | 'desktop' | 'chat' | 'theme' | 'data'>('home');
-  const [desktopSubTab, setDesktopSubTab] = useState<'wallpaper' | 'icons' | 'layout' | 'widgets' | 'navbar' | 'font'>('wallpaper');
+  const [desktopSubTab, setDesktopSubTab] = useState<'wallpaper' | 'icons' | 'layout' | 'dock' | 'widgets' | 'navbar' | 'font'>('wallpaper');
   const [chatSubTab, setChatSubTab] = useState<'avatar' | 'bubble' | 'background' | 'interface' | 'dynamics'>('avatar');
   return (
     <KeyboardAwareScreen
@@ -478,8 +478,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
   const { setUploadedFile } = usePersistentFieldActions();
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground);
+  const { resolvedUrl: resolvedDockBackgroundUrl } = useResolvedPersistentValue(settings.desktop?.dockBackgroundImage || '');
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(settings.navBar?.backgroundImage || '');
+  const { resolvedUrl: resolvedNavBarAvatarUrl } = useResolvedPersistentValue(settings.navBar?.avatar || '');
   const wallpaperDisplayUrl = resolvedWallpaperUrl || resolveInstantPreviewUrl(settings.globalBackground, settings.globalBackgroundPreviewUrl);
+  const dockBackgroundDisplayUrl =
+    resolvedDockBackgroundUrl
+    || resolveInstantPreviewUrl(settings.desktop?.dockBackgroundImage, settings.desktop?.dockBackgroundPreviewUrl);
   const typography = settings.themeTypography || {};
   const effectiveFontPriority = resolveThemeFontPriority(typography);
   const importedFonts: ThemeFontAsset[] = typography.importedFonts || [];
@@ -658,7 +663,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
   return (
     <div className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        {['wallpaper', 'icons', 'layout', 'widgets', 'navbar', 'font'].map(tab => (
+        {['wallpaper', 'icons', 'layout', 'dock', 'widgets', 'navbar', 'font'].map(tab => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -669,6 +674,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             {tab === 'wallpaper' && '壁纸'}
             {tab === 'icons' && '图标'}
             {tab === 'layout' && '摆放'}
+            {tab === 'dock' && 'Dock'}
             {tab === 'widgets' && '小卡片'}
             {tab === 'navbar' && '导航栏'}
             {tab === 'font' && '字体'}
@@ -806,6 +812,104 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             </label>
             <input type="range" min="8" max="32" value={settings.desktop?.gridGap ?? 16} onChange={e => setSettings({...settings, desktop: {...settings.desktop, gridGap: Number(e.target.value)}})} className="w-full accent-zinc-900" />
           </div>
+        </div>
+      )}
+
+      {subTab === 'dock' && (
+        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-zinc-100 space-y-4">
+          <h3 className="text-sm font-bold text-zinc-800">底部 Dock</h3>
+
+          <div className="rounded-[24px] border border-zinc-200 bg-zinc-50 p-5">
+            <div className="mx-auto flex w-full max-w-[280px] flex-col items-center gap-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">Preview</div>
+              <div className="relative w-full">
+                <div className="absolute inset-x-4 bottom-[-8px] h-6 rounded-b-[22px] border border-white/20 border-t-0 bg-white/25 blur-[0.2px]" />
+                <div className="relative flex min-h-[88px] items-center justify-around overflow-hidden rounded-[28px] border border-white/35 px-4 py-3 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur-[28px]">
+                  {dockBackgroundDisplayUrl ? (
+                    <img
+                      src={dockBackgroundDisplayUrl}
+                      alt="Dock background preview"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : null}
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundColor: settings.desktop?.dockTintColor || '#f8fafc',
+                      opacity: settings.desktop?.dockTintOpacity ?? 0.18,
+                    }}
+                  />
+                  {['钱包', '梦境', '自定义'].map((label, index) => (
+                    <div key={label} className="relative z-10 flex flex-col items-center gap-1">
+                      <div
+                        className="h-12 w-12 overflow-hidden rounded-[16px] bg-white shadow-[0_6px_14px_rgba(15,23,42,0.12)]"
+                        style={{ borderRadius: settings.desktop?.iconBorderRadius ?? 14 }}
+                      >
+                        {index === 0 ? <Banknote size={24} className="m-auto mt-3 text-zinc-700" /> : index === 1 ? <Moon size={24} className="m-auto mt-3 text-zinc-700" /> : <Settings size={24} className="m-auto mt-3 text-zinc-700" />}
+                      </div>
+                      <span className="text-[11px] font-medium text-zinc-700">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <PersistentImageUploadControl
+            label="Dock 背景图"
+            value={settings.desktop?.dockBackgroundImage || ''}
+            previewUrl={settings.desktop?.dockBackgroundPreviewUrl || ''}
+            previewOptions={WALLPAPER_PREVIEW_OPTIONS}
+            onChange={(val, meta) =>
+              setSettings({
+                ...settings,
+                desktop: {
+                  ...settings.desktop,
+                  dockBackgroundImage: val,
+                  dockBackgroundPreviewUrl: meta?.previewUrl || '',
+                },
+              })
+            }
+          />
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500">Dock 叠加颜色</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={settings.desktop?.dockTintColor || '#f8fafc'}
+                onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
+                className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
+              />
+              <input
+                type="text"
+                value={settings.desktop?.dockTintColor || '#f8fafc'}
+                onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
+                placeholder="#f8fafc"
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500 flex justify-between">
+              <span>Dock 颜色透明度</span>
+              <span>{Math.round((settings.desktop?.dockTintOpacity ?? 0.18) * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="0.75"
+              step="0.05"
+              value={settings.desktop?.dockTintOpacity ?? 0.18}
+              onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintOpacity: Number(e.target.value) } })}
+              className="w-full accent-zinc-900"
+            />
+          </div>
+
+          <p className="text-[11px] leading-5 text-zinc-400">
+            可以给底部 Dock 单独上传背景图，再叠加一层颜色做出更接近 iOS 或更个性化的效果。
+          </p>
         </div>
       )}
 
@@ -1119,8 +1223,43 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             }
           />
 
+          <PersistentImageUploadControl
+            label="导航栏专属头像"
+            value={settings.navBar.avatar || ''}
+            previewUrl={resolvedNavBarAvatarUrl || undefined}
+            onChange={(val) =>
+              setSettings({
+                ...settings,
+                navBar: {
+                  ...settings.navBar,
+                  avatar: val,
+                },
+              })
+            }
+          />
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500">导航栏专属颜文字</label>
+            <input
+              type="text"
+              value={settings.navBar.mood || ''}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  navBar: {
+                    ...settings.navBar,
+                    mood: e.target.value,
+                  },
+                })
+              }
+              placeholder="留空则跟随主页颜文字"
+              maxLength={24}
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            />
+          </div>
+
           <p className="text-[11px] text-zinc-400 leading-relaxed">
-            支持直接粘贴图片链接、Markdown 图片、HTML 图片地址，也支持直接上传本地图片。
+            导航栏头像和颜文字现在可以单独设置；留空时会继续跟随主页资料。
           </p>
         </div>
       )}
@@ -1627,6 +1766,7 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
   );
   const { resolvedUrl: resolvedGlobalWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground || '');
   const { resolvedUrl: resolvedDynamicsBackgroundUrl } = useResolvedPersistentValue(settings.dynamics?.background || '');
+  const dynamicsBackgroundMode = settings.dynamics?.backgroundMode ?? 'fullscreen';
   const { resolvedUrl: resolvedChatBubbleBackgroundUrl } = useResolvedPersistentValue(settings.chat?.messageBackgroundImageUrl || '');
   const { resolvedUrl: resolvedChatBackgroundUrl } = useResolvedPersistentValue(settings.chat?.background || '');
   const { resolvedUrl: resolvedSelectedCharacterAvatarUrl } = useResolvedPersistentValue(selectedCharacter?.avatar || '');
@@ -2304,33 +2444,64 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
           
           {/* Dynamics Preview */}
           <div className="bg-zinc-100 rounded-2xl p-4 flex justify-center">
-            <div className="w-48 aspect-[3/4] bg-white rounded-2xl overflow-hidden shadow-sm relative">
-              {/* Background */}
-               <div className="absolute inset-0 bg-zinc-200">
-                 {resolvedGlobalWallpaperUrl && <img src={resolvedGlobalWallpaperUrl} className="w-full h-full object-cover opacity-50" alt="Wallpaper" />}
-               </div>
-               
-               {/* Card Preview */}
-               <div className="absolute inset-4 flex flex-col justify-end">
-                 <div 
-                   className="p-3 backdrop-blur-sm overflow-hidden"
-                   style={{ 
-                     backgroundColor: settings.dynamics?.background ? 'transparent' : 'rgba(255,255,255,0.9)',
-                     borderRadius: settings.dynamics?.cardBorderRadius ?? 24,
-                     opacity: settings.dynamics?.cardOpacity ?? 0.9
-                   }}
-                 >
-                   {resolvedDynamicsBackgroundUrl && <img src={resolvedDynamicsBackgroundUrl} className="absolute inset-0 w-full h-full object-cover -z-10" alt="Dynamics Background" />}
-                   {!settings.dynamics?.background && (
-                     <div className="flex items-center gap-2 mb-2">
-                       <div className="w-6 h-6 rounded-full bg-zinc-200"></div>
-                       <div className="h-2 w-12 bg-zinc-200 rounded-full"></div>
-                     </div>
-                   )}
-                   <div className="h-2 w-full bg-zinc-100/50 rounded-full mb-1"></div>
-                   <div className="h-2 w-2/3 bg-zinc-100/50 rounded-full"></div>
-                 </div>
-               </div>
+            <div className="relative w-48 aspect-[3/4] overflow-hidden rounded-2xl bg-[#f7f7f8] shadow-sm">
+              <div className="absolute inset-0 bg-zinc-100">
+                {resolvedGlobalWallpaperUrl && !resolvedDynamicsBackgroundUrl && (
+                  <img src={resolvedGlobalWallpaperUrl} className="w-full h-full object-cover opacity-25" alt="Wallpaper" />
+                )}
+                {dynamicsBackgroundMode === 'fullscreen' && resolvedDynamicsBackgroundUrl && (
+                  <img src={resolvedDynamicsBackgroundUrl} className="w-full h-full object-cover" alt="Dynamics Background" />
+                )}
+              </div>
+
+              <div className="absolute inset-x-0 top-0 h-[42%] overflow-hidden">
+                {dynamicsBackgroundMode === 'header' && resolvedDynamicsBackgroundUrl ? (
+                  <img src={resolvedDynamicsBackgroundUrl} className="w-full h-full object-cover" alt="Dynamics Header Background" />
+                ) : !resolvedDynamicsBackgroundUrl ? (
+                  <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />
+                ) : null}
+              </div>
+
+              <div className="absolute right-3 top-3 flex gap-2">
+                <div className="h-8 w-8 rounded-full border border-white/30 bg-white/30 backdrop-blur-sm" />
+                <div className="h-8 w-8 rounded-full border border-white/30 bg-white/30 backdrop-blur-sm" />
+              </div>
+
+              <div className="absolute left-4 right-4 top-[31%] z-10 flex items-end gap-2">
+                <div className="h-12 w-12 shrink-0 rounded-2xl border-2 border-white bg-zinc-200 shadow-sm">
+                  {resolvedSelectedUserAvatarUrl ? (
+                    <img src={resolvedSelectedUserAvatarUrl} className="h-full w-full rounded-[14px] object-cover" alt="User Avatar" />
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1 pb-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="truncate text-[11px] font-bold text-zinc-900">
+                      {appData?.userProfile?.name || 'AI 用户'}
+                    </div>
+                    <span className="max-w-[72px] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[8px] font-medium text-zinc-600 shadow-sm">
+                      {(appData?.userProfile?.mood || '(^_^)').slice(0, 18)}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-20 rounded-full bg-white/80" />
+                </div>
+              </div>
+
+              <div className="absolute inset-x-4 bottom-4 top-[50%]">
+                <div
+                  className="relative h-full overflow-hidden p-3 backdrop-blur-sm"
+                  style={{
+                    backgroundColor: `rgba(255,255,255,${settings.dynamics?.cardOpacity ?? 0.9})`,
+                    borderRadius: settings.dynamics?.cardBorderRadius ?? 24,
+                  }}
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-zinc-200" />
+                    <div className="h-2 w-12 rounded-full bg-zinc-200" />
+                  </div>
+                  <div className="mb-1 h-2 w-full rounded-full bg-zinc-100/80" />
+                  <div className="h-2 w-2/3 rounded-full bg-zinc-100/80" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2343,6 +2514,42 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
               momentsBackground: val 
             })} 
           />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-zinc-500">背景范围</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSettings({
+                  ...settings,
+                  dynamics: { ...settings.dynamics, backgroundMode: 'fullscreen' }
+                })}
+                className={`rounded-2xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  dynamicsBackgroundMode === 'fullscreen'
+                    ? 'border-zinc-300 bg-zinc-100 text-zinc-800 shadow-sm'
+                    : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                }`}
+              >
+                全屏
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettings({
+                  ...settings,
+                  dynamics: { ...settings.dynamics, backgroundMode: 'header' }
+                })}
+                className={`rounded-2xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  dynamicsBackgroundMode === 'header'
+                    ? 'border-zinc-300 bg-zinc-100 text-zinc-800 shadow-sm'
+                    : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+                }`}
+              >
+                顶部半屏
+              </button>
+            </div>
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              全屏会铺满整个动态页，顶部半屏只替换上方封面区域。
+            </p>
+          </div>
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500 flex justify-between">
               <span>卡片圆角</span>

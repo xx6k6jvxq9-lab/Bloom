@@ -1,5 +1,5 @@
 import type { Character } from '../../types';
-import type { DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
+import type { DreamCustomTag, DreamRuntimeScenario } from '../../services/dream/dreamRuntimeTypes';
 import { dreamTagGroups, resolveDomainName } from './dreamContent';
 import type { DreamDepth, DreamEntryMode, DreamTagCategory } from './types';
 
@@ -20,12 +20,16 @@ export type DreamArchiveRecord = {
 const DREAM_ARCHIVE_STORAGE_KEY = 'dream_app_archive_records_v1';
 const DREAM_ARCHIVE_LIMIT = 24;
 
-export function getSelectedTagLabels(selectedTags: Record<DreamTagCategory, string[]>) {
-  return dreamTagGroups.flatMap((group) =>
+export function getSelectedTagLabels(selectedTags: Record<DreamTagCategory, string[]>, customTags: DreamCustomTag[] = []) {
+  const fixedLabels = dreamTagGroups.flatMap((group) =>
     group.options
       .filter((option) => (selectedTags[group.category] ?? []).includes(option.id))
       .map((option) => option.label),
   );
+  const customLabels = customTags
+    .map((tag) => tag.label?.trim() || '')
+    .filter(Boolean);
+  return Array.from(new Set([...fixedLabels, ...customLabels]));
 }
 
 export function loadDreamArchiveRecords(): DreamArchiveRecord[] {
@@ -80,10 +84,12 @@ export function buildDreamArchiveRecord({
   character,
   scenario,
   selectedTags,
+  customTags,
 }: {
   character: Character;
   scenario: DreamRuntimeScenario;
   selectedTags: Record<DreamTagCategory, string[]>;
+  customTags?: DreamCustomTag[];
 }): DreamArchiveRecord {
   const now = Date.now();
   return {
@@ -94,7 +100,7 @@ export function buildDreamArchiveRecord({
     domainName: resolveDomainName(scenario.domainId),
     depth: scenario.depth,
     entryMode: scenario.entryMode,
-    selectedLabels: getSelectedTagLabels(selectedTags),
+    selectedLabels: getSelectedTagLabels(selectedTags, customTags),
     scenario,
     createdAt: now,
     updatedAt: now,

@@ -413,6 +413,7 @@ export function ChatSessionScreen({
   onOpenCharacterMoments,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
+  onRuntimeBusyChange,
 }: { 
   character: Character;
   history: ChatMessage[];
@@ -450,6 +451,7 @@ export function ChatSessionScreen({
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
+  onRuntimeBusyChange?: (busy: boolean) => void;
 }) {
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
@@ -653,6 +655,13 @@ export function ChatSessionScreen({
     onAddCallRecord,
     onAcceptCoupleSpaceInvite,
   });
+
+  useEffect(() => {
+    onRuntimeBusyChange?.(isLoading);
+    return () => {
+      onRuntimeBusyChange?.(false);
+    };
+  }, [isLoading, onRuntimeBusyChange]);
 
   const latestUserMessageIndex = [...history].map((message, index) => ({ message, index })).reverse().find(({ message }) => (
     message.role === 'user' && !message.isSystem && (message.text || message.imageUrl || message.audioUrl || message.location)

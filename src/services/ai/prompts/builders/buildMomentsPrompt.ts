@@ -23,6 +23,9 @@ function buildMomentsMemorySection(memoryContext: MemoryContextInput = {}): stri
     '## 动态记忆与生活语境',
     '动态允许吃到角色的人设、短期余波和长期记忆，但不要只围着用户转。',
     '优先把这些上下文转译成角色自己的公开状态、生活切片、观察、兴趣或心情，而不是一段写给用户的私聊外溢。',
+    memoryContext.sharedCharacterStatePrompt?.trim()
+      ? `褰撳墠鍏变韩瑙掕壊鐘舵€侊細${memoryContext.sharedCharacterStatePrompt.trim()}`
+      : '',
     memoryContext.shortTermSummary?.trim()
       ? `近期余波：${memoryContext.shortTermSummary.trim()}`
       : '',

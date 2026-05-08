@@ -66,16 +66,62 @@
       (function () {
         var bootWindow = window;
 
-        function revealFallback(reason) {
+        function getBootMessage(state, reason) {
+          if (state === 'file-protocol') {
+            return {
+              title: 'Bloom 无法直接从文件启动',
+              copy:
+                '当前页面看起来是通过本地文件打开的。Bloom 需要通过 http://localhost 或线上地址运行，直接双击 HTML 文件时模块脚本通常会被浏览器拦住。',
+              detail: '',
+            };
+          }
+
+          if (state === 'script-load') {
+            return {
+              title: 'Bloom 启动受阻',
+              copy:
+                '应用入口脚本没有成功加载。常见原因是直接用文件方式打开、资源路径不对，或当前浏览器容器拦截了模块脚本。',
+              detail: reason ? '启动原因：' + reason : '',
+            };
+          }
+
+          if (state === 'loading-timeout') {
+            return {
+              title: 'Bloom 还在启动中',
+              copy:
+                '首屏加载时间比平时更长。可能是首次缓存较多、设备较慢，或当前浏览器容器对部分能力支持不完整。可以再等一下，或刷新后重试。',
+              detail: reason ? '当前状态：' + reason : '',
+            };
+          }
+
+          return {
+            title: 'Bloom 启动失败',
+            copy:
+              '应用在启动阶段遇到了兼容或运行问题。可以先刷新重试；如果仍然出现，再换系统浏览器或最新版 Chrome / Safari 打开。',
+            detail: reason ? '启动原因：' + reason : '',
+          };
+        }
+
+        function applyFallbackState(state, reason) {
           var fallback = document.getElementById('boot-fallback');
           if (!fallback) {
             return;
           }
 
+          var title = document.getElementById('boot-fallback-title');
+          var copy = document.getElementById('boot-fallback-copy');
           var detail = document.getElementById('boot-fallback-detail');
+          var message = getBootMessage(state, reason);
+
+          if (title) {
+            title.textContent = message.title;
+          }
+          if (copy) {
+            copy.textContent = message.copy;
+          }
           if (detail) {
-            if (reason) {
-              detail.textContent = '启动原因：' + reason;
+            if (message.detail) {
+              detail.textContent = message.detail;
               detail.hidden = false;
             } else {
               detail.textContent = '';
@@ -84,16 +130,71 @@
           }
 
           fallback.hidden = false;
+          fallback.setAttribute('data-state', state);
         }
 
-        bootWindow.__BLOOM_SHOW_BOOT_FALLBACK__ = revealFallback;
-        bootWindow.addEventListener('error', function (event) {
+        function revealFallback(state, reason) {
           if (bootWindow.__BLOOM_BOOTED__) {
             return;
           }
 
-          revealFallback(event && event.message ? String(event.message) : '');
-        });
+          applyFallbackState(state, reason);
+        }
+
+        function hideFallback() {
+          var fallback = document.getElementById('boot-fallback');
+          if (!fallback) {
+            return;
+          }
+
+          fallback.hidden = true;
+          fallback.removeAttribute('data-state');
+        }
+
+        function extractResourceMessage(event) {
+          var target = event && event.target && event.target !== bootWindow ? event.target : null;
+          if (!target) {
+            return '';
+          }
+
+          var tagName = target.tagName ? String(target.tagName).toLowerCase() : '';
+          if (tagName === 'script') {
+            return target.src || '入口脚本加载失败';
+          }
+
+          if (tagName === 'link') {
+            var rel = target.rel ? String(target.rel).toLowerCase() : '';
+            if (rel === 'stylesheet' || rel === 'modulepreload') {
+              return target.href || '关键资源加载失败';
+            }
+          }
+
+          return '';
+        }
+
+        bootWindow.__BLOOM_SHOW_BOOT_FALLBACK__ = function (reason) {
+          revealFallback('runtime-error', reason);
+        };
+        bootWindow.__BLOOM_HIDE_BOOT_FALLBACK__ = hideFallback;
+
+        bootWindow.addEventListener(
+          'error',
+          function (event) {
+            if (bootWindow.__BLOOM_BOOTED__) {
+              return;
+            }
+
+            var resourceMessage = extractResourceMessage(event);
+            if (resourceMessage) {
+              revealFallback('script-load', resourceMessage);
+              return;
+            }
+
+            var message = event && event.message ? String(event.message) : '';
+            revealFallback(message ? 'runtime-error' : 'script-load', message || '入口脚本没有开始执行');
+          },
+          true,
+        );
 
         bootWindow.addEventListener('unhandledrejection', function (event) {
           if (bootWindow.__BLOOM_BOOTED__) {
@@ -107,15 +208,25 @@
           } else if (reason) {
             message = String(reason);
           }
-          revealFallback(message);
+          revealFallback('runtime-error', message);
         });
 
         bootWindow.__BLOOM_BOOT_ERROR_TIMEOUT__ = bootWindow.setTimeout(function () {
-          var root = document.getElementById('root');
-          var hasRenderedContent = !!(root && root.childNodes.length > 0);
-          if (!bootWindow.__BLOOM_BOOTED__ && !hasRenderedContent) {
-            revealFallback('');
+          if (bootWindow.__BLOOM_BOOTED__) {
+            return;
           }
+
+          if (bootWindow.location && bootWindow.location.protocol === 'file:') {
+            revealFallback('file-protocol', '');
+            return;
+          }
+
+          if (!bootWindow.__BLOOM_BOOT_ENTRY_STARTED__) {
+            revealFallback('script-load', '入口脚本没有开始执行');
+            return;
+          }
+
+          revealFallback('loading-timeout', '');
         }, 12000);
       })();
     </script>
@@ -123,9 +234,9 @@
   <body>
     <div id="boot-fallback" hidden>
       <div id="boot-fallback-card">
-        <h1 id="boot-fallback-title">Bloom 启动失败</h1>
+        <h1 id="boot-fallback-title">Bloom 正在启动</h1>
         <p id="boot-fallback-copy">
-          当前浏览器可能过旧，或脚本启动时遇到了兼容问题。可以优先尝试更新系统浏览器，或改用最新版 Chrome / Safari 后重新打开。
+          如果启动时间明显过长，页面会在这里显示更具体的原因。
         </p>
         <p id="boot-fallback-detail" hidden></p>
       </div>

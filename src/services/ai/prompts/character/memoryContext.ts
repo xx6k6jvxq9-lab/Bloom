@@ -11,6 +11,7 @@ export type MemoryContextInput = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
   perceptionPrompt?: string;
+  sharedCharacterStatePrompt?: string;
 };
 
 export const SHORT_TERM_MEMORY_CONTEXT_HEADER = [
@@ -30,6 +31,9 @@ export const LONG_TERM_MEMORY_CONTEXT_HEADER = [
 export function buildShortTermMemoryContextSection(input: MemoryContextInput): string {
   const sections = [
     SHORT_TERM_MEMORY_CONTEXT_HEADER,
+    input.sharedCharacterStatePrompt?.trim()
+      ? ['[统一角色状态 / 跨场景仍然成立的当前状态]', input.sharedCharacterStatePrompt.trim()].join('\n')
+      : '',
     input.shortTermSummary?.trim()
       ? ['[近期记忆 / 最近几轮仍会影响后续互动的状态与余波]', input.shortTermSummary.trim()].join('\n')
       : '',
@@ -44,6 +48,9 @@ export function buildShortTermMemoryContextSection(input: MemoryContextInput): s
 export function buildLongTermMemoryContextSection(input: MemoryContextInput): string {
   const sections = [
     LONG_TERM_MEMORY_CONTEXT_HEADER,
+    input.sharedCharacterStatePrompt?.trim()
+      ? ['[统一角色状态 / 跨场景仍然成立的当前状态]', input.sharedCharacterStatePrompt.trim()].join('\n')
+      : '',
     input.longTermMemoryProfile?.trim()
       ? ['[长期记忆 / 已沉淀的关系印象、偏好与边界]', input.longTermMemoryProfile.trim()].join('\n')
       : '',

@@ -9,6 +9,7 @@ import type {
 import { buildForumCharacterContext } from '../../features/forum-domain/buildForumCharacterContext';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumHabit } from '../../features/forum-domain/characterForumPersona';
+import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { resolveForumGenerationContext } from './forumGenerationContext';
 
@@ -61,6 +62,9 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
   } = input;
   const forumContext = buildForumCharacterContext(character);
   const forumHabit = buildCharacterForumHabit(character, channel);
+  const sharedCharacterState = buildSharedCharacterStateFromCharacter({
+    character,
+  });
   const generationContext = resolveForumGenerationContext({
     globalSettings,
     masks,
@@ -70,6 +74,7 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
   });
 
   const prompt = [
+    sharedCharacterState.groupPrompt ? `瑙掕壊褰撳墠鍏变韩鐘舵€侊細\n${sharedCharacterState.groupPrompt}` : '',
     '你要写一条角色本人会发在论坛楼里的回复。',
     `角色名：${character.name}`,
     forumContext.signature ? `角色签名：${forumContext.signature}` : '',

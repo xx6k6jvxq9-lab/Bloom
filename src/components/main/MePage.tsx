@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -104,7 +104,7 @@ export function MePage({
       {activeSection === 'main' && (
           <div
             className="flex-1 overflow-y-auto"
-            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 2.75rem)' }}
           >
             {/* Profile Header */}
             <div className="px-6 pt-8 pb-6 rounded-b-[32px] shadow-sm border-b border-zinc-100 backdrop-blur-sm" style={bgStyle}>
@@ -320,15 +320,19 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
               <label className="flex-1 cursor-pointer rounded-xl bg-zinc-100 px-3 py-2 text-center text-[12px] text-zinc-600">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const input = e.currentTarget;
                   const file = e.target.files?.[0];
                   if (file) {
                     const persistedValue = await setUploadedFile(file);
                     setTempProfile({ ...tempProfile, avatar: persistedValue });
-                    e.currentTarget.value = '';
+                    input.value = '';
                   }
                 }} />
               </label>
               </div>
+              <p className="px-1 text-[11px] leading-relaxed text-zinc-400">
+                这张头像会同步到聊天、动态、情侣空间、音乐等页面。论坛和导航栏使用各自独立的头像设置。
+              </p>
             </div>
           </div>
 
@@ -358,6 +362,18 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
               value={tempProfile.bio}
               onChange={e => setTempProfile({ ...tempProfile, bio: e.target.value })}
               className="min-h-[120px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="ml-1 text-[12px] text-zinc-400">心情 / 颜文字</label>
+            <input
+              type="text"
+              value={tempProfile.mood || ''}
+              onChange={e => setTempProfile({ ...tempProfile, mood: e.target.value })}
+              placeholder="比如 (^_^) 或 今天也开心"
+              maxLength={24}
+              className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
 
@@ -603,15 +619,19 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               <label className="flex-1 bg-zinc-100 text-zinc-600 px-3 py-2 rounded-xl text-center text-[12px] cursor-pointer">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const input = e.currentTarget;
                   const file = e.target.files?.[0];
                   if(file) {
                     const persistedValue = await setUploadedFile(file);
                     setTempProfile({...tempProfile, avatar: persistedValue});
-                    e.currentTarget.value = '';
+                    input.value = '';
                   }
                 }} />
               </label>
               </div>
+              <p className="px-1 text-[11px] leading-relaxed text-zinc-400">
+                这张头像会同步到聊天、动态、情侣空间、音乐等页面。论坛和导航栏使用各自独立的头像设置。
+              </p>
             </div>
           </div>
 
@@ -641,6 +661,18 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               value={tempProfile.bio}
               onChange={e => setTempProfile({...tempProfile, bio: e.target.value})}
               className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[14px] outline-none focus:border-blue-500 min-h-[80px] resize-none"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[12px] text-zinc-400 ml-1">心情 / 颜文字</label>
+            <input
+              type="text"
+              value={tempProfile.mood || ''}
+              onChange={e => setTempProfile({...tempProfile, mood: e.target.value})}
+              placeholder="比如 (^_^) 或 今天也开心"
+              maxLength={24}
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
 

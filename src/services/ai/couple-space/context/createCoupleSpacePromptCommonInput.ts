@@ -13,6 +13,7 @@ import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
 import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../../../relationship-context/buildRelationshipProjection';
+import { buildSharedCharacterState } from '../../../relationship-context/buildSharedCharacterState';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../../relationship-time/buildTemporalContextPrompt';
 import { sortWorldBooksByPriority } from '../../../world-book/worldBookMeta';
@@ -101,6 +102,11 @@ export function createCoupleSpacePromptCommonInput(
     now: source.now,
     perception: source.coupleSpace.perception,
   });
+  const sharedCharacterState = buildSharedCharacterState({
+    character: source.partner,
+    temporalState,
+    sceneScopedSignals: relationshipProjection.sceneScopedSignals,
+  });
 
   const diagnostics: CoupleSpacePromptCommonInputDiagnostics = {
     usedMaskId: characterCoreResult.usedMaskId,
@@ -119,6 +125,7 @@ export function createCoupleSpacePromptCommonInput(
       characterCore: characterCoreResult.value,
       memoryContext: {
         longTermMemoryProfile: resolvedMemory.longTermMemoryProfile,
+        sharedCharacterStatePrompt: sharedCharacterState.directPrompt,
       },
       characterProfile: {
         characterName: source.partner.name,

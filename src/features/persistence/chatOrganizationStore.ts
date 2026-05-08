@@ -1,5 +1,6 @@
 import type { ChatGroup } from '../../types';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -8,17 +9,29 @@ export type ChatOrganizationData = {
   chatGroups: ChatGroup[];
 };
 
+function projectChatOrganizationData(data: Partial<ChatOrganizationData> | ChatOrganizationData): ChatOrganizationData {
+  return {
+    groups: mergeGroups(data.groups, []),
+    chatGroups: Array.isArray(data.chatGroups)
+      ? data.chatGroups.map(projectGroupOrganization)
+      : [],
+  };
+}
+
 function projectGroupOrganization(group: ChatGroup): ChatGroup {
   const { history: _history, lastMessage: _lastMessage, lastTime: _lastTime, ...organization } = group;
   return organization;
 }
 
 function mergeGroups(primary: string[] | undefined, fallback: string[]): string[] {
-  if (!Array.isArray(primary)) {
-    return fallback;
-  }
+  const mergedGroups = Array.from(
+    new Set([
+      ...normalizeContactGroups(primary),
+      ...normalizeContactGroups(fallback),
+    ]),
+  );
 
-  return Array.from(new Set([...primary, ...fallback].filter(Boolean)));
+  return mergedGroups.length > 0 ? mergedGroups : [...DEFAULT_CONTACT_GROUPS];
 }
 
 export function hydrateChatOrganization(
@@ -41,8 +54,9 @@ export function hydrateChatOrganization(
 export function loadPersistedChatOrganization(fallback: ChatOrganizationData): ChatOrganizationData {
   const persisted = loadJson<Partial<ChatOrganizationData> | null>(STORAGE_KEYS.chatOrganization, null);
   const hydrated = hydrateChatOrganization(persisted ?? fallback, fallback);
+  const projectedPersisted = persisted ? projectChatOrganizationData(persisted) : null;
 
-  if (persisted && JSON.stringify(hydrated) !== JSON.stringify(hydrateChatOrganization(persisted, { groups: [], chatGroups: [] }))) {
+  if (projectedPersisted && JSON.stringify(hydrated) !== JSON.stringify(projectedPersisted)) {
     persistChatOrganizationSync(hydrated);
   }
 
@@ -73,10 +87,7 @@ export async function loadPreferredChatOrganization(fallback: ChatOrganizationDa
 }
 
 export function persistChatOrganization(data: ChatOrganizationData): Promise<void> {
-  const projectedData = {
-    groups: data.groups,
-    chatGroups: data.chatGroups.map(projectGroupOrganization),
-  };
+  const projectedData = projectChatOrganizationData(data);
 
   saveJson(STORAGE_KEYS.chatOrganization, projectedData);
 
@@ -86,10 +97,7 @@ export function persistChatOrganization(data: ChatOrganizationData): Promise<voi
 }
 
 export function persistChatOrganizationSync(data: ChatOrganizationData): void {
-  saveJson(STORAGE_KEYS.chatOrganization, {
-    groups: data.groups,
-    chatGroups: data.chatGroups.map(projectGroupOrganization),
-  });
+  saveJson(STORAGE_KEYS.chatOrganization, projectChatOrganizationData(data));
 }
 
 export function mergeChatGroupOrganization(

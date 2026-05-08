@@ -4,6 +4,7 @@ import { sanitizeGroupMemberBubbleColors } from '../group-settings/groupBubbleCo
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-chat/groupShortTermMemory';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
+import { normalizeContactGroupName } from './contactGroupNames';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 
@@ -33,10 +34,12 @@ export function sanitizePersistedCharacters(
             ...character,
             avatar:
               sanitizeTransientAssetValue(character.avatar) || defaultZhouJibaiAvatar,
+            groupId: normalizeContactGroupName(character.groupId),
           }
         : {
             ...character,
             avatar: sanitizeTransientAssetValue(character.avatar),
+            groupId: normalizeContactGroupName(character.groupId),
           },
     );
 

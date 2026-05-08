@@ -33,7 +33,7 @@ export type CoupleSpacePromptMode = 'active' | 'passive';
  * 情侣空间当前不接 perception prompt。
  * 这里显式裁掉 perception 字段，避免未来又把感知页语义混进来。
  */
-export type CoupleSpaceMemoryContextInput = Pick<MemoryContextInput, 'longTermMemoryProfile'>;
+export type CoupleSpaceMemoryContextInput = Pick<MemoryContextInput, 'longTermMemoryProfile' | 'sharedCharacterStatePrompt'>;
 
 export type CoupleSpaceCharacterProfile = {
   characterName?: string;

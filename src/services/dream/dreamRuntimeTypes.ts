@@ -2,11 +2,19 @@ import type { DreamNarrativeDocument } from './dreamNarrativeSchema';
 import type { ApiConfig, Character, Mask, WorldBookEntry } from '../../types';
 import type { DreamDepth, DreamDomainId, DreamEntryMode, DreamTagCategory } from '../../components/dream/types';
 
+export type DreamCustomTag = {
+  id: string;
+  category: Exclude<DreamTagCategory, 'world'>;
+  label: string;
+};
+
 export type DreamSelection = {
   entryMode: DreamEntryMode;
   domainId: DreamDomainId;
   depth: DreamDepth;
   selectedTags: Record<DreamTagCategory, string[]>;
+  customTags?: DreamCustomTag[];
+  supplementNote?: string;
 };
 
 export type DreamGeneratedChoice = {
@@ -141,6 +149,24 @@ export type DreamRuntimeScenario = {
 export type DreamWorldBookConfig = {
   excludedInheritedIds?: string[];
   localEntries?: WorldBookEntry[];
+};
+
+export type DreamPersonaFloor = {
+  mustKeep: string[];
+  mayAmplify: string[];
+  mustNotBecome: string[];
+  summary: string;
+};
+
+export type DreamPreflightPlan = {
+  selectedLabels: string[];
+  customTagLabels: string[];
+  supplementNote: string;
+  worldBookCount: number;
+  activeWorldBookTitles: string[];
+  worldBookConflictSummary: string;
+  affectedWorldBookTitles: string[];
+  personaFloor: DreamPersonaFloor;
 };
 
 export type GenerateDreamScenarioOptions = {

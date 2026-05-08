@@ -70,7 +70,15 @@ function resolveDesktopFontFamily(visualSettings?: VisualSettings): string | und
         ? 'cursive'
         : fontFamily === 'Inter'
           ? 'sans-serif'
-          : undefined;
+        : undefined;
+}
+
+function clampDockOpacity(value: number | undefined, fallback: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.min(0.85, Math.max(0, value));
 }
 
 function parseGridSlot(slotId?: string | null) {
@@ -148,6 +156,7 @@ export function HomeScreen({
 }) {
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [showMoodMenu, setShowMoodMenu] = useState(false);
+  const [customMoodInput, setCustomMoodInput] = useState('');
   const [tempUrl, setTempUrl] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [isArrangeMode, setIsArrangeMode] = useState(false);
@@ -165,6 +174,7 @@ export function HomeScreen({
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+  const [dockSafeFill, setDockSafeFill] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -293,11 +303,19 @@ export function HomeScreen({
   const draggingWidgetPageRef = useRef<number | null>(null);
   const navBarInnerRef = useRef<HTMLDivElement | null>(null);
   const desktopRootRef = useRef<HTMLDivElement | null>(null);
-  const sizeTier: HomeScreenSizeTier =
-    desktopViewport.width <= 375 ? 'compact' : desktopViewport.width >= 415 ? 'large' : 'regular';
+  const smallestViewportEdge = Math.min(desktopViewport.width, desktopViewport.height);
+  const isTabletLayout = smallestViewportEdge >= 700;
+  const sizeTier: HomeScreenSizeTier = isTabletLayout
+    ? 'tablet'
+    : desktopViewport.width <= 375
+      ? 'compact'
+      : desktopViewport.width >= 415
+        ? 'large'
+        : 'regular';
   const aspectRatio = desktopViewport.height / Math.max(desktopViewport.width, 1);
   const isTallPhone =
-    sizeTier !== 'compact'
+    !isTabletLayout
+    && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
   const layoutMetrics = useMemo(
@@ -316,6 +334,14 @@ export function HomeScreen({
     [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier],
   );
   const iconSize = layoutMetrics.iconSize;
+  const iconSizeBoost = isTabletLayout ? 4 : sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0;
+  const dockIconSize = isTabletLayout
+    ? iconSize + 2
+    : sizeTier === 'large'
+      ? iconSize + (isTallPhone ? 1 : 0)
+      : sizeTier === 'regular'
+        ? iconSize - 1
+        : iconSize - 2;
   const gap = layoutMetrics.gridGap;
   const slots = useMemo(
     () => buildDesktopSlots({ cols, rows: DESKTOP_ROWS, metrics: layoutMetrics }),
@@ -351,13 +377,13 @@ export function HomeScreen({
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
       const safeAreaVar =
-        (isStandaloneMode
-          ? computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
-          : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
+        computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
+        || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
         || (isStandaloneMode
           ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
-          : computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim())
+          : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || '0';
+      const fullSafeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim() || safeAreaVar;
       const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
         if (safeAreaVar.endsWith('px')) {
@@ -377,10 +403,31 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const nextSafeAreaBottom = Math.round(
-        isStandaloneMode ? 0 : resolvedSafeAreaBottom,
-      );
+      const resolvedFullSafeAreaBottom = (() => {
+        if (!phoneContainer || !computed) return 0;
+        if (fullSafeAreaVar.endsWith('px')) {
+          return parseFloat(fullSafeAreaVar) || 0;
+        }
+        if (fullSafeAreaVar && fullSafeAreaVar !== '0') {
+          const probe = document.createElement('div');
+          probe.style.position = 'absolute';
+          probe.style.visibility = 'hidden';
+          probe.style.pointerEvents = 'none';
+          probe.style.inset = 'auto';
+          probe.style.height = fullSafeAreaVar;
+          phoneContainer.appendChild(probe);
+          const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
+          phoneContainer.removeChild(probe);
+          return measured;
+        }
+        return parseFloat(computed.paddingBottom) || 0;
+      })();
+      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
+      const nextDockSafeFill = isStandaloneMode
+        ? Math.round(Math.min(resolvedFullSafeAreaBottom, 18))
+        : 0;
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
+      setDockSafeFill(current => (current === nextDockSafeFill ? current : nextDockSafeFill));
     };
 
     updateViewport();
@@ -567,8 +614,13 @@ export function HomeScreen({
     getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedWallpaperUrl)
     || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
   const finalWallpaperSrc = wallpaperDisplayUrl || (!hasWallpaperValue ? WALLPAPER_URL : undefined);
+  const { resolvedUrl: resolvedDockBackgroundUrl } = useResolvedPersistentValue(visualSettings.desktop?.dockBackgroundImage || '');
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(visualSettings.navBar?.backgroundImage);
+  const { resolvedUrl: resolvedNavBarAvatarUrl } = useResolvedPersistentValue(visualSettings.navBar?.avatar);
   const { resolvedUrl: resolvedUserAvatarUrl } = useResolvedPersistentValue(userProfile.avatar);
+  const dockBackgroundDisplayUrl =
+    getDisplayableAssetValue(visualSettings.desktop?.dockBackgroundImage, resolvedDockBackgroundUrl)
+    || getPreviewAssetValue(visualSettings.desktop?.dockBackgroundPreviewUrl);
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
   const moodOptions = [
     '(^_^)', '(*^▽^*)', '(≧▽≦)', '(⌒▽⌒)', '(๑˃̵ᴗ˂̵)ﻭ', '(｡•̀ᴗ-)✧', '(´｡• ᵕ •｡)', '(=^･ω･^=)',
@@ -579,13 +631,65 @@ export function HomeScreen({
     '(－ω－) zzZ', '(｡•́ωก̀｡)', '(๑•﹏•)', '(╯︿╰)', '(っ- ‸ -ς)', '(＞﹏＜)', '(｡ŏ﹏ŏ)', '(´；ω；)',
   ];
   const defaultMood = '(^_^)';
-  const currentMood = moodOptions.includes(userProfile.mood || '') ? userProfile.mood : defaultMood;
+  const currentMood = visualSettings.navBar?.mood?.trim() || userProfile.mood?.trim() || defaultMood;
+  const navBarAvatarValue = visualSettings.navBar?.avatar || userProfile.avatar;
+  const navBarAvatarSrc = getDisplayableAssetValue(
+    navBarAvatarValue,
+    visualSettings.navBar?.avatar ? resolvedNavBarAvatarUrl : resolvedUserAvatarUrl,
+  );
 
   useEffect(() => {
-    if (!userProfile.mood || !moodOptions.includes(userProfile.mood)) {
+    if (!userProfile.mood?.trim()) {
       setUserProfile({ ...userProfile, mood: defaultMood });
     }
   }, [setUserProfile, userProfile]);
+
+  useEffect(() => {
+    setCustomMoodInput(visualSettings.navBar?.mood || userProfile.mood || '');
+  }, [visualSettings.navBar?.mood, userProfile.mood]);
+
+  const applyMoodSelection = (nextMood: string) => {
+    const normalizedMood = nextMood.trim() || defaultMood;
+    setVisualSettings({
+      ...visualSettings,
+      navBar: {
+        ...visualSettings.navBar,
+        mood: normalizedMood,
+      },
+    });
+    setCustomMoodInput(normalizedMood);
+  };
+
+  const resetNavBarMoodOverride = () => {
+    setVisualSettings({
+      ...visualSettings,
+      navBar: {
+        ...visualSettings.navBar,
+        mood: '',
+      },
+    });
+    setCustomMoodInput(userProfile.mood || defaultMood);
+  };
+
+  const applyNavBarAvatar = (nextAvatar: string) => {
+    setVisualSettings({
+      ...visualSettings,
+      navBar: {
+        ...visualSettings.navBar,
+        avatar: nextAvatar,
+      },
+    });
+  };
+
+  const clearNavBarAvatarOverride = () => {
+    setVisualSettings({
+      ...visualSettings,
+      navBar: {
+        ...visualSettings.navBar,
+        avatar: '',
+      },
+    });
+  };
 
   const navBarShapeClass =
     visualSettings?.navBar?.shape === 'rectangle'
@@ -594,6 +698,20 @@ export function HomeScreen({
         ? 'rounded-[40px]'
         : 'rounded-full';
   const navBarUi = useMemo(() => {
+    if (sizeTier === 'tablet') {
+      return {
+        horizontalPadding: 36,
+        verticalPadding: 15,
+        sideMinWidth: 132,
+        timeFontSize: 24,
+        dateFontSize: 12,
+        avatarSize: 96,
+        avatarLift: -48,
+        nameFontSize: 14,
+        moodFontSize: 20,
+        moodLabelFontSize: 10.5,
+      };
+    }
     if (sizeTier === 'compact') {
       return {
         horizontalPadding: 18,
@@ -1303,10 +1421,7 @@ export function HomeScreen({
                   className="rounded-full border-2 border-white/50 overflow-hidden active:scale-90 transition-transform"
                   style={{ width: navBarUi.avatarSize, height: navBarUi.avatarSize, marginTop: navBarUi.avatarLift }}
                 >
-                  {(() => {
-                    const avatarSrc = getDisplayableAssetValue(userProfile.avatar, resolvedUserAvatarUrl);
-                    return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
-                  })()}
+                  {navBarAvatarSrc ? <img src={navBarAvatarSrc} alt="User" className="w-full h-full object-cover" /> : null}
                 </button>
                 <span className="font-bold mt-1" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
@@ -1331,7 +1446,7 @@ export function HomeScreen({
                         </div>
                         <div className="h-[1px] bg-zinc-100" />
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] text-zinc-400 ml-1">更换头像</label>
+                          <label className="text-[10px] text-zinc-400 ml-1">导航栏头像</label>
                           <input
                             type="text"
                             placeholder="粘贴图片链接..."
@@ -1343,7 +1458,7 @@ export function HomeScreen({
                             <button
                               onClick={async () => {
                                 const nextAvatar = await setRemoteUrl(tempUrl);
-                                setUserProfile({ ...userProfile, avatar: nextAvatar });
+                                applyNavBarAvatar(nextAvatar);
                                 setShowAvatarMenu(false);
                                 setTempUrl('');
                               }}
@@ -1361,7 +1476,7 @@ export function HomeScreen({
                                   const file = e.target.files?.[0];
                                   if (file) {
                                     const nextAvatar = await setUploadedFile(file);
-                                    setUserProfile({ ...userProfile, avatar: nextAvatar });
+                                    applyNavBarAvatar(nextAvatar);
                                     setShowAvatarMenu(false);
                                   }
                                   e.target.value = '';
@@ -1373,7 +1488,7 @@ export function HomeScreen({
                         <div className="h-[1px] bg-zinc-100" />
                         <button
                           onClick={() => {
-                            setUserProfile({ ...userProfile, avatar: `https://picsum.photos/seed/${Math.random()}/200` });
+                            applyNavBarAvatar(`https://picsum.photos/seed/${Math.random()}/200`);
                             setShowAvatarMenu(false);
                           }}
                           className="w-full text-left px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50 rounded-lg flex items-center gap-2"
@@ -1382,12 +1497,12 @@ export function HomeScreen({
                         </button>
                         <button
                           onClick={() => {
-                            setUserProfile({ ...userProfile, avatar: 'https://tu.tuhenmei.com/uploads/allimg/2021090521/s4ljgp4msrd.jpg' });
+                            clearNavBarAvatarOverride();
                             setShowAvatarMenu(false);
                           }}
                           className="w-full text-left px-2 py-1.5 text-[11px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"
                         >
-                          <Trash2 size={12} /> 重置头像
+                          <Trash2 size={12} /> 跟随主页头像
                         </button>
                       </div>
                     </motion.div>
@@ -1410,13 +1525,13 @@ export function HomeScreen({
                       initial={{ opacity: 0, y: 10, scale: 0.9 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                      className="absolute top-12 right-0 w-56 max-h-72 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                      className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                     >
-                      {moodOptions.map(m => (
+                      {moodOptions.map((m, index) => (
                         <button
-                          key={m}
+                          key={`${m}-${index}`}
                           onClick={() => {
-                            setUserProfile({ ...userProfile, mood: m });
+                            applyMoodSelection(m);
                             setShowMoodMenu(false);
                           }}
                           className="text-[13px] py-2 px-2 text-left whitespace-nowrap hover:bg-zinc-50 rounded-lg transition-colors"
@@ -1424,6 +1539,45 @@ export function HomeScreen({
                           {m}
                         </button>
                       ))}
+                      <div className="mt-1 border-t border-zinc-100 pt-2">
+                        <div className="px-2 pb-1 text-[11px] text-zinc-400">自定义颜文字</div>
+                        <div className="flex gap-2 px-2">
+                          <input
+                            type="text"
+                            value={customMoodInput}
+                            onChange={e => setCustomMoodInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                applyMoodSelection(customMoodInput);
+                                setShowMoodMenu(false);
+                              }
+                            }}
+                            maxLength={24}
+                            placeholder="自己输入"
+                            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] outline-none focus:border-zinc-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              applyMoodSelection(customMoodInput);
+                              setShowMoodMenu(false);
+                            }}
+                            className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+                          >
+                            保存
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetNavBarMoodOverride();
+                            setShowMoodMenu(false);
+                          }}
+                          className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50"
+                        >
+                          跟随主页颜文字
+                        </button>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1501,7 +1655,7 @@ export function HomeScreen({
                 committedPlacement={committedPlacement}
                 gridStyle={getExplicitGridStyle(placement.slotId, 1, 1)}
                 visualSettings={visualSettings}
-                iconSize={iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0)}
+                iconSize={iconSize + iconSizeBoost}
                 isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
                 isDragging={draggingIconId === app.id}
                 hideWhileDragging={draggingIconId === app.id}
@@ -1519,7 +1673,7 @@ export function HomeScreen({
                     clientX,
                     clientY,
                     pointerId,
-                    iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                    iconSize + iconSizeBoost,
                   );
                 }}
               />
@@ -1571,10 +1725,7 @@ export function HomeScreen({
       onTouchMove={e => {
         const touch = e.touches[0];
         if (!touch) return;
-        const isHorizontalSwipe = handleSwipeMove(touch.clientX, touch.clientY);
-        if (isHorizontalSwipe) {
-          e.preventDefault();
-        }
+        handleSwipeMove(touch.clientX, touch.clientY);
       }}
       onTouchEnd={e => {
         const touch = e.changedTouches[0];
@@ -1600,16 +1751,18 @@ export function HomeScreen({
       }}
       style={
         {
-          '--home-desktop-dock-gap': sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
+          '--home-desktop-dock-gap': isTabletLayout ? '12px' : sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
           '--home-desktop-dock-padding':
-            sizeTier === 'compact'
-              ? '8px 8px 6px'
+            isTabletLayout
+              ? '8px 14px 6px'
+              : sizeTier === 'compact'
+              ? '6px 8px 4px'
               : sizeTier === 'large'
-                ? (isTallPhone ? '12px 14px' : '11px 13px')
+                ? (isTallPhone ? '8px 12px 5px' : '8px 12px 5px')
                 : isTallPhone
-                  ? '11px 13px'
-                  : '10px 12px',
-          '--home-desktop-dock-label-size': sizeTier === 'compact' ? '10px' : sizeTier === 'large' ? (isTallPhone ? '13px' : '12px') : isTallPhone ? '11.5px' : '11px',
+                  ? '7px 11px 5px'
+                  : '7px 11px 5px',
+          '--home-desktop-dock-label-size': isTabletLayout ? '12.5px' : sizeTier === 'compact' ? '10px' : sizeTier === 'large' ? (isTallPhone ? '13px' : '12px') : isTallPhone ? '11.5px' : '11px',
         } as React.CSSProperties
       }
     >
@@ -1786,10 +1939,7 @@ export function HomeScreen({
                 className="rounded-full border-2 border-white/50 overflow-hidden active:scale-90 transition-transform"
                 style={{ width: navBarUi.avatarSize, height: navBarUi.avatarSize, marginTop: navBarUi.avatarLift }}
               >
-                {(() => {
-                  const avatarSrc = getDisplayableAssetValue(userProfile.avatar, resolvedUserAvatarUrl);
-                  return avatarSrc ? <img src={avatarSrc} alt="User" className="w-full h-full object-cover" /> : null;
-                })()}
+                {navBarAvatarSrc ? <img src={navBarAvatarSrc} alt="User" className="w-full h-full object-cover" /> : null}
               </button>
               <span className="font-bold mt-1" style={{ ...topBarTextStrongStyle, fontSize: navBarUi.nameFontSize }}>{userProfile.name}</span>
 
@@ -1814,7 +1964,7 @@ export function HomeScreen({
                       </div>
                       <div className="h-[1px] bg-zinc-100" />
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] text-zinc-400 ml-1">更换头像</label>
+                        <label className="text-[10px] text-zinc-400 ml-1">导航栏头像</label>
                         <input
                           type="text"
                           placeholder="粘贴图片链接..."
@@ -1826,7 +1976,7 @@ export function HomeScreen({
                           <button
                             onClick={async () => {
                               const nextAvatar = await setRemoteUrl(tempUrl);
-                              setUserProfile({ ...userProfile, avatar: nextAvatar });
+                              applyNavBarAvatar(nextAvatar);
                               setShowAvatarMenu(false);
                               setTempUrl('');
                             }}
@@ -1844,7 +1994,7 @@ export function HomeScreen({
                                 const file = e.target.files?.[0];
                                 if (file) {
                                   const nextAvatar = await setUploadedFile(file);
-                                  setUserProfile({ ...userProfile, avatar: nextAvatar });
+                                  applyNavBarAvatar(nextAvatar);
                                   setShowAvatarMenu(false);
                                 }
                                 e.target.value = '';
@@ -1856,7 +2006,7 @@ export function HomeScreen({
                       <div className="h-[1px] bg-zinc-100" />
                       <button
                         onClick={() => {
-                          setUserProfile({ ...userProfile, avatar: `https://picsum.photos/seed/${Math.random()}/200` });
+                          applyNavBarAvatar(`https://picsum.photos/seed/${Math.random()}/200`);
                           setShowAvatarMenu(false);
                         }}
                         className="w-full text-left px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50 rounded-lg flex items-center gap-2"
@@ -1865,12 +2015,12 @@ export function HomeScreen({
                       </button>
                       <button
                         onClick={() => {
-                          setUserProfile({ ...userProfile, avatar: 'https://tu.tuhenmei.com/uploads/allimg/2021090521/s4ljgp4msrd.jpg' });
+                          clearNavBarAvatarOverride();
                           setShowAvatarMenu(false);
                         }}
                         className="w-full text-left px-2 py-1.5 text-[11px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"
                       >
-                        <Trash2 size={12} /> 重置头像
+                        <Trash2 size={12} /> 跟随主页头像
                       </button>
                     </div>
                   </motion.div>
@@ -1893,13 +2043,13 @@ export function HomeScreen({
                     initial={{ opacity: 0, y: 10, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute top-12 right-0 w-56 max-h-72 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                    className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                   >
-                    {moodOptions.map(m => (
+                    {moodOptions.map((m, index) => (
                       <button
-                        key={m}
+                        key={`${m}-${index}`}
                         onClick={() => {
-                          setUserProfile({ ...userProfile, mood: m });
+                          applyMoodSelection(m);
                           setShowMoodMenu(false);
                         }}
                         className="text-[13px] py-2 px-2 text-left whitespace-nowrap hover:bg-zinc-50 rounded-lg transition-colors"
@@ -1907,6 +2057,45 @@ export function HomeScreen({
                         {m}
                       </button>
                     ))}
+                    <div className="mt-1 border-t border-zinc-100 pt-2">
+                      <div className="px-2 pb-1 text-[11px] text-zinc-400">自定义颜文字</div>
+                      <div className="flex gap-2 px-2">
+                        <input
+                          type="text"
+                          value={customMoodInput}
+                          onChange={e => setCustomMoodInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              applyMoodSelection(customMoodInput);
+                              setShowMoodMenu(false);
+                            }
+                          }}
+                          maxLength={24}
+                          placeholder="自己输入"
+                          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] outline-none focus:border-zinc-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyMoodSelection(customMoodInput);
+                            setShowMoodMenu(false);
+                          }}
+                          className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+                        >
+                          保存
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetNavBarMoodOverride();
+                          setShowMoodMenu(false);
+                        }}
+                        className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50"
+                      >
+                        跟随主页颜文字
+                      </button>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1992,7 +2181,7 @@ export function HomeScreen({
               committedPlacement={committedPlacement}
               gridStyle={getExplicitGridStyle(placement.slotId, 1, 1)}
               visualSettings={visualSettings}
-              iconSize={iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0)}
+              iconSize={iconSize + iconSizeBoost}
               isPreviewing={draggingIconId !== null && draggingIconId !== app.id}
               isDragging={draggingIconId === app.id}
               hideWhileDragging={draggingIconId === app.id}
@@ -2010,7 +2199,7 @@ export function HomeScreen({
                   clientX,
                   clientY,
                   pointerId,
-                  iconSize + (sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0),
+                  iconSize + iconSizeBoost,
                 );
               }}
             />
@@ -2053,7 +2242,9 @@ export function HomeScreen({
         visualSettings={visualSettings}
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
-        iconSize={sizeTier === 'large' ? iconSize + (isTallPhone ? 1 : 0) : sizeTier === 'regular' ? iconSize - 1 : iconSize - 2}
+        iconSize={dockIconSize}
+        safeAreaFill={dockSafeFill}
+        backgroundImageUrl={dockBackgroundDisplayUrl}
       />
     </div>
   );
@@ -2240,16 +2431,38 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
+  safeAreaFill,
+  backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
   visualSettings: VisualSettings;
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
+  safeAreaFill: number;
+  backgroundImageUrl?: string;
 }) {
+  const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
+  const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
+  const resolvedSafeAreaFill = Math.max(0, safeAreaFill);
+
   return (
-    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height }}>
-      <div className="homeDesktop__dockBar">
+    <motion.div
+      className="homeDesktop__dock"
+      initial={false}
+      animate={{ x: placement.x, y: placement.y }}
+      style={{ width: placement.width, height: placement.height + resolvedSafeAreaFill }}
+    >
+      <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
+        {(backgroundImageUrl || dockTintOpacity > 0) ? (
+          <div className="homeDesktop__dockMedia" aria-hidden="true">
+            {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
+            <div
+              className="homeDesktop__dockTintLayer"
+              style={{ backgroundColor: dockTintColor, opacity: dockTintOpacity }}
+            />
+          </div>
+        ) : null}
         {apps.map(app => (
           <button
             key={app.id}
@@ -2274,6 +2487,19 @@ function StaticDock({
           </button>
         ))}
       </div>
+      {resolvedSafeAreaFill > 0 ? (
+        <div className="homeDesktop__dockSafeFill" style={{ height: resolvedSafeAreaFill }}>
+          {(backgroundImageUrl || dockTintOpacity > 0) ? (
+            <div className="homeDesktop__dockMedia" aria-hidden="true">
+              {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
+              <div
+                className="homeDesktop__dockTintLayer"
+                style={{ backgroundColor: dockTintColor, opacity: dockTintOpacity }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </motion.div>
   );
 }

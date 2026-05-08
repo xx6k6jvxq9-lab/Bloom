@@ -13,6 +13,7 @@ import type {
   WalletData,
   WorldBookEntry,
 } from '../../types';
+import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
@@ -59,6 +60,33 @@ type ChatSessionMountProps = {
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
 
+function appendUniqueId(currentIds: string[], nextId: string | null | undefined): string[] {
+  if (!nextId) {
+    return currentIds;
+  }
+
+  return currentIds.includes(nextId) ? currentIds : [...currentIds, nextId];
+}
+
+function removeId(currentIds: string[], targetId: string): string[] {
+  if (!currentIds.includes(targetId)) {
+    return currentIds;
+  }
+
+  return currentIds.filter((id) => id !== targetId);
+}
+
+function filterIds(
+  currentIds: string[],
+  predicate: (id: string) => boolean,
+): string[] {
+  const nextIds = currentIds.filter(predicate);
+  if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) {
+    return currentIds;
+  }
+  return nextIds;
+}
+
 export function ChatSessionMount({
   activeApp,
   selectedCharacterId,
@@ -99,70 +127,173 @@ export function ChatSessionMount({
   onAcceptCoupleSpaceInvite,
 }: ChatSessionMountProps) {
   const { getCharacterById } = createCharacterDirectory({ characters });
-  const selectedCharacter = getCharacterById(selectedCharacterId);
-  const selectedGroup = selectedGroupId
-    ? chatGroups.find(group => group.id === selectedGroupId) || null
-    : null;
+  const [mountedDirectCharacterIds, setMountedDirectCharacterIds] = useState<string[]>([]);
+  const [mountedGroupIds, setMountedGroupIds] = useState<string[]>([]);
+  const [busyDirectCharacterIds, setBusyDirectCharacterIds] = useState<string[]>([]);
+  const [busyGroupIds, setBusyGroupIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (activeApp === 'chat-session' && selectedCharacterId) {
+      setMountedDirectCharacterIds((currentIds) => appendUniqueId(currentIds, selectedCharacterId));
+    }
+  }, [activeApp, selectedCharacterId]);
+
+  useEffect(() => {
+    if (activeApp === 'group-chat-session' && selectedGroupId) {
+      setMountedGroupIds((currentIds) => appendUniqueId(currentIds, selectedGroupId));
+    }
+  }, [activeApp, selectedGroupId]);
+
+  useEffect(() => {
+    const validCharacterIds = new Set(characters.map((character) => character.id));
+    setMountedDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => validCharacterIds.has(id)));
+    setBusyDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => validCharacterIds.has(id)));
+  }, [characters]);
+
+  useEffect(() => {
+    const validGroupIds = new Set(chatGroups.map((group) => group.id));
+    setMountedGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
+    setBusyGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
+  }, [chatGroups]);
+
+  const handleDirectRuntimeBusyChange = useCallback((characterId: string, busy: boolean) => {
+    setBusyDirectCharacterIds((currentIds) => (
+      busy ? appendUniqueId(currentIds, characterId) : removeId(currentIds, characterId)
+    ));
+    setMountedDirectCharacterIds((currentIds) => {
+      const isActive = activeApp === 'chat-session' && selectedCharacterId === characterId;
+      if (busy || isActive) {
+        return appendUniqueId(currentIds, characterId);
+      }
+      return removeId(currentIds, characterId);
+    });
+  }, [activeApp, selectedCharacterId]);
+
+  const handleGroupRuntimeBusyChange = useCallback((groupId: string, busy: boolean) => {
+    setBusyGroupIds((currentIds) => (
+      busy ? appendUniqueId(currentIds, groupId) : removeId(currentIds, groupId)
+    ));
+    setMountedGroupIds((currentIds) => {
+      const isActive = activeApp === 'group-chat-session' && selectedGroupId === groupId;
+      if (busy || isActive) {
+        return appendUniqueId(currentIds, groupId);
+      }
+      return removeId(currentIds, groupId);
+    });
+  }, [activeApp, selectedGroupId]);
+
+  useEffect(() => {
+    setMountedDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => {
+      if (busyDirectCharacterIds.includes(id)) {
+        return true;
+      }
+
+      return activeApp === 'chat-session' && selectedCharacterId === id;
+    }));
+  }, [activeApp, selectedCharacterId, busyDirectCharacterIds]);
+
+  useEffect(() => {
+    setMountedGroupIds((currentIds) => filterIds(currentIds, (id) => {
+      if (busyGroupIds.includes(id)) {
+        return true;
+      }
+
+      return activeApp === 'group-chat-session' && selectedGroupId === id;
+    }));
+  }, [activeApp, selectedGroupId, busyGroupIds]);
 
   return (
     <>
-      {activeApp === 'chat-session' && selectedCharacter && (
-        <DirectChatSessionContainer
-          character={selectedCharacter}
-          chatHistory={chatHistory}
-          setChatHistory={setChatHistory}
-          chatGroups={chatGroups}
-          updateCharacter={updateCharacter}
-          patchCharacter={patchCharacter}
-          worldBook={worldBook}
-          perception={perception}
-          coupleSpace={coupleSpace}
-          settings={settings}
-          setSettings={setSettings}
-          onBack={onBackToChat}
-          userAvatar={userAvatar}
-          userName={userName}
-          masks={masks}
-          favorites={favorites}
-          setFavorites={setFavorites}
-          visualSettings={visualSettings}
-          setVisualSettings={setVisualSettings}
-          groups={groups}
-          onViewForumPost={onViewForumPost}
-          callHistory={callHistory}
-          setCallHistory={setCallHistory}
-          savedDates={savedDates}
-          collectedDates={collectedDates}
-          datingResumeSignal={datingResumeSignal}
-          setDatingRecords={setDatingRecords}
-          walletData={walletData}
-          setWalletData={setWalletData}
-          onPublishMoment={onPublishMoment}
-          onOpenCharacterMoments={onOpenCharacterMoments}
-          onStatusBarVisibilityChange={onStatusBarVisibilityChange}
-          onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
-        />
-      )}
+      {mountedDirectCharacterIds.map((characterId) => {
+        const mountedCharacter = getCharacterById(characterId);
+        if (!mountedCharacter) {
+          return null;
+        }
 
-      {activeApp === 'group-chat-session' && selectedGroup && (
-        <GroupChatSessionContainer
-          key={selectedGroup.id}
-          group={selectedGroup}
-          characters={characters}
-          chatGroups={chatGroups}
-          setChatGroups={setChatGroups}
-          patchCharacter={patchCharacter}
-          favorites={favorites}
-          setFavorites={setFavorites}
-          onBack={onBackToChat}
-          userAvatar={userAvatar}
-          userName={userName}
-          settings={settings}
-          worldBooks={worldBook}
-          perception={perception}
-          directChatHistory={chatHistory}
-        />
-      )}
+        const isDirectActive = activeApp === 'chat-session' && selectedCharacterId === characterId;
+
+        return (
+          <div
+            key={`direct-session-${characterId}`}
+            className={`absolute inset-0 ${isDirectActive ? 'z-[40] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+            aria-hidden={isDirectActive ? undefined : true}
+          >
+            <DirectChatSessionContainer
+              character={mountedCharacter}
+              isActive={isDirectActive}
+              onRuntimeBusyChange={handleDirectRuntimeBusyChange}
+              chatHistory={chatHistory}
+              setChatHistory={setChatHistory}
+              chatGroups={chatGroups}
+              updateCharacter={updateCharacter}
+              patchCharacter={patchCharacter}
+              worldBook={worldBook}
+              perception={perception}
+              coupleSpace={coupleSpace}
+              settings={settings}
+              setSettings={setSettings}
+              onBack={onBackToChat}
+              userAvatar={userAvatar}
+              userName={userName}
+              masks={masks}
+              favorites={favorites}
+              setFavorites={setFavorites}
+              visualSettings={visualSettings}
+              setVisualSettings={setVisualSettings}
+              groups={groups}
+              onViewForumPost={onViewForumPost}
+              callHistory={callHistory}
+              setCallHistory={setCallHistory}
+              savedDates={savedDates}
+              collectedDates={collectedDates}
+              datingResumeSignal={datingResumeSignal}
+              setDatingRecords={setDatingRecords}
+              walletData={walletData}
+              setWalletData={setWalletData}
+              onPublishMoment={onPublishMoment}
+              onOpenCharacterMoments={onOpenCharacterMoments}
+              onStatusBarVisibilityChange={onStatusBarVisibilityChange}
+              onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
+            />
+          </div>
+        );
+      })}
+
+      {mountedGroupIds.map((groupId) => {
+        const mountedGroup = chatGroups.find((group) => group.id === groupId) || null;
+        if (!mountedGroup) {
+          return null;
+        }
+
+        const isGroupActive = activeApp === 'group-chat-session' && selectedGroupId === groupId;
+
+        return (
+          <div
+            key={`group-session-${groupId}`}
+            className={`absolute inset-0 ${isGroupActive ? 'z-[40] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+            aria-hidden={isGroupActive ? undefined : true}
+          >
+            <GroupChatSessionContainer
+              group={mountedGroup}
+              isActive={isGroupActive}
+              onRuntimeBusyChange={handleGroupRuntimeBusyChange}
+              characters={characters}
+              chatGroups={chatGroups}
+              setChatGroups={setChatGroups}
+              patchCharacter={patchCharacter}
+              favorites={favorites}
+              setFavorites={setFavorites}
+              onBack={onBackToChat}
+              userAvatar={userAvatar}
+              userName={userName}
+              settings={settings}
+              worldBooks={worldBook}
+              perception={perception}
+              directChatHistory={chatHistory}
+            />
+          </div>
+        );
+      })}
     </>
   );
 }

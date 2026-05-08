@@ -12,7 +12,7 @@ type DesktopLayoutOptions = {
   metrics: DesktopLayoutMetrics;
 };
 
-export type HomeScreenSizeTier = 'compact' | 'regular' | 'large';
+export type HomeScreenSizeTier = 'compact' | 'regular' | 'large' | 'tablet';
 
 export type DesktopLayoutMetrics = {
   containerWidth: number;
@@ -123,8 +123,17 @@ export function getDesktopLayoutMetrics({
   safeAreaBottom?: number;
   isTallPhone?: boolean;
 }): DesktopLayoutMetrics {
-  const safeWidth = clamp(Math.round(containerWidth || SCREEN_WIDTH), 320, 520);
-  const safeHeight = clamp(Math.round(containerHeight || SCREEN_HEIGHT), 568, 1100);
+  const isTabletLayout = sizeTier === 'tablet';
+  const safeWidth = clamp(
+    Math.round(containerWidth || SCREEN_WIDTH),
+    isTabletLayout ? 700 : 320,
+    isTabletLayout ? 1180 : 520,
+  );
+  const safeHeight = clamp(
+    Math.round(containerHeight || SCREEN_HEIGHT),
+    isTabletLayout ? 700 : 568,
+    isTabletLayout ? 1400 : 1100,
+  );
   const presets = {
     compact: {
       paddingX: 14,
@@ -133,7 +142,7 @@ export function getDesktopLayoutMetrics({
       iconSize: 48,
       navBarHeight: 98,
       topWidgetHeight: 110,
-      dockHeight: 92,
+      dockHeight: 82,
     },
     regular: {
       paddingX: 16,
@@ -142,7 +151,7 @@ export function getDesktopLayoutMetrics({
       iconSize: 62,
       navBarHeight: 110,
       topWidgetHeight: 122,
-      dockHeight: 110,
+      dockHeight: 96,
     },
     large: {
       paddingX: 18,
@@ -151,45 +160,86 @@ export function getDesktopLayoutMetrics({
       iconSize: 68,
       navBarHeight: 126,
       topWidgetHeight: 132,
-      dockHeight: 120,
+      dockHeight: 104,
+    },
+    tablet: {
+      paddingX: 34,
+      startY: 96,
+      gridGap: 18,
+      iconSize: 72,
+      navBarHeight: 142,
+      topWidgetHeight: 144,
+      dockHeight: 112,
     },
   } as const;
   const preset = presets[sizeTier];
   const isWideTallPhone = isTallPhone && safeWidth >= 410 && safeHeight >= 880;
-  const desktopPaddingX = clamp(Math.round(safeWidth * 0.045), preset.paddingX - 2, preset.paddingX + 4);
-  const gridGap = clamp(gap ?? preset.gridGap, Math.max(8, preset.gridGap - 2), preset.gridGap + 4);
+  const desktopPaddingX = isTabletLayout
+    ? clamp(Math.round(safeWidth * 0.048), 30, 54)
+    : clamp(Math.round(safeWidth * 0.045), preset.paddingX - 2, preset.paddingX + 4);
+  const gridGap = isTabletLayout
+    ? clamp(gap ?? preset.gridGap, 12, 28)
+    : clamp(gap ?? preset.gridGap, Math.max(8, preset.gridGap - 2), preset.gridGap + 4);
   const slotWidth = Math.round((safeWidth - desktopPaddingX * 2 - gridGap * Math.max(0, cols - 1)) / Math.max(1, cols));
-  const tallScale = isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 1.18 : 1.11) : 1;
-  const resolvedIconSize = clamp(Math.round((iconSize ?? preset.iconSize) * tallScale), 46, slotWidth - 2);
-  const navBarHeight = Math.round(
-    preset.navBarHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 8 : 5) : 0),
+  const tallScale = !isTabletLayout && isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 1.18 : 1.11) : 1;
+  const resolvedIconSize = clamp(
+    Math.round((iconSize ?? preset.iconSize) * tallScale),
+    isTabletLayout ? 60 : 46,
+    slotWidth - (isTabletLayout ? 24 : 2),
   );
-  const topWidgetHeight = Math.round(preset.topWidgetHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 14 : 10) : 0));
-  const dockHeight = Math.round(preset.dockHeight + (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 4 : 2) : 0));
-  const dockBottomGap = sizeTier === 'compact' ? 0 : isTallPhone ? 2 : sizeTier === 'large' ? 4 : 2;
+  const navBarHeight = Math.round(
+    preset.navBarHeight + (!isTabletLayout && isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 8 : 5) : 0),
+  );
+  const topWidgetHeight = Math.round(
+    preset.topWidgetHeight + (!isTabletLayout && isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 14 : 10) : 0),
+  );
+  const dockHeight = Math.round(
+    preset.dockHeight + (!isTabletLayout && isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 4 : 2) : 0),
+  );
+  const dockBottomGap = isTabletLayout
+    ? clamp(Math.round(safeHeight * 0.012), 8, 18)
+    : sizeTier === 'compact'
+      ? 0
+      : isTallPhone
+        ? 2
+        : sizeTier === 'large'
+          ? 4
+          : 2;
   const effectiveSafeAreaBottom = Math.max(0, safeAreaBottom);
   const desktopStartYBase = clamp(
-    Math.round(safeHeight * (sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),
-    preset.startY - 6,
-    preset.startY + 10,
+    Math.round(safeHeight * (isTabletLayout ? 0.105 : sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),
+    preset.startY - (isTabletLayout ? 10 : 6),
+    preset.startY + (isTabletLayout ? 20 : 10),
   );
-  const desktopStartY = Math.max(
-    sizeTier === 'compact' ? 62 : 58,
-    desktopStartYBase - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 28 : 18) : sizeTier === 'regular' ? 4 : 0),
-  );
+  const desktopStartY = isTabletLayout
+    ? Math.max(82, desktopStartYBase)
+    : Math.max(
+      sizeTier === 'compact' ? 62 : 58,
+      desktopStartYBase - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 28 : 18) : sizeTier === 'regular' ? 4 : 0),
+    );
   const usableTop = desktopStartY;
-  const usableBottom = safeHeight - effectiveSafeAreaBottom - dockHeight - dockBottomGap + (isTallPhone && sizeTier !== 'compact' ? (isWideTallPhone ? 18 : 12) : 0);
+  const usableBottom = safeHeight - effectiveSafeAreaBottom - dockHeight - dockBottomGap + (
+    !isTabletLayout && isTallPhone && sizeTier !== 'compact'
+      ? (isWideTallPhone ? 18 : 12)
+      : 0
+  );
   const usableHeight = Math.max(320, usableBottom - usableTop);
+  const slotHeightDivisor = isTabletLayout
+    ? Math.max(1, rows)
+    : Math.max(
+      1,
+      rows - 1 - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? (isWideTallPhone ? 0.95 : 0.8) : (isWideTallPhone ? 0.65 : 0.5)) : 0),
+    );
   const slotHeight = clamp(
-    Math.round(
-      usableHeight
-      / Math.max(
-        1,
-        rows - 1 - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? (isWideTallPhone ? 0.95 : 0.8) : (isWideTallPhone ? 0.65 : 0.5)) : 0),
-      )
-    ),
-    sizeTier === 'compact' ? 74 : sizeTier === 'regular' ? 86 : 80,
-    sizeTier === 'large' ? (isWideTallPhone ? 138 : 132) : sizeTier === 'regular' ? (isWideTallPhone ? 122 : 116) : 96,
+    Math.round(usableHeight / slotHeightDivisor),
+    isTabletLayout ? 78 : sizeTier === 'compact' ? 74 : sizeTier === 'regular' ? 86 : 80,
+    isTabletLayout
+      ? 156
+      : sizeTier === 'large'
+        ? (isWideTallPhone ? 138 : 132)
+        : sizeTier === 'regular'
+          ? (isWideTallPhone ? 122 : 116)
+          : 96,
   );
 
   return {
@@ -520,7 +570,9 @@ export function buildNavBarPlacement({
   const bounds = getDesktopContentBounds(slots, metrics);
   const isWideTallPhone = Boolean(metrics?.isTallPhone && (metrics?.containerWidth ?? 0) >= 410 && (metrics?.containerHeight ?? 0) >= 880);
   const targetWidth =
-    metrics?.sizeTier === 'large'
+    metrics?.sizeTier === 'tablet'
+      ? Math.round(bounds.width * 0.76)
+      : metrics?.sizeTier === 'large'
       ? Math.round(bounds.width * (metrics?.isTallPhone ? (isWideTallPhone ? 0.988 : 0.982) : 0.94))
       : metrics?.sizeTier === 'regular'
         ? Math.round(bounds.width * (metrics?.isTallPhone ? (isWideTallPhone ? 0.955 : 0.945) : 0.9))
@@ -531,7 +583,10 @@ export function buildNavBarPlacement({
   );
   return {
     x: Math.round(bounds.centerX - width / 2),
-    y: Math.max(metrics?.sizeTier === 'compact' ? 10 : 12, placement.y - (metrics?.sizeTier === 'compact' ? 8 : metrics?.isTallPhone ? 16 : 12)),
+    y: Math.max(
+      metrics?.sizeTier === 'compact' ? 10 : metrics?.sizeTier === 'tablet' ? 16 : 12,
+      placement.y - (metrics?.sizeTier === 'compact' ? 8 : metrics?.sizeTier === 'tablet' ? 12 : metrics?.isTallPhone ? 16 : 12),
+    ),
     width,
     height: metrics?.navBarHeight ?? NAV_BAR_HEIGHT,
     slotIds: placement.slotIds,

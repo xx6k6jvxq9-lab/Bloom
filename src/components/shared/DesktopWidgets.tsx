@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Clock, Calendar, Heart, Music, Play, SkipForward, SkipBack, Pause, RefreshCw, Cloud, Sun, CloudRain, Wind, Navigation, ImagePlus, MapPin } from 'lucide-react';
 import { WidgetConfig, MusicData } from '../../types';
 import { extractSingleImageUrl } from '../../utils';
@@ -14,15 +14,19 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
   const [imageUrlDraft, setImageUrlDraft] = useState('');
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const setMusicDataRef = useRef(setMusicData);
 
   const isPlaying = musicData?.isPlaying || false;
   const progress = musicData?.progress || 0;
 
+  useEffect(() => {
+    setMusicDataRef.current = setMusicData;
+  }, [setMusicData]);
+
   const setIsPlaying = (playing: boolean) => {
-    console.log('setIsPlaying called with:', playing);
-    if (setMusicData) {
-      setMusicData(prev => {
-        console.log('setMusicData updater called, prev:', prev);
+    const applyMusicData = setMusicDataRef.current;
+    if (applyMusicData) {
+      applyMusicData(prev => {
         return {
           ...prev,
           isPlaying: playing
@@ -62,15 +66,16 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
   useEffect(() => {
     const timer = setInterval(() => {
       setTime(new Date());
-      if (isPlaying && setMusicData) {
-        setMusicData(prev => ({
+      const applyMusicData = setMusicDataRef.current;
+      if (isPlaying && applyMusicData) {
+        applyMusicData(prev => ({
           ...prev,
           progress: (prev.progress + 1) % 100
         }));
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isPlaying, setMusicData]);
+  }, [isPlaying]);
 
   const profileName = widget.profileName || '自定义';
   const profileHandle = widget.handle || '自定义';

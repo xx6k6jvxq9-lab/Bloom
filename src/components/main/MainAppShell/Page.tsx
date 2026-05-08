@@ -145,10 +145,16 @@ export function MainApp({
   const sortedChatEntries = [
     ...(appData.chatGroups || []).map((group) => {
       const latestPreviewableMessage = findLatestPreviewableMessage(group.history);
+      const hasUnread = !!(
+        latestPreviewableMessage
+        && latestPreviewableMessage.role === 'model'
+        && latestPreviewableMessage.timestamp > (group.lastViewedMessageTimestamp || 0)
+      );
       return {
         kind: 'group' as const,
         id: group.id,
         pinned: !!group.pinChat,
+        hasUnread,
         lastTime: latestPreviewableMessage?.timestamp || group.lastTime || 0,
         previewText: latestPreviewableMessage
           ? formatChatMessagePreview(latestPreviewableMessage)
@@ -158,10 +164,16 @@ export function MainApp({
     }),
     ...appData.characters.map((character) => {
       const latestPreviewableMessage = findLatestPreviewableMessage(appData.chatHistory?.[character.id]);
+      const hasUnread = !!(
+        latestPreviewableMessage
+        && latestPreviewableMessage.role === 'model'
+        && latestPreviewableMessage.timestamp > (character.lastViewedMessageTimestamp || 0)
+      );
       return {
         kind: 'direct' as const,
         id: character.id,
         pinned: !!character.isPinned,
+        hasUnread,
         lastTime: latestPreviewableMessage?.timestamp || character.lastTime || 0,
         previewText: latestPreviewableMessage
           ? formatChatMessagePreview(latestPreviewableMessage)
@@ -298,7 +310,10 @@ export function MainApp({
   ) : null;
 
   const footer = !(activeTab === 'me' && meSection !== 'main') ? (
-    <div className="flex min-h-[64px] w-full items-center justify-around pt-2">
+    <div
+      className="flex min-h-[40px] w-full items-end justify-around px-3 pt-1"
+      style={{ paddingBottom: 'var(--app-safe-area-bottom-tab, 0px)' }}
+    >
       <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
       <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
       <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
@@ -319,8 +334,7 @@ export function MainApp({
         onTouchCancel: handleTouchEnd,
       }}
       footer={footer}
-      footerClassName="absolute bottom-0 left-0 right-0 z-20 rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
-      footerStyle={{ paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' }}
+      footerClassName="app-bottom-tabbar absolute bottom-0 left-0 right-0 z-20 border-t border-zinc-100 bg-white/96 backdrop-blur-xl"
     >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (
@@ -364,7 +378,7 @@ export function MainApp({
         </AnimatePresence>
 
         {activeTab === 'chat' && (
-          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+4.25rem)] pt-4 space-y-3">
+          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-tab,0px)+2.75rem)] pt-4 space-y-3">
             {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
               <div className="p-12 text-center text-zinc-300 space-y-3">
                 <Users size={48} className="mx-auto opacity-20" />
@@ -400,6 +414,7 @@ export function MainApp({
                       <div className="flex justify-between items-center gap-2">
                         <p className="text-[13px] text-zinc-500 truncate flex-1">{entry.previewText || '暂无消息'}</p>
                         <div className="flex items-center gap-1">
+                          {entry.hasUnread && <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" aria-label="有新消息" />}
                           {group.muteNotifications && <BellOff size={12} className="text-zinc-400" />}
                           {group.pinChat && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
                         </div>
@@ -437,6 +452,7 @@ export function MainApp({
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-[13px] text-zinc-500 truncate flex-1">{entry.previewText || formatMessagePreview(char.openingRemark)}</p>
                       <div className="flex items-center gap-1">
+                        {entry.hasUnread && <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" aria-label="有新消息" />}
                         {char.isMuted && <BellOff size={12} className="text-zinc-400" />}
                         {char.isPinned && <Pin size={12} className="text-zinc-400 fill-zinc-400" />}
                       </div>

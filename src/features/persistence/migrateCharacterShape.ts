@@ -4,6 +4,7 @@ import type {
   CharacterAvatarLibraryEntry,
   CharacterOpenLoopEntry,
   CharacterPresenceState,
+  CharacterSharedState,
   MemoryLibraryEntry,
 } from '../../types';
 import { resolveCharacterCorePersonaCompat, resolveCharacterLongTermMemoryCompat } from '../../services/character/characterCompat';
@@ -163,6 +164,44 @@ function normalizePresenceState(value: unknown): CharacterPresenceState | undefi
   };
 }
 
+function normalizeSharedState(value: unknown): CharacterSharedState | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const record = value as Record<string, unknown>;
+  const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : null;
+  if (updatedAt == null) {
+    return undefined;
+  }
+
+  return {
+    updatedAt,
+    sourceScene:
+      record.sourceScene === 'direct_chat'
+      || record.sourceScene === 'group_chat'
+      || record.sourceScene === 'dating'
+      || record.sourceScene === 'music_together'
+      || record.sourceScene === 'couple_space'
+      || record.sourceScene === 'forum'
+      || record.sourceScene === 'moments'
+        ? record.sourceScene
+        : 'direct_chat',
+    availability: record.availability === 'live'
+      || record.availability === 'recent'
+      || record.availability === 'returning'
+      ? record.availability
+      : 'away',
+    ...(record.resumeTone === 'natural_continue'
+      || record.resumeTone === 'soft_return'
+      || record.resumeTone === 'fresh_reentry'
+      ? { resumeTone: record.resumeTone }
+      : {}),
+    ...(normalizeOptionalText(record.currentActivity) ? { currentActivity: normalizeOptionalText(record.currentActivity) } : {}),
+    ...(normalizeOptionalText(record.attentionNote) ? { attentionNote: normalizeOptionalText(record.attentionNote) } : {}),
+    ...(normalizeOptionalText(record.publicCarryover) ? { publicCarryover: normalizeOptionalText(record.publicCarryover) } : {}),
+    ...(normalizeOptionalText(record.privateCarryover) ? { privateCarryover: normalizeOptionalText(record.privateCarryover) } : {}),
+  };
+}
+
 function normalizeActiveDatingState(value: unknown): CharacterActiveDatingState | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 
@@ -310,6 +349,7 @@ export function migrateCharacterShape(character: Character): Character {
   const avatarLibraryEntries = normalizeAvatarLibraryEntries(character.avatarLibrary?.entries);
   const openLoopRegistry = normalizeOpenLoopRegistry(character.openLoopRegistry);
   const presenceState = normalizePresenceState(character.presenceState);
+  const sharedState = normalizeSharedState(character.sharedState);
   const activeDatingState = normalizeActiveDatingState(character.activeDatingState);
   const sharedContextSnapshots = normalizeSharedContextSnapshots(character.sharedContextSnapshots);
   let memoryLibraryEntries = normalizeMemoryLibraryEntries(character.memoryLibraryEntries);
@@ -338,6 +378,7 @@ export function migrateCharacterShape(character: Character): Character {
     memoryLibraryEntries,
     openLoopRegistry,
     presenceState,
+    sharedState,
     activeDatingState,
     sharedContextSnapshots,
     avatarLibrary: avatarLibraryEntries

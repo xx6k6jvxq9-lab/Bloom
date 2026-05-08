@@ -7,6 +7,7 @@ import {
 } from './appDataSanitizers';
 import { loadJsonRecord } from './browserJsonStore';
 import { loadPreferredCallHistory } from './callHistoryStore';
+import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
 import {
   loadPreferredChatHistoryRecords,
   mergeGroupSessionsIntoChatGroups,
@@ -280,9 +281,9 @@ export async function bootstrapLocalAppState({
     || hasLocalCallHistory
   );
   const legacyAppData = hasAnyModernBusinessData ? null : getLegacyAppData();
-  const legacyGroups = Array.isArray(legacyAppData?.groups)
-    ? legacyAppData.groups
-    : ['瀹朵汉', '鏈嬪弸', '鍚屼簨', '鏄熸爣'];
+  const legacyGroups = normalizeContactGroups(
+    Array.isArray(legacyAppData?.groups) ? legacyAppData.groups : DEFAULT_CONTACT_GROUPS,
+  );
 
   const characters = sanitizePersistedCharactersFromStore(
     await loadPreferredCharacters(

@@ -1,6 +1,7 @@
 import type { Character, ChatMessage, Song } from "../../types";
 import type { BuildChatPromptOptions } from "../ai/prompts/builders/buildChatPrompt";
 import { buildCharacterContext } from "../relationship-context/buildCharacterContext";
+import { buildSharedCharacterStateFromCharacter } from "../relationship-context/buildSharedCharacterState";
 import { buildResolvedMemoryLayers } from "../memory/buildResolvedMemoryLayers";
 
 export type MusicTogetherLyricLine = {
@@ -54,6 +55,9 @@ export function buildMusicTogetherSceneInput(
   } = params;
   const characterContext = buildCharacterContext({ character });
   const memoryLayers = buildResolvedMemoryLayers(character);
+  const sharedCharacterState = buildSharedCharacterStateFromCharacter({
+    character,
+  });
   const recentDirectHistory = directChatHistory.slice(-6);
   const lyricWindow = nearbyLyrics
     .map((line) => formatLyricLine(line))
@@ -72,6 +76,7 @@ export function buildMusicTogetherSceneInput(
     },
     memoryContext: {
       longTermMemoryProfile: memoryLayers.longTermMemoryProfile || "",
+      sharedCharacterStatePrompt: sharedCharacterState.directPrompt,
     },
     recentContext: {
       shortTermSummary: memoryLayers.shortTermSummary || "",

@@ -20,6 +20,9 @@ export type BuildForumThreadPromptOptions = {
 function buildForumMemorySection(memoryContext: MemoryContextInput = {}): string {
   const lines = [
     '## 论坛语境参考',
+    memoryContext.sharedCharacterStatePrompt?.trim()
+      ? `褰撳墠鍏变韩瑙掕壊鐘舵€侊細${memoryContext.sharedCharacterStatePrompt.trim()}`
+      : '',
     memoryContext.shortTermSummary?.trim()
       ? `近期关系余波：${memoryContext.shortTermSummary.trim()}`
       : '',

@@ -40,6 +40,7 @@ import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFro
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import { buildSharedStateWritePatch } from '../../services/relationship-context/buildSharedCharacterState';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -500,6 +501,20 @@ export function AppScreenContent({
               length: (prev.moments?.length || 0) + 1,
               latestContent: content,
             }), prev),
+            characters: prev.characters.map((character) => {
+              if (!author || character.id !== authorId) {
+                return character;
+              }
+
+              return {
+                ...character,
+                sharedState: buildSharedStateWritePatch({
+                  character,
+                  sourceScene: 'moments',
+                  publicSummaries: [`鍒氬垰鍙戜簡涓€鏉″叕寮€鍔ㄦ€侊細${content.slice(0, 72)}`],
+                }),
+              };
+            }),
             moments: [newMoment, ...(prev.moments || [])],
           }));
 

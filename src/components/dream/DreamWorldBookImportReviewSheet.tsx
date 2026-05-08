@@ -86,7 +86,12 @@ export function DreamWorldBookImportReviewSheet({
               type="button"
               onClick={onBack}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)]"
-              style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(196,169,106,.04)' }}
+              style={{
+                color: '#F1E2B7',
+                WebkitTextFillColor: '#F1E2B7',
+                borderColor: 'rgba(196,169,106,.18)',
+                backgroundColor: 'rgba(196,169,106,.04)',
+              }}
               aria-label="返回梦境世界书"
             >
               <ChevronLeft size={18} />
@@ -106,7 +111,12 @@ export function DreamWorldBookImportReviewSheet({
               onClick={onConfirmImport}
               disabled={selectedCount === 0}
               className="rounded-full border px-4 py-2 text-[11px] tracking-[0.2em] text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)] disabled:opacity-40"
-              style={{ borderColor: 'rgba(196,169,106,.24)', backgroundColor: 'rgba(196,169,106,.06)' }}
+              style={{
+                color: '#F1E2B7',
+                WebkitTextFillColor: '#F1E2B7',
+                borderColor: 'rgba(196,169,106,.24)',
+                backgroundColor: 'rgba(196,169,106,.06)',
+              }}
             >
               带入今夜
             </button>
@@ -119,7 +129,12 @@ export function DreamWorldBookImportReviewSheet({
               type="button"
               onClick={onImportDefault}
               className="rounded-full border px-3 py-2 text-[11px] tracking-[0.18em] text-[var(--gold-bright)] transition duration-300 hover:text-[var(--gold-bright)]"
-              style={{ borderColor: 'rgba(196,169,106,.24)', backgroundColor: 'rgba(196,169,106,.06)' }}
+              style={{
+                color: '#F1E2B7',
+                WebkitTextFillColor: '#F1E2B7',
+                borderColor: 'rgba(196,169,106,.24)',
+                backgroundColor: 'rgba(196,169,106,.06)',
+              }}
             >
               按默认导入
             </button>

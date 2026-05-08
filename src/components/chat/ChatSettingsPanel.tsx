@@ -23,6 +23,7 @@ import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../..
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
 import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
@@ -98,6 +99,81 @@ function ResolvedSettingsImage({
   const src = getDisplayableAssetValue(value, resolvedUrl);
   if (!src) return null;
   return <img src={src} alt={alt} className={className} />;
+}
+
+type StickerScope = 'shared' | 'character';
+
+type StickerPreviewState = {
+  scope: StickerScope;
+  sticker: string;
+};
+
+function StickerPreviewModal({
+  sticker,
+  scopeLabel,
+  onClose,
+  onDelete,
+}: {
+  sticker: string;
+  scopeLabel: string;
+  onClose: () => void;
+  onDelete: () => Promise<void> | void;
+}) {
+  return (
+    <div className="absolute inset-0 z-[95] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        className="w-full max-w-[360px] overflow-hidden rounded-[28px] border border-white/60 bg-white/95 shadow-[0_18px_60px_rgba(15,23,42,0.18)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+          <div>
+            <div className="text-[16px] font-semibold text-zinc-900">表情包预览</div>
+            <div className="mt-1 text-[12px] text-zinc-500">{scopeLabel}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 active:bg-zinc-100"
+            aria-label="关闭表情包预览"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="overflow-hidden rounded-[24px] bg-zinc-100/80 shadow-inner">
+            <div className="aspect-square">
+              <ResolvedSettingsImage value={sticker} alt={`${scopeLabel}预览`} className="h-full w-full object-contain" />
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-zinc-50 px-4 py-3 text-[12px] leading-5 text-zinc-500">
+            平时点击表情包会先进入预览，这里可以更安静地查看，确认后再删。
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[14px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
+            >
+              关闭
+            </button>
+            <button
+              type="button"
+              onClick={() => void onDelete()}
+              className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-[14px] font-medium text-red-500 transition hover:bg-red-100 active:bg-red-100"
+            >
+              删除这个表情包
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 function parseJsonFileContent(raw: string) {
@@ -399,8 +475,15 @@ export function ChatSettingsPanel({
   } | null>(null);
   const [pendingRemarkName, setPendingRemarkName] = useState('');
   const [pendingSignature, setPendingSignature] = useState('');
-  const [sharedStickerLinksDraft, setSharedStickerLinksDraft] = useState('');
-  const [characterStickerLinksDraft, setCharacterStickerLinksDraft] = useState('');
+  const [stickerLinkImportDraft, setStickerLinkImportDraft] = useState('');
+  const [stickerLinkImportTarget, setStickerLinkImportTarget] = useState<StickerScope>('shared');
+  const [stickerManagementMode, setStickerManagementMode] = useState(false);
+  const [selectedSharedStickers, setSelectedSharedStickers] = useState<Set<string>>(() => new Set());
+  const [selectedCharacterStickers, setSelectedCharacterStickers] = useState<Set<string>>(() => new Set());
+  const [activeStickerPreview, setActiveStickerPreview] = useState<StickerPreviewState | null>(null);
+  const [activeStickerCategory, setActiveStickerCategory] = useState<'all' | 'shared' | 'character'>('all');
+  const [sharedStickerExpanded, setSharedStickerExpanded] = useState(false);
+  const [characterStickerExpanded, setCharacterStickerExpanded] = useState(false);
   const [minRepliesDraft, setMinRepliesDraft] = useState(String(character?.minReplies || 1));
   const [maxRepliesDraft, setMaxRepliesDraft] = useState(String(character?.maxReplies || 3));
   const [isCloningVoice, setIsCloningVoice] = useState(false);
@@ -413,11 +496,16 @@ export function ChatSettingsPanel({
   useKeyboardSafeViewport({
     containerRef: panelRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   if (!character) return null;
 
-  const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 24px)';
+  const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 16px)';
+  const sharedStickers = settings.sharedStickers || [];
+  const characterStickers = character.stickers || [];
+  const hasManagedStickers = sharedStickers.length + characterStickers.length > 0;
+  const selectedStickerCount = selectedSharedStickers.size + selectedCharacterStickers.size;
 
   const voiceProfile = {
     enabled: character.voiceProfile?.enabled !== false,
@@ -450,6 +538,15 @@ export function ChatSettingsPanel({
   const forumSceneHint = sceneHints.forum ?? '';
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
+  const sharedStatePreview = [
+    character.sharedState?.sourceScene ? `来源场景：${character.sharedState.sourceScene}` : '',
+    character.sharedState?.availability ? `在线状态：${character.sharedState.availability}` : '',
+    character.sharedState?.resumeTone ? `回线语气：${character.sharedState.resumeTone}` : '',
+    character.sharedState?.currentActivity ? `当前生活底色：${character.sharedState.currentActivity}` : '',
+    character.sharedState?.attentionNote ? `开口方式：${character.sharedState.attentionNote}` : '',
+    character.sharedState?.publicCarryover ? `公开可见余波：${character.sharedState.publicCarryover}` : '',
+    character.sharedState?.privateCarryover ? `私下余波：${character.sharedState.privateCarryover}` : '',
+  ].filter(Boolean).join('\n\n');
   const shortTermMemoryEntries = getMemoryLibraryEntries(character, 'short-term');
   const longTermMemoryEntries = getMemoryLibraryEntries(character, 'long-term');
   const activeMemoryEntries = activeMemoryDetail === 'long-term' ? longTermMemoryEntries : shortTermMemoryEntries;
@@ -636,7 +733,7 @@ export function ChatSettingsPanel({
 
   const appendSharedStickers = (stickers: string[]) => {
     const nextStickers = normalizeStickerEntries([
-      ...(settings.sharedStickers || []),
+      ...sharedStickers,
       ...stickers,
     ]);
     onUpdateSettings({
@@ -647,10 +744,161 @@ export function ChatSettingsPanel({
 
   const appendCharacterStickers = (stickers: string[]) => {
     const nextStickers = normalizeStickerEntries([
-      ...(character.stickers || []),
+      ...characterStickers,
       ...stickers,
     ]);
     onUpdate({ ...character, stickers: nextStickers });
+  };
+
+  const resetStickerManagementState = () => {
+    setStickerManagementMode(false);
+    setSelectedSharedStickers(new Set());
+    setSelectedCharacterStickers(new Set());
+  };
+
+  const closeStickerPreview = () => {
+    setActiveStickerPreview(null);
+  };
+
+  const closeStickerManager = () => {
+    setShowStickers(false);
+    resetStickerManagementState();
+    resetStickerCategoryState();
+    closeStickerPreview();
+  };
+
+  const openStickerManagement = () => {
+    closeStickerPreview();
+    setStickerManagementMode(true);
+    setSelectedSharedStickers(new Set());
+    setSelectedCharacterStickers(new Set());
+  };
+
+  const closeStickerManagement = () => {
+    resetStickerManagementState();
+  };
+
+  const resetStickerCategoryState = () => {
+    setActiveStickerCategory('all');
+    setSharedStickerExpanded(false);
+    setCharacterStickerExpanded(false);
+  };
+
+  const setStickerCategory = (category: 'all' | 'shared' | 'character') => {
+    setActiveStickerCategory(category);
+  };
+
+  const toggleStickerSelection = (scope: StickerScope, sticker: string) => {
+    if (scope === 'shared') {
+      setSelectedSharedStickers((current) => {
+        const next = new Set(current);
+        if (next.has(sticker)) {
+          next.delete(sticker);
+        } else {
+          next.add(sticker);
+        }
+        return next;
+      });
+      return;
+    }
+
+    setSelectedCharacterStickers((current) => {
+      const next = new Set(current);
+      if (next.has(sticker)) {
+        next.delete(sticker);
+      } else {
+        next.add(sticker);
+      }
+      return next;
+    });
+  };
+
+  const removeSticker = (scope: StickerScope, sticker: string) => {
+    if (scope === 'shared') {
+      onUpdateSettings({
+        ...settings,
+        sharedStickers: sharedStickers.filter((item) => item !== sticker),
+      });
+      setSelectedSharedStickers((current) => {
+        const next = new Set(current);
+        next.delete(sticker);
+        return next;
+      });
+    } else {
+      onUpdate({
+        ...character,
+        stickers: characterStickers.filter((item) => item !== sticker),
+      });
+      setSelectedCharacterStickers((current) => {
+        const next = new Set(current);
+        next.delete(sticker);
+        return next;
+      });
+    }
+
+    setActiveStickerPreview((current) => {
+      if (!current || current.scope !== scope || current.sticker !== sticker) {
+        return current;
+      }
+      return null;
+    });
+  };
+
+  const toggleSelectAllStickers = (scope: StickerScope) => {
+    const stickerList = scope === 'shared' ? sharedStickers : characterStickers;
+    const setSelection = scope === 'shared' ? setSelectedSharedStickers : setSelectedCharacterStickers;
+    setSelection((current) => (
+      current.size === stickerList.length ? new Set() : new Set(stickerList)
+    ));
+  };
+
+  const handleStickerTilePress = (scope: StickerScope, sticker: string) => {
+    if (stickerManagementMode) {
+      toggleStickerSelection(scope, sticker);
+      return;
+    }
+
+    setActiveStickerPreview({ scope, sticker });
+  };
+
+  const handleDeleteStickerFromPreview = async () => {
+    if (!activeStickerPreview) {
+      return;
+    }
+
+    const scopeLabel = activeStickerPreview.scope === 'shared' ? '共享表情包' : '当前角色表情包';
+    if (!(await showInAppConfirm(`确定要删除这个${scopeLabel}吗？`))) {
+      return;
+    }
+
+    removeSticker(activeStickerPreview.scope, activeStickerPreview.sticker);
+  };
+
+  const handleDeleteSelectedStickers = async () => {
+    if (selectedStickerCount === 0) {
+      return;
+    }
+
+    if (!(await showInAppConfirm(`确定要删除选中的 ${selectedStickerCount} 个表情包吗？`))) {
+      return;
+    }
+
+    if (selectedSharedStickers.size > 0) {
+      onUpdateSettings({
+        ...settings,
+        sharedStickers: sharedStickers.filter((item) => !selectedSharedStickers.has(item)),
+      });
+    }
+
+    if (selectedCharacterStickers.size > 0) {
+      onUpdate({
+        ...character,
+        stickers: characterStickers.filter((item) => !selectedCharacterStickers.has(item)),
+      });
+    }
+
+    closeStickerPreview();
+    closeStickerManagement();
   };
 
   const handleVoiceSampleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -829,19 +1077,32 @@ export function ChatSettingsPanel({
     onUpdate({ ...character, maxReplies: nextMax });
   };
 
-  const handleImportSharedStickerLinks = () => {
-    const entries = extractStickerEntriesFromText(sharedStickerLinksDraft);
+  const handleImportStickerLinks = () => {
+    const entries = extractStickerEntriesFromText(stickerLinkImportDraft);
     if (entries.length === 0) return;
-    appendSharedStickers(entries);
-    setSharedStickerLinksDraft('');
+    if (stickerLinkImportTarget === 'shared') {
+      appendSharedStickers(entries);
+      setActiveStickerCategory('shared');
+      setSharedStickerExpanded(true);
+    } else {
+      appendCharacterStickers(entries);
+      setActiveStickerCategory('character');
+      setCharacterStickerExpanded(true);
+    }
+    setStickerLinkImportDraft('');
   };
 
-  const handleImportCharacterStickerLinks = () => {
-    const entries = extractStickerEntriesFromText(characterStickerLinksDraft);
-    if (entries.length === 0) return;
-    appendCharacterStickers(entries);
-    setCharacterStickerLinksDraft('');
-  };
+  useEffect(() => {
+    if (showStickers) {
+      return;
+    }
+
+    setStickerManagementMode(false);
+    setSelectedSharedStickers(new Set());
+    setSelectedCharacterStickers(new Set());
+    setActiveStickerPreview(null);
+    resetStickerCategoryState();
+  }, [showStickers]);
 
   const calculateTokens = () => {
       const estimateTextTokens = (text: string) => {
@@ -1785,7 +2046,7 @@ export function ChatSettingsPanel({
                       <Smile size={18} />
                     </div>
                     <div className="flex flex-col items-start">
-                      <span className="text-[14px] text-zinc-700">场景动作描述</span>
+                      <span className="text-[14px] text-zinc-700">用户动作输入</span>
                       <span className="text-[10px] text-zinc-400">开启后，输入框显示（）动作场景输入</span>
                     </div>
                   </div>
@@ -1795,7 +2056,6 @@ export function ChatSettingsPanel({
                       onUpdate({
                         ...character,
                         actionDescriptionEnabled: nextEnabled,
-                        characterActionDescriptionEnabled: nextEnabled ? character.characterActionDescriptionEnabled : false,
                       });
                     }}
                     className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.actionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
@@ -1804,23 +2064,21 @@ export function ChatSettingsPanel({
                   </div>
                 </div>
 
-                {character.actionDescriptionEnabled && (
-                  <div className="ml-11 flex items-center justify-between rounded-2xl bg-zinc-50/80 px-3 py-2.5">
-                    <div className="flex flex-col items-start">
-                      <span className="text-[13px] text-zinc-700">角色使用括号</span>
-                      <span className="text-[10px] text-zinc-400">开启后，角色可用（）描述动作和场景</span>
-                    </div>
-                    <div
-                      onClick={() => onUpdate({
-                        ...character,
-                        characterActionDescriptionEnabled: !character.characterActionDescriptionEnabled,
-                      })}
-                      className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.characterActionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
-                    >
-                      <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.characterActionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
-                    </div>
+                <div className="ml-11 flex items-center justify-between rounded-2xl bg-zinc-50/80 px-3 py-2.5">
+                  <div className="flex flex-col items-start">
+                    <span className="text-[13px] text-zinc-700">角色使用括号</span>
+                    <span className="text-[10px] text-zinc-400">独立控制角色是否可用（）描述动作和场景</span>
                   </div>
-                )}
+                  <div
+                    onClick={() => onUpdate({
+                      ...character,
+                      characterActionDescriptionEnabled: !character.characterActionDescriptionEnabled,
+                    })}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer ${character.characterActionDescriptionEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                  >
+                    <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.characterActionDescriptionEnabled ? 'translate-x-4.5' : ''}`} />
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
@@ -2584,6 +2842,43 @@ export function ChatSettingsPanel({
 
                     <div className="rounded-2xl bg-white/55 border border-white/40 shadow-sm overflow-hidden">
                       <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[14px] text-zinc-700 font-medium">统一状态 / Shared State</span>
+                          <span className="text-[11px] text-zinc-500">这是一张跨单聊、群聊、动态等场景共享的当前状态便签，不是长期记忆本体。</span>
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <button
+                            onClick={() => onUpdate({
+                              ...character,
+                              sharedState: rebuildSharedStateFromCharacter({
+                                character,
+                                updatedAt: Date.now(),
+                              }),
+                            })}
+                            className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-900 hover:bg-zinc-200"
+                          >
+                            重算状态卡
+                          </button>
+                          <button
+                            onClick={() => onUpdate({ ...character, sharedState: undefined })}
+                            className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-900 hover:bg-zinc-200"
+                          >
+                            清空状态卡
+                          </button>
+                        </div>
+                      </div>
+                      <div className="px-4 py-3">
+                        <textarea
+                          value={sharedStatePreview}
+                          readOnly
+                          placeholder="当前还没有共享状态。等单聊、群聊、约会、动态等场景发生互动后，这里会显示角色当前状态摘要。"
+                          className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none min-h-[144px] resize-none text-zinc-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white/55 border border-white/40 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 flex items-start justify-between gap-3 border-b border-white/40 bg-white/55">
                         <div className="flex flex-col gap-1 min-w-0 pr-2">
                           <span className="text-[14px] text-zinc-700 font-medium">长期记忆 / 长期画像</span>
                           <span className="text-[11px] text-zinc-500">手动整理会把这段关系里更稳定的印象、偏好、边界和长期相处模式沉淀到这里，不应写成最近聊天压缩版。</span>
@@ -2849,69 +3144,183 @@ export function ChatSettingsPanel({
               style={{ paddingTop: settingsHeaderTopPadding }}
             >
               <button 
-                onClick={() => setShowStickers(false)}
+                onClick={closeStickerManager}
                 className="h-11 w-11 flex items-center justify-center -ml-2 text-zinc-600 active:bg-white/20 rounded-full transition-colors"
               >
                 <ChevronLeft size={24} />
               </button>
               <h1 className="text-[17px] font-semibold text-zinc-800">表情包管理</h1>
-              <div className="w-11" />
+              {hasManagedStickers ? (
+                <button
+                  type="button"
+                  onClick={stickerManagementMode ? closeStickerManagement : openStickerManagement}
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-[12px] font-medium text-zinc-600 transition-colors active:bg-white/20"
+                >
+                  {stickerManagementMode ? '完成' : '管理'}
+                </button>
+              ) : (
+                <div className="w-11" />
+              )}
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-4">
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-zinc-800">共享表情包</h2>
-                    <p className="mt-1 text-[12px] text-zinc-500">这里导入一次，其他单聊也能直接读取。</p>
-                  </div>
-                  <span className="text-[12px] text-zinc-400">{settings.sharedStickers?.length || 0} 个</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
-                    <Plus size={28} className="mb-2" />
-                    <span className="text-[13px] font-medium">导入共享</span>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv"
-                      className="hidden"
-                      onChange={async e => {
-                        const input = e.currentTarget;
-                        const files = Array.from(input.files || []);
 
-                        try {
-                          const newStickers = await importStickerFiles(files, setUploadedFile);
-                          if (newStickers.length > 0) {
-                            appendSharedStickers(newStickers);
-                          }
-                        } catch (error) {
-                          console.error('[chat-settings] Failed to import shared stickers.', error);
-                          await showInAppAlert('导入共享表情包失败，请重试。');
-                        } finally {
-                          input.value = '';
-                        }
-                      }}
-                    />
-                  </label>
-                  {(settings.sharedStickers || []).map((sticker, idx) => (
-                    <div key={`shared-${idx}`} className="relative group aspect-square bg-white/40 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden shadow-sm">
-                      <ResolvedSettingsImage value={sticker} className="w-full h-full object-cover" />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const nextSharedStickers = [...(settings.sharedStickers || [])];
-                          nextSharedStickers.splice(idx, 1);
-                          onUpdateSettings({ ...settings, sharedStickers: nextSharedStickers });
-                        }}
-                        className="absolute top-2 right-2 w-7 h-7 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
-                      >
-                        <X size={16} />
-                      </button>
+            <div className="shrink-0 border-b border-white/25 bg-white/45 px-4 py-2.5 text-[12px] text-zinc-500 backdrop-blur-md">
+              {stickerManagementMode ? (
+                <span><span className="font-medium text-zinc-700">管理模式</span>，点按表情包可多选，批量删除在底部。</span>
+              ) : (
+                <span>轻点表情包可展开预览，右上角“管理”可多选删除。</span>
+              )}
+            </div>
+
+            <div className="shrink-0 px-4 pt-3">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {[
+                  { id: 'all', label: '全部' },
+                  { id: 'shared', label: '共享' },
+                  { id: 'character', label: '角色' },
+                ].map((item) => {
+                  const active = activeStickerCategory === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setStickerCategory(item.id as 'all' | 'shared' | 'character')}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium transition ${active ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="flex-1 overflow-y-auto p-4"
+              style={{
+                paddingBottom: stickerManagementMode
+                  ? 'calc(var(--app-safe-area-bottom-ui, 0px) + 7.5rem)'
+                  : 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',
+                transition: 'padding-bottom 180ms ease',
+              }}
+            >
+              {!stickerManagementMode && (
+                <div className="mb-5 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
+                      <p className="mt-1 text-[11px] text-zinc-500">先选导入目标，再一次性粘贴多行链接。这样不用先展开具体分组。</p>
                     </div>
-                  ))}
+                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/70 p-1">
+                      {[
+                        { id: 'shared', label: '共享' },
+                        { id: 'character', label: '角色' },
+                      ].map((item) => {
+                        const active = stickerLinkImportTarget === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setStickerLinkImportTarget(item.id as StickerScope)}
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition ${active ? 'border border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'text-zinc-500 active:bg-white'}`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <textarea
+                    value={stickerLinkImportDraft}
+                    onChange={(e) => setStickerLinkImportDraft(e.target.value)}
+                    placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/a.gif\nhttps://example.com/b.png'}
+                    className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleImportStickerLinks}
+                    disabled={!stickerLinkImportDraft.trim()}
+                    className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                  >
+                    {stickerLinkImportTarget === 'shared' ? '导入到共享表情包' : '导入到当前角色表情包'}
+                  </button>
                 </div>
-                {(settings.sharedStickers || []).length > 0 && (
+              )}
+
+              {activeStickerCategory !== 'character' && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setSharedStickerExpanded((current) => !current)}
+                    className="mb-3 flex w-full items-start justify-between gap-3 text-left"
+                  >
+                    <div>
+                      <h2 className="text-[15px] font-semibold text-zinc-800">共享表情包</h2>
+                      <p className="mt-1 text-[12px] text-zinc-500">这里导入一次，其他单聊也能直接读取。</p>
+                    </div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-[12px] text-zinc-400">{sharedStickers.length} 个</span>
+                      <ChevronDown size={16} className={`text-zinc-300 transition-transform ${sharedStickerExpanded ? '' : '-rotate-90'}`} />
+                    </div>
+                  </button>
+
+                  {sharedStickerExpanded && (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                  {stickerManagementMode ? (
+                    <div className="aspect-square rounded-2xl border border-dashed border-white/40 bg-white/35 shadow-sm opacity-70">
+                      <div className="flex h-full flex-col items-center justify-center text-zinc-400">
+                        <MoreHorizontal size={24} className="mb-2" />
+                        <span className="text-[12px] font-medium">管理中</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
+                      <Plus size={28} className="mb-2" />
+                      <span className="text-[13px] font-medium">导入共享</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv"
+                        className="hidden"
+                        onChange={async e => {
+                          const input = e.currentTarget;
+                          const files = Array.from(input.files || []);
+
+                          try {
+                            const newStickers = await importStickerFiles(files, setUploadedFile);
+                            if (newStickers.length > 0) {
+                              appendSharedStickers(newStickers);
+                            }
+                          } catch (error) {
+                            console.error('[chat-settings] Failed to import shared stickers.', error);
+                            await showInAppAlert('导入共享表情包失败，请重试。');
+                          } finally {
+                            input.value = '';
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                  {sharedStickers.map((sticker) => {
+                    const isSelected = selectedSharedStickers.has(sticker);
+                    return (
+                      <div
+                        key={`shared-${sticker}`}
+                        onClick={() => handleStickerTilePress('shared', sticker)}
+                        className={`relative aspect-square overflow-hidden rounded-2xl border border-white/30 bg-white/40 shadow-sm transition ${stickerManagementMode ? 'cursor-pointer active:scale-[0.98]' : 'cursor-zoom-in active:scale-[0.98]'} ${isSelected ? 'border-zinc-900 bg-white/70 ring-2 ring-zinc-900' : ''}`}
+                      >
+                        <ResolvedSettingsImage value={sticker} className="h-full w-full object-cover" />
+                        {stickerManagementMode && (
+                          <div
+                            className={`absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-sm ${isSelected ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-white/90 bg-white/80 text-zinc-400'}`}
+                          >
+                            {isSelected ? <Check size={16} /> : <div className="h-3.5 w-3.5 rounded-full border border-current" />}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                      </div>
+                      {!stickerManagementMode && sharedStickers.length > 0 && (
                   <div className="mt-4">
                     <button
                       onClick={async () => {
@@ -2925,81 +3334,88 @@ export function ChatSettingsPanel({
                     </button>
                   </div>
                 )}
-                <div className="mt-4 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
-                  <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
-                  <p className="mt-1 text-[11px] text-zinc-500">支持多行链接，或一行里粘贴多个链接；也兼容 `csv/txt` 里只有链接的内容。</p>
-                  <textarea
-                    value={sharedStickerLinksDraft}
-                    onChange={(e) => setSharedStickerLinksDraft(e.target.value)}
-                    placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/a.gif\nhttps://example.com/b.png'}
-                    className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
-                  />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeStickerCategory !== 'shared' && (
+                <div className={activeStickerCategory === 'all' ? 'mt-8' : ''}>
                   <button
                     type="button"
-                    onClick={handleImportSharedStickerLinks}
-                    disabled={!sharedStickerLinksDraft.trim()}
-                    className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                    onClick={() => setCharacterStickerExpanded((current) => !current)}
+                    className="mb-3 flex w-full items-start justify-between gap-3 text-left"
                   >
-                    导入这些共享链接
+                    <div>
+                      <h2 className="text-[15px] font-semibold text-zinc-800">当前角色表情包</h2>
+                      <p className="mt-1 text-[12px] text-zinc-500">只在这个角色的单聊里追加显示。</p>
+                    </div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-[12px] text-zinc-400">{characterStickers.length} 个</span>
+                      <ChevronDown size={16} className={`text-zinc-300 transition-transform ${characterStickerExpanded ? '' : '-rotate-90'}`} />
+                    </div>
                   </button>
-                </div>
-              </div>
 
-              <div className="mt-8">
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-zinc-800">当前角色表情包</h2>
-                    <p className="mt-1 text-[12px] text-zinc-500">只在这个角色的单聊里追加显示。</p>
+                  {characterStickerExpanded && (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                {stickerManagementMode ? (
+                  <div className="aspect-square rounded-2xl border border-dashed border-white/40 bg-white/35 shadow-sm opacity-70">
+                    <div className="flex h-full flex-col items-center justify-center text-zinc-400">
+                      <MoreHorizontal size={24} className="mb-2" />
+                      <span className="text-[12px] font-medium">管理中</span>
+                    </div>
                   </div>
-                  <span className="text-[12px] text-zinc-400">{character.stickers?.length || 0} 个</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
-                  <Plus size={28} className="mb-2" />
-                  <span className="text-[13px] font-medium">上传表情</span>
-                  <input 
-                    type="file" 
-                    multiple 
-                    accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv" 
-                    className="hidden" 
-                    onChange={async e => {
-                      const input = e.currentTarget;
-                      const files = Array.from(input.files || []);
+                ) : (
+                  <label className="aspect-square bg-white/40 backdrop-blur-md rounded-2xl border-2 border-white/30 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer shadow-sm">
+                    <Plus size={28} className="mb-2" />
+                    <span className="text-[13px] font-medium">上传表情</span>
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv" 
+                      className="hidden" 
+                      onChange={async e => {
+                        const input = e.currentTarget;
+                        const files = Array.from(input.files || []);
 
-                      try {
-                        const newStickers = await importStickerFiles(files, setUploadedFile);
-                        if (newStickers.length > 0) {
-                          appendCharacterStickers(newStickers);
+                        try {
+                          const newStickers = await importStickerFiles(files, setUploadedFile);
+                          if (newStickers.length > 0) {
+                            appendCharacterStickers(newStickers);
+                          }
+                        } catch (error) {
+                          console.error('[chat-settings] Failed to import character stickers.', error);
+                          await showInAppAlert('导入角色表情包失败，请重试。');
+                        } finally {
+                          input.value = '';
                         }
-                      } catch (error) {
-                        console.error('[chat-settings] Failed to import character stickers.', error);
-                        await showInAppAlert('导入角色表情包失败，请重试。');
-                      } finally {
-                        input.value = '';
-                      }
-                    }}
-                  />
-                </label>
-                {character.stickers?.map((sticker, idx) => (
-                  <div key={idx} className="relative group aspect-square bg-white/40 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden shadow-sm">
-                    <ResolvedSettingsImage value={sticker} className="w-full h-full object-cover" />
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const newStickers = [...(character.stickers || [])];
-                        newStickers.splice(idx, 1);
-                        onUpdate({ ...character, stickers: newStickers });
                       }}
-                      className="absolute top-2 right-2 w-7 h-7 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                    />
+                  </label>
+                )}
+                {characterStickers.map((sticker) => {
+                  const isSelected = selectedCharacterStickers.has(sticker);
+                  return (
+                    <div
+                      key={`character-${sticker}`}
+                      onClick={() => handleStickerTilePress('character', sticker)}
+                      className={`relative aspect-square overflow-hidden rounded-2xl border border-white/30 bg-white/40 shadow-sm transition ${stickerManagementMode ? 'cursor-pointer active:scale-[0.98]' : 'cursor-zoom-in active:scale-[0.98]'} ${isSelected ? 'border-zinc-900 bg-white/70 ring-2 ring-zinc-900' : ''}`}
                     >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              {character.stickers && character.stickers.length > 0 && (
+                      <ResolvedSettingsImage value={sticker} className="h-full w-full object-cover" />
+                      {stickerManagementMode && (
+                        <div
+                          className={`absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-sm ${isSelected ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-white/90 bg-white/80 text-zinc-400'}`}
+                        >
+                          {isSelected ? <Check size={16} /> : <div className="h-3.5 w-3.5 rounded-full border border-current" />}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                      </div>
+                      
+                      {!stickerManagementMode && characterStickers.length > 0 && (
                 <div className="mt-8">
                   <button 
                     onClick={async () => {
@@ -3013,25 +3429,60 @@ export function ChatSettingsPanel({
                   </button>
                 </div>
               )}
-              <div className="mt-4 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
-                <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
-                <p className="mt-1 text-[11px] text-zinc-500">这里导入的是当前角色私有表情包，不会同步给别的单聊。</p>
-                <textarea
-                  value={characterStickerLinksDraft}
-                  onChange={(e) => setCharacterStickerLinksDraft(e.target.value)}
-                  placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/c.gif\nhttps://example.com/d.png'}
-                  className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
-                />
-                <button
-                  type="button"
-                  onClick={handleImportCharacterStickerLinks}
-                  disabled={!characterStickerLinksDraft.trim()}
-                  className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
-                >
-                  导入这些角色链接
-                </button>
-              </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
+
+            {stickerManagementMode && (
+              <div
+                className="absolute inset-x-0 bottom-0 z-[20] border-t border-white/50 bg-white/92 px-4 pt-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+                style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 12px)' }}
+              >
+                <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                  <span className="text-[13px] text-zinc-500">已选 {selectedStickerCount} 个</span>
+                  <span className="text-[12px] text-zinc-400">可跨分组批量删除</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectAllStickers('shared')}
+                    disabled={sharedStickers.length === 0}
+                    className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] font-medium text-zinc-700 transition active:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {sharedStickers.length > 0 && selectedSharedStickers.size === sharedStickers.length ? '共享全不选' : '共享全选'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectAllStickers('character')}
+                    disabled={characterStickers.length === 0}
+                    className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] font-medium text-zinc-700 transition active:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {characterStickers.length > 0 && selectedCharacterStickers.size === characterStickers.length ? '角色全不选' : '角色全选'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSelectedStickers()}
+                    disabled={selectedStickerCount === 0}
+                    className="rounded-2xl border border-red-100 bg-red-50 px-3 py-3 text-[12px] font-semibold text-red-500 transition active:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    删除已选
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <AnimatePresence>
+              {activeStickerPreview && !stickerManagementMode && (
+                <StickerPreviewModal
+                  sticker={activeStickerPreview.sticker}
+                  scopeLabel={activeStickerPreview.scope === 'shared' ? '共享表情包' : '当前角色表情包'}
+                  onClose={closeStickerPreview}
+                  onDelete={handleDeleteStickerFromPreview}
+                />
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 

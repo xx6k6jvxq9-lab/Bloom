@@ -11,7 +11,7 @@ function computeShallowActCount(seed: string) {
 
 export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, presentationSeed?: string) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, maskPrompt, tagCategoryContext, variationTone } = promptInput;
+  const { characterContext, memoryLayers, resolvedSelection, domainRule, storyFrameGuidance, worldBookPrompt, worldBookConflictSummary, personaFloorSummary, supplementNoteSummary, maskPrompt, tagCategoryContext, variationTone } = promptInput;
   const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const worldBookGuardrails = buildDreamTagWorldBookGuardrails();
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
@@ -20,7 +20,7 @@ export function buildDreamScenarioPrompt(options: GenerateDreamScenarioOptions, 
     resolvedSelection.depth === 'deep'
       ? 4
       : computeShallowActCount(`${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.entryMode}`);
-  const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
+  const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags, resolvedSelection.customTags);
   const baseSeed = presentationSeed || `${options.character.id}-${resolvedSelection.domainId}-${resolvedSelection.depth}-${resolvedSelection.entryMode}`;
   const presentation = resolveDreamPresentation(baseSeed);
   const variation = buildDreamVariation(baseSeed, variationTone);
@@ -64,6 +64,8 @@ Novel prose and plot quality rules:
 ${novelQualityRules}
 Persona guardrails:
 ${personaGuardrails}
+Persona floor:
+${personaFloorSummary}
 World-book conflict policy:
 ${worldBookGuardrails}
 
@@ -115,7 +117,10 @@ ${domainRule}
 - 表达风格：${characterContext.expressionStyle || '未提供'}
 - 边界与禁区：${characterContext.boundaryPack || '未提供'}
 - 扩展设定：${characterContext.extendedLore || '未提供'}
+- 人设底线摘要：
+${personaFloorSummary}
 - Mask 语境：${maskPrompt}
+- 世界书裁决：${worldBookConflictSummary}
 - WorldBook 语境：${worldBookPrompt}
 - 短期记忆：${memoryLayers.shortTermSummary || '暂无'}
 - 长期记忆：${memoryLayers.longTermMemoryProfile || '暂无'}
@@ -126,6 +131,7 @@ ${domainRule}
 - 梦域副标题：${domain.subtitle || '未提供'}
 - 梦域描述：${domain.description || '未提供'}
 - 梦型：${depthLabel}
+- 补充说明：${supplementNoteSummary}
 
 标签摘要：
 ${tagSummary || '未选择标签'}

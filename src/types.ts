@@ -70,6 +70,8 @@ export type NavBarConfig = {
   offsetX?: number;
   offsetY?: number;
   backgroundImage?: string;
+  avatar?: string;
+  mood?: string;
   selectedCharacterId?: string;
   statusBarPlacement: 'top' | 'bottom' | 'hidden';
   customCss?: string;
@@ -101,6 +103,7 @@ export type ChatCustomization = {
 
 export type DynamicsCustomization = {
   background: string;
+  backgroundMode?: 'fullscreen' | 'header';
   cardStyle: 'flat' | 'glass' | 'neumorphism';
   cardBorderRadius: number;
   cardOpacity: number;
@@ -112,6 +115,10 @@ export type DesktopCustomization = {
   iconBorderRadius: number;
   gridColumns: number;
   gridGap: number;
+  dockBackgroundImage?: string;
+  dockBackgroundPreviewUrl?: string;
+  dockTintColor?: string;
+  dockTintOpacity?: number;
   dockSlotId?: string;
   topWidgetRow?: number;
   appOrder?: string[];
@@ -549,6 +556,17 @@ export type CharacterPresenceState = {
   updatedAt: number;
 };
 
+export type CharacterSharedState = {
+  updatedAt: number;
+  sourceScene: 'direct_chat' | 'group_chat' | 'dating' | 'music_together' | 'couple_space' | 'forum' | 'moments';
+  availability: CharacterPresenceState['availability'];
+  resumeTone?: CharacterPresenceState['resumeTone'];
+  currentActivity?: string;
+  attentionNote?: string;
+  publicCarryover?: string;
+  privateCarryover?: string;
+};
+
 export type CharacterActiveDatingState = {
   sessionId: string;
   startedAt: number;
@@ -616,6 +634,7 @@ export type Character = {
   openingRemark: string;
   lastMessage?: string;
   lastTime?: number;
+  lastViewedMessageTimestamp?: number;
   // 聊天设置
   isMuted?: boolean;
   isPinned?: boolean;
@@ -639,6 +658,7 @@ export type Character = {
   memoryLibraryEntries?: MemoryLibraryEntry[];
   openLoopRegistry?: CharacterOpenLoopEntry[];
   presenceState?: CharacterPresenceState;
+  sharedState?: CharacterSharedState;
   activeDatingState?: CharacterActiveDatingState;
   sharedContextSnapshots?: CharacterSharedContextSnapshot[];
   avatarLibrary?: CharacterAvatarLibrary;
@@ -1224,6 +1244,7 @@ export type ChatGroup = {
   createdAt: number;
   lastMessage?: string;
   lastTime?: number;
+  lastViewedMessageTimestamp?: number;
   history?: ChatMessage[];
   topicState?: GroupTopicState;
   groupShortTermSummary?: string;

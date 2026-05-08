@@ -5,6 +5,8 @@ import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
+import { buildDreamPersonaFloor } from './dreamPersonaFloor';
+import { resolveDreamWorldBookConflicts } from './dreamWorldBookConflict';
 import { resolveDreamSelection } from './resolveDreamSelection';
 
 function resolveActiveMask(characterId: string, masks: Mask[]) {
@@ -42,30 +44,56 @@ function resolveTagLabels(category: DreamTagCategory, ids: string[]) {
   return group.options.filter((option) => ids.includes(option.id)).map((option) => option.label);
 }
 
-function buildTagCategoryContext(selectedTags: Record<DreamTagCategory, string[]>) {
+function resolveCustomTagLabels(
+  customTags: GenerateDreamScenarioOptions['selection']['customTags'],
+  category: DreamTagCategory,
+) {
+  return (customTags || [])
+    .filter((tag) => tag.category === category)
+    .map((tag) => tag.label)
+    .filter(Boolean);
+}
+
+function buildTagCategoryContext(
+  selectedTags: Record<DreamTagCategory, string[]>,
+  customTags: GenerateDreamScenarioOptions['selection']['customTags'],
+) {
   const background = [
     ...resolveTagLabels('world', selectedTags.world ?? []),
     ...resolveTagLabels('genre', selectedTags.genre ?? []),
     ...resolveTagLabels('climate', selectedTags.climate ?? []),
     ...resolveTagLabels('camp', selectedTags.camp ?? []),
     ...resolveTagLabels('faction', selectedTags.faction ?? []),
+    ...resolveCustomTagLabels(customTags, 'genre'),
+    ...resolveCustomTagLabels(customTags, 'climate'),
+    ...resolveCustomTagLabels(customTags, 'camp'),
+    ...resolveCustomTagLabels(customTags, 'faction'),
   ];
   const identities = [
     ...resolveTagLabels('identity', selectedTags.identity ?? []),
     ...resolveTagLabels('participants', selectedTags.participants ?? []),
+    ...resolveCustomTagLabels(customTags, 'identity'),
+    ...resolveCustomTagLabels(customTags, 'participants'),
   ];
   const relationships = [
     ...resolveTagLabels('tension', selectedTags.tension ?? []),
     ...resolveTagLabels('lead', selectedTags.lead ?? []),
+    ...resolveCustomTagLabels(customTags, 'tension'),
+    ...resolveCustomTagLabels(customTags, 'lead'),
   ];
   const drives = [
     ...resolveTagLabels('drive', selectedTags.drive ?? []),
     ...resolveTagLabels('interaction', selectedTags.interaction ?? []),
     ...resolveTagLabels('intensity', selectedTags.intensity ?? []),
+    ...resolveCustomTagLabels(customTags, 'drive'),
+    ...resolveCustomTagLabels(customTags, 'interaction'),
+    ...resolveCustomTagLabels(customTags, 'intensity'),
   ];
   const moods = [
     ...resolveTagLabels('mood', selectedTags.mood ?? []),
     ...resolveTagLabels('ending', selectedTags.ending ?? []),
+    ...resolveCustomTagLabels(customTags, 'mood'),
+    ...resolveCustomTagLabels(customTags, 'ending'),
   ];
 
   return {
@@ -259,18 +287,24 @@ export function buildDreamTagWorldBookGuardrails() {
 
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
   const activeMask = resolveActiveMask(options.character.id, options.masks);
-  const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
-  const characterContext = buildCharacterContext({
-    character: options.character,
-    activeMask,
-    activeWorldBooks,
-  });
   const memoryLayers = buildResolvedMemoryLayers(options.character);
   const resolvedSelection = resolveDreamSelection(
     options.selection,
     `${options.character.id}-${options.selection.domainId}-${options.selection.depth}-${options.selection.entryMode}`,
   );
-  const tagCategoryContext = buildTagCategoryContext(resolvedSelection.selectedTags);
+  const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
+  const resolvedWorldBookConflicts = resolveDreamWorldBookConflicts({
+    worldBooks: activeWorldBooks,
+    selectedTags: resolvedSelection.selectedTags,
+    customTags: resolvedSelection.customTags,
+  });
+  const characterContext = buildCharacterContext({
+    character: options.character,
+    activeMask,
+    activeWorldBooks: resolvedWorldBookConflicts.worldBooks,
+  });
+  const personaFloor = buildDreamPersonaFloor(characterContext);
+  const tagCategoryContext = buildTagCategoryContext(resolvedSelection.selectedTags, resolvedSelection.customTags);
 
   return {
     resolvedSelection,
@@ -278,9 +312,14 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
     storyFrameGuidance: buildStoryFrameGuidance(resolvedSelection.selectedTags),
     variationTone: resolveVariationTone(resolvedSelection.selectedTags),
     characterContext,
+    personaFloor,
     memoryLayers,
     tagCategoryContext,
+    personaFloorSummary: personaFloor.summary,
+    supplementNoteSummary: resolvedSelection.supplementNote || '未提供',
     worldBookPrompt: characterContext.worldBookPrompt || '未提供',
+    worldBookConflictSummary: resolvedWorldBookConflicts.summary || '未触发程序裁决',
+    worldBookConflictAffectedTitles: resolvedWorldBookConflicts.affectedWorldBookTitles,
     maskPrompt: characterContext.maskPrompt || '未提供',
   };
 }

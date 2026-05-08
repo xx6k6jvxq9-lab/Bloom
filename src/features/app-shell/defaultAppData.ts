@@ -44,6 +44,8 @@ export function createDefaultAppData(): AppData {
         shape: 'pill',
         showMultipleAvatars: false,
         backgroundImage: DEFAULT_NAV_BAR_BACKGROUND,
+        avatar: '',
+        mood: '',
         statusBarPlacement: 'top',
       },
       desktop: {
@@ -51,6 +53,10 @@ export function createDefaultAppData(): AppData {
         iconBorderRadius: 14,
         gridColumns: 4,
         gridGap: 16,
+        dockBackgroundImage: '',
+        dockBackgroundPreviewUrl: '',
+        dockTintColor: '#f8fafc',
+        dockTintOpacity: 0.18,
       },
       chat: {
         background: '',
@@ -69,6 +75,7 @@ export function createDefaultAppData(): AppData {
       },
       dynamics: {
         background: '',
+        backgroundMode: 'fullscreen',
         cardStyle: 'flat',
         cardBorderRadius: 24,
         cardOpacity: 1,

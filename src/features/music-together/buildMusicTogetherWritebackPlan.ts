@@ -1,6 +1,7 @@
 import type { Character, ChatMessage, Song } from "../../types";
 import type { FactTraceRecord } from "../../services/relationship-context/factTypes";
 import type { RelationshipWaveRecord } from "../../services/relationship-context/types";
+import { buildSharedStateWritePatch } from "../../services/relationship-context/buildSharedCharacterState";
 
 type BuildMusicTogetherWritebackPlanInput = {
   character: Character;
@@ -12,6 +13,7 @@ export type MusicTogetherWritebackPlan = {
   shortTermSummary?: string;
   relationshipWaves: RelationshipWaveRecord[];
   factTraces: FactTraceRecord[];
+  sharedState?: Character['sharedState'];
 };
 
 const MUSIC_TOGETHER_SIGNAL_KEYWORDS = [
@@ -205,19 +207,32 @@ export function buildMusicTogetherWritebackPlan(
     input.sessionHistory,
   );
 
+  const relationshipWaves = buildRelationshipWaves(
+    input.character,
+    input.currentSong,
+    input.sessionHistory,
+  );
+  const factTraces = buildFactTraces(
+    input.character,
+    input.currentSong,
+    input.sessionHistory,
+  );
+
   return {
     shortTermSummary: nextShortTermBlock
       ? mergeShortTermSummary(input.character.shortTermSummary, nextShortTermBlock)
       : undefined,
-    relationshipWaves: buildRelationshipWaves(
-      input.character,
-      input.currentSong,
-      input.sessionHistory,
-    ),
-    factTraces: buildFactTraces(
-      input.character,
-      input.currentSong,
-      input.sessionHistory,
-    ),
+    relationshipWaves,
+    factTraces,
+    sharedState: buildSharedStateWritePatch({
+      character: input.character,
+      sourceScene: 'music_together',
+      publicSummaries: relationshipWaves.map((item) => item.summary),
+      privateSummaries: [
+        ...relationshipWaves.map((item) => item.summary),
+        ...factTraces.map((item) => item.summary),
+        ...(nextShortTermBlock ? nextShortTermBlock.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean) : []),
+      ],
+    }),
   };
 }

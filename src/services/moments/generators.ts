@@ -5,6 +5,7 @@ import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 import {
@@ -119,6 +120,9 @@ function buildMomentCharacterCore(options: {
 
 function buildMomentMemoryContext(character: Character) {
   const layers = buildResolvedMemoryLayers(character);
+  const sharedCharacterState = buildSharedCharacterStateFromCharacter({
+    character,
+  });
   const lifeFlavor = [
     character.signature?.trim() ? `公开底色：${character.signature.trim()}` : '',
   ]
@@ -133,6 +137,7 @@ function buildMomentMemoryContext(character: Character) {
       ? `长期印象（保持角色连续性，但不要独占主题）：${layers.longTermMemoryProfile.trim()}`
       : '',
     perceptionPrompt: lifeFlavor,
+    sharedCharacterStatePrompt: sharedCharacterState.groupPrompt,
   };
 }
 

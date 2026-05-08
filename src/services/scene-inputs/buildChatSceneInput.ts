@@ -13,6 +13,7 @@ import type {
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
+import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
 import type { ChatRecentContext, UserGlobalContext } from '../relationship-context/types';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { buildTemporalSnapshotPrompt } from '../relationship-time/buildTemporalSnapshotPrompt';
@@ -127,6 +128,7 @@ function buildSharedGroupInteropSections(
 }
 
 function buildExtraSections(input: {
+  sharedCharacterStatePrompt?: string;
   temporalStatePrompt?: string;
   continuityPrompt?: string;
   activeDatingPrompt?: string;
@@ -136,6 +138,7 @@ function buildExtraSections(input: {
   chatSceneHint?: string;
 }): string[] {
   return [
+    input.sharedCharacterStatePrompt || '',
     input.temporalStatePrompt || '',
     input.continuityPrompt || '',
     input.activeDatingPrompt || '',
@@ -349,6 +352,11 @@ export function buildChatSceneInput(
     groupMessages: directGroupMessages,
     coupleSpace: params.coupleSpace,
   });
+  const sharedCharacterState = buildSharedCharacterState({
+    character: params.character,
+    temporalState: characterTemporalState,
+    sceneScopedSignals: relationshipProjection.sceneScopedSignals,
+  });
   const userContext: UserGlobalContext = {
     userName: params.userName,
   };
@@ -388,6 +396,7 @@ export function buildChatSceneInput(
   const budgetedContext = applyChatPromptBudget({
     recentContext,
     sections: buildExtraSections({
+      sharedCharacterStatePrompt: sharedCharacterState.directPrompt,
       temporalStatePrompt: [
         formatTemporalStatePrompt(characterTemporalState),
         buildPresenceSnapshotPrompt({

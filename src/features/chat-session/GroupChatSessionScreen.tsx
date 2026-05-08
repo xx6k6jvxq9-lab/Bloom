@@ -613,6 +613,7 @@ export function GroupChatSessionScreen({
   directChatHistory,
   patchCharacter,
   inviteableCharacters,
+  onRuntimeBusyChange,
 }: {
   group: ChatGroup;
   members: Character[];
@@ -633,6 +634,7 @@ export function GroupChatSessionScreen({
   directChatHistory: ChatHistory;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   inviteableCharacters: Character[];
+  onRuntimeBusyChange?: (busy: boolean) => void;
 }) {
   const [input, setInput] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -976,6 +978,7 @@ export function GroupChatSessionScreen({
   } = useGroupChatRuntime({
     members,
     availableStickers: availableCustomStickers,
+    sharedStickers: settings.sharedStickers || [],
     worldBooks,
     groupMeta: {
       lastMessage: group.lastMessage,
@@ -1023,6 +1026,13 @@ export function GroupChatSessionScreen({
       setShowFunPanel(false);
     },
   });
+
+  useEffect(() => {
+    onRuntimeBusyChange?.(isLoading);
+    return () => {
+      onRuntimeBusyChange?.(false);
+    };
+  }, [isLoading, onRuntimeBusyChange]);
   const audioRecordInteraction = usePressToRecordInteraction({
     isRecording,
     startRecording,

@@ -46,12 +46,12 @@ function buildDecisionTrailSummary(options: GenerateDreamContinuationOptions) {
 
 export function buildDreamContinuationPrompt(options: GenerateDreamContinuationOptions) {
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext, resolvedSelection, domainRule, tagCategoryContext } = promptInput;
+  const { characterContext, resolvedSelection, domainRule, tagCategoryContext, worldBookPrompt, worldBookConflictSummary, personaFloorSummary, supplementNoteSummary } = promptInput;
   const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const worldBookGuardrails = buildDreamTagWorldBookGuardrails();
   const currentAct = options.scenario.acts[options.actIndex];
   const domain = resolveDreamDomainDisplay(resolvedSelection.domainId);
-  const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags);
+  const tagSummary = buildDreamTagSummary(resolvedSelection.selectedTags, resolvedSelection.customTags);
   const memorySummary = resolveDreamMemorySummary(options.scenario);
   const pastActs = buildPastActSummary(options);
   const decisionTrail = buildDecisionTrailSummary(options);
@@ -278,12 +278,15 @@ ${novelQualityRules}
 
 Persona guardrails:
 ${personaGuardrails}
+Persona floor:
+${personaFloorSummary}
 World-book conflict policy:
 ${worldBookGuardrails}
 
 Current domain: ${domain.name}
 Domain rule: ${domainRule}
 Tag summary: ${tagSummary || 'n/a'}
+Supplement note: ${supplementNoteSummary || 'n/a'}
 
 Tag mapping:
 - background: ${tagCategoryContext.background.join(' / ') || 'n/a'}
@@ -291,6 +294,12 @@ Tag mapping:
 - relationship: ${tagCategoryContext.relationships.join(' / ') || 'n/a'}
 - drive: ${tagCategoryContext.drives.join(' / ') || 'n/a'}
 - mood: ${tagCategoryContext.moods.join(' / ') || 'n/a'}
+
+World-book conflict trimming:
+${worldBookConflictSummary || 'n/a'}
+
+Compatible world-book details:
+${worldBookPrompt || 'n/a'}
 
 Story frame:
 - worldTitle: ${options.scenario.storyFrame.worldTitle}
