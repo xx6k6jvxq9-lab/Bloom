@@ -298,7 +298,7 @@ export function MainApp({
   ) : null;
 
   const footer = !(activeTab === 'me' && meSection !== 'main') ? (
-    <div className="flex min-h-[64px] w-full items-center justify-around pt-2">
+    <div className="flex min-h-[52px] w-full items-center justify-around px-3">
       <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
       <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
       <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
@@ -319,7 +319,7 @@ export function MainApp({
         onTouchCancel: handleTouchEnd,
       }}
       footer={footer}
-      footerClassName="absolute bottom-0 left-0 right-0 z-20 rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
+      footerClassName="absolute bottom-0 left-0 right-0 z-20 border-t border-zinc-100 bg-white/96 backdrop-blur-xl"
       footerStyle={{ paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' }}
     >
         <AnimatePresence>
@@ -364,7 +364,7 @@ export function MainApp({
         </AnimatePresence>
 
         {activeTab === 'chat' && (
-          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+4.25rem)] pt-4 space-y-3">
+          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+3.5rem)] pt-4 space-y-3">
             {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
               <div className="p-12 text-center text-zinc-300 space-y-3">
                 <Users size={48} className="mx-auto opacity-20" />

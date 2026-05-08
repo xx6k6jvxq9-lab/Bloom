@@ -433,7 +433,7 @@ export function ContactsApp({
       <div
         data-swipe-ignore="true"
         className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 3.5rem)' }}
       >
         {/* Top Items */}
         <div className="px-4 space-y-3 mt-2">
@@ -928,7 +928,7 @@ export function CharacterMomentsProfile({
 
       <div
         className="relative flex-1 overflow-y-auto bg-zinc-50"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 3.5rem)' }}
       >
         <div className="relative pb-4">
           <div className="h-40 relative overflow-hidden">
@@ -1219,7 +1219,7 @@ export function NavTab({ icon, label, active, onClick }: { icon: React.ReactNode
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 transition-colors ${active ? 'text-zinc-900' : 'text-zinc-400'}`}
+      className={`flex flex-col items-center gap-0.5 transition-colors ${active ? 'text-zinc-900' : 'text-zinc-400'}`}
     >
       {icon}
       <span className="text-[10px] font-medium">{label}</span>
