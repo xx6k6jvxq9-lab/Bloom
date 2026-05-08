@@ -663,6 +663,7 @@ export type Character = {
   sharedContextSnapshots?: CharacterSharedContextSnapshot[];
   avatarLibrary?: CharacterAvatarLibrary;
   stickers?: string[];
+  stickerMetadata?: Record<string, StickerMetadata>;
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts
   motto?: string;
@@ -1423,6 +1424,12 @@ export type CharacterVoiceProfile = {
   replyFrequency?: 'low' | 'medium' | 'high';
 };
 
+export type StickerMetadata = {
+  label?: string;
+  aliases?: string[];
+  traits?: string[];
+};
+
 export type ApiCenterConfig = {
   defaultTextCall: TextCallConfig;
   singleChatCalls: SingleChatCallConfig[];
@@ -1437,6 +1444,7 @@ export type AppSettings = {
   configs: ApiConfig[];
   apiCenterConfig?: ApiCenterConfig;
   sharedStickers?: string[];
+  sharedStickerMetadata?: Record<string, StickerMetadata>;
   visualSettings?: VisualSettings;
   showChatTimeDividers?: boolean;
   showChatMessageTime?: boolean;

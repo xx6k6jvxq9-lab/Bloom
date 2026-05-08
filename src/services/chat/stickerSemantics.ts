@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../types';
+import { parseUploadedAssetRef } from '../../features/persistence/persistentAssetRef';
 
 const STICKER_LABEL_PATTERNS: Array<{ label: string; patterns: RegExp[] }> = [
   { label: '生气', patterns: [/生气/u, /炸毛/u, /angry/i, /mad/i, /furious/i] },
@@ -50,7 +51,8 @@ function normalizeStickerSource(source: string): string {
 function extractSourceTokens(source?: string): string[] {
   if (!source || source.startsWith('data:')) return [];
 
-  const normalized = normalizeStickerSource(source);
+  const assetRef = parseUploadedAssetRef(source);
+  const normalized = normalizeStickerSource(assetRef?.fileName || source);
   if (!normalized) return [];
 
   return normalized
@@ -60,7 +62,8 @@ function extractSourceTokens(source?: string): string[] {
 }
 
 function inferFromSource(source?: string): string | undefined {
-  const normalized = source ? normalizeStickerSource(source) : '';
+  const assetRef = parseUploadedAssetRef(source);
+  const normalized = source ? normalizeStickerSource(assetRef?.fileName || source) : '';
   const tokens = extractSourceTokens(source);
   if (!normalized && tokens.length === 0) return undefined;
 

@@ -476,11 +476,9 @@ export default function App() {
     ? appSafeAreaBottomFull
     : '12px';
   const appSafeAreaBottomTab = isStandalone
-    ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 16px))'
+    ? 'min(12px, env(safe-area-inset-bottom, 0px))'
     : '12px';
-  const appSafeAreaBottomDock = isStandalone
-    ? appSafeAreaBottomFull
-    : '0px';
+  const appSafeAreaBottomDock = '0px';
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {

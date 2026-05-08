@@ -9,6 +9,7 @@ import type {
 } from '../../types';
 import { resolveCharacterCorePersonaCompat, resolveCharacterLongTermMemoryCompat } from '../../services/character/characterCompat';
 import { normalizeMemoryLibraryEntries } from '../../services/memory/memoryLibrary';
+import { normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import type { CharacterSharedContextSnapshot } from '../../services/relationship-context/types';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
 
@@ -352,6 +353,7 @@ export function migrateCharacterShape(character: Character): Character {
   const sharedState = normalizeSharedState(character.sharedState);
   const activeDatingState = normalizeActiveDatingState(character.activeDatingState);
   const sharedContextSnapshots = normalizeSharedContextSnapshots(character.sharedContextSnapshots);
+  const stickerMetadata = normalizeStickerMetadataMap(character.stickerMetadata, character.stickers);
   let memoryLibraryEntries = normalizeMemoryLibraryEntries(character.memoryLibraryEntries);
   if (
     shortTermSummary &&
@@ -381,6 +383,7 @@ export function migrateCharacterShape(character: Character): Character {
     sharedState,
     activeDatingState,
     sharedContextSnapshots,
+    stickerMetadata,
     avatarLibrary: avatarLibraryEntries
       ? {
           entries: avatarLibraryEntries,

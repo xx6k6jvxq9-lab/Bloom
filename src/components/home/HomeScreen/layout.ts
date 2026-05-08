@@ -198,13 +198,7 @@ export function getDesktopLayoutMetrics({
   );
   const dockBottomGap = isTabletLayout
     ? clamp(Math.round(safeHeight * 0.012), 8, 18)
-    : sizeTier === 'compact'
-      ? 0
-      : isTallPhone
-        ? 2
-        : sizeTier === 'large'
-          ? 4
-          : 2;
+    : 0;
   const effectiveSafeAreaBottom = Math.max(0, safeAreaBottom);
   const desktopStartYBase = clamp(
     Math.round(safeHeight * (isTabletLayout ? 0.105 : sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),

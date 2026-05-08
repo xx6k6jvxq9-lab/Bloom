@@ -1,5 +1,9 @@
-import type { Character } from '../../types';
+import type { Character, StickerMetadata } from '../../types';
 import { inferStickerSemanticLabel } from './stickerSemantics';
+import {
+  buildStickerMetadataSemanticText,
+  resolveStickerMetadataLabel,
+} from './stickerMetadata';
 
 type PickedSticker = {
   sticker: string;
@@ -15,6 +19,7 @@ export type AssistantStickerContext = {
   recentStickerRefs?: string[];
   recentStickerLabels?: string[];
   lastOwnMessageWasSticker?: boolean;
+  stickerMetadataMap?: Record<string, StickerMetadata>;
 };
 
 type PersonaTrait = 'gentle' | 'reserved' | 'playful' | 'sharp' | 'affectionate' | 'steady';
@@ -33,6 +38,7 @@ type StickerTrait =
   | 'cool';
 
 type StickerCandidate = PickedSticker & {
+  semanticText: string;
   score: number;
   blocked: boolean;
   index: number;
@@ -280,6 +286,7 @@ function shouldTreatAsHardMismatch(
 }
 
 function scoreStickerForContext(
+  semanticText: string,
   label: string,
   context: AssistantStickerContext | undefined,
   index: number,
@@ -287,7 +294,7 @@ function scoreStickerForContext(
 ): { score: number; blocked: boolean } {
   const personaTraits = inferPersonaTraits(context);
   const sceneSignals = inferSceneSignals(context);
-  const stickerTraits = inferStickerTraits(label);
+  const stickerTraits = inferStickerTraits(semanticText);
   const normalizedStickerRef = normalizeStickerUsageValue(stickerRef);
   const normalizedStickerLabel = normalizeStickerUsageValue(label);
   const recentStickerRefs = (context?.recentStickerRefs || [])
@@ -462,12 +469,17 @@ function scoreStickerForContext(
 
   return {
     score,
-    blocked: shouldTreatAsHardMismatch(label, stickerTraits, personaTraits, sceneSignals),
+    blocked: shouldTreatAsHardMismatch(semanticText, stickerTraits, personaTraits, sceneSignals),
   };
 }
 
-function fallbackLabel(sticker: string, cueText?: string): string {
-  return inferStickerSemanticLabel(sticker, cueText)?.trim()
+function fallbackLabel(
+  sticker: string,
+  metadataMap?: Record<string, StickerMetadata>,
+  cueText?: string,
+): string {
+  return resolveStickerMetadataLabel(metadataMap, sticker)
+    || inferStickerSemanticLabel(sticker, cueText)?.trim()
     || cueText?.trim()
     || 'sticker';
 }
@@ -482,11 +494,17 @@ export function resolveAssistantStickerCandidates(
   }
 
   const scoredCandidates: StickerCandidate[] = stickerCandidates.map((sticker, index) => {
-    const label = fallbackLabel(sticker);
-    const { score, blocked } = scoreStickerForContext(label, context, index, sticker);
+    const label = fallbackLabel(sticker, context?.stickerMetadataMap);
+    const semanticText = buildStickerMetadataSemanticText(
+      context?.stickerMetadataMap,
+      sticker,
+      label,
+    ) || label;
+    const { score, blocked } = scoreStickerForContext(semanticText, label, context, index, sticker);
     return {
       sticker,
       label,
+      semanticText,
       score,
       blocked,
       index,

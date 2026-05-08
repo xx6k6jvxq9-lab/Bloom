@@ -23,6 +23,7 @@ import {
   loadPersistedForumData,
 } from './forumDataStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+import { normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import {
   hydrateFriendRequests,
   loadPersistedFriendRequests,
@@ -135,14 +136,19 @@ function resolveSettingsState(
   }
 
   if ('configs' in parsed && Array.isArray((parsed as { configs?: unknown[] }).configs)) {
-    const normalized = parsed as Partial<AppSettings> & { sharedStickers?: unknown };
+    const normalized = parsed as Partial<AppSettings> & {
+      sharedStickers?: unknown;
+      sharedStickerMetadata?: unknown;
+    };
+    const sharedStickers = Array.isArray(normalized.sharedStickers)
+      ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
+      : [];
     const settings: AppSettings = {
       ...defaultSettings,
       ...normalized,
       apiCenterConfig: normalized.apiCenterConfig,
-      sharedStickers: Array.isArray(normalized.sharedStickers)
-        ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
-        : [],
+      sharedStickers,
+      sharedStickerMetadata: normalizeStickerMetadataMap(normalized.sharedStickerMetadata, sharedStickers),
     };
     settings.apiCenterConfig = ensureApiCenterConfig(settings);
 
