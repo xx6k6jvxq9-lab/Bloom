@@ -377,9 +377,7 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const nextSafeAreaBottom = Math.round(
-        isStandaloneMode ? 0 : resolvedSafeAreaBottom,
-      );
+      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 
