@@ -479,7 +479,7 @@ export default function App() {
     ? '6px'
     : '12px';
   const appSafeAreaBottomDock = isStandalone
-    ? '6px'
+    ? '0px'
     : appSafeAreaBottomUi;
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl

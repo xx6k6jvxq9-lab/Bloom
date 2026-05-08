@@ -298,7 +298,10 @@ export function MainApp({
   ) : null;
 
   const footer = !(activeTab === 'me' && meSection !== 'main') ? (
-    <div className="flex min-h-[44px] w-full items-center justify-around px-3">
+    <div
+      className="flex min-h-[40px] w-full items-end justify-around px-3 pt-1"
+      style={{ paddingBottom: 'var(--app-safe-area-bottom-tab, 0px)' }}
+    >
       <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
       <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
       <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
@@ -320,7 +323,6 @@ export function MainApp({
       }}
       footer={footer}
       footerClassName="app-bottom-tabbar absolute bottom-0 left-0 right-0 z-20 border-t border-zinc-100 bg-white/96 backdrop-blur-xl"
-      footerStyle={{ paddingBottom: 'var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))' }}
     >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (

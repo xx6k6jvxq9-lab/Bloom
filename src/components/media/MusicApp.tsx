@@ -2591,11 +2591,11 @@ export default function MusicApp({
       {/* iOS Style Bottom Navigation */}
       <div
         className="app-bottom-tabbar relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/94 backdrop-blur-xl"
-        style={{
-          paddingBottom: "var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))",
-        }}
       >
-        <div className="flex min-h-[44px] items-center justify-around px-4">
+        <div
+          className="flex min-h-[40px] items-end justify-around px-4 pt-1"
+          style={{ paddingBottom: "var(--app-safe-area-bottom-tab, 0px)" }}
+        >
           <button
             onClick={() => setActiveTab("player")}
             className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
