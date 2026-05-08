@@ -2218,6 +2218,7 @@ export function HomeScreen({
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
         iconSize={dockIconSize}
+        safeAreaInset={layoutMetrics.safeAreaBottom}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
     </div>
@@ -2405,6 +2406,7 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
+  safeAreaInset,
   backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
@@ -2412,19 +2414,22 @@ function StaticDock({
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
+  safeAreaInset: number;
   backgroundImageUrl?: string;
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
+  const resolvedSafeAreaInset = Math.max(0, safeAreaInset);
+  const totalDockHeight = placement.height + resolvedSafeAreaInset;
 
   return (
     <motion.div
       className="homeDesktop__dock"
       initial={false}
       animate={{ x: placement.x, y: placement.y }}
-      style={{ width: placement.width, height: placement.height }}
+      style={{ width: placement.width, height: totalDockHeight }}
     >
-      <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
+      <div className="homeDesktop__dockBar" style={{ height: totalDockHeight }}>
         {(backgroundImageUrl || dockTintOpacity > 0) ? (
           <div className="homeDesktop__dockMedia" aria-hidden="true">
             {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
@@ -2434,29 +2439,31 @@ function StaticDock({
             />
           </div>
         ) : null}
-        {apps.map(app => (
-          <button
-            key={app.id}
-            onClick={app.onClick}
-            onPointerDown={() => warmAppPanel(app.id)}
-            onMouseEnter={() => warmAppPanel(app.id)}
-            className="homeDesktop__dockItem"
-          >
-            <div
-              className="homeDesktop__dockIcon"
-              style={{
-                width: iconSize,
-                height: iconSize,
-                borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14,
-              }}
+        <div className="homeDesktop__dockContent" style={{ height: placement.height }}>
+          {apps.map(app => (
+            <button
+              key={app.id}
+              onClick={app.onClick}
+              onPointerDown={() => warmAppPanel(app.id)}
+              onMouseEnter={() => warmAppPanel(app.id)}
+              className="homeDesktop__dockItem"
             >
-              <DockAppIcon app={app} visualSettings={visualSettings} />
-            </div>
-            <span className="homeDesktop__dockLabel font-bold drop-shadow-sm" style={fontStyle}>
-              {app.name}
-            </span>
-          </button>
-        ))}
+              <div
+                className="homeDesktop__dockIcon"
+                style={{
+                  width: iconSize,
+                  height: iconSize,
+                  borderRadius: visualSettings?.desktop?.iconBorderRadius ?? 14,
+                }}
+              >
+                <DockAppIcon app={app} visualSettings={visualSettings} />
+              </div>
+              <span className="homeDesktop__dockLabel font-bold drop-shadow-sm" style={fontStyle}>
+                {app.name}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </motion.div>
   );

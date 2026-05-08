@@ -27,6 +27,7 @@ import {
   type ShareActionResult,
 } from '../../services/chat/messageActions';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
@@ -1450,8 +1451,6 @@ export function ChatSessionScreen({
       recognitionRef.current.stop();
     }
   };
-
-  const basicEmojis = ['😀', '😺', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 
   const scrollToBottom = () => {
     const container = scrollRef.current;
@@ -2967,16 +2966,22 @@ export function ChatSessionScreen({
                   </div>
                   <div className="chat-footer-sticker-scroll h-48 overflow-y-auto">
                     {stickerTab === 'basic' ? (
-                      <div className="chat-footer-emoji-grid grid grid-cols-7 gap-2">
-                        {basicEmojis.map((emoji, idx) => (
+                      <div className="chat-footer-emoji-grid grid grid-cols-6 gap-2">
+                        {BASIC_CHAT_EXPRESSIONS.map((expression) => (
                           <button 
-                            key={idx}
+                            key={expression.value}
                             onClick={() => {
-                              setInput(prev => prev + emoji);
+                              setInput(prev => prev + expression.value);
                             }}
-                            className="chat-footer-emoji-grid-button text-2xl hover:bg-zinc-50 rounded-lg aspect-square flex items-center justify-center transition-colors"
+                            className={`chat-footer-emoji-grid-button rounded-lg flex h-[52px] items-center justify-center transition-colors hover:bg-zinc-50 ${
+                              expression.kind === 'kaomoji'
+                                ? 'col-span-2 px-1 text-[11px] font-medium leading-tight tracking-[-0.01em] text-zinc-700'
+                                : 'text-[26px]'
+                            }`}
                           >
-                            {emoji}
+                            <span className={expression.kind === 'kaomoji' ? 'whitespace-pre-wrap break-all text-center' : ''}>
+                              {expression.value}
+                            </span>
                           </button>
                         ))}
                       </div>

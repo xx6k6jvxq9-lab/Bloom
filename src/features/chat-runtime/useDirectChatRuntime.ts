@@ -1627,6 +1627,11 @@ export function useDirectChatRuntime({
     setErrorState(value);
   }, []);
 
+  const commitHistory = useCallback((nextHistory: ChatMessage[]) => {
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
+  }, [setHistory]);
+
   const getLatestModelReplySegment = useCallback((messages: ChatMessage[]) => {
     let end = -1;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -1753,7 +1758,7 @@ export function useDirectChatRuntime({
         if (!activeConfig) {
           const missingConfigMessage = '错误: Missing API Key. Please configure it in API Center settings.';
           setErrorState(missingConfigMessage);
-          setHistory([
+          commitHistory([
             ...historySnapshot,
             {
               role: 'model',
@@ -1814,7 +1819,7 @@ export function useDirectChatRuntime({
         const updateAssistantMessage = (text: string) => {
           currentResponseText = text;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
-          setHistory(latestHistory);
+          commitHistory(latestHistory);
         };
 
         try {
@@ -2047,7 +2052,7 @@ export function useDirectChatRuntime({
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
-          setHistory(latestHistory);
+          commitHistory(latestHistory);
           syncCharacterRuntimeState({
             history: latestHistory,
             continuityMode: characterTemporalState.continuityMode,
@@ -2066,7 +2071,7 @@ export function useDirectChatRuntime({
           const stabilizedHistory = latestHistory.filter(msg =>
             !(msg.role === 'model' && msg.timestamp >= assistantMsgId && msg.timestamp < assistantMsgId + renderedAssistantMessageCount)
           );
-          setHistory(
+          commitHistory(
             latestPendingUserMessage
               ? appendSystemMessageIfNotDuplicate(stabilizedHistory, formattedError)
               : stabilizedHistory,
@@ -2076,7 +2081,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, masks, perception, runGeneration, setHistory, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, perception, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
     text: string;
@@ -2166,7 +2171,7 @@ export function useDirectChatRuntime({
     const effectiveLocationData = overridePayload?.locationData ?? locationData;
     const textToSend = typeof overrideText === 'string'
       ? overrideText
-      : (overridePayload?.promptText ?? input);
+      : (overridePayload?.promptText ?? inputRef.current);
     if ((!textToSend.trim() && !effectiveLocationData) || !activeConfig) {
       if (!activeConfig) {
         setErrorState('Missing active API config.');
@@ -2178,14 +2183,14 @@ export function useDirectChatRuntime({
     setErrorState(null);
 
     await runGeneration(async ({ generationId }) => {
-    let baseHistory = history;
+    let baseHistory = historyRef.current;
     if (activeAssistantMessageIdRef.current !== null) {
       const staleAssistantId = activeAssistantMessageIdRef.current;
       const staleAssistantRenderCount = Math.max(1, activeAssistantRenderCountRef.current);
-      baseHistory = history.filter(msg =>
+      baseHistory = baseHistory.filter(msg =>
         !(msg.role === 'model' && msg.timestamp >= staleAssistantId && msg.timestamp < staleAssistantId + staleAssistantRenderCount)
       );
-      setHistory(baseHistory);
+      commitHistory(baseHistory);
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
     }
@@ -2213,7 +2218,7 @@ export function useDirectChatRuntime({
       ...(isInnerVoiceOverride ? { isInnerVoice: true } : {}),
     };
     const newHistory = [...baseHistory, userMsg];
-    setHistory(newHistory);
+    commitHistory(newHistory);
 
     if (!overridePayload) {
       setInput('');
@@ -2276,12 +2281,12 @@ export function useDirectChatRuntime({
       }
       currentResponseText = text;
       latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
-      setHistory(latestHistory);
+      commitHistory(latestHistory);
     };
 
     try {
       const recentMomentContext = {
-        recentMessages: history.slice(-6).map(message => ({
+        recentMessages: baseHistory.slice(-6).map(message => ({
           role: message.role,
           text: message.text,
           timestamp: message.timestamp,
@@ -2301,7 +2306,7 @@ export function useDirectChatRuntime({
 
       if (commandMomentResult.shouldPublish && commandMomentResult.momentContent) {
         const noticeTimestamp = Date.now();
-        setHistory([
+        commitHistory([
           ...newHistory,
           createMomentPublishedSystemMessage(character.name, noticeTimestamp),
         ]);
@@ -2521,7 +2526,7 @@ export function useDirectChatRuntime({
       if (!qualityResult.ok && effectiveLocationData) {
         activeAssistantMessageIdRef.current = null;
         activeAssistantRenderCountRef.current = 0;
-        setHistory(newHistory);
+        commitHistory(newHistory);
         return;
       }
 
@@ -2555,7 +2560,7 @@ export function useDirectChatRuntime({
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
       const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
-      setHistory(finalHistory);
+      commitHistory(finalHistory);
       syncCharacterRuntimeState({
         history: finalHistory,
         continuityMode: characterTemporalState.continuityMode,
@@ -2572,7 +2577,7 @@ export function useDirectChatRuntime({
         return;
       }
       console.error('Chat error:', sendError);
-      setHistory(appendSystemMessageIfNotDuplicate(newHistory, formatChatApiError(sendError)));
+      commitHistory(appendSystemMessageIfNotDuplicate(newHistory, formatChatApiError(sendError)));
     } finally {
       if (activeGenerationIdRef.current === generationId) {
         activeAssistantMessageIdRef.current = null;
@@ -2580,7 +2585,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, coupleSpace, directChatHistory, history, input, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setHistory, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;

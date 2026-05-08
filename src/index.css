@@ -224,7 +224,7 @@ body {
     --app-safe-area-bottom: var(--app-safe-area-bottom-full);
     --app-safe-area-bottom-ui: env(safe-area-inset-bottom, 0px);
     --app-safe-area-bottom-tab: min(12px, env(safe-area-inset-bottom, 0px));
-    --app-safe-area-bottom-dock: 0px;
+    --app-safe-area-bottom-dock: env(safe-area-inset-bottom, 0px);
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
   }
