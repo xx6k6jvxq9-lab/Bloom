@@ -167,8 +167,8 @@ body {
   }
 
   .forum-app-bottom-nav {
-    min-height: 84px;
-    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+    min-height: 0;
+    padding-bottom: 0;
   }
 
   .forum-app-fab {

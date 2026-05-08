@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { Trash2, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence, type PanInfo } from 'motion/react';
+import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
 import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicData, WidgetConfig } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
@@ -2356,16 +2357,70 @@ function DraggableTopBar({
   onDragEnd: (info: PanInfo) => void;
   children: React.ReactNode;
 }) {
+  const dragControls = useDragControls();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingNativeEventRef = useRef<PointerEvent | null>(null);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const resetPendingDrag = useCallback(() => {
+    pointerStartRef.current = null;
+    pendingNativeEventRef.current = null;
+    clearLongPressTimer();
+  }, [clearLongPressTimer]);
+
   return (
     <motion.div
       className={`homeDesktop__topBar ${dragging ? 'homeDesktop__topBar--dragging' : ''}`}
       initial={false}
       animate={{ x: placement.x, y: placement.y }}
       drag
+      dragListener={false}
+      dragControls={dragControls}
       dragMomentum={false}
       onDragStart={onDragStart}
       onDrag={(_, info) => onDrag(info)}
       onDragEnd={(_, info) => onDragEnd(info)}
+      onPointerDown={event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest('button, input, textarea, select, a, [data-no-nav-drag="true"]')) {
+          resetPendingDrag();
+          return;
+        }
+
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        pendingNativeEventRef.current = event.nativeEvent;
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => {
+          const nativeEvent = pendingNativeEventRef.current;
+          if (!nativeEvent) {
+            return;
+          }
+          onDragStart();
+          dragControls.start(nativeEvent, { snapToCursor: false });
+          longPressTimerRef.current = null;
+        }, 280);
+      }}
+      onPointerMove={event => {
+        const start = pointerStartRef.current;
+        if (!start || dragging) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+          clearLongPressTimer();
+        }
+      }}
+      onPointerUp={() => {
+        resetPendingDrag();
+      }}
+      onPointerCancel={() => {
+        resetPendingDrag();
+      }}
       style={{ width: placement.width, minHeight: placement.height }}
       whileDrag={{ scale: 1.01, zIndex: 165 }}
       transition={{ type: 'spring', stiffness: 380, damping: 30 }}

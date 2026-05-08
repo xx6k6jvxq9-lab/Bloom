@@ -372,8 +372,8 @@ function buildTempChatReplyPolicy(author: ForumAuthor, session: ForumTempChatSes
 
 export default function ForumApp({ appData, onUpdateAppData, onClose, settings, onOpenChat, initialPostId }: ForumAppProps) {
   const forumTopInsetStyle = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' };
-  const forumBottomInsetStyle = { paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 80px)' };
-  const forumBottomNavStyle = { paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 8px)' };
+  const forumBottomInsetStyle = { paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 72px)' };
+  const forumBottomNavStyle = { paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' };
   const [activeTab, setActiveTab] = useState<'home' | 'hot' | 'notification' | 'profile'>('home');
   const [currentView, setCurrentView] = useState<'list' | 'detail' | 'editor' | 'edit-profile' | 'edit-author-profile' | 'user-profile' | 'temp-chat' | 'follow-list' | 'spectator-settings' | 'forum-settings' | 'public-open-settings'>('list');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -1728,6 +1728,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           sharedContextSnapshots: settlement.sharedContextSnapshots,
           shortTermSummary: settlement.shortTermSummary,
           openLoopRegistry: settlement.openLoopRegistry,
+          sharedState: settlement.sharedState,
         };
       });
 
@@ -2405,6 +2406,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         sharedContextSnapshots: settlement.sharedContextSnapshots,
         shortTermSummary: settlement.shortTermSummary,
         openLoopRegistry: settlement.openLoopRegistry,
+        sharedState: settlement.sharedState,
       };
     });
 
@@ -4346,34 +4348,36 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
       {/* Bottom Navigation */}
       {shouldShowForumBottomNav && (
-        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100 px-6 pt-2 flex justify-between items-center" style={forumBottomNavStyle}>
-          <button 
-            onClick={() => { setActiveTab('home'); setCurrentView('list'); setMessageTab('chats'); }}
-            className={`p-2 rounded-full transition-colors ${activeTab === 'home' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-          >
-            <Home size={26} fill={activeTab === 'home' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'home' ? 0 : 2} />
-          </button>
-          <button 
-            onClick={() => { setActiveTab('hot'); setCurrentView('list'); setMessageTab('chats'); }}
-            className={`p-2 rounded-full transition-colors ${activeTab === 'hot' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-          >
-            <Search size={26} strokeWidth={activeTab === 'hot' ? 3 : 2} />
-          </button>
-          <button 
-            onClick={() => { setActiveTab('notification'); setCurrentView('list'); setMessageTab('chats'); }}
-            className={`p-2 rounded-full transition-colors relative ${activeTab === 'notification' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-          >
-            <Bell size={26} fill={activeTab === 'notification' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'notification' ? 0 : 2} />
-            {(notifications.some(n => !n.read && n.userId === currentUser.id) || hasUnreadForumMessages) && (
-              <span className="absolute top-2 right-2 w-2 h-2 bg-zinc-900 rounded-full border border-white" />
-            )}
-          </button>
-          <button 
-            onClick={() => { setActiveTab('profile'); setCurrentView('list'); setMessageTab('chats'); }}
-            className={`p-2 rounded-full transition-colors ${activeTab === 'profile' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
-          >
-            <Mail size={26} fill={activeTab === 'profile' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'profile' ? 0 : 2} />
-          </button>
+        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100" style={forumBottomNavStyle}>
+          <div className="flex min-h-[64px] items-center justify-between px-6 pt-2">
+            <button 
+              onClick={() => { setActiveTab('home'); setCurrentView('list'); setMessageTab('chats'); }}
+              className={`p-2 rounded-full transition-colors ${activeTab === 'home' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+            >
+              <Home size={26} fill={activeTab === 'home' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'home' ? 0 : 2} />
+            </button>
+            <button 
+              onClick={() => { setActiveTab('hot'); setCurrentView('list'); setMessageTab('chats'); }}
+              className={`p-2 rounded-full transition-colors ${activeTab === 'hot' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+            >
+              <Search size={26} strokeWidth={activeTab === 'hot' ? 3 : 2} />
+            </button>
+            <button 
+              onClick={() => { setActiveTab('notification'); setCurrentView('list'); setMessageTab('chats'); }}
+              className={`p-2 rounded-full transition-colors relative ${activeTab === 'notification' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+            >
+              <Bell size={26} fill={activeTab === 'notification' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'notification' ? 0 : 2} />
+              {(notifications.some(n => !n.read && n.userId === currentUser.id) || hasUnreadForumMessages) && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-zinc-900 rounded-full border border-white" />
+              )}
+            </button>
+            <button 
+              onClick={() => { setActiveTab('profile'); setCurrentView('list'); setMessageTab('chats'); }}
+              className={`p-2 rounded-full transition-colors ${activeTab === 'profile' ? 'text-zinc-900' : 'text-zinc-500 hover:bg-zinc-100'}`}
+            >
+              <Mail size={26} fill={activeTab === 'profile' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'profile' ? 0 : 2} />
+            </button>
+          </div>
         </div>
       )}
 

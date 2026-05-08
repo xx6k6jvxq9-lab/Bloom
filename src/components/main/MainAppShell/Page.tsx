@@ -298,12 +298,12 @@ export function MainApp({
   ) : null;
 
   const footer = !(activeTab === 'me' && meSection !== 'main') ? (
-    <>
+    <div className="flex min-h-[64px] w-full items-center justify-around pt-2">
       <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
       <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
       <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
       <NavTab icon={<User size={24} />} label="我的" active={activeTab === 'me'} onClick={() => setActiveTab('me')} />
-    </>
+    </div>
   ) : null;
 
   return (
@@ -319,8 +319,8 @@ export function MainApp({
         onTouchCancel: handleTouchEnd,
       }}
       footer={footer}
-      footerClassName="absolute bottom-0 left-0 right-0 z-20 flex min-h-[72px] items-center justify-around rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 pt-2 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
-      footerStyle={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 8px)' }}
+      footerClassName="absolute bottom-0 left-0 right-0 z-20 rounded-t-[32px] border-t border-zinc-100 bg-white/95 px-4 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] backdrop-blur-md"
+      footerStyle={{ paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' }}
     >
         <AnimatePresence>
           {activeTab === 'chat' && showChatQuickActions && (
