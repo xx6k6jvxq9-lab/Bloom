@@ -1,6 +1,10 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import { buildCharacterCoreSection, type CharacterCoreSectionsInput } from '../character/characterCore';
+import {
+  buildCharacterCoreSection,
+  buildUserMaskContextSection,
+  type CharacterCoreSectionsInput,
+} from '../character/characterCore';
 import type { MemoryContextInput } from '../character/memoryContext';
 import { FORUM_SCENARIO_PROMPT } from '../scenarios/forum';
 import type { ForumChannel, ForumThreadType } from '../../../../features/forum-domain/types';
@@ -20,6 +24,9 @@ export type BuildForumThreadPromptOptions = {
 function buildForumMemorySection(memoryContext: MemoryContextInput = {}): string {
   const lines = [
     '## 论坛语境参考',
+    memoryContext.sharedCharacterStatePrompt?.trim()
+      ? `褰撳墠鍏变韩瑙掕壊鐘舵€侊細${memoryContext.sharedCharacterStatePrompt.trim()}`
+      : '',
     memoryContext.shortTermSummary?.trim()
       ? `近期关系余波：${memoryContext.shortTermSummary.trim()}`
       : '',
@@ -59,6 +66,7 @@ export function buildForumThreadPrompt(options: BuildForumThreadPromptOptions): 
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
+    buildUserMaskContextSection(options.characterCore ?? {}),
     buildForumMemorySection(options.memoryContext ?? {}),
     FORUM_SCENARIO_PROMPT,
     buildForumTaskSection(options),

@@ -31,10 +31,10 @@ const endingStyleExamples = [
 function buildEndingPrompt(options: GenerateDreamEndingOptions) {
   const { scenario, selection, character, userName } = options;
   const promptInput = buildDreamPromptInput(options);
-  const { characterContext } = promptInput;
+  const { characterContext, personaFloorSummary, supplementNoteSummary } = promptInput;
   const personaGuardrails = buildDreamPersonaGuardrails(characterContext);
   const domain = resolveDreamDomainDisplay(selection.domainId);
-  const tagSummary = buildDreamTagSummary(selection.selectedTags);
+  const tagSummary = buildDreamTagSummary(selection.selectedTags, selection.customTags);
   const endingFocusSummary = buildEndingFocusSummary(scenario);
 
   return `
@@ -58,6 +58,9 @@ ${endingStyleExamples.map((example, index) => `${index + 1}. ${example}`).join('
 Persona guardrails:
 ${personaGuardrails}
 
+Persona floor:
+${personaFloorSummary}
+
 Current dream info:
 - domain: ${domain.name}
 - depth: ${scenario.depth}
@@ -72,6 +75,7 @@ Current dream info:
 - keyActionSummary: ${compactSummaryText(scenario.endingInput.keyActionSummary, 96) || 'n/a'}
 - characterName: ${character.remarkName?.trim() || character.name}
 - userName: ${userName.trim() || '你'}
+- supplementNote: ${compactSummaryText(supplementNoteSummary, 120) || 'n/a'}
 
 标签摘要：${compactSummaryText(tagSummary, 140) || 'n/a'}
 

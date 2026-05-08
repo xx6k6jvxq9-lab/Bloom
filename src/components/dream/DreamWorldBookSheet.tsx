@@ -261,6 +261,8 @@ export function DreamWorldBookSheet({
               onClick={onClose}
               className="h-10 w-10 shrink-0 rounded-full border text-[var(--gold)] transition duration-300 hover:text-[var(--gold-bright)]"
               style={{
+                color: '#F1E2B7',
+                WebkitTextFillColor: '#F1E2B7',
                 borderColor: 'rgba(196,169,106,.18)',
                 backgroundColor: 'rgba(196,169,106,.04)',
               }}

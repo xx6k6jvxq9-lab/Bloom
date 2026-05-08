@@ -1,6 +1,8 @@
 import type { AppData } from '../../types';
 import {
   DEFAULT_DESKTOP_WALLPAPER,
+  DEFAULT_DOCK_TINT_COLOR,
+  DEFAULT_DOCK_TINT_OPACITY,
   DEFAULT_HOME_ICONS,
   DEFAULT_HOME_WIDGETS,
   DEFAULT_NAV_BAR_BACKGROUND,
@@ -44,6 +46,8 @@ export function createDefaultAppData(): AppData {
         shape: 'pill',
         showMultipleAvatars: false,
         backgroundImage: DEFAULT_NAV_BAR_BACKGROUND,
+        avatar: '',
+        mood: '',
         statusBarPlacement: 'top',
       },
       desktop: {
@@ -51,6 +55,10 @@ export function createDefaultAppData(): AppData {
         iconBorderRadius: 14,
         gridColumns: 4,
         gridGap: 16,
+        dockBackgroundImage: '',
+        dockBackgroundPreviewUrl: '',
+        dockTintColor: DEFAULT_DOCK_TINT_COLOR,
+        dockTintOpacity: DEFAULT_DOCK_TINT_OPACITY,
       },
       chat: {
         background: '',
@@ -69,6 +77,7 @@ export function createDefaultAppData(): AppData {
       },
       dynamics: {
         background: '',
+        backgroundMode: 'fullscreen',
         cardStyle: 'flat',
         cardBorderRadius: 24,
         cardOpacity: 1,

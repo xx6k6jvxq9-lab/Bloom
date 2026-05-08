@@ -5,6 +5,7 @@ import type {
   TaskResidueItem,
   TopicAnchorItem,
 } from '../relationship-context/types';
+import { buildSharedStateWritePatch } from '../relationship-context/buildSharedCharacterState';
 import { looksLikeTopicText } from '../chat/topicRecall';
 
 type ForumSharedSettlementEvent = {
@@ -28,6 +29,7 @@ type ForumSharedSettlementResult = {
   sharedContextSnapshots: CharacterSharedContextSnapshot[];
   shortTermSummary?: string;
   openLoopRegistry?: CharacterOpenLoopEntry[];
+  sharedState?: Character['sharedState'];
 };
 
 const FORUM_FOLLOWUP_MARKERS = /(回头|之后|下次|再说|细说|补你|补上|继续聊|私聊|展开说|晚点|回去再)/u;
@@ -212,7 +214,7 @@ function appendOpenLoopEntries(
 }
 
 export function buildForumSharedSettlement(
-  character: Pick<Character, 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry'>,
+  character: Pick<Character, 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry' | 'presenceState' | 'sharedState'>,
   event: ForumSharedSettlementEvent,
 ): ForumSharedSettlementResult {
   const relationshipResidue = dedupeBySummary(buildRelationshipResidue(event));
@@ -242,5 +244,19 @@ export function buildForumSharedSettlement(
       taskResidue.map((item) => item.summary).join('\n'),
     ),
     openLoopRegistry: appendOpenLoopEntries(character.openLoopRegistry, taskResidue, topicAnchors, event.timestamp),
+    sharedState: buildSharedStateWritePatch({
+      character,
+      sourceScene: 'forum',
+      updatedAt: event.timestamp,
+      publicSummaries: [
+        ...relationshipResidue.map((item) => item.summary),
+        ...taskResidue.map((item) => item.summary),
+      ],
+      privateSummaries: [
+        ...relationshipResidue.map((item) => item.summary),
+        ...topicAnchors.map((item) => item.summary),
+        ...taskResidue.map((item) => item.summary),
+      ],
+    }),
   };
 }

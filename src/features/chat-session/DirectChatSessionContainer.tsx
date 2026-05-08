@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import type {
   AppSettings,
   CallRecord,
@@ -23,6 +23,8 @@ import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
   character: Character;
+  isActive: boolean;
+  onRuntimeBusyChange?: (characterId: string, busy: boolean) => void;
   chatHistory: ChatHistory;
   setChatHistory: (chatHistory: ChatHistory) => void;
   chatGroups: ChatGroup[];
@@ -59,6 +61,8 @@ type DirectChatSessionContainerProps = {
 
 export function DirectChatSessionContainer({
   character,
+  isActive,
+  onRuntimeBusyChange,
   chatHistory,
   setChatHistory,
   chatGroups,
@@ -94,9 +98,13 @@ export function DirectChatSessionContainer({
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
+  const handleRuntimeBusyChange = useCallback((busy: boolean) => {
+    onRuntimeBusyChange?.(character.id, busy);
+  }, [character.id, onRuntimeBusyChange]);
   const findLatestPreviewableMessage = (messages: ChatMessage[]) => [...messages]
     .reverse()
     .find((message) => !message.isSystem && !message.isRecalled) || null;
+  const latestPreviewableMessage = findLatestPreviewableMessage(history);
 
   useEffect(() => {
     let lastMessageIndex = -1;
@@ -133,6 +141,27 @@ export function DirectChatSessionContainer({
     setChatHistory,
   ]);
 
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const latestTimestamp = latestPreviewableMessage?.timestamp;
+    if (!latestTimestamp || latestTimestamp === character.lastViewedMessageTimestamp) {
+      return;
+    }
+
+    patchCharacter(character.id, {
+      lastViewedMessageTimestamp: latestTimestamp,
+    });
+  }, [
+    character.id,
+    character.lastViewedMessageTimestamp,
+    isActive,
+    latestPreviewableMessage?.timestamp,
+    patchCharacter,
+  ]);
+
   return (
     <ChatSessionScreen
       key="chat-session"
@@ -149,6 +178,9 @@ export function DirectChatSessionContainer({
             ? formatChatMessagePreview(latestPreviewableMessage)
             : formatMessagePreview(character.openingRemark),
           lastTime: latestPreviewableMessage?.timestamp ?? character.lastTime,
+          ...(isActive && latestPreviewableMessage?.timestamp
+            ? { lastViewedMessageTimestamp: latestPreviewableMessage.timestamp }
+            : {}),
         });
       }}
       onUpdateCharacter={updateCharacter}
@@ -208,6 +240,7 @@ export function DirectChatSessionContainer({
       onOpenCharacterMoments={onOpenCharacterMoments}
       onStatusBarVisibilityChange={onStatusBarVisibilityChange}
       onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
+      onRuntimeBusyChange={handleRuntimeBusyChange}
     />
   );
 }

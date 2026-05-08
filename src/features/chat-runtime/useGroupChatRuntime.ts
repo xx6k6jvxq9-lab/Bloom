@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, StickerMetadata, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import {
@@ -11,9 +11,16 @@ import { buildGroupContextLayers } from '../../services/chat/buildGroupContextLa
 import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
-import { buildAssistantStickerPromptSection, pickAssistantSticker } from '../../services/chat/assistantStickerPicker';
+import {
+  buildAssistantStickerPromptSection,
+  pickAssistantSticker,
+  resolveAssistantStickerCandidates,
+  type AssistantStickerContext,
+} from '../../services/chat/assistantStickerPicker';
+import { getStickerMetadata } from '../../services/chat/stickerMetadata';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
-import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
+import { buildGroupChatSceneInput, type GroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
+import { buildPersistedSharedCharacterState } from '../../services/relationship-context/buildSharedCharacterState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
@@ -64,6 +71,7 @@ type UseGroupChatRuntimeArgs = {
   directChatHistory: ChatHistory;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   availableStickers?: string[];
+  sharedStickers?: string[];
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
@@ -125,6 +133,113 @@ function resolveCharacterTtsVoiceId(
   }
 
   return fallbackVoiceId?.trim() || undefined;
+}
+
+function normalizeStickerPool(stickers: string[]): string[] {
+  return Array.from(new Set(
+    stickers
+      .filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
+      .map((sticker) => sticker.trim()),
+  ));
+}
+
+function collectSummaryTexts(items?: Array<{ summary: string }>): string[] {
+  return (items || [])
+    .map((item) => item.summary?.trim() || '')
+    .filter(Boolean);
+}
+
+function buildStickerRecentTexts(messages: ChatMessage[]): string[] {
+  return messages
+    .slice(-8)
+    .map((message) => {
+      if (message.audioUrl) {
+        return message.audioTranscript?.trim() || '[audio]';
+      }
+
+      if (message.imageUrl) {
+        if (/^\[(?:sticker|表情包)\]/i.test(message.text || '')) {
+          return message.stickerLabel?.trim() ? `[sticker] ${message.stickerLabel.trim()}` : '[sticker]';
+        }
+
+        return '[image]';
+      }
+
+      return (getMessageMainText(message) || message.text || '').trim();
+    })
+    .filter(Boolean);
+}
+
+function isStickerChatMessage(message: Pick<ChatMessage, 'imageUrl' | 'text'>): boolean {
+  return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
+}
+
+function buildSpeakerStickerUsageContext(
+  messages: ChatMessage[],
+  speakerId: string,
+): Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker'> {
+  const ownMessages = messages.filter((message) => (
+    message.role === 'model'
+    && message.senderCharacterId === speakerId
+    && !message.isSystem
+    && !message.isRecalled
+    && !message.isInnerVoice
+  ));
+
+  const latestOwnVisibleMessage = [...ownMessages].reverse().find((message) => (
+    isUsableChatText((message.text || '').trim()) || !!message.imageUrl
+  ));
+  const recentStickerMessages = [...ownMessages].reverse()
+    .filter((message) => isStickerChatMessage(message))
+    .slice(0, 6);
+
+  return {
+    recentStickerRefs: recentStickerMessages
+      .map((message) => message.imageUrl?.trim() || '')
+      .filter(Boolean),
+    recentStickerLabels: recentStickerMessages
+      .map((message) => (
+        message.stickerLabel?.trim()
+        || inferStickerSemanticLabel(message.imageUrl, message.text)
+        || ''
+      ))
+      .filter(Boolean),
+    lastOwnMessageWasSticker: !!latestOwnVisibleMessage && isStickerChatMessage(latestOwnVisibleMessage),
+  };
+}
+
+function buildGroupStickerSceneHints(sceneInput: GroupChatSceneInput): string[] {
+  return [
+    sceneInput.relationshipSummary,
+    sceneInput.groupBehaviorGuide || '',
+    ...sceneInput.peerAwareness,
+    sceneInput.recentContext?.shortTermSummary || '',
+    sceneInput.recentContext?.longTermMemoryProfile || '',
+    sceneInput.recentContext?.temporalContext || '',
+    sceneInput.recentContext?.activeDatingSummary || '',
+    sceneInput.recentContext?.groupSceneHint || '',
+    sceneInput.recentContext?.groupShortTermSummary || '',
+    sceneInput.recentContext?.groupMemberPerspectiveSummary || '',
+    sceneInput.recentContext?.groupLongTermAtmosphere || '',
+    sceneInput.recentContext?.groupRecurringDynamics || '',
+    sceneInput.recentContext?.groupSharedHistory || '',
+    sceneInput.recentContext?.speakerLongTermGroupRole || '',
+    sceneInput.recentContext?.backgroundSummary || '',
+    sceneInput.recentContext?.memberRelationshipState || '',
+    sceneInput.recentContext?.currentScene || '',
+    sceneInput.recentContext?.publicFacts || '',
+    sceneInput.recentContext?.topicStatePrompt || '',
+    sceneInput.recentContext?.worldBookPrompt || '',
+    sceneInput.recentContext?.expressionStyle || '',
+    sceneInput.recentContext?.boundaryPack || '',
+    sceneInput.recentContext?.publicAcquaintanceSummary || '',
+    sceneInput.recentContext?.sharedRecentRelationshipSummary || '',
+    sceneInput.recentContext?.relationshipTensionSummary || '',
+    sceneInput.recentContext?.sharedCharacterStatePrompt || '',
+    ...collectSummaryTexts(sceneInput.recentContext?.relationshipResidue),
+    ...collectSummaryTexts(sceneInput.recentContext?.topicAnchors),
+    ...collectSummaryTexts(sceneInput.recentContext?.taskResidue),
+  ].filter(Boolean);
 }
 
 function buildGroupAudioMessageKey(message: Pick<ChatMessage, 'timestamp' | 'senderCharacterId' | 'text'>) {
@@ -961,6 +1076,7 @@ export function useGroupChatRuntime({
   directChatHistory,
   patchCharacter,
   availableStickers = [],
+  sharedStickers = [],
   worldBooks = [],
   perception,
   settings,
@@ -985,15 +1101,31 @@ export function useGroupChatRuntime({
   const secondarySpeakerRequestIdRef = useRef(0);
   const historyRef = useRef(history);
   const manualReplyModeEnabled = groupMeta?.manualReplyEnabled !== false;
-  const runtimeAvailableStickers = Array.from(
-    new Set(
-      availableStickers
-        .filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
-        .map((sticker) => sticker.trim()),
-    ),
+  const runtimeSharedStickers = normalizeStickerPool(
+    (sharedStickers.length > 0 ? sharedStickers : availableStickers),
   );
+  const runtimeSharedStickerMetadata = settings.sharedStickerMetadata || {};
+  const runtimeAllStickerMetadata = members.reduce<Record<string, StickerMetadata>>((accumulator, member) => ({
+    ...accumulator,
+    ...(member.stickerMetadata || {}),
+  }), {
+    ...runtimeSharedStickerMetadata,
+  });
 
-  const recordGroupSpeakerSettlement = useCallback((speaker: Character, messages: ChatMessage[]) => {
+  const getSpeakerStickerPool = (speaker: Character) => normalizeStickerPool([
+    ...runtimeSharedStickers,
+    ...(speaker.stickers || []),
+  ]);
+  const getSpeakerStickerMetadataMap = (speaker: Character) => ({
+    ...runtimeSharedStickerMetadata,
+    ...(speaker.stickerMetadata || {}),
+  });
+
+  const recordGroupSpeakerSettlement = useCallback((
+    speaker: Character,
+    messages: ChatMessage[],
+    sharedState?: Character['sharedState'],
+  ) => {
     const mainText = messages
       .filter((message) => !message.isSystem)
       .map((message) => getMessageMainText(message))
@@ -1014,6 +1146,7 @@ export function useGroupChatRuntime({
       sharedContextSnapshots: settlement.sharedContextSnapshots,
       shortTermSummary: settlement.shortTermSummary,
       openLoopRegistry: settlement.openLoopRegistry,
+      ...(sharedState ? { sharedState } : {}),
     });
   }, [patchCharacter]);
 
@@ -1093,7 +1226,7 @@ export function useGroupChatRuntime({
     mode: 'reply' | 'invited' | 'opening';
     replyTarget?: ChatMessage['replyTo'] | null;
     speechActInstruction?: string;
-  }): Promise<{ text: string; timestamp: number }> => {
+  }): Promise<{ text: string; timestamp: number; sharedState?: Character['sharedState']; stickerPool: string[] }> => {
     if (!activeConfig) {
       throw new Error('Missing active API config.');
     }
@@ -1111,47 +1244,64 @@ export function useGroupChatRuntime({
       continuityMode: temporalState.continuityMode,
       nowTimestamp: requestTimestamp,
     });
+    const sceneInput = buildGroupChatSceneInput({
+      speaker: params.speaker,
+      members,
+      group: groupMeta
+        ? {
+            id: 'runtime-group-meta',
+            name: '',
+            memberIds: members.map((member) => member.id),
+            creatorId: 'user',
+            createdAt: 0,
+            groupStage: groupMeta.groupStage,
+            activeWorldBookIds: groupMeta.activeWorldBookIds,
+            memberRelationSeeds: groupMeta.memberRelationSeeds,
+            backgroundSummary: groupMeta.backgroundSummary,
+            memberRelationshipState: groupMeta.memberRelationshipState,
+            memberRelationshipNote: groupMeta.memberRelationshipNote,
+            currentScene: groupMeta.currentScene,
+            publicFacts: groupMeta.publicFacts,
+            topicState: groupMeta.topicState,
+            groupShortTermSummary: groupMeta.groupShortTermSummary,
+            groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
+            groupLongTermMemory: groupMeta.groupLongTermMemory,
+          }
+        : undefined,
+      userName,
+      history: contextLayers.liveMessages,
+      mode: params.mode,
+      directChatHistory,
+      activeWorldBooks: selectActiveGroupWorldBooks({
+        speaker: params.speaker,
+        group: groupMeta,
+        worldBooks,
+      }),
+      perception,
+      temporalContext: buildTemporalContextPrompt({
+        perception,
+        now: requestTimestamp,
+      }),
+    });
+    const speakerStickerContext = {
+      ...buildSpeakerStickerUsageContext(contextLayers.liveMessages, params.speaker.id),
+      stickerMetadataMap: getSpeakerStickerMetadataMap(params.speaker),
+    };
+    const runtimeStickerPool = resolveAssistantStickerCandidates(getSpeakerStickerPool(params.speaker), {
+      character: params.speaker,
+      scene: 'group',
+      latestUserText: [...contextLayers.liveMessages]
+        .reverse()
+        .find((message) => message.role === 'user' && getMessageMainText(message).trim())
+        ?.text
+        ?.trim(),
+      recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+      sceneHints: buildGroupStickerSceneHints(sceneInput),
+      ...speakerStickerContext,
+    }).map((candidate) => candidate.sticker);
     const systemPrompt = [
       buildGroupChatPrompt({
-        sceneInput: buildGroupChatSceneInput({
-          speaker: params.speaker,
-          members,
-          group: groupMeta
-            ? {
-                id: 'runtime-group-meta',
-                name: '',
-                memberIds: members.map((member) => member.id),
-                creatorId: 'user',
-                createdAt: 0,
-                groupStage: groupMeta.groupStage,
-                activeWorldBookIds: groupMeta.activeWorldBookIds,
-                memberRelationSeeds: groupMeta.memberRelationSeeds,
-                backgroundSummary: groupMeta.backgroundSummary,
-                memberRelationshipState: groupMeta.memberRelationshipState,
-                memberRelationshipNote: groupMeta.memberRelationshipNote,
-                currentScene: groupMeta.currentScene,
-                publicFacts: groupMeta.publicFacts,
-                topicState: groupMeta.topicState,
-                groupShortTermSummary: groupMeta.groupShortTermSummary,
-                groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
-                groupLongTermMemory: groupMeta.groupLongTermMemory,
-              }
-            : undefined,
-          userName,
-          history: contextLayers.liveMessages,
-          mode: params.mode,
-          directChatHistory,
-          activeWorldBooks: selectActiveGroupWorldBooks({
-            speaker: params.speaker,
-            group: groupMeta,
-            worldBooks,
-          }),
-          perception,
-          temporalContext: buildTemporalContextPrompt({
-            perception,
-            now: requestTimestamp,
-          }),
-        }),
+        sceneInput,
       }),
       buildOpenLoopRegistryPrompt({
         existingEntries: params.speaker.openLoopRegistry,
@@ -1159,11 +1309,18 @@ export function useGroupChatRuntime({
         recentMessages: contextLayers.memoryMessages,
       }),
       contextLayers.memoryContextPrompt,
-      buildAssistantStickerPromptSection(
-        runtimeAvailableStickers.length > 0
-          ? runtimeAvailableStickers
-          : (params.speaker.stickers || []),
-      ),
+      buildAssistantStickerPromptSection(runtimeStickerPool, {
+        character: params.speaker,
+        scene: 'group',
+        latestUserText: [...contextLayers.liveMessages]
+          .reverse()
+          .find((message) => message.role === 'user' && getMessageMainText(message).trim())
+          ?.text
+          ?.trim(),
+        recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
+        sceneHints: buildGroupStickerSceneHints(sceneInput),
+        ...speakerStickerContext,
+      }),
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -1250,10 +1407,28 @@ export function useGroupChatRuntime({
     return {
       text: normalizedResponse,
       timestamp: pendingTimestamp,
+      stickerPool: runtimeStickerPool,
+      sharedState: sceneInput.recentContext
+        ? buildPersistedSharedCharacterState({
+            character: {
+              shortTermSummary: sceneInput.recentContext.shortTermSummary,
+            },
+            temporalState,
+            sceneScopedSignals: {
+              relationshipResidue: sceneInput.recentContext.relationshipResidue,
+              sceneResidue: undefined,
+              topicAnchors: sceneInput.recentContext.topicAnchors,
+              taskResidue: sceneInput.recentContext.taskResidue,
+              sharedRecentRelationshipSummary: sceneInput.recentContext.sharedRecentRelationshipSummary,
+              publicAcquaintanceSummary: sceneInput.recentContext.publicAcquaintanceSummary,
+            },
+            sourceScene: 'group_chat',
+          })
+        : undefined,
     };
   }, [
     activeConfig,
-    runtimeAvailableStickers,
+    runtimeSharedStickers,
     groupMeta?.backgroundSummary,
     groupMeta?.currentScene,
     groupMeta?.groupStage,
@@ -1416,6 +1591,8 @@ export function useGroupChatRuntime({
     currentHistory: ChatMessage[] = historyRef.current,
     forcedReplyTo?: ChatMessage['replyTo'] | null,
     allowReplyOnFirstMessageOnly = false,
+    sharedState?: Character['sharedState'],
+    resolvedStickerPool?: string[],
   ): ChatMessage[] => {
     const messages = splitGroupReplyIntoMessages(text, speaker, timestamp);
     if (messages.length === 0) {
@@ -1440,20 +1617,50 @@ export function useGroupChatRuntime({
             : message
         ))
       : currentHistory;
+    const speakerStickerContext = {
+      ...buildSpeakerStickerUsageContext(currentHistory, speaker.id),
+      stickerMetadataMap: getSpeakerStickerMetadataMap(speaker),
+    };
+    const stagedStickerRefs: string[] = [];
+    const stagedStickerLabels: string[] = [];
 
     const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
       const cue = parseActionCue(rawContent);
+      const effectiveStickerPool = resolvedStickerPool?.length
+        ? resolvedStickerPool
+        : getSpeakerStickerPool(speaker);
+      const stickerContext = {
+        ...speakerStickerContext,
+        recentStickerRefs: [...stagedStickerRefs].reverse().concat(speakerStickerContext.recentStickerRefs || []),
+        recentStickerLabels: [...stagedStickerLabels].reverse().concat(speakerStickerContext.recentStickerLabels || []),
+        lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!speakerStickerContext.lastOwnMessageWasSticker,
+      };
       const pickedSticker = cue.kind === 'sticker'
         ? pickAssistantSticker(
             cue.content,
-            runtimeAvailableStickers.length > 0
-              ? runtimeAvailableStickers
-              : (speaker.stickers || []),
+            effectiveStickerPool,
+            {
+              character: speaker,
+              scene: 'group',
+              recentTexts: buildStickerRecentTexts(currentHistory),
+              sceneHints: [
+                groupMeta?.backgroundSummary || '',
+                groupMeta?.memberRelationshipNote || '',
+                groupMeta?.currentScene || '',
+                groupMeta?.publicFacts || '',
+                groupMeta?.groupShortTermSummary || '',
+              ].filter(Boolean),
+              ...stickerContext,
+            },
           )
         : null;
+      if (pickedSticker) {
+        stagedStickerRefs.push(pickedSticker.sticker);
+        stagedStickerLabels.push(pickedSticker.label);
+      }
       const cleanedText = cue.kind === 'sticker'
-        ? `[sticker] ${cue.content || '...'}`
+        ? cue.content.trim()
         : cue.kind === 'reply'
           ? cue.content || rawContent
           : cue.kind === 'recall'
@@ -1476,7 +1683,7 @@ export function useGroupChatRuntime({
         ...message,
         text: cue.kind === 'notice'
           ? `[notice] ${cue.content || rawContent}`
-          : `${speaker.name}: ${cue.kind === 'sticker' && pickedSticker ? '[sticker]' : cleanedText}`,
+          : `${speaker.name}: ${cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : cleanedText) : cleanedText}`,
         ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
         isSystem: cue.kind === 'notice' ? true : undefined,
         replyTo: replyPayload || undefined,
@@ -1502,11 +1709,22 @@ export function useGroupChatRuntime({
     });
     setHistory(() => [...historyAfterRecall, ...structuredMessages]);
     if (structuredMessages.length > 0) {
-      recordGroupSpeakerSettlement(speaker, structuredMessages);
+      recordGroupSpeakerSettlement(speaker, structuredMessages, sharedState);
     }
     void attachAudioToSpeakerMessages(speaker, structuredMessages);
     return structuredMessages;
-  }, [attachAudioToSpeakerMessages, recordGroupSpeakerSettlement, resolveReplyTarget, runtimeAvailableStickers, setHistory]);
+  }, [
+    attachAudioToSpeakerMessages,
+    recordGroupSpeakerSettlement,
+    resolveReplyTarget,
+    runtimeSharedStickers,
+    groupMeta?.backgroundSummary,
+    groupMeta?.memberRelationshipNote,
+    groupMeta?.currentScene,
+    groupMeta?.publicFacts,
+    groupMeta?.groupShortTermSummary,
+    setHistory,
+  ]);
 
   const triggerAISpeaker = useCallback(async (
     speaker: Character,
@@ -1536,6 +1754,8 @@ export function useGroupChatRuntime({
           currentHistory,
           forcedReplyTo,
           true,
+          response.sharedState,
+          response.stickerPool,
         );
         setPendingMessage(null);
         return appendedMessages;
@@ -1615,7 +1835,7 @@ export function useGroupChatRuntime({
           speakerName: opener.name,
           requestId,
         });
-        appendSpeakerMessage(opener, response.text, response.timestamp, historyRef.current);
+        appendSpeakerMessage(opener, response.text, response.timestamp, historyRef.current, null, false, response.sharedState, response.stickerPool);
         setPendingMessage(null);
       }
     } catch (runtimeError) {
@@ -1714,6 +1934,8 @@ export function useGroupChatRuntime({
             workingHistory,
             null,
             true,
+            response.sharedState,
+            response.stickerPool,
           );
           setPendingMessage(null);
           if (appendedMessages.length > 0) {
@@ -2617,7 +2839,16 @@ export function useGroupChatRuntime({
             return;
           }
 
-          const resolvedMessages = appendSpeakerMessage(responder, response.text, response.timestamp, newHistory);
+          const resolvedMessages = appendSpeakerMessage(
+            responder,
+            response.text,
+            response.timestamp,
+            newHistory,
+            undefined,
+            false,
+            response.sharedState,
+            response.stickerPool,
+          );
           setPendingMessage(null);
           const latestHistory = [...newHistory, ...resolvedMessages];
 
@@ -2782,6 +3013,8 @@ export function useGroupChatRuntime({
             workingHistory,
             index === 0 ? replyingTo : null,
             true,
+            response.sharedState,
+            response.stickerPool,
           );
           setPendingMessage(null);
           if (appendedMessages.length === 0) {
@@ -2898,6 +3131,8 @@ export function useGroupChatRuntime({
           baseHistory,
           replyTarget,
           true,
+          response.sharedState,
+          response.stickerPool,
         );
         setPendingMessage(null);
       });
@@ -2998,7 +3233,8 @@ export function useGroupChatRuntime({
   const sendStickerMessage = useCallback(async (sticker: string) => {
     if (!hasActiveConfig) return;
 
-    const stickerLabel = inferStickerSemanticLabel(sticker);
+    const stickerMetadata = getStickerMetadata(runtimeAllStickerMetadata, sticker);
+    const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
 
     await submitUserMessage({
       message: {
@@ -3015,7 +3251,7 @@ export function useGroupChatRuntime({
         stickerLabel,
       }),
     });
-  }, [hasActiveConfig, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
 
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
     if (!hasActiveConfig) return;

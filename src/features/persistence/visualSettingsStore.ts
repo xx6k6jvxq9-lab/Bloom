@@ -2,14 +2,30 @@ import type { VisualSettings } from '../../types';
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
+import {
+  DEFAULT_DOCK_TINT_COLOR,
+  DEFAULT_DOCK_TINT_OPACITY,
+  LEGACY_DEFAULT_DOCK_TINT_COLOR,
+  LEGACY_DEFAULT_DOCK_TINT_OPACITY,
+} from '../app-shell/defaultAppConstants';
 
 const DEFAULT_NAV_BAR_BACKGROUND = '';
+
+function isLegacyDockTint(source: Partial<VisualSettings> | null | undefined): boolean {
+  const rawColor = source?.desktop?.dockTintColor;
+  const normalizedColor = typeof rawColor === 'string' ? rawColor.trim().toLowerCase() : '';
+  const opacity = source?.desktop?.dockTintOpacity;
+
+  return normalizedColor === LEGACY_DEFAULT_DOCK_TINT_COLOR
+    && (opacity == null || Math.abs(opacity - LEGACY_DEFAULT_DOCK_TINT_OPACITY) < 0.001);
+}
 
 export function hydrateVisualSettings(
   source: Partial<VisualSettings> | null | undefined,
   fallbackGlobalBackground: string,
 ): VisualSettings {
   const hydratedFontPriority = source?.themeTypography?.fontPriority || 'lock-imported';
+  const useModernDockTintDefaults = isLegacyDockTint(source);
 
   return {
     globalBackground: source?.globalBackground || fallbackGlobalBackground,
@@ -38,6 +54,8 @@ export function hydrateVisualSettings(
       offsetX: source?.navBar?.offsetX,
       offsetY: source?.navBar?.offsetY,
       backgroundImage: source?.navBar?.backgroundImage || DEFAULT_NAV_BAR_BACKGROUND,
+      avatar: source?.navBar?.avatar || '',
+      mood: source?.navBar?.mood || '',
       selectedCharacterId: source?.navBar?.selectedCharacterId,
       statusBarPlacement: source?.navBar?.statusBarPlacement || 'top',
       customCss: source?.navBar?.customCss || '',
@@ -47,6 +65,14 @@ export function hydrateVisualSettings(
       iconBorderRadius: source?.desktop?.iconBorderRadius ?? 14,
       gridColumns: source?.desktop?.gridColumns ?? 4,
       gridGap: source?.desktop?.gridGap ?? 16,
+      dockBackgroundImage: source?.desktop?.dockBackgroundImage || '',
+      dockBackgroundPreviewUrl: source?.desktop?.dockBackgroundPreviewUrl || '',
+      dockTintColor: useModernDockTintDefaults
+        ? DEFAULT_DOCK_TINT_COLOR
+        : source?.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR,
+      dockTintOpacity: useModernDockTintDefaults
+        ? DEFAULT_DOCK_TINT_OPACITY
+        : source?.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY,
       dockSlotId: source?.desktop?.dockSlotId,
       topWidgetRow: source?.desktop?.topWidgetRow,
       appOrder: source?.desktop?.appOrder,
@@ -80,6 +106,7 @@ export function hydrateVisualSettings(
     },
     dynamics: {
       background: source?.dynamics?.background || '',
+      backgroundMode: source?.dynamics?.backgroundMode || 'fullscreen',
       cardStyle: source?.dynamics?.cardStyle || 'flat',
       cardBorderRadius: source?.dynamics?.cardBorderRadius ?? 24,
       cardOpacity: source?.dynamics?.cardOpacity ?? 1,

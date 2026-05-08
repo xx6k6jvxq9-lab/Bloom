@@ -10,18 +10,38 @@ function isValidDirectDisplayValue(value: string): boolean {
   return DIRECT_DISPLAY_VALUE_REGEX.test(value);
 }
 
-export function createUploadedAssetRef(id: string): string {
-  return `${UPLOADED_ASSET_PREFIX}${id}`;
+export function createUploadedAssetRef(id: string, fileName?: string): string {
+  const normalizedFileName = fileName?.trim();
+  if (!normalizedFileName) {
+    return `${UPLOADED_ASSET_PREFIX}${id}`;
+  }
+
+  return `${UPLOADED_ASSET_PREFIX}${id}?name=${encodeURIComponent(normalizedFileName)}`;
 }
 
 export function isUploadedAssetRef(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.startsWith(UPLOADED_ASSET_PREFIX);
 }
 
-export function parseUploadedAssetRef(value: string | null | undefined): { id: string } | null {
+export function parseUploadedAssetRef(
+  value: string | null | undefined,
+): { id: string; fileName?: string } | null {
   if (!isUploadedAssetRef(value)) return null;
-  const id = value.slice(UPLOADED_ASSET_PREFIX.length).trim();
-  return id ? { id } : null;
+  const raw = value.slice(UPLOADED_ASSET_PREFIX.length).trim();
+  if (!raw) return null;
+
+  const queryIndex = raw.indexOf('?');
+  const id = (queryIndex === -1 ? raw : raw.slice(0, queryIndex)).trim();
+  if (!id) return null;
+
+  if (queryIndex === -1) {
+    return { id };
+  }
+
+  const query = raw.slice(queryIndex + 1);
+  const params = new URLSearchParams(query);
+  const fileName = params.get('name')?.trim() || undefined;
+  return fileName ? { id, fileName } : { id };
 }
 
 export function getDisplayableAssetValue(
@@ -43,4 +63,29 @@ export function getPreviewAssetValue(
   const trimmed = previewUrl.trim();
   if (!trimmed) return null;
   return isValidDirectDisplayValue(trimmed) ? trimmed : null;
+}
+
+export function buildDisplayAssetCandidates(options: {
+  value?: string | null;
+  resolvedUrl?: string | null;
+  previewUrl?: string | null;
+  fallbackUrl?: string | null;
+}): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (candidate: string | null | undefined) => {
+    if (!candidate) return;
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    candidates.push(trimmed);
+  };
+
+  pushCandidate(options.resolvedUrl);
+  pushCandidate(getDisplayableAssetValue(options.value, null));
+  pushCandidate(getPreviewAssetValue(options.previewUrl));
+  pushCandidate(options.fallbackUrl);
+
+  return candidates;
 }

@@ -487,11 +487,9 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
       </div>
 
       {/* Main Content */}
-      <div
-        className="flex-1 overflow-y-auto relative px-4 pt-2"
-        style={{ paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 20px)" }}
-      >
-        
+      <div className="relative flex-1 min-h-0 overflow-y-auto">
+        <div className="flex min-h-full flex-col px-4 pt-2">
+
         {/* Balance Section */}
         <div className="bg-white rounded-xl p-5 shadow-sm mb-4 flex flex-col items-center justify-center">
           <div className="text-zinc-500 text-xs mb-1">余额</div>
@@ -829,7 +827,7 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
         </div>
 
         {/* Transactions List */}
-        <div className="bg-white rounded-xl p-5 shadow-sm min-h-[300px]">
+        <div className="flex min-h-[300px] flex-1 flex-col rounded-xl bg-white p-5 pb-[calc(var(--app-safe-area-bottom-ui,0px)+20px)] shadow-sm">
           <h3 className="font-bold text-zinc-900 text-base mb-4">支付等一些转账记录</h3>
           
           {Object.entries(groupedTransactions).length > 0 ? (
@@ -865,13 +863,14 @@ export default function WalletApp({ onClose, appData, onUpdateAppData }: WalletA
               </div>
             ))
           ) : (
-            <div className="text-center py-10 text-zinc-400">
+            <div className="flex flex-1 flex-col items-center justify-center py-10 text-center text-zinc-400">
               <div className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center mx-auto mb-3">
                 <History size={24} className="opacity-50" />
               </div>
               <p className="text-sm">暂无交易记录</p>
             </div>
           )}
+        </div>
         </div>
 
         {/* Recharge Dialog */}

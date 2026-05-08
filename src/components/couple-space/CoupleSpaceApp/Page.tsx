@@ -326,6 +326,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           sharedContextSnapshots: settlement.sharedContextSnapshots,
           shortTermSummary: settlement.shortTermSummary,
           openLoopRegistry: settlement.openLoopRegistry,
+          sharedState: settlement.sharedState,
         };
       });
 

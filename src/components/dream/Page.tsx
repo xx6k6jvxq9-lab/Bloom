@@ -7,6 +7,8 @@ import { generateDreamAftermath } from '../../services/dream/generateDreamAfterm
 import { buildDreamBackgroundRequestKey, getCurrentDreamBackgroundTask, startDreamBackgroundGeneration } from '../../services/dream/dreamBackgroundGeneration';
 import { generateDreamContinuation } from '../../services/dream/generateDreamContinuation';
 import { generateDreamEnding } from '../../services/dream/generateDreamEnding';
+import { buildDreamPreflightPlan } from '../../services/dream/buildDreamPreflightPlan';
+import { buildDreamPromptInput } from '../../services/dream/buildDreamPromptInput';
 import { hydrateDreamRuntimeScenario } from '../../services/dream/dreamRuntimeSummaries';
 import {
   buildDreamPromptWorldBooks,
@@ -18,8 +20,10 @@ import {
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 import { getWorldBookPriorityWeight, normalizeWorldBookCategory } from '../../services/world-book/worldBookMeta';
 import type {
+  DreamCustomTag,
   DreamDecisionRecord,
   DreamGeneratedChoice,
+  DreamPreflightPlan,
   DreamRuntimeAct,
   DreamRuntimeScenario,
   DreamWorldBookConfig,
@@ -101,6 +105,8 @@ type PersistedDreamSession = {
   domain: DreamDomainId;
   depth: DreamDepth;
   selectedTags: Record<DreamTagCategory, string[]>;
+  customTags?: DreamCustomTag[];
+  supplementNote?: string;
   dreamWorldBookConfig?: DreamWorldBookConfig;
   scenario: DreamRuntimeScenario;
   createdAt: number;
@@ -367,6 +373,10 @@ function buildRoles(characters: Character[]): DreamRole[] {
     mood: character.signature?.trim() || character.motto?.trim() || character.openingRemark?.trim() || '今夜在等你',
     glyph: (character.remarkName?.trim() || character.name || '梦').trim().charAt(0) || '梦',
   }));
+}
+
+function hasCustomTagInCategories(customTags: DreamCustomTag[], categories: DreamTagCategory[]) {
+  return customTags.some((tag) => categories.includes(tag.category));
 }
 
 function pickRandom<T>(items: T[]) {
@@ -1018,12 +1028,24 @@ function hasStoryFrameContent(storyFrame: DreamRuntimeScenario['storyFrame'] | n
   ].some((value) => value?.trim());
 }
 
-function buildCustomVisibleStoryFrame(storyFrame: DreamRuntimeScenario['storyFrame'] | null, selectedTags: Record<DreamTagCategory, string[]>) {
+function buildCustomVisibleStoryFrame(
+  storyFrame: DreamRuntimeScenario['storyFrame'] | null,
+  selectedTags: Record<DreamTagCategory, string[]>,
+  customTags: DreamCustomTag[],
+) {
   if (!storyFrame) return null;
-  const backgroundSelected = ['world', 'genre', 'climate', 'camp', 'faction'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
-  const identitySelected = ['identity', 'participants'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
-  const relationshipSelected = ['tension', 'lead'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
-  const driveSelected = ['drive', 'interaction', 'intensity'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0);
+  const backgroundSelected =
+    ['world', 'genre', 'climate', 'camp', 'faction'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0)
+    || hasCustomTagInCategories(customTags, ['genre', 'climate', 'camp', 'faction']);
+  const identitySelected =
+    ['identity', 'participants'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0)
+    || hasCustomTagInCategories(customTags, ['identity', 'participants']);
+  const relationshipSelected =
+    ['tension', 'lead'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0)
+    || hasCustomTagInCategories(customTags, ['tension', 'lead']);
+  const driveSelected =
+    ['drive', 'interaction', 'intensity'].some((category) => (selectedTags[category as DreamTagCategory] ?? []).length > 0)
+    || hasCustomTagInCategories(customTags, ['drive', 'interaction', 'intensity']);
 
   return {
     worldTitle: backgroundSelected ? storyFrame.worldTitle : '',
@@ -1262,7 +1284,12 @@ function TagsStageV2({
   dreamDepth,
   setDreamDepth,
   selectedTags,
+  customTags,
+  supplementNote,
+  setSupplementNote,
   toggleTag,
+  onAddCustomTag,
+  onRemoveCustomTag,
   tagBatchIndex,
   cycleTagBatch,
   detailExpanded,
@@ -1276,7 +1303,12 @@ function TagsStageV2({
   dreamDepth: DreamDepth;
   setDreamDepth: (depth: DreamDepth) => void;
   selectedTags: Record<DreamTagCategory, string[]>;
+  customTags: DreamCustomTag[];
+  supplementNote: string;
+  setSupplementNote: Dispatch<SetStateAction<string>>;
   toggleTag: (category: DreamTagCategory, optionId: string, max: number) => void;
+  onAddCustomTag: (category: Exclude<DreamTagCategory, 'world'>, label: string) => boolean;
+  onRemoveCustomTag: (id: string) => void;
   tagBatchIndex: Partial<Record<DreamTagCategory, number>>;
   cycleTagBatch: (category: DreamTagCategory) => void;
   detailExpanded: boolean;
@@ -1285,6 +1317,18 @@ function TagsStageV2({
   onBack: () => void;
   onConfirm: () => void;
 }) {
+  const customCategoryOptions = dreamTagGroups.filter((group) => group.category !== 'world');
+  const [customTagCategory, setCustomTagCategory] = useState<Exclude<DreamTagCategory, 'world'>>('genre');
+  const [customCategoryMenuOpen, setCustomCategoryMenuOpen] = useState(false);
+  const [customTagInput, setCustomTagInput] = useState('');
+  const activeCustomCategoryLabel = customCategoryOptions.find((group) => group.category === customTagCategory)?.label || '选择分类';
+
+  useEffect(() => {
+    if (!customCategoryOptions.some((group) => group.category === customTagCategory)) {
+      setCustomTagCategory(customCategoryOptions[0]?.category ?? 'genre');
+    }
+  }, [customCategoryOptions, customTagCategory]);
+
   return (
     <Shell time={time} scrollable contentClassName="pb-[calc(5.75rem+var(--app-safe-area-bottom-ui,0px))]">
       <div className="flex flex-1 flex-col pb-[calc(6rem+var(--app-safe-area-bottom-ui,0px))]">
@@ -1432,6 +1476,145 @@ function TagsStageV2({
           </div>
         ) : null}
 
+        <div className="mt-8 border-b border-[var(--border)] pb-7">
+          <div className="mb-6 flex items-center gap-4">
+            <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">自定义标签</div>
+            <div className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+
+          <div className="rounded-[24px] border px-4 py-4" style={{ borderColor: 'rgba(123,168,196,.18)', backgroundColor: 'rgba(10,15,25,.7)' }}>
+            <div className="text-[11px] leading-[1.9] tracking-[0.12em] text-[var(--mist)]">
+              开局前可以自己补标签。先选分类，再写标签名，这样梦还能继续按现有分类逻辑生成。
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCustomCategoryMenuOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between border px-3 py-3 text-left text-[12px] tracking-[0.14em] transition duration-300"
+                  style={{ borderColor: 'rgba(123,168,196,.18)', backgroundColor: 'rgba(7,13,24,.92)', color: 'var(--jade)' }}
+                >
+                  <span>{activeCustomCategoryLabel}</span>
+                  <span className="text-[12px] text-[var(--jade)]">{customCategoryMenuOpen ? '▴' : '▾'}</span>
+                </button>
+                {customCategoryMenuOpen ? (
+                  <div
+                    className="absolute left-0 right-0 top-[calc(100%+8px)] z-10 border p-2"
+                    style={{
+                      borderColor: 'rgba(123,168,196,.18)',
+                      backgroundColor: 'rgba(7,13,24,.98)',
+                      boxShadow: '0 14px 34px rgba(0,0,0,.32)',
+                    }}
+                  >
+                    <div className="grid gap-2">
+                      {customCategoryOptions.map((group) => {
+                        const active = group.category === customTagCategory;
+                        return (
+                          <button
+                            key={group.category}
+                            type="button"
+                            onClick={() => {
+                              setCustomTagCategory(group.category);
+                              setCustomCategoryMenuOpen(false);
+                            }}
+                            className="border px-3 py-3 text-left text-[12px] tracking-[0.14em] transition duration-300"
+                            style={{
+                              borderColor: active ? 'rgba(196,169,106,.22)' : 'rgba(123,168,196,.14)',
+                              backgroundColor: active ? 'rgba(196,169,106,.08)' : 'rgba(13,18,32,.72)',
+                              color: active ? 'var(--gold-bright)' : 'var(--jade)',
+                            }}
+                          >
+                            {group.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex gap-3">
+                <input
+                  value={customTagInput}
+                  onChange={(event) => setCustomTagInput(event.target.value)}
+                  placeholder="比如：先婚后爱 / 赛博修仙 / 镜头感冷"
+                  className="min-w-0 flex-1 border bg-transparent px-4 py-3 text-[12px] tracking-[0.12em] text-[var(--gold-bright)] outline-none placeholder:text-[rgba(237,230,214,.38)]"
+                  style={{
+                    color: '#F1E2B7',
+                    WebkitTextFillColor: '#F1E2B7',
+                    caretColor: '#F1E2B7',
+                    borderColor: 'rgba(196,169,106,.14)',
+                    backgroundColor: 'rgba(13,18,32,.72)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const added = onAddCustomTag(customTagCategory, customTagInput);
+                    if (added) setCustomTagInput('');
+                  }}
+                  className="shrink-0 border px-4 py-3 text-[12px] tracking-[0.18em] transition duration-300"
+                  style={{ borderColor: 'rgba(123,168,196,.22)', backgroundColor: 'rgba(123,168,196,.08)', color: 'var(--jade)' }}
+                >
+                  加入
+                </button>
+              </div>
+            </div>
+
+            {customTags.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-3">
+                {customTags.map((tag) => {
+                  const categoryLabel = customCategoryOptions.find((group) => group.category === tag.category)?.label || tag.category;
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => onRemoveCustomTag(tag.id)}
+                      className="border px-4 py-3 text-left text-[12px] tracking-[0.12em] transition duration-300"
+                      style={{ borderColor: 'rgba(196,169,106,.18)', backgroundColor: 'rgba(13,18,32,.65)', color: 'var(--paper)' }}
+                    >
+                      <div className="text-[10px] tracking-[0.18em] text-[var(--jade)]">{categoryLabel}</div>
+                      <div className="mt-1 text-[var(--gold-bright)]">{tag.label}</div>
+                      <div className="mt-2 text-[10px] tracking-[0.14em] text-[var(--mist)]">点一下移除</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 text-[11px] leading-[1.9] tracking-[0.12em] text-[var(--mist)]">
+                还没有自定义标签。固定标签负责骨架，自定义标签负责补你这局特别想要的那一点。
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-8 border-b border-[var(--border)] pb-7">
+          <div className="mb-6 flex items-center gap-4">
+            <div className="text-[11px] tracking-[0.36em] text-[var(--mist)]">补充说明</div>
+            <div className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+
+          <div className="rounded-[24px] border px-4 py-4" style={{ borderColor: 'rgba(123,168,196,.18)', backgroundColor: 'rgba(10,15,25,.7)' }}>
+            <div className="text-[11px] leading-[1.9] tracking-[0.12em] text-[var(--mist)]">
+              放不进标签分类的要求就写在这里。比如想要的气氛、想避开的东西、这局梦特别要收住的一点。
+            </div>
+            <textarea
+              value={supplementNote}
+              onChange={(event) => setSupplementNote(event.target.value)}
+              placeholder="比如：不要太热闹，画面偏空一点；感情推进慢一点；别写得太甜腻。"
+              className="mt-4 min-h-[132px] w-full resize-none border bg-transparent px-4 py-4 text-[12px] leading-[2] tracking-[0.12em] text-[var(--gold-bright)] outline-none placeholder:text-[rgba(237,230,214,.38)]"
+              style={{
+                color: '#F1E2B7',
+                WebkitTextFillColor: '#F1E2B7',
+                caretColor: '#F1E2B7',
+                borderColor: 'rgba(196,169,106,.14)',
+                backgroundColor: 'rgba(13,18,32,.72)',
+              }}
+            />
+          </div>
+        </div>
+
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[rgba(5,8,14,.96)] px-5 pb-[calc(1rem+var(--app-safe-area-bottom-ui,0px))] pt-5">
           <div className="mx-auto flex max-w-[390px] items-center justify-between gap-4">
             <div className="text-[12px] tracking-[0.16em] text-[var(--jade)]">已选 {selectedLabels.length} 项</div>
@@ -1463,6 +1646,7 @@ function ConfirmStageV2({
   selectedDomain,
   scenario,
   preview,
+  preflightPlan,
   selectedLabels,
   onBack,
   onConfirm,
@@ -1473,6 +1657,7 @@ function ConfirmStageV2({
   selectedDomain: DreamDomainId;
   scenario: Pick<DreamScenario, 'coverTitle' | 'coverSubtitle' | 'confirmHint'>;
   preview?: DreamConfirmPreview | null;
+  preflightPlan?: DreamPreflightPlan | null;
   selectedLabels: string[];
   onBack: () => void;
   onConfirm: () => void;
@@ -1522,6 +1707,60 @@ function ConfirmStageV2({
                   </div>
                 ))}
               </div>
+              {preflightPlan ? (
+                <div className="mt-8 space-y-4">
+                  <div className="border px-4 py-4" style={{ borderColor: 'rgba(196,169,106,.16)', backgroundColor: 'rgba(13,18,32,.58)' }}>
+                    <div className="text-[11px] tracking-[0.28em] text-[var(--gold)]">入梦预览</div>
+                    <div className="mt-3 text-[12px] tracking-[0.14em] text-[var(--paper)]">
+                      今夜会读取 {preflightPlan.worldBookCount} 条世界书
+                    </div>
+                    <div className="mt-2 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--mist)]">
+                      {preflightPlan.worldBookConflictSummary && preflightPlan.worldBookConflictSummary !== '未触发程序裁决'
+                        ? preflightPlan.worldBookConflictSummary
+                        : '当前没有发现需要按标签先压掉的世界书冲突。'}
+                    </div>
+                    {preflightPlan.activeWorldBookTitles.length > 0 ? (
+                      <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--paper-60)]">
+                        实际读取：{preflightPlan.activeWorldBookTitles.join(' / ')}
+                      </div>
+                    ) : null}
+                    {preflightPlan.supplementNote ? (
+                      <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--paper)]">
+                        补充说明：{preflightPlan.supplementNote}
+                      </div>
+                    ) : null}
+                    {preflightPlan.affectedWorldBookTitles.length > 0 ? (
+                      <div className="mt-2 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--jade)]">
+                        受影响书页：{preflightPlan.affectedWorldBookTitles.join(' / ')}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="border px-4 py-4" style={{ borderColor: 'rgba(196,169,106,.16)', backgroundColor: 'rgba(13,18,32,.58)' }}>
+                    <div className="text-[11px] tracking-[0.28em] text-[var(--gold)]">人设底线</div>
+                    {preflightPlan.customTagLabels.length > 0 ? (
+                      <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--jade)]">
+                        自定义标签：{preflightPlan.customTagLabels.join(' / ')}
+                      </div>
+                    ) : null}
+                    <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--paper)]">
+                      {preflightPlan.personaFloor.mustKeep.slice(0, 2).map((line, index) => (
+                        <div key={`keep-${index}`}>{index + 1}. {line}</div>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--jade)]">
+                      {preflightPlan.personaFloor.mayAmplify.slice(0, 2).map((line, index) => (
+                        <div key={`amp-${index}`}>可放大：{line}</div>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-[11px] leading-[1.9] tracking-[0.1em] text-[var(--mist)]">
+                      {preflightPlan.personaFloor.mustNotBecome.slice(0, 2).map((line, index) => (
+                        <div key={`not-${index}`}>不要写成：{line}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-8 text-center text-[13px] leading-[2.2] tracking-[0.16em] text-[var(--mist)]">{preview?.confirmHint || scenario.confirmHint}</div>
             </div>
             <div className="mt-10 w-full pb-2"><SealButton label="确认入梦" onClick={onConfirm} /></div>
@@ -1641,9 +1880,11 @@ export function DreamAppPage({
   const [selectedDomain, setSelectedDomain] = useState<DreamDomainId>('shared');
   const [dreamDepth, setDreamDepth] = useState<DreamDepth>('shallow');
   const [selectedTags, setSelectedTags] = useState<Record<DreamTagCategory, string[]>>(defaultTagSelection);
+  const [customTags, setCustomTags] = useState<DreamCustomTag[]>(() => readPersistedDreamSession()?.customTags || []);
+  const [supplementNote, setSupplementNote] = useState(() => readPersistedDreamSession()?.supplementNote || '');
   const [tagBatchIndex, setTagBatchIndex] = useState<Partial<Record<DreamTagCategory, number>>>({});
   const [confirmPreview, setConfirmPreview] = useState<DreamConfirmPreview | null>(null);
-  const [detailExpanded, setDetailExpanded] = useState(true);
+  const [detailExpanded, setDetailExpanded] = useState(false);
   const [actIndex, setActIndex] = useState(0);
   const [selectedChoice, setSelectedChoice] = useState<ActiveDreamChoice | null>(null);
   const [previewChoiceId, setPreviewChoiceId] = useState<string | null>(null);
@@ -1708,6 +1949,52 @@ export function DreamAppPage({
     + (normalizedDreamWorldBookConfig.localEntries?.length || 0)
   ) > 0;
   const hasDreamWorldBookSignal = dreamPromptWorldBooks.length > 0;
+  const dreamPreflightPlan = useMemo<DreamPreflightPlan | null>(() => {
+    if (!selectedCharacter) return null;
+
+    const promptInput = buildDreamPromptInput({
+      activeConfig,
+      character: selectedCharacter,
+      masks,
+      worldBooks: dreamPromptWorldBooks,
+      dreamWorldBookConfig: normalizedDreamWorldBookConfig,
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+        customTags,
+        supplementNote,
+      },
+    });
+
+    return buildDreamPreflightPlan({
+      selection: {
+        entryMode,
+        domainId: selectedDomain,
+        depth: dreamDepth,
+        selectedTags,
+        customTags,
+        supplementNote,
+      },
+      worldBooks: dreamPromptWorldBooks,
+      worldBookConflictSummary: promptInput.worldBookConflictSummary,
+      affectedWorldBookTitles: promptInput.worldBookConflictAffectedTitles,
+      personaFloor: promptInput.personaFloor,
+    });
+  }, [
+    activeConfig,
+    customTags,
+    dreamDepth,
+    dreamPromptWorldBooks,
+    entryMode,
+    masks,
+    normalizedDreamWorldBookConfig,
+    selectedCharacter,
+    selectedDomain,
+    selectedTags,
+    supplementNote,
+  ]);
   const previewScenario = useMemo(() => resolveScenario(selectedDomain, dreamDepth), [selectedDomain, dreamDepth]);
   const scenario = runtimeScenario ?? previewScenario;
   const act = runtimeScenario?.acts[actIndex] ?? null;
@@ -1722,8 +2009,8 @@ export function DreamAppPage({
   };
   const storyFrame = runtimeScenario?.storyFrame ?? null;
   const displayStoryFrame = useMemo(
-    () => (entryMode === 'custom' ? buildCustomVisibleStoryFrame(storyFrame, selectedTags) : storyFrame),
-    [entryMode, selectedTags, storyFrame],
+    () => (entryMode === 'custom' ? buildCustomVisibleStoryFrame(storyFrame, selectedTags, customTags) : storyFrame),
+    [customTags, entryMode, selectedTags, storyFrame],
   );
   const sceneBlocks = useMemo(() => act?.narrative.pages[0]?.blocks ?? [], [act]);
   const typedSceneBlocks = useNarrativeTypewriter(sceneBlocks, stage === 'scene', `${runtimeScenario?.id || 'preview'}-${act?.id || 'none'}-scene`);
@@ -1947,6 +2234,8 @@ export function DreamAppPage({
       domain: selectedDomain,
       depth: dreamDepth,
       selectedTags,
+      customTags,
+      supplementNote,
       dreamWorldBookConfig: normalizedDreamWorldBookConfig,
       scenario: scenarioToPersist,
       createdAt: Date.now(),
@@ -2023,6 +2312,8 @@ export function DreamAppPage({
         domainId: selectedDomain,
         depth: dreamDepth,
         selectedTags,
+        customTags,
+        supplementNote,
       },
     } as const;
 
@@ -2053,6 +2344,7 @@ export function DreamAppPage({
     };
   }, [
     activeConfig,
+    customTags,
     dreamDepth,
     dreamPromptWorldBooks,
     entryMode,
@@ -2062,6 +2354,7 @@ export function DreamAppPage({
     selectedDomain,
     selectedRole,
     selectedTags,
+    supplementNote,
     stage,
   ]);
 
@@ -2087,6 +2380,8 @@ export function DreamAppPage({
       setSelectedDomain(backgroundTask.options.selection.domainId);
       setDreamDepth(backgroundTask.options.selection.depth);
       setSelectedTags(backgroundTask.options.selection.selectedTags);
+      setCustomTags(backgroundTask.options.selection.customTags || []);
+      setSupplementNote(backgroundTask.options.selection.supplementNote || '');
       setDreamWorldBookConfig(normalizeDreamWorldBookConfig(backgroundTask.options.dreamWorldBookConfig));
       setDreamWorldBookNote(null);
       setConfirmPreview(null);
@@ -2115,6 +2410,8 @@ export function DreamAppPage({
     setSelectedDomain(persisted.domain);
     setDreamDepth(persisted.depth);
     setSelectedTags(persisted.selectedTags);
+    setCustomTags(persisted.customTags || []);
+    setSupplementNote(persisted.supplementNote || '');
     setDreamWorldBookConfig(normalizeDreamWorldBookConfig(persisted.dreamWorldBookConfig));
     setDreamWorldBookNote(null);
     setConfirmPreview(null);
@@ -2137,13 +2434,15 @@ export function DreamAppPage({
       character: selectedCharacter,
       scenario: runtimeScenario,
       selectedTags,
+      customTags,
+      supplementNote,
     });
     setArchiveRecords((prev) => {
       const next = upsertDreamArchiveRecord(prev, nextRecord);
       saveDreamArchiveRecords(next);
       return next;
     });
-  }, [runtimeScenario, selectedCharacter, selectedTags]);
+  }, [customTags, runtimeScenario, selectedCharacter, selectedTags, supplementNote]);
 
   useEffect(() => {
     if (!runtimeScenario?.endingOutput || !runtimeScenario.aftermathOutput) return;
@@ -2217,6 +2516,8 @@ export function DreamAppPage({
         domainId: selectedDomain,
         depth: dreamDepth,
         selectedTags,
+        customTags,
+        supplementNote,
       },
       scenario: runtimeScenario,
       userName,
@@ -2263,6 +2564,7 @@ export function DreamAppPage({
     };
   }, [
     activeConfig,
+    customTags,
     dreamDepth,
     dreamPromptWorldBooks,
     entryMode,
@@ -2272,6 +2574,7 @@ export function DreamAppPage({
     selectedCharacter,
     selectedDomain,
     selectedTags,
+    supplementNote,
     stage,
     userName,
   ]);
@@ -2310,6 +2613,8 @@ export function DreamAppPage({
         domainId: selectedDomain,
         depth: dreamDepth,
         selectedTags,
+        customTags,
+        supplementNote,
       },
       scenario: runtimeScenario,
       userName,
@@ -2355,6 +2660,7 @@ export function DreamAppPage({
     };
   }, [
     activeConfig,
+    customTags,
     dreamDepth,
     dreamPromptWorldBooks,
     entryMode,
@@ -2364,6 +2670,7 @@ export function DreamAppPage({
     selectedCharacter,
     selectedDomain,
     selectedTags,
+    supplementNote,
     stage,
     userName,
   ]);
@@ -2383,6 +2690,8 @@ export function DreamAppPage({
       setSelectedDomain(preset.domainId);
       setDreamDepth(preset.depth);
       setSelectedTags(preset.selectedTags);
+      setCustomTags([]);
+      setSupplementNote('');
       setConfirmPreview(preset.preview);
       setStage('confirm');
       return;
@@ -2392,12 +2701,16 @@ export function DreamAppPage({
       setSelectedDomain(preset.domainId);
       setDreamDepth(preset.depth);
       setSelectedTags(preset.selectedTags);
+      setCustomTags([]);
+      setSupplementNote('');
       setConfirmPreview(null);
       setStage('confirm');
       return;
     }
     setSelectedDomain('shared');
     setDreamDepth('shallow');
+    setCustomTags([]);
+    setSupplementNote('');
     setConfirmPreview(null);
     setStage('tags');
   };
@@ -2425,6 +2738,30 @@ export function DreamAppPage({
     });
   };
 
+  const addCustomTag = (category: Exclude<DreamTagCategory, 'world'>, label: string) => {
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel) return false;
+
+    const exists = customTags.some((tag) => (
+      tag.category === category && tag.label.trim().toLowerCase() === normalizedLabel.toLowerCase()
+    ));
+    if (exists) return false;
+
+    setCustomTags((prev) => [
+      ...prev,
+      {
+        id: `dream-custom-tag-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        category,
+        label: normalizedLabel,
+      },
+    ]);
+    return true;
+  };
+
+  const removeCustomTag = (id: string) => {
+    setCustomTags((prev) => prev.filter((tag) => tag.id !== id));
+  };
+
   const cycleTagBatch = (category: DreamTagCategory) => {
     setTagBatchIndex((prev) => ({
       ...prev,
@@ -2448,6 +2785,8 @@ export function DreamAppPage({
           domainId: selectedDomain,
           depth: dreamDepth,
           selectedTags,
+          customTags,
+          supplementNote,
         },
         scenario: runtimeScenario,
         actIndex,
@@ -2496,6 +2835,8 @@ export function DreamAppPage({
           domainId: selectedDomain,
           depth: dreamDepth,
           selectedTags,
+          customTags,
+          supplementNote,
         },
         scenario: runtimeScenario,
         actIndex,
@@ -2564,6 +2905,8 @@ export function DreamAppPage({
           domainId: selectedDomain,
           depth: dreamDepth,
           selectedTags,
+          customTags,
+          supplementNote,
         },
         scenario: runtimeScenario,
         actIndex,
@@ -2615,6 +2958,8 @@ export function DreamAppPage({
     setSelectedDomain('shared');
     setDreamDepth('shallow');
     setSelectedTags(defaultTagSelection);
+    setCustomTags([]);
+    setSupplementNote('');
     setDreamWorldBookConfig(normalizeDreamWorldBookConfig());
     setDreamWorldBookNote(null);
     setShowDreamWorldBookSheet(false);
@@ -2697,7 +3042,7 @@ export function DreamAppPage({
     });
   };
 
-  const selectedLabels = getSelectedTagLabels(selectedTags);
+  const selectedLabels = getSelectedTagLabels(selectedTags, customTags);
   const visibleArchiveRecords = archiveView === 'deep'
     ? archiveRecords.filter((record) => record.depth === 'deep')
     : archiveRecords;
@@ -2761,6 +3106,8 @@ export function DreamAppPage({
             domainId: selectedDomain,
             depth: dreamDepth,
             selectedTags,
+            customTags,
+            supplementNote,
           },
         }
       : null;
@@ -2821,6 +3168,8 @@ export function DreamAppPage({
       setSelectedDomain(savedSession.domain);
       setDreamDepth(savedSession.depth);
       setSelectedTags(savedSession.selectedTags);
+      setCustomTags(savedSession.customTags || []);
+      setSupplementNote(savedSession.supplementNote || '');
     }
     setDreamWorldBookConfig(normalizeDreamWorldBookConfig(
       resumable.dreamWorldBookConfig
@@ -2993,7 +3342,12 @@ export function DreamAppPage({
             dreamDepth={dreamDepth}
             setDreamDepth={setDreamDepth}
             selectedTags={selectedTags}
+            customTags={customTags}
+            supplementNote={supplementNote}
+            setSupplementNote={setSupplementNote}
             toggleTag={toggleTag}
+            onAddCustomTag={addCustomTag}
+            onRemoveCustomTag={removeCustomTag}
             tagBatchIndex={tagBatchIndex}
             cycleTagBatch={cycleTagBatch}
             detailExpanded={detailExpanded}
@@ -3104,6 +3458,7 @@ export function DreamAppPage({
             selectedDomain={selectedDomain}
             scenario={scenario}
             preview={confirmPreview}
+            preflightPlan={entryMode === 'character' ? null : dreamPreflightPlan}
             selectedLabels={selectedLabels}
             onBack={() => setStage(entryMode === 'custom' ? 'tags' : 'entry')}
             onConfirm={() => setStage('loading')}

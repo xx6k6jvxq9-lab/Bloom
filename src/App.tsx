@@ -74,7 +74,7 @@ import { useCoupleSpaceStateActions } from './features/persistence/useCoupleSpac
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
-import { getDisplayableAssetValue, getPreviewAssetValue } from './features/persistence/persistentAssetRef';
+import { buildDisplayAssetCandidates } from './features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
@@ -275,9 +275,19 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const { resolvedUrl: resolvedHomeWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
-  const homeWallpaperDisplayUrl =
-    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedHomeWallpaperUrl)
-    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
+  const homeWallpaperDisplayUrl = useMemo(
+    () => buildDisplayAssetCandidates({
+      value: appData.visualSettings?.globalBackground,
+      resolvedUrl: resolvedHomeWallpaperUrl,
+      previewUrl: appData.visualSettings?.globalBackgroundPreviewUrl,
+      fallbackUrl: DEFAULT_DESKTOP_WALLPAPER,
+    })[0] ?? DEFAULT_DESKTOP_WALLPAPER,
+    [
+      appData.visualSettings?.globalBackground,
+      appData.visualSettings?.globalBackgroundPreviewUrl,
+      resolvedHomeWallpaperUrl,
+    ],
+  );
   const isStorageReady = hasHydratedStorage;
   const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
   const phoneContainerBackgroundClass =
@@ -291,8 +301,14 @@ export default function App() {
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
-    ? 'env(safe-area-inset-bottom, 0px)'
+    ? appSafeAreaBottomFull
     : '12px';
+  const appSafeAreaBottomTab = isStandalone
+    ? 'min(12px, env(safe-area-inset-bottom, 0px))'
+    : '12px';
+  const appSafeAreaBottomDock = isStandalone
+    ? appSafeAreaBottomFull
+    : '0px';
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {
@@ -309,7 +325,8 @@ export default function App() {
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
-    '--app-mock-home-indicator-space': !isStandalone && !hideMockSystemChrome ? '12px' : '0px',
+    '--app-safe-area-bottom-tab': appSafeAreaBottomTab,
+    '--app-safe-area-bottom-dock': appSafeAreaBottomDock,
   } as React.CSSProperties & Record<string, string>;
 
   const loadPendingDreamToast = () => {
@@ -512,7 +529,7 @@ export default function App() {
             </div>
           </div>
         )}
-        
+
         {/* Screen Content */}
         {isStorageReady || !shouldShowHydrationFallback ? (
           <AppScreenContent
@@ -657,19 +674,6 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Home Indicator */}
-        {!isStandalone && !hideMockSystemChrome && (
-          <div
-            className="app-home-indicator-wrap absolute bottom-0 left-0 right-0 z-50 flex justify-center bg-transparent pb-2 pt-0"
-          >
-            <div
-              className="app-home-indicator h-[4px] w-[100px] cursor-pointer rounded-full bg-white/80 transition-colors hover:bg-white"
-              onClick={() => navigateToAppWithTransition('home', setActiveApp)}
-            />
-          </div>
-        )}
-
       </div>
     </div>
   );

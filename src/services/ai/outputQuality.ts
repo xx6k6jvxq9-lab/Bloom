@@ -193,7 +193,7 @@ export function shouldAllowBracketActions(input: {
   actionDescriptionEnabled?: boolean;
   characterActionDescriptionEnabled?: boolean;
 }): boolean {
-  return !!(input.actionDescriptionEnabled && input.characterActionDescriptionEnabled);
+  return !!input.characterActionDescriptionEnabled;
 }
 
 export function sanitizeAssistantOutput(

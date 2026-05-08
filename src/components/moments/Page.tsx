@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart, Link2, MessageCircle, MoreHorizontal, Pin, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createCharacterDirectory } from '../../features/character-domain/useCharacterDirectory';
@@ -138,14 +138,20 @@ export function MomentsApp({
   const momentsRootRef = useRef<HTMLDivElement | null>(null);
   const publishRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const moodButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingMomentAiTasksRef = useRef<Array<() => Promise<void>>>([]);
   const momentAiRunningRef = useRef(false);
   const momentAiDrainTimerRef = useRef<number | null>(null);
   const [showPublish, setShowPublish] = useState(false);
+  const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioDraft, setBioDraft] = useState('');
+  const [customMoodInput, setCustomMoodInput] = useState('');
+  const [moodMenuPosition, setMoodMenuPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const [replyTarget, setReplyTarget] = useState<{
     momentId: string;
     commentId: string;
@@ -169,12 +175,24 @@ export function MomentsApp({
   });
 
   const { userProfile, moments, characters } = appData;
+  const moodOptions = Array.from(new Set([
+    '(^_^)', '(*^▽^*)', '(≧▽≦)', '(⌒▽⌒)', '(๑˃̵ᴗ˂̵)ﻭ', '(｡•̀ᴗ-)✧', '(´｡• ᵕ •｡)', '(=^･ω･^=)',
+    '( ˘⌣˘)♡', '(๑•̀ㅂ•́)و', '(´▽ʃ♡ƪ)', '(￣▽￣)', '(•̀ω•́)✧', '(｡◕‿◕｡)', '(ง •̀_•́)ง', '(๑• . •๑)',
+    '(╯▽╰ )', '(｡･ω･｡)', '(´∀)', '(＾▽＾)', '(≧ω≦)', '(●ˇ∀ˇ●)', '(๑¯ω¯๑)', '(o^ ^o)',
+    '(¬‿¬)', '(￣︶￣)', '(๑˘︶˘๑)', '(>ω<)', '(≧∇≦)ﾉ', '(´-ω-)', '(｡•́︿•̀｡)', '(╥﹏╥)',
+    '(╯︵╰,)', '(；′⌒)', '(っ °Д °;)っ', '(⊙_⊙;)', '(•ˋ _ ˊ•)', '(╯°□°）╯', '(￣o￣) . z Z',
+    '(－ω－) zzZ', '(｡•́ωก̀｡)', '(๑•﹏•)', '(╯︿╰)', '(っ- ‸ -ς)', '(＞﹏＜)', '(｡ŏ﹏ŏ)', '(´；ω；)',
+  ]));
+  const defaultMood = '(^_^)';
   const forumConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'forum',
   }).runtimeConfig;
   const { getCharacterById, getCharacterDisplayName } = createCharacterDirectory({ characters });
   const { resolvedUrl: resolvedMomentsBackgroundUrl } = useResolvedPersistentValue(appData.visualSettings?.momentsBackground);
+  const dynamicsBackgroundMode = appData.visualSettings?.dynamics?.backgroundMode ?? 'fullscreen';
+  const useFullScreenMomentsBackground = Boolean(resolvedMomentsBackgroundUrl) && dynamicsBackgroundMode === 'fullscreen';
+  const useHeaderMomentsBackground = Boolean(resolvedMomentsBackgroundUrl) && dynamicsBackgroundMode === 'header';
   const isKnownMomentActorId = (actorId: string | undefined) =>
     !actorId || actorId === 'user' || !!getCharacterById(actorId);
   const resolveMomentAuthor = (authorId: string): UserProfile | Character | undefined => {
@@ -258,6 +276,67 @@ export function MomentsApp({
       commentInputRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }, [commentingOn]);
+
+  useEffect(() => {
+    setCustomMoodInput(userProfile.mood || '');
+  }, [userProfile.mood]);
+
+  useEffect(() => {
+    setBioDraft(userProfile.bio || '');
+  }, [userProfile.bio]);
+
+  useEffect(() => {
+    if (!showMoodMenu) {
+      setMoodMenuPosition(null);
+      return;
+    }
+
+    const updateMoodMenuPosition = () => {
+      if (!momentsRootRef.current || !moodButtonRef.current) return;
+      const rootRect = momentsRootRef.current.getBoundingClientRect();
+      const buttonRect = moodButtonRef.current.getBoundingClientRect();
+      const menuWidth = 256;
+      const viewportPadding = 12;
+      const nextTop = buttonRect.bottom - rootRect.top + 8;
+      const nextLeft = Math.min(
+        Math.max(viewportPadding, buttonRect.right - rootRect.left - menuWidth),
+        Math.max(viewportPadding, rootRect.width - menuWidth - viewportPadding),
+      );
+      const nextMaxHeight = Math.max(180, Math.min(rootRect.height - nextTop - viewportPadding, 320));
+      setMoodMenuPosition({
+        top: nextTop,
+        left: nextLeft,
+        maxHeight: nextMaxHeight,
+      });
+    };
+
+    updateMoodMenuPosition();
+    window.addEventListener('resize', updateMoodMenuPosition);
+    return () => window.removeEventListener('resize', updateMoodMenuPosition);
+  }, [showMoodMenu]);
+
+  const applyMoodSelection = (nextMood: string) => {
+    const normalizedMood = nextMood.trim() || defaultMood;
+    setAppData((prev) => ({
+      ...prev,
+      userProfile: {
+        ...prev.userProfile,
+        mood: normalizedMood,
+      },
+    }));
+    setCustomMoodInput(normalizedMood);
+  };
+
+  const saveBioDraft = () => {
+    setAppData((prev) => ({
+      ...prev,
+      userProfile: {
+        ...prev.userProfile,
+        bio: bioDraft.trim(),
+      },
+    }));
+    setIsEditingBio(false);
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -685,15 +764,26 @@ export function MomentsApp({
         data-swipe-ignore="true"
         className="h-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+4rem)]"
         style={{
-          backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
+          backgroundImage: useFullScreenMomentsBackground ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          backgroundColor: resolvedMomentsBackgroundUrl ? 'transparent' : '#fafafa',
+          backgroundColor: useFullScreenMomentsBackground ? 'transparent' : '#fafafa',
         }}
       >
       <div className="relative pb-4">
         <div className="relative h-40 overflow-hidden">
-          {!resolvedMomentsBackgroundUrl && <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />}
+          {useHeaderMomentsBackground ? (
+            <div
+              className="absolute inset-0 bg-zinc-200"
+              style={{
+                backgroundImage: `url(${resolvedMomentsBackgroundUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            />
+          ) : !useFullScreenMomentsBackground ? (
+            <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 via-zinc-400 to-zinc-600" />
+          ) : null}
           <div
             className="absolute right-4 z-10 flex gap-3"
             style={{ top: 'calc(env(safe-area-inset-top, 0px) + 52px)' }}
@@ -721,11 +811,43 @@ export function MomentsApp({
           <div className="mb-1.5 flex-1 text-left">
             <div className="flex items-center justify-start gap-2">
               <h2 className="text-[20px] font-bold text-zinc-900">{userProfile.name}</h2>
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
-                {userProfile.mood || '在线'}
-              </span>
+              <button
+                ref={moodButtonRef}
+                type="button"
+                onClick={() => setShowMoodMenu((prev) => !prev)}
+                className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
+              >
+                {userProfile.mood?.trim() || defaultMood}
+              </button>
             </div>
-            <p className="mt-0.5 text-[13px] text-zinc-500">{userProfile.bio || '这个人很懒，什么都没写~'}</p>
+            {isEditingBio ? (
+              <input
+                type="text"
+                value={bioDraft}
+                onChange={(e) => setBioDraft(e.target.value)}
+                onBlur={saveBioDraft}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    saveBioDraft();
+                  }
+                  if (e.key === 'Escape') {
+                    setBioDraft(userProfile.bio || '');
+                    setIsEditingBio(false);
+                  }
+                }}
+                placeholder="输入朋友圈简介"
+                autoFocus
+                className="mt-0.5 w-full rounded-lg border border-zinc-200 bg-white/80 px-2 py-1 text-[13px] text-zinc-500 outline-none focus:border-zinc-300"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingBio(true)}
+                className="mt-0.5 block text-left text-[13px] text-zinc-500 transition-colors hover:text-zinc-700"
+              >
+                {userProfile.bio || '这个人很懒，什么都没写~'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1027,6 +1149,78 @@ export function MomentsApp({
       </div>
       </div>
 
+      <AnimatePresence>
+        {showMoodMenu && moodMenuPosition && (
+          <>
+            <motion.button
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[55] cursor-default bg-transparent"
+              onClick={() => setShowMoodMenu(false)}
+              aria-label="Close mood menu"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              className="absolute z-[56] flex w-64 flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white p-2 shadow-xl"
+              style={{
+                top: moodMenuPosition.top,
+                left: moodMenuPosition.left,
+                maxHeight: moodMenuPosition.maxHeight,
+              }}
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+                {moodOptions.map((mood) => (
+                  <button
+                    key={mood}
+                    type="button"
+                    onClick={() => {
+                      applyMoodSelection(mood);
+                      setShowMoodMenu(false);
+                    }}
+                    className="block w-full whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] transition-colors hover:bg-zinc-50"
+                  >
+                    {mood}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1 border-t border-zinc-100 pt-2">
+                <div className="px-2 pb-1 text-[11px] text-zinc-400">自定义颜文字</div>
+                <div className="flex gap-2 px-2">
+                  <input
+                    type="text"
+                    value={customMoodInput}
+                    onChange={(e) => setCustomMoodInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        applyMoodSelection(customMoodInput);
+                        setShowMoodMenu(false);
+                      }
+                    }}
+                    maxLength={24}
+                    placeholder="自己输入"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] outline-none focus:border-zinc-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyMoodSelection(customMoodInput);
+                      setShowMoodMenu(false);
+                    }}
+                    className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {activeInnerVoiceMoment && activeInnerVoiceAuthor && (
         (() => {
           const expandedCard = parseInnerVoiceCardContent(
@@ -1072,3 +1266,4 @@ export function MomentsApp({
     </div>
   );
 }
+

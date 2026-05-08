@@ -47,21 +47,41 @@
   pointer-events: none;
 }
 
-.corner,
-.bubble-corner {
+.bot-bubble .corner,
+.message-bubble.bot-bubble .corner,
+.chat-bubble.bot-bubble .corner,
+.left .corner,
+.chat-bubble-left .corner,
+.bot-bubble .bubble-corner,
+.message-bubble.bot-bubble .bubble-corner,
+.chat-bubble.bot-bubble .bubble-corner,
+.left .bubble-corner,
+.chat-bubble-left .bubble-corner {
   border-color: #8d79a0 !important;
   background: #faf6ff !important;
   box-shadow: 0 2px 0 rgba(126, 104, 150, 0.18);
 }
 
-.sticker-skull,
-.bubble-sticker-skull {
+.bot-bubble .sticker-skull,
+.message-bubble.bot-bubble .sticker-skull,
+.chat-bubble.bot-bubble .sticker-skull,
+.left .sticker-skull,
+.chat-bubble-left .sticker-skull,
+.bot-bubble .bubble-sticker-skull,
+.message-bubble.bot-bubble .bubble-sticker-skull,
+.chat-bubble.bot-bubble .bubble-sticker-skull,
+.left .bubble-sticker-skull,
+.chat-bubble-left .bubble-sticker-skull {
   background: linear-gradient(180deg, #fff6fb 0%, #e8d8f6 100%) !important;
   border: 2px solid #7c6692 !important;
   box-shadow: 0 3px 0 rgba(126, 104, 150, 0.18);
 }
 
-.bubble-charm {
+.bot-bubble .bubble-charm,
+.message-bubble.bot-bubble .bubble-charm,
+.chat-bubble.bot-bubble .bubble-charm,
+.left .bubble-charm,
+.chat-bubble-left .bubble-charm {
   position: absolute;
   top: -20%;
   right: 14%;
@@ -72,7 +92,11 @@
   animation: bubbleCharmSway 2.6s ease-in-out infinite;
 }
 
-.bubble-charm-string {
+.bot-bubble .bubble-charm-string,
+.message-bubble.bot-bubble .bubble-charm-string,
+.chat-bubble.bot-bubble .bubble-charm-string,
+.left .bubble-charm-string,
+.chat-bubble-left .bubble-charm-string {
   top: 0;
   left: 50%;
   width: 2px;
@@ -82,7 +106,11 @@
   border-radius: 999px;
 }
 
-.bubble-charm-body {
+.bot-bubble .bubble-charm-body,
+.message-bubble.bot-bubble .bubble-charm-body,
+.chat-bubble.bot-bubble .bubble-charm-body,
+.left .bubble-charm-body,
+.chat-bubble-left .bubble-charm-body {
   left: 50%;
   bottom: 0;
   width: 72%;
@@ -94,8 +122,16 @@
   box-shadow: 0 5px 12px rgba(18, 12, 24, 0.16);
 }
 
-.bubble-charm-body::before,
-.bubble-charm-body::after {
+.bot-bubble .bubble-charm-body::before,
+.message-bubble.bot-bubble .bubble-charm-body::before,
+.chat-bubble.bot-bubble .bubble-charm-body::before,
+.left .bubble-charm-body::before,
+.chat-bubble-left .bubble-charm-body::before,
+.bot-bubble .bubble-charm-body::after,
+.message-bubble.bot-bubble .bubble-charm-body::after,
+.chat-bubble.bot-bubble .bubble-charm-body::after,
+.left .bubble-charm-body::after,
+.chat-bubble-left .bubble-charm-body::after {
   content: "";
   position: absolute;
   top: 18%;
@@ -105,15 +141,27 @@
   background: #665277;
 }
 
-.bubble-charm-body::before {
+.bot-bubble .bubble-charm-body::before,
+.message-bubble.bot-bubble .bubble-charm-body::before,
+.chat-bubble.bot-bubble .bubble-charm-body::before,
+.left .bubble-charm-body::before,
+.chat-bubble-left .bubble-charm-body::before {
   left: 24%;
 }
 
-.bubble-charm-body::after {
+.bot-bubble .bubble-charm-body::after,
+.message-bubble.bot-bubble .bubble-charm-body::after,
+.chat-bubble.bot-bubble .bubble-charm-body::after,
+.left .bubble-charm-body::after,
+.chat-bubble-left .bubble-charm-body::after {
   right: 24%;
 }
 
-.bubble-charm-core {
+.bot-bubble .bubble-charm-core,
+.message-bubble.bot-bubble .bubble-charm-core,
+.chat-bubble.bot-bubble .bubble-charm-core,
+.left .bubble-charm-core,
+.chat-bubble-left .bubble-charm-core {
   left: 50%;
   bottom: 18%;
   width: 24%;
@@ -123,14 +171,34 @@
   background: #d69ac2;
 }
 
-.bubble-sticker-skull::after,
-.bubble-charm-body::after {
+.bot-bubble .bubble-sticker-skull::after,
+.message-bubble.bot-bubble .bubble-sticker-skull::after,
+.chat-bubble.bot-bubble .bubble-sticker-skull::after,
+.left .bubble-sticker-skull::after,
+.chat-bubble-left .bubble-sticker-skull::after,
+.bot-bubble .bubble-charm-body::after,
+.message-bubble.bot-bubble .bubble-charm-body::after,
+.chat-bubble.bot-bubble .bubble-charm-body::after,
+.left .bubble-charm-body::after,
+.chat-bubble-left .bubble-charm-body::after {
   animation: bubbleSparkBlink 1.8s ease-in-out infinite;
 }
 
-.chat-message-image,
-.chat-transfer-card,
-.chat-location-card {
+.bot-bubble .chat-message-image,
+.message-bubble.bot-bubble .chat-message-image,
+.chat-bubble.bot-bubble .chat-message-image,
+.left .chat-message-image,
+.chat-bubble-left .chat-message-image,
+.bot-bubble .chat-transfer-card,
+.message-bubble.bot-bubble .chat-transfer-card,
+.chat-bubble.bot-bubble .chat-transfer-card,
+.left .chat-transfer-card,
+.chat-bubble-left .chat-transfer-card,
+.bot-bubble .chat-location-card,
+.message-bubble.bot-bubble .chat-location-card,
+.chat-bubble.bot-bubble .chat-location-card,
+.left .chat-location-card,
+.chat-bubble-left .chat-location-card {
   border: 2px solid #7d6a88;
   border-radius: 16px;
   box-shadow: 0 4px 0 rgba(94, 74, 118, 0.2);

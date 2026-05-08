@@ -67,7 +67,7 @@ export async function saveUploadedBlob(
   };
 
   await putAsset(record);
-  return createUploadedAssetRef(id);
+  return createUploadedAssetRef(id, options?.fileName);
 }
 
 export async function saveUploadedFile(file: File): Promise<string> {

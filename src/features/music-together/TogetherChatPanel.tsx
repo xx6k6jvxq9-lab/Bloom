@@ -16,6 +16,7 @@ import { getThemeSelectedFontStack } from "../theme/themeTypography";
 import { AudioMessageCard } from "../chat-session/AudioMessageCard";
 import { useAudioMessageRecorder } from "../chat-session/useAudioMessageRecorder";
 import { ExpandedInputSheet } from "../chat-session/ExpandedInputSheet";
+import { BASIC_CHAT_EXPRESSIONS } from "../../services/chat/basicExpressions";
 
 function BubbleThemeAnchors() {
   return (
@@ -156,7 +157,6 @@ export function TogetherChatPanel({
       );
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
-  const basicEmojis = ["🙂", "😆", "🥺", "😼", "😊", "🤍", "😉", "😳", "🫶", "🌙", "😇", "🥹", "🎵", "🎧"];
   const availableCustomStickers = Array.from(
     new Set(
       [
@@ -644,14 +644,20 @@ export function TogetherChatPanel({
 
               <div className="h-48 overflow-y-auto">
                 {stickerTab === "basic" ? (
-                  <div className="grid grid-cols-7 gap-2">
-                    {basicEmojis.map((emoji) => (
+                  <div className="grid grid-cols-6 gap-2">
+                    {BASIC_CHAT_EXPRESSIONS.map((expression) => (
                       <button
-                        key={emoji}
-                        onClick={() => onInputChange(`${chatInput}${emoji}`)}
-                        className="aspect-square rounded-lg text-2xl hover:bg-zinc-50"
+                        key={expression.value}
+                        onClick={() => onInputChange(`${chatInput}${expression.value}`)}
+                        className={`flex h-[52px] items-center justify-center rounded-lg hover:bg-zinc-50 ${
+                          expression.kind === "kaomoji"
+                            ? "col-span-2 px-1 text-[11px] font-medium leading-tight tracking-[-0.01em] text-zinc-700"
+                            : "text-[26px]"
+                        }`}
                       >
-                        {emoji}
+                        <span className={expression.kind === "kaomoji" ? "whitespace-pre-wrap break-all text-center" : ""}>
+                          {expression.value}
+                        </span>
                       </button>
                     ))}
                   </div>

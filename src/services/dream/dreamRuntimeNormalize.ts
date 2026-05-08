@@ -60,11 +60,15 @@ export type RawScenario = {
 };
 
 function hasSelected(selection: DreamSelection, categories: string[]) {
-  return categories.some((category) => (selection.selectedTags[category as keyof typeof selection.selectedTags] ?? []).length > 0);
+  return categories.some((category) => (
+    (selection.selectedTags[category as keyof typeof selection.selectedTags] ?? []).length > 0
+    || (selection.customTags || []).some((tag) => tag.category === category)
+  ));
 }
 
 function allowsExtraMechanics(selection: DreamSelection) {
   const selectedIds = Object.values(selection.selectedTags).flat();
+  const customLabels = (selection.customTags || []).map((tag) => tag.label).join(' ');
   const mechanicTags = new Set([
     'rules',
     'folk-horror',
@@ -108,7 +112,8 @@ function allowsExtraMechanics(selection: DreamSelection) {
     'truth-barb',
     'world-offline',
   ]);
-  return selectedIds.some((id) => mechanicTags.has(id));
+  return selectedIds.some((id) => mechanicTags.has(id))
+    || /规则|怪谈|无限|副本|末日|系统|循环|平行世界|换身|穿书|重生|直播|投票|封印|诅咒|异变|权限/u.test(customLabels);
 }
 
 const extraMechanicPattern = /规则|禁忌|倒计时|契约|审判|预言|试炼|阵营|身份壳|隐藏身份|秘密身份|观众|视线|学生壳子|都市囚笼|时间流速|流速|不稳定|共享记忆|记忆共享|梦境稳定|稳定世界|世界机制|回溯|系统|权限|诅咒|法则|异变|无限流|末日|深空|神明|神权|副本|投票|直播|剧本|惩罚|封印|污染|怪谈/u;

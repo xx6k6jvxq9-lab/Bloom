@@ -94,6 +94,7 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     sceneInput.recentContext?.sharedRecentRelationshipSummary
       ? `跨场景共享关系余波：${sceneInput.recentContext.sharedRecentRelationshipSummary}`
       : '',
+    sceneInput.recentContext?.sharedCharacterStatePrompt || '',
     sceneInput.recentContext?.relationshipTensionSummary
       ? `同场关系张力：\n${sceneInput.recentContext.relationshipTensionSummary}`
       : '',

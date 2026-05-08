@@ -1,6 +1,7 @@
 import type { Character, ChatGroup, ChatHistory, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import type {
@@ -52,6 +53,7 @@ export type GroupChatSceneInput = {
     publicAcquaintanceSummary?: string;
     sharedRecentRelationshipSummary?: string;
     relationshipTensionSummary?: string;
+    sharedCharacterStatePrompt?: string;
   };
   historyTranscript: string;
 };
@@ -572,6 +574,11 @@ export function buildGroupChatSceneInput(
     sceneScope: 'group',
   });
   const shouldUseLiveGroupContext = characterTemporalState.continuityMode !== 'resume_after_gap';
+  const sharedCharacterState = buildSharedCharacterState({
+    character: options.speaker,
+    temporalState: characterTemporalState,
+    sceneScopedSignals: relationshipProjection.sceneScopedSignals,
+  });
   const memberRelationshipState = [
     getMemberRelationshipStateLabel(options.group?.memberRelationshipState),
     options.group?.memberRelationshipNote?.trim() || '',
@@ -637,6 +644,7 @@ export function buildGroupChatSceneInput(
       publicAcquaintanceSummary: sceneScopedSignals.publicAcquaintanceSummary,
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
       relationshipTensionSummary: buildRelationshipTensionSummary(options.speaker, options.members),
+      sharedCharacterStatePrompt: sharedCharacterState.groupPrompt,
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),
   };

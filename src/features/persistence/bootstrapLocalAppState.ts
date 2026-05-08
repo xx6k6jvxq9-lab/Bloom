@@ -7,6 +7,7 @@ import {
 } from './appDataSanitizers';
 import { loadJsonRecord } from './browserJsonStore';
 import { loadPreferredCallHistory } from './callHistoryStore';
+import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
 import {
   loadPreferredChatHistoryRecords,
   mergeGroupSessionsIntoChatGroups,
@@ -22,6 +23,7 @@ import {
   loadPersistedForumData,
 } from './forumDataStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import {
   hydrateFriendRequests,
   loadPersistedFriendRequests,
@@ -134,14 +136,23 @@ function resolveSettingsState(
   }
 
   if ('configs' in parsed && Array.isArray((parsed as { configs?: unknown[] }).configs)) {
-    const normalized = parsed as Partial<AppSettings> & { sharedStickers?: unknown };
+    const normalized = parsed as Partial<AppSettings> & {
+      sharedStickers?: unknown;
+      sharedStickerMetadata?: unknown;
+    };
+    const sharedStickers = Array.isArray(normalized.sharedStickers)
+      ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
+      : [];
+    const sharedStickerMetadata = applyAutoStickerMetadata(
+      sharedStickers,
+      normalizeStickerMetadataMap(normalized.sharedStickerMetadata, sharedStickers),
+    ).metadataMap;
     const settings: AppSettings = {
       ...defaultSettings,
       ...normalized,
       apiCenterConfig: normalized.apiCenterConfig,
-      sharedStickers: Array.isArray(normalized.sharedStickers)
-        ? normalized.sharedStickers.filter((item: unknown): item is string => typeof item === 'string')
-        : [],
+      sharedStickers,
+      sharedStickerMetadata,
     };
     settings.apiCenterConfig = ensureApiCenterConfig(settings);
 
@@ -280,9 +291,9 @@ export async function bootstrapLocalAppState({
     || hasLocalCallHistory
   );
   const legacyAppData = hasAnyModernBusinessData ? null : getLegacyAppData();
-  const legacyGroups = Array.isArray(legacyAppData?.groups)
-    ? legacyAppData.groups
-    : ['瀹朵汉', '鏈嬪弸', '鍚屼簨', '鏄熸爣'];
+  const legacyGroups = normalizeContactGroups(
+    Array.isArray(legacyAppData?.groups) ? legacyAppData.groups : DEFAULT_CONTACT_GROUPS,
+  );
 
   const characters = sanitizePersistedCharactersFromStore(
     await loadPreferredCharacters(

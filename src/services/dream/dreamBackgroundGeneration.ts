@@ -69,6 +69,16 @@ export function buildDreamBackgroundRequestKey(options: GenerateDreamScenarioOpt
   const normalizedTags = Object.entries(options.selection.selectedTags)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([category, ids]) => [category, [...ids].sort()]);
+  const normalizedCustomTags = [...(options.selection.customTags || [])]
+    .map((tag) => ({
+      category: tag.category,
+      label: tag.label.trim(),
+    }))
+    .sort((left, right) => (
+      left.category === right.category
+        ? left.label.localeCompare(right.label, 'zh-CN')
+        : left.category.localeCompare(right.category)
+    ));
   const normalizedWorldBooks = [...options.worldBooks]
     .map((entry) => ({
       id: entry.id,
@@ -86,6 +96,8 @@ export function buildDreamBackgroundRequestKey(options: GenerateDreamScenarioOpt
     domainId: options.selection.domainId,
     depth: options.selection.depth,
     selectedTags: normalizedTags,
+    customTags: normalizedCustomTags,
+    supplementNote: options.selection.supplementNote?.trim() || '',
     worldBooks: normalizedWorldBooks,
   });
 }
@@ -140,6 +152,8 @@ function persistCompletedDream(
       domain: options.selection.domainId,
       depth: options.selection.depth,
       selectedTags: options.selection.selectedTags,
+      customTags: options.selection.customTags,
+      supplementNote: options.selection.supplementNote,
       dreamWorldBookConfig: options.dreamWorldBookConfig,
       scenario,
       createdAt: Date.now(),

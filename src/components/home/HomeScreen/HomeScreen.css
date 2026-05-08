@@ -256,6 +256,7 @@
 
 .homeDesktop__dockBar {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -267,26 +268,26 @@
   border-radius: 34px;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(236, 241, 247, 0.36)),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(213, 220, 232, 0.18));
+    linear-gradient(180deg, rgba(238, 242, 247, 0.26), rgba(176, 185, 198, 0.16)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(203, 213, 225, 0.05));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.24),
-    0 22px 48px rgba(15, 23, 42, 0.18),
-    0 6px 14px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(26px) saturate(185%);
-  -webkit-backdrop-filter: blur(26px) saturate(185%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 38px rgba(15, 23, 42, 0.18),
+    0 4px 12px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(30px) saturate(160%) contrast(1.02);
+  -webkit-backdrop-filter: blur(30px) saturate(160%) contrast(1.02);
 }
 
 .homeDesktop__dockBar::before {
   content: '';
   position: absolute;
   inset: 1px 1px auto;
-  height: 46%;
+  height: 42%;
   border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
   pointer-events: none;
   z-index: 0;
 }
@@ -296,14 +297,44 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(206, 214, 226, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1.5px rgba(148, 163, 184, 0.08);
   pointer-events: none;
   z-index: 0;
 }
 
-.homeDesktop__dockBar > * {
+.homeDesktop__dockMedia {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.homeDesktop__dockContent {
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--home-desktop-dock-gap);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--home-desktop-dock-padding);
+}
+
+.homeDesktop__dockMedia img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.homeDesktop__dockTintLayer {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
 }
 
 .homeDesktop__dockItem {
@@ -326,12 +357,12 @@
 
 .homeDesktop__dockItem:hover,
 .homeDesktop__dockItem:focus-visible {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .homeDesktop__dockItem:active {
   transform: scale(0.97);
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .homeDesktop__dockIcon {
@@ -367,15 +398,32 @@
   border-radius: 38px;
 }
 
+.homeDesktop--tablet .homeDesktop__dockBar {
+  border-radius: 36px;
+}
+
+.homeDesktop--tablet .homeDesktop__slot {
+  border-radius: 28px;
+}
+
+.homeDesktop--tablet .homeDesktop__item--icon.homeDesktop__item--grid .homeDesktop__itemBody {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 html[data-standalone='true'] .homeDesktop__dockBar {
-  background: rgba(248, 250, 252, 0.92);
+  border-color: rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(226, 231, 238, 0.26), rgba(169, 178, 192, 0.18)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(203, 213, 225, 0.04));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
-    0 14px 28px rgba(15, 23, 42, 0.12),
-    0 4px 10px rgba(15, 23, 42, 0.08);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    0 16px 34px rgba(15, 23, 42, 0.16),
+    0 4px 12px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(28px) saturate(150%) contrast(1.01);
+  -webkit-backdrop-filter: blur(28px) saturate(150%) contrast(1.01);
 }
 
 .homeDesktop--compact .homeDesktop__slot {

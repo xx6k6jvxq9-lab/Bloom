@@ -182,11 +182,11 @@ export const Gomoku: React.FC<GomokuProps> = ({ character, onClose, onSendToChat
         <div className="text-zinc-300 font-bold italic">VS</div>
         <div className={`flex items-center gap-2 p-2 rounded-xl transition-all ${!isPlayerTurn && !winner ? 'bg-zinc-800 text-white scale-105 shadow-lg' : 'bg-zinc-100 text-zinc-400'}`}>
           <span className="text-sm font-bold">{character.name} (白子)</span>
-          <div className="w-3 h-3 rounded-full bg-white border border-zinc-300" />
+          <div className="w-3 h-3 rounded-full bg-[#fffdf6] border border-[#8f6b32] shadow-[0_1px_2px_rgba(64,41,7,0.28)]" />
         </div>
       </div>
 
-      <div className="relative p-2 bg-[#dcb35c] rounded-lg shadow-2xl border-4 border-[#b08d44]">
+      <div className="relative p-2 bg-[#d6ae60] rounded-lg shadow-2xl border-4 border-[#a57d36]">
         <div 
           className="grid gap-0" 
           style={{ 
@@ -202,19 +202,19 @@ export const Gomoku: React.FC<GomokuProps> = ({ character, onClose, onSendToChat
                 onClick={() => isPlayerTurn && !winner && makeMove(r, c)}
                 className="relative flex items-center justify-center cursor-pointer group"
                 style={{
-                  borderTop: r === 0 ? 'none' : '0.5px solid #8b6d2d',
-                  borderLeft: c === 0 ? 'none' : '0.5px solid #8b6d2d',
+                  borderTop: r === 0 ? 'none' : '0.5px solid #886224',
+                  borderLeft: c === 0 ? 'none' : '0.5px solid #886224',
                 }}
               >
                 {/* Grid Lines */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-full h-[1px] bg-[#8b6d2d]" />
-                  <div className="h-full w-[1px] bg-[#8b6d2d]" />
+                  <div className="w-full h-[1px] bg-[#886224]" />
+                  <div className="h-full w-[1px] bg-[#886224]" />
                 </div>
 
                 {/* Star Points (Hoshi) */}
                 {((r === 3 || r === 9 || r === 6) && (c === 3 || c === 9 || c === 6)) && (
-                  <div className="absolute w-1.5 h-1.5 bg-[#8b6d2d] rounded-full z-0" />
+                  <div className="absolute w-1.5 h-1.5 bg-[#7d591e] rounded-full z-0" />
                 )}
 
                 {/* Pieces */}
@@ -222,10 +222,10 @@ export const Gomoku: React.FC<GomokuProps> = ({ character, onClose, onSendToChat
                   <motion.div
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className={`w-[85%] h-[85%] rounded-full z-10 shadow-md ${
+                    className={`w-[86%] h-[86%] rounded-full z-10 ${
                       cell === 'black' 
-                        ? 'bg-gradient-to-br from-zinc-700 to-black' 
-                        : 'bg-gradient-to-br from-white to-zinc-200'
+                        ? 'bg-gradient-to-br from-[#58585f] via-[#232329] to-[#050505] ring-1 ring-white/10 shadow-[0_4px_10px_rgba(0,0,0,0.45)]'
+                        : 'bg-gradient-to-br from-[#fffef9] via-[#fff9ec] to-[#ead29c] ring-1 ring-[#8f6b32] shadow-[0_3px_8px_rgba(82,56,16,0.28)]'
                     } relative`}
                   >
                     {lastMove?.r === r && lastMove?.c === c && (

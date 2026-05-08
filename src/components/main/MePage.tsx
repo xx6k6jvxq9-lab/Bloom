@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -104,7 +104,7 @@ export function MePage({
       {activeSection === 'main' && (
           <div
             className="flex-1 overflow-y-auto"
-            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
+            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 2.75rem)' }}
           >
             {/* Profile Header */}
             <div className="px-6 pt-8 pb-6 rounded-b-[32px] shadow-sm border-b border-zinc-100 backdrop-blur-sm" style={bgStyle}>
@@ -320,15 +320,19 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
               <label className="flex-1 cursor-pointer rounded-xl bg-zinc-100 px-3 py-2 text-center text-[12px] text-zinc-600">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const input = e.currentTarget;
                   const file = e.target.files?.[0];
                   if (file) {
                     const persistedValue = await setUploadedFile(file);
                     setTempProfile({ ...tempProfile, avatar: persistedValue });
-                    e.currentTarget.value = '';
+                    input.value = '';
                   }
                 }} />
               </label>
               </div>
+              <p className="px-1 text-[11px] leading-relaxed text-zinc-400">
+                这张头像会同步到聊天、动态、情侣空间、音乐等页面。论坛和导航栏使用各自独立的头像设置。
+              </p>
             </div>
           </div>
 
@@ -358,6 +362,18 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
               value={tempProfile.bio}
               onChange={e => setTempProfile({ ...tempProfile, bio: e.target.value })}
               className="min-h-[120px] w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="ml-1 text-[12px] text-zinc-400">心情 / 颜文字</label>
+            <input
+              type="text"
+              value={tempProfile.mood || ''}
+              onChange={e => setTempProfile({ ...tempProfile, mood: e.target.value })}
+              placeholder="比如 (^_^) 或 今天也开心"
+              maxLength={24}
+              className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
 
@@ -603,15 +619,19 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               <label className="flex-1 bg-zinc-100 text-zinc-600 px-3 py-2 rounded-xl text-center text-[12px] cursor-pointer">
                 上传
                 <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const input = e.currentTarget;
                   const file = e.target.files?.[0];
                   if(file) {
                     const persistedValue = await setUploadedFile(file);
                     setTempProfile({...tempProfile, avatar: persistedValue});
-                    e.currentTarget.value = '';
+                    input.value = '';
                   }
                 }} />
               </label>
               </div>
+              <p className="px-1 text-[11px] leading-relaxed text-zinc-400">
+                这张头像会同步到聊天、动态、情侣空间、音乐等页面。论坛和导航栏使用各自独立的头像设置。
+              </p>
             </div>
           </div>
 
@@ -641,6 +661,18 @@ function ProfileEditModal({ userProfile, setUserProfile, onClose }: { userProfil
               value={tempProfile.bio}
               onChange={e => setTempProfile({...tempProfile, bio: e.target.value})}
               className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[14px] outline-none focus:border-blue-500 min-h-[80px] resize-none"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[12px] text-zinc-400 ml-1">心情 / 颜文字</label>
+            <input
+              type="text"
+              value={tempProfile.mood || ''}
+              onChange={e => setTempProfile({...tempProfile, mood: e.target.value})}
+              placeholder="比如 (^_^) 或 今天也开心"
+              maxLength={24}
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
 
@@ -804,15 +836,15 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
               )}
             </div>
             <div className="space-y-2">
-              <p className="text-[13px] text-zinc-600 line-clamp-2"><span className="font-medium">性格：</span>{mask.personality || '未设置'}</p>
-              <p className="text-[13px] text-zinc-600"><span className="font-medium">关系：</span>{mask.relationship || '未设置'}</p>
+              <p className="text-[13px] text-zinc-600 line-clamp-2"><span className="font-medium">给人的感觉：</span>{mask.personality || '未设置'}</p>
+              <p className="text-[13px] text-zinc-600"><span className="font-medium">TA会怎样理解你：</span>{mask.relationship || '未设置'}</p>
               {mask.worldBackground && (
-                <p className="text-[13px] text-zinc-600 line-clamp-2"><span className="font-medium">世界观：</span>{mask.worldBackground}</p>
+                <p className="text-[13px] text-zinc-600 line-clamp-2"><span className="font-medium">互动语境：</span>{mask.worldBackground}</p>
               )}
             </div>
             
             <div className="mt-4 pt-4 border-t border-zinc-50 flex items-center justify-between">
-              <span className="text-[11px] text-zinc-400">已同步 {mask.linkedCharacters.length} 个角色</span>
+              <span className="text-[11px] text-zinc-400">会被 {mask.linkedCharacters.length} 个角色读取</span>
               {!isBatchMode && (
                 <button 
                   onClick={(e) => { e.stopPropagation(); setMasks(masks.map(m => m.id === mask.id ? { ...m, isActive: !m.isActive } : m)); }}
@@ -870,11 +902,12 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
 
       <AnimatePresence>
         {editingMask && (
-          <MaskEditModal 
+          <MaskEditPage 
             mask={editingMask} 
             onSave={handleSave} 
             onClose={() => setEditingMask(null)} 
             characters={characters}
+            isNew={!masks.some(existingMask => existingMask.id === editingMask.id)}
           />
         )}
         {showBatchSyncModal && (
@@ -906,7 +939,7 @@ function BatchSyncModal({ characters, onSync, onClose }: { characters: any[], on
         className="w-full max-w-[300px] bg-white rounded-[32px] p-6"
       >
         <h3 className="text-[18px] font-bold mb-4">批量同步到角色</h3>
-        <p className="text-[12px] text-zinc-400 mb-4">选中的面具将同步到以下角色：</p>
+        <p className="text-[12px] text-zinc-400 mb-4">选中的用户面具会被以下角色读取：</p>
         
         <div className="space-y-2 max-h-[200px] overflow-y-auto mb-6 pr-2">
           {characters.map(char => (
@@ -943,72 +976,134 @@ function BatchSyncModal({ characters, onSync, onClose }: { characters: any[], on
   );
 }
 
-function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSave: (m: Mask) => void, onClose: () => void, characters: any[] }) {
+function MaskEditPage({
+  mask,
+  onSave,
+  onClose,
+  characters,
+  isNew,
+}: {
+  mask: Mask;
+  onSave: (m: Mask) => void;
+  onClose: () => void;
+  characters: any[];
+  isNew: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [temp, setTemp] = useState(mask);
+
+  useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+    clampViewportHeight: true,
+  });
 
   return (
     <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      ref={containerRef}
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
+      className="absolute inset-0 z-[110] flex flex-col bg-white"
     >
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="w-full max-w-[320px] bg-white rounded-[32px] p-6 max-h-[80vh] overflow-y-auto"
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 pb-4 pt-5"
+        style={{ paddingTop: 'calc(var(--app-safe-area-top, 0px) + 16px)' }}
       >
-        <h3 className="text-[18px] font-bold mb-6">编辑面具</h3>
-        <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-zinc-200"
+          >
+            <ChevronRight size={20} className="rotate-180" />
+          </button>
+          <div>
+            <h3 className="text-[18px] font-bold text-zinc-900">{isNew ? '新建面具' : '编辑面具'}</h3>
+            <p className="text-[12px] text-zinc-400">
+              {temp.linkedCharacters.length > 0 ? `会被 ${temp.linkedCharacters.length} 个角色读取` : '设置用户这层身份给角色看的信息'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => onSave(temp)}
+          className="rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-4 py-2 text-[13px] font-bold text-[#4b6788]"
+        >
+          保存
+        </button>
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto px-5 pt-5 [webkit-overflow-scrolling:touch]"
+        style={{
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 120px)',
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-4">
+            <div className="text-[12px] font-medium text-zinc-500">这层身份说明</div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${temp.isActive ? 'bg-green-100 text-green-600' : 'bg-zinc-200 text-zinc-500'}`}>
+                {temp.isActive ? '当前激活' : '未激活'}
+              </span>
+              <span className="text-[12px] text-zinc-400">
+                只影响角色如何理解你，不会替换角色自己的人设。
+              </span>
+            </div>
+          </div>
+
           <div className="space-y-1">
-            <label className="text-[12px] text-zinc-400 ml-1">面具名称</label>
+            <label className="text-[12px] text-zinc-400 ml-1">这层身份的名字</label>
             <input 
               type="text" 
               value={temp.name}
               onChange={e => setTemp({...temp, name: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              placeholder="比如：转学生、匿名来信者、旧相识"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[12px] text-zinc-400 ml-1">职业</label>
+            <label className="text-[12px] text-zinc-400 ml-1">这层身份的职业 / 位置</label>
             <input 
               type="text" 
               value={temp.occupation}
               onChange={e => setTemp({...temp, occupation: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              placeholder="比如：记者、学生会长、夜班医生"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[12px] text-zinc-400 ml-1">性格描述</label>
+            <label className="text-[12px] text-zinc-400 ml-1">这层身份给人的感觉</label>
             <textarea 
               value={temp.personality}
               onChange={e => setTemp({...temp, personality: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none min-h-[60px] resize-none"
+              placeholder="比如：礼貌、克制、带一点试探感"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none min-h-[96px] resize-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[12px] text-zinc-400 ml-1">与 AI 的关系</label>
+            <label className="text-[12px] text-zinc-400 ml-1">该角色会怎样理解你们的关系</label>
             <input 
               type="text" 
               value={temp.relationship}
               onChange={e => setTemp({...temp, relationship: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              placeholder="比如：旧友、搭档、上司与下属、暧昧对象"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[12px] text-zinc-400 ml-1">世界观背景</label>
+            <label className="text-[12px] text-zinc-400 ml-1">互动语境 / 世界壳</label>
             <textarea 
               value={temp.worldBackground}
               onChange={e => setTemp({...temp, worldBackground: e.target.value})}
-              placeholder="描述当前面具所处的世界背景、时代、规则等..."
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none min-h-[80px] resize-none"
+              placeholder="比如：现代校园、赛博都市、门派江湖、末日避难所"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none min-h-[120px] resize-none focus:border-blue-500"
             />
           </div>
 
           <div className="pt-2">
-            <label className="text-[12px] text-zinc-400 ml-1 mb-2 block">同步到角色</label>
-            <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2">
+            <label className="text-[12px] text-zinc-400 ml-1 mb-2 block">哪些角色会按这层身份理解你</label>
+            <p className="mb-3 ml-1 text-[12px] text-zinc-400">只影响这些角色如何读取用户当前身份，不会替换角色自己的人设。</p>
+            <div className="space-y-2 rounded-3xl border border-zinc-100 bg-zinc-50/70 p-3">
               {characters.map(char => (
                 <button 
                   key={char.id}
@@ -1018,29 +1113,42 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
                       : [...temp.linkedCharacters, char.id];
                     setTemp({...temp, linkedCharacters: linked});
                   }}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-zinc-100 border-zinc-300' : 'bg-zinc-50 border-zinc-100'}`}
+                  className={`w-full flex items-center justify-between rounded-2xl border p-3 transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-white border-zinc-300 shadow-sm' : 'bg-white/70 border-transparent'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-6 h-6 rounded-full" />
-                    <span className="text-[12px]">{char.name}</span>
+                    <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-8 h-8 rounded-full" />
+                    <div className="text-left">
+                      <span className="block text-[13px] font-medium text-zinc-900">{char.name}</span>
+                      <span className="block text-[11px] text-zinc-400">{temp.linkedCharacters.includes(char.id) ? '会按这层身份理解你' : '不会读取这层身份'}</span>
+                    </div>
                   </div>
-                  {temp.linkedCharacters.includes(char.id) && <Check size={14} className="text-zinc-900" />}
+                  {temp.linkedCharacters.includes(char.id) && <Check size={16} className="text-zinc-900" />}
                 </button>
               ))}
             </div>
           </div>
-
-          <div className="flex gap-2 pt-4">
-            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-600 text-[14px] font-bold">取消</button>
-            <button
-              onClick={() => onSave(temp)}
-              className="flex-1 py-3 rounded-xl border border-[#d9e6f7] bg-[#eef5ff] text-[14px] font-bold text-[#4b6788]"
-            >
-              保存
-            </button>
-          </div>
         </div>
-      </motion.div>
+      </div>
+
+      <div
+        className="border-t border-zinc-100 bg-white/95 px-5 pt-4 backdrop-blur-md"
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)' }}
+      >
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-2xl bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-600"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => onSave(temp)}
+            className="flex-1 rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] py-3.5 text-[15px] font-bold text-[#4b6788]"
+          >
+            保存
+          </button>
+        </div>
+      </div>
     </motion.div>
   );
 }

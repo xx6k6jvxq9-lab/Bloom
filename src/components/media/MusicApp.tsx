@@ -2576,9 +2576,9 @@ export default function MusicApp({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="absolute inset-0 z-[100] flex h-full min-h-0 flex-col overflow-hidden bg-white font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,Helvetica,Arial,sans-serif]"
     >
       {/* Main Content */}
@@ -2590,12 +2590,12 @@ export default function MusicApp({
 
       {/* iOS Style Bottom Navigation */}
       <div
-        className="relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/78 backdrop-blur-xl"
-        style={{
-          paddingBottom: "var(--app-safe-area-bottom-ui, 0px)",
-        }}
+        className="app-bottom-tabbar relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/94 backdrop-blur-xl"
       >
-        <div className="flex min-h-[58px] items-center justify-around px-6 pt-1">
+        <div
+          className="flex min-h-[40px] items-end justify-around px-4 pt-1"
+          style={{ paddingBottom: "var(--app-safe-area-bottom-tab, 0px)" }}
+        >
           <button
             onClick={() => setActiveTab("player")}
             className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}

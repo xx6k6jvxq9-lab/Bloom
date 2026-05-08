@@ -128,9 +128,13 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
       lastInnerWidth = currentInnerWidth;
 
-      // Keep the shell anchored to the stable layout viewport and let the
-      // browser or standalone container own the visible keyboard viewport.
-      const activeViewportHeight = resolvedLayoutViewportHeight;
+      // On iOS standalone, window.innerHeight can stay larger than the
+      // actually visible viewport, which makes bottom-anchored UI float up.
+      // Use the visual viewport bottom edge there so docks/tab bars align to
+      // the real screen bottom.
+      const activeViewportHeight = isStandalone
+        ? Math.max(0, Math.round(visualViewportHeight + viewportOffsetTop))
+        : resolvedLayoutViewportHeight;
 
       setLayoutViewportHeight(resolvedLayoutViewportHeight);
       setVisualViewportHeight(visualViewportHeight);

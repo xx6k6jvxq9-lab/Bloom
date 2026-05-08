@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings, Character, ChatGroup, ChatHistory, FavoriteMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
@@ -12,6 +13,8 @@ import { GroupChatSessionScreen } from './GroupChatSessionScreen';
 
 type GroupChatSessionContainerProps = {
   group: ChatGroup;
+  isActive: boolean;
+  onRuntimeBusyChange?: (groupId: string, busy: boolean) => void;
   characters: Character[];
   chatGroups: ChatGroup[];
   setChatGroups: Dispatch<SetStateAction<ChatGroup[]>>;
@@ -29,6 +32,8 @@ type GroupChatSessionContainerProps = {
 
 export function GroupChatSessionContainer({
   group,
+  isActive,
+  onRuntimeBusyChange,
   characters,
   chatGroups,
   setChatGroups,
@@ -47,6 +52,9 @@ export function GroupChatSessionContainer({
   const history = group.history || [];
   const members = getGroupMembers(group);
   const inviteableCharacters = characters.filter((character) => !group.memberIds.includes(character.id));
+  const handleRuntimeBusyChange = useCallback((busy: boolean) => {
+    onRuntimeBusyChange?.(group.id, busy);
+  }, [group.id, onRuntimeBusyChange]);
   const availableCustomStickers = Array.from(
     new Set([
       ...(settings.sharedStickers || []),
@@ -57,6 +65,35 @@ export function GroupChatSessionContainer({
   const findLatestPreviewableMessage = (messages: ChatGroup['history']) => [...(messages || [])]
     .reverse()
     .find((message) => !message.isSystem && !message.isRecalled) || null;
+  const latestPreviewableMessage = findLatestPreviewableMessage(history);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const latestTimestamp = latestPreviewableMessage?.timestamp;
+    if (!latestTimestamp || latestTimestamp === group.lastViewedMessageTimestamp) {
+      return;
+    }
+
+    setChatGroups((prevGroups) =>
+      prevGroups.map((item) => (
+        item.id === group.id
+          ? {
+              ...item,
+              lastViewedMessageTimestamp: latestTimestamp,
+            }
+          : item
+      )),
+    );
+  }, [
+    group.id,
+    group.lastViewedMessageTimestamp,
+    isActive,
+    latestPreviewableMessage?.timestamp,
+    setChatGroups,
+  ]);
 
   return (
     <GroupChatSessionScreen
@@ -110,6 +147,9 @@ export function GroupChatSessionContainer({
                 ? formatChatMessagePreview(latestPreviewableMessage)
                 : '',
               lastTime: latestPreviewableMessage?.timestamp ?? item.lastTime,
+              ...(isActive && latestPreviewableMessage?.timestamp
+                ? { lastViewedMessageTimestamp: latestPreviewableMessage.timestamp }
+                : {}),
             };
           }),
         );
@@ -148,6 +188,7 @@ export function GroupChatSessionContainer({
       directChatHistory={directChatHistory}
       patchCharacter={patchCharacter}
       inviteableCharacters={inviteableCharacters}
+      onRuntimeBusyChange={handleRuntimeBusyChange}
     />
   );
 }

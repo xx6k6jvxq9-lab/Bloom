@@ -47,6 +47,7 @@ import {
   toggleFavoriteMessage,
   type ShareActionResult,
 } from '../../services/chat/messageActions';
+import { BASIC_CHAT_EXPRESSIONS } from '../../services/chat/basicExpressions';
 import { parseAssistantSpeakerLabel, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
@@ -112,7 +113,6 @@ import {
   getMessageReplyPreviewClass,
 } from './replyPreviewStyles';
 
-const BASIC_EMOJIS = ['😺', '😀', '😚', '😑', '😎', '😹', '😶', '❤️', '🙄', '🙏', '🎀', '🎉'];
 const getGroupMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.senderCharacterId ?? ''}::${message.text}`
 );
@@ -613,6 +613,7 @@ export function GroupChatSessionScreen({
   directChatHistory,
   patchCharacter,
   inviteableCharacters,
+  onRuntimeBusyChange,
 }: {
   group: ChatGroup;
   members: Character[];
@@ -633,6 +634,7 @@ export function GroupChatSessionScreen({
   directChatHistory: ChatHistory;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   inviteableCharacters: Character[];
+  onRuntimeBusyChange?: (busy: boolean) => void;
 }) {
   const [input, setInput] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -976,6 +978,7 @@ export function GroupChatSessionScreen({
   } = useGroupChatRuntime({
     members,
     availableStickers: availableCustomStickers,
+    sharedStickers: settings.sharedStickers || [],
     worldBooks,
     groupMeta: {
       lastMessage: group.lastMessage,
@@ -1023,6 +1026,13 @@ export function GroupChatSessionScreen({
       setShowFunPanel(false);
     },
   });
+
+  useEffect(() => {
+    onRuntimeBusyChange?.(isLoading);
+    return () => {
+      onRuntimeBusyChange?.(false);
+    };
+  }, [isLoading, onRuntimeBusyChange]);
   const audioRecordInteraction = usePressToRecordInteraction({
     isRecording,
     startRecording,
@@ -3482,13 +3492,19 @@ export function GroupChatSessionScreen({
 	                  <div className="h-48 overflow-y-auto">
 	                    {stickerTab === 'basic' ? (
 	                      <div className="grid grid-cols-6 gap-2">
-	                        {BASIC_EMOJIS.map((emoji) => (
+	                        {BASIC_CHAT_EXPRESSIONS.map((expression) => (
 	                          <button
-	                            key={emoji}
-	                            onClick={() => setInput((prev) => prev + emoji)}
-	                            className="flex aspect-square items-center justify-center rounded-lg text-2xl transition-colors hover:bg-zinc-50"
+	                            key={expression.value}
+	                            onClick={() => setInput((prev) => prev + expression.value)}
+	                            className={`flex h-[52px] items-center justify-center rounded-lg transition-colors hover:bg-zinc-50 ${
+	                              expression.kind === 'kaomoji'
+	                                ? 'col-span-2 px-1 text-[11px] font-medium leading-tight tracking-[-0.01em] text-zinc-700'
+	                                : 'text-[26px]'
+	                            }`}
 	                          >
-	                            {emoji}
+	                            <span className={expression.kind === 'kaomoji' ? 'whitespace-pre-wrap break-all text-center' : ''}>
+	                              {expression.value}
+	                            </span>
 	                          </button>
 	                        ))}
 	                      </div>
