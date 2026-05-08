@@ -994,14 +994,14 @@ export function MomentsApp({
                       );
                     })}
                     {commentingOn === moment.id && (
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 flex w-full min-w-0 items-center gap-2">
                         <input
                           ref={commentingOn === moment.id ? commentInputRef : undefined}
                           type="text"
                           value={commentText}
                           onChange={(e) => setCommentText(e.target.value)}
                           placeholder={replyTarget?.momentId === moment.id ? `回复 ${replyTarget.authorName}` : '发一条评论'}
-                          className="flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
+                          className="min-w-0 w-full flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') void handleComment(moment.id);

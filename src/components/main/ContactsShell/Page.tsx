@@ -102,6 +102,7 @@ function applyForumFriendAcceptanceSettlement(
       sharedContextSnapshots: settlement.sharedContextSnapshots,
       shortTermSummary: settlement.shortTermSummary,
       openLoopRegistry: settlement.openLoopRegistry,
+      sharedState: settlement.sharedState,
     };
   });
 }
@@ -430,6 +431,7 @@ export function ContactsApp({
       </div>
 
       <div
+        data-swipe-ignore="true"
         className="flex-1 overflow-y-auto"
         style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 4.25rem)' }}
       >
@@ -1044,13 +1046,13 @@ export function CharacterMomentsProfile({
                       </div>
                     )}
                     {commentingOn === moment.id && (
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 flex w-full min-w-0 items-center gap-2">
                         <input
                           type="text"
                           value={commentText}
                           onChange={(e) => setCommentText(e.target.value)}
                           placeholder={replyTarget?.momentId === moment.id ? `回复 ${replyTarget.authorName}` : '发一条评论'}
-                          className="flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
+                          className="min-w-0 w-full flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') void handleComment(moment.id);

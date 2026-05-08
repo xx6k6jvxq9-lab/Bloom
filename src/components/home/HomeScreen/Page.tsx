@@ -99,6 +99,26 @@ function getExplicitGridStyle(slotId?: string | null, w = 1, h = 1): React.CSSPr
   };
 }
 
+function observeElementSize(element: Element, onResize: () => void): () => void {
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(() => onResize());
+    observer.observe(element);
+    return () => observer.disconnect();
+  }
+
+  if (typeof window === 'undefined') {
+    return () => undefined;
+  }
+
+  const handleResize = () => onResize();
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', handleResize);
+  return () => {
+    window.removeEventListener('resize', handleResize);
+    window.removeEventListener('orientationchange', handleResize);
+  };
+}
+
 type DesktopAppId = 'chat' | 'settings' | 'worldbook' | 'monitor' | 'couple-space' | 'perception' | 'music' | 'forum';
 
 const WALLPAPER_URL = 'https://tse4.mm.bing.net/th/id/OIP.Cg3l8e76ACyxyLdkdP_tSgAAAA?rs=1&pid=ImgDetMain&o=7&rm=3';
@@ -356,16 +376,20 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
+      // In standalone/PWA mode the desktop dock can overlap part of the
+      // bottom safe area instead of floating fully above it. Keep a small
+      // cushion so it does not sit directly on the system home indicator.
+      const nextSafeAreaBottom = Math.round(
+        isStandaloneMode && resolvedSafeAreaBottom > 0
+          ? Math.max(10, resolvedSafeAreaBottom - 22)
+          : resolvedSafeAreaBottom,
+      );
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 
     updateViewport();
 
-    const observer = new ResizeObserver(() => updateViewport());
-    observer.observe(node);
-
-    return () => observer.disconnect();
+    return observeElementSize(node, updateViewport);
   }, []);
 
   useLayoutEffect(() => {
@@ -379,10 +403,7 @@ export function HomeScreen({
 
     updateWidth();
 
-    const observer = new ResizeObserver(() => updateWidth());
-    observer.observe(node);
-
-    return () => observer.disconnect();
+    return observeElementSize(node, updateWidth);
   }, [visualSettings?.navBar?.show]);
 
   useEffect(() => {
