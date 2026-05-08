@@ -518,6 +518,7 @@ export function ChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
+    clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

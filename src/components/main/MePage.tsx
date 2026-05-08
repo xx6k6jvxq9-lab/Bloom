@@ -261,6 +261,7 @@ function FullScreenProfileEditModal({ userProfile, setUserProfile, onClose }: { 
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   return (

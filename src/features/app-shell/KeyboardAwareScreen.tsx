@@ -31,7 +31,8 @@ export function KeyboardAwareScreen({
   const { keyboardVisible: appKeyboardVisible } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: shellRef,
-    enabled: hideFooterWhenKeyboardOpen,
+    enabled: true,
+    clampViewportHeight: true,
   });
   const keyboardVisible = ownsFocusedKeyboard && appKeyboardVisible;
 

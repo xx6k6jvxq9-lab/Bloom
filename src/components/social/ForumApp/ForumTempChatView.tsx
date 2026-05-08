@@ -64,6 +64,7 @@ export function ForumTempChatView({
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   return (

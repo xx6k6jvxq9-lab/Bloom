@@ -149,6 +149,7 @@ export function WorldBookManager({
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   const categories = [

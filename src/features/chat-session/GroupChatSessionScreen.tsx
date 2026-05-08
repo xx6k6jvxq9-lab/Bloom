@@ -692,6 +692,7 @@ export function GroupChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
+    clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });

@@ -291,7 +291,7 @@ export default function App() {
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
-    ? 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px))'
+    ? 'env(safe-area-inset-bottom, 0px)'
     : hideMockSystemChrome
       ? '0px'
       : '12px';

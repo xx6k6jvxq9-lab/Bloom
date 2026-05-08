@@ -138,7 +138,13 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
       lastInnerWidth = currentInnerWidth;
 
-      const activeViewportHeight = visualViewportHeight > 0
+      // Let the browser own the focused keyboard viewport, but keep the
+      // fullscreen shell anchored to the layout viewport while idle so we do
+      // not expose the outer shell background below inner pages.
+      const activeViewportHeight = (
+        visualViewportHeight > 0
+        && (resolvedKeyboardVisible || !isStandalone)
+      )
         ? visualViewportHeight
         : resolvedLayoutViewportHeight;
 

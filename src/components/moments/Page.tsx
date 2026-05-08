@@ -160,10 +160,12 @@ export function MomentsApp({
   useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
+    clampViewportHeight: true,
   });
   useKeyboardSafeViewport({
     containerRef: commentComposerRef,
     enabled: !!commentingOn,
+    clampViewportHeight: true,
   });
 
   const { userProfile, moments, characters } = appData;

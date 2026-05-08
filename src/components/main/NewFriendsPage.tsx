@@ -41,6 +41,7 @@ export function NewFriendsPage({
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   return (

@@ -34,6 +34,7 @@ export function ForumAuthorProfileEditor({
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   return (

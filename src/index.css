@@ -222,7 +222,7 @@ body {
   .app-phone-container {
     --app-safe-area-bottom-full: env(safe-area-inset-bottom, 0px);
     --app-safe-area-bottom: var(--app-safe-area-bottom-full);
-    --app-safe-area-bottom-ui: max(0px, calc(env(safe-area-inset-bottom, 0px) - 24px));
+    --app-safe-area-bottom-ui: env(safe-area-inset-bottom, 0px);
   }
 
   .app-home-indicator-wrap {

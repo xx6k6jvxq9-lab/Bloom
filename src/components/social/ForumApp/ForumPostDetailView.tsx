@@ -136,6 +136,7 @@ export function ForumPostDetailView(props: ForumPostDetailViewProps) {
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
   const [composerHeight, setComposerHeight] = useState(76);
 

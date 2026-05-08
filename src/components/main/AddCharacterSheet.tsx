@@ -305,6 +305,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   const buildImportedCharacter = (raw: string) => {

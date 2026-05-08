@@ -267,6 +267,7 @@ export function ForumOpenSettingsView(props: ForumOpenSettingsViewProps) {
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
+    clampViewportHeight: true,
   });
 
   const toggleSection = (section: SectionKey) => {
