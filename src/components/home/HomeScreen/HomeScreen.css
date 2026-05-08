@@ -310,16 +310,9 @@
   pointer-events: none;
 }
 
-.homeDesktop__dockContent {
+.homeDesktop__dockBar > :not(.homeDesktop__dockMedia) {
   position: relative;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--home-desktop-dock-gap);
-  width: 100%;
-  box-sizing: border-box;
-  padding: var(--home-desktop-dock-padding);
 }
 
 .homeDesktop__dockMedia img {

@@ -902,11 +902,12 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
 
       <AnimatePresence>
         {editingMask && (
-          <MaskEditModal 
+          <MaskEditPage 
             mask={editingMask} 
             onSave={handleSave} 
             onClose={() => setEditingMask(null)} 
             characters={characters}
+            isNew={!masks.some(existingMask => existingMask.id === editingMask.id)}
           />
         )}
         {showBatchSyncModal && (
@@ -975,31 +976,88 @@ function BatchSyncModal({ characters, onSync, onClose }: { characters: any[], on
   );
 }
 
-function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSave: (m: Mask) => void, onClose: () => void, characters: any[] }) {
+function MaskEditPage({
+  mask,
+  onSave,
+  onClose,
+  characters,
+  isNew,
+}: {
+  mask: Mask;
+  onSave: (m: Mask) => void;
+  onClose: () => void;
+  characters: any[];
+  isNew: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [temp, setTemp] = useState(mask);
+
+  useKeyboardSafeViewport({
+    containerRef,
+    enabled: true,
+    clampViewportHeight: true,
+  });
 
   return (
     <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      ref={containerRef}
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
+      className="absolute inset-0 z-[110] flex flex-col bg-white"
     >
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="w-full max-w-[320px] bg-white rounded-[32px] p-6 max-h-[80vh] overflow-y-auto"
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 pb-4 pt-5"
+        style={{ paddingTop: 'calc(var(--app-safe-area-top, 0px) + 16px)' }}
       >
-        <h3 className="text-[18px] font-bold mb-6">编辑面具</h3>
-        <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-colors hover:bg-zinc-200"
+          >
+            <ChevronRight size={20} className="rotate-180" />
+          </button>
+          <div>
+            <h3 className="text-[18px] font-bold text-zinc-900">{isNew ? '新建面具' : '编辑面具'}</h3>
+            <p className="text-[12px] text-zinc-400">
+              {temp.linkedCharacters.length > 0 ? `已同步 ${temp.linkedCharacters.length} 个角色` : '设置身份、关系和适用角色'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => onSave(temp)}
+          className="rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] px-4 py-2 text-[13px] font-bold text-[#4b6788]"
+        >
+          保存
+        </button>
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto px-5 pt-5 [webkit-overflow-scrolling:touch]"
+        style={{
+          paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 120px)',
+          transition: 'padding-bottom 180ms ease',
+        }}
+      >
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-4">
+            <div className="text-[12px] font-medium text-zinc-500">当前状态</div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${temp.isActive ? 'bg-green-100 text-green-600' : 'bg-zinc-200 text-zinc-500'}`}>
+                {temp.isActive ? '当前激活' : '未激活'}
+              </span>
+              <span className="text-[12px] text-zinc-400">
+                {temp.occupation?.trim() || '职业可留空，后续也能再补。'}
+              </span>
+            </div>
+          </div>
+
           <div className="space-y-1">
             <label className="text-[12px] text-zinc-400 ml-1">面具名称</label>
             <input 
               type="text" 
               value={temp.name}
               onChange={e => setTemp({...temp, name: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
@@ -1008,7 +1066,7 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
               type="text" 
               value={temp.occupation}
               onChange={e => setTemp({...temp, occupation: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
@@ -1016,7 +1074,7 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
             <textarea 
               value={temp.personality}
               onChange={e => setTemp({...temp, personality: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none min-h-[60px] resize-none"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none min-h-[96px] resize-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
@@ -1025,7 +1083,7 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
               type="text" 
               value={temp.relationship}
               onChange={e => setTemp({...temp, relationship: e.target.value})}
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none focus:border-blue-500"
             />
           </div>
           <div className="space-y-1">
@@ -1034,13 +1092,14 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
               value={temp.worldBackground}
               onChange={e => setTemp({...temp, worldBackground: e.target.value})}
               placeholder="描述当前面具所处的世界背景、时代、规则等..."
-              className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-[14px] outline-none min-h-[80px] resize-none"
+              className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl px-4 py-3 text-[14px] outline-none min-h-[120px] resize-none focus:border-blue-500"
             />
           </div>
 
           <div className="pt-2">
             <label className="text-[12px] text-zinc-400 ml-1 mb-2 block">同步到角色</label>
-            <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2">
+            <p className="mb-3 ml-1 text-[12px] text-zinc-400">选择哪些角色会读取这个面具。</p>
+            <div className="space-y-2 rounded-3xl border border-zinc-100 bg-zinc-50/70 p-3">
               {characters.map(char => (
                 <button 
                   key={char.id}
@@ -1050,29 +1109,42 @@ function MaskEditModal({ mask, onSave, onClose, characters }: { mask: Mask, onSa
                       : [...temp.linkedCharacters, char.id];
                     setTemp({...temp, linkedCharacters: linked});
                   }}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-zinc-100 border-zinc-300' : 'bg-zinc-50 border-zinc-100'}`}
+                  className={`w-full flex items-center justify-between rounded-2xl border p-3 transition-colors ${temp.linkedCharacters.includes(char.id) ? 'bg-white border-zinc-300 shadow-sm' : 'bg-white/70 border-transparent'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-6 h-6 rounded-full" />
-                    <span className="text-[12px]">{char.name}</span>
+                    <ResolvedMeAvatar value={char.avatar} alt={char.name} className="w-8 h-8 rounded-full" />
+                    <div className="text-left">
+                      <span className="block text-[13px] font-medium text-zinc-900">{char.name}</span>
+                      <span className="block text-[11px] text-zinc-400">{temp.linkedCharacters.includes(char.id) ? '已读取此面具' : '未绑定'}</span>
+                    </div>
                   </div>
-                  {temp.linkedCharacters.includes(char.id) && <Check size={14} className="text-zinc-900" />}
+                  {temp.linkedCharacters.includes(char.id) && <Check size={16} className="text-zinc-900" />}
                 </button>
               ))}
             </div>
           </div>
-
-          <div className="flex gap-2 pt-4">
-            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-600 text-[14px] font-bold">取消</button>
-            <button
-              onClick={() => onSave(temp)}
-              className="flex-1 py-3 rounded-xl border border-[#d9e6f7] bg-[#eef5ff] text-[14px] font-bold text-[#4b6788]"
-            >
-              保存
-            </button>
-          </div>
         </div>
-      </motion.div>
+      </div>
+
+      <div
+        className="border-t border-zinc-100 bg-white/95 px-5 pt-4 backdrop-blur-md"
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)' }}
+      >
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-2xl bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-600"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => onSave(temp)}
+            className="flex-1 rounded-2xl border border-[#d9e6f7] bg-[#eef5ff] py-3.5 text-[15px] font-bold text-[#4b6788]"
+          >
+            保存
+          </button>
+        </div>
+      </div>
     </motion.div>
   );
 }
