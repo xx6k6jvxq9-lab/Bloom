@@ -299,6 +299,7 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
+  const appSafeAreaTop = 'env(safe-area-inset-top, 0px)';
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? appSafeAreaBottomFull
@@ -322,6 +323,7 @@ export default function App() {
     ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
     backgroundColor: appChromeBackground,
     ...homeWallpaperBackgroundStyle,
+    '--app-safe-area-top': appSafeAreaTop,
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,

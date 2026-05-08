@@ -55,6 +55,14 @@ type DateRecordEntry = DateSession & {
   status?: 'active' | 'ended';
 };
 
+const SAFE_AREA_HEADER_STYLE: React.CSSProperties = {
+  paddingTop: 'calc(var(--app-safe-area-top, 0px) + 12px)',
+};
+
+const SAFE_AREA_EDITOR_HEADER_STYLE: React.CSSProperties = {
+  paddingTop: 'calc(var(--app-safe-area-top, 0px) + 16px)',
+};
+
 export function MePage({ 
   userProfile, 
   setUserProfile, 
@@ -457,9 +465,12 @@ function CharacterManager({ characters, onDelete, onBack, globalBackground }: { 
     <div 
       className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}
     >
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${
+      <div
+        className={`pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${
         globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
-      }`}>
+      }`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
           <h3 className="text-[17px] font-bold">角色管理</h3>
@@ -765,9 +776,12 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
     <div 
       className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}
     >
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${
+      <div
+        className={`pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${
         globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
-      }`}>
+      }`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
           <h3 className="text-[17px] font-bold">身份面具管理</h3>
@@ -1006,8 +1020,9 @@ function MaskEditPage({
       exit={{ opacity: 0, x: 24 }}
       className="absolute inset-0 z-[110] flex flex-col bg-white"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 pb-4 pt-5"
-        style={{ paddingTop: 'calc(var(--app-safe-area-top, 0px) + 16px)' }}
+      <div
+        className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 pb-4 pt-5"
+        style={SAFE_AREA_EDITOR_HEADER_STYLE}
       >
         <div className="flex items-center gap-3">
           <button
@@ -1222,7 +1237,10 @@ function DataManager({
 
   return (
     <div className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'}`}>
+      <div
+        className={`pb-4 px-4 border-b flex items-center justify-between backdrop-blur-md ${globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'}`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-2 -ml-2 text-zinc-400 hover:bg-black/5 rounded-full transition-colors"><X size={24} /></button>
           <h3 className="text-[17px] font-bold">聊天数据备份</h3>
@@ -1344,9 +1362,12 @@ function FavoritesManager({ favorites, setFavorites, moments, collectedDates, ch
     <div 
       className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}
     >
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
+      <div
+        className={`pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
         globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
-      }`}>
+      }`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
         <h3 className="text-[17px] font-bold">我的收藏</h3>
       </div>
@@ -1483,9 +1504,12 @@ function DateRecordsPage({
 
   return (
     <div className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
+      <div
+        className={`pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
         globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
-      }`}>
+      }`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
         <div>
           <h3 className="text-[17px] font-bold">约会记录</h3>
@@ -1552,9 +1576,12 @@ function DateRecordsDetailPage({
 
   return (
     <div className={`absolute inset-0 flex flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
-      <div className={`pt-12 pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
+      <div
+        className={`pb-4 px-4 border-b flex items-center gap-3 backdrop-blur-md ${
         globalBackground ? 'bg-white/30 border-white/20' : 'bg-white border-zinc-100'
-      }`}>
+      }`}
+        style={SAFE_AREA_HEADER_STYLE}
+      >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400"><X size={24} /></button>
         <div>
           <h3 className="text-[17px] font-bold">约会记录</h3>
@@ -1614,7 +1641,7 @@ function DateRecordsDetailPage({
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
           >
-            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pb-4" style={SAFE_AREA_HEADER_STYLE}>
               <button onClick={() => setSelectedRecordId(null)} className="p-2 -ml-2 text-zinc-400">
                 <X size={24} />
               </button>
@@ -1696,9 +1723,10 @@ function DateRecordsPageV2({
   return (
     <div className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       <div
-        className={`flex items-center gap-3 border-b px-4 pt-12 pb-4 backdrop-blur-md ${
+        className={`flex items-center gap-3 border-b px-4 pb-4 backdrop-blur-md ${
           globalBackground ? 'border-white/20 bg-white/30' : 'border-zinc-100 bg-white'
         }`}
+        style={SAFE_AREA_HEADER_STYLE}
       >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
           <X size={24} />
@@ -1759,7 +1787,7 @@ function DateRecordsPageV2({
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
           >
-            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pb-4" style={SAFE_AREA_HEADER_STYLE}>
               <button onClick={() => setSelectedRecordId(null)} className="p-2 -ml-2 text-zinc-400">
                 <X size={24} />
               </button>
@@ -1918,9 +1946,10 @@ function DateRecordsPageV3({
   return (
     <div className={`absolute inset-0 z-[100] flex flex-col ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       <div
-        className={`flex items-center gap-3 border-b px-4 pt-12 pb-4 backdrop-blur-md ${
+        className={`flex items-center gap-3 border-b px-4 pb-4 backdrop-blur-md ${
           globalBackground ? 'border-white/20 bg-white/30' : 'border-zinc-100 bg-white'
         }`}
+        style={SAFE_AREA_HEADER_STYLE}
       >
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
           <X size={24} />
@@ -2004,7 +2033,7 @@ function DateRecordsPageV3({
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-[120] flex flex-col bg-white/92 backdrop-blur-xl"
           >
-            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pt-12 pb-4">
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-4 pb-4" style={SAFE_AREA_HEADER_STYLE}>
               <button onClick={() => setSelectedRecordKey(null)} className="p-2 -ml-2 text-zinc-400">
                 <X size={24} />
               </button>
@@ -2201,7 +2230,10 @@ export function WorldBookManager({
     <div className={`absolute inset-0 flex min-h-0 flex-col z-[100] ${globalBackground ? 'bg-transparent' : 'bg-zinc-50'}`}>
       {showAdd ? (
         <div className={`flex-1 min-h-0 flex flex-col ${globalBackground ? 'bg-white/80 backdrop-blur-2xl' : 'bg-white'}`}>
-          <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}>
+          <div
+            className={`pb-4 px-4 border-b flex items-center justify-between ${globalBackground ? 'border-white/20' : 'border-zinc-100'}`}
+            style={SAFE_AREA_HEADER_STYLE}
+          >
             <button onClick={() => setShowAdd(false)} className="text-zinc-500 hover:bg-black/5 px-2 py-1 rounded-lg transition-colors">取消</button>
             <span className="font-bold text-[17px]">{editForm.id ? '编辑设定' : '添加设定'}</span>
             <button onClick={handleSave} className="text-blue-500 font-bold hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors">保存</button>
@@ -2298,9 +2330,12 @@ export function WorldBookManager({
         </div>
       ) : (
         <>
-          <div className={`pt-12 pb-4 px-4 border-b flex items-center justify-between backdrop-blur-2xl ${
+          <div
+            className={`pb-4 px-4 border-b flex items-center justify-between backdrop-blur-2xl ${
             globalBackground ? 'bg-white/70 border-white/20' : 'bg-white border-zinc-100'
-          }`}>
+          }`}
+            style={SAFE_AREA_HEADER_STYLE}
+          >
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="p-2 -ml-2 text-zinc-400 hover:bg-black/5 rounded-full transition-colors"><X size={24} /></button>
               <h3 className="text-[17px] font-bold">世界书</h3>
