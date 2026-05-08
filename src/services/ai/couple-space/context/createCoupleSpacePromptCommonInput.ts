@@ -11,7 +11,7 @@ import type {
 } from '../../../../types';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
 import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
-import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
+import { buildCharacterContext, buildUserMaskPrompt } from '../../../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../../../relationship-context/buildRelationshipProjection';
 import { buildSharedCharacterState } from '../../../relationship-context/buildSharedCharacterState';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
@@ -336,15 +336,7 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
     ) ?? [],
   );
 
-  const maskPrompt = activeMask
-    ? [
-        `Name: ${activeMask.name || ''}`,
-        `Personality: ${activeMask.personality || ''}`,
-        `Occupation: ${activeMask.occupation || ''}`,
-        `Relationship with you: ${activeMask.relationship || ''}`,
-        `World Background: ${activeMask.worldBackground || 'Standard'}`,
-      ].join('\n')
-    : undefined;
+  const maskPrompt = buildUserMaskPrompt(activeMask);
 
   const worldBookPrompt = buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
 

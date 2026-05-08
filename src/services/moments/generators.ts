@@ -4,7 +4,7 @@ import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomen
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
-import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { buildCharacterContext, buildUserMaskPrompt } from '../relationship-context/buildCharacterContext';
 import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
@@ -63,17 +63,7 @@ const CHAT_REACTION_BAD_PATTERNS = [
 
 function buildMaskPrompt(characterId: string, masks: Mask[]) {
   const activeMask = masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(characterId));
-  if (!activeMask) return '';
-
-  return [
-    activeMask.name ? `Name: ${activeMask.name}` : '',
-    activeMask.personality ? `Personality: ${activeMask.personality}` : '',
-    activeMask.occupation ? `Occupation: ${activeMask.occupation}` : '',
-    activeMask.relationship ? `Relationship with you: ${activeMask.relationship}` : '',
-    activeMask.worldBackground ? `World Background: ${activeMask.worldBackground}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  return buildUserMaskPrompt(activeMask) || '';
 }
 
 function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[]) {

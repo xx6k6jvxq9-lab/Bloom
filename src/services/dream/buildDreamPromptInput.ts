@@ -260,6 +260,7 @@ export function buildDreamPersonaGuardrails(input: {
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
+  maskPrompt?: string;
 }) {
   return [
     'User-provided persona has higher priority than dream setting, dream identity, relationship shell, dramatic convenience, or generic romance flow.',
@@ -269,10 +270,14 @@ export function buildDreamPersonaGuardrails(input: {
     'Amplification is allowed; personality replacement is not. Even when desire or emotion becomes stronger, the character must still sound and react like this specific person.',
     'Do not invent a new way of loving, teasing, yielding, comforting, seducing, or breaking down that contradicts the user-provided persona.',
     'If the user-provided persona text mixes personality with setting labels, prioritize the parts that define how this person speaks, hesitates, desires, refuses, softens, or loses control.',
+    'Any user mask describes the user\'s current interaction identity, not the character\'s selfhood.',
+    'Use user-mask details only to understand who the user is in this dream and what relationship or world shell they are presenting to the character.',
+    'Do not absorb user-mask occupation, temperament, world-shell details, or relationship wording into the character\'s own persona, role, voice, or self-description.',
     `Core persona anchor: ${input.corePersona || 'not provided'}`,
     `Expression style anchor: ${input.expressionStyle || 'not provided'}`,
     `Boundary anchor: ${input.boundaryPack || 'not provided'}`,
     `Extended lore anchor: ${input.extendedLore || 'not provided'}`,
+    `User-side mask anchor: ${input.maskPrompt || 'not provided'}`,
   ].join('\n');
 }
 

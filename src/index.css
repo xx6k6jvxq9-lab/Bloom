@@ -217,7 +217,7 @@ body {
     --app-safe-area-bottom: var(--app-safe-area-bottom-full);
     --app-safe-area-bottom-ui: env(safe-area-inset-bottom, 0px);
     --app-safe-area-bottom-tab: min(12px, env(safe-area-inset-bottom, 0px));
-    --app-safe-area-bottom-dock: 0px;
+    --app-safe-area-bottom-dock: env(safe-area-inset-bottom, 0px);
   }
 
   html[data-standalone='true'],

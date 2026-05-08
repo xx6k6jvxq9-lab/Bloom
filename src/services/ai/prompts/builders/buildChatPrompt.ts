@@ -2,7 +2,11 @@ import { EXISTENCE_PROMPT } from '../base/existence';
 import { CHAT_OUTPUT_RULES, COMMON_OUTPUT_RULES } from '../base/outputRules';
 import { buildReplyLanguageRules, type ReplyLanguagePolicyInput } from '../base/languageRules';
 import { PROTOCOL_RULES_PROMPT } from '../base/protocolRules';
-import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import {
+  buildCharacterCoreSection,
+  buildUserMaskContextSection,
+  CharacterCoreSectionsInput,
+} from '../character/characterCore';
 import { buildLongTermMemoryContextSection, MemoryContextInput } from '../character/memoryContext';
 import { AUTO_REPLY_SCENARIO_PROMPT } from '../scenarios/autoReply';
 import { CHAT_SCENARIO_PROMPT } from '../scenarios/chat';
@@ -172,6 +176,7 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
+    buildUserMaskContextSection(options.characterCore ?? {}),
     buildUserContextSection(options.userContext),
     buildRecentContextSection(options.recentContext),
     buildLongTermMemoryContextSection(options.memoryContext ?? {}),
