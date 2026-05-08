@@ -591,8 +591,8 @@ export function MomentsApp({
         className="absolute inset-0 z-[100] flex min-h-0 flex-col bg-white/80 backdrop-blur-xl"
       >
         <div
-          className="flex items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
+          className="flex min-h-[64px] shrink-0 items-center justify-between border-b border-white/20 bg-white/50 px-4 pb-3 backdrop-blur-md"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
         >
           <button onClick={() => setShowPublish(false)} className="text-zinc-600">取消</button>
           <button
@@ -942,7 +942,7 @@ export function MomentsApp({
                   </AnimatePresence>
                 </div>
 
-                {(moment.likes > 0 || moment.comments.length > 0) && (
+                {(moment.likes > 0 || moment.comments.length > 0 || commentingOn === moment.id) && (
                   <div className="mt-2 rounded-xl bg-zinc-50 p-3">
                     {moment.likes > 0 && (
                       <div className="mb-1.5 flex items-center gap-1.5 border-b border-zinc-200/50 pb-1.5 text-[13px] font-medium text-zinc-600">

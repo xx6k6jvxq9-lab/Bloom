@@ -1074,6 +1074,7 @@ export default function MusicApp({
       onPatchCharacterRef.current(sessionCharacterId, {
         lastMessage: replyMessages[replyMessages.length - 1]?.text || message.text,
         lastTime: replyMessages[replyMessages.length - 1]?.timestamp || message.timestamp,
+        ...(writebackPlan.sharedState ? { sharedState: writebackPlan.sharedState } : {}),
         ...(writebackPlan.shortTermSummary
           ? { shortTermSummary: writebackPlan.shortTermSummary }
           : {}),
@@ -2589,36 +2590,37 @@ export default function MusicApp({
 
       {/* iOS Style Bottom Navigation */}
       <div
-        className="relative z-50 flex shrink-0 items-center justify-around border-t border-zinc-100/80 bg-white/78 px-6 pt-1 backdrop-blur-xl"
+        className="relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/78 backdrop-blur-xl"
         style={{
-          minHeight: "calc(56px + var(--app-safe-area-bottom-ui, 0px) + 4px)",
-          paddingBottom: "calc(var(--app-safe-area-bottom-ui, 0px) + 4px)",
+          paddingBottom: "var(--app-safe-area-bottom-ui, 0px)",
         }}
       >
-        <button
-          onClick={() => setActiveTab("player")}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
-        >
-          <MusicIcon size={26} strokeWidth={activeTab === "player" ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-tight">音乐</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("playlists")}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === "playlists" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
-        >
-          <ListMusic
-            size={26}
-            strokeWidth={activeTab === "playlists" ? 2.5 : 2}
-          />
-          <span className="text-[10px] font-bold tracking-tight">歌单</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("me")}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === "me" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
-        >
-          <User size={26} strokeWidth={activeTab === "me" ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-tight">我的</span>
-        </button>
+        <div className="flex min-h-[58px] items-center justify-around px-6 pt-1">
+          <button
+            onClick={() => setActiveTab("player")}
+            className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
+          >
+            <MusicIcon size={26} strokeWidth={activeTab === "player" ? 2.5 : 2} />
+            <span className="text-[10px] font-bold tracking-tight">音乐</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("playlists")}
+            className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "playlists" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
+          >
+            <ListMusic
+              size={26}
+              strokeWidth={activeTab === "playlists" ? 2.5 : 2}
+            />
+            <span className="text-[10px] font-bold tracking-tight">歌单</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("me")}
+            className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "me" ? "text-pink-500 scale-110" : "text-zinc-400"}`}
+          >
+            <User size={26} strokeWidth={activeTab === "me" ? 2.5 : 2} />
+            <span className="text-[10px] font-bold tracking-tight">我的</span>
+          </button>
+        </div>
       </div>
 
       {/* Full Screen Chat Overlay */}
