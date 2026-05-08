@@ -2590,7 +2590,7 @@ export default function MusicApp({
 
       {/* iOS Style Bottom Navigation */}
       <div
-        className="relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/94 backdrop-blur-xl"
+        className="app-bottom-tabbar relative z-50 shrink-0 border-t border-zinc-100/80 bg-white/94 backdrop-blur-xl"
         style={{
           paddingBottom: "var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))",
         }}

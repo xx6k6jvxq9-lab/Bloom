@@ -4348,7 +4348,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
       {/* Bottom Navigation */}
       {shouldShowForumBottomNav && (
-        <div className="forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100" style={forumBottomNavStyle}>
+        <div className="app-bottom-tabbar forum-app-bottom-nav shrink-0 z-20 bg-white border-t border-zinc-100" style={forumBottomNavStyle}>
           <div className="flex min-h-[52px] items-center justify-around px-4">
             <button 
               onClick={() => { setActiveTab('home'); setCurrentView('list'); setMessageTab('chats'); }}

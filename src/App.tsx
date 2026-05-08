@@ -102,6 +102,10 @@ type SafeAreaDebugSnapshot = {
   safeAreaUi: number;
   safeAreaTab: number;
   safeAreaDock: number;
+  tabBarHeight: number;
+  tabBarBottomGap: number;
+  dockHeight: number;
+  dockBottomGap: number;
 };
 
 function resolveCssLengthValue(container: HTMLElement | null, rawValue: string): number {
@@ -166,6 +170,24 @@ function SafeAreaDebugHud({
         safeAreaUi: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-ui')),
         safeAreaTab: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-tab')),
         safeAreaDock: resolveCssLengthValue(phoneContainer, readContainerVar('--app-safe-area-bottom-dock')),
+        tabBarHeight: (() => {
+          const rect = document.querySelector<HTMLElement>('.app-bottom-tabbar')?.getBoundingClientRect();
+          return rect ? Math.round(rect.height) : 0;
+        })(),
+        tabBarBottomGap: (() => {
+          const rect = document.querySelector<HTMLElement>('.app-bottom-tabbar')?.getBoundingClientRect();
+          const containerRect = phoneContainer?.getBoundingClientRect();
+          return rect && containerRect ? Math.round(containerRect.bottom - rect.bottom) : 0;
+        })(),
+        dockHeight: (() => {
+          const rect = document.querySelector<HTMLElement>('.homeDesktop__dock')?.getBoundingClientRect();
+          return rect ? Math.round(rect.height) : 0;
+        })(),
+        dockBottomGap: (() => {
+          const rect = document.querySelector<HTMLElement>('.homeDesktop__dock')?.getBoundingClientRect();
+          const containerRect = phoneContainer?.getBoundingClientRect();
+          return rect && containerRect ? Math.round(containerRect.bottom - rect.bottom) : 0;
+        })(),
       });
     };
 
@@ -237,6 +259,14 @@ function SafeAreaDebugHud({
       <div className="flex justify-between gap-3">
         <span className="text-emerald-200/70">tab / dock</span>
         <span>{snapshot.safeAreaTab} / {snapshot.safeAreaDock}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">tab h / gap</span>
+        <span>{snapshot.tabBarHeight} / {snapshot.tabBarBottomGap}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="text-emerald-200/70">dock h / gap</span>
+        <span>{snapshot.dockHeight} / {snapshot.dockBottomGap}</span>
       </div>
     </div>
   );

@@ -319,7 +319,7 @@ export function MainApp({
         onTouchCancel: handleTouchEnd,
       }}
       footer={footer}
-      footerClassName="absolute bottom-0 left-0 right-0 z-20 border-t border-zinc-100 bg-white/96 backdrop-blur-xl"
+      footerClassName="app-bottom-tabbar absolute bottom-0 left-0 right-0 z-20 border-t border-zinc-100 bg-white/96 backdrop-blur-xl"
       footerStyle={{ paddingBottom: 'var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))' }}
     >
         <AnimatePresence>
