@@ -133,7 +133,7 @@ export function getDesktopLayoutMetrics({
       iconSize: 48,
       navBarHeight: 98,
       topWidgetHeight: 110,
-      dockHeight: 92,
+      dockHeight: 82,
     },
     regular: {
       paddingX: 16,
@@ -142,7 +142,7 @@ export function getDesktopLayoutMetrics({
       iconSize: 62,
       navBarHeight: 110,
       topWidgetHeight: 122,
-      dockHeight: 110,
+      dockHeight: 96,
     },
     large: {
       paddingX: 18,
@@ -151,7 +151,7 @@ export function getDesktopLayoutMetrics({
       iconSize: 68,
       navBarHeight: 126,
       topWidgetHeight: 132,
-      dockHeight: 120,
+      dockHeight: 104,
     },
   } as const;
   const preset = presets[sizeTier];

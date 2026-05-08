@@ -298,7 +298,7 @@ export function MainApp({
   ) : null;
 
   const footer = !(activeTab === 'me' && meSection !== 'main') ? (
-    <div className="flex min-h-[52px] w-full items-center justify-around px-3">
+    <div className="flex min-h-[44px] w-full items-center justify-around px-3">
       <NavTab icon={<MessageSquare size={24} />} label="聊天" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
       <NavTab icon={<Users size={24} />} label="通讯录" active={activeTab === 'contacts'} onClick={() => setActiveTab('contacts')} />
       <NavTab icon={<Compass size={24} />} label="动态" active={activeTab === 'moments'} onClick={() => setActiveTab('moments')} />
@@ -364,7 +364,7 @@ export function MainApp({
         </AnimatePresence>
 
         {activeTab === 'chat' && (
-          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-tab,0px)+3.5rem)] pt-4 space-y-3">
+          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-tab,0px)+2.75rem)] pt-4 space-y-3">
             {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
               <div className="p-12 text-center text-zinc-300 space-y-3">
                 <Users size={48} className="mx-auto opacity-20" />

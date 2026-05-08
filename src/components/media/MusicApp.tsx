@@ -2595,7 +2595,7 @@ export default function MusicApp({
           paddingBottom: "var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))",
         }}
       >
-        <div className="flex min-h-[52px] items-center justify-around px-4">
+        <div className="flex min-h-[44px] items-center justify-around px-4">
           <button
             onClick={() => setActiveTab("player")}
             className={`flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === "player" ? "text-pink-500 scale-110" : "text-zinc-400"}`}

@@ -433,7 +433,7 @@ export function ContactsApp({
       <div
         data-swipe-ignore="true"
         className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 3.5rem)' }}
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 2.75rem)' }}
       >
         {/* Top Items */}
         <div className="px-4 space-y-3 mt-2">
@@ -928,7 +928,7 @@ export function CharacterMomentsProfile({
 
       <div
         className="relative flex-1 overflow-y-auto bg-zinc-50"
-        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 3.5rem)' }}
+        style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 2.75rem)' }}
       >
         <div className="relative pb-4">
           <div className="h-40 relative overflow-hidden">

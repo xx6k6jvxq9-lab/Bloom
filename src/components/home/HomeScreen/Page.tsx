@@ -1601,12 +1601,12 @@ export function HomeScreen({
           '--home-desktop-dock-gap': sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
           '--home-desktop-dock-padding':
             sizeTier === 'compact'
-              ? '8px 8px 6px'
+              ? '6px 8px 4px'
               : sizeTier === 'large'
-                ? (isTallPhone ? '12px 14px' : '11px 13px')
+                ? (isTallPhone ? '8px 12px 5px' : '8px 12px 5px')
                 : isTallPhone
-                  ? '11px 13px'
-                  : '10px 12px',
+                  ? '7px 11px 5px'
+                  : '7px 11px 5px',
           '--home-desktop-dock-label-size': sizeTier === 'compact' ? '10px' : sizeTier === 'large' ? (isTallPhone ? '13px' : '12px') : isTallPhone ? '11.5px' : '11px',
         } as React.CSSProperties
       }
