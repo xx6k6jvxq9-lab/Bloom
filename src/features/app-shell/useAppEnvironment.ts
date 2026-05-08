@@ -6,6 +6,36 @@ import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
+function getMediaQueryList(query: string): MediaQueryList | null {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return null;
+  }
+
+  try {
+    return window.matchMedia(query);
+  } catch {
+    return null;
+  }
+}
+
+function matchesMediaQuery(query: string): boolean {
+  return getMediaQueryList(query)?.matches ?? false;
+}
+
+function addMediaQueryChangeListener(media: MediaQueryList, listener: () => void): () => void {
+  if (typeof media.addEventListener === 'function') {
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }
+
+  if (typeof media.addListener === 'function') {
+    media.addListener(listener);
+    return () => media.removeListener(listener);
+  }
+
+  return () => undefined;
+}
+
 type UseAppEnvironmentResult = {
   isStandalone: boolean;
   keyboardInset: number;
@@ -27,7 +57,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   const hasPrefetchedPanelChunksRef = useRef(false);
   const [useDesktopStageLayout, setUseDesktopStageLayout] = useState(() => {
     if (typeof window === 'undefined') return true;
-    return window.matchMedia(DESKTOP_STAGE_MEDIA_QUERY).matches;
+    return matchesMediaQuery(DESKTOP_STAGE_MEDIA_QUERY);
   });
   const [visualViewportHeight, setVisualViewportHeight] = useState(0);
 
@@ -43,8 +73,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
     let stableLayoutViewportHeight = 0;
     let lastInnerWidth = window.innerWidth;
+    const standaloneMedia = getMediaQueryList('(display-mode: standalone)');
     const isStandalone =
-      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      (standaloneMedia?.matches ?? false) ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     // The app now lets the browser / standalone shell own keyboard viewport
     // changes on every platform. The old manual lift path was creating the
@@ -75,78 +106,31 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       );
       const activeElement = document.activeElement;
       const hasTextEntryFocus = isTextEntryElement(activeElement);
-      const phoneContainer = document.getElementById('phone-container');
-      const renderedShellHeight = Math.round(phoneContainer?.getBoundingClientRect().height ?? 0);
-      const renderedRootHeight = Math.round(document.documentElement.clientHeight || 0);
-      const shellTracksVisualViewport = visualViewportHeight > 0 && (
-        (renderedShellHeight > 0 && Math.abs(renderedShellHeight - visualViewportHeight) <= 2)
-        || (renderedRootHeight > 0 && Math.abs(renderedRootHeight - visualViewportHeight) <= 2)
-      );
-
-      let resolvedLayoutViewportHeight = currentInnerHeight;
-      let resolvedKeyboardInset = 0;
-      let resolvedKeyboardVisible = false;
-
-      if (isAndroid && manualKeyboardAvoidanceEnabled) {
-        let nextStableLayoutViewportHeight = stableLayoutViewportHeight;
-
-        if (
-          nextStableLayoutViewportHeight === 0
-          || currentInnerWidth !== lastInnerWidth
-          || currentInnerHeight > nextStableLayoutViewportHeight
-        ) {
-          nextStableLayoutViewportHeight = currentInnerHeight;
-        }
-
-        const viewportHeightDelta = Math.max(0, nextStableLayoutViewportHeight - visualViewportHeight);
-        const innerHeightInset = Math.max(0, nextStableLayoutViewportHeight - currentInnerHeight);
-        const viewportSettled = viewportHeightDelta <= 24 && viewportOffsetTop === 0;
-        resolvedKeyboardInset = Math.max(
-          0,
-          Math.round(
-            Math.max(
-              nextStableLayoutViewportHeight - visualViewportHeight - viewportOffsetTop,
-              innerHeightInset,
-            ),
-          ),
-        );
-        resolvedKeyboardVisible = hasTextEntryFocus && (
-          resolvedKeyboardInset > 120
-          || viewportHeightDelta > 120
-          || innerHeightInset > 120
-        );
-
-        if (!resolvedKeyboardVisible && viewportSettled) {
-          nextStableLayoutViewportHeight = currentInnerHeight;
-        }
-
-        stableLayoutViewportHeight = nextStableLayoutViewportHeight;
-        resolvedLayoutViewportHeight = nextStableLayoutViewportHeight;
-      } else {
-        const rawKeyboardInset = rawViewportBottomInset;
-
-        // If the rendered shell already follows the browser viewport, lifting
-        // again creates the blank gap above the keyboard.
-        resolvedKeyboardInset = shellTracksVisualViewport ? 0 : rawKeyboardInset;
-        resolvedKeyboardVisible = hasTextEntryFocus && (
-          rawKeyboardInset > 120
-          || currentInnerHeight - visualViewportHeight > 120
-          || (isIosLike && viewportOffsetTop > 0)
-        );
-        stableLayoutViewportHeight = 0;
+      if (
+        stableLayoutViewportHeight === 0
+        || currentInnerWidth !== lastInnerWidth
+        || currentInnerHeight > stableLayoutViewportHeight
+      ) {
+        stableLayoutViewportHeight = currentInnerHeight;
       }
+
+      const resolvedLayoutViewportHeight = stableLayoutViewportHeight || currentInnerHeight;
+      const viewportHeightDelta = Math.max(0, resolvedLayoutViewportHeight - visualViewportHeight);
+      const detectedKeyboardInset = hasTextEntryFocus
+        ? Math.max(rawViewportBottomInset, viewportHeightDelta)
+        : 0;
+      const resolvedKeyboardVisible = hasTextEntryFocus && (
+        detectedKeyboardInset > 120
+        || viewportHeightDelta > 120
+        || (isIosLike && viewportOffsetTop > 0)
+      );
+      const resolvedKeyboardInset = resolvedKeyboardVisible ? detectedKeyboardInset : 0;
 
       lastInnerWidth = currentInnerWidth;
 
-      // Let the browser own the focused keyboard viewport, but keep the
-      // fullscreen shell anchored to the layout viewport while idle so we do
-      // not expose the outer shell background below inner pages.
-      const activeViewportHeight = (
-        visualViewportHeight > 0
-        && (resolvedKeyboardVisible || !isStandalone)
-      )
-        ? visualViewportHeight
-        : resolvedLayoutViewportHeight;
+      // Keep the shell anchored to the stable layout viewport and let the
+      // browser or standalone container own the visible keyboard viewport.
+      const activeViewportHeight = resolvedLayoutViewportHeight;
 
       setLayoutViewportHeight(resolvedLayoutViewportHeight);
       setVisualViewportHeight(visualViewportHeight);
@@ -172,7 +156,12 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       }
     };
     const scheduleViewportHeightUpdate = () => {
-      window.requestAnimationFrame(updateViewportHeight);
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(updateViewportHeight);
+        return;
+      }
+
+      window.setTimeout(updateViewportHeight, 16);
     };
 
     updateViewportHeight();
@@ -220,8 +209,9 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
     const idleWindow = window as IdleWindow;
     const userAgent = window.navigator.userAgent.toLowerCase();
+    const standaloneMedia = getMediaQueryList('(display-mode: standalone)');
     const isStandalone =
-      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      (standaloneMedia?.matches ?? false) ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     const isIosLike = /iphone|ipad|ipod/.test(userAgent);
     const preloadDelayMs = isIosLike && isStandalone ? 3200 : isStandalone ? 900 : 1200;
@@ -274,14 +264,14 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const media = window.matchMedia(DESKTOP_STAGE_MEDIA_QUERY);
-    const updateDesktopStageLayout = () => setUseDesktopStageLayout(media.matches);
+    const media = getMediaQueryList(DESKTOP_STAGE_MEDIA_QUERY);
+    const updateDesktopStageLayout = () => setUseDesktopStageLayout(media?.matches ?? false);
     updateDesktopStageLayout();
-    media.addEventListener?.('change', updateDesktopStageLayout);
+    const removeMediaListener = media ? addMediaQueryChangeListener(media, updateDesktopStageLayout) : () => undefined;
     window.addEventListener('resize', updateDesktopStageLayout);
 
     return () => {
-      media.removeEventListener?.('change', updateDesktopStageLayout);
+      removeMediaListener();
       window.removeEventListener('resize', updateDesktopStageLayout);
     };
   }, []);

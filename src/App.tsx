@@ -292,9 +292,7 @@ export default function App() {
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? 'env(safe-area-inset-bottom, 0px)'
-    : hideMockSystemChrome
-      ? '0px'
-      : '12px';
+    : '12px';
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {

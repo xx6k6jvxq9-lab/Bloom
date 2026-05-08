@@ -364,7 +364,7 @@ export function MainApp({
         </AnimatePresence>
 
         {activeTab === 'chat' && (
-          <div className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+4.25rem)] pt-4 space-y-3">
+          <div data-swipe-ignore="true" className="flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+4.25rem)] pt-4 space-y-3">
             {appData.characters.length === 0 && (appData.chatGroups?.length || 0) === 0 && (
               <div className="p-12 text-center text-zinc-300 space-y-3">
                 <Users size={48} className="mx-auto opacity-20" />

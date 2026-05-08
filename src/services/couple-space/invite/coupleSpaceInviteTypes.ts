@@ -4,6 +4,6 @@ export type CoupleSpaceInviteContext = {
   userName: string;
   character: Character;
   recentMessages: ChatMessage[];
-  corePersona?: string;
+  characterSetting?: string;
   longTermMemoryProfile?: string;
 };

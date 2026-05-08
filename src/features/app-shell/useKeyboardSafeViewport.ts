@@ -87,8 +87,7 @@ export function useKeyboardSafeViewport({
     }
 
     const shouldTrackVisibleViewport =
-      !manualKeyboardAvoidanceEnabled
-      && ownsFocusedKeyboard
+      ownsFocusedKeyboard
       && keyboardVisible
       && visualViewportHeight > 0;
 
@@ -98,7 +97,7 @@ export function useKeyboardSafeViewport({
       return undefined;
     }
 
-    if (clampViewportHeight) {
+    if (clampViewportHeight && manualKeyboardAvoidanceEnabled) {
       container.style.height = `${visualViewportHeight}px`;
       container.style.minHeight = `${visualViewportHeight}px`;
     } else {

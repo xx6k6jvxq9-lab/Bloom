@@ -135,8 +135,8 @@ export function MomentsApp({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   settings: AppSettings;
 }) {
+  const momentsRootRef = useRef<HTMLDivElement | null>(null);
   const publishRef = useRef<HTMLDivElement | null>(null);
-  const commentComposerRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingMomentAiTasksRef = useRef<Array<() => Promise<void>>>([]);
   const momentAiRunningRef = useRef(false);
@@ -163,7 +163,7 @@ export function MomentsApp({
     clampViewportHeight: true,
   });
   useKeyboardSafeViewport({
-    containerRef: commentComposerRef,
+    containerRef: momentsRootRef,
     enabled: !!commentingOn,
     clampViewportHeight: true,
   });
@@ -255,6 +255,7 @@ export function MomentsApp({
 
     requestAnimationFrame(() => {
       focusTextEntryElement(commentInputRef.current);
+      commentInputRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }, [commentingOn]);
 
@@ -546,8 +547,6 @@ export function MomentsApp({
 
   const activeInnerVoiceMoment = (moments || []).find((moment) => moment.id === activeInnerVoiceMomentId) || null;
   const activeInnerVoiceAuthor = activeInnerVoiceMoment ? resolveMomentAuthor(activeInnerVoiceMoment.authorId) : null;
-  const activeCommentMoment = commentingOn ? (moments || []).find((moment) => moment.id === commentingOn) || null : null;
-  const activeReplyTarget = replyTarget?.momentId === commentingOn ? replyTarget : null;
   const handleComment = useCallback(async (momentId: string) => {
     if (!commentText.trim()) return;
     const activeReplyTarget = replyTarget?.momentId === momentId ? replyTarget : null;
@@ -681,8 +680,9 @@ export function MomentsApp({
   }
 
   return (
-    <div className="relative flex-1 min-h-0">
+    <div ref={momentsRootRef} className="relative flex-1 min-h-0">
       <div
+        data-swipe-ignore="true"
         className="h-full overflow-y-auto pb-[calc(var(--app-safe-area-bottom-ui,0px)+4rem)]"
         style={{
           backgroundImage: resolvedMomentsBackgroundUrl ? `url(${resolvedMomentsBackgroundUrl})` : undefined,
@@ -993,6 +993,28 @@ export function MomentsApp({
                         </button>
                       );
                     })}
+                    {commentingOn === moment.id && (
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          ref={commentingOn === moment.id ? commentInputRef : undefined}
+                          type="text"
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder={replyTarget?.momentId === moment.id ? `回复 ${replyTarget.authorName}` : '发一条评论'}
+                          className="flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[13px] outline-none transition-all focus:border-zinc-900/20"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleComment(moment.id);
+                          }}
+                        />
+                        <button
+                          onClick={() => void handleComment(moment.id)}
+                          className="shrink-0 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100"
+                        >
+                          发送
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1004,60 +1026,6 @@ export function MomentsApp({
         <div className="h-4" />
       </div>
       </div>
-
-      {commentingOn && activeCommentMoment && (
-        <div
-          ref={commentComposerRef}
-          className="absolute inset-0 z-[60] flex flex-col pointer-events-none"
-        >
-          <div
-            className="mt-auto w-full pointer-events-auto border-t border-zinc-200 bg-white/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+12px)] pt-3 backdrop-blur-xl shadow-[0_-12px_28px_rgba(15,23,42,0.08)]"
-          >
-            <div className="mx-auto flex max-w-[560px] flex-col gap-2">
-            <div className="flex items-center justify-between gap-3 px-1">
-              <div className="min-w-0 text-[12px] text-zinc-500">
-                {activeReplyTarget
-                  ? `回复 ${activeReplyTarget.authorName}`
-                  : `评论 ${resolveMomentAuthor(activeCommentMoment.authorId)?.name || '这条动态'}`}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCommentingOn(null);
-                  setReplyTarget(null);
-                  setCommentText('');
-                }}
-                className="rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
-                aria-label="关闭评论输入"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                ref={commentInputRef}
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder={activeReplyTarget ? `回复 ${activeReplyTarget.authorName}` : '发布你的回复'}
-                className="flex-1 rounded-full border border-transparent bg-zinc-100 px-4 py-3 text-[14px] outline-none transition-all focus:border-zinc-900/20 focus:bg-white"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    void handleComment(commentingOn);
-                  }
-                }}
-              />
-              <button
-                onClick={() => void handleComment(commentingOn)}
-                className="shrink-0 whitespace-nowrap rounded-full border border-zinc-900 bg-white px-4 py-2 text-[13px] font-bold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-900 hover:text-white"
-              >
-                回复
-              </button>
-            </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {activeInnerVoiceMoment && activeInnerVoiceAuthor && (
         (() => {

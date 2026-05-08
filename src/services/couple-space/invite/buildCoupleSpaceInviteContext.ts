@@ -21,12 +21,22 @@ export function buildCoupleSpaceInviteContext(params: {
       return text !== '[COUPLE_SPACE_INVITE]' && text !== '[COUPLE_SPACE_INVITE_ACCEPTED]';
     })
     .slice(-INVITE_CONTEXT_WINDOW);
+  const characterSetting = [
+    characterContext.corePersona,
+    characterContext.expressionStyle ? `表达风格：${characterContext.expressionStyle}` : '',
+    params.character.signature?.trim() ? `个人签名：${params.character.signature.trim()}` : '',
+    params.character.openingRemark?.trim() ? `常见开场语气参考：${params.character.openingRemark.trim()}` : '',
+    characterContext.boundaryPack ? `边界与禁区：${characterContext.boundaryPack}` : '',
+    characterContext.extendedLore ? `扩展设定：${characterContext.extendedLore}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   return {
     userName: params.userName,
     character: params.character,
     recentMessages,
-    corePersona: characterContext.corePersona,
+    characterSetting,
     longTermMemoryProfile: memory.longTermMemoryProfile,
   };
 }

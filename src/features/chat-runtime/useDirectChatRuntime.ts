@@ -30,6 +30,7 @@ import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowL
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { buildPersistedSharedCharacterState } from '../../services/relationship-context/buildSharedCharacterState';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
 import {
@@ -1490,6 +1491,7 @@ export function useDirectChatRuntime({
     shortTermSummary?: string;
     latestUserText?: string;
     latestAssistantText?: string;
+    sharedState?: Character['sharedState'];
   }) => {
     const patch = reconcileCharacterRuntimeState({
       character,
@@ -1502,13 +1504,17 @@ export function useDirectChatRuntime({
     });
 
     if (onPatchCharacter) {
-      onPatchCharacter(patch);
+      onPatchCharacter({
+        ...patch,
+        ...(params.sharedState ? { sharedState: params.sharedState } : {}),
+      });
       return;
     }
 
     onUpdateCharacter({
       ...character,
       ...patch,
+      ...(params.sharedState ? { sharedState: params.sharedState } : {}),
     });
   }, [character, onPatchCharacter, onUpdateCharacter]);
 
@@ -1776,6 +1782,23 @@ export function useDirectChatRuntime({
             worldBookQuery: latestPendingUserMessage?.text,
             latestUserText: latestPendingUserMessage?.text,
           });
+          const directSharedState = chatSceneInput.recentContext
+            ? buildPersistedSharedCharacterState({
+                character: {
+                  shortTermSummary: chatSceneInput.recentContext.shortTermSummary,
+                },
+                temporalState: characterTemporalState,
+                sceneScopedSignals: {
+                  relationshipResidue: chatSceneInput.recentContext.relationshipResidue,
+                  sceneResidue: chatSceneInput.recentContext.sceneResidue,
+                  topicAnchors: chatSceneInput.recentContext.topicAnchors,
+                  taskResidue: chatSceneInput.recentContext.taskResidue,
+                  sharedRecentRelationshipSummary: chatSceneInput.recentContext.sharedRecentRelationshipSummary,
+                  publicAcquaintanceSummary: chatSceneInput.recentContext.publicAcquaintanceSummary,
+                },
+                sourceScene: 'direct_chat',
+              })
+            : undefined;
           const directIntentAnalysis = mode === 'proactive'
             ? null
             : analyzeLatestDirectUserIntent(historySnapshot);
@@ -1907,6 +1930,7 @@ export function useDirectChatRuntime({
             shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
             latestUserText: latestPendingUserMessage?.text,
             latestAssistantText: currentResponseText,
+            sharedState: directSharedState,
           });
           applyAvatarAction(avatarActionResult.action, historySnapshot);
           activeAssistantMessageIdRef.current = null;
@@ -2228,6 +2252,23 @@ export function useDirectChatRuntime({
         worldBookQuery: userMsg.text,
         latestUserText: userMsg.text,
       });
+      const directSharedState = chatSceneInput.recentContext
+        ? buildPersistedSharedCharacterState({
+            character: {
+              shortTermSummary: chatSceneInput.recentContext.shortTermSummary,
+            },
+            temporalState: characterTemporalState,
+            sceneScopedSignals: {
+              relationshipResidue: chatSceneInput.recentContext.relationshipResidue,
+              sceneResidue: chatSceneInput.recentContext.sceneResidue,
+              topicAnchors: chatSceneInput.recentContext.topicAnchors,
+              taskResidue: chatSceneInput.recentContext.taskResidue,
+              sharedRecentRelationshipSummary: chatSceneInput.recentContext.sharedRecentRelationshipSummary,
+              publicAcquaintanceSummary: chatSceneInput.recentContext.publicAcquaintanceSummary,
+            },
+            sourceScene: 'direct_chat',
+          })
+        : undefined;
       const directIntentAnalysis = analyzeLatestDirectUserIntent(newHistory);
       const directCharacterDecision = analyzeDirectCharacterDecision({
         character,
@@ -2370,6 +2411,7 @@ export function useDirectChatRuntime({
         shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
         latestUserText: userMsg.text,
         latestAssistantText: currentResponseText,
+        sharedState: directSharedState,
       });
       applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
@@ -2469,18 +2511,32 @@ export function useDirectChatRuntime({
       return;
     }
 
-    const userMsg: ChatMessage = {
-      role: 'user',
-      text: '[COUPLE_SPACE_INVITE]',
-      contentType: 'couple-space-invite',
-      timestamp: Date.now(),
-    };
-    const nextHistory = [...historyRef.current, userMsg];
     pendingCoupleSpaceInviteRef.current = true;
-    setHistory(nextHistory);
 
     void (async () => {
       try {
+        if (activeConfig) {
+          const inviteStartedAt = Date.now();
+          await handleSendRef.current(COUPLE_SPACE_INVITE_TOKEN);
+          const acceptedMessage = historyRef.current.find((message) => (
+            message.contentType === 'couple-space-invite-accepted'
+            && message.timestamp >= inviteStartedAt
+          ));
+          if (acceptedMessage) {
+            onAcceptCoupleSpaceInvite?.(character.id);
+          }
+          return;
+        }
+
+        const userMsg: ChatMessage = {
+          role: 'user',
+          text: COUPLE_SPACE_INVITE_TOKEN,
+          contentType: 'couple-space-invite',
+          timestamp: Date.now(),
+        };
+        const nextHistory = [...historyRef.current, userMsg];
+        setHistory(nextHistory);
+
         const inviteContext = buildCoupleSpaceInviteContext({
           userName,
           character,
@@ -2502,7 +2558,7 @@ export function useDirectChatRuntime({
         };
         const acceptedCard: ChatMessage = {
           role: 'model',
-          text: '[COUPLE_SPACE_INVITE_ACCEPTED]',
+          text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
           contentType: 'couple-space-invite-accepted',
           timestamp: Date.now() + 1,
         };

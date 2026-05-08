@@ -1703,10 +1703,7 @@ export function ChatSessionScreen({
 
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
-    paddingBottom:
-      keyboardVisible
-        ? '1px'
-        : 'var(--app-safe-area-bottom-ui, 0px)',
+    paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
     transition: 'padding-bottom 180ms ease',
   };
@@ -3242,6 +3239,7 @@ export function ChatSessionScreen({
                 sharedContextSnapshots: settlement.sharedContextSnapshots,
                 shortTermSummary: settlement.shortTermSummary,
                 openLoopRegistry: settlement.openLoopRegistry,
+                sharedState: settlement.sharedState,
               });
             } else {
               onUpdateCharacter({
@@ -3250,6 +3248,7 @@ export function ChatSessionScreen({
                 sharedContextSnapshots: settlement.sharedContextSnapshots,
                 shortTermSummary: settlement.shortTermSummary,
                 openLoopRegistry: settlement.openLoopRegistry,
+                sharedState: settlement.sharedState,
               });
             }
             if (!returnChatText.trim()) {
