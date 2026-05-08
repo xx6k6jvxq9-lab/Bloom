@@ -165,6 +165,7 @@ export function HomeScreen({
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+  const [dockSafeFill, setDockSafeFill] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -358,27 +359,34 @@ export function HomeScreen({
           ? computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim())
         || '0';
-      const resolvedSafeAreaBottom = (() => {
+      const fullSafeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim() || safeAreaVar;
+      const resolveCssLength = (rawValue: string) => {
         if (!phoneContainer || !computed) return 0;
-        if (safeAreaVar.endsWith('px')) {
-          return parseFloat(safeAreaVar) || 0;
+        if (rawValue.endsWith('px')) {
+          return parseFloat(rawValue) || 0;
         }
-        if (safeAreaVar && safeAreaVar !== '0') {
+        if (rawValue && rawValue !== '0') {
           const probe = document.createElement('div');
           probe.style.position = 'absolute';
           probe.style.visibility = 'hidden';
           probe.style.pointerEvents = 'none';
           probe.style.inset = 'auto';
-          probe.style.height = safeAreaVar;
+          probe.style.height = rawValue;
           phoneContainer.appendChild(probe);
           const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
           phoneContainer.removeChild(probe);
           return measured;
         }
         return parseFloat(computed.paddingBottom) || 0;
-      })();
+      };
+      const resolvedSafeAreaBottom = resolveCssLength(safeAreaVar);
+      const resolvedFullSafeAreaBottom = resolveCssLength(fullSafeAreaVar);
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
+      const nextDockSafeFill = isStandaloneMode
+        ? Math.round(Math.min(16, resolvedFullSafeAreaBottom * 0.45))
+        : 0;
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
+      setDockSafeFill(current => (current === nextDockSafeFill ? current : nextDockSafeFill));
     };
 
     updateViewport();
@@ -2033,7 +2041,7 @@ export function HomeScreen({
       {pageCount > 1 && (
         <div
           className="homeDesktop__pageDots pointer-events-auto absolute left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2"
-          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + 8}px` }}
+          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + dockSafeFill + 8}px` }}
         >
           {Array.from({ length: pageCount }, (_, page) => (
             <button
@@ -2052,6 +2060,7 @@ export function HomeScreen({
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
         iconSize={sizeTier === 'large' ? iconSize + (isTallPhone ? 1 : 0) : sizeTier === 'regular' ? iconSize - 1 : iconSize - 2}
+        safeAreaFill={dockSafeFill}
       />
     </div>
   );
@@ -2238,16 +2247,23 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
+  safeAreaFill,
 }: {
   placement: { x: number; y: number; width: number; height: number };
   visualSettings: VisualSettings;
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
+  safeAreaFill: number;
 }) {
   return (
-    <motion.div className="homeDesktop__dock" initial={false} animate={{ x: placement.x, y: placement.y }} style={{ width: placement.width, height: placement.height }}>
-      <div className="homeDesktop__dockBar">
+    <motion.div
+      className="homeDesktop__dock"
+      initial={false}
+      animate={{ x: placement.x, y: placement.y - safeAreaFill }}
+      style={{ width: placement.width, height: placement.height + safeAreaFill }}
+    >
+      <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
         {apps.map(app => (
           <button
             key={app.id}
@@ -2272,6 +2288,7 @@ function StaticDock({
           </button>
         ))}
       </div>
+      {safeAreaFill > 0 ? <div className="homeDesktop__dockSafeFill" style={{ height: safeAreaFill + 2 }} /> : null}
     </motion.div>
   );
 }
