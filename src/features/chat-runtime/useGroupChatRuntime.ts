@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
+import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, StickerMetadata, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import {
@@ -17,6 +17,7 @@ import {
   resolveAssistantStickerCandidates,
   type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
+import { getStickerMetadata } from '../../services/chat/stickerMetadata';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import { buildGroupChatSceneInput, type GroupChatSceneInput } from '../../services/scene-inputs/buildGroupChatSceneInput';
 import { buildPersistedSharedCharacterState } from '../../services/relationship-context/buildSharedCharacterState';
@@ -1103,11 +1104,22 @@ export function useGroupChatRuntime({
   const runtimeSharedStickers = normalizeStickerPool(
     (sharedStickers.length > 0 ? sharedStickers : availableStickers),
   );
+  const runtimeSharedStickerMetadata = settings.sharedStickerMetadata || {};
+  const runtimeAllStickerMetadata = members.reduce<Record<string, StickerMetadata>>((accumulator, member) => ({
+    ...accumulator,
+    ...(member.stickerMetadata || {}),
+  }), {
+    ...runtimeSharedStickerMetadata,
+  });
 
   const getSpeakerStickerPool = (speaker: Character) => normalizeStickerPool([
     ...runtimeSharedStickers,
     ...(speaker.stickers || []),
   ]);
+  const getSpeakerStickerMetadataMap = (speaker: Character) => ({
+    ...runtimeSharedStickerMetadata,
+    ...(speaker.stickerMetadata || {}),
+  });
 
   const recordGroupSpeakerSettlement = useCallback((
     speaker: Character,
@@ -1271,7 +1283,10 @@ export function useGroupChatRuntime({
         now: requestTimestamp,
       }),
     });
-    const speakerStickerContext = buildSpeakerStickerUsageContext(contextLayers.liveMessages, params.speaker.id);
+    const speakerStickerContext = {
+      ...buildSpeakerStickerUsageContext(contextLayers.liveMessages, params.speaker.id),
+      stickerMetadataMap: getSpeakerStickerMetadataMap(params.speaker),
+    };
     const runtimeStickerPool = resolveAssistantStickerCandidates(getSpeakerStickerPool(params.speaker), {
       character: params.speaker,
       scene: 'group',
@@ -1602,7 +1617,10 @@ export function useGroupChatRuntime({
             : message
         ))
       : currentHistory;
-    const speakerStickerContext = buildSpeakerStickerUsageContext(currentHistory, speaker.id);
+    const speakerStickerContext = {
+      ...buildSpeakerStickerUsageContext(currentHistory, speaker.id),
+      stickerMetadataMap: getSpeakerStickerMetadataMap(speaker),
+    };
     const stagedStickerRefs: string[] = [];
     const stagedStickerLabels: string[] = [];
 
@@ -3215,7 +3233,8 @@ export function useGroupChatRuntime({
   const sendStickerMessage = useCallback(async (sticker: string) => {
     if (!hasActiveConfig) return;
 
-    const stickerLabel = inferStickerSemanticLabel(sticker);
+    const stickerMetadata = getStickerMetadata(runtimeAllStickerMetadata, sticker);
+    const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
 
     await submitUserMessage({
       message: {
@@ -3232,7 +3251,7 @@ export function useGroupChatRuntime({
         stickerLabel,
       }),
     });
-  }, [hasActiveConfig, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
 
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
     if (!hasActiveConfig) return;

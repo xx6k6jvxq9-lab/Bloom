@@ -1,4 +1,5 @@
 import type { StickerMetadata } from '../../types';
+import { inferStickerSemanticLabel } from './stickerSemantics';
 
 function normalizeTextValue(value: unknown): string | undefined {
   if (typeof value !== 'string') {
@@ -24,6 +25,64 @@ function normalizeTextList(value: unknown): string[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function mergeTextLists(...lists: Array<string[] | undefined>): string[] | undefined {
+  const merged = Array.from(new Set(
+    lists
+      .flatMap((list) => list || [])
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ));
+
+  return merged.length > 0 ? merged : undefined;
+}
+
+function inferTraitsFromLabel(label?: string): string[] | undefined {
+  const normalizedLabel = label?.trim() || '';
+  if (!normalizedLabel) {
+    return undefined;
+  }
+
+  if (/(贴贴|抱抱|亲亲|喜欢|撒娇|求安慰|安慰)/u.test(normalizedLabel)) {
+    return /(求安慰|安慰)/u.test(normalizedLabel)
+      ? ['comfort', 'affection']
+      : ['affection', 'comfort'];
+  }
+
+  if (/(委屈|大哭|害怕|懵)/u.test(normalizedLabel)) {
+    return ['sad', 'comfort'];
+  }
+
+  if (/(无语|阴阳怪气|冷漠)/u.test(normalizedLabel)) {
+    return ['sarcastic', 'cool'];
+  }
+
+  if (/(生气|吃醋)/u.test(normalizedLabel)) {
+    return ['angry'];
+  }
+
+  if (/(开心|庆祝|鼓励|得意|撒欢)/u.test(normalizedLabel)) {
+    return ['cheerful', 'playful'];
+  }
+
+  if (/(害羞|期待)/u.test(normalizedLabel)) {
+    return ['shy', 'affection'];
+  }
+
+  if (/(困倦|犯困)/u.test(normalizedLabel)) {
+    return ['sleepy'];
+  }
+
+  if (/(认错)/u.test(normalizedLabel)) {
+    return ['apology', 'comfort'];
+  }
+
+  if (/(疑惑|震惊)/u.test(normalizedLabel)) {
+    return ['surprised'];
+  }
+
+  return undefined;
+}
+
 export function normalizeStickerMetadata(value: unknown): StickerMetadata | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
@@ -43,6 +102,13 @@ export function normalizeStickerMetadata(value: unknown): StickerMetadata | unde
     ...(aliases ? { aliases } : {}),
     ...(traits ? { traits } : {}),
   };
+}
+
+export function areStickerMetadataEqual(
+  left: StickerMetadata | null | undefined,
+  right: StickerMetadata | null | undefined,
+): boolean {
+  return JSON.stringify(normalizeStickerMetadata(left)) === JSON.stringify(normalizeStickerMetadata(right));
 }
 
 export function normalizeStickerMetadataMap(
@@ -93,6 +159,18 @@ export function getStickerMetadata(
   return metadataMap[normalizedSticker];
 }
 
+export function buildAutoStickerMetadata(
+  sticker: string,
+  existing?: StickerMetadata,
+): StickerMetadata | undefined {
+  const inferredLabel = inferStickerSemanticLabel(sticker, undefined, existing);
+  return normalizeStickerMetadata({
+    label: existing?.label || inferredLabel,
+    aliases: existing?.aliases,
+    traits: mergeTextLists(existing?.traits, inferTraitsFromLabel(existing?.label || inferredLabel)),
+  });
+}
+
 export function resolveStickerMetadataLabel(
   metadataMap: Record<string, StickerMetadata> | null | undefined,
   sticker: string | null | undefined,
@@ -133,4 +211,37 @@ export function withoutStickerMetadataKeys(
   );
   const entries = Object.entries(metadataMap).filter(([sticker]) => !blocked.has(sticker.trim()));
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+export function applyAutoStickerMetadata(
+  stickers: string[],
+  metadataMap: Record<string, StickerMetadata> | null | undefined,
+): {
+  metadataMap?: Record<string, StickerMetadata>;
+  changedCount: number;
+} {
+  const nextMetadataMap: Record<string, StickerMetadata> = { ...(metadataMap || {}) };
+  let changedCount = 0;
+
+  stickers
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((sticker) => {
+      const current = nextMetadataMap[sticker];
+      const next = buildAutoStickerMetadata(sticker, current);
+      if (!areStickerMetadataEqual(current, next)) {
+        changedCount += 1;
+        if (next) {
+          nextMetadataMap[sticker] = next;
+        } else {
+          delete nextMetadataMap[sticker];
+        }
+      }
+    });
+
+  return {
+    metadataMap: Object.keys(nextMetadataMap).length > 0 ? nextMetadataMap : undefined,
+    changedCount,
+  };
 }

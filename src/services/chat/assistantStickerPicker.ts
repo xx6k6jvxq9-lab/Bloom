@@ -567,15 +567,20 @@ export function pickAssistantSticker(
 
     return {
       sticker: fallbackSticker.sticker,
-      label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker),
+      label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker, context?.stickerMetadataMap),
     };
   }
 
   const rankedMatches = stickerCandidates
     .map((candidate, index) => {
-      const stickerLabel = candidate.label?.trim() || fallbackLabel(candidate.sticker, cueText);
-      const normalizedStickerLabel = stickerLabel.toLowerCase();
-      const cueScore = scoreStickerMatch(normalizedCueText, cueLabel, normalizedStickerLabel);
+      const stickerLabel = candidate.label?.trim() || fallbackLabel(candidate.sticker, context?.stickerMetadataMap, cueText);
+      const searchText = buildStickerMetadataSemanticText(
+        context?.stickerMetadataMap,
+        candidate.sticker,
+        stickerLabel,
+      ) || stickerLabel;
+      const normalizedSearchText = searchText.toLowerCase();
+      const cueScore = scoreStickerMatch(normalizedCueText, cueLabel, normalizedSearchText);
       return {
         candidate,
         index,
@@ -629,7 +634,7 @@ export function pickAssistantSticker(
 
   return {
     sticker: fallbackSticker.sticker,
-    label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker, cueText),
+    label: fallbackSticker.label || fallbackLabel(fallbackSticker.sticker, context?.stickerMetadataMap, cueText),
   };
 }
 

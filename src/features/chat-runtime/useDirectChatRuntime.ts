@@ -66,6 +66,7 @@ import {
   resolveAssistantStickerCandidates,
   type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
+import { getStickerMetadata } from '../../services/chat/stickerMetadata';
 import {
   buildAutonomousAvatarLibraryPromptSection,
   buildAvatarActionPromptSection,
@@ -841,7 +842,7 @@ const splitStreamingModelResponseIntoMessages = (
     transferTargetLabel?: string;
     assistantAliases?: string[];
     availableStickers?: string[];
-    stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker'>;
+    stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker' | 'stickerMetadataMap'>;
     maxDirectReplyBubbles?: number;
     currentHistory?: ChatMessage[];
     userLabel?: string;
@@ -1567,6 +1568,10 @@ export function useDirectChatRuntime({
     ...(character.stickers || []),
   ].filter((sticker): sticker is string => typeof sticker === 'string' && sticker.trim().length > 0)
     .map((sticker) => sticker.trim())));
+  const availableStickerMetadata = {
+    ...(settings.sharedStickerMetadata || {}),
+    ...(character.stickerMetadata || {}),
+  };
   const lastMomentPublishAtRef = useRef<number | null>(null);
   const { isLoading, error, setError: setErrorState, activeGenerationIdRef, runGeneration } = useSessionRuntimeCore();
   const activeAssistantMessageIdRef = useRef<number | null>(null);
@@ -1786,7 +1791,10 @@ export function useDirectChatRuntime({
             transferTargetLabel: userName,
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             availableStickers: runtimeStickerPool,
-            stickerContext,
+            stickerContext: {
+              ...stickerContext,
+              stickerMetadataMap: availableStickerMetadata,
+            },
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
             currentHistory: messages,
             userLabel: userName,
@@ -1910,7 +1918,10 @@ export function useDirectChatRuntime({
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
           const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
-          const directStickerContext = buildDirectStickerUsageContext(historySnapshot);
+          const directStickerContext = {
+            ...buildDirectStickerUsageContext(historySnapshot),
+            stickerMetadataMap: availableStickerMetadata,
+          };
           runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
             character,
             scene: 'direct',
@@ -2239,7 +2250,10 @@ export function useDirectChatRuntime({
         transferTargetLabel: userName,
         assistantAliases: [character.name, character.remarkName?.trim() || ''],
         availableStickers: runtimeStickerPool,
-        stickerContext,
+        stickerContext: {
+          ...stickerContext,
+          stickerMetadataMap: availableStickerMetadata,
+        },
         maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
         currentHistory: messages,
         userLabel: userName,
@@ -2394,7 +2408,10 @@ export function useDirectChatRuntime({
         intentAnalysis: directIntentAnalysis,
       });
       const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
-      const directStickerContext = buildDirectStickerUsageContext(newHistory);
+      const directStickerContext = {
+        ...buildDirectStickerUsageContext(newHistory),
+        stickerMetadataMap: availableStickerMetadata,
+      };
       runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
         character,
         scene: 'direct',
@@ -2604,17 +2621,19 @@ export function useDirectChatRuntime({
   }, []);
 
   const sendStickerMessage = useCallback((sticker: string) => {
+    const stickerMetadata = getStickerMetadata(availableStickerMetadata, sticker);
+    const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
     void handleSendRef.current({
       promptText: describeStickerMessageForPrompt({
         imageUrl: sticker,
         text: '[sticker]',
-        stickerLabel: inferStickerSemanticLabel(sticker),
+        stickerLabel,
       }),
       userText: '[sticker]',
       imageUrl: sticker,
-      stickerLabel: inferStickerSemanticLabel(sticker),
+      stickerLabel,
     });
-  }, []);
+  }, [availableStickerMetadata]);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
     void handleSendRef.current({

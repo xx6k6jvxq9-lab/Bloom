@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../types';
+import type { ChatMessage, StickerMetadata } from '../../types';
 import { parseUploadedAssetRef } from '../../features/persistence/persistentAssetRef';
 
 const STICKER_LABEL_PATTERNS: Array<{ label: string; patterns: RegExp[] }> = [
@@ -61,7 +61,12 @@ function extractSourceTokens(source?: string): string[] {
     .filter(Boolean);
 }
 
-function inferFromSource(source?: string): string | undefined {
+function inferFromSource(source?: string, metadata?: StickerMetadata): string | undefined {
+  const metadataLabel = metadata?.label?.trim();
+  if (metadataLabel) {
+    return metadataLabel;
+  }
+
   const assetRef = parseUploadedAssetRef(source);
   const normalized = source ? normalizeStickerSource(assetRef?.fileName || source) : '';
   const tokens = extractSourceTokens(source);
@@ -76,7 +81,12 @@ function inferFromSource(source?: string): string | undefined {
   return undefined;
 }
 
-function inferFromText(text?: string): string | undefined {
+function inferFromText(text?: string, metadata?: StickerMetadata): string | undefined {
+  const metadataLabel = metadata?.label?.trim();
+  if (metadataLabel) {
+    return metadataLabel;
+  }
+
   const normalized = text?.replace(/^\[(?:sticker|image|表情包|图片)\]\s*/i, '').trim();
   if (!normalized) return undefined;
 
@@ -89,8 +99,12 @@ function inferFromText(text?: string): string | undefined {
   return normalized.length <= 12 ? normalized : undefined;
 }
 
-export function inferStickerSemanticLabel(source?: string, fallbackText?: string): string | undefined {
-  return inferFromText(fallbackText) || inferFromSource(source);
+export function inferStickerSemanticLabel(
+  source?: string,
+  fallbackText?: string,
+  metadata?: StickerMetadata,
+): string | undefined {
+  return inferFromText(fallbackText, metadata) || inferFromSource(source, metadata);
 }
 
 export function describeStickerMessageForPrompt(message: Pick<ChatMessage, 'imageUrl' | 'text' | 'stickerLabel'>): string {
