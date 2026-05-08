@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Monitor, MessageSquare, Palette, Database, Image as ImageIcon, Layout, Type, Upload, Download, Trash2, Plus, X, Cloud, Users, Layers, UserPlus, Phone, User, Heart, Ghost, Book, Compass, Share2, Calendar, Star, Settings, Mic, Banknote, Check, RefreshCw, Moon } from 'lucide-react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VisualSettings, WidgetConfig, DesktopIconConfig, type ThemeFontAsset, type Character } from '../../../types';
