@@ -376,20 +376,61 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
-      // In standalone/PWA mode the desktop dock can overlap part of the
-      // bottom safe area instead of floating fully above it. Keep a small
-      // cushion so it does not sit directly on the system home indicator.
       const nextSafeAreaBottom = Math.round(
-        isStandaloneMode && resolvedSafeAreaBottom > 0
-          ? Math.max(10, resolvedSafeAreaBottom - 22)
-          : resolvedSafeAreaBottom,
+        isStandaloneMode ? 0 : resolvedSafeAreaBottom,
       );
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
 
     updateViewport();
 
-    return observeElementSize(node, updateViewport);
+    let frameOne = 0;
+    let frameTwo = 0;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleSettledUpdate = () => {
+      frameOne = window.requestAnimationFrame(() => {
+        frameTwo = window.requestAnimationFrame(() => {
+          updateViewport();
+        });
+      });
+      settleTimer = setTimeout(() => {
+        updateViewport();
+      }, 120);
+    };
+
+    scheduleSettledUpdate();
+
+    const removeSizeObserver = observeElementSize(node, updateViewport);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', updateViewport);
+    viewport?.addEventListener('scroll', updateViewport);
+    window.addEventListener('pageshow', updateViewport);
+
+    const root = document.documentElement;
+    const phoneContainer = document.getElementById('phone-container');
+    const mutationObserver =
+      typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(() => {
+            updateViewport();
+          })
+        : null;
+    mutationObserver?.observe(root, { attributes: true, attributeFilter: ['data-standalone', 'style'] });
+    if (phoneContainer) {
+      mutationObserver?.observe(phoneContainer, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+
+    return () => {
+      removeSizeObserver();
+      viewport?.removeEventListener('resize', updateViewport);
+      viewport?.removeEventListener('scroll', updateViewport);
+      window.removeEventListener('pageshow', updateViewport);
+      mutationObserver?.disconnect();
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+      if (settleTimer) {
+        clearTimeout(settleTimer);
+      }
+    };
   }, []);
 
   useLayoutEffect(() => {
