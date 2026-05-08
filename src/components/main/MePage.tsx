@@ -104,7 +104,7 @@ export function MePage({
       {activeSection === 'main' && (
           <div
             className="flex-1 overflow-y-auto"
-            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 3.5rem)' }}
+            style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 3.5rem)' }}
           >
             {/* Profile Header */}
             <div className="px-6 pt-8 pb-6 rounded-b-[32px] shadow-sm border-b border-zinc-100 backdrop-blur-sm" style={bgStyle}>

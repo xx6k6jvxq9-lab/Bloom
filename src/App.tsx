@@ -293,6 +293,12 @@ export default function App() {
   const appSafeAreaBottomUi = isStandalone
     ? 'env(safe-area-inset-bottom, 0px)'
     : '12px';
+  const appSafeAreaBottomTab = isStandalone
+    ? 'min(env(safe-area-inset-bottom, 0px), 18px)'
+    : '12px';
+  const appSafeAreaBottomDock = isStandalone
+    ? 'min(env(safe-area-inset-bottom, 0px), 20px)'
+    : appSafeAreaBottomUi;
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
       ? {
@@ -309,6 +315,8 @@ export default function App() {
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
+    '--app-safe-area-bottom-tab': appSafeAreaBottomTab,
+    '--app-safe-area-bottom-dock': appSafeAreaBottomDock,
     '--app-mock-home-indicator-space': !isStandalone && !hideMockSystemChrome ? '12px' : '0px',
   } as React.CSSProperties & Record<string, string>;
 

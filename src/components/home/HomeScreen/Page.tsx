@@ -352,10 +352,10 @@ export function HomeScreen({
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
       const safeAreaVar =
         (isStandaloneMode
-          ? computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
+          ? computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || (isStandaloneMode
-          ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+          ? computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim())
         || '0';
       const resolvedSafeAreaBottom = (() => {

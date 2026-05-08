@@ -372,8 +372,8 @@ function buildTempChatReplyPolicy(author: ForumAuthor, session: ForumTempChatSes
 
 export default function ForumApp({ appData, onUpdateAppData, onClose, settings, onOpenChat, initialPostId }: ForumAppProps) {
   const forumTopInsetStyle = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' };
-  const forumBottomInsetStyle = { paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 56px)' };
-  const forumBottomNavStyle = { paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)' };
+  const forumBottomInsetStyle = { paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 56px)' };
+  const forumBottomNavStyle = { paddingBottom: 'var(--app-safe-area-bottom-tab, var(--app-safe-area-bottom-ui, 0px))' };
   const [activeTab, setActiveTab] = useState<'home' | 'hot' | 'notification' | 'profile'>('home');
   const [currentView, setCurrentView] = useState<'list' | 'detail' | 'editor' | 'edit-profile' | 'edit-author-profile' | 'user-profile' | 'temp-chat' | 'follow-list' | 'spectator-settings' | 'forum-settings' | 'public-open-settings'>('list');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);

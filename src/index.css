@@ -37,6 +37,8 @@ body {
   --app-safe-area-bottom: 0px;
   --app-mock-home-indicator-space: 0px;
   --app-safe-area-bottom-ui: 0px;
+  --app-safe-area-bottom-tab: 0px;
+  --app-safe-area-bottom-dock: 0px;
 }
 
 /* Prevent iOS Safari/PWA from auto-zooming focused form fields. */
@@ -223,6 +225,8 @@ body {
     --app-safe-area-bottom-full: env(safe-area-inset-bottom, 0px);
     --app-safe-area-bottom: var(--app-safe-area-bottom-full);
     --app-safe-area-bottom-ui: env(safe-area-inset-bottom, 0px);
+    --app-safe-area-bottom-tab: min(env(safe-area-inset-bottom, 0px), 18px);
+    --app-safe-area-bottom-dock: min(env(safe-area-inset-bottom, 0px), 20px);
   }
 
   .app-home-indicator-wrap {
