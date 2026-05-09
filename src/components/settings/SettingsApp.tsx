@@ -383,6 +383,7 @@ export function SettingsApp({
   defaultConfig,
   characters,
 }: SettingsAppProps) {
+  const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const voiceSampleInputRef = useRef<HTMLInputElement | null>(null);
   const { setUploadedFile } = usePersistentFieldActions();
   const [view, setView] = useState<'list' | 'edit'>('list');
@@ -819,7 +820,10 @@ export function SettingsApp({
     >
       {view === 'list' ? (
         <>
-          <div className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3 pt-12">
+          <div
+            className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3"
+            style={{ paddingTop: settingsHeaderTopPadding }}
+          >
             <button onClick={onBack} className="-ml-1 flex items-center p-1 text-black active:opacity-70">
               <ChevronLeft size={26} />
             </button>
@@ -978,7 +982,10 @@ export function SettingsApp({
         </>
       ) : (
         <>
-          <div className="z-10 flex min-h-[64px] items-center justify-between bg-white px-4 pb-3 pt-12">
+          <div
+            className="z-10 flex min-h-[64px] items-center justify-between bg-white px-4 pb-3"
+            style={{ paddingTop: settingsHeaderTopPadding }}
+          >
             <button onClick={() => setView('list')} className="-ml-1 flex items-center p-1 text-black active:opacity-70">
               <ChevronLeft size={26} />
             </button>

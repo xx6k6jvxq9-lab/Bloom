@@ -319,7 +319,11 @@ export function HomeScreen({
     && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
-  const resolvedTopOverlayOffset = Math.max(0, Math.round(topOverlayOffset));
+  const showStandaloneMockStatusBar = topOverlayOffset > 0;
+  const standaloneMockStatusBarTop = showStandaloneMockStatusBar ? Math.max(8, safeAreaTop + 6) : 0;
+  const resolvedTopOverlayOffset = showStandaloneMockStatusBar
+    ? Math.max(Math.round(topOverlayOffset), Math.max(44, safeAreaTop + 12))
+    : 0;
   const layoutMetrics = useMemo(
     () =>
       getDesktopLayoutMetrics({
@@ -602,8 +606,6 @@ export function HomeScreen({
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const showStandaloneMockStatusBar = topOverlayOffset > 0;
-  const standaloneMockStatusBarTop = showStandaloneMockStatusBar ? Math.max(8, safeAreaTop + 6) : 0;
   const hasWallpaperValue = Boolean(appData.visualSettings?.globalBackground?.trim());
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
   const wallpaperDisplayUrl =
@@ -2465,8 +2467,7 @@ function StaticDock({
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
-  const resolvedSafeAreaInset = Math.max(0, safeAreaInset);
-  const totalDockHeight = placement.height + resolvedSafeAreaInset;
+  const totalDockHeight = placement.height;
 
   return (
     <motion.div

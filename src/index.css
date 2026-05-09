@@ -212,6 +212,7 @@ body {
     height: var(--app-standalone-shell-height);
     min-height: var(--app-standalone-shell-height);
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .app-shell {
@@ -219,6 +220,7 @@ body {
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .app-phone-container {
@@ -230,6 +232,7 @@ body {
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   html[data-standalone='true'],
@@ -240,5 +243,6 @@ body {
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
     overflow: hidden;
+    overscroll-behavior: none;
   }
 }

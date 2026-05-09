@@ -290,6 +290,7 @@ const buildImportedCharacterFromData = (
 };
 
 export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetProps) {
+  const addCharacterHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<'edit' | 'import'>('edit');
   const [name, setName] = useState('');
@@ -389,7 +390,10 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
       ref={containerRef}
       className="absolute inset-0 z-50 flex flex-col bg-white"
     >
-      <div className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 pt-12 flex items-center justify-between">
+      <div
+        className="min-h-[64px] shrink-0 border-b border-zinc-100 px-4 pb-3 flex items-center justify-between"
+        style={{ paddingTop: addCharacterHeaderTopPadding }}
+      >
         <div className="flex items-center gap-2">
           <button onClick={view === 'import' ? () => setView('edit') : onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
             <ChevronLeft size={24} />
