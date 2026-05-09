@@ -500,9 +500,18 @@ function parseTextResponse(rawResponse: string) {
 
   try {
     const data = JSON.parse(trimmedResponse);
+    const upstreamErrorDetail = normalizeErrorDetail(extractErrorDetail(data));
     const extractedText = sanitizeModelOutput(extractTextFromPayload(data));
     if (extractedText) {
       return extractedText;
+    }
+
+    if (upstreamErrorDetail) {
+      throw new Error(
+        preview
+          ? `Upstream API error: ${upstreamErrorDetail}. Raw preview: ${preview}`
+          : `Upstream API error: ${upstreamErrorDetail}`,
+      );
     }
 
     const preview = buildRawResponsePreview(trimmedResponse);

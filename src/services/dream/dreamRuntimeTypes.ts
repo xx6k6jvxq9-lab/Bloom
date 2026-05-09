@@ -8,6 +8,8 @@ export type DreamCustomTag = {
   label: string;
 };
 
+export type DreamGenerationMode = 'light' | 'woven';
+
 export type DreamSelection = {
   entryMode: DreamEntryMode;
   domainId: DreamDomainId;
@@ -175,6 +177,7 @@ export type GenerateDreamScenarioOptions = {
   masks: Mask[];
   worldBooks: WorldBookEntry[];
   dreamWorldBookConfig?: DreamWorldBookConfig;
+  generationMode?: DreamGenerationMode;
   selection: DreamSelection;
 };
 
