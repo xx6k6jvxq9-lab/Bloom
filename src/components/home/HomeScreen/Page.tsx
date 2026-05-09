@@ -319,7 +319,6 @@ export function HomeScreen({
     && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
-  const resolvedTopOverlayOffset = Math.max(0, Math.round(topOverlayOffset));
   const layoutMetrics = useMemo(
     () =>
       getDesktopLayoutMetrics({
@@ -332,9 +331,8 @@ export function HomeScreen({
         gap: configuredGap,
         safeAreaBottom,
         isTallPhone,
-        topOverlayOffset: resolvedTopOverlayOffset,
       }),
-    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, resolvedTopOverlayOffset, safeAreaBottom, sizeTier],
+    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier],
   );
   const iconSize = layoutMetrics.iconSize;
   const iconSizeBoost = isTabletLayout ? 4 : sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0;
