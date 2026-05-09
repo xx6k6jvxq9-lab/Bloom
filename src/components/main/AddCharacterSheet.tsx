@@ -441,7 +441,8 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                       accept="image/*"
                       className="hidden"
                       onChange={async (e) => {
-                        const file = e.target.files?.[0];
+                        const input = e.currentTarget;
+                        const file = input.files?.[0];
                         if (!file) return;
                         try {
                           const persistedValue = await saveUploadedFile(file);
@@ -449,7 +450,7 @@ export function AddCharacterSheet({ onSave, onBack, groups }: AddCharacterSheetP
                         } catch (error: any) {
                           alert(error?.message || '图片读取失败');
                         }
-                        e.currentTarget.value = '';
+                        input.value = '';
                       }}
                     />
                   </label>
