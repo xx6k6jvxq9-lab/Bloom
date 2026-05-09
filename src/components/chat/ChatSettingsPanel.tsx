@@ -45,6 +45,11 @@ import {
   normalizeStickerMetadata,
   withoutStickerMetadataKeys,
 } from '../../services/chat/stickerMetadata';
+import {
+  getVoiceSampleValidationMessage,
+  isLikelyVoiceSampleFile,
+  VOICE_SAMPLE_INPUT_ACCEPT,
+} from '../../services/ai/apiCenter/voiceSampleCompat';
 
 function SettingsSection({
   title,
@@ -1116,8 +1121,8 @@ export function ChatSettingsPanel({
       return;
     }
 
-    if (!file.type.startsWith('audio/')) {
-      await showInAppAlert('请上传音频文件，例如 mp3、wav、m4a。');
+    if (!isLikelyVoiceSampleFile(file)) {
+      await showInAppAlert(getVoiceSampleValidationMessage());
       event.currentTarget.value = '';
       return;
     }
@@ -2461,7 +2466,7 @@ export function ChatSettingsPanel({
                       <input
                         ref={voiceSampleInputRef}
                         type="file"
-                        accept="audio/*"
+                        accept={VOICE_SAMPLE_INPUT_ACCEPT}
                         onChange={(event) => void handleVoiceSampleUpload(event)}
                         className="hidden"
                       />

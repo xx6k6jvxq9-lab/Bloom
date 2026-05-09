@@ -43,6 +43,11 @@ import { copyTextContent } from '../../services/chat/messageActions';
 import { showInAppAlert, showInAppConfirm } from '../../utils';
 import { TtsVoiceManagementPanel } from './TtsVoiceManagementPanel';
 import { looksLikeMinimaxConfig } from '../../services/ai/apiCenter/minimaxCatalog';
+import {
+  getVoiceSampleValidationMessage,
+  isLikelyVoiceSampleFile,
+  VOICE_SAMPLE_INPUT_ACCEPT,
+} from '../../services/ai/apiCenter/voiceSampleCompat';
 
 type SettingsAppProps = {
   onBack: () => void;
@@ -668,8 +673,8 @@ export function SettingsApp({
       return;
     }
 
-    if (!file.type.startsWith('audio/')) {
-      alert('请上传音频文件，例如 mp3、wav、m4a。');
+    if (!isLikelyVoiceSampleFile(file)) {
+      alert(getVoiceSampleValidationMessage());
       event.currentTarget.value = '';
       return;
     }
@@ -1099,7 +1104,7 @@ export function SettingsApp({
                     <input
                       ref={voiceSampleInputRef}
                       type="file"
-                      accept="audio/*"
+                      accept={VOICE_SAMPLE_INPUT_ACCEPT}
                       onChange={(event) => void handleUploadDefaultVoiceSample(event)}
                       className="hidden"
                     />
