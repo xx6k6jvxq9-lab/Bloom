@@ -173,6 +173,7 @@ export function HomeScreen({
   const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
+  const [safeAreaTop, setSafeAreaTop] = useState(0);
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
   const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const [pageDirection, setPageDirection] = useState(0);
@@ -318,6 +319,9 @@ export function HomeScreen({
     && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
+  const standaloneContentTopInset = isStandaloneMode
+    ? safeAreaTop + (sizeTier === 'compact' ? 18 : sizeTier === 'large' ? 28 : 24)
+    : 0;
   const layoutMetrics = useMemo(
     () =>
       getDesktopLayoutMetrics({
@@ -328,10 +332,11 @@ export function HomeScreen({
         sizeTier,
         iconSize: configuredIconSize,
         gap: configuredGap,
+        contentTopInset: standaloneContentTopInset,
         safeAreaBottom,
         isTallPhone,
       }),
-    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier],
+    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier, standaloneContentTopInset],
   );
   const iconSize = layoutMetrics.iconSize;
   const iconSizeBoost = isTabletLayout ? 4 : sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0;
@@ -377,6 +382,9 @@ export function HomeScreen({
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
       setIsStandaloneMode(current => (current === isStandaloneMode ? current : isStandaloneMode));
+      const safeAreaTopVar =
+        computed?.getPropertyValue('--app-safe-area-top')?.trim()
+        || '0';
       const safeAreaVar =
         computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
         || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
@@ -384,25 +392,37 @@ export function HomeScreen({
           ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || '0';
-      const resolvedSafeAreaBottom = (() => {
+      const resolveCssLengthValue = (value: string) => {
         if (!phoneContainer || !computed) return 0;
-        if (safeAreaVar.endsWith('px')) {
-          return parseFloat(safeAreaVar) || 0;
+        if (value.endsWith('px')) {
+          return parseFloat(value) || 0;
         }
-        if (safeAreaVar && safeAreaVar !== '0') {
+        if (value && value !== '0') {
           const probe = document.createElement('div');
           probe.style.position = 'absolute';
           probe.style.visibility = 'hidden';
           probe.style.pointerEvents = 'none';
           probe.style.inset = 'auto';
-          probe.style.height = safeAreaVar;
+          probe.style.height = value;
           phoneContainer.appendChild(probe);
           const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
           phoneContainer.removeChild(probe);
           return measured;
         }
+        return 0;
+      };
+      const nextSafeAreaTop = Math.round(resolveCssLengthValue(safeAreaTopVar));
+      const resolvedSafeAreaBottom = (() => {
+        if (!phoneContainer || !computed) return 0;
+        if (safeAreaVar) {
+          const resolved = resolveCssLengthValue(safeAreaVar);
+          if (resolved > 0) {
+            return resolved;
+          }
+        }
         return parseFloat(computed.paddingBottom) || 0;
       })();
+      setSafeAreaTop(current => (current === nextSafeAreaTop ? current : nextSafeAreaTop));
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
@@ -591,13 +611,6 @@ export function HomeScreen({
     getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedWallpaperUrl)
     || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
   const finalWallpaperSrc = wallpaperDisplayUrl || (!hasWallpaperValue ? WALLPAPER_URL : undefined);
-  const standaloneFrameTopInset = isStandaloneMode
-    ? sizeTier === 'compact'
-      ? 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 18px)'
-      : sizeTier === 'large'
-        ? 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 28px)'
-        : 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 24px)'
-    : '0px';
   const { resolvedUrl: resolvedDockBackgroundUrl } = useResolvedPersistentValue(visualSettings.desktop?.dockBackgroundImage || '');
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(visualSettings.navBar?.backgroundImage);
   const { resolvedUrl: resolvedNavBarAvatarUrl } = useResolvedPersistentValue(visualSettings.navBar?.avatar);
@@ -1711,7 +1724,6 @@ export function HomeScreen({
       <div
         ref={desktopRootRef}
         className="homeDesktop__frame"
-        style={isStandaloneMode ? { top: standaloneFrameTopInset } : undefined}
         onPointerDown={e => {
           if (e.pointerType === 'mouse') {
             handleSwipeStart(e.clientX, e.clientY, e.target);

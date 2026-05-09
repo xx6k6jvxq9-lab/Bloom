@@ -19,6 +19,7 @@ export type DesktopLayoutMetrics = {
   containerHeight: number;
   sizeTier: HomeScreenSizeTier;
   isTallPhone: boolean;
+  contentTopInset: number;
   safeAreaBottom: number;
   dockBottomGap: number;
   desktopPaddingX: number;
@@ -110,6 +111,7 @@ export function getDesktopLayoutMetrics({
   sizeTier,
   iconSize,
   gap,
+  contentTopInset = 0,
   safeAreaBottom = 0,
   isTallPhone = false,
 }: {
@@ -120,6 +122,7 @@ export function getDesktopLayoutMetrics({
   sizeTier: HomeScreenSizeTier;
   iconSize?: number;
   gap?: number;
+  contentTopInset?: number;
   safeAreaBottom?: number;
   isTallPhone?: boolean;
 }): DesktopLayoutMetrics {
@@ -196,21 +199,24 @@ export function getDesktopLayoutMetrics({
   const dockHeight = Math.round(
     preset.dockHeight + (!isTabletLayout && isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 4 : 2) : 0),
   );
+  const effectiveContentTopInset = Math.max(0, contentTopInset);
   const dockBottomGap = isTabletLayout
     ? clamp(Math.round(safeHeight * 0.012), 8, 18)
-    : 0;
+    : effectiveContentTopInset > 0
+      ? clamp(Math.round(safeHeight * 0.018), 10, 20)
+      : 0;
   const effectiveSafeAreaBottom = Math.max(0, safeAreaBottom);
   const desktopStartYBase = clamp(
     Math.round(safeHeight * (isTabletLayout ? 0.105 : sizeTier === 'compact' ? 0.095 : sizeTier === 'large' ? 0.115 : 0.105)),
     preset.startY - (isTabletLayout ? 10 : 6),
     preset.startY + (isTabletLayout ? 20 : 10),
   );
-  const desktopStartY = isTabletLayout
+  const desktopStartY = (isTabletLayout
     ? Math.max(82, desktopStartYBase)
     : Math.max(
       sizeTier === 'compact' ? 62 : 58,
       desktopStartYBase - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 28 : 18) : sizeTier === 'regular' ? 4 : 0),
-    );
+    )) + effectiveContentTopInset;
   const usableTop = desktopStartY;
   const usableBottom = safeHeight - effectiveSafeAreaBottom - dockHeight - dockBottomGap + (
     !isTabletLayout && isTallPhone && sizeTier !== 'compact'
@@ -241,6 +247,7 @@ export function getDesktopLayoutMetrics({
     containerHeight: safeHeight,
     sizeTier,
     isTallPhone,
+    contentTopInset: effectiveContentTopInset,
     safeAreaBottom: effectiveSafeAreaBottom,
     dockBottomGap,
     desktopPaddingX,
