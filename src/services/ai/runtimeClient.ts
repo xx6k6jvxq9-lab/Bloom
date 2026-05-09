@@ -514,7 +514,6 @@ function parseTextResponse(rawResponse: string) {
       );
     }
 
-    const preview = buildRawResponsePreview(trimmedResponse);
     throw new Error(
       preview
         ? `Model response contained no extractable text. Raw preview: ${preview}`

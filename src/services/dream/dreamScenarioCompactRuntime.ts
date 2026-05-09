@@ -67,6 +67,12 @@ function pickText(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function isPlaceholderChoiceTitle(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return true;
+  return /^\[?待定\]?$/u.test(normalized) || /^选项\s*\d+$/u.test(normalized);
+}
+
 function repairCommonJsonIssues(raw: string): string {
   return raw
     .replace(/^\uFEFF/, '')
@@ -291,8 +297,11 @@ export function validateCompactDreamScenario(parsed: CompactRawScenario | null, 
     if (sceneText.length < 280) addIssue('quality', 'act_scene_too_short', `第 ${index + 1} 幕正文过短。`, index);
     if (choices.length !== 3) {
       addIssue('repair', 'act_choices_count_mismatch', `第 ${index + 1} 幕选项数量不是 3 个。`, index);
-    } else if (choices.some((choice) => !pickText(choice.title) || !pickText(choice.detail) || !pickText(choice.direction))) {
-      addIssue('quality', 'act_choice_field_empty', `第 ${index + 1} 幕存在空选项字段。`, index);
+    } else if (choices.some((choice) => {
+      const title = pickText(choice.title);
+      return isPlaceholderChoiceTitle(title) || !pickText(choice.detail) || !pickText(choice.direction);
+    })) {
+      addIssue('repair', 'act_choice_field_empty', `第 ${index + 1} 幕存在空选项字段或占位选项。`, index);
     }
   });
 
