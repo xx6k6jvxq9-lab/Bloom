@@ -11,6 +11,17 @@
   background: transparent;
 }
 
+html[data-standalone='true'] .homeDesktop {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+html[data-standalone='true'] .homeDesktop__nativeScroll {
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .homeDesktop__wallpaper {
   position: absolute;
   inset: 0;

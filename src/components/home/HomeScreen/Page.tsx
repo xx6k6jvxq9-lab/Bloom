@@ -1500,7 +1500,7 @@ export function HomeScreen({
                       initial={{ opacity: 0, y: 10, scale: 0.9 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                      className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                      className="homeDesktop__nativeScroll absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                     >
                       {moodOptions.map((m, index) => (
                         <button
@@ -2018,7 +2018,7 @@ export function HomeScreen({
                     initial={{ opacity: 0, y: 10, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                    className="homeDesktop__nativeScroll absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                   >
                     {moodOptions.map((m, index) => (
                       <button

@@ -202,7 +202,7 @@ body {
 
 @media (display-mode: standalone) {
   html {
-    --app-standalone-shell-height: calc(var(--app-active-viewport-height, var(--app-viewport-height, 100dvh)) + env(safe-area-inset-bottom, 0px));
+    --app-standalone-shell-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
   }
 
   html,
@@ -211,12 +211,16 @@ body {
     background: #09090b;
     height: var(--app-standalone-shell-height);
     min-height: var(--app-standalone-shell-height);
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .app-shell {
     background: #09090b;
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   .app-phone-container {
@@ -227,14 +231,42 @@ body {
     --app-safe-area-bottom-dock: env(safe-area-inset-bottom, 0px);
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   html[data-standalone='true'],
   html[data-standalone='true'] body,
   html[data-standalone='true'] #root,
   html[data-standalone='true'] .app-shell,
-  html[data-standalone='true'] .app-phone-container {
+  html[data-standalone='true'] .app-phone-container,
+  html[data-standalone='true'] .phone-screen-root {
     height: var(--app-standalone-shell-height) !important;
     min-height: var(--app-standalone-shell-height);
+    overflow: hidden;
+    overscroll-behavior: none;
   }
+}
+
+html[data-standalone='true'] {
+  --app-standalone-shell-height: var(--app-active-viewport-height, var(--app-viewport-height, 100dvh));
+}
+
+html[data-standalone='true'],
+html[data-standalone='true'] body,
+html[data-standalone='true'] #root {
+  background: #09090b;
+  height: var(--app-standalone-shell-height);
+  min-height: var(--app-standalone-shell-height);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html[data-standalone='true'] .app-shell,
+html[data-standalone='true'] .app-phone-container,
+html[data-standalone='true'] .phone-screen-root {
+  height: var(--app-standalone-shell-height) !important;
+  min-height: var(--app-standalone-shell-height);
+  overflow: hidden;
+  overscroll-behavior: none;
 }
