@@ -591,6 +591,13 @@ export function HomeScreen({
     getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedWallpaperUrl)
     || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
   const finalWallpaperSrc = wallpaperDisplayUrl || (!hasWallpaperValue ? WALLPAPER_URL : undefined);
+  const standaloneFrameTopInset = isStandaloneMode
+    ? sizeTier === 'compact'
+      ? 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 18px)'
+      : sizeTier === 'large'
+        ? 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 28px)'
+        : 'calc(var(--app-safe-area-top, env(safe-area-inset-top, 0px)) + 24px)'
+    : '0px';
   const { resolvedUrl: resolvedDockBackgroundUrl } = useResolvedPersistentValue(visualSettings.desktop?.dockBackgroundImage || '');
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(visualSettings.navBar?.backgroundImage);
   const { resolvedUrl: resolvedNavBarAvatarUrl } = useResolvedPersistentValue(visualSettings.navBar?.avatar);
@@ -1674,58 +1681,7 @@ export function HomeScreen({
 
   return (
     <div
-      ref={desktopRootRef}
       className={`homeDesktop homeDesktop--${sizeTier} ${isTallPhone ? 'homeDesktop--tall' : ''} ${isStandaloneMode ? 'homeDesktop--standalone' : ''}`}
-      onPointerDown={e => {
-        if (e.pointerType === 'mouse') {
-          handleSwipeStart(e.clientX, e.clientY, e.target);
-        }
-      }}
-      onPointerMove={e => {
-        if (e.pointerType === 'mouse') {
-          handleSwipeMove(e.clientX, e.clientY);
-        }
-      }}
-      onPointerUp={e => {
-        if (e.pointerType === 'mouse') {
-          handleSwipeEnd(e.clientX, e.clientY);
-        }
-      }}
-      onPointerCancel={() => {
-        resetSwipeInteraction();
-      }}
-      onTouchStart={e => {
-        const touch = e.touches[0];
-        if (!touch) return;
-        handleSwipeStart(touch.clientX, touch.clientY, e.target);
-      }}
-      onTouchMove={e => {
-        const touch = e.touches[0];
-        if (!touch) return;
-        handleSwipeMove(touch.clientX, touch.clientY);
-      }}
-      onTouchEnd={e => {
-        const touch = e.changedTouches[0];
-        if (!touch) {
-          resetSwipeInteraction();
-          return;
-        }
-        handleSwipeEnd(touch.clientX, touch.clientY);
-      }}
-      onTouchCancel={() => {
-        resetSwipeInteraction();
-      }}
-      onClick={e => {
-        if (!isArrangeMode || draggingIconId || draggingNavBar) return;
-        const element = e.target instanceof HTMLElement ? e.target : null;
-        if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
-          return;
-        }
-        setDraggingWidgetId(null);
-        setWidgetPreviewConfigs(null);
-        setDragGhost(null);
-        setIsArrangeMode(false);
-      }}
       style={
         {
           '--home-desktop-dock-gap': isTabletLayout ? '12px' : sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
@@ -1751,6 +1707,62 @@ export function HomeScreen({
           referrerPolicy="no-referrer"
         />
       ) : null}
+
+      <div
+        ref={desktopRootRef}
+        className="homeDesktop__frame"
+        style={isStandaloneMode ? { top: standaloneFrameTopInset } : undefined}
+        onPointerDown={e => {
+          if (e.pointerType === 'mouse') {
+            handleSwipeStart(e.clientX, e.clientY, e.target);
+          }
+        }}
+        onPointerMove={e => {
+          if (e.pointerType === 'mouse') {
+            handleSwipeMove(e.clientX, e.clientY);
+          }
+        }}
+        onPointerUp={e => {
+          if (e.pointerType === 'mouse') {
+            handleSwipeEnd(e.clientX, e.clientY);
+          }
+        }}
+        onPointerCancel={() => {
+          resetSwipeInteraction();
+        }}
+        onTouchStart={e => {
+          const touch = e.touches[0];
+          if (!touch) return;
+          handleSwipeStart(touch.clientX, touch.clientY, e.target);
+        }}
+        onTouchMove={e => {
+          const touch = e.touches[0];
+          if (!touch) return;
+          handleSwipeMove(touch.clientX, touch.clientY);
+        }}
+        onTouchEnd={e => {
+          const touch = e.changedTouches[0];
+          if (!touch) {
+            resetSwipeInteraction();
+            return;
+          }
+          handleSwipeEnd(touch.clientX, touch.clientY);
+        }}
+        onTouchCancel={() => {
+          resetSwipeInteraction();
+        }}
+        onClick={e => {
+          if (!isArrangeMode || draggingIconId || draggingNavBar) return;
+          const element = e.target instanceof HTMLElement ? e.target : null;
+          if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
+            return;
+          }
+          setDraggingWidgetId(null);
+          setWidgetPreviewConfigs(null);
+          setDragGhost(null);
+          setIsArrangeMode(false);
+        }}
+      >
 
       <div className="absolute inset-0 z-30 overflow-hidden">
         <div
@@ -2224,6 +2236,7 @@ export function HomeScreen({
         floatingMode={isStandaloneMode}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
+      </div>
     </div>
   );
 }

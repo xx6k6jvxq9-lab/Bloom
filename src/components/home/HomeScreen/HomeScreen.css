@@ -32,6 +32,12 @@ html[data-standalone='true'] .homeDesktop__nativeScroll {
   pointer-events: none;
 }
 
+.homeDesktop__frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 .homeDesktop__surface {
   position: absolute;
   inset: 0;
