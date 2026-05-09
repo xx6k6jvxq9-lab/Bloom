@@ -22,7 +22,7 @@ import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExpor
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
-import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { buildCharacterContext, resolveActiveUserMask } from '../../services/relationship-context/buildCharacterContext';
 import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
 import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -1334,7 +1334,7 @@ export function ChatSettingsPanel({
       const summaryHistoryWindow = getSummaryHistoryWindow(history, effectiveMemoryLimit);
       const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
 
-      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      const activeMask = resolveActiveUserMask(character.id, masks);
       const activeWorldBooks = worldBooks.filter(wb =>
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)

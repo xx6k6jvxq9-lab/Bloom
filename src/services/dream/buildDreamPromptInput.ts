@@ -2,16 +2,12 @@ import type { Mask, WorldBookEntry } from '../../types';
 import { dreamTagGroups } from '../../components/dream/dreamContent';
 import type { DreamTagCategory } from '../../components/dream/types';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
-import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { buildCharacterContext, resolveActiveUserMask } from '../relationship-context/buildCharacterContext';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 import { buildDreamPersonaFloor } from './dreamPersonaFloor';
 import { resolveDreamWorldBookConflicts } from './dreamWorldBookConflict';
 import { resolveDreamSelection } from './resolveDreamSelection';
-
-function resolveActiveMask(characterId: string, masks: Mask[]) {
-  return masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(characterId)) ?? null;
-}
 
 function resolveActiveWorldBooks(characterId: string, worldBooks: WorldBookEntry[], activeIds?: string[]) {
   return sortWorldBooksByPriority(
@@ -291,7 +287,7 @@ export function buildDreamTagWorldBookGuardrails() {
 }
 
 export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
-  const activeMask = resolveActiveMask(options.character.id, options.masks);
+  const activeMask = resolveActiveUserMask(options.character.id, options.masks);
   const memoryLayers = buildResolvedMemoryLayers(options.character);
   const resolvedSelection = resolveDreamSelection(
     options.selection,

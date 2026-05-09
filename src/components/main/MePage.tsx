@@ -714,6 +714,52 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
   const [selectedMaskIds, setSelectedMaskIds] = useState<string[]>([]);
   const [showBatchSyncModal, setShowBatchSyncModal] = useState(false);
 
+  const normalizeMaskAssignments = (nextMasks: Mask[], preferredMaskIds: string[] = []) => {
+    const priorityMap = new Map(preferredMaskIds.map((id, index) => [id, nextMasks.length + index] as const));
+    const ownerByCharacterId = new Map<string, string>();
+
+    nextMasks.forEach((mask, index) => {
+      if (!mask.isActive) return;
+      const normalizedLinked = Array.from(new Set(mask.linkedCharacters));
+      const weight = priorityMap.get(mask.id) ?? index;
+      normalizedLinked.forEach((characterId) => {
+        const currentOwner = ownerByCharacterId.get(characterId);
+        if (!currentOwner) {
+          ownerByCharacterId.set(characterId, mask.id);
+          return;
+        }
+
+        const currentWeight = priorityMap.get(currentOwner) ?? nextMasks.findIndex((item) => item.id === currentOwner);
+        if (weight >= currentWeight) {
+          ownerByCharacterId.set(characterId, mask.id);
+        }
+      });
+    });
+
+    return nextMasks.map((mask) => {
+      const normalizedLinked = Array.from(new Set(mask.linkedCharacters));
+      if (!mask.isActive) {
+        return normalizedLinked.length === mask.linkedCharacters.length
+          ? mask
+          : { ...mask, linkedCharacters: normalizedLinked };
+      }
+
+      const exclusiveLinked = normalizedLinked.filter((characterId) => ownerByCharacterId.get(characterId) === mask.id);
+      if (
+        exclusiveLinked.length === mask.linkedCharacters.length
+        && normalizedLinked.length === mask.linkedCharacters.length
+      ) {
+        return mask;
+      }
+
+      return { ...mask, linkedCharacters: exclusiveLinked };
+    });
+  };
+
+  const commitMasks = (nextMasks: Mask[], preferredMaskIds: string[] = []) => {
+    setMasks(normalizeMaskAssignments(nextMasks, preferredMaskIds));
+  };
+
   const handleAdd = () => {
     const newMask: Mask = {
       id: Date.now().toString(),
@@ -729,11 +775,10 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
   };
 
   const handleSave = (mask: Mask) => {
-    if (masks.find(m => m.id === mask.id)) {
-      setMasks(masks.map(m => m.id === mask.id ? mask : m));
-    } else {
-      setMasks([...masks, mask]);
-    }
+    const nextMasks = masks.find(m => m.id === mask.id)
+      ? masks.map(m => m.id === mask.id ? mask : m)
+      : [...masks, mask];
+    commitMasks(nextMasks, [mask.id]);
     setEditingMask(null);
   };
 
@@ -744,7 +789,8 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
   };
 
   const handleBatchActivate = (active: boolean) => {
-    setMasks(masks.map(m => selectedMaskIds.includes(m.id) ? { ...m, isActive: active } : m));
+    const nextMasks = masks.map(m => selectedMaskIds.includes(m.id) ? { ...m, isActive: active } : m);
+    commitMasks(nextMasks, active ? selectedMaskIds : []);
     setIsBatchMode(false);
     setSelectedMaskIds([]);
   };
@@ -758,15 +804,13 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
   };
 
   const handleBatchSync = (characterIds: string[]) => {
-    setMasks(masks.map(m => {
+    const nextMasks = masks.map(m => {
       if (selectedMaskIds.includes(m.id)) {
-        // Merge or replace? Usually sync means setting these characters to use this mask.
-        // But one character can only have one mask linked in the current logic (masks.find in App.tsx).
-        // So we should probably replace.
         return { ...m, linkedCharacters: characterIds };
       }
       return m;
-    }));
+    });
+    commitMasks(nextMasks, selectedMaskIds);
     setShowBatchSyncModal(false);
     setIsBatchMode(false);
     setSelectedMaskIds([]);
@@ -861,7 +905,11 @@ function MaskManager({ masks, setMasks, onBack, characters, globalBackground }: 
               <span className="text-[11px] text-zinc-400">会被 {mask.linkedCharacters.length} 个角色读取</span>
               {!isBatchMode && (
                 <button 
-                  onClick={(e) => { e.stopPropagation(); setMasks(masks.map(m => m.id === mask.id ? { ...m, isActive: !m.isActive } : m)); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const nextMasks = masks.map(m => m.id === mask.id ? { ...m, isActive: !m.isActive } : m);
+                    commitMasks(nextMasks, [mask.id]);
+                  }}
                   className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors active:scale-95 ${mask.isActive ? 'bg-green-100 text-green-600' : 'bg-zinc-100 text-zinc-400'}`}
                 >
                   {mask.isActive ? '当前激活' : '未激活'}

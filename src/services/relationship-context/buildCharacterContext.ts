@@ -16,6 +16,24 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
   return normalized ? normalized : undefined;
 }
 
+export function resolveActiveUserMask(
+  characterId: string,
+  masks: Mask[] | null | undefined,
+): Mask | null {
+  if (!characterId || !Array.isArray(masks) || masks.length === 0) {
+    return null;
+  }
+
+  for (let index = masks.length - 1; index >= 0; index -= 1) {
+    const mask = masks[index];
+    if (mask?.isActive && mask.linkedCharacters.includes(characterId)) {
+      return mask;
+    }
+  }
+
+  return null;
+}
+
 export function buildUserMaskPrompt(mask?: Mask | null): string | undefined {
   if (!mask) return undefined;
 

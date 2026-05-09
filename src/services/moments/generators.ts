@@ -4,7 +4,11 @@ import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomen
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
-import { buildCharacterContext, buildUserMaskPrompt } from '../relationship-context/buildCharacterContext';
+import {
+  buildCharacterContext,
+  buildUserMaskPrompt,
+  resolveActiveUserMask,
+} from '../relationship-context/buildCharacterContext';
 import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
@@ -62,7 +66,7 @@ const CHAT_REACTION_BAD_PATTERNS = [
 ];
 
 function buildMaskPrompt(characterId: string, masks: Mask[]) {
-  const activeMask = masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(characterId));
+  const activeMask = resolveActiveUserMask(characterId, masks);
   return buildUserMaskPrompt(activeMask) || '';
 }
 
@@ -86,7 +90,7 @@ function buildMomentCharacterCore(options: {
   const { character, masks, worldBook } = options;
   const characterContext = buildCharacterContext({
     character,
-    activeMask: masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id)) ?? null,
+    activeMask: resolveActiveUserMask(character.id, masks),
     activeWorldBooks: worldBook.filter(
       (entry) =>
         (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))

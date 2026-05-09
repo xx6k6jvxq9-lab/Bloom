@@ -29,7 +29,7 @@ import { findNearestChatMemorySnapshot } from '../../services/memory/chatMemoryT
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
-import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { buildCharacterContext, resolveActiveUserMask } from '../../services/relationship-context/buildCharacterContext';
 import { buildPersistedSharedCharacterState } from '../../services/relationship-context/buildSharedCharacterState';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
@@ -1843,7 +1843,7 @@ export function useDirectChatRuntime({
             nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
           });
 
-          const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+          const activeMask = resolveActiveUserMask(character.id, masks);
 
           const activeWorldBooks = worldBook.filter((wb) => {
             const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
@@ -2342,7 +2342,7 @@ export function useDirectChatRuntime({
         nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
       });
 
-      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      const activeMask = resolveActiveUserMask(character.id, masks);
 
       const activeWorldBooks = worldBook.filter((wb) => {
         const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
