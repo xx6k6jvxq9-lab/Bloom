@@ -4,7 +4,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  touch-action: pan-y;
+  touch-action: none;
+  overscroll-behavior: none;
   --home-desktop-dock-gap: 6px;
   --home-desktop-dock-padding: 10px 10px 8px;
   --home-desktop-dock-label-size: 11px;
