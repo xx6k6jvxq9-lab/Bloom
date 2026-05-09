@@ -173,6 +173,7 @@ export function HomeScreen({
   const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
+  const [topOverlayOffset, setTopOverlayOffset] = useState(0);
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -317,6 +318,7 @@ export function HomeScreen({
     && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
+  const resolvedTopOverlayOffset = Math.max(0, Math.round(topOverlayOffset));
   const layoutMetrics = useMemo(
     () =>
       getDesktopLayoutMetrics({
@@ -329,8 +331,9 @@ export function HomeScreen({
         gap: configuredGap,
         safeAreaBottom,
         isTallPhone,
+        topOverlayOffset: resolvedTopOverlayOffset,
       }),
-    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier],
+    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, resolvedTopOverlayOffset, safeAreaBottom, sizeTier],
   );
   const iconSize = layoutMetrics.iconSize;
   const iconSizeBoost = isTabletLayout ? 4 : sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0;
@@ -375,6 +378,10 @@ export function HomeScreen({
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
+      const nextTopOverlayOffset = Math.max(
+        0,
+        Math.round(parseFloat(computed?.getPropertyValue('--home-top-overlay-offset')?.trim() || '0') || 0),
+      );
       const safeAreaVar =
         computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
         || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
@@ -401,6 +408,7 @@ export function HomeScreen({
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
+      setTopOverlayOffset(current => (current === nextTopOverlayOffset ? current : nextTopOverlayOffset));
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
     };
