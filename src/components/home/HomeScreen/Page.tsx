@@ -2241,7 +2241,6 @@ export function HomeScreen({
         fontStyle={fontStyle}
         iconSize={dockIconSize}
         safeAreaInset={layoutMetrics.safeAreaBottom}
-        floatingMode={isStandaloneMode}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
       </div>
@@ -2431,7 +2430,6 @@ function StaticDock({
   fontStyle,
   iconSize,
   safeAreaInset,
-  floatingMode = false,
   backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
@@ -2440,13 +2438,12 @@ function StaticDock({
   fontStyle: React.CSSProperties;
   iconSize: number;
   safeAreaInset: number;
-  floatingMode?: boolean;
   backgroundImageUrl?: string;
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
   const resolvedSafeAreaInset = Math.max(0, safeAreaInset);
-  const totalDockHeight = floatingMode ? placement.height : placement.height + resolvedSafeAreaInset;
+  const totalDockHeight = placement.height + resolvedSafeAreaInset;
 
   return (
     <motion.div
