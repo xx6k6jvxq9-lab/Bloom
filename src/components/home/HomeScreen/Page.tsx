@@ -1228,7 +1228,7 @@ export function HomeScreen({
     if (isArrangeMode) return;
     if (Date.now() < ignoreSwipeUntilRef.current) return;
     const element = target instanceof HTMLElement ? target : null;
-    if (element?.closest('.homeDesktop__pageDots')) {
+    if (element?.closest('.homeDesktop__pageDots, .homeDesktop__nativeScroll')) {
       swipeEnabledRef.current = false;
       swipeStartRef.current = null;
       return;
@@ -1750,6 +1750,12 @@ export function HomeScreen({
         onTouchMove={e => {
           const touch = e.touches[0];
           if (!touch) return;
+          if (isStandaloneMode && e.cancelable) {
+            const element = e.target instanceof HTMLElement ? e.target : null;
+            if (!element?.closest('.homeDesktop__nativeScroll')) {
+              e.preventDefault();
+            }
+          }
           handleSwipeMove(touch.clientX, touch.clientY);
         }}
         onTouchEnd={e => {

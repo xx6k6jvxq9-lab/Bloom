@@ -16,6 +16,11 @@ html[data-standalone='true'] .homeDesktop {
   overscroll-behavior: none;
 }
 
+html[data-standalone='true'] .homeDesktop__frame {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
 html[data-standalone='true'] .homeDesktop__nativeScroll {
   touch-action: pan-y;
   overscroll-behavior-y: contain;
