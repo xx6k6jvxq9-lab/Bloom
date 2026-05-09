@@ -174,7 +174,6 @@ export function HomeScreen({
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
-  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -376,7 +375,6 @@ export function HomeScreen({
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
-      setIsStandaloneMode(current => (current === isStandaloneMode ? current : isStandaloneMode));
       const safeAreaVar =
         computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
         || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
@@ -384,32 +382,22 @@ export function HomeScreen({
           ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || '0';
-      const resolveCssLengthValue = (value: string) => {
+      const resolvedSafeAreaBottom = (() => {
         if (!phoneContainer || !computed) return 0;
-        if (value.endsWith('px')) {
-          return parseFloat(value) || 0;
+        if (safeAreaVar.endsWith('px')) {
+          return parseFloat(safeAreaVar) || 0;
         }
-        if (value && value !== '0') {
+        if (safeAreaVar && safeAreaVar !== '0') {
           const probe = document.createElement('div');
           probe.style.position = 'absolute';
           probe.style.visibility = 'hidden';
           probe.style.pointerEvents = 'none';
           probe.style.inset = 'auto';
-          probe.style.height = value;
+          probe.style.height = safeAreaVar;
           phoneContainer.appendChild(probe);
           const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
           phoneContainer.removeChild(probe);
           return measured;
-        }
-        return 0;
-      };
-      const resolvedSafeAreaBottom = (() => {
-        if (!phoneContainer || !computed) return 0;
-        if (safeAreaVar) {
-          const resolved = resolveCssLengthValue(safeAreaVar);
-          if (resolved > 0) {
-            return resolved;
-          }
         }
         return parseFloat(computed.paddingBottom) || 0;
       })();
@@ -1218,7 +1206,7 @@ export function HomeScreen({
     if (isArrangeMode) return;
     if (Date.now() < ignoreSwipeUntilRef.current) return;
     const element = target instanceof HTMLElement ? target : null;
-    if (element?.closest('.homeDesktop__pageDots, .homeDesktop__nativeScroll')) {
+    if (element?.closest('.homeDesktop__pageDots')) {
       swipeEnabledRef.current = false;
       swipeStartRef.current = null;
       return;
@@ -1512,7 +1500,7 @@ export function HomeScreen({
                       initial={{ opacity: 0, y: 10, scale: 0.9 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                      className="homeDesktop__nativeScroll absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                      className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                     >
                       {moodOptions.map((m, index) => (
                         <button
@@ -1684,7 +1672,58 @@ export function HomeScreen({
 
   return (
     <div
-      className={`homeDesktop homeDesktop--${sizeTier} ${isTallPhone ? 'homeDesktop--tall' : ''} ${isStandaloneMode ? 'homeDesktop--standalone' : ''}`}
+      ref={desktopRootRef}
+      className={`homeDesktop homeDesktop--${sizeTier} ${isTallPhone ? 'homeDesktop--tall' : ''}`}
+      onPointerDown={e => {
+        if (e.pointerType === 'mouse') {
+          handleSwipeStart(e.clientX, e.clientY, e.target);
+        }
+      }}
+      onPointerMove={e => {
+        if (e.pointerType === 'mouse') {
+          handleSwipeMove(e.clientX, e.clientY);
+        }
+      }}
+      onPointerUp={e => {
+        if (e.pointerType === 'mouse') {
+          handleSwipeEnd(e.clientX, e.clientY);
+        }
+      }}
+      onPointerCancel={() => {
+        resetSwipeInteraction();
+      }}
+      onTouchStart={e => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        handleSwipeStart(touch.clientX, touch.clientY, e.target);
+      }}
+      onTouchMove={e => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        handleSwipeMove(touch.clientX, touch.clientY);
+      }}
+      onTouchEnd={e => {
+        const touch = e.changedTouches[0];
+        if (!touch) {
+          resetSwipeInteraction();
+          return;
+        }
+        handleSwipeEnd(touch.clientX, touch.clientY);
+      }}
+      onTouchCancel={() => {
+        resetSwipeInteraction();
+      }}
+      onClick={e => {
+        if (!isArrangeMode || draggingIconId || draggingNavBar) return;
+        const element = e.target instanceof HTMLElement ? e.target : null;
+        if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
+          return;
+        }
+        setDraggingWidgetId(null);
+        setWidgetPreviewConfigs(null);
+        setDragGhost(null);
+        setIsArrangeMode(false);
+      }}
       style={
         {
           '--home-desktop-dock-gap': isTabletLayout ? '12px' : sizeTier === 'compact' ? '4px' : sizeTier === 'large' ? (isTallPhone ? '11px' : '10px') : isTallPhone ? '9px' : '8px',
@@ -1710,67 +1749,6 @@ export function HomeScreen({
           referrerPolicy="no-referrer"
         />
       ) : null}
-
-      <div
-        ref={desktopRootRef}
-        className="homeDesktop__frame"
-        onPointerDown={e => {
-          if (e.pointerType === 'mouse') {
-            handleSwipeStart(e.clientX, e.clientY, e.target);
-          }
-        }}
-        onPointerMove={e => {
-          if (e.pointerType === 'mouse') {
-            handleSwipeMove(e.clientX, e.clientY);
-          }
-        }}
-        onPointerUp={e => {
-          if (e.pointerType === 'mouse') {
-            handleSwipeEnd(e.clientX, e.clientY);
-          }
-        }}
-        onPointerCancel={() => {
-          resetSwipeInteraction();
-        }}
-        onTouchStart={e => {
-          const touch = e.touches[0];
-          if (!touch) return;
-          handleSwipeStart(touch.clientX, touch.clientY, e.target);
-        }}
-        onTouchMove={e => {
-          const touch = e.touches[0];
-          if (!touch) return;
-          if (isStandaloneMode && e.cancelable) {
-            const element = e.target instanceof HTMLElement ? e.target : null;
-            if (!element?.closest('.homeDesktop__nativeScroll')) {
-              e.preventDefault();
-            }
-          }
-          handleSwipeMove(touch.clientX, touch.clientY);
-        }}
-        onTouchEnd={e => {
-          const touch = e.changedTouches[0];
-          if (!touch) {
-            resetSwipeInteraction();
-            return;
-          }
-          handleSwipeEnd(touch.clientX, touch.clientY);
-        }}
-        onTouchCancel={() => {
-          resetSwipeInteraction();
-        }}
-        onClick={e => {
-          if (!isArrangeMode || draggingIconId || draggingNavBar) return;
-          const element = e.target instanceof HTMLElement ? e.target : null;
-          if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
-            return;
-          }
-          setDraggingWidgetId(null);
-          setWidgetPreviewConfigs(null);
-          setDragGhost(null);
-          setIsArrangeMode(false);
-        }}
-      >
 
       <div className="absolute inset-0 z-30 overflow-hidden">
         <div
@@ -2040,7 +2018,7 @@ export function HomeScreen({
                     initial={{ opacity: 0, y: 10, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="homeDesktop__nativeScroll absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
+                    className="absolute top-12 right-0 w-64 max-h-80 overflow-y-auto bg-white rounded-2xl shadow-xl p-2 z-50 border border-zinc-100 grid grid-cols-1 gap-1"
                   >
                     {moodOptions.map((m, index) => (
                       <button
@@ -2243,7 +2221,6 @@ export function HomeScreen({
         safeAreaInset={layoutMetrics.safeAreaBottom}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
-      </div>
     </div>
   );
 }

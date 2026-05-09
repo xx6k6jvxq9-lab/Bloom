@@ -11,22 +11,6 @@
   background: transparent;
 }
 
-html[data-standalone='true'] .homeDesktop {
-  touch-action: none;
-  overscroll-behavior: none;
-}
-
-html[data-standalone='true'] .homeDesktop__frame {
-  touch-action: none;
-  overscroll-behavior: none;
-}
-
-html[data-standalone='true'] .homeDesktop__nativeScroll {
-  touch-action: pan-y;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
 .homeDesktop__wallpaper {
   position: absolute;
   inset: 0;
@@ -35,12 +19,6 @@ html[data-standalone='true'] .homeDesktop__nativeScroll {
   object-fit: cover;
   display: block;
   pointer-events: none;
-}
-
-.homeDesktop__frame {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
 }
 
 .homeDesktop__surface {
