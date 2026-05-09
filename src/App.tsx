@@ -295,8 +295,8 @@ export default function App() {
     && activeApp !== 'monitor'
     && activeApp !== 'dream'
     && !hideMockSystemChrome
-    && (!isStandalone || activeApp === 'home');
-  const homeStandaloneStatusBarOffset = showMockStatusBar && isStandalone && activeApp === 'home' ? 44 : 0;
+    && !isStandalone;
+  const homeStandaloneStatusBarOffset = statusBarVisible && activeApp === 'home' && isStandalone ? 44 : 0;
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? appSafeAreaBottomFull
@@ -508,7 +508,7 @@ export default function App() {
         {showMockStatusBar && (
           <div
             className="pointer-events-none absolute left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white"
-            style={{ top: isStandalone ? 'env(safe-area-inset-top, 0px)' : 0 }}
+            style={{ top: 0 }}
           >
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
