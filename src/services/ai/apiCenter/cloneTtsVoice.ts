@@ -1,6 +1,7 @@
 import type { ApiConfig } from '../../../types';
 import { getAsset } from '../../../features/persistence/browserDb';
 import { parseUploadedAssetRef } from '../../../features/persistence/persistentAssetRef';
+import { isLikelyVoiceSampleFile } from './voiceSampleCompat';
 
 type CloneTtsVoiceParams = {
   config: ApiConfig;
@@ -154,8 +155,7 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   return new Blob([wavBuffer], { type: 'audio/wav' });
 }
 
-async function createPromptAudioBlob(blob: Blob) {
-  const arrayBuffer = await blob.arrayBuffer();
+async function createPromptAudioBlob(blob: Blob, fileName: string) {
   const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) {
     return blob;
@@ -163,6 +163,7 @@ async function createPromptAudioBlob(blob: Blob) {
 
   const audioContext = new AudioContextCtor();
   try {
+    const arrayBuffer = await blob.arrayBuffer();
     const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
     const promptDuration = Math.min(decoded.duration, 7.5);
     const promptFrameCount = Math.max(1, Math.floor(promptDuration * decoded.sampleRate));
@@ -178,6 +179,12 @@ async function createPromptAudioBlob(blob: Blob) {
     }
 
     return audioBufferToWavBlob(slicedBuffer);
+  } catch (error) {
+    if (isLikelyVoiceSampleFile({ name: fileName, type: blob.type })) {
+      return blob;
+    }
+
+    throw error;
   } finally {
     await audioContext.close().catch(() => undefined);
   }
@@ -206,7 +213,7 @@ export async function cloneTtsVoice(
 ): Promise<CloneTtsVoiceResult> {
   const { apiKey, baseUrl, model } = ensureValidConfig(params.config);
   const { blob, fileName } = await readAssetBlob(params.sampleAssetRef);
-  const promptBlob = await createPromptAudioBlob(blob);
+  const promptBlob = await createPromptAudioBlob(blob, fileName);
   const normalizedVoiceId = normalizeVoiceId(params.voiceId);
 
   const [fileId, promptAudioId] = await Promise.all([
