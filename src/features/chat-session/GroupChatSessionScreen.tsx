@@ -872,7 +872,7 @@ export function GroupChatSessionScreen({
   });
   let groupHeaderClassName = 'relative z-20 flex min-h-[64px] shrink-0 items-center justify-between border-b px-4 pb-3 shadow-sm';
   const groupHeaderStyle: React.CSSProperties = {};
-  groupHeaderStyle.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 12px)';
+  groupHeaderStyle.paddingTop = '12px';
   const getDefaultGroupBubbleSurfaceStyle = (params: {
     isUser: boolean;
     shouldUseDefaultSurface: boolean;
@@ -1092,6 +1092,7 @@ export function GroupChatSessionScreen({
   const chatRootSizeStyle: React.CSSProperties = {
     height: '100%',
     minHeight: 0,
+    paddingTop: 'var(--app-safe-area-top, env(safe-area-inset-top, 0px))',
   };
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig

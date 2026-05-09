@@ -312,6 +312,7 @@ export default function App() {
     ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
     backgroundColor: appChromeBackground,
     ...homeWallpaperBackgroundStyle,
+    '--app-safe-area-top': 'env(safe-area-inset-top, 0px)',
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,

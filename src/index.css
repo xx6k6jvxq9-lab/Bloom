@@ -33,6 +33,7 @@ body {
 .app-phone-container {
   position: relative;
   isolation: isolate;
+  --app-safe-area-top: 0px;
   --app-safe-area-bottom-full: 0px;
   --app-safe-area-bottom: 0px;
   --app-safe-area-bottom-ui: 0px;
