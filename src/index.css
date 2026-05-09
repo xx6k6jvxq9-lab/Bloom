@@ -271,3 +271,23 @@ html[data-standalone='true'] .phone-screen-root {
   overflow: hidden;
   overscroll-behavior: none;
 }
+
+@media (max-width: 767px) {
+  html[data-standalone='true'] .app-shell {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  html[data-standalone='true'] .app-phone-container {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  html[data-standalone='true'] .phone-screen-root {
+    height: 100%;
+  }
+}
