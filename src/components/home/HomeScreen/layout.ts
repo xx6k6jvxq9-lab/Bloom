@@ -214,7 +214,7 @@ export function getDesktopLayoutMetrics({
     : Math.max(
       sizeTier === 'compact' ? 62 : 58,
       desktopStartYBase - (isTallPhone && sizeTier !== 'compact' ? (sizeTier === 'large' ? 28 : 18) : sizeTier === 'regular' ? 4 : 0),
-    ) + effectiveTopOverlayOffset;
+    );
   const usableTop = desktopStartY;
   const usableBottom = safeHeight - effectiveSafeAreaBottom - dockHeight - dockBottomGap + (
     !isTabletLayout && isTallPhone && sizeTier !== 'compact'
@@ -585,7 +585,7 @@ export function buildNavBarPlacement({
     y: Math.max(
       metrics?.sizeTier === 'compact' ? 10 : metrics?.sizeTier === 'tablet' ? 16 : 12,
       placement.y - (metrics?.sizeTier === 'compact' ? 8 : metrics?.sizeTier === 'tablet' ? 12 : metrics?.isTallPhone ? 16 : 12),
-    ),
+    ) + (metrics?.topOverlayOffset ?? 0),
     width,
     height: metrics?.navBarHeight ?? NAV_BAR_HEIGHT,
     slotIds: placement.slotIds,
