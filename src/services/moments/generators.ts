@@ -839,6 +839,59 @@ function buildMomentFrameCaptions(content: string, frameCount: number): string[]
   return merged.slice(0, frameCount);
 }
 
+function needsMomentVisualTranslation(text: string) {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return !/[\u4e00-\u9fff]/u.test(normalized) && /[A-Za-z]/.test(normalized);
+}
+
+function buildFallbackMomentVisualTranslations(lines: string[]) {
+  return lines.map((line) => (
+    needsMomentVisualTranslation(line) ? createChineseMomentPhotoDescription(line) : line.trim()
+  ));
+}
+
+async function generateMomentVisualTranslations(options: {
+  activeConfig: ApiConfig;
+  lines: string[];
+}) {
+  const lines = options.lines
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0 || !lines.some(needsMomentVisualTranslation)) {
+    return undefined;
+  }
+
+  const fallbackTranslations = buildFallbackMomentVisualTranslations(lines);
+  const prompt = [
+    'Translate the following pseudo-image caption lines into natural Simplified Chinese.',
+    'Keep one translated line for each original line in the same order.',
+    'Do not add numbering, quotes, commentary, or extra lines.',
+    'If a line is already natural Simplified Chinese, keep it as-is.',
+    '',
+    'Original lines:',
+    ...lines.map((line, index) => `${index + 1}. ${line}`),
+  ].join('\n');
+
+  const raw = await generateSingleText({
+    activeConfig: options.activeConfig,
+    prompt: 'Translate pseudo-image caption lines into Simplified Chinese.',
+    requestText: prompt,
+    fallback: '',
+  });
+
+  const parsed = parseMomentVisualTextLines(raw, lines.length);
+  const translatedLines = parsed.length === lines.length
+    ? parsed.map((line, index) => line.trim() || fallbackTranslations[index] || lines[index])
+    : fallbackTranslations;
+
+  return translatedLines.every((line, index) => line === lines[index]) ? undefined : translatedLines;
+}
+
 async function generateMomentImageCard(options: {
   activeConfig: ApiConfig;
   character: Character;
@@ -870,6 +923,11 @@ async function generateMomentImageCard(options: {
   const overlayText = generatedVisualLines[0]
     || buildMomentVisualDirections(firstParagraph)[0]
     || createChineseMomentPhotoDescription(firstParagraph);
+  const visualLines = frameCaptions.length > 1 ? frameCaptions : [overlayText];
+  const translatedVisualLines = await generateMomentVisualTranslations({
+    activeConfig,
+    lines: visualLines,
+  });
 
   return {
     title: `${character.name} 的动态`,
@@ -877,7 +935,9 @@ async function generateMomentImageCard(options: {
     theme,
     layout,
     overlayText,
+    translatedOverlayText: translatedVisualLines && visualLines.length === 1 ? translatedVisualLines[0] : undefined,
     frameCaptions: frameCaptions.length > 1 ? frameCaptions : undefined,
+    translatedFrameCaptions: translatedVisualLines && frameCaptions.length > 1 ? translatedVisualLines : undefined,
   };
 }
 
