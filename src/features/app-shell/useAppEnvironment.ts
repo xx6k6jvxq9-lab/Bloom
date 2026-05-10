@@ -5,6 +5,11 @@ import { isTextEntryElement } from './keyboardUtils';
 import { PANEL_PRELOAD_LOADERS } from './lazyPanels';
 
 const DESKTOP_STAGE_MEDIA_QUERY = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
+const STANDALONE_DISPLAY_MODE_QUERIES = [
+  '(display-mode: standalone)',
+  '(display-mode: fullscreen)',
+  '(display-mode: minimal-ui)',
+] as const;
 
 function getMediaQueryList(query: string): MediaQueryList | null {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -20,6 +25,22 @@ function getMediaQueryList(query: string): MediaQueryList | null {
 
 function matchesMediaQuery(query: string): boolean {
   return getMediaQueryList(query)?.matches ?? false;
+}
+
+function resolveStandaloneMode(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+
+  const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
+  const matchesStandaloneDisplayMode = STANDALONE_DISPLAY_MODE_QUERIES.some((query) => (
+    getMediaQueryList(query)?.matches ?? false
+  ));
+  const launchedFromAndroidApp = document.referrer.startsWith('android-app://');
+
+  return matchesStandaloneDisplayMode
+    || navigatorWithStandalone.standalone === true
+    || launchedFromAndroidApp;
 }
 
 function addMediaQueryChangeListener(media: MediaQueryList, listener: () => void): () => void {
@@ -73,10 +94,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
     let stableLayoutViewportHeight = 0;
     let lastInnerWidth = window.innerWidth;
-    const standaloneMedia = getMediaQueryList('(display-mode: standalone)');
-    const isStandalone =
-      (standaloneMedia?.matches ?? false) ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isStandalone = resolveStandaloneMode();
     // The app now lets the browser / standalone shell own keyboard viewport
     // changes on every platform. The old manual lift path was creating the
     // repeated white gaps, header drift, and duplicated bottom spacing.
@@ -213,10 +231,7 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
 
     const idleWindow = window as IdleWindow;
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const standaloneMedia = getMediaQueryList('(display-mode: standalone)');
-    const isStandalone =
-      (standaloneMedia?.matches ?? false) ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isStandalone = resolveStandaloneMode();
     const isIosLike = /iphone|ipad|ipod/.test(userAgent);
     const preloadDelayMs = isIosLike && isStandalone ? 3200 : isStandalone ? 900 : 1200;
     const idleTimeoutMs = isIosLike && isStandalone ? 4000 : isStandalone ? 1800 : 2200;
