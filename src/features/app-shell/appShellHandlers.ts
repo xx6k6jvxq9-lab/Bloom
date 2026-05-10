@@ -1,6 +1,6 @@
 import { startTransition } from 'react';
 import type { Character } from '../../types';
-import { preloadPanelForApp } from './lazyPanels';
+import { preloadAppScreen } from './lazyApps';
 
 export type AppScreen =
   | 'home'
@@ -25,6 +25,7 @@ export type AppTab = 'chat' | 'contacts' | 'moments' | 'me';
 
 type CreateAppShellHandlersParams = {
   handleUpsertCharacter: (character: Character) => void;
+  openCoupleSpaceApp: () => void;
   openForumApp: (postId?: string | null) => void;
   setActiveApp: (app: AppScreen) => void;
   setActiveTab: (tab: AppTab) => void;
@@ -33,12 +34,32 @@ type CreateAppShellHandlersParams = {
 
 let latestNavigationToken = 0;
 
+type NavigateToAppOptions = {
+  awaitPreload?: boolean;
+};
+
 export async function navigateToAppWithTransition(
   app: AppScreen,
   setActiveApp: (app: AppScreen) => void,
+  options: NavigateToAppOptions = {},
 ) {
+  const { awaitPreload = false } = options;
   const navigationToken = ++latestNavigationToken;
-  const preloadTask = preloadPanelForApp(app);
+  const preloadTask = preloadAppScreen(app);
+
+  if (!awaitPreload) {
+    startTransition(() => {
+      setActiveApp(app);
+    });
+
+    if (preloadTask) {
+      void preloadTask.catch((error) => {
+        console.warn('[app-shell] Background preload failed during navigation', error);
+      });
+    }
+
+    return;
+  }
 
   if (preloadTask) {
     try {
@@ -59,6 +80,7 @@ export async function navigateToAppWithTransition(
 
 export const createAppShellHandlers = ({
   handleUpsertCharacter,
+  openCoupleSpaceApp,
   openForumApp,
   setActiveApp,
   setActiveTab,
@@ -78,6 +100,10 @@ export const createAppShellHandlers = ({
   handleOpenApp(app: AppScreen) {
     if (app === 'forum') {
       openForumApp();
+      return;
+    }
+    if (app === 'couple-space') {
+      openCoupleSpaceApp();
       return;
     }
     navigateToAppWithTransition(app, setActiveApp);

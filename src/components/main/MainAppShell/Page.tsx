@@ -122,7 +122,7 @@ export function MainApp({
   const [showManageGroups, setShowManageGroups] = useState(false);
   const [showChatQuickActions, setShowChatQuickActions] = useState(false);
   const [showGroupChatCreator, setShowGroupChatCreator] = useState(false);
-  const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters'>('main');
+  const [meSection, setMeSection] = useState<'main' | 'masks' | 'data' | 'visual' | 'favorites' | 'date-records' | 'worldbooks' | 'characters' | 'relationships'>('main');
   const swipeStateRef = React.useRef<{
     startX: number;
     startY: number;
@@ -472,6 +472,7 @@ export function MainApp({
             onOpenProfile={onOpenProfile}
             onAddFriend={() => setShowAddFriend(true)}
             onManageGroups={() => setShowManageGroups(true)}
+            settings={settings}
           />
         )}
 

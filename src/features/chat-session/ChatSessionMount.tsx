@@ -5,6 +5,7 @@ import type {
   ChatHistory,
   Character,
   CoupleSpaceData,
+  CoupleSpaceState,
   DateSession,
   FavoriteMessage,
   Mask,
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { DatingRecordsData } from '../persistence/datingRecordsStore';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
+import { getPartnerCoupleSpaceData, isPartnerCoupleSpaceDismissed } from '../persistence/coupleSpaceStore';
 import { DirectChatSessionContainer } from './DirectChatSessionContainer';
 import { GroupChatSessionContainer } from './GroupChatSessionContainer';
 
@@ -41,6 +43,7 @@ type ChatSessionMountProps = {
   groups: string[];
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
+  coupleSpaceState?: CoupleSpaceState;
   coupleSpace?: CoupleSpaceData;
   callHistory: CallRecord[];
   setCallHistory: (callHistory: CallRecord[]) => void;
@@ -54,11 +57,27 @@ type ChatSessionMountProps = {
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
+
+const RETAINED_DIRECT_SESSION_LIMIT = 2;
+const RETAINED_GROUP_SESSION_LIMIT = 1;
+
+function appendRecentId(currentIds: string[], nextId: string | null | undefined, limit: number): string[] {
+  if (!nextId) {
+    return currentIds;
+  }
+
+  const nextIds = [nextId, ...currentIds.filter((id) => id !== nextId)].slice(0, limit);
+  if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) {
+    return currentIds;
+  }
+
+  return nextIds;
+}
 
 function appendUniqueId(currentIds: string[], nextId: string | null | undefined): string[] {
   if (!nextId) {
@@ -108,6 +127,7 @@ export function ChatSessionMount({
   groups,
   worldBook = [],
   perception,
+  coupleSpaceState,
   coupleSpace,
   callHistory,
   setCallHistory,
@@ -131,16 +151,20 @@ export function ChatSessionMount({
   const [mountedGroupIds, setMountedGroupIds] = useState<string[]>([]);
   const [busyDirectCharacterIds, setBusyDirectCharacterIds] = useState<string[]>([]);
   const [busyGroupIds, setBusyGroupIds] = useState<string[]>([]);
+  const [retainedDirectCharacterIds, setRetainedDirectCharacterIds] = useState<string[]>([]);
+  const [retainedGroupIds, setRetainedGroupIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (activeApp === 'chat-session' && selectedCharacterId) {
       setMountedDirectCharacterIds((currentIds) => appendUniqueId(currentIds, selectedCharacterId));
+      setRetainedDirectCharacterIds((currentIds) => appendRecentId(currentIds, selectedCharacterId, RETAINED_DIRECT_SESSION_LIMIT));
     }
   }, [activeApp, selectedCharacterId]);
 
   useEffect(() => {
     if (activeApp === 'group-chat-session' && selectedGroupId) {
       setMountedGroupIds((currentIds) => appendUniqueId(currentIds, selectedGroupId));
+      setRetainedGroupIds((currentIds) => appendRecentId(currentIds, selectedGroupId, RETAINED_GROUP_SESSION_LIMIT));
     }
   }, [activeApp, selectedGroupId]);
 
@@ -148,12 +172,14 @@ export function ChatSessionMount({
     const validCharacterIds = new Set(characters.map((character) => character.id));
     setMountedDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => validCharacterIds.has(id)));
     setBusyDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => validCharacterIds.has(id)));
+    setRetainedDirectCharacterIds((currentIds) => filterIds(currentIds, (id) => validCharacterIds.has(id)));
   }, [characters]);
 
   useEffect(() => {
     const validGroupIds = new Set(chatGroups.map((group) => group.id));
     setMountedGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
     setBusyGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
+    setRetainedGroupIds((currentIds) => filterIds(currentIds, (id) => validGroupIds.has(id)));
   }, [chatGroups]);
 
   const handleDirectRuntimeBusyChange = useCallback((characterId: string, busy: boolean) => {
@@ -188,9 +214,13 @@ export function ChatSessionMount({
         return true;
       }
 
+      if (retainedDirectCharacterIds.includes(id)) {
+        return true;
+      }
+
       return activeApp === 'chat-session' && selectedCharacterId === id;
     }));
-  }, [activeApp, selectedCharacterId, busyDirectCharacterIds]);
+  }, [activeApp, selectedCharacterId, busyDirectCharacterIds, retainedDirectCharacterIds]);
 
   useEffect(() => {
     setMountedGroupIds((currentIds) => filterIds(currentIds, (id) => {
@@ -198,9 +228,13 @@ export function ChatSessionMount({
         return true;
       }
 
+      if (retainedGroupIds.includes(id)) {
+        return true;
+      }
+
       return activeApp === 'group-chat-session' && selectedGroupId === id;
     }));
-  }, [activeApp, selectedGroupId, busyGroupIds]);
+  }, [activeApp, selectedGroupId, busyGroupIds, retainedGroupIds]);
 
   return (
     <>
@@ -211,6 +245,16 @@ export function ChatSessionMount({
         }
 
         const isDirectActive = activeApp === 'chat-session' && selectedCharacterId === characterId;
+        const characterCoupleSpace = getPartnerCoupleSpaceData(
+          coupleSpaceState,
+          coupleSpace,
+          characterId,
+        );
+        const isCoupleSpaceDismissed = isPartnerCoupleSpaceDismissed(
+          coupleSpaceState,
+          coupleSpace,
+          characterId,
+        );
 
         return (
           <div
@@ -220,6 +264,7 @@ export function ChatSessionMount({
           >
             <DirectChatSessionContainer
               character={mountedCharacter}
+              characters={characters}
               isActive={isDirectActive}
               onRuntimeBusyChange={handleDirectRuntimeBusyChange}
               chatHistory={chatHistory}
@@ -229,7 +274,8 @@ export function ChatSessionMount({
               patchCharacter={patchCharacter}
               worldBook={worldBook}
               perception={perception}
-              coupleSpace={coupleSpace}
+              coupleSpace={characterCoupleSpace}
+              isCoupleSpaceDismissed={isCoupleSpaceDismissed}
               settings={settings}
               setSettings={setSettings}
               onBack={onBackToChat}

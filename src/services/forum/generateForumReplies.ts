@@ -1,4 +1,4 @@
-import type { ApiConfig, ForumComment, ForumPost } from '../../types';
+import type { ApiConfig, ForumComment, ForumGlobalSettings, ForumPost, Mask, WorldBookEntry } from '../../types';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { FORUM_CHANNEL_LABELS } from '../../features/forum-domain/constants';
 import {
@@ -18,6 +18,9 @@ type GenerateForumRepliesInput = {
   channel: ForumChannel;
   knownAuthors: ForumReplyKnownAuthor[];
   participants: ForumReplyParticipantHint[];
+  globalSettings?: ForumGlobalSettings;
+  masks?: Mask[];
+  worldBooks?: WorldBookEntry[];
   replyCount?: number;
   replyMode?: 'mixed' | 'independent_only' | 'threaded_only';
   userNewComment?: ForumComment;

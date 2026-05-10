@@ -4157,11 +4157,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
 
   // --- Main Render ---
 
-  const shouldShowForumBottomNav = currentView === 'list'
-    && currentView !== 'edit-profile'
-    && currentView !== 'follow-list'
-    && currentView !== 'forum-settings'
-    && currentView !== 'public-open-settings';
+  const shouldShowForumBottomNav = currentView === 'list';
 
   const renderCurrentView = () => {
     if (currentView === 'detail') return renderPostDetail();

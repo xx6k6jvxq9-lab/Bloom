@@ -23,6 +23,7 @@ import {
 } from './features/app-shell/defaultSettings';
 import { createDefaultAppData } from './features/app-shell/defaultAppData';
 import { GlobalStyles } from './features/app-shell/AppShellPrimitives';
+import { CoupleSpaceLaunchOverlay } from './features/app-shell/CoupleSpaceLaunchOverlay';
 import { ForumLaunchOverlay } from './features/app-shell/ForumLaunchOverlay';
 import type {
   CoupleSpaceUpdateToast,
@@ -37,6 +38,7 @@ import { useAppEnvironment } from './features/app-shell/useAppEnvironment';
 import { useAppDialogBridge } from './features/app-shell/useAppDialogBridge';
 import { useAutoDismissToast } from './features/app-shell/useAutoDismissToast';
 import { useCoupleSpaceAutoChecks } from './features/app-shell/useCoupleSpaceAutoChecks';
+import { useMomentsAutoChecks } from './features/app-shell/useMomentsAutoChecks';
 import { DatingModal } from './components/dating/DatingModal';
 import { GameCenter } from './components/games/GameCenter';
 import { GameCard } from './components/chat/GameCard';
@@ -79,9 +81,12 @@ import { useResolvedPersistentValue } from './features/persistence/useResolvedPe
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
 import {
+  acceptCoupleSpaceInviteState,
+  createDefaultCoupleSpaceState,
   hydrateCoupleSpaceState,
   resolveCurrentCoupleSpace,
 } from './features/persistence/coupleSpaceStore';
+import { hasAcceptedCoupleSpaceInviteInHistory } from './features/chat-runtime/coupleSpaceInviteGuard';
 
 type ForumLaunchState = {
   token: number;
@@ -90,9 +95,15 @@ type ForumLaunchState = {
   targetPostId: string | null;
 };
 
+type CoupleSpaceLaunchState = {
+  token: number;
+  ready: boolean;
+};
+
 export default function App() {
   const activeAppRef = useRef<AppScreen>('home');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const coupleSpaceLaunchTokenRef = useRef(0);
   const forumLaunchTokenRef = useRef(0);
   const forumLaunchEnterTimerRef = useRef<number | null>(null);
   const forumLaunchDismissFrameRef = useRef<number | null>(null);
@@ -105,6 +116,7 @@ export default function App() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedForumPostId, setSelectedForumPostId] = useState<string | null>(null);
+  const [coupleSpaceLaunchState, setCoupleSpaceLaunchState] = useState<CoupleSpaceLaunchState | null>(null);
   const [forumLaunchState, setForumLaunchState] = useState<ForumLaunchState | null>(null);
   const [characterMomentsBackApp, setCharacterMomentsBackApp] = useState<'chat' | 'chat-session' | 'character-profile'>('character-profile');
   const [statusBarVisible, setStatusBarVisible] = useState(true);
@@ -147,6 +159,60 @@ export default function App() {
     [settings.activeConfigId, settings.configs],
   );
 
+  useEffect(() => {
+    if (!hasHydratedStorage) {
+      return;
+    }
+
+    const validCharacterIds = new Set(appData.characters.map((character) => character.id));
+    const resolvedCoupleSpaceState = hydrateCoupleSpaceState(
+      appData.coupleSpaceState ?? appData.coupleSpace,
+      createDefaultCoupleSpaceState(),
+    );
+    const openedPartnerIds = new Set(Object.keys(resolvedCoupleSpaceState.spacesByPartnerId || {}));
+    const dismissedPartnerIds = new Set(resolvedCoupleSpaceState.dismissedPartnerIds || []);
+    const missingAcceptedPartnerIds = Object.entries(appData.chatHistory || {})
+      .filter(([characterId, history]) => (
+        validCharacterIds.has(characterId)
+        && !openedPartnerIds.has(characterId)
+        && !dismissedPartnerIds.has(characterId)
+        && hasAcceptedCoupleSpaceInviteInHistory(history)
+      ))
+      .map(([characterId]) => characterId);
+
+    if (missingAcceptedPartnerIds.length === 0) {
+      return;
+    }
+
+    setAppData((prev) => {
+      let nextState = prev.coupleSpaceState;
+      let nextCoupleSpace = prev.coupleSpace;
+
+      for (const partnerId of missingAcceptedPartnerIds) {
+        const accepted = acceptCoupleSpaceInviteState(
+          nextState,
+          nextCoupleSpace,
+          partnerId,
+        );
+        nextState = accepted.coupleSpaceState;
+        nextCoupleSpace = accepted.coupleSpace;
+      }
+
+      return {
+        ...prev,
+        coupleSpaceState: nextState,
+        coupleSpace: nextCoupleSpace,
+      };
+    });
+  }, [
+    appData.characters,
+    appData.chatHistory,
+    appData.coupleSpace,
+    appData.coupleSpaceState,
+    hasHydratedStorage,
+    setAppData,
+  ]);
+
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
   useAutoDismissToast(datingGenerationToast, setDatingGenerationToast, 5200);
@@ -157,6 +223,14 @@ export default function App() {
     hasHydratedStorage,
     setAppData,
     setCoupleSpaceUpdateToast,
+    settings,
+  });
+  useMomentsAutoChecks({
+    activeApp,
+    appData,
+    hasHydratedStorage,
+    setAppData,
+    setMomentPublishToast,
     settings,
   });
   const {
@@ -187,6 +261,19 @@ export default function App() {
     clearForumLaunchDismissFrame();
     setForumLaunchState(null);
   }, [clearForumLaunchDismissFrame, clearForumLaunchTimer]);
+
+  const completeCoupleSpaceLaunch = useCallback((token: number) => {
+    if (coupleSpaceLaunchTokenRef.current !== token) {
+      return;
+    }
+
+    startTransition(() => {
+      setActiveApp('couple-space');
+    });
+    setCoupleSpaceLaunchState((current) => (
+      current?.token === token ? null : current
+    ));
+  }, []);
 
   const enterForumFromLaunch = useCallback((token: number, targetPostId: string | null) => {
     if (forumLaunchTokenRef.current !== token) {
@@ -238,6 +325,37 @@ export default function App() {
       });
   }, [clearForumLaunchTimer, enterForumFromLaunch]);
 
+  const openCoupleSpaceApp = useCallback(() => {
+    const token = coupleSpaceLaunchTokenRef.current + 1;
+    coupleSpaceLaunchTokenRef.current = token;
+    setCoupleSpaceLaunchState({
+      token,
+      ready: false,
+    });
+
+    const preloadTask = preloadPanelForApp('couple-space');
+    const minimumSplashTask = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 980);
+    });
+
+    void Promise.all([preloadTask ?? Promise.resolve(), minimumSplashTask])
+      .then(() => {
+        if (coupleSpaceLaunchTokenRef.current !== token) {
+          return;
+        }
+
+        setCoupleSpaceLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
+      })
+      .catch((error) => {
+        console.warn('[app-shell] Couple-space launch preload failed', error);
+        if (coupleSpaceLaunchTokenRef.current !== token) {
+          return;
+        }
+
+        setCoupleSpaceLaunchState((current) => current?.token === token ? { ...current, ready: true } : current);
+      });
+  }, []);
+
   useEffect(() => () => {
     clearForumLaunchTimer();
     clearForumLaunchDismissFrame();
@@ -267,6 +385,7 @@ export default function App() {
 
   const { handleAddCharacter, handleOpenApp, handleOpenChat } = createAppShellHandlers({
     handleUpsertCharacter,
+    openCoupleSpaceApp,
     openForumApp,
     setActiveApp,
     setActiveTab,
@@ -542,6 +661,7 @@ export default function App() {
             audioRef={audioRef}
             characterMomentsBackApp={characterMomentsBackApp}
             couplePartnerCharacter={couplePartnerCharacter}
+            coupleSpaceState={appData.coupleSpaceState}
             coupleSpaceUpdateToast={coupleSpaceUpdateToast}
             currentCoupleSpace={currentCoupleSpace}
             datingGenerationToast={datingGenerationToast}
@@ -573,6 +693,7 @@ export default function App() {
             setSettings={setSettings}
             setStatusBarVisible={setStatusBarVisible}
             settings={settings}
+            openCoupleSpaceApp={openCoupleSpaceApp}
             openForumApp={openForumApp}
             onOpenReadyDating={(characterId) => {
               setSelectedCharacterId(characterId);
@@ -606,6 +727,17 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <CoupleSpaceLaunchOverlay
+          visible={coupleSpaceLaunchState != null}
+          ready={coupleSpaceLaunchState?.ready ?? false}
+          onComplete={() => {
+            if (!coupleSpaceLaunchState) {
+              return;
+            }
+            completeCoupleSpaceLaunch(coupleSpaceLaunchState.token);
+          }}
+        />
 
         <ForumLaunchOverlay
           visible={forumLaunchState != null}

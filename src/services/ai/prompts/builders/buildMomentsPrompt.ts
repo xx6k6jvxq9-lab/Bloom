@@ -1,10 +1,6 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import {
-  buildCharacterCoreSection,
-  buildUserMaskContextSection,
-  CharacterCoreSectionsInput,
-} from '../character/characterCore';
+import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
 import type { MemoryContextInput } from '../character/memoryContext';
 import { MOMENTS_SCENARIO_PROMPT } from '../scenarios/moments';
 
@@ -25,10 +21,12 @@ export type BuildMomentsPromptOptions = {
 function buildMomentsMemorySection(memoryContext: MemoryContextInput = {}): string {
   const lines = [
     '## 动态记忆与生活语境',
-    '动态允许吃到角色的人设、短期余波和长期记忆，但不要只围着用户转。',
-    '优先把这些上下文转译成角色自己的公开状态、生活切片、观察、兴趣或心情，而不是一段写给用户的私聊外溢。',
+    '动态可以吃到角色的人设、短期余波和长期记忆，但不要默认围着用户转。',
+    '优先把这些上下文翻译成角色自己的公开状态、生活碎片、观察、兴趣、身体感受或当下情绪，不要写成私聊外溢。',
+    'Use the shared character context as public-life context, not as private dialogue residue.',
+    'If something relates to the user, translate it into public-facing aftertaste, tease, stance, jealousy, flirtation, or hint.',
     memoryContext.sharedCharacterStatePrompt?.trim()
-      ? `褰撳墠鍏变韩瑙掕壊鐘舵€侊細${memoryContext.sharedCharacterStatePrompt.trim()}`
+      ? `公开生活状态：${memoryContext.sharedCharacterStatePrompt.trim()}`
       : '',
     memoryContext.shortTermSummary?.trim()
       ? `近期余波：${memoryContext.shortTermSummary.trim()}`
@@ -51,10 +49,14 @@ function buildPostContextSection(postContext: BuildMomentsPromptOptions['postCon
     postContext.signature ? `角色签名：${postContext.signature}` : '',
     postContext.relationship ? `当前公开语境：${postContext.relationship}` : '',
     `建议长度：${postContext.maxLength ?? 50} 字以内`,
-    `配图提及：${postContext.allowImages ? '可以自然提到照片、截图、配图，但不要强依赖' : '默认不要刻意提配图'}`,
+    `配图提及：${postContext.allowImages ? '可以自然提到照片、截图、相册、配图，但不要强依赖。' : '默认不要刻意提配图。'}`,
     postContext.styleHints?.length ? `风格提示：${postContext.styleHints.join('；')}` : '',
-    '表达倾向：更像角色自己发出的状态，而不是写给用户的一段回复。',
-    '输出要求：直接给出可发布正文，不要写过渡句、解释句、任务句。',
+    'Real-world anchor requirement: every post should land on at least one concrete anchor such as place, object, weather, body state, clothing, food, work detail, visible scene, pet, mirror, room, gym, desk, street, or store.',
+    'If this post leans toward photo / multi-photo vibes, write like a real caption after real photos, not like an image-description card or a poster title block.',
+    'If this post is directly about the user, keep it publicly legible: hint, tease, flirt, stake a claim, be jealous, be petty, or let the line land on them without turning into direct second-person chat.',
+    'Allow more than one motive: life sharing, complaint, work note, hot-take, abstract joke, flirtation, jealousy, public preference, food post, outfit post, workout post, long reflection.',
+    '表达目标：像角色自己会发出去的公开动态，而不是写给用户的一段聊天回复。',
+    '输出要求：只给出可发布正文，不要标题、解释、任务说明或附注。',
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -64,7 +66,6 @@ export function buildMomentsPrompt(options: BuildMomentsPromptOptions = {}): str
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
-    buildUserMaskContextSection(options.characterCore ?? {}),
     buildMomentsMemorySection(options.memoryContext ?? {}),
     MOMENTS_SCENARIO_PROMPT,
     buildPostContextSection(options.postContext),

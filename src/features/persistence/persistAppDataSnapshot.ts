@@ -14,6 +14,7 @@ import { persistFriendRequests } from './friendRequestsStore';
 import { persistMeData } from './meDataStore';
 import { persistMoments } from './momentsStore';
 import { persistMusicData } from './musicDataStore';
+import { persistPerception } from './perceptionStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { persistUserProfile } from './userProfileStore';
 import { persistVisualSettings } from './visualSettingsStore';
@@ -73,6 +74,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
   const normalizedFavorites = appData.favorites ?? fallbackAppData.favorites ?? [];
+  const normalizedPerception = appData.perception ?? fallbackAppData.perception;
   const normalizedWorldBooks = appData.worldBooks ?? fallbackAppData.worldBooks ?? [];
   const normalizedMoments = appData.moments ?? fallbackAppData.moments ?? [];
   const normalizedFriendRequests = appData.friendRequests ?? fallbackAppData.friendRequests ?? [];
@@ -106,6 +108,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
       favorites: normalizedFavorites,
       worldBooks: normalizedWorldBooks,
     }),
+    normalizedPerception ? persistPerception(normalizedPerception) : Promise.resolve(),
     persistMoments(normalizedMoments),
     Promise.resolve(persistFriendRequests(normalizedFriendRequests)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.friendRequests, normalizedFriendRequests),
@@ -119,7 +122,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
     Promise.resolve(persistForumData(normalizedForumData)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.forumData, normalizedForumData),
     ),
-    Promise.resolve(persistCoupleSpace(coupleSpace)).then(() =>
+    Promise.resolve(persistCoupleSpace(coupleSpace, coupleSpaceState)).then(() =>
       persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, coupleSpaceState),
     ),
     normalizedMusicData ? persistMusicData(normalizedMusicData) : Promise.resolve(),

@@ -37,6 +37,7 @@ export type ModularBackupModules = {
   characters: unknown;
   chatHistory: unknown;
   chatOrganization: unknown;
+  perception: unknown;
   userProfile: unknown;
   moments: unknown;
   forumData: unknown;
@@ -251,6 +252,7 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
       groups: resolvedAppData.groups ?? [],
       chatGroups,
     },
+    perception: resolvedAppData.perception ?? {},
     userProfile: resolvedAppData.userProfile ?? {},
     moments: resolvedAppData.moments ?? [],
     forumData: resolvedAppData.forumData ?? {},
@@ -656,6 +658,7 @@ function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<st
     chatHistory: (modules.chatHistory as { directHistory?: unknown } | null | undefined)?.directHistory ?? {},
     groups: (modules.chatOrganization as { groups?: unknown } | null | undefined)?.groups ?? [],
     chatGroups: (modules.chatOrganization as { chatGroups?: unknown } | null | undefined)?.chatGroups ?? [],
+    perception: modules.perception,
     userProfile: modules.userProfile,
     moments: modules.moments,
     forumData: modules.forumData,
@@ -682,6 +685,7 @@ async function restoreModularModules(
       message: '正在恢复基础设置',
       entries: [
         { key: STORAGE_KEYS.settings, value: modules.settings },
+        { key: STORAGE_KEYS.perception, value: modules.perception },
         { key: STORAGE_KEYS.userProfile, value: modules.userProfile },
         { key: STORAGE_KEYS.visualSettings, value: modules.visualSettings },
       ],

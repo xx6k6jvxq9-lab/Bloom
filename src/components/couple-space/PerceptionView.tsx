@@ -11,26 +11,20 @@ import {
 } from 'lucide-react';
 import { PerceptionSettings } from '../../types';
 import { KeyboardAwareScreen } from '../../features/app-shell/KeyboardAwareScreen';
+import { createDefaultPerceptionSettings } from '../../features/persistence/perceptionStore';
 
 type Props = {
-  coupleSpace: any;
-  updateSpace: (updates: any) => void;
+  perception?: PerceptionSettings;
+  onChange: (settings: PerceptionSettings) => void;
   onBack: () => void;
 };
 
-export function PerceptionView({ coupleSpace, updateSpace, onBack }: Props) {
-  const settings: PerceptionSettings = coupleSpace.perception || {
-    enabled: false,
-    dateTime: { enabled: false, value: '' },
-    location: { enabled: false, value: '' },
-    weather: { enabled: false, value: '' },
-    temperature: { enabled: false, value: '' },
-    climate: { enabled: false, value: '' },
-  };
+export function PerceptionView({ perception, onChange, onBack }: Props) {
+  const settings: PerceptionSettings = perception || createDefaultPerceptionSettings();
 
   const updateSettings = (key: keyof PerceptionSettings, value: any) => {
     const newSettings = { ...settings, [key]: value };
-    updateSpace({ perception: newSettings });
+    onChange(newSettings);
   };
 
   const updateSubSetting = (

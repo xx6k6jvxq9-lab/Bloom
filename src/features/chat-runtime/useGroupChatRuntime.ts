@@ -74,7 +74,7 @@ type UseGroupChatRuntimeArgs = {
   sharedStickers?: string[];
   worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
-  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
+  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig' | 'sharedStickerMetadata'>;
 };
 
 type UseGroupChatRuntimeResult = {

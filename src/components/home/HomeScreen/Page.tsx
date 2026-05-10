@@ -20,6 +20,11 @@ import {
   getPreviewAssetValue,
 } from '../../../features/persistence/persistentAssetRef';
 import {
+  createDesktopWidgetFromType,
+  isLegacyMusicWidget,
+  type SupportedDesktopWidgetType,
+} from '../../shared/desktopWidgetCatalog';
+import {
   buildDesktopIconPlacements,
   getDesktopLayoutMetrics,
   buildDesktopSlots,
@@ -32,6 +37,7 @@ import {
   resolveWidgetDrop,
   resolveNavBarDrop,
 } from './layout';
+import { HomeWidgetEditorSheet, HomeWidgetPickerSheet } from './WidgetSheets';
 import './HomeScreen.css';
 
 type UserProfile = UserProfileExtended;
@@ -61,6 +67,59 @@ type DragGhostState =
       height: number;
       widget: WidgetConfig;
     };
+
+const LEGACY_KAWAII_LAUNCHER_AVATAR =
+  'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=160&h=160&fit=crop';
+const LEGACY_KAWAII_SCRAPBOOK_AVATAR =
+  'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=160&h=160&fit=crop';
+const LEGACY_KAWAII_SCRAPBOOK_PHOTO =
+  'https://images.unsplash.com/photo-1515462277126-2dd0469f4813?w=400&h=260&fit=crop';
+const LEGACY_KAWAII_SCRAPBOOK_SECONDARY_PHOTO =
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=160&h=160&fit=crop';
+
+function normalizeLegacyKawaiiWidget(widget: WidgetConfig) {
+  if (widget.type === 'kawaii-launcher') {
+    const nextWidget: WidgetConfig = {
+      ...widget,
+      h: widget.h === 1 ? 2 : widget.h,
+      background: widget.background === '#f6f1ea' ? '#ffffff' : widget.background,
+      borderRadius:
+        widget.borderRadius === 30 || widget.borderRadius === 34
+          ? 40
+          : widget.borderRadius,
+      avatarUrl: widget.avatarUrl === LEGACY_KAWAII_LAUNCHER_AVATAR ? '' : widget.avatarUrl,
+      bio: widget.bio === '猫ちゃんがいない日は雨季。' ? '' : widget.bio,
+      item1Label: widget.item1Label === 'Keep' ? '' : widget.item1Label,
+      item2Label: widget.item2Label === 'Twilight' ? '' : widget.item2Label,
+      item3Label: widget.item3Label === 'blooms' ? '' : widget.item3Label,
+      item4Label: widget.item4Label === 'bling' ? '' : widget.item4Label,
+    };
+
+    return JSON.stringify(nextWidget) === JSON.stringify(widget) ? widget : nextWidget;
+  }
+
+  if (widget.type === 'kawaii-scrapbook') {
+    const nextWidget: WidgetConfig = {
+      ...widget,
+      background: widget.background === '#f7f2eb' ? '#ffffff' : widget.background,
+      borderRadius:
+        widget.borderRadius === 26
+          ? 32
+          : widget.borderRadius,
+      avatarUrl: widget.avatarUrl === LEGACY_KAWAII_SCRAPBOOK_AVATAR ? '' : widget.avatarUrl,
+      photoUrl: widget.photoUrl === LEGACY_KAWAII_SCRAPBOOK_PHOTO ? '' : widget.photoUrl,
+      secondaryPhotoUrl:
+        widget.secondaryPhotoUrl === LEGACY_KAWAII_SCRAPBOOK_SECONDARY_PHOTO ? '' : widget.secondaryPhotoUrl,
+      title: widget.title === 'SoftGlow。' ? '' : widget.title,
+      bio: widget.bio === '生活收藏家，浪漫实用主义者。' ? '' : widget.bio,
+      note: widget.note === '书和阳光都是我的充电器，沉迷胶片质感的人生切片。' ? '' : widget.note,
+    };
+
+    return JSON.stringify(nextWidget) === JSON.stringify(widget) ? widget : nextWidget;
+  }
+
+  return widget;
+}
 
 function resolveDesktopFontFamily(visualSettings?: VisualSettings): string | undefined {
   const priority = resolveThemeFontPriority(visualSettings?.themeTypography);
@@ -168,6 +227,7 @@ export function HomeScreen({
   const [tempUrl, setTempUrl] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [isArrangeMode, setIsArrangeMode] = useState(false);
+  const [showWidgetPicker, setShowWidgetPicker] = useState(false);
   const [draggingIconId, setDraggingIconId] = useState<string | null>(null);
   const [draggingIconPage, setDraggingIconPage] = useState<number | null>(null);
   const [draggingIconOriginPage, setDraggingIconOriginPage] = useState<number | null>(null);
@@ -178,6 +238,8 @@ export function HomeScreen({
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
   const [draggingWidgetPage, setDraggingWidgetPage] = useState<number | null>(null);
   const [widgetPreviewConfigs, setWidgetPreviewConfigs] = useState<WidgetConfig[] | null>(null);
+  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const [widgetDeleteTargetId, setWidgetDeleteTargetId] = useState<string | null>(null);
   const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
@@ -280,7 +342,9 @@ export function HomeScreen({
   ));
   const pageCount = useMemo(() => {
     const iconPages = currentIcons.map(icon => (typeof icon.page === 'number' ? icon.page : 0));
-    const widgetPages = (visualSettings.widgets || []).map(widget => (typeof widget.page === 'number' ? widget.page : 0));
+    const widgetPages = (visualSettings.widgets || [])
+      .filter(widget => !isLegacyMusicWidget(widget))
+      .map(widget => (typeof widget.page === 'number' ? widget.page : 0));
     const navBarPages = [typeof visualSettings.navBar?.page === 'number' ? visualSettings.navBar.page : 0];
     const maxPage = Math.max(0, ...iconPages, ...widgetPages, ...navBarPages);
     return Math.max(MIN_DESKTOP_PAGE_COUNT, maxPage + 1);
@@ -293,6 +357,8 @@ export function HomeScreen({
   const swipeEnabledRef = useRef(false);
   const ignoreSwipeUntilRef = useRef(0);
   const dragPageTurnUntilRef = useRef(0);
+  const emptyAreaPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const emptyAreaLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPreviewSlotIdRef = useRef<string | null>(null);
   const iconPointerSessionRef = useRef<{
     appId: string;
@@ -359,8 +425,14 @@ export function HomeScreen({
     [currentIcons],
   );
   const normalizedWidgets = useMemo(
-    () => (visualSettings.widgets || []).map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
+    () => (visualSettings.widgets || [])
+      .filter(widget => !isLegacyMusicWidget(widget))
+      .map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
     [visualSettings.widgets],
+  );
+  const editingWidget = useMemo(
+    () => normalizedWidgets.find(widget => widget.id === editingWidgetId) ?? null,
+    [editingWidgetId, normalizedWidgets],
   );
   const workingWidgetConfigs = useMemo(
     () => (widgetPreviewConfigs || normalizedWidgets).map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
@@ -485,6 +557,36 @@ export function HomeScreen({
   useEffect(() => {
     setCurrentPage(prev => Math.min(prev, pageCount - 1));
   }, [pageCount]);
+
+  useEffect(() => {
+    const currentWidgets = visualSettings.widgets || [];
+    const nextWidgets = currentWidgets
+      .filter(widget => !isLegacyMusicWidget(widget))
+      .map(normalizeLegacyKawaiiWidget);
+    const changed =
+      nextWidgets.length !== currentWidgets.length
+      || nextWidgets.some((widget, index) => widget !== currentWidgets[index]);
+    if (!changed) return;
+
+    setVisualSettings({
+      ...visualSettings,
+      widgets: nextWidgets,
+    });
+  }, [setVisualSettings, visualSettings]);
+
+  useEffect(() => {
+    if (isArrangeMode) {
+      setEditingWidgetId(null);
+      setWidgetDeleteTargetId(null);
+      setShowWidgetPicker(false);
+    }
+  }, [isArrangeMode]);
+
+  useEffect(() => {
+    if (editingWidgetId && !normalizedWidgets.some(widget => widget.id === editingWidgetId)) {
+      setEditingWidgetId(null);
+    }
+  }, [editingWidgetId, normalizedWidgets]);
 
   const navBarPlacement = useMemo(
     () =>
@@ -1021,6 +1123,86 @@ export function HomeScreen({
     });
   };
 
+  const updateWidgetConfig = (widgetId: string, updates: Partial<WidgetConfig>) => {
+    setVisualSettings({
+      ...visualSettings,
+      widgets: (visualSettings.widgets || []).map(widget => (
+        widget.id === widgetId ? { ...widget, ...updates } : widget
+      )),
+    });
+  };
+
+  const removeWidgetConfig = (widgetId: string) => {
+    setVisualSettings({
+      ...visualSettings,
+      widgets: (visualSettings.widgets || []).filter(widget => widget.id !== widgetId),
+    });
+    setEditingWidgetId(current => (current === widgetId ? null : current));
+    setWidgetDeleteTargetId(current => (current === widgetId ? null : current));
+  };
+
+  const findPlacementForNewWidget = (widget: WidgetConfig) => {
+    const candidatePages = [
+      currentPage,
+      ...Array.from({ length: pageCount }, (_, page) => page).filter(page => page !== currentPage),
+      pageCount,
+    ];
+
+    for (const page of candidatePages) {
+      const candidateWidget: WidgetConfig = {
+        ...widget,
+        page,
+        slotId: undefined,
+        x: undefined,
+        y: undefined,
+      };
+      const pageWidgets = normalizedWidgets.filter(existing => existing.page === page);
+      const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
+      const placement = buildDesktopWidgetPlacements(
+        [...pageWidgets, candidateWidget],
+        slots,
+        cols,
+        baseOccupiedSlotIds,
+      ).placements[candidateWidget.id];
+
+      if (placement) {
+        return {
+          page,
+          slotId: placement.anchorSlotId ?? undefined,
+        };
+      }
+    }
+
+    return {
+      page: currentPage,
+      slotId: undefined,
+    };
+  };
+
+  const addWidgetFromTemplate = (type: SupportedDesktopWidgetType) => {
+    const nextWidget = createDesktopWidgetFromType(type);
+    if (!nextWidget) return;
+
+    const placement = findPlacementForNewWidget(nextWidget);
+    const widgetToPersist: WidgetConfig = {
+      ...nextWidget,
+      page: placement.page,
+      slotId: placement.slotId,
+      x: undefined,
+      y: undefined,
+    };
+
+    setVisualSettings({
+      ...visualSettings,
+      widgets: [...(visualSettings.widgets || []).filter(widget => !isLegacyMusicWidget(widget)), widgetToPersist],
+    });
+    setCurrentPage(placement.page);
+    setShowWidgetPicker(false);
+    setWidgetDeleteTargetId(null);
+    setEditingWidgetId(widgetToPersist.id);
+    ignoreSwipeUntilRef.current = Date.now() + 260;
+  };
+
   const handleWidgetDragPreview = (widgetId: string, rawX: number, rawY: number) => {
     let targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
     const edgeThreshold = Math.max(52, Math.round(desktopViewport.width * 0.14));
@@ -1205,12 +1387,53 @@ export function HomeScreen({
     return ids;
   }, [draggedPreviewSlotId, draggedWidgetPreviewSlotIds, draggingIconId, draggingNavBar, draggingWidgetId, navBarPlacement.slotIds]);
 
-  const isEditingDesktop = Boolean(isArrangeMode || draggingIconId || draggingNavBar || draggingWidgetId);
+  const isEditingDesktop = Boolean(
+    isArrangeMode
+    || draggingIconId
+    || draggingNavBar
+    || draggingWidgetId
+    || showWidgetPicker
+    || editingWidgetId
+  );
   const resetSwipeInteraction = () => {
     swipeEnabledRef.current = false;
     swipeStartRef.current = null;
     setIsSwipeDragging(false);
     setSwipeOffset(0);
+  };
+  const clearEmptyAreaLongPress = () => {
+    emptyAreaPressStartRef.current = null;
+    if (emptyAreaLongPressTimerRef.current) {
+      clearTimeout(emptyAreaLongPressTimerRef.current);
+      emptyAreaLongPressTimerRef.current = null;
+    }
+  };
+  const isEmptyDesktopPressTarget = (target?: EventTarget | null) => {
+    const element = target instanceof HTMLElement ? target : null;
+    return !element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots, [data-home-widget-overlay="true"], .homeDesktop__widgetDeleteAction');
+  };
+  const beginEmptyAreaLongPress = (clientX: number, clientY: number, target?: EventTarget | null) => {
+    if (showWidgetPicker || editingWidgetId || isArrangeMode || draggingIconId || draggingNavBar || draggingWidgetId) return;
+    if (!isEmptyDesktopPressTarget(target)) return;
+
+    clearEmptyAreaLongPress();
+    emptyAreaPressStartRef.current = { x: clientX, y: clientY };
+    emptyAreaLongPressTimerRef.current = setTimeout(() => {
+      emptyAreaLongPressTimerRef.current = null;
+      emptyAreaPressStartRef.current = null;
+      resetSwipeInteraction();
+      setWidgetDeleteTargetId(null);
+      setEditingWidgetId(null);
+      setShowWidgetPicker(true);
+      ignoreSwipeUntilRef.current = Date.now() + 260;
+    }, 380);
+  };
+  const maybeCancelEmptyAreaLongPress = (clientX: number, clientY: number) => {
+    const start = emptyAreaPressStartRef.current;
+    if (!start) return;
+    if (Math.hypot(clientX - start.x, clientY - start.y) > 8) {
+      clearEmptyAreaLongPress();
+    }
   };
   const changePage = (nextPage: number) => {
     const resolved = normalizeDesktopPage(nextPage);
@@ -1220,10 +1443,10 @@ export function HomeScreen({
     setCurrentPage(resolved);
   };
   const handleSwipeStart = (clientX: number, clientY: number, target?: EventTarget | null) => {
-    if (isArrangeMode) return;
+    if (isArrangeMode || showWidgetPicker || editingWidgetId) return;
     if (Date.now() < ignoreSwipeUntilRef.current) return;
     const element = target instanceof HTMLElement ? target : null;
-    if (element?.closest('.homeDesktop__pageDots')) {
+    if (element?.closest('.homeDesktop__pageDots, [data-home-widget-overlay="true"], .homeDesktop__widgetDeleteAction')) {
       swipeEnabledRef.current = false;
       swipeStartRef.current = null;
       return;
@@ -1277,6 +1500,12 @@ export function HomeScreen({
       setSwipeOffset(0);
     }
   };
+
+  useEffect(() => () => {
+    if (emptyAreaLongPressTimerRef.current) {
+      clearTimeout(emptyAreaLongPressTimerRef.current);
+    }
+  }, []);
 
   const renderDesktopPage = (page: number) => {
     const pageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
@@ -1594,40 +1823,31 @@ export function HomeScreen({
                 setAppData={setAppData}
                 isDragging={draggingWidgetId === widget.id}
                 hideWhileDragging={draggingWidgetId === widget.id}
+                showDeleteAction={isArrangeMode}
                 onPointerDragStart={(clientX, clientY, pointerId) => {
                   beginWidgetPointerDrag(widget, page, placement, clientX, clientY, pointerId);
                 }}
+                onShowDeleteAction={() => {
+                  setEditingWidgetId(null);
+                  setWidgetDeleteTargetId(null);
+                  resetSwipeInteraction();
+                  ignoreSwipeUntilRef.current = Date.now() + 260;
+                  setIsArrangeMode(true);
+                }}
+                onDeleteAction={() => {
+                  removeWidgetConfig(widget.id);
+                }}
                 onWidgetChange={(updates) => {
-                  const currentWidgets = visualSettings.widgets || [];
-                  const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
-                  if (existingIndex < 0) return;
-
-                  const newWidgets = [...currentWidgets];
-                  newWidgets[existingIndex] = {
-                    ...newWidgets[existingIndex],
-                    ...updates,
-                  };
-
-                  setVisualSettings({
-                    ...visualSettings,
-                    widgets: newWidgets,
-                  });
+                  updateWidgetConfig(widget.id, updates);
+                }}
+                onRequestEdit={widget.type === 'profile-card' ? undefined : () => {
+                  setWidgetDeleteTargetId(null);
+                  setEditingWidgetId(widget.id);
                 }}
                 onPositionChange={(newX, newY) => {
-                  const currentWidgets = visualSettings.widgets || [];
-                  const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
-                  if (existingIndex < 0) return;
-
-                  const newWidgets = [...currentWidgets];
-                  newWidgets[existingIndex] = {
-                    ...newWidgets[existingIndex],
+                  updateWidgetConfig(widget.id, {
                     x: newX,
                     y: newY,
-                  };
-
-                  setVisualSettings({
-                    ...visualSettings,
-                    widgets: newWidgets,
                   });
                 }}
               />
@@ -1694,33 +1914,40 @@ export function HomeScreen({
       onPointerDown={e => {
         if (e.pointerType === 'mouse') {
           handleSwipeStart(e.clientX, e.clientY, e.target);
+          beginEmptyAreaLongPress(e.clientX, e.clientY, e.target);
         }
       }}
       onPointerMove={e => {
         if (e.pointerType === 'mouse') {
+          maybeCancelEmptyAreaLongPress(e.clientX, e.clientY);
           handleSwipeMove(e.clientX, e.clientY);
         }
       }}
       onPointerUp={e => {
         if (e.pointerType === 'mouse') {
+          clearEmptyAreaLongPress();
           handleSwipeEnd(e.clientX, e.clientY);
         }
       }}
       onPointerCancel={() => {
+        clearEmptyAreaLongPress();
         resetSwipeInteraction();
       }}
       onTouchStart={e => {
         const touch = e.touches[0];
         if (!touch) return;
         handleSwipeStart(touch.clientX, touch.clientY, e.target);
+        beginEmptyAreaLongPress(touch.clientX, touch.clientY, e.target);
       }}
       onTouchMove={e => {
         const touch = e.touches[0];
         if (!touch) return;
+        maybeCancelEmptyAreaLongPress(touch.clientX, touch.clientY);
         handleSwipeMove(touch.clientX, touch.clientY);
       }}
       onTouchEnd={e => {
         const touch = e.changedTouches[0];
+        clearEmptyAreaLongPress();
         if (!touch) {
           resetSwipeInteraction();
           return;
@@ -1728,11 +1955,15 @@ export function HomeScreen({
         handleSwipeEnd(touch.clientX, touch.clientY);
       }}
       onTouchCancel={() => {
+        clearEmptyAreaLongPress();
         resetSwipeInteraction();
       }}
       onClick={e => {
-        if (!isArrangeMode || draggingIconId || draggingNavBar) return;
         const element = e.target instanceof HTMLElement ? e.target : null;
+        if (widgetDeleteTargetId && !element?.closest('.homeDesktop__widgetDeleteAction')) {
+          setWidgetDeleteTargetId(null);
+        }
+        if (!isArrangeMode || draggingIconId || draggingNavBar) return;
         if (element?.closest('.homeDesktop__item, .homeDesktop__topBar, .homeDesktop__dock, .homeDesktop__pageDots')) {
           return;
         }
@@ -2119,40 +2350,31 @@ export function HomeScreen({
               hideWhileDragging={draggingWidgetId === widget.id}
               appData={appData}
               setAppData={setAppData}
+              showDeleteAction={isArrangeMode}
               onPointerDragStart={(clientX, clientY, pointerId) => {
                 beginWidgetPointerDrag(widget, currentPage, placement, clientX, clientY, pointerId);
               }}
+              onShowDeleteAction={() => {
+                setEditingWidgetId(null);
+                setWidgetDeleteTargetId(null);
+                resetSwipeInteraction();
+                ignoreSwipeUntilRef.current = Date.now() + 260;
+                setIsArrangeMode(true);
+              }}
+              onDeleteAction={() => {
+                removeWidgetConfig(widget.id);
+              }}
               onWidgetChange={(updates) => {
-                const currentWidgets = visualSettings.widgets || [];
-                const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
-                if (existingIndex < 0) return;
-
-                const newWidgets = [...currentWidgets];
-                newWidgets[existingIndex] = {
-                  ...newWidgets[existingIndex],
-                  ...updates,
-                };
-
-                setVisualSettings({
-                  ...visualSettings,
-                  widgets: newWidgets,
-                });
+                updateWidgetConfig(widget.id, updates);
+              }}
+              onRequestEdit={widget.type === 'profile-card' ? undefined : () => {
+                setWidgetDeleteTargetId(null);
+                setEditingWidgetId(widget.id);
               }}
               onPositionChange={(newX, newY) => {
-                const currentWidgets = visualSettings.widgets || [];
-                const existingIndex = currentWidgets.findIndex(w => w.id === widget.id);
-                if (existingIndex < 0) return;
-
-                const newWidgets = [...currentWidgets];
-                newWidgets[existingIndex] = {
-                  ...newWidgets[existingIndex],
+                updateWidgetConfig(widget.id, {
                   x: newX,
                   y: newY,
-                };
-
-                setVisualSettings({
-                  ...visualSettings,
-                  widgets: newWidgets,
                 });
               }}
             />
@@ -2228,6 +2450,44 @@ export function HomeScreen({
         </div>
       )}
 
+      <HomeWidgetPickerSheet
+        open={showWidgetPicker}
+        onClose={() => setShowWidgetPicker(false)}
+        onSelect={addWidgetFromTemplate}
+      />
+
+      <HomeWidgetEditorSheet
+        widget={editingWidget}
+        open={Boolean(editingWidget)}
+        desktopColumns={cols}
+        onClose={() => setEditingWidgetId(null)}
+        onChange={updates => {
+          if (!editingWidget) return;
+          const currentWidgets = visualSettings.widgets || [];
+          const existingIndex = currentWidgets.findIndex(widget => widget.id === editingWidget.id);
+          if (existingIndex < 0) return;
+
+          const newWidgets = [...currentWidgets];
+          newWidgets[existingIndex] = {
+            ...newWidgets[existingIndex],
+            ...updates,
+          };
+
+          setVisualSettings({
+            ...visualSettings,
+            widgets: newWidgets,
+          });
+        }}
+        onDelete={() => {
+          if (!editingWidget) return;
+          setVisualSettings({
+            ...visualSettings,
+            widgets: (visualSettings.widgets || []).filter(widget => widget.id !== editingWidget.id),
+          });
+          setEditingWidgetId(null);
+        }}
+      />
+
       <StaticDock
         placement={dockPlacement}
         visualSettings={visualSettings}
@@ -2248,9 +2508,13 @@ function DraggableWidget({
   isArrangeMode,
   isDragging,
   hideWhileDragging,
+  showDeleteAction,
   onPointerDragStart,
   onPositionChange,
   onWidgetChange,
+  onShowDeleteAction,
+  onDeleteAction,
+  onRequestEdit,
   appData,
   setAppData,
 }: {
@@ -2260,22 +2524,83 @@ function DraggableWidget({
   isArrangeMode: boolean;
   isDragging: boolean;
   hideWhileDragging: boolean;
+  showDeleteAction?: boolean;
   onPointerDragStart: (clientX: number, clientY: number, pointerId: number) => void;
   onPositionChange: (x: number, y: number) => void;
   onWidgetChange: (updates: Partial<WidgetConfig>) => void;
+  onShowDeleteAction?: () => void;
+  onDeleteAction?: () => void;
+  onRequestEdit?: () => void;
   appData: AppData;
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
 }) {
+  const suppressClickRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+    };
+  }, []);
+
   return (
     <motion.div
-      className={`homeDesktop__item homeDesktop__item--widget ${gridStyle ? 'homeDesktop__item--grid' : ''}`}
+      className={`homeDesktop__item homeDesktop__item--widget ${gridStyle ? 'homeDesktop__item--grid' : ''} ${isArrangeMode ? 'homeDesktop__item--arranging' : ''}`}
       initial={false}
       animate={gridStyle ? undefined : (isDragging ? { x: placement.x, y: placement.y } : { x: placement.x, y: placement.y })}
-      onPointerDown={event => {
-        if (!isArrangeMode) return;
-        if (event.pointerType === 'mouse' && event.button !== 0) return;
+      onClickCapture={event => {
+        if (!suppressClickRef.current) return;
+        suppressClickRef.current = false;
         event.preventDefault();
-        onPointerDragStart(event.clientX, event.clientY, event.pointerId);
+        event.stopPropagation();
+      }}
+      onPointerDown={event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (isArrangeMode) {
+          if (target?.closest('.homeDesktop__widgetDeleteAction')) {
+            return;
+          }
+          event.preventDefault();
+          onPointerDragStart(event.clientX, event.clientY, event.pointerId);
+          return;
+        }
+        if (target?.closest('input, textarea, select, a, .homeDesktop__widgetDeleteAction')) {
+          return;
+        }
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => {
+          suppressClickRef.current = true;
+          pointerStartRef.current = null;
+          longPressTimerRef.current = null;
+          onShowDeleteAction?.();
+        }, 280);
+      }}
+      onPointerMove={event => {
+        if (isArrangeMode) return;
+        const start = pointerStartRef.current;
+        if (!start) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+          pointerStartRef.current = null;
+          clearLongPressTimer();
+        }
+      }}
+      onPointerUp={() => {
+        pointerStartRef.current = null;
+        clearLongPressTimer();
+      }}
+      onPointerCancel={() => {
+        pointerStartRef.current = null;
+        clearLongPressTimer();
       }}
       style={{
         ...(gridStyle || { width: placement.width, height: placement.height }),
@@ -2285,21 +2610,38 @@ function DraggableWidget({
       whileTap={isArrangeMode ? { scale: 0.98 } : undefined}
       transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
     >
-      <DesktopWidget
-        widget={widget}
-        onWidgetChange={onWidgetChange}
-        musicData={appData.musicData}
-        setMusicData={setterOrValue =>
-          setAppData(prev => {
-            const prevMusicData = prev.musicData!;
-            const nextMusicData =
-              typeof setterOrValue === 'function'
-                ? (setterOrValue as (value: MusicData) => MusicData)(prevMusicData)
-                : setterOrValue;
-            return { ...prev, musicData: nextMusicData };
-          })
-        }
-      />
+      {showDeleteAction ? (
+        <button
+          type="button"
+          className="homeDesktop__widgetDeleteAction"
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+          onDeleteAction?.();
+        }}
+        aria-label="删除小组件"
+      >
+          −
+        </button>
+      ) : null}
+      <div className={isArrangeMode ? 'homeDesktop__itemBody homeDesktop__itemBody--arranging' : 'homeDesktop__itemBody'}>
+        <DesktopWidget
+          widget={widget}
+          onRequestEdit={isArrangeMode ? undefined : onRequestEdit}
+          onWidgetChange={isArrangeMode ? undefined : onWidgetChange}
+          musicData={appData.musicData}
+          setMusicData={setterOrValue =>
+            setAppData(prev => {
+              const prevMusicData = prev.musicData!;
+              const nextMusicData =
+                typeof setterOrValue === 'function'
+                  ? (setterOrValue as (value: MusicData) => MusicData)(prevMusicData)
+                  : setterOrValue;
+              return { ...prev, musicData: nextMusicData };
+            })
+          }
+        />
+      </div>
     </motion.div>
   );
 }

@@ -1,4 +1,4 @@
-import type { ApiConfig, Character, MomentComment, MomentItem } from '../../types';
+import type { ApiConfig, Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import {
   buildMomentThreadReplyFallback,
   generateMomentBodyComment,
@@ -17,6 +17,7 @@ type PublishCommentSequenceOptions = {
   activeConfig: ApiConfig;
   moment: MomentItem;
   characters: Character[];
+  chatGroups?: ChatGroup[];
   userName: string;
   appendComment: AppendComment;
 };
@@ -25,6 +26,7 @@ type CommentReplySequenceOptions = {
   activeConfig: ApiConfig;
   moment: MomentItem;
   characters: Character[];
+  chatGroups?: ChatGroup[];
   userName: string;
   triggerComment: MomentComment;
   appendComment: AppendComment;
@@ -68,10 +70,11 @@ async function generateReplyText(params: {
   moment: MomentItem;
   targetComment: MomentComment;
   characters: Character[];
+  chatGroups?: ChatGroup[];
   userName: string;
   recentChain?: MomentComment[];
 }) {
-  const { activeConfig, replyCharacter, moment, targetComment, characters, userName, recentChain = [] } = params;
+  const { activeConfig, replyCharacter, moment, targetComment, characters, chatGroups, userName, recentChain = [] } = params;
   try {
     return (await generateMomentThreadReply({
       activeConfig,
@@ -79,6 +82,7 @@ async function generateReplyText(params: {
       moment,
       targetComment,
       characters,
+      chatGroups,
       userName,
       recentChain,
     })).trim();
@@ -98,13 +102,14 @@ async function maybeContinueThread(params: {
   activeConfig: ApiConfig;
   baseMoment: MomentItem;
   characters: Character[];
+  chatGroups?: ChatGroup[];
   userName: string;
   appendComment: AppendComment;
   liveComments: MomentComment[];
   chain: MomentComment[];
   currentDepth: number;
 }) {
-  const { activeConfig, baseMoment, characters, userName, appendComment, liveComments, chain, currentDepth } = params;
+  const { activeConfig, baseMoment, characters, chatGroups, userName, appendComment, liveComments, chain, currentDepth } = params;
   const triggerComment = chain[chain.length - 1];
   if (!triggerComment) {
     return;
@@ -115,7 +120,7 @@ async function maybeContinueThread(params: {
     comments: [...baseMoment.comments, ...liveComments],
   };
 
-  if (!shouldTriggerFollowUpReply(momentWithComments, triggerComment, currentDepth, characters, chain)) {
+  if (!shouldTriggerFollowUpReply(momentWithComments, triggerComment, currentDepth, characters, chain, chatGroups)) {
     return;
   }
 
@@ -126,6 +131,7 @@ async function maybeContinueThread(params: {
     triggerComment,
     recentChain: chain,
     usedAuthorIds,
+    chatGroups,
   });
 
   if (!responder) {
@@ -138,6 +144,7 @@ async function maybeContinueThread(params: {
     moment: momentWithComments,
     targetComment: triggerComment,
     characters,
+    chatGroups,
     userName,
     recentChain: chain,
   });
@@ -162,6 +169,7 @@ async function maybeContinueThread(params: {
     activeConfig,
     baseMoment,
     characters,
+    chatGroups,
     userName,
     appendComment,
     liveComments,
@@ -171,12 +179,13 @@ async function maybeContinueThread(params: {
 }
 
 export async function runMomentPublishCommentSequence(options: PublishCommentSequenceOptions) {
-  const { activeConfig, moment, characters, userName, appendComment } = options;
+  const { activeConfig, moment, characters, chatGroups, userName, appendComment } = options;
   const liveComments: MomentComment[] = [];
-  const loopContext = buildCommentLoopContext(moment, characters);
+  const loopContext = buildCommentLoopContext(moment, characters, chatGroups);
   const initialCommenters = pickInitialCommenters({
     moment,
     characters,
+    chatGroups,
   });
 
   for (const commenter of initialCommenters) {
@@ -189,6 +198,7 @@ export async function runMomentPublishCommentSequence(options: PublishCommentSeq
           comments: [...moment.comments, ...liveComments],
         },
         characters,
+        chatGroups,
         userName,
       });
       const normalizedContent = generatedText.trim();
@@ -210,6 +220,7 @@ export async function runMomentPublishCommentSequence(options: PublishCommentSeq
           activeConfig,
           baseMoment: moment,
           characters,
+          chatGroups,
           userName,
           appendComment,
           liveComments,
@@ -226,8 +237,8 @@ export async function runMomentPublishCommentSequence(options: PublishCommentSeq
 }
 
 export async function runMomentCommentReplySequence(options: CommentReplySequenceOptions) {
-  const { activeConfig, moment, characters, userName, triggerComment, appendComment } = options;
-  const loopContext = buildCommentLoopContext(moment, characters);
+  const { activeConfig, moment, characters, chatGroups, userName, triggerComment, appendComment } = options;
+  const loopContext = buildCommentLoopContext(moment, characters, chatGroups);
   if (loopContext.maxDepth <= 0) {
     return;
   }
@@ -244,6 +255,7 @@ export async function runMomentCommentReplySequence(options: CommentReplySequenc
     triggerComment,
     recentChain: [triggerComment],
     usedAuthorIds: [triggerComment.authorId],
+    chatGroups,
   });
 
   if (!primaryResponder) {
@@ -256,6 +268,7 @@ export async function runMomentCommentReplySequence(options: CommentReplySequenc
     moment: momentWithTrigger,
     targetComment: triggerComment,
     characters,
+    chatGroups,
     userName,
     recentChain: [triggerComment],
   });
@@ -279,6 +292,7 @@ export async function runMomentCommentReplySequence(options: CommentReplySequenc
     activeConfig,
     baseMoment: momentWithTrigger,
     characters,
+    chatGroups,
     userName,
     appendComment,
     liveComments,

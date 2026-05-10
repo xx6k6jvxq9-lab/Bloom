@@ -33,6 +33,7 @@ import {
   hydrateMeData,
   loadPreferredMeData,
 } from './meDataStore';
+import { loadPreferredPerception } from './perceptionStore';
 import { evaluateMigrationStatusWithOptions, migrateCriticalRecordsIfNeeded } from './migrationStatusStore';
 import {
   loadPreferredMoments,
@@ -62,6 +63,7 @@ type BootstrapLocalAppStateParams = {
 
 type BootstrapLocalAppStateResult = {
   appData: AppData;
+  loadDeferredAppData?: () => Promise<Partial<AppData>>;
   migratedSettings?: AppSettings;
   settings: AppSettings;
 };
@@ -195,6 +197,7 @@ export async function bootstrapLocalAppState({
   let migratedSettings: AppSettings | undefined;
   const defaultAppData = createDefaultAppData();
   let nextAppData = defaultAppData;
+  let loadDeferredAppData: (() => Promise<Partial<AppData>>) | undefined;
   let legacyAppDataCache: Partial<AppData> | null | undefined;
 
   const getLegacyAppData = (): Partial<AppData> | null => {
@@ -217,6 +220,7 @@ export async function bootstrapLocalAppState({
     indexedDbFriendRequests,
     indexedDbMeData,
     indexedDbWalletData,
+    indexedDbPerception,
   ] = await Promise.all([
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.settings),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.characters),
@@ -229,6 +233,7 @@ export async function bootstrapLocalAppState({
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.friendRequests),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.meData),
     loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.walletData),
+    loadIndexedDbRecordSafe<unknown>(STORAGE_KEYS.perception),
   ]);
 
   const parsedSettings = indexedDbSettings ?? readStoredJson<unknown>(STORAGE_KEYS.settings);
@@ -248,6 +253,7 @@ export async function bootstrapLocalAppState({
   const hasIndexedDbFriendRequests = indexedDbFriendRequests != null;
   const hasIndexedDbMeData = indexedDbMeData != null;
   const hasIndexedDbWalletData = indexedDbWalletData != null;
+  const hasIndexedDbPerception = indexedDbPerception != null;
 
   const hasLocalCharacters = hasStoredJson(STORAGE_KEYS.characters);
   const hasLocalChatHistory = hasStoredJson(STORAGE_KEYS.chatHistory);
@@ -263,6 +269,7 @@ export async function bootstrapLocalAppState({
   const hasLocalMusicData = hasStoredJson(STORAGE_KEYS.musicData);
   const hasLocalWalletData = hasStoredJson(STORAGE_KEYS.walletData);
   const hasLocalCallHistory = hasStoredJson(STORAGE_KEYS.callHistory);
+  const hasLocalPerception = hasStoredJson(STORAGE_KEYS.perception);
 
   const hasAnyModernBusinessData = (
     hasIndexedDbCharacters
@@ -275,6 +282,7 @@ export async function bootstrapLocalAppState({
     || hasIndexedDbFriendRequests
     || hasIndexedDbMeData
     || hasIndexedDbWalletData
+    || hasIndexedDbPerception
     || hasLocalCharacters
     || hasLocalChatHistory
     || hasLocalChatOrganization
@@ -289,11 +297,56 @@ export async function bootstrapLocalAppState({
     || hasLocalMusicData
     || hasLocalWalletData
     || hasLocalCallHistory
+    || hasLocalPerception
   );
   const legacyAppData = hasAnyModernBusinessData ? null : getLegacyAppData();
   const legacyGroups = normalizeContactGroups(
     Array.isArray(legacyAppData?.groups) ? legacyAppData.groups : DEFAULT_CONTACT_GROUPS,
   );
+
+  loadDeferredAppData = async () => {
+    const forumDataFallback =
+      !hasIndexedDbForumData && !hasLocalForumData
+        ? (legacyAppData?.forumData ?? EMPTY_FORUM_DATA)
+        : EMPTY_FORUM_DATA;
+    const localForumData = loadPersistedForumData(forumDataFallback);
+    const forumData = hasIndexedDbForumData
+      ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
+      : localForumData;
+
+    const localFriendRequests = loadPersistedFriendRequests(
+      !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
+    );
+    const friendRequests = hasIndexedDbFriendRequests
+      ? hydrateFriendRequests(
+          indexedDbFriendRequests as typeof localFriendRequests,
+          localFriendRequests,
+        )
+      : localFriendRequests;
+
+    const datingRecords = await loadPreferredDatingRecords({
+      savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],
+      collectedDates: !hasLocalDatingRecords ? legacyAppData?.collectedDates || [] : [],
+    });
+
+    const walletFallback =
+      !hasIndexedDbWalletData && !hasLocalWalletData
+        ? (legacyAppData?.walletData ?? { cards: [], transactions: [] })
+        : { cards: [], transactions: [] };
+    const localWalletData = loadPersistedWalletData(walletFallback);
+    const walletData = hasIndexedDbWalletData
+      ? hydrateWalletData(indexedDbWalletData as Partial<typeof localWalletData>, localWalletData)
+      : localWalletData;
+
+    return {
+      friendRequests,
+      callHistory: await loadPreferredCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
+      savedDates: datingRecords.savedDates,
+      collectedDates: datingRecords.collectedDates,
+      walletData,
+      forumData,
+    } satisfies Partial<AppData>;
+  };
 
   const characters = sanitizePersistedCharactersFromStore(
     await loadPreferredCharacters(
@@ -353,30 +406,6 @@ export async function bootstrapLocalAppState({
     ),
   );
 
-  const forumDataFallback =
-    !hasIndexedDbForumData && !hasLocalForumData
-      ? (legacyAppData?.forumData ?? EMPTY_FORUM_DATA)
-      : EMPTY_FORUM_DATA;
-  const localForumData = loadPersistedForumData(forumDataFallback);
-  const forumData = hasIndexedDbForumData
-    ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
-    : localForumData;
-
-  const localFriendRequests = loadPersistedFriendRequests(
-    !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
-  );
-  const friendRequests = hasIndexedDbFriendRequests
-    ? hydrateFriendRequests(
-        indexedDbFriendRequests as typeof localFriendRequests,
-        localFriendRequests,
-      )
-    : localFriendRequests;
-
-  const datingRecords = await loadPreferredDatingRecords({
-    savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],
-    collectedDates: !hasLocalDatingRecords ? legacyAppData?.collectedDates || [] : [],
-  });
-
   const coupleSpacePersistedSource =
     indexedDbCoupleSpace
     ?? loadJson<unknown>(STORAGE_KEYS.coupleSpace, null)
@@ -384,6 +413,11 @@ export async function bootstrapLocalAppState({
     ?? (!hasLocalCoupleSpace ? legacyAppData?.coupleSpace : null)
     ?? null;
   const { coupleSpaceState, coupleSpace } = hydratePersistedCoupleSpacePayload(coupleSpacePersistedSource);
+  const perception = await loadPreferredPerception(
+    !hasIndexedDbPerception && !hasLocalPerception
+      ? (coupleSpace.perception ?? defaultAppData.perception)
+      : (defaultAppData.perception),
+  );
 
   const visualSettings = await loadPreferredVisualSettings(
     (!hasLocalVisualSettings ? legacyAppData?.visualSettings : undefined) ?? defaultAppData.visualSettings,
@@ -394,15 +428,6 @@ export async function bootstrapLocalAppState({
     ? { ...defaultAppData.musicData!, ...legacyAppData.musicData }
     : defaultAppData.musicData!;
   const musicData = await loadPreferredMusicData(fallbackMusicData);
-
-  const walletFallback =
-    !hasIndexedDbWalletData && !hasLocalWalletData
-      ? (legacyAppData?.walletData ?? { cards: [], transactions: [] })
-      : { cards: [], transactions: [] };
-  const localWalletData = loadPersistedWalletData(walletFallback);
-  const walletData = hasIndexedDbWalletData
-    ? hydrateWalletData(indexedDbWalletData as Partial<typeof localWalletData>, localWalletData)
-    : localWalletData;
 
   const chatGroups = mergeGroupSessionsIntoChatGroups(
     sanitizeChatGroupsWithCharactersFromStore(persistedChatOrganization.chatGroups || [], characters),
@@ -416,20 +441,24 @@ export async function bootstrapLocalAppState({
     userProfile,
     masks: meData.masks,
     favorites: meData.favorites,
+    perception,
     visualSettings,
     groups: persistedChatOrganization.groups,
     moments,
     worldBooks: meData.worldBooks,
-    coupleSpaceState,
+    coupleSpaceState: {
+      ...coupleSpaceState,
+      sharedPerception: perception,
+    },
     coupleSpace,
-    friendRequests,
+    friendRequests: defaultAppData.friendRequests ?? [],
     chatGroups,
-    callHistory: await loadPreferredCallHistory(!hasLocalCallHistory ? legacyAppData?.callHistory || [] : []),
-    savedDates: datingRecords.savedDates,
-    collectedDates: datingRecords.collectedDates,
+    callHistory: defaultAppData.callHistory ?? [],
+    savedDates: [],
+    collectedDates: [],
     musicData,
-    walletData,
-    forumData,
+    walletData: defaultAppData.walletData ?? { cards: [], transactions: [] },
+    forumData: defaultAppData.forumData ?? EMPTY_FORUM_DATA,
   };
 
   await migrateCriticalRecordsIfNeeded({
@@ -447,6 +476,7 @@ export async function bootstrapLocalAppState({
 
   return {
     appData: nextAppData,
+    loadDeferredAppData,
     migratedSettings,
     settings: nextSettings,
   };

@@ -16,6 +16,7 @@ export type PersistedMoment = {
   id: string;
   authorId: string;
   content: string;
+  translation?: string;
   images?: string[];
   imageCard?: {
     title: string;
@@ -23,6 +24,9 @@ export type PersistedMoment = {
     theme: 'polaroid' | 'film' | 'note' | 'poster';
     layout?: 'card' | 'described-photo' | 'inner-voice';
     overlayText?: string;
+    translatedOverlayText?: string;
+    frameCaptions?: string[];
+    translatedFrameCaptions?: string[];
   };
   sourceChatMessage?: {
     characterId: string;
@@ -61,6 +65,7 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
     id: moment.id,
     authorId: normalizeLegacyActorId(moment.authorId) || moment.authorId,
     content: moment.content,
+    translation: typeof moment.translation === 'string' ? moment.translation : undefined,
     images: Array.isArray(moment.images) ? moment.images : undefined,
     imageCard: moment.imageCard && typeof moment.imageCard === 'object'
       ? {
@@ -79,6 +84,16 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
               ? moment.imageCard.layout
               : undefined,
           overlayText: typeof moment.imageCard.overlayText === 'string' ? moment.imageCard.overlayText : undefined,
+          translatedOverlayText:
+            typeof moment.imageCard.translatedOverlayText === 'string'
+              ? moment.imageCard.translatedOverlayText
+              : undefined,
+          frameCaptions: Array.isArray(moment.imageCard.frameCaptions)
+            ? moment.imageCard.frameCaptions.filter((caption): caption is string => typeof caption === 'string' && caption.trim().length > 0)
+            : undefined,
+          translatedFrameCaptions: Array.isArray(moment.imageCard.translatedFrameCaptions)
+            ? moment.imageCard.translatedFrameCaptions.filter((caption): caption is string => typeof caption === 'string' && caption.trim().length > 0)
+            : undefined,
         }
       : undefined,
     sourceChatMessage:

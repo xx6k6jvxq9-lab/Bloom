@@ -1,20 +1,23 @@
 ﻿import React, { Suspense } from 'react';
+import { lazy, useEffect, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
-import type { AppData, AppSettings, Character, CoupleSpaceData } from '../../types';
+import type { AppData, AppSettings, Character, CoupleSpaceData, CoupleSpaceState } from '../../types';
 import { HomeScreen } from '../../components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from '../../components/main/ContactsShell/Page';
 import { MainApp } from '../../components/main/MainAppShell/Page';
-import { MomentsApp } from '../../components/moments/Page';
-import { ChatSessionMount } from '../chat-session/ChatSessionMount';
-import { DreamAppPage } from '../../components/dream/Page';
-import { WorldBookManager } from '../../components/main/WorldBookManager';
 import { AddCharacterSheet } from '../../components/main/AddCharacterSheet';
-import { SettingsApp as SettingsAppScreen } from '../../components/settings/SettingsApp';
 import {
-  AppPanelFallback as AppPanelFallbackPrimitive,
   ResolvedAssetImage as ResolvedAssetImagePrimitive,
 } from './AppShellPrimitives';
+import { getPredictedNextApps } from './appPreloadPredictor';
+import {
+  loadChatSessionMount,
+  loadDreamAppPage,
+  loadMomentsApp,
+  loadSettingsAppScreen,
+  loadWorldBookManager,
+} from './lazyApps';
 import {
   CoupleSpaceApp,
   CustomizationApp,
@@ -23,6 +26,7 @@ import {
   MusicApp,
   PerceptionView,
   WalletApp,
+  preloadPanelForApp,
 } from './lazyPanels';
 import { DEFAULT_CHARACTERS } from './defaultCharacters';
 import { DEFAULT_CONFIG } from './defaultSettings';
@@ -41,8 +45,82 @@ import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildSharedStateWritePatch } from '../../services/relationship-context/buildSharedCharacterState';
+import { saveCharacters } from '../persistence/charactersStore';
+import { removeCharacterById } from '../character-domain/characterMutations';
+import {
+  createCharacterRelationshipMessage,
+  createRelationshipSystemMessage,
+  decideCharacterBlockReaction,
+  decideCharacterFriendRequestResponse,
+  decideCharacterUnblockGesture,
+  getCharacterBlockState,
+  supersedePendingCharacterRequests,
+} from '../contacts/contactRelationship';
+import { generateRelationshipEventReply } from '../contacts/generateRelationshipEventReply';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
+
+const LazyMomentsApp = lazy(loadMomentsApp);
+const LazyChatSessionMount = lazy(loadChatSessionMount);
+const LazyDreamAppPage = lazy(loadDreamAppPage);
+const LazyWorldBookManager = lazy(loadWorldBookManager);
+const LazySettingsAppScreen = lazy(loadSettingsAppScreen);
+
+function DeferredMomentsApp({
+  appData,
+  setAppData,
+  settings,
+}: {
+  appData: AppData;
+  setAppData: Dispatch<SetStateAction<AppData>>;
+  settings: AppSettings;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <LazyMomentsApp appData={appData} setAppData={setAppData} settings={settings} />
+    </Suspense>
+  );
+}
+
+function isChatSessionApp(activeApp: AppScreen) {
+  return activeApp === 'chat-session' || activeApp === 'group-chat-session';
+}
+
+const CHAT_DETAIL_SCREENS: AppScreen[] = [
+  'character-profile',
+  'character-moments',
+  'add-character',
+];
+
+function isRetainedChatDetailScreen(activeApp: AppScreen): activeApp is (typeof CHAT_DETAIL_SCREENS)[number] {
+  return CHAT_DETAIL_SCREENS.includes(activeApp as (typeof CHAT_DETAIL_SCREENS)[number]);
+}
+
+function preloadPredictedAppTarget(app: AppScreen): Promise<unknown> | null {
+  switch (app) {
+    case 'chat':
+      return null;
+    case 'chat-session':
+    case 'group-chat-session':
+      return loadChatSessionMount();
+    case 'dream':
+      return loadDreamAppPage();
+    case 'settings':
+      return loadSettingsAppScreen();
+    case 'worldbook':
+      return loadWorldBookManager();
+    case 'monitor':
+    case 'customization':
+    case 'couple-space':
+    case 'perception':
+    case 'music':
+    case 'forum':
+    case 'wallet':
+      return preloadPanelForApp(app);
+    default:
+      return null;
+  }
+}
 
 type AppScreenContentProps = {
   activeApp: AppScreen;
@@ -52,6 +130,7 @@ type AppScreenContentProps = {
   audioRef: RefObject<HTMLAudioElement | null>;
   characterMomentsBackApp: CharacterMomentsBackApp;
   couplePartnerCharacter: Character;
+  coupleSpaceState?: CoupleSpaceState;
   coupleSpaceUpdateToast: CoupleSpaceUpdateToast | null;
   currentCoupleSpace: CoupleSpaceData;
   datingGenerationToast: DatingGenerationToast | null;
@@ -88,6 +167,7 @@ type AppScreenContentProps = {
   onOpenReadyDream: () => void;
   onDismissDreamToast: () => void;
   onDreamResumeHandled: () => void;
+  openCoupleSpaceApp: () => void;
   openForumApp: (postId?: string | null) => void;
 };
 
@@ -99,6 +179,7 @@ export function AppScreenContent({
   audioRef,
   characterMomentsBackApp,
   couplePartnerCharacter,
+  coupleSpaceState,
   coupleSpaceUpdateToast,
   currentCoupleSpace,
   datingGenerationToast,
@@ -135,12 +216,29 @@ export function AppScreenContent({
   onOpenReadyDream,
   onDismissDreamToast,
   onDreamResumeHandled,
+  openCoupleSpaceApp,
   openForumApp,
 }: AppScreenContentProps) {
+  const [hasActivatedChatApp, setHasActivatedChatApp] = useState(activeApp === 'chat');
+  const [hasActivatedChatSessions, setHasActivatedChatSessions] = useState(() => isChatSessionApp(activeApp));
+  const [mountedChatDetailScreens, setMountedChatDetailScreens] = useState<AppScreen[]>(() => (
+    isRetainedChatDetailScreen(activeApp) ? [activeApp] : []
+  ));
+  const preloadedPredictedTargetsRef = useRef<Set<AppScreen>>(new Set());
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-transparent'
       : 'bg-zinc-50';
+  const shouldRenderChatApp = hasActivatedChatApp || activeApp === 'chat';
+  const shouldRenderChatSessions = hasActivatedChatSessions || isChatSessionApp(activeApp);
+  const shouldRenderCharacterProfile =
+    selectedCharacter != null
+    && (mountedChatDetailScreens.includes('character-profile') || activeApp === 'character-profile');
+  const shouldRenderCharacterMoments =
+    selectedCharacter != null
+    && (mountedChatDetailScreens.includes('character-moments') || activeApp === 'character-moments');
+  const shouldRenderAddCharacter =
+    mountedChatDetailScreens.includes('add-character') || activeApp === 'add-character';
   const transitionToApp = (nextApp: AppScreen) => {
     navigateToAppWithTransition(nextApp, setActiveApp);
   };
@@ -148,6 +246,371 @@ export function AppScreenContent({
     settings,
     scene: 'forum',
   }).runtimeConfig;
+  const appendRelationshipMessages = (
+    currentHistory: AppData['chatHistory'],
+    characterId: string,
+    messages: Array<ReturnType<typeof createRelationshipSystemMessage>>,
+  ) => ({
+    ...currentHistory,
+    [characterId]: [...(currentHistory[characterId] || []), ...messages],
+  });
+  const handleDeleteCharacterFromProfile = () => {
+    if (!selectedCharacterId) {
+      return;
+    }
+
+    const characterId = selectedCharacterId;
+    setAppData((prev) => {
+      const nextCharacters = removeCharacterById(prev.characters, characterId);
+      const { [characterId]: _removedHistory, ...nextChatHistory } = prev.chatHistory;
+      const nextFriendRequests = (prev.friendRequests || []).filter((request) => {
+        const requestCharacterId = request.characterId || (request.sourceScene !== 'forum' ? request.fromUserId : undefined);
+        return requestCharacterId !== characterId;
+      });
+      const nextChatGroups = sanitizeChatGroupsWithCharactersFromStore(
+        (prev.chatGroups || [])
+          .map((group) => ({
+            ...group,
+            memberIds: group.memberIds.filter((memberId) => memberId !== characterId),
+          }))
+          .filter((group) => group.memberIds.length > 0),
+        nextCharacters,
+      );
+      void saveCharacters(nextCharacters);
+
+      return {
+        ...prev,
+        characters: nextCharacters,
+        chatHistory: nextChatHistory,
+        friendRequests: nextFriendRequests,
+        chatGroups: nextChatGroups,
+      };
+    });
+    setSelectedCharacterId(null);
+    transitionToApp('chat');
+  };
+  const handleToggleCharacterBlockFromProfile = () => {
+    if (!selectedCharacterId || !selectedCharacter) {
+      return;
+    }
+
+    const characterId = selectedCharacterId;
+    const targetCharacter = selectedCharacter;
+    const historySnapshot = appData.chatHistory[characterId] || [];
+    const timestamp = Date.now();
+    const isUnblocking = targetCharacter.blockedByUser === true;
+
+    setAppData((prev) => {
+      const nextCharacters = prev.characters.map((character) => (
+        character.id === characterId
+          ? {
+              ...character,
+              friendshipStatus: isUnblocking ? character.friendshipStatus : 'none' as const,
+              blockedByUser: !isUnblocking,
+              relationshipStatusUpdatedAt: timestamp,
+            }
+          : character
+      ));
+      const nextFriendRequests = supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp);
+      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+        createRelationshipSystemMessage(
+          isUnblocking
+            ? `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 从黑名单里放了出来。`
+            : `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 拉黑了。`,
+          timestamp,
+        ),
+      ]);
+
+      void saveCharacters(nextCharacters);
+      return {
+        ...prev,
+        characters: nextCharacters,
+        chatHistory: nextChatHistory,
+        friendRequests: nextFriendRequests,
+      };
+    });
+
+    void (async () => {
+      const generated = await generateRelationshipEventReply({
+        settings,
+        character: targetCharacter,
+        allCharacters: appData.characters,
+        userName: appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: appData.chatHistory,
+        chatGroups: appData.chatGroups || [],
+        masks: appData.masks,
+        worldBook: appData.worldBooks || [],
+        perception: appData.perception,
+        coupleSpace: currentCoupleSpace,
+        event: {
+          kind: isUnblocking ? 'user_unblocked_character' : 'user_blocked_character',
+        },
+      });
+
+      setAppData((prev) => {
+        const currentCharacter = prev.characters.find((character) => character.id === characterId);
+        if (!currentCharacter || currentCharacter.relationshipStatusUpdatedAt !== timestamp) {
+          return prev;
+        }
+
+        const currentHistory = prev.chatHistory[characterId] || [];
+        let nextCharacters = prev.characters;
+        let nextFriendRequests = prev.friendRequests || [];
+
+        if (isUnblocking) {
+          const fallback = decideCharacterUnblockGesture(currentCharacter, currentHistory);
+          const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
+          const shouldSendRequest = generated?.decision === 'send_request'
+            ? true
+            : generated?.decision === 'wait_for_user'
+              ? false
+              : fallback.sendRequest;
+          nextCharacters = prev.characters.map((character) => (
+            character.id === characterId
+              ? {
+                  ...character,
+                  blockedByUser: false,
+                  relationshipStatusUpdatedAt: timestamp,
+                }
+              : character
+          ));
+          if (shouldSendRequest) {
+            nextFriendRequests = [
+              {
+                id: `friend-request-${characterId}-${timestamp}`,
+                fromUserId: characterId,
+                fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
+                fromUserAvatar: currentCharacter.avatar,
+                status: 'pending' as const,
+                timestamp,
+                message: generated?.requestMessage || fallback.requestMessage,
+                direction: 'incoming' as const,
+                initiator: 'character' as const,
+                requestKind: 'reconnect' as const,
+                characterId,
+                sourceScene: 'relationship' as const,
+                lastUpdatedAt: timestamp,
+              },
+              ...nextFriendRequests,
+            ];
+          }
+          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+            createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
+          ]);
+
+          void saveCharacters(nextCharacters);
+          return {
+            ...prev,
+            characters: nextCharacters,
+            chatHistory: nextChatHistory,
+            friendRequests: nextFriendRequests,
+          };
+        } else {
+          const fallback = decideCharacterBlockReaction(currentCharacter, currentHistory);
+          const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
+          const shouldCounterBlock = generated?.decision === 'counter_block'
+            ? true
+            : generated?.decision === 'no_counter_block'
+              ? false
+              : fallback.counterBlock;
+          nextCharacters = prev.characters.map((character) => (
+            character.id === characterId
+              ? {
+                  ...character,
+                  friendshipStatus: 'none' as const,
+                  blockedByUser: true,
+                  blockedByCharacter: shouldCounterBlock,
+                  relationshipStatusUpdatedAt: timestamp,
+                }
+              : character
+          ));
+          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+            createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
+          ]);
+
+          void saveCharacters(nextCharacters);
+          return {
+            ...prev,
+            characters: nextCharacters,
+            chatHistory: nextChatHistory,
+            friendRequests: nextFriendRequests,
+          };
+        }
+      });
+    })();
+  };
+  const handleSubmitCharacterFriendRequest = (message: string) => {
+    if (!selectedCharacterId || !selectedCharacter) {
+      return;
+    }
+
+    const characterId = selectedCharacterId;
+    const targetCharacter = selectedCharacter;
+    const historySnapshot = appData.chatHistory[characterId] || [];
+    const trimmedMessage = message.trim() || '想把你加回来，之后继续好好聊。';
+    const currentBlockState = getCharacterBlockState(targetCharacter);
+    const requestKind = currentBlockState === 'none' ? 'friend' as const : 'reconnect' as const;
+    const timestamp = Date.now();
+    const requestId = `friend-request-${characterId}-${timestamp}`;
+
+    setAppData((prev) => {
+      const nextFriendRequests = [
+        {
+          id: requestId,
+          fromUserId: characterId,
+          fromUserName: targetCharacter.remarkName?.trim() || targetCharacter.name,
+          fromUserAvatar: targetCharacter.avatar,
+          status: 'pending' as const,
+          timestamp,
+          message: trimmedMessage,
+          direction: 'outgoing' as const,
+          initiator: 'user' as const,
+          requestKind,
+          characterId,
+          sourceScene: 'relationship' as const,
+          lastUpdatedAt: timestamp,
+        },
+        ...supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp),
+      ];
+      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+        createRelationshipSystemMessage(`你向 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 发出了一条好友申请。`, timestamp),
+      ]);
+
+      return {
+        ...prev,
+        chatHistory: nextChatHistory,
+        friendRequests: nextFriendRequests,
+      };
+    });
+
+    void (async () => {
+      const generated = await generateRelationshipEventReply({
+        settings,
+        character: targetCharacter,
+        allCharacters: appData.characters,
+        userName: appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: appData.chatHistory,
+        chatGroups: appData.chatGroups || [],
+        masks: appData.masks,
+        worldBook: appData.worldBooks || [],
+        perception: appData.perception,
+        coupleSpace: currentCoupleSpace,
+        event: {
+          kind: 'user_sent_friend_request',
+          note: trimmedMessage,
+        },
+      });
+
+      setAppData((prev) => {
+        const currentCharacter = prev.characters.find((character) => character.id === characterId);
+        const pendingRequest = (prev.friendRequests || []).find((request) => request.id === requestId);
+        if (!currentCharacter || !pendingRequest || pendingRequest.status !== 'pending') {
+          return prev;
+        }
+
+        const currentHistory = prev.chatHistory[characterId] || [];
+        const fallback = decideCharacterFriendRequestResponse(currentCharacter, currentHistory, trimmedMessage);
+        const decision = generated?.decision;
+        const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
+        let nextCharacters = prev.characters;
+        let nextFriendRequests = prev.friendRequests || [];
+
+        if (decision === 'accept' || (!decision && fallback.outcome === 'accept')) {
+          nextCharacters = prev.characters.map((character) => (
+            character.id === characterId
+              ? {
+                  ...character,
+                  friendshipStatus: 'friends' as const,
+                  blockedByUser: false,
+                  blockedByCharacter: false,
+                  relationshipStatusUpdatedAt: timestamp,
+                }
+              : character
+          ));
+          nextFriendRequests = nextFriendRequests.map((request) => (
+            request.id === requestId
+              ? {
+                  ...request,
+                  status: 'accepted' as const,
+                  resolutionMessage: generated?.reactionText ? '对方通过了你的申请' : fallback.resolutionMessage,
+                  lastUpdatedAt: timestamp,
+                }
+              : request
+          ));
+        } else if (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request')) {
+          nextFriendRequests = [
+            {
+              id: `friend-request-counter-${characterId}-${timestamp + 1}`,
+              fromUserId: characterId,
+              fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
+              fromUserAvatar: currentCharacter.avatar,
+              status: 'pending' as const,
+              timestamp: timestamp + 1,
+              message: generated?.requestMessage || (fallback.outcome === 'counter_request' ? fallback.requestMessage : '这次换我来递申请。'),
+              direction: 'incoming' as const,
+              initiator: 'character' as const,
+              requestKind: 'reconnect' as const,
+              characterId,
+              sourceScene: 'relationship' as const,
+              lastUpdatedAt: timestamp + 1,
+            },
+            ...nextFriendRequests.map((request) => (
+              request.id === requestId
+                ? {
+                    ...request,
+                    status: 'superseded' as const,
+                    resolutionMessage: '对方没有直接通过，而是回了一条新的好友申请',
+                    lastUpdatedAt: timestamp,
+                  }
+                : request
+            )),
+          ];
+        } else {
+          const shouldBlock = decision === 'reject_and_block'
+            ? true
+            : decision === 'reject'
+              ? false
+              : fallback.outcome === 'reject'
+                ? fallback.counterBlock
+                : false;
+          nextCharacters = prev.characters.map((character) => (
+            character.id === characterId
+              ? {
+                  ...character,
+                  friendshipStatus: 'none' as const,
+                  blockedByCharacter: shouldBlock,
+                  relationshipStatusUpdatedAt: timestamp,
+                }
+              : character
+          ));
+          nextFriendRequests = nextFriendRequests.map((request) => (
+            request.id === requestId
+              ? {
+                  ...request,
+                  status: 'rejected' as const,
+                  resolutionMessage: shouldBlock ? '对方拒绝了申请，并把你拉黑了' : '对方拒绝了你的申请',
+                  lastUpdatedAt: timestamp,
+                }
+              : request
+          ));
+        }
+
+        const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+          createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
+        ]);
+
+        void saveCharacters(nextCharacters);
+        return {
+          ...prev,
+          characters: nextCharacters,
+          chatHistory: nextChatHistory,
+          friendRequests: nextFriendRequests,
+        };
+      });
+    })();
+  };
   const appendLikeToMoment = (momentId: string, likerId: string) => {
     setAppData((prev) => ({
       ...prev,
@@ -176,6 +639,137 @@ export function AppScreenContent({
     }));
   };
 
+  useEffect(() => {
+    if (activeApp === 'chat') {
+      setHasActivatedChatApp(true);
+    }
+
+    if (isRetainedChatDetailScreen(activeApp)) {
+      setMountedChatDetailScreens((current) => (
+        current.includes(activeApp) ? current : [...current, activeApp]
+      ));
+    }
+  }, [activeApp]);
+
+  useEffect(() => {
+    if (activeApp === 'chat') {
+      void preloadPredictedAppTarget('chat-session');
+      void loadMomentsApp();
+    }
+
+    if (isChatSessionApp(activeApp)) {
+      setHasActivatedChatSessions(true);
+      void loadChatSessionMount();
+    }
+  }, [activeApp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const media = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(min-width: 768px) and (hover: hover) and (pointer: fine)')
+      : null;
+    const isDesktop = media?.matches ?? false;
+    const standaloneMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(display-mode: standalone)')
+      : null;
+    const isStandalone =
+      (standaloneMedia?.matches ?? false)
+      || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isAndroid = userAgent.includes('android');
+
+    if (activeApp === 'home' && isAndroid && !isStandalone && !isDesktop) {
+      return undefined;
+    }
+
+    const maxTargets = isDesktop ? 3 : isStandalone ? 2 : isAndroid ? 1 : 2;
+    const boostedTargets: AppScreen[] = [
+      ...(activeApp === 'chat' ? (['chat-session'] as AppScreen[]) : []),
+      ...(activeApp === 'chat-session' ? (['dream', 'forum'] as AppScreen[]) : []),
+      ...(activeApp === 'couple-space' ? (['perception'] as AppScreen[]) : []),
+      ...getPredictedNextApps(activeApp, maxTargets + 2),
+    ];
+
+    const targetApps = Array.from(new Set(boostedTargets))
+      .filter((app) => app !== activeApp)
+      .filter((app) => !preloadedPredictedTargetsRef.current.has(app))
+      .slice(0, maxTargets);
+
+    if (targetApps.length === 0) {
+      return undefined;
+    }
+
+    const initialDelay = activeApp === 'chat'
+      ? 220
+      : activeApp === 'chat-session'
+        ? 900
+        : isDesktop
+          ? 700
+          : isStandalone
+            ? 1100
+            : 1500;
+    const stepDelay = isDesktop ? 240 : 420;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    let cancelled = false;
+    let startTimerId: number | null = null;
+    let nextTimerId: number | null = null;
+    let idleHandle: number | null = null;
+
+    const runSequentialPreload = async (index: number) => {
+      if (cancelled || index >= targetApps.length) {
+        return;
+      }
+
+      const targetApp = targetApps[index];
+      const preloadTask = preloadPredictedAppTarget(targetApp);
+      if (preloadTask) {
+        try {
+          await preloadTask;
+          preloadedPredictedTargetsRef.current.add(targetApp);
+        } catch (error) {
+          console.warn('[app-shell] Contextual preload failed', { activeApp, targetApp, error });
+        }
+      }
+
+      if (!cancelled && index + 1 < targetApps.length) {
+        nextTimerId = window.setTimeout(() => {
+          void runSequentialPreload(index + 1);
+        }, stepDelay);
+      }
+    };
+
+    const schedulePreloads = () => {
+      startTimerId = window.setTimeout(() => {
+        void runSequentialPreload(0);
+      }, initialDelay);
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleHandle = idleWindow.requestIdleCallback(schedulePreloads, { timeout: initialDelay + 600 });
+    } else {
+      schedulePreloads();
+    }
+
+    return () => {
+      cancelled = true;
+      if (startTimerId !== null) {
+        window.clearTimeout(startTimerId);
+      }
+      if (nextTimerId !== null) {
+        window.clearTimeout(nextTimerId);
+      }
+      if (idleHandle !== null && typeof idleWindow.cancelIdleCallback === 'function') {
+        idleWindow.cancelIdleCallback(idleHandle);
+      }
+    };
+  }, [activeApp]);
+
   return (
     <div className={`phone-screen-root flex-1 relative overflow-hidden ${screenRootBackgroundClass}`}>
       {coupleSpaceUpdateToast && (
@@ -194,7 +788,7 @@ export function AppScreenContent({
                 coupleSpace: switched.coupleSpace,
               };
             });
-            transitionToApp('couple-space');
+            openCoupleSpaceApp();
             setCoupleSpaceUpdateToast(null);
           }}
           className="absolute left-4 right-4 top-4 z-[70] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md"
@@ -234,7 +828,7 @@ export function AppScreenContent({
           className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? 'top-[98px]' : 'top-4'} z-[69] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 overflow-hidden rounded-2xl bg-zinc-100">
+            <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
               {momentPublishToast.authorAvatar ? (
                 <ResolvedAssetImagePrimitive
                   value={momentPublishToast.authorAvatar}
@@ -242,15 +836,15 @@ export function AppScreenContent({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-zinc-500">
+                <div className="flex h-full w-full items-center justify-center text-[#d99ab5]">
                   <ImageIcon size={18} />
                 </div>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-zinc-400">角色动态</div>
+              <div className="text-xs font-medium text-zinc-400">消息提醒</div>
               <div className="mt-0.5 text-sm font-bold text-zinc-800">
-                {momentPublishToast.authorName} 发布了一条动态
+                {momentPublishToast.authorName} 发了新动态
               </div>
               <div className="mt-1 truncate text-xs text-zinc-500">
                 {momentPublishToast.preview || '点开看看这次的新内容'}
@@ -362,261 +956,300 @@ export function AppScreenContent({
           setAppData={setAppData}
         />
       </div>
-      {activeApp === 'chat' && (
-        <MainApp
-          key="chat"
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          appData={appData}
-          setAppData={setAppData}
-          onOpenChat={handleOpenChat}
-          onOpenGroupChat={(id) => {
-            setSelectedGroupId(id);
-            transitionToApp('group-chat-session');
-          }}
-          onOpenProfile={(id) => {
-            setSelectedCharacterId(id);
-            transitionToApp('character-profile');
-          }}
-          onAddCharacter={() => transitionToApp('add-character')}
-          onBack={() => transitionToApp('home')}
-          settings={settings}
-          MomentsAppComponent={MomentsApp}
-          formatMessagePreview={formatMessagePreview}
-        />
+      {shouldRenderChatApp && (
+        <div
+          className={`absolute inset-0 ${activeApp === 'chat' ? 'z-[20] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+          aria-hidden={activeApp === 'chat' ? undefined : true}
+        >
+          <MainApp
+            key="chat"
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            appData={appData}
+            setAppData={setAppData}
+            onOpenChat={handleOpenChat}
+            onOpenGroupChat={(id) => {
+              setSelectedGroupId(id);
+              transitionToApp('group-chat-session');
+            }}
+            onOpenProfile={(id) => {
+              setSelectedCharacterId(id);
+              transitionToApp('character-profile');
+            }}
+            onAddCharacter={() => transitionToApp('add-character')}
+            onBack={() => transitionToApp('home')}
+            settings={settings}
+            MomentsAppComponent={DeferredMomentsApp}
+            formatMessagePreview={formatMessagePreview}
+          />
+        </div>
       )}
-      {activeApp === 'character-profile' && selectedCharacter && (
-        <CharacterProfile
-          character={selectedCharacter}
-          onBack={() => transitionToApp('chat')}
-          onChat={() => {
-            transitionToApp('chat-session');
-          }}
-          onOpenMoments={() => {
-            setCharacterMomentsBackApp('character-profile');
-            transitionToApp('character-moments');
-          }}
-          onAddFriend={() => {
-            alert('已发送好友请求');
-          }}
-          isFriend={true}
-          groups={appData.groups}
-          onUpdateGroup={(groupId) => {
-            if (!selectedCharacterId) return;
-            handlePatchCharacterById(selectedCharacterId, { groupId });
-          }}
-          onTogglePin={() => {
-            if (!selectedCharacterId || !selectedCharacter) return;
-            handlePatchCharacterById(selectedCharacterId, { isPinned: !selectedCharacter.isPinned });
-          }}
-        />
+      {shouldRenderCharacterProfile && selectedCharacter && (
+        <div
+          className={`absolute inset-0 ${activeApp === 'character-profile' ? 'z-[30] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+          aria-hidden={activeApp === 'character-profile' ? undefined : true}
+        >
+          <CharacterProfile
+            character={selectedCharacter}
+            onBack={() => transitionToApp('chat')}
+            onChat={() => {
+              transitionToApp('chat-session');
+            }}
+            onOpenMoments={() => {
+              setCharacterMomentsBackApp('character-profile');
+              transitionToApp('character-moments');
+            }}
+            groups={appData.groups}
+            friendRequests={appData.friendRequests || []}
+            onUpdateGroup={(groupId) => {
+              if (!selectedCharacterId) return;
+              handlePatchCharacterById(selectedCharacterId, { groupId });
+            }}
+            onTogglePin={() => {
+              if (!selectedCharacterId || !selectedCharacter) return;
+              handlePatchCharacterById(selectedCharacterId, { isPinned: !selectedCharacter.isPinned });
+            }}
+            onUpdateRemark={(remarkName) => {
+              if (!selectedCharacterId) return;
+              handlePatchCharacterById(selectedCharacterId, { remarkName });
+            }}
+            onDeleteCharacter={handleDeleteCharacterFromProfile}
+            onToggleBlock={handleToggleCharacterBlockFromProfile}
+            onSubmitFriendRequest={handleSubmitCharacterFriendRequest}
+          />
+        </div>
       )}
-      {activeApp === 'character-moments' && selectedCharacter && (
-        <CharacterMomentsProfile
-          character={selectedCharacter}
-          appData={appData}
-          setAppData={setAppData}
-          settings={settings}
-          moments={appData.moments || []}
-          onBack={() => transitionToApp(characterMomentsBackApp)}
-        />
+      {shouldRenderCharacterMoments && selectedCharacter && (
+        <div
+          className={`absolute inset-0 ${activeApp === 'character-moments' ? 'z-[30] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+          aria-hidden={activeApp === 'character-moments' ? undefined : true}
+        >
+          <CharacterMomentsProfile
+            character={selectedCharacter}
+            appData={appData}
+            setAppData={setAppData}
+            settings={settings}
+            moments={appData.moments || []}
+            onBack={() => transitionToApp(characterMomentsBackApp)}
+          />
+        </div>
       )}
-      <ChatSessionMount
-        activeApp={activeApp}
-        selectedCharacterId={selectedCharacterId}
-        selectedGroupId={selectedGroupId}
-        characters={appData.characters}
-        chatGroups={appData.chatGroups || []}
-        setChatGroups={(chatGroupsOrUpdater) =>
-          setAppData((prev) => {
-            const resolvedChatGroups =
-              typeof chatGroupsOrUpdater === 'function'
-                ? chatGroupsOrUpdater(prev.chatGroups || [])
-                : chatGroupsOrUpdater;
+      {shouldRenderChatSessions && (
+        <Suspense
+          fallback={null}
+        >
+          <LazyChatSessionMount
+            activeApp={activeApp}
+            selectedCharacterId={selectedCharacterId}
+            selectedGroupId={selectedGroupId}
+            characters={appData.characters}
+            chatGroups={appData.chatGroups || []}
+            setChatGroups={(chatGroupsOrUpdater) =>
+              setAppData((prev) => {
+                const resolvedChatGroups =
+                  typeof chatGroupsOrUpdater === 'function'
+                    ? chatGroupsOrUpdater(prev.chatGroups || [])
+                    : chatGroupsOrUpdater;
 
-            return {
-              ...prev,
-              chatGroups: sanitizeChatGroupsWithCharactersFromStore(resolvedChatGroups, prev.characters),
-            };
-          })
-        }
-        chatHistory={appData.chatHistory}
-        setChatHistory={(chatHistory) => setAppData((prev) => ({ ...prev, chatHistory }))}
-        settings={settings}
-        setSettings={setSettings}
-        userAvatar={appData.userProfile.avatar}
-        userName={appData.userProfile.name}
-        masks={appData.masks}
-        favorites={appData.favorites}
-        setFavorites={(f) => setAppData((prev) => ({ ...prev, favorites: f }))}
-        visualSettings={appData.visualSettings}
-        setVisualSettings={(visualSettings) => setAppData((prev) => ({ ...prev, visualSettings }))}
-        groups={appData.groups}
-        worldBook={appData.worldBooks || []}
-        perception={currentCoupleSpace.perception}
-        coupleSpace={currentCoupleSpace}
-        callHistory={appData.callHistory || []}
-        setCallHistory={(callHistory) => setAppData((prev) => ({ ...prev, callHistory }))}
-        savedDates={appData.savedDates || []}
-        collectedDates={appData.collectedDates || []}
-        datingResumeSignal={datingResumeSignal}
-        setDatingRecords={({ savedDates, collectedDates }) =>
-          setAppData((prev) => ({
-            ...prev,
-            savedDates,
-            collectedDates,
-          }))
-        }
-        walletData={appData.walletData}
-        setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
-        updateCharacter={handleMergeCharacter}
-        patchCharacter={handlePatchCharacterById}
-        onBackToChat={() => transitionToApp('chat')}
-        onViewForumPost={(postId) => {
-          openForumApp(postId);
-        }}
-        onPublishMoment={({ authorId, content, images, imageCard, isCollected, sourceChatMessage }) => {
-          const author = appData.characters.find((character) => character.id === authorId) || null;
-          const newMomentId = Date.now().toString();
-          const newMoment = {
-            id: newMomentId,
-            authorId,
-            content,
-            images,
-            imageCard,
-            sourceChatMessage,
-            timestamp: Date.now(),
-            likes: 0,
-            comments: [],
-            ...(isCollected ? { isCollected: true } : {}),
-          };
-          console.info('[moment-special] onPublishMoment called', {
-            authorId,
-            content,
-            imagesCount: images?.length || 0,
-            hasImageCard: !!imageCard,
-          });
-          setAppData((prev) => ({
-            ...(console.info('[moment-special] moments latest', {
-              length: (prev.moments?.length || 0) + 1,
-              latestContent: content,
-            }), prev),
-            characters: prev.characters.map((character) => {
-              if (!author || character.id !== authorId) {
-                return character;
-              }
-
-              return {
-                ...character,
-                sharedState: buildSharedStateWritePatch({
-                  character,
-                  sourceScene: 'moments',
-                  publicSummaries: [`鍒氬垰鍙戜簡涓€鏉″叕寮€鍔ㄦ€侊細${content.slice(0, 72)}`],
-                }),
+                return {
+                  ...prev,
+                  chatGroups: sanitizeChatGroupsWithCharactersFromStore(resolvedChatGroups, prev.characters),
+                };
+              })
+            }
+            chatHistory={appData.chatHistory}
+            setChatHistory={(chatHistory) => setAppData((prev) => ({ ...prev, chatHistory }))}
+            settings={settings}
+            setSettings={setSettings}
+            userAvatar={appData.userProfile.avatar}
+            userName={appData.userProfile.name}
+            masks={appData.masks}
+            favorites={appData.favorites}
+            setFavorites={(f) => setAppData((prev) => ({ ...prev, favorites: f }))}
+            visualSettings={appData.visualSettings}
+            setVisualSettings={(visualSettings) => setAppData((prev) => ({ ...prev, visualSettings }))}
+            groups={appData.groups}
+            worldBook={appData.worldBooks || []}
+            perception={appData.perception}
+            coupleSpaceState={coupleSpaceState}
+            coupleSpace={currentCoupleSpace}
+            callHistory={appData.callHistory || []}
+            setCallHistory={(callHistory) => setAppData((prev) => ({ ...prev, callHistory }))}
+            savedDates={appData.savedDates || []}
+            collectedDates={appData.collectedDates || []}
+            datingResumeSignal={datingResumeSignal}
+            setDatingRecords={({ savedDates, collectedDates }) =>
+              setAppData((prev) => ({
+                ...prev,
+                savedDates,
+                collectedDates,
+              }))
+            }
+            walletData={appData.walletData}
+            setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
+            updateCharacter={handleMergeCharacter}
+            patchCharacter={handlePatchCharacterById}
+            onBackToChat={() => transitionToApp('chat')}
+            onViewForumPost={(postId) => {
+              openForumApp(postId);
+            }}
+            onPublishMoment={({ authorId, content, translation, images, imageCard, isCollected, sourceChatMessage }) => {
+              const author = appData.characters.find((character) => character.id === authorId) || null;
+              const newMomentId = Date.now().toString();
+              const newMoment = {
+                id: newMomentId,
+                authorId,
+                content,
+                ...(translation ? { translation } : {}),
+                images,
+                imageCard,
+                sourceChatMessage,
+                timestamp: Date.now(),
+                likes: 0,
+                comments: [],
+                ...(isCollected ? { isCollected: true } : {}),
               };
-            }),
-            moments: [newMoment, ...(prev.moments || [])],
-          }));
+              console.info('[moment-special] onPublishMoment called', {
+                authorId,
+                content,
+                imagesCount: images?.length || 0,
+                hasImageCard: !!imageCard,
+              });
+              setAppData((prev) => ({
+                ...(console.info('[moment-special] moments latest', {
+                  length: (prev.moments?.length || 0) + 1,
+                  latestContent: content,
+                }), prev),
+                characters: prev.characters.map((character) => {
+                  if (!author || character.id !== authorId) {
+                    return character;
+                  }
 
-          const shuffledCharacters = [...appData.characters].sort(() => Math.random() - 0.5);
-          const replyCount = Math.min(
-            shuffledCharacters.length,
-            shuffledCharacters.length <= 2 ? shuffledCharacters.length : (Math.random() < 0.5 ? 2 : 3),
-          );
-          const autoLikerIds = shuffledCharacters
-            .filter((character) => {
-              const likeChance = Math.random() < 0.5 ? 0.75 : 0.4;
-              return Math.random() < likeChance;
-            })
-            .map((character) => character.id)
-            .slice(0, Math.min(shuffledCharacters.length, 3));
+                  return {
+                    ...character,
+                    sharedState: buildSharedStateWritePatch({
+                      character,
+                      sourceScene: 'moments',
+                      publicSummaries: [`鍒氬垰鍙戜簡涓€鏉″叕寮€鍔ㄦ€侊細${content.slice(0, 72)}`],
+                    }),
+                  };
+                }),
+                moments: [newMoment, ...(prev.moments || [])],
+              }));
 
-          if (autoLikerIds.length > 0) {
-            void (async () => {
-              for (const likerId of autoLikerIds) {
-                await new Promise((resolve) => setTimeout(resolve, 150 + Math.floor(Math.random() * 500)));
-                appendLikeToMoment(newMomentId, likerId);
+              const shuffledCharacters = [...appData.characters].sort(() => Math.random() - 0.5);
+              const replyCount = Math.min(
+                shuffledCharacters.length,
+                shuffledCharacters.length <= 2 ? shuffledCharacters.length : (Math.random() < 0.5 ? 2 : 3),
+              );
+              const autoLikerIds = shuffledCharacters
+                .filter((character) => {
+                  const likeChance = Math.random() < 0.5 ? 0.75 : 0.4;
+                  return Math.random() < likeChance;
+                })
+                .map((character) => character.id)
+                .slice(0, Math.min(shuffledCharacters.length, 3));
+
+              if (autoLikerIds.length > 0) {
+                void (async () => {
+                  for (const likerId of autoLikerIds) {
+                    await new Promise((resolve) => setTimeout(resolve, 150 + Math.floor(Math.random() * 500)));
+                    appendLikeToMoment(newMomentId, likerId);
+                  }
+                })();
               }
-            })();
-          }
 
-          if (forumConfig && replyCount > 0) {
-            void runMomentPublishCommentSequence({
-              activeConfig: forumConfig,
-              moment: newMoment,
-              characters: appData.characters,
-              userName: appData.userProfile.name,
-              appendComment: (comment) => appendCommentToMoment(newMomentId, comment),
-            });
-          }
+              if (forumConfig && replyCount > 0) {
+                void runMomentPublishCommentSequence({
+                  activeConfig: forumConfig,
+                  moment: newMoment,
+                  characters: appData.characters,
+                  chatGroups: appData.chatGroups || [],
+                  userName: appData.userProfile.name,
+                  appendComment: (comment) => appendCommentToMoment(newMomentId, comment),
+                });
+              }
 
-          if (author) {
-            setMomentPublishToast({
-              id: `${authorId}-${Date.now()}`,
-              authorId,
-              authorName: author.name,
-              authorAvatar: author.avatar,
-              preview: content.slice(0, 26),
-            });
-          }
-        }}
-        onOpenCharacterMoments={() => {
-          setCharacterMomentsBackApp('chat-session');
-          transitionToApp('character-moments');
-        }}
-        onStatusBarVisibilityChange={setStatusBarVisible}
-        onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
-      />
-      {activeApp === 'add-character' && (
-        <AddCharacterSheet
-          key="add-character"
-          onSave={handleAddCharacter}
-          onBack={() => transitionToApp('chat')}
-          groups={appData.groups}
-        />
+              if (author) {
+                setMomentPublishToast({
+                  id: `${authorId}-${Date.now()}`,
+                  authorId,
+                  authorName: author.name,
+                  authorAvatar: author.avatar,
+                  preview: content.slice(0, 26),
+                });
+              }
+            }}
+            onOpenCharacterMoments={() => {
+              setCharacterMomentsBackApp('chat-session');
+              transitionToApp('character-moments');
+            }}
+            onStatusBarVisibilityChange={setStatusBarVisible}
+            onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
+          />
+        </Suspense>
+      )}
+      {shouldRenderAddCharacter && (
+        <div
+          className={`absolute inset-0 ${activeApp === 'add-character' ? 'z-[30] opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+          aria-hidden={activeApp === 'add-character' ? undefined : true}
+        >
+          <AddCharacterSheet
+            key="add-character"
+            onSave={handleAddCharacter}
+            onBack={() => transitionToApp('chat')}
+            groups={appData.groups}
+          />
+        </div>
       )}
       {activeApp === 'settings' && (
-        <SettingsAppScreen
-          key="settings"
-          onBack={() => transitionToApp('home')}
-          settings={settings}
-          defaultConfig={DEFAULT_CONFIG}
-          setSettings={setSettings}
-          characters={appData.characters}
-        />
+        <Suspense fallback={null}>
+          <LazySettingsAppScreen
+            key="settings"
+            onBack={() => transitionToApp('home')}
+            settings={settings}
+            defaultConfig={DEFAULT_CONFIG}
+            setSettings={setSettings}
+            characters={appData.characters}
+          />
+        </Suspense>
       )}
       {activeApp === 'dream' && (
-        <DreamAppPage
-          key="dream"
-          onBack={() => transitionToApp('home')}
-          characters={appData.characters}
-          userName={appData.userProfile.name}
-          activeConfig={activeConfig}
-          masks={appData.masks || []}
-          worldBooks={appData.worldBooks || []}
-          resumeBackgroundSignal={dreamResumeSignal}
-          onResumeBackgroundHandled={onDreamResumeHandled}
-        />
+        <Suspense fallback={null}>
+          <LazyDreamAppPage
+            key="dream"
+            onBack={() => transitionToApp('home')}
+            characters={appData.characters}
+            userName={appData.userProfile.name}
+            activeConfig={activeConfig}
+            masks={appData.masks || []}
+            worldBooks={appData.worldBooks || []}
+            resumeBackgroundSignal={dreamResumeSignal}
+            onResumeBackgroundHandled={onDreamResumeHandled}
+          />
+        </Suspense>
       )}
       {activeApp === 'worldbook' && (
-        <WorldBookManager
-          worldBooks={appData.worldBooks || []}
-          characters={appData.characters}
-          setWorldBooks={(wb) => setAppData((prev) => ({ ...prev, worldBooks: wb }))}
-          onBack={() => transitionToApp('home')}
-          globalBackground={appData.visualSettings?.globalBackground || ''}
-          onAddCharacter={(char) => {
-            const newChar: Character = {
-              id: Date.now().toString(),
-              ...char,
-              lastTime: Date.now(),
-            };
-            handleUpsertCharacter(newChar);
-          }}
-        />
+        <Suspense fallback={null}>
+          <LazyWorldBookManager
+            worldBooks={appData.worldBooks || []}
+            characters={appData.characters}
+            setWorldBooks={(wb) => setAppData((prev) => ({ ...prev, worldBooks: wb }))}
+            onBack={() => transitionToApp('home')}
+            globalBackground={appData.visualSettings?.globalBackground || ''}
+            onAddCharacter={(char) => {
+              const newChar: Character = {
+                id: Date.now().toString(),
+                ...char,
+                lastTime: Date.now(),
+              };
+              handleUpsertCharacter(newChar);
+            }}
+          />
+        </Suspense>
       )}
       {activeApp === 'monitor' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="监控中心" />}>
+        <Suspense fallback={null}>
           <MonitorApp
             characters={appData.characters}
             onBack={() => transitionToApp('home')}
@@ -625,7 +1258,7 @@ export function AppScreenContent({
         </Suspense>
       )}
       {activeApp === 'customization' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="自定义中心" />}>
+        <Suspense fallback={null}>
           <CustomizationApp
             visualSettings={appData.visualSettings}
             setVisualSettings={(s) => setAppData((prev) => ({ ...prev, visualSettings: s }))}
@@ -648,7 +1281,7 @@ export function AppScreenContent({
         </Suspense>
       )}
       {activeApp === 'couple-space' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="情侣空间" />}>
+        <Suspense fallback={null}>
           <CoupleSpaceApp
             appData={appData}
             setAppData={setAppData}
@@ -658,10 +1291,19 @@ export function AppScreenContent({
         </Suspense>
       )}
       {activeApp === 'perception' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="感知视图" />}>
+        <Suspense fallback={null}>
           <PerceptionView
-            coupleSpace={currentCoupleSpace}
-            updateSpace={handleUpdateCurrentCoupleSpace}
+            perception={appData.perception}
+            onChange={(perception) => setAppData((prev) => ({
+              ...prev,
+              perception,
+              coupleSpaceState: prev.coupleSpaceState
+                ? {
+                    ...prev.coupleSpaceState,
+                    sharedPerception: perception,
+                  }
+                : prev.coupleSpaceState,
+            }))}
             onBack={() => transitionToApp('home')}
           />
         </Suspense>
@@ -674,7 +1316,7 @@ export function AppScreenContent({
         aria-hidden="true"
       />
       {activeApp === 'music' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="音乐" />}>
+        <Suspense fallback={null}>
           <MusicApp
             musicData={appData.musicData!}
             onUpdateMusicData={(data) => setAppData((prev) => ({ ...prev, musicData: data }))}
@@ -692,7 +1334,7 @@ export function AppScreenContent({
         </Suspense>
       )}
       {activeApp === 'forum' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="论坛" />}>
+        <Suspense fallback={null}>
           <ForumApp
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
@@ -707,7 +1349,7 @@ export function AppScreenContent({
         </Suspense>
       )}
       {activeApp === 'wallet' && (
-        <Suspense fallback={<AppPanelFallbackPrimitive label="钱包" />}>
+        <Suspense fallback={null}>
           <WalletApp
             appData={appData}
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}

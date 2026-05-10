@@ -18,10 +18,6 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
-  DEFAULT_DOCK_TINT_COLOR,
-  DEFAULT_DOCK_TINT_OPACITY,
-} from '../../../features/app-shell/defaultAppConstants';
-import {
   type BackupRestoreProgress,
   buildModularBackupArchive,
   buildSplitModularBackupBundle,
@@ -44,6 +40,10 @@ import {
   type MigrationCheckResult,
 } from '../../../features/persistence/migrationStatusStore';
 import { syncLocalStorageJsonValue } from '../../../features/persistence/localConfigStore';
+import {
+  createDefaultPerceptionSettings,
+  hydratePerceptionSettings,
+} from '../../../features/persistence/perceptionStore';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import {
   extractDirectFactTraces,
@@ -53,6 +53,14 @@ import {
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
 import { ThemeCustomizationSection } from './ThemeCustomizationSection';
 import { AvatarFrame } from '../../chat/AvatarFrame';
+import {
+  createDesktopWidgetFromType,
+  getDesktopWidgetStyleOptions,
+  getDesktopWidgetTypeLabel,
+  isLegacyMusicWidget,
+  SUPPORTED_DESKTOP_WIDGET_TEMPLATES,
+  type SupportedDesktopWidgetType,
+} from '../../shared/desktopWidgetCatalog';
 import {
   AVATAR_FRAME_THEME_TARGETS,
   buildScopedAvatarFrameThemeCss,
@@ -452,6 +460,12 @@ function WidgetListThumbnail({ widget }: { widget: WidgetConfig }) {
         <img src={resolvedUrl} className="w-full h-full object-cover" alt="Widget background" />
       ) : (
         <>
+          {widget.type === 'kawaii-launcher' && <User size={20} />}
+          {widget.type === 'kawaii-scrapbook' && <Layout size={20} />}
+          {widget.type === 'glass-duo-card' && <Users size={20} />}
+          {widget.type === 'glass-vinyl-player' && <Mic size={20} />}
+          {widget.type === 'glass-polaroid-strip' && <ImageIcon size={20} />}
+          {widget.type === 'glass-recent-grid' && <Layout size={20} />}
           {widget.type === 'calendar' && <Layout size={20} />}
           {widget.type === 'time' && <Monitor size={20} />}
           {widget.type === 'anniversary' && <Palette size={20} />}
@@ -462,6 +476,485 @@ function WidgetListThumbnail({ widget }: { widget: WidgetConfig }) {
       )}
     </div>
   );
+}
+
+function PersistentAssetUploadControl({
+  label,
+  value,
+  onChange,
+  accept,
+  placeholder,
+  kind = 'image',
+}: {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  accept: string;
+  placeholder: string;
+  kind?: 'image' | 'audio';
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const { resolvedUrl } = useResolvedPersistentValue(kind === 'image' ? localValue : '');
+  const { setRemoteUrl, setUploadedFile, clearValue } = usePersistentFieldActions();
+  const previewDisplayUrl = kind === 'image' ? resolvedUrl || resolveInstantPreviewUrl(localValue, '') : '';
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleConfirm = async () => {
+    const trimmed = localValue.trim();
+    const nextValue = trimmed
+      ? kind === 'image'
+        ? await setRemoteUrl(localValue)
+        : trimmed
+      : await clearValue();
+    setLocalValue(nextValue);
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-zinc-500">{label}</label>
+      {kind === 'image' && previewDisplayUrl ? (
+        <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-50">
+          <img src={previewDisplayUrl} alt={label} className="w-full h-28 object-cover" />
+        </div>
+      ) : null}
+      {kind === 'audio' && value ? (
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
+          已设置音频资源
+        </div>
+      ) : null}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 min-w-0 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-zinc-900"
+        />
+        <label className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center whitespace-nowrap">
+          <Upload size={14} className="mr-1" /> 上传
+          <input
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const persistedValue = await setUploadedFile(file);
+                setLocalValue(persistedValue);
+                onChange(persistedValue);
+              } catch (error) {
+                alert(error instanceof Error ? `上传失败: ${error.message}` : '上传失败，请稍后重试。');
+              }
+              e.target.value = '';
+            }}
+          />
+        </label>
+        <button
+          onClick={() => {
+            void handleConfirm();
+          }}
+          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+        >
+          确认
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WidgetTextInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-zinc-500">{label}</label>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+        />
+      )}
+    </div>
+  );
+}
+
+function WidgetColorInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-zinc-500">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value || '#e0ddd9'}
+          onChange={event => onChange(event.target.value)}
+          className="h-10 w-12 cursor-pointer rounded-lg border border-zinc-200 bg-white p-1"
+        />
+        <input
+          type="text"
+          value={value || '#e0ddd9'}
+          onChange={event => onChange(event.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+          placeholder="#e0ddd9"
+        />
+      </div>
+    </div>
+  );
+}
+
+type FontFamilySuggestion = {
+  label: string;
+  value: string;
+};
+
+function resolveColorInputValue(value: string | undefined, fallback: string): string {
+  const normalizedValue = value?.trim() || '';
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalizedValue) ? normalizedValue : fallback;
+}
+
+function OptionalColorInput({
+  label,
+  value,
+  onChange,
+  fallback,
+}: {
+  label: string;
+  value?: string;
+  onChange: (value: string) => void;
+  fallback: string;
+}) {
+  const hasCustomValue = Boolean(value?.trim());
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs font-bold text-zinc-500">{label}</label>
+        {hasCustomValue ? (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[11px] font-medium text-zinc-400 transition-colors hover:text-zinc-600"
+          >
+            跟随默认
+          </button>
+        ) : (
+          <span className="text-[11px] text-zinc-400">留空跟随默认</span>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={resolveColorInputValue(value, fallback)}
+          onChange={event => onChange(event.target.value)}
+          className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
+        />
+        <input
+          type="text"
+          value={value || ''}
+          onChange={event => onChange(event.target.value)}
+          placeholder={`留空跟随默认（${fallback}）`}
+          className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+        />
+      </div>
+    </div>
+  );
+}
+
+function OptionalFontFamilyInput({
+  label,
+  value,
+  onChange,
+  listId,
+  suggestions,
+}: {
+  label: string;
+  value?: string;
+  onChange: (value: string) => void;
+  listId: string;
+  suggestions: FontFamilySuggestion[];
+}) {
+  const hasCustomValue = Boolean(value?.trim());
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs font-bold text-zinc-500">{label}</label>
+        {hasCustomValue ? (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[11px] font-medium text-zinc-400 transition-colors hover:text-zinc-600"
+          >
+            跟随全局
+          </button>
+        ) : (
+          <span className="text-[11px] text-zinc-400">留空跟随全局字体</span>
+        )}
+      </div>
+      <input
+        list={listId}
+        type="text"
+        value={value || ''}
+        onChange={event => onChange(event.target.value)}
+        placeholder='留空跟随全局字体，或输入 CSS font-family'
+        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+      />
+      {suggestions.length > 0 ? (
+        <datalist id={listId}>
+          {suggestions.map((option) => (
+            <option key={`${option.label}-${option.value}`} value={option.value} label={option.label} />
+          ))}
+        </datalist>
+      ) : null}
+      <p className="text-[11px] leading-relaxed text-zinc-400">
+        支持直接输入任意 CSS font-family，也可以点输入框后从建议里选现成字体。
+      </p>
+    </div>
+  );
+}
+
+function buildOptionalTextStyle(
+  color?: string | null,
+  fontFamily?: string | null,
+): React.CSSProperties | undefined {
+  const nextStyle: React.CSSProperties = {};
+  const normalizedColor = color?.trim();
+  const normalizedFontFamily = fontFamily?.trim();
+
+  if (normalizedColor) {
+    nextStyle.color = normalizedColor;
+  }
+
+  if (normalizedFontFamily) {
+    nextStyle.fontFamily = normalizedFontFamily;
+  }
+
+  return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
+}
+
+function KawaiiWidgetCustomizationFields({
+  widget,
+  onUpdate,
+}: {
+  widget: WidgetConfig;
+  onUpdate: (updates: Partial<WidgetConfig>) => void;
+}) {
+  switch (widget.type) {
+    case 'kawaii-launcher':
+      return (
+        <>
+          <PersistentImageUploadControl
+            label="中心头像"
+            value={widget.avatarUrl || ''}
+            onChange={value => onUpdate({ avatarUrl: value })}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetTextInput label="左上标签" value={widget.item1Label || ''} onChange={value => onUpdate({ item1Label: value })} />
+            <WidgetTextInput label="左下标签" value={widget.item2Label || ''} onChange={value => onUpdate({ item2Label: value })} />
+            <WidgetTextInput label="右上标签" value={widget.item3Label || ''} onChange={value => onUpdate({ item3Label: value })} />
+            <WidgetTextInput label="右下标签" value={widget.item4Label || ''} onChange={value => onUpdate({ item4Label: value })} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetColorInput label="左上颜色" value={widget.item1Color || '#e0ddd9'} onChange={value => onUpdate({ item1Color: value })} />
+            <WidgetColorInput label="左下颜色" value={widget.item2Color || '#e0ddd9'} onChange={value => onUpdate({ item2Color: value })} />
+            <WidgetColorInput label="右上颜色" value={widget.item3Color || '#e0ddd9'} onChange={value => onUpdate({ item3Color: value })} />
+            <WidgetColorInput label="右下颜色" value={widget.item4Color || '#e0ddd9'} onChange={value => onUpdate({ item4Color: value })} />
+          </div>
+
+          <WidgetTextInput
+            label="底部文案"
+            value={widget.bio || ''}
+            onChange={value => onUpdate({ bio: value })}
+            placeholder="例如：猫ちゃんがいない日は雨季。"
+          />
+        </>
+      );
+    case 'kawaii-scrapbook':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <PersistentImageUploadControl
+              label="头像"
+              value={widget.avatarUrl || ''}
+              onChange={value => onUpdate({ avatarUrl: value })}
+            />
+            <PersistentImageUploadControl
+              label="主照片"
+              value={widget.photoUrl || ''}
+              onChange={value => onUpdate({ photoUrl: value })}
+            />
+          </div>
+
+          <PersistentImageUploadControl
+            label="小照片"
+            value={widget.secondaryPhotoUrl || ''}
+            onChange={value => onUpdate({ secondaryPhotoUrl: value })}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetTextInput label="标题" value={widget.title || ''} onChange={value => onUpdate({ title: value })} />
+            <WidgetTextInput label="简介" value={widget.bio || ''} onChange={value => onUpdate({ bio: value })} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetColorInput label="左上底色" value={widget.item1Color || '#f3e7eb'} onChange={value => onUpdate({ item1Color: value })} />
+            <WidgetColorInput label="右上底色" value={widget.item2Color || '#ffffff'} onChange={value => onUpdate({ item2Color: value })} />
+            <WidgetColorInput label="左下底色" value={widget.item3Color || '#efede7'} onChange={value => onUpdate({ item3Color: value })} />
+            <WidgetColorInput label="右下底色" value={widget.item4Color || '#f7ecef'} onChange={value => onUpdate({ item4Color: value })} />
+          </div>
+
+          <WidgetTextInput
+            label="便签文案"
+            value={widget.note || ''}
+            onChange={value => onUpdate({ note: value })}
+            multiline
+          />
+        </>
+      );
+    case 'glass-duo-card':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <PersistentImageUploadControl
+              label="左侧头像"
+              value={widget.avatarUrl || ''}
+              onChange={value => onUpdate({ avatarUrl: value })}
+            />
+            <PersistentImageUploadControl
+              label="右侧头像"
+              value={widget.secondaryAvatarUrl || ''}
+              onChange={value => onUpdate({ secondaryAvatarUrl: value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetTextInput label="左侧文案" value={widget.line1Text || ''} onChange={value => onUpdate({ line1Text: value })} />
+            <WidgetTextInput label="右侧文案" value={widget.line2Text || ''} onChange={value => onUpdate({ line2Text: value })} />
+          </div>
+          <WidgetTextInput
+            label="底部文案"
+            value={widget.bio || ''}
+            onChange={value => onUpdate({ bio: value })}
+          />
+        </>
+      );
+    case 'glass-vinyl-player':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <PersistentImageUploadControl
+              label="左侧相片"
+              value={widget.photoUrl || ''}
+              onChange={value => onUpdate({ photoUrl: value })}
+            />
+            <PersistentImageUploadControl
+              label="右侧相片"
+              value={widget.secondaryPhotoUrl || ''}
+              onChange={value => onUpdate({ secondaryPhotoUrl: value })}
+            />
+          </div>
+          <PersistentAssetUploadControl
+            label="音频资源"
+            value={widget.audioUrl || ''}
+            onChange={value => onUpdate({ audioUrl: value })}
+            accept="audio/*"
+            kind="audio"
+            placeholder="支持音频链接或上传"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetTextInput label="歌名" value={widget.title || ''} onChange={value => onUpdate({ title: value })} />
+            <WidgetTextInput label="歌手" value={widget.bio || ''} onChange={value => onUpdate({ bio: value })} />
+          </div>
+          <WidgetTextInput
+            label="气泡文案"
+            value={widget.note || ''}
+            onChange={value => onUpdate({ note: value })}
+          />
+        </>
+      );
+    case 'glass-polaroid-strip':
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <PersistentImageUploadControl
+            label="左侧拍立得"
+            value={widget.avatarUrl || ''}
+            onChange={value => onUpdate({ avatarUrl: value })}
+          />
+          <PersistentImageUploadControl
+            label="中间拍立得"
+            value={widget.photoUrl || ''}
+            onChange={value => onUpdate({ photoUrl: value })}
+          />
+          <PersistentImageUploadControl
+            label="右侧拍立得"
+            value={widget.secondaryPhotoUrl || ''}
+            onChange={value => onUpdate({ secondaryPhotoUrl: value })}
+          />
+        </div>
+      );
+    case 'glass-recent-grid':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetTextInput label="左侧标题" value={widget.title || ''} onChange={value => onUpdate({ title: value })} />
+            <WidgetTextInput label="右侧文案" value={widget.note || ''} onChange={value => onUpdate({ note: value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: 6 }, (_, index) => {
+              const images = Array.from({ length: 6 }, (__unused, imageIndex) => widget.images?.[imageIndex] || '');
+              return (
+                <PersistentImageUploadControl
+                  key={index}
+                  label={`图片 ${index + 1}`}
+                  value={images[index]}
+                  onChange={value => {
+                    const nextImages = [...images];
+                    nextImages[index] = value;
+                    onUpdate({ images: nextImages });
+                  }}
+                />
+              );
+            })}
+          </div>
+        </>
+      );
+    default:
+      return null;
+  }
 }
 
 function PersistentSquareThumbnail({ value, previewUrl, alt }: { value?: string; previewUrl?: string; alt: string }) {
@@ -501,98 +994,16 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
         ? 'monospace'
         : settings.desktop?.fontFamily === 'Serif'
           ? 'serif'
-          : settings.desktop?.fontFamily === 'Cursive'
-            ? 'cursive'
-            : 'sans-serif';
+        : settings.desktop?.fontFamily === 'Cursive'
+          ? 'cursive'
+          : 'sans-serif';
   const previewText =
     typography.previewText || '桌面字体预览 你好，Bloom\nBloom Font Preview 123 ABC abc';
   const visibleWidgets = useMemo(
-    () => (settings.widgets || []).filter((widget: WidgetConfig) => widget.type !== 'music'),
+    () => (settings.widgets || []).filter((widget: WidgetConfig) => !isLegacyMusicWidget(widget)),
     [settings.widgets]
   );
-  const widgetTemplates: Array<{ type: WidgetConfig['type']; label: string; icon: React.ReactNode; create: () => WidgetConfig }> = [
-    {
-      type: 'profile-card',
-      label: '资料卡片',
-      icon: <User size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'profile-card',
-        w: 4,
-        h: 2,
-        background: '#ffffff',
-        profileName: '自定义',
-        handle: '自定义',
-        bio: '自定义',
-        location: '自定义',
-        material: 'default'
-      }),
-    },
-    {
-      type: 'calendar',
-      label: '日历组件',
-      icon: <Calendar size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'calendar',
-        w: 2,
-        h: 2,
-        background: '#ffffff',
-        style: 'default',
-      }),
-    },
-    {
-      type: 'time',
-      label: '时间组件',
-      icon: <Monitor size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'time',
-        w: 2,
-        h: 2,
-        background: '#ffffff',
-        style: 'default',
-      }),
-    },
-    {
-      type: 'anniversary',
-      label: '纪念日组件',
-      icon: <Heart size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'anniversary',
-        w: 2,
-        h: 2,
-        background: '#ffffff',
-        title: '纪念日',
-        date: new Date().toISOString().slice(0, 10),
-      }),
-    },
-    {
-      type: 'weather',
-      label: '天气组件',
-      icon: <Cloud size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'weather',
-        w: 2,
-        h: 2,
-        background: '#ffffff',
-      }),
-    },
-    {
-      type: 'blank',
-      label: '空白卡片',
-      icon: <Layout size={18} />,
-      create: () => ({
-        id: Date.now().toString(),
-        type: 'blank',
-        w: 2,
-        h: 2,
-        background: '#ffffff',
-      }),
-    },
-  ];
+  const widgetTemplates = SUPPORTED_DESKTOP_WIDGET_TEMPLATES;
 
   const updateTypography = (patch: Partial<VisualSettings['themeTypography']>) =>
     setSettings({
@@ -602,11 +1013,9 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
         ...patch,
       },
     });
-
-  const addWidgetByType = (type: WidgetConfig['type']) => {
-    const template = widgetTemplates.find(item => item.type === type);
-    if (!template) return;
-    const newWidget = template.create();
+  const addWidgetByType = (type: SupportedDesktopWidgetType) => {
+    const newWidget = createDesktopWidgetFromType(type);
+    if (!newWidget) return;
     setSettings({ ...settings, widgets: [...(settings.widgets || []), newWidget] });
     setEditingWidgetId(newWidget.id);
     setShowWidgetPicker(false);
@@ -827,9 +1236,8 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <div className="mx-auto flex w-full max-w-[280px] flex-col items-center gap-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">Preview</div>
               <div className="relative w-full">
-                <div className="absolute inset-0 rounded-[30px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_46%),linear-gradient(180deg,#13151a,#09090b)]" />
-                <div className="absolute inset-x-4 bottom-[-10px] h-7 rounded-b-[22px] bg-black/30 blur-md" />
-                <div className="relative flex min-h-[88px] items-center justify-around overflow-hidden rounded-[28px] border border-white/20 bg-[linear-gradient(180deg,rgba(240,243,247,0.24),rgba(180,189,202,0.16))] px-4 py-3 shadow-[0_18px_34px_rgba(15,23,42,0.24)] backdrop-blur-[30px]">
+                <div className="absolute inset-x-4 bottom-[-8px] h-6 rounded-b-[22px] border border-white/20 border-t-0 bg-white/25 blur-[0.2px]" />
+                <div className="relative flex min-h-[88px] items-center justify-around overflow-hidden rounded-[28px] border border-white/35 px-4 py-3 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur-[28px]">
                   {dockBackgroundDisplayUrl ? (
                     <img
                       src={dockBackgroundDisplayUrl}
@@ -840,11 +1248,10 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   <div
                     className="absolute inset-0"
                     style={{
-                      backgroundColor: settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR,
-                      opacity: settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY,
+                      backgroundColor: settings.desktop?.dockTintColor || '#f8fafc',
+                      opacity: settings.desktop?.dockTintOpacity ?? 0.18,
                     }}
                   />
-                  <div className="pointer-events-none absolute inset-x-[1px] top-[1px] h-[42%] rounded-[27px] bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))]" />
                   {['钱包', '梦境', '自定义'].map((label, index) => (
                     <div key={label} className="relative z-10 flex flex-col items-center gap-1">
                       <div
@@ -853,7 +1260,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                       >
                         {index === 0 ? <Banknote size={24} className="m-auto mt-3 text-zinc-700" /> : index === 1 ? <Moon size={24} className="m-auto mt-3 text-zinc-700" /> : <Settings size={24} className="m-auto mt-3 text-zinc-700" />}
                       </div>
-                      <span className="text-[11px] font-medium text-white/86 [text-shadow:0_1px_8px_rgba(0,0,0,0.36)]">{label}</span>
+                      <span className="text-[11px] font-medium text-zinc-700">{label}</span>
                     </div>
                   ))}
                 </div>
@@ -883,15 +1290,15 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                value={settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR}
+                value={settings.desktop?.dockTintColor || '#f8fafc'}
                 onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
                 className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
               />
               <input
                 type="text"
-                value={settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR}
+                value={settings.desktop?.dockTintColor || '#f8fafc'}
                 onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
-                placeholder={DEFAULT_DOCK_TINT_COLOR}
+                placeholder="#f8fafc"
                 className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
               />
             </div>
@@ -900,14 +1307,14 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500 flex justify-between">
               <span>Dock 颜色透明度</span>
-              <span>{Math.round((settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY) * 100)}%</span>
+              <span>{Math.round((settings.desktop?.dockTintOpacity ?? 0.18) * 100)}%</span>
             </label>
             <input
               type="range"
               min="0"
               max="0.75"
               step="0.05"
-              value={settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY}
+              value={settings.desktop?.dockTintOpacity ?? 0.18}
               onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintOpacity: Number(e.target.value) } })}
               className="w-full accent-zinc-900"
             />
@@ -969,7 +1376,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                       <WidgetListThumbnail widget={widget} />
                       <div>
                         <p className="text-sm font-bold text-zinc-800">
-                          {widget.type === 'calendar' ? '日历组件' : widget.type === 'time' ? '时间组件' : widget.type === 'anniversary' ? '纪念日组件' : widget.type === 'weather' ? '天气组件' : widget.type === 'profile-card' ? '资料卡片' : '空白卡片'}
+                          {getDesktopWidgetTypeLabel(widget.type)}
                         </p>
                         <p className="text-[10px] text-zinc-500">尺寸: {widget.w}x{widget.h}</p>
                       </div>
@@ -1010,13 +1417,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                                 onChange={(e) => handleWidgetUpdate(widget.id, { type: e.target.value as any })}
                                 className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
                               >
-                                <option value="calendar">日历</option>
-                                <option value="time">时间</option>
-                                <option value="anniversary">纪念日</option>
-                                <option value="music">音乐</option>
-                                <option value="weather">天气</option>
-                                <option value="profile-card">资料卡片</option>
-                                <option value="blank">空白卡片</option>
+                                {widgetTemplates.map(item => (
+                                  <option key={item.type} value={item.type}>
+                                    {item.label}
+                                  </option>
+                                ))}
                               </select>
                             </div>
 
@@ -1027,13 +1432,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                                 onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
                                 className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
                               >
-                                <option value="default">默认样式</option>
-                                {widget.type === 'time' && (
-                                  <option value="minimal">极简数字</option>
-                                )}
-                                {widget.type === 'calendar' && (
-                                  <option value="list">日程列表</option>
-                                )}
+                                {getDesktopWidgetStyleOptions(widget.type).map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                           </>
@@ -1072,6 +1475,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                           </div>
                         </div>
                       )}
+
+                      <KawaiiWidgetCustomizationFields
+                        widget={widget}
+                        onUpdate={updates => handleWidgetUpdate(widget.id, updates)}
+                      />
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
@@ -1770,6 +2178,10 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
     () => characters.find((character: Character) => character.id === selectedCharacterId) || null,
     [characters, selectedCharacterId],
   );
+  const typography = settings.themeTypography || {};
+  const importedFonts: ThemeFontAsset[] = typography.importedFonts || [];
+  const { resolvedFonts } = useResolvedThemeTypographyCss(typography);
+  const selectedResolvedFont = resolvedFonts.find((font) => font.id === typography.selectedFontId);
   const { resolvedUrl: resolvedGlobalWallpaperUrl } = useResolvedPersistentValue(settings.globalBackground || '');
   const { resolvedUrl: resolvedDynamicsBackgroundUrl } = useResolvedPersistentValue(settings.dynamics?.background || '');
   const dynamicsBackgroundMode = settings.dynamics?.backgroundMode ?? 'fullscreen';
@@ -1782,6 +2194,38 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
   const previewUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(settings.chat?.userAvatarFrameCss, '.avatar-frame-preview-user');
   const previewCharacterAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(selectedCharacter?.avatarFrameCss, '.avatar-frame-preview-model');
   const previewCharacterUserAvatarFrameThemeCss = buildScopedAvatarFrameThemeCss(selectedCharacter?.userAvatarFrameCss, '.avatar-frame-preview-user');
+  const dynamicsFontSuggestions = useMemo<FontFamilySuggestion[]>(() => {
+    const presetOptions: FontFamilySuggestion[] = [
+      { label: '系统无衬线', value: '"PingFang SC", "Microsoft YaHei", sans-serif' },
+      { label: '中文衬线', value: '"Noto Serif SC", "Songti SC", "STSong", "SimSun", serif' },
+      { label: '楷体', value: '"KaiTi", "STKaiti", "Kaiti SC", serif' },
+      { label: '等宽', value: '"SFMono-Regular", "Consolas", "Liberation Mono", monospace' },
+    ];
+    const importedOptions = importedFonts.map((font) => ({
+      label: `已导入 · ${font.name}`,
+      value: `"${getThemeImportedFontFamily(font.id)}", "PingFang SC", "Microsoft YaHei", sans-serif`,
+    }));
+
+    const seenValues = new Set<string>();
+    return [...importedOptions, ...presetOptions].filter((option) => {
+      if (seenValues.has(option.value)) {
+        return false;
+      }
+      seenValues.add(option.value);
+      return true;
+    });
+  }, [importedFonts]);
+  const dynamicsNamePreviewStyle = buildOptionalTextStyle(
+    settings.dynamics?.profileNameColor,
+    settings.dynamics?.profileNameFontFamily,
+  );
+  const dynamicsMoodPreviewStyle = buildOptionalTextStyle(
+    settings.dynamics?.profileMoodColor,
+    settings.dynamics?.profileMoodFontFamily,
+  );
+  const dynamicsFontFollowHint = getThemeSelectedFontStack(typography)
+    ? `留空时会跟随全局主题字体：${selectedResolvedFont?.name || '已导入字体'}。`
+    : '留空时会沿用页面当前默认字体，不会单独新开一套。';
 
   useEffect(() => {
     if (!characters.length) {
@@ -1836,6 +2280,14 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
     { value: 'solid', label: '纯色' },
     { value: 'transparent', label: '透明' }
   ];
+  const updateDynamics = (patch: Partial<VisualSettings['dynamics']>) =>
+    setSettings({
+      ...settings,
+      dynamics: {
+        ...settings.dynamics,
+        ...patch,
+      },
+    });
   return (
     <div className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -2481,10 +2933,13 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
                 </div>
                 <div className="min-w-0 flex-1 pb-1">
                   <div className="flex items-center gap-1.5">
-                    <div className="truncate text-[11px] font-bold text-zinc-900">
+                    <div className="truncate text-[11px] font-bold text-zinc-900" style={dynamicsNamePreviewStyle}>
                       {appData?.userProfile?.name || 'AI 用户'}
                     </div>
-                    <span className="max-w-[72px] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[8px] font-medium text-zinc-600 shadow-sm">
+                    <span
+                      className="max-w-[72px] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[8px] font-medium text-zinc-600 shadow-sm"
+                      style={dynamicsMoodPreviewStyle}
+                    >
                       {(appData?.userProfile?.mood || '(^_^)').slice(0, 18)}
                     </span>
                   </div>
@@ -2520,6 +2975,10 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
               momentsBackground: val 
             })} 
           />
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-3 text-[12px] leading-relaxed text-zinc-500">
+            资料头里的名字和颜文字默认跟随全局主题字体；只有下面填了颜色或字体，才会只覆盖动态页这一块。
+            <div className="mt-1 text-[11px] text-zinc-400">{dynamicsFontFollowHint}</div>
+          </div>
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500">背景范围</label>
             <div className="grid grid-cols-2 gap-2">
@@ -2590,6 +3049,51 @@ function ChatSettings({ settings, setSettings, subTab, setSubTab, appData, setAp
               })} 
               className="w-full accent-zinc-900" 
             />
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-[20px] border border-zinc-100 bg-zinc-50/70 p-4">
+              <div>
+                <div className="text-[13px] font-bold text-zinc-800">名字样式</div>
+                <div className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+                  对应动态页里颜文字左边这行名字。
+                </div>
+              </div>
+              <OptionalColorInput
+                label="名字颜色"
+                value={settings.dynamics?.profileNameColor}
+                onChange={(value) => updateDynamics({ profileNameColor: value })}
+                fallback="#18181b"
+              />
+              <OptionalFontFamilyInput
+                label="名字字体"
+                value={settings.dynamics?.profileNameFontFamily}
+                onChange={(value) => updateDynamics({ profileNameFontFamily: value })}
+                listId="dynamics-name-font-family-options"
+                suggestions={dynamicsFontSuggestions}
+              />
+            </div>
+
+            <div className="space-y-3 rounded-[20px] border border-zinc-100 bg-zinc-50/70 p-4">
+              <div>
+                <div className="text-[13px] font-bold text-zinc-800">颜文字样式</div>
+                <div className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+                  留空时会继续跟随外面的全局字体和默认颜色。
+                </div>
+              </div>
+              <OptionalColorInput
+                label="颜文字颜色"
+                value={settings.dynamics?.profileMoodColor}
+                onChange={(value) => updateDynamics({ profileMoodColor: value })}
+                fallback="#52525b"
+              />
+              <OptionalFontFamilyInput
+                label="颜文字字体"
+                value={settings.dynamics?.profileMoodFontFamily}
+                onChange={(value) => updateDynamics({ profileMoodFontFamily: value })}
+                listId="dynamics-mood-font-family-options"
+                suggestions={dynamicsFontSuggestions}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -2776,13 +3280,23 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             normalized.coupleSpaceState,
             normalized.coupleSpace,
           );
+          const perception = hydratePerceptionSettings(
+            normalized.perception
+              ?? normalized.coupleSpaceState?.sharedPerception
+              ?? normalized.coupleSpace?.perception,
+            createDefaultPerceptionSettings(),
+          );
 
           return {
             ...normalized,
             chatHistory: directHistory,
             chatGroups,
             groups,
-            coupleSpaceState,
+            perception,
+            coupleSpaceState: {
+              ...coupleSpaceState,
+              sharedPerception: perception,
+            },
             coupleSpace,
           };
         };
@@ -2817,6 +3331,7 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
               groups: normalizedAppData.groups ?? [],
               chatGroups: normalizedAppData.chatGroups ?? [],
             }),
+            writeImportedRecord(STORAGE_KEYS.perception, normalizedAppData.perception ?? {}),
             writeImportedRecord(STORAGE_KEYS.userProfile, normalizedAppData.userProfile ?? {}),
             writeImportedRecord(STORAGE_KEYS.meData, {
               masks: normalizedAppData.masks ?? [],

@@ -11,7 +11,7 @@ export type Mask = {
   relationship: string;
   worldBackground: string; // New field
   isActive: boolean;
-  linkedCharacters: string[]; // IDs of characters that read this user mask
+  linkedCharacters: string[]; // IDs of characters that use this mask
 };
 
 export type FavoriteMessage = {
@@ -23,7 +23,21 @@ export type FavoriteMessage = {
   category: string;
 };
 
-export type WidgetType = 'calendar' | 'anniversary' | 'time' | 'music' | 'weather' | 'blank' | 'profile-card';
+export type WidgetType =
+  | 'calendar'
+  | 'anniversary'
+  | 'time'
+  | 'music'
+  | 'weather'
+  | 'blank'
+  | 'profile-card'
+  | 'kawaii-launcher'
+  | 'kawaii-couple-pills'
+  | 'kawaii-scrapbook'
+  | 'glass-duo-card'
+  | 'glass-vinyl-player'
+  | 'glass-polaroid-strip'
+  | 'glass-recent-grid';
 
 export type WidgetConfig = {
   id: string;
@@ -47,6 +61,22 @@ export type WidgetConfig = {
   bio?: string;
   location?: string;
   material?: 'default' | 'frosted' | 'dark';
+  secondaryAvatarUrl?: string;
+  photoUrl?: string;
+  secondaryPhotoUrl?: string;
+  audioUrl?: string;
+  images?: string[];
+  note?: string;
+  line1Text?: string;
+  line2Text?: string;
+  item1Label?: string;
+  item2Label?: string;
+  item3Label?: string;
+  item4Label?: string;
+  item1Color?: string;
+  item2Color?: string;
+  item3Color?: string;
+  item4Color?: string;
 };
 
 export type DesktopIconConfig = {
@@ -107,6 +137,10 @@ export type DynamicsCustomization = {
   cardStyle: 'flat' | 'glass' | 'neumorphism';
   cardBorderRadius: number;
   cardOpacity: number;
+  profileNameColor?: string;
+  profileNameFontFamily?: string;
+  profileMoodColor?: string;
+  profileMoodFontFamily?: string;
   customCss?: string;
 };
 
@@ -617,6 +651,20 @@ export type CharacterAvatarLibrary = {
   updatedAt: number;
 };
 
+export type CharacterPublicThreadPeerHint = {
+  targetCharacterId: string;
+  familiarity: 'stranger' | 'aware' | 'familiar';
+  interactionStyle?: 'guarded' | 'neutral' | 'banter' | 'warm';
+  allowBanter?: boolean;
+  allowIntimateTone?: boolean;
+  allowOwnershipTone?: boolean;
+  note?: string;
+  updatedAt?: number;
+};
+
+export type CharacterMomentPrivateCarryoverLevel = 'none' | 'light' | 'medium' | 'high';
+export type CharacterFriendshipStatus = 'friends' | 'none';
+
 export type Character = {
   id: string;
   name: string;
@@ -629,6 +677,7 @@ export type Character = {
   boundaryPack?: string;
   extendedLore?: string;
   sceneHints?: Record<string, string>;
+  publicThreadPeerHints?: CharacterPublicThreadPeerHint[];
   remarkName?: string;
   signature?: string;
   openingRemark: string;
@@ -666,6 +715,10 @@ export type Character = {
   stickerMetadata?: Record<string, StickerMetadata>;
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts
+  friendshipStatus?: CharacterFriendshipStatus;
+  blockedByUser?: boolean;
+  blockedByCharacter?: boolean;
+  relationshipStatusUpdatedAt?: number;
   motto?: string;
   bubbleStyleCss?: string;
   userBubbleStyleCss?: string;
@@ -678,6 +731,8 @@ export type Character = {
   actionDescriptionEnabled?: boolean;
   characterActionDescriptionEnabled?: boolean;
   postFrequency?: 'low' | 'medium' | 'high' | 'none';
+  momentPrivateCarryoverLevel?: CharacterMomentPrivateCarryoverLevel;
+  allowPrivateMomentCarryover?: boolean;
   autoTranslate?: boolean;
   replyLanguageMode?: 'follow-user' | 'chinese-with-native-flavor' | 'native-first' | 'fixed';
   nativeLanguage?: string;
@@ -845,6 +900,9 @@ export type MomentImageCard = {
   theme: 'polaroid' | 'film' | 'note' | 'poster';
   layout?: 'card' | 'described-photo' | 'inner-voice';
   overlayText?: string;
+  translatedOverlayText?: string;
+  frameCaptions?: string[];
+  translatedFrameCaptions?: string[];
 };
 
 export type MomentSourceChatMessageRef = {
@@ -856,6 +914,7 @@ export type MomentItem = {
   id: string;
   authorId: string;
   content: string;
+  translation?: string;
   images?: string[];
   imageCard?: MomentImageCard;
   sourceChatMessage?: MomentSourceChatMessageRef;
@@ -950,6 +1009,8 @@ export type CoupleSpaceData = {
 export type CoupleSpaceState = {
   currentPartnerId: string | null;
   spacesByPartnerId: Record<string, CoupleSpaceData>;
+  sharedPerception?: PerceptionSettings;
+  dismissedPartnerIds?: string[];
 };
 
 
@@ -1183,15 +1244,26 @@ export type ForumData = {
   globalSettings?: ForumGlobalSettings;
 };
 
+export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'superseded';
+export type FriendRequestDirection = 'incoming' | 'outgoing';
+export type FriendRequestInitiator = 'user' | 'character' | 'forum';
+export type FriendRequestKind = 'friend' | 'reconnect';
+
 export type FriendRequest = {
   id: string;
   fromUserId: string; // Virtual ID
   fromUserName: string;
   fromUserAvatar: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: FriendRequestStatus;
   timestamp: number;
   message?: string;
-  sourceScene?: 'forum' | 'manual';
+  sourceScene?: 'forum' | 'manual' | 'relationship';
+  direction?: FriendRequestDirection;
+  initiator?: FriendRequestInitiator;
+  requestKind?: FriendRequestKind;
+  characterId?: string;
+  resolutionMessage?: string;
+  lastUpdatedAt?: number;
   sourcePostId?: string;
   sourceTempChatAuthorId?: string;
   forumHandle?: string;
@@ -1347,6 +1419,12 @@ export type DateSession = {
   backgroundSource?: 'character-avatar' | 'url' | 'local-upload';
   generatedContent?: DatingGeneratedContent;
   messages: DateMessage[];
+  isSaved?: boolean;
+  pendingRoundRetry?: {
+    mode: 'start' | 'continue';
+    session: DateSession;
+  } | null;
+  pendingRoundError?: string;
   timestamp: number;
   status?: 'active' | 'ended';
   endedAt?: number;
@@ -1489,6 +1567,7 @@ export type AppDataExtended = {
   characters: Character[];
   masks: Mask[];
   favorites: FavoriteMessage[];
+  perception?: PerceptionSettings;
   visualSettings: VisualSettings;
   userProfile: UserProfileExtended;
   worldBooks: WorldBookEntry[];
@@ -1505,6 +1584,7 @@ export type AppData = {
   userProfile: UserProfileExtended;
   masks: Mask[];
   favorites: FavoriteMessage[];
+  perception?: PerceptionSettings;
   visualSettings: VisualSettings;
   groups: string[];
   moments: MomentItem[];

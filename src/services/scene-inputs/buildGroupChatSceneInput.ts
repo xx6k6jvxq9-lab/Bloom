@@ -553,6 +553,8 @@ export function buildGroupChatSceneInput(
   });
   const relationshipProjection = buildRelationshipProjection({
     character: options.speaker,
+    characters: options.members,
+    chatGroups: options.group ? [options.group] : [],
     userName: options.userName,
     directMessages: options.directChatHistory?.[options.speaker.id] || [],
     groupMessages: options.history,

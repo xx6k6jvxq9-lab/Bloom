@@ -1,13 +1,14 @@
 ﻿import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Heart, MessageSquare, MoreVertical, PencilLine, RefreshCw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { useEffect } from 'react';
 import { useMemo } from 'react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AppData, AppSettings, Character, ChatGroup, FriendRequest, MomentComment, MomentItem } from '../../../types';
+import { AppData, AppSettings, Character, ChatGroup, ForumData, FriendRequest, MomentComment, MomentItem } from '../../../types';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
-import { DEFAULT_WHITE_AVATAR } from '../../../utils';
+import { DEFAULT_WHITE_AVATAR, showInAppConfirm } from '../../../utils';
 import { patchChatHistoryRecords } from '../../../features/persistence/chatHistoryStore';
 import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { saveCharacters } from '../../../features/persistence/charactersStore';
@@ -19,10 +20,38 @@ import { buildCharacterContext } from '../../../services/relationship-context/bu
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
+import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
+import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
 } from '../../../features/app-shell/formatMessagePreview';
+import {
+  buildCharacterIncomingRequestResolution,
+  canChatWithCharacter,
+  createCharacterRelationshipMessage,
+  createRelationshipSystemMessage,
+  getCharacterBlockState,
+  getCharacterFriendshipStatus,
+  getCharacterRelationshipStatusText,
+  getFriendRequestCharacterId,
+  getFriendRequestStatusLabel,
+  getLatestCharacterRequest,
+  getPendingCharacterRequest,
+  isIncomingFriendRequest,
+  resolveFriendRequestDirection,
+  supersedePendingCharacterRequests,
+} from '../../../features/contacts/contactRelationship';
+import { generateRelationshipEventReply } from '../../../features/contacts/generateRelationshipEventReply';
+
+const EMPTY_CONTACTS_FORUM_DATA: ForumData = {
+  posts: [],
+  notifications: [],
+  tempChats: {},
+  globalSettings: DEFAULT_FORUM_GLOBAL_SETTINGS,
+};
+
+const CONTACT_REMARK_NAME_LIMIT = 32;
 
 function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
   const characterContext = buildCharacterContext({ character: character as Character });
@@ -122,6 +151,7 @@ function CharacterCardPreviewPage({
   onChangeMode: (mode: 'preview' | 'raw') => void;
   onBack: () => void;
 }) {
+  const contactsSheetTopInset = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -129,7 +159,10 @@ function CharacterCardPreviewPage({
       exit={{ x: '100%' }}
       className="absolute inset-0 z-[90] flex flex-col bg-white"
     >
-      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
+      <div
+        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        style={{ paddingTop: contactsSheetTopInset }}
+      >
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={22} />
         </button>
@@ -187,7 +220,8 @@ export function ContactsApp({
   onOpenChat, 
   onOpenProfile,
   onAddFriend,
-  onManageGroups
+  onManageGroups,
+  settings,
 }: { 
   appData: AppData; 
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
@@ -195,12 +229,14 @@ export function ContactsApp({
   onOpenProfile: (id: string) => void;
   onAddFriend: () => void;
   onManageGroups: () => void;
+  settings: AppSettings;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'new-friends' | 'group-manager'>('list');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const { characters, groups } = appData;
+  const friendRequests = appData.friendRequests || [];
 
   // Sort characters by name
   const sortedCharacters = [...characters].sort((a, b) => {
@@ -216,121 +252,295 @@ export function ContactsApp({
   const groupMembers = selectedGroup 
     ? characters.filter(c => c.groupId === selectedGroup || (selectedGroup === '星标' && c.isPinned))
     : [];
+  const pendingIncomingFriendRequestCount = friendRequests.filter((request) => (
+    request.status === 'pending' && isIncomingFriendRequest(request)
+  )).length;
+
+  const appendRelationshipMessages = (
+    currentHistory: AppData['chatHistory'],
+    characterId: string,
+    messages: ReturnType<typeof createRelationshipSystemMessage>[],
+  ) => ({
+    ...currentHistory,
+    [characterId]: [...(currentHistory[characterId] || []), ...messages],
+  });
+
+  const queueRelationshipRequestReaction = (params: {
+    requestId: string;
+    characterId: string;
+    accepted: boolean;
+  }) => {
+    const targetCharacter = appData.characters.find((character) => character.id === params.characterId);
+    if (!targetCharacter) {
+      return;
+    }
+
+    const historySnapshot = appData.chatHistory[params.characterId] || [];
+
+    void (async () => {
+      const generated = await generateRelationshipEventReply({
+        settings,
+        character: targetCharacter,
+        allCharacters: appData.characters,
+        userName: appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: appData.chatHistory,
+        chatGroups: appData.chatGroups || [],
+        masks: appData.masks,
+        worldBook: appData.worldBooks || [],
+        perception: appData.perception,
+        coupleSpace: appData.coupleSpace,
+        event: {
+          kind: params.accepted ? 'user_accepted_character_request' : 'user_rejected_character_request',
+        },
+      });
+
+      setAppData((prev) => {
+        const currentCharacter = prev.characters.find((character) => character.id === params.characterId);
+        const currentRequest = (prev.friendRequests || []).find((request) => request.id === params.requestId);
+        if (!currentCharacter || !currentRequest || currentRequest.status !== (params.accepted ? 'accepted' : 'rejected')) {
+          return prev;
+        }
+
+        const reactionText = generated?.reactionText?.trim() || buildCharacterIncomingRequestResolution(currentCharacter, params.accepted);
+        return {
+          ...prev,
+          chatHistory: appendRelationshipMessages(prev.chatHistory, params.characterId, [
+            createCharacterRelationshipMessage(params.characterId, reactionText, Date.now()),
+          ]),
+        };
+      });
+    })();
+  };
+
+  const handleAcceptFriendRequest = (id: string) => {
+    const initialRequest = friendRequests.find((request) => request.id === id);
+    setAppData(prev => {
+      const req = prev.friendRequests?.find(r => r.id === id);
+      if (!req) return prev;
+
+      if (req.sourceScene === 'forum') {
+        const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
+        const currentTempChats = currentForumData.tempChats || {};
+        const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
+        const bridged = bridgeForumFriendToFormalChat({
+          appData: prev as any,
+          author: {
+            id: req.fromUserId,
+            name: req.fromUserName,
+            avatar: req.fromUserAvatar,
+            handle: req.forumHandle,
+            bio: req.forumBio,
+            persona: req.forumPersona,
+          },
+          session: currentTempChats[requestAuthorId],
+        });
+
+        const newChar: Character = {
+          id: req.fromUserId,
+          name: req.fromUserName,
+          avatar: req.fromUserAvatar,
+          gender: 'other',
+          setting: '你的新朋友',
+          corePersona: '你的新朋友',
+          openingRemark: '你好！很高兴认识你。',
+          lastTime: Date.now(),
+          groupId: '朋友',
+          friendshipStatus: 'friends' as const,
+          blockedByUser: false,
+          blockedByCharacter: false,
+          relationshipStatusUpdatedAt: Date.now(),
+        };
+
+        const acceptedCharacters = bridged?.nextCharacters || [...prev.characters, newChar];
+        const nextCharacters = applyForumFriendAcceptanceSettlement(acceptedCharacters, {
+          characterId: req.fromUserId,
+          actorName: req.fromUserName,
+          content: req.message || '论坛里的来往正式往前走了一步。',
+          timestamp: Date.now(),
+        });
+        void saveCharacters(nextCharacters);
+        const nextTempChats = {
+          ...currentTempChats,
+          [requestAuthorId]: bridged?.nextTempSession || markForumFriendRequestResolved(
+            currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
+            'accepted',
+          ),
+        };
+
+        return {
+          ...prev,
+          characters: nextCharacters,
+          chatHistory: bridged?.nextChatHistory || prev.chatHistory,
+          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
+            ...r,
+            status: 'accepted',
+            resolutionMessage: '你已通过这条好友申请',
+            lastUpdatedAt: Date.now(),
+          } : r),
+          forumData: {
+            ...currentForumData,
+            tempChats: nextTempChats,
+          },
+        };
+      }
+
+      const characterId = getFriendRequestCharacterId(req);
+      if (!characterId) {
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
+            ...r,
+            status: 'accepted',
+            resolutionMessage: '你已通过这条好友申请',
+            lastUpdatedAt: Date.now(),
+          } : r),
+        };
+      }
+
+      const timestamp = Date.now();
+      const targetCharacter = prev.characters.find((character) => character.id === characterId);
+      const nextCharacters = prev.characters.map((character) => (
+        character.id === characterId
+          ? {
+              ...character,
+              friendshipStatus: 'friends' as const,
+              blockedByUser: false,
+              blockedByCharacter: false,
+              relationshipStatusUpdatedAt: timestamp,
+            }
+          : character
+      ));
+      const nextFriendRequests = (prev.friendRequests || []).map((request) => {
+        if (getFriendRequestCharacterId(request) !== characterId || request.status !== 'pending') {
+          return request;
+        }
+        if (request.id === id) {
+          return {
+            ...request,
+            status: 'accepted' as const,
+            resolutionMessage: '你已通过这条好友申请',
+            lastUpdatedAt: timestamp,
+          };
+        }
+        return {
+          ...request,
+          status: 'superseded' as const,
+          resolutionMessage: '关系已恢复，旧申请自动归档',
+          lastUpdatedAt: timestamp,
+        };
+      });
+      const nextHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+        createRelationshipSystemMessage(`你通过了 ${targetCharacter?.remarkName?.trim() || targetCharacter?.name || '对方'} 的好友申请。`, timestamp),
+      ]);
+
+      void saveCharacters(nextCharacters);
+      return {
+        ...prev,
+        characters: nextCharacters,
+        chatHistory: nextHistory,
+        friendRequests: nextFriendRequests,
+      };
+    });
+
+    if (initialRequest?.sourceScene !== 'forum') {
+      const characterId = getFriendRequestCharacterId(initialRequest);
+      if (characterId) {
+        queueRelationshipRequestReaction({
+          requestId: id,
+          characterId,
+          accepted: true,
+        });
+      }
+    }
+  };
+
+  const handleRejectFriendRequest = (id: string) => {
+    const initialRequest = friendRequests.find((request) => request.id === id);
+    setAppData(prev => {
+      const req = prev.friendRequests?.find(r => r.id === id);
+      if (!req) {
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
+        };
+      }
+
+      if (req.sourceScene === 'forum') {
+        const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
+        const currentTempChats = currentForumData.tempChats || {};
+        const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
+
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
+            ...r,
+            status: 'rejected',
+            resolutionMessage: '你拒绝了这条好友申请',
+            lastUpdatedAt: Date.now(),
+          } : r),
+          forumData: {
+            ...currentForumData,
+            tempChats: {
+              ...currentTempChats,
+              [requestAuthorId]: markForumFriendRequestResolved(
+                currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
+                'rejected',
+              ),
+            },
+          },
+        };
+      }
+
+      const characterId = getFriendRequestCharacterId(req);
+      if (!characterId) {
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
+            ...r,
+            status: 'rejected',
+            resolutionMessage: '你拒绝了这条好友申请',
+            lastUpdatedAt: Date.now(),
+          } : r),
+        };
+      }
+
+      const timestamp = Date.now();
+      const targetCharacter = prev.characters.find((character) => character.id === characterId);
+      const nextHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+        createRelationshipSystemMessage(`你拒绝了 ${targetCharacter?.remarkName?.trim() || targetCharacter?.name || '对方'} 的好友申请。`, timestamp),
+      ]);
+
+      return {
+        ...prev,
+        chatHistory: nextHistory,
+        friendRequests: prev.friendRequests?.map(r => r.id === id ? {
+          ...r,
+          status: 'rejected',
+          resolutionMessage: '你拒绝了这条好友申请',
+          lastUpdatedAt: timestamp,
+        } : r),
+      };
+    });
+
+    if (initialRequest?.sourceScene !== 'forum') {
+      const characterId = getFriendRequestCharacterId(initialRequest);
+      if (characterId) {
+        queueRelationshipRequestReaction({
+          requestId: id,
+          characterId,
+          accepted: false,
+        });
+      }
+    }
+  };
 
   if (view === 'new-friends') {
     return (
       <NewFriendsPage 
-        requests={appData.friendRequests || []}
-        onAccept={(id) => {
-          setAppData(prev => {
-            const req = prev.friendRequests?.find(r => r.id === id);
-            if (!req) return prev;
-
-            const currentForumData = prev.forumData || {};
-            const currentTempChats = currentForumData.tempChats || {};
-            const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
-            const bridged = req.sourceScene === 'forum'
-              ? bridgeForumFriendToFormalChat({
-                  appData: prev as any,
-                  author: {
-                    id: req.fromUserId,
-                    name: req.fromUserName,
-                    avatar: req.fromUserAvatar,
-                    handle: req.forumHandle,
-                    bio: req.forumBio,
-                    persona: req.forumPersona,
-                  },
-                  session: currentTempChats[requestAuthorId],
-                })
-              : null;
-
-            const newChar: Character = {
-              id: req.fromUserId,
-              name: req.fromUserName,
-              avatar: req.fromUserAvatar,
-              gender: 'other',
-              setting: '你的新朋友',
-              corePersona: '你的新朋友',
-              openingRemark: '你好！很高兴认识你。',
-              lastTime: Date.now(),
-              groupId: '朋友'
-            };
-
-            const acceptedCharacters = req.sourceScene === 'forum'
-              ? (bridged?.nextCharacters || prev.characters)
-              : [...prev.characters, newChar];
-            const nextCharacters = req.sourceScene === 'forum'
-              ? applyForumFriendAcceptanceSettlement(acceptedCharacters, {
-                  characterId: req.fromUserId,
-                  actorName: req.fromUserName,
-                  content: req.message || '论坛里的来往正式往前走了一步。',
-                  timestamp: Date.now(),
-                })
-              : acceptedCharacters;
-            void saveCharacters(nextCharacters);
-            const nextTempChats = req.sourceScene === 'forum'
-              ? {
-                  ...currentTempChats,
-                  [requestAuthorId]: bridged?.nextTempSession || markForumFriendRequestResolved(
-                    currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
-                    'accepted',
-                  ),
-                }
-              : currentTempChats;
-
-            return {
-              ...prev,
-              characters: nextCharacters,
-              chatHistory: req.sourceScene === 'forum'
-                ? bridged?.nextChatHistory || (prev as any).chatHistory
-                : (prev as any).chatHistory,
-              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'accepted' } : r),
-              forumData: req.sourceScene === 'forum'
-                ? {
-                    ...currentForumData,
-                    tempChats: nextTempChats,
-                  }
-                : prev.forumData,
-            };
-          });
-        }}
-        onReject={(id) => {
-          setAppData(prev => {
-            const req = prev.friendRequests?.find(r => r.id === id);
-            if (!req) {
-              return {
-                ...prev,
-                friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
-              };
-            }
-
-            if (req.sourceScene !== 'forum') {
-              return {
-                ...prev,
-                friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r)
-              };
-            }
-
-            const currentForumData = prev.forumData || {};
-            const currentTempChats = currentForumData.tempChats || {};
-            const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
-
-            return {
-              ...prev,
-              friendRequests: prev.friendRequests?.map(r => r.id === id ? { ...r, status: 'rejected' } : r),
-              forumData: {
-                ...currentForumData,
-                tempChats: {
-                  ...currentTempChats,
-                  [requestAuthorId]: markForumFriendRequestResolved(
-                    currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
-                    'rejected',
-                  ),
-                },
-              },
-            };
-          });
-        }}
+        requests={friendRequests}
+        onAccept={handleAcceptFriendRequest}
+        onReject={handleRejectFriendRequest}
         onAddById={(id) => {
           // Mock adding by ID
           const newReq: FriendRequest = {
@@ -340,7 +550,12 @@ export function ContactsApp({
             fromUserAvatar: `https://picsum.photos/seed/${id}/200`,
             status: 'pending',
             timestamp: Date.now(),
-            message: '通过虚拟ID查找添加'
+            message: '通过虚拟ID查找添加',
+            direction: 'outgoing',
+            initiator: 'user',
+            requestKind: 'friend',
+            sourceScene: 'manual',
+            lastUpdatedAt: Date.now(),
           };
           setAppData(prev => ({
             ...prev,
@@ -447,9 +662,9 @@ export function ContactsApp({
             <div className="flex-1 text-left">
               <span className="text-[15px] font-medium text-zinc-800">新的朋友</span>
             </div>
-            {(appData.friendRequests?.filter(r => r.status === 'pending').length || 0) > 0 && (
+            {pendingIncomingFriendRequestCount > 0 && (
               <div className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                {appData.friendRequests?.filter(r => r.status === 'pending').length}
+                {pendingIncomingFriendRequestCount}
               </div>
             )}
           </button>
@@ -603,25 +818,36 @@ export function CharacterProfile({
   onBack, 
   onChat,
   onOpenMoments,
-  onAddFriend,
-  isFriend,
   groups,
+  friendRequests,
   onUpdateGroup,
-  onTogglePin
+  onTogglePin,
+  onUpdateRemark,
+  onDeleteCharacter,
+  onToggleBlock,
+  onSubmitFriendRequest
 }: { 
   character: Character; 
   onBack: () => void; 
   onChat: () => void;
   onOpenMoments: () => void;
-  onAddFriend: () => void;
-  isFriend: boolean;
   groups: string[];
+  friendRequests: FriendRequest[];
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
+  onUpdateRemark?: (remarkName: string | undefined) => void;
+  onDeleteCharacter?: () => void;
+  onToggleBlock?: () => void;
+  onSubmitFriendRequest?: (message: string) => void;
 }) {
+  const contactsHeaderTopInset = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   const [showRawCardPreview, setShowRawCardPreview] = useState(false);
   const [cardPreviewMode, setCardPreviewMode] = useState<'preview' | 'raw'>('preview');
+  const [showManagementSheet, setShowManagementSheet] = useState(false);
+  const [showRequestSheet, setShowRequestSheet] = useState(false);
+  const [isEditingRemark, setIsEditingRemark] = useState(false);
   const displayName = character.remarkName?.trim() || character.name;
+  const currentRemarkName = character.remarkName?.trim() || '';
   const rawCardContent = resolveCharacterCardSource(character);
   const previewCardContent = sanitizePreviewText(rawCardContent);
   const fallbackSignature = sanitizePreviewText(character.openingRemark)
@@ -629,6 +855,94 @@ export function CharacterProfile({
     || `${(character.corePersona?.trim() || '').slice(0, 36)}${(character.corePersona?.trim() || '').length > 36 ? '...' : ''}`;
   const profileSignature = sanitizePreviewText(character.signature) || fallbackSignature;
   const hasRawCardPreview = rawCardContent.length > 0;
+  const [pendingRemarkName, setPendingRemarkName] = useState(currentRemarkName);
+  const [requestMessage, setRequestMessage] = useState('');
+  const isFriend = getCharacterFriendshipStatus(character) === 'friends';
+  const blockState = getCharacterBlockState(character);
+  const canChat = canChatWithCharacter(character);
+  const relationshipStatusText = getCharacterRelationshipStatusText(character, friendRequests);
+  const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
+  const pendingOutgoingRequest = getPendingCharacterRequest(friendRequests, character.id, 'outgoing');
+  const latestRequest = getLatestCharacterRequest(friendRequests, character.id);
+
+  const requestButtonLabel = isFriend
+    ? '拉黑'
+    : blockState === 'user'
+      ? '解除拉黑'
+      : pendingOutgoingRequest
+        ? '再次申请'
+        : '申请添加';
+  const requestButtonIcon = isFriend || blockState === 'user'
+    ? <X size={18} />
+    : <UserPlus size={18} />;
+  const requestSheetPlaceholder = blockState === 'character' || blockState === 'mutual'
+    ? '例如：这次我想认真把你加回来，不会再随手把你推开。'
+    : '例如：你好，想把你加回来，之后继续好好聊。';
+
+  useEffect(() => {
+    setPendingRemarkName(currentRemarkName);
+  }, [character.id, currentRemarkName]);
+
+  const closeManagementSheet = () => {
+    setShowManagementSheet(false);
+    setIsEditingRemark(false);
+    setPendingRemarkName(currentRemarkName);
+  };
+
+  const closeRequestSheet = () => {
+    setShowRequestSheet(false);
+    setRequestMessage('');
+  };
+
+  const handleCopyId = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(character.id);
+        alert('角色 ID 已复制');
+      } else {
+        alert(`角色 ID：${character.id}`);
+      }
+    } catch {
+      alert(`角色 ID：${character.id}`);
+    }
+    closeManagementSheet();
+  };
+
+  const handleSaveRemark = () => {
+    onUpdateRemark?.(pendingRemarkName.trim() || undefined);
+    closeManagementSheet();
+  };
+
+  const handleDeleteCharacter = async () => {
+    if (!onDeleteCharacter) return;
+    if (!(await showInAppConfirm(`确定要删除角色“${displayName}”吗？删除后不会保留这条关系。`))) {
+      return;
+    }
+    closeManagementSheet();
+    onDeleteCharacter();
+  };
+
+  const handlePrimaryRelationshipAction = async () => {
+    if (isFriend || blockState === 'user') {
+      if (isFriend && !(await showInAppConfirm(`确定要拉黑“${displayName}”吗？拉黑后需要重新申请才能恢复聊天。`))) {
+        return;
+      }
+      onToggleBlock?.();
+      return;
+    }
+
+    setRequestMessage(
+      blockState === 'character' || blockState === 'mutual'
+        ? '这次我想认真把你加回来。'
+        : '想把你加回来，之后继续好好聊。',
+    );
+    setShowRequestSheet(true);
+  };
+
+  const handleSubmitFriendRequest = () => {
+    onSubmitFriendRequest?.(requestMessage.trim());
+    closeRequestSheet();
+  };
 
   if (showRawCardPreview) {
     return (
@@ -651,12 +965,19 @@ export function CharacterProfile({
       className="absolute inset-0 bg-white flex flex-col z-[80]"
     >
       {/* Header */}
-      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
+      <div
+        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        style={{ paddingTop: contactsHeaderTopInset }}
+      >
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={22} />
         </button>
         <h1 className="text-[16px] font-bold text-zinc-900">详细资料</h1>
-        <button className="p-1 text-zinc-400">
+        <button
+          type="button"
+          onClick={() => setShowManagementSheet(true)}
+          className="p-1 text-zinc-400 active:text-zinc-700"
+        >
           <MoreVertical size={18} />
         </button>
       </div>
@@ -668,6 +989,7 @@ export function CharacterProfile({
           <div className="flex-1 min-w-0">
             <h2 className="text-[18px] font-bold text-zinc-900 truncate">{displayName}</h2>
             <p className="text-[12px] text-zinc-400 mt-0.5">ID: {character.id}</p>
+            <p className="mt-1 text-[11px] text-zinc-500">{relationshipStatusText}</p>
           </div>
         </div>
 
@@ -718,7 +1040,7 @@ export function CharacterProfile({
               <div className="flex flex-wrap gap-1.5">
                 <button
                   onClick={() => onUpdateGroup(undefined)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${!character.groupId ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${!character.groupId ? 'bg-zinc-100 border-zinc-200 text-zinc-800 shadow-sm' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                 >
                   无分组
                 </button>
@@ -726,7 +1048,7 @@ export function CharacterProfile({
                   <button
                     key={g}
                     onClick={() => onUpdateGroup(g)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${character.groupId === g ? 'bg-blue-500 border-blue-500 text-white' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${character.groupId === g ? 'bg-zinc-100 border-zinc-200 text-zinc-800 shadow-sm' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}
                   >
                     {g}
                   </button>
@@ -738,37 +1060,225 @@ export function CharacterProfile({
 
         {/* Actions */}
         <div className="mt-5 px-4 space-y-2.5 pb-7">
+          {!!pendingIncomingRequest && (
+            <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-[12px] leading-5 text-amber-900">
+              <div className="font-medium">新的朋友里有一条来自 {displayName} 的申请。</div>
+              <div className="mt-1 text-amber-700">{pendingIncomingRequest.message || '等你去处理这条好友申请。'}</div>
+            </div>
+          )}
+          {!pendingIncomingRequest && !!latestRequest?.resolutionMessage && !isFriend && (
+            <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-[12px] leading-5 text-zinc-500">
+              {latestRequest.resolutionMessage}
+            </div>
+          )}
           <button
-            onClick={onAddFriend}
-            disabled={isFriend}
+            onClick={() => void handlePrimaryRelationshipAction()}
             className={`w-full py-3.5 rounded-2xl font-bold text-[15px] transition-all border flex items-center justify-center gap-2 ${
               isFriend
-                ? 'bg-zinc-100 text-zinc-400 border-zinc-100 cursor-not-allowed'
-                : 'bg-white text-zinc-700 border-zinc-200 active:bg-zinc-50'
+                ? 'bg-red-50 text-red-500 border-red-100 active:bg-red-100'
+                : blockState === 'user'
+                  ? 'bg-zinc-100 text-zinc-800 border-zinc-200 active:bg-zinc-200'
+                  : 'bg-white text-zinc-700 border-zinc-200 active:bg-zinc-50'
             }`}
           >
-            <UserPlus size={18} />
-            {isFriend ? '已添加' : '添加'}
+            {requestButtonIcon}
+            {requestButtonLabel}
           </button>
           <button 
             onClick={onChat}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 py-3.5 text-[15px] font-bold text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-[0.98]"
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-[15px] font-bold shadow-sm transition-transform active:scale-[0.98] ${
+              canChat
+                ? 'border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
+                : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+            }`}
           >
             <MessageSquare size={18} />
-            主动加你
+            聊天
           </button>
-          {false && (
-            <button 
-              onClick={onAddFriend}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 py-4 text-[16px] font-bold text-zinc-900 shadow-sm transition-transform hover:bg-zinc-200 active:scale-[0.98]"
-            >
-              <UserPlus size={20} />
-              添加好友
-            </button>
-          )}
         </div>
       </div>
 
+      <AnimatePresence>
+        {showRequestSheet && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="关闭申请面板"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeRequestSheet}
+              className="absolute inset-0 z-10 bg-black/20"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              className="absolute inset-x-0 bottom-0 z-20 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
+            >
+              <div className="rounded-[28px] border border-zinc-100 bg-white p-4 shadow-2xl">
+                <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-zinc-200" />
+                <p className="text-[16px] font-bold text-zinc-900">发送好友申请</p>
+                <p className="mt-1 text-[12px] text-zinc-400">给 {displayName} 留一句附言，像微信那样递过去。</p>
+                <textarea
+                  value={requestMessage}
+                  onChange={(e) => setRequestMessage(e.target.value.slice(0, 120))}
+                  placeholder={requestSheetPlaceholder}
+                  className="mt-4 min-h-[128px] w-full resize-none rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] leading-6 text-zinc-900 outline-none transition-colors focus:border-zinc-400 focus:bg-white"
+                />
+                <div className="mt-2 text-right text-[11px] text-zinc-400">{requestMessage.length}/120</div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={closeRequestSheet}
+                    className="flex-1 rounded-2xl border border-zinc-200 bg-white py-3 text-[14px] font-medium text-zinc-600 active:bg-zinc-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitFriendRequest}
+                    disabled={!requestMessage.trim()}
+                    className={`flex-1 rounded-2xl border py-3 text-[14px] font-semibold ${
+                      requestMessage.trim()
+                        ? 'border-zinc-200 bg-zinc-100 text-zinc-900 active:bg-zinc-200'
+                        : 'border-zinc-100 bg-zinc-50 text-zinc-300'
+                    }`}
+                  >
+                    发送申请
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showManagementSheet && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="关闭管理菜单"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeManagementSheet}
+              className="absolute inset-0 z-10 bg-black/20"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              className="absolute inset-x-0 bottom-0 z-20 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
+            >
+              <div className="rounded-[28px] border border-zinc-100 bg-white p-3 shadow-2xl">
+                <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-zinc-200" />
+                <div className="px-2 pb-2">
+                  <p className="text-[15px] font-bold text-zinc-900">联系人管理</p>
+                  <p className="mt-1 text-[12px] text-zinc-400">{displayName}</p>
+                </div>
+
+                {isEditingRemark ? (
+                  <div className="px-2 pb-2">
+                    <label className="text-[12px] font-medium text-zinc-500">备注名</label>
+                    <input
+                      type="text"
+                      value={pendingRemarkName}
+                      onChange={(e) => setPendingRemarkName(e.target.value.slice(0, CONTACT_REMARK_NAME_LIMIT))}
+                      placeholder="例如：阿白、学长、小周"
+                      autoFocus
+                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] text-zinc-900 outline-none transition-colors focus:border-zinc-400 focus:bg-white"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveRemark();
+                        }
+                      }}
+                    />
+                    <div className="mt-2 text-right text-[11px] text-zinc-400">
+                      {pendingRemarkName.length}/{CONTACT_REMARK_NAME_LIMIT}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingRemark(false);
+                          setPendingRemarkName(currentRemarkName);
+                        }}
+                        className="flex-1 rounded-2xl border border-zinc-200 bg-white py-3 text-[14px] font-medium text-zinc-600 active:bg-zinc-50"
+                      >
+                        返回
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveRemark}
+                        className="flex-1 rounded-2xl border border-zinc-200 bg-zinc-100 py-3 text-[14px] font-semibold text-zinc-900 active:bg-zinc-200"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {onUpdateRemark && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingRemarkName(currentRemarkName);
+                          setIsEditingRemark(true);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-left active:bg-zinc-100"
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-zinc-700 shadow-sm">
+                          <PencilLine size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[14px] font-medium text-zinc-900">设置备注</p>
+                          <p className="mt-0.5 truncate text-[12px] text-zinc-400">
+                            {currentRemarkName || '未设置'}
+                          </p>
+                        </div>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyId()}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-left active:bg-zinc-100"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-zinc-700 shadow-sm">
+                        <Copy size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] font-medium text-zinc-900">复制角色 ID</p>
+                        <p className="mt-0.5 truncate text-[12px] text-zinc-400">{character.id}</p>
+                      </div>
+                    </button>
+
+                    {onDeleteCharacter && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteCharacter()}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-red-100 bg-red-50/70 px-4 py-3 text-left active:bg-red-100"
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-red-500 shadow-sm">
+                          <Trash2 size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[14px] font-medium text-red-500">删除角色</p>
+                          <p className="mt-0.5 text-[12px] text-red-300">会把这个角色和关联申请一起移除</p>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -800,6 +1310,7 @@ export function CharacterMomentsProfile({
   moments: CharacterMoment[];
   onBack: () => void;
 }) {
+  const characterMomentsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState<{
@@ -906,6 +1417,7 @@ export function CharacterMomentsProfile({
       activeConfig,
       moment,
       characters,
+      chatGroups: appData.chatGroups || [],
       userName: userProfile.name,
       triggerComment: userComment,
       appendComment: (comment) => appendCommentToMoment(momentId, comment),
@@ -919,7 +1431,10 @@ export function CharacterMomentsProfile({
       exit={{ x: '100%' }}
       className="absolute inset-0 bg-zinc-50 flex flex-col z-[80]"
     >
-      <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
+      <div
+        className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
+        style={{ paddingTop: characterMomentsHeaderTopPadding }}
+      >
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={24} />
         </button>
@@ -1097,7 +1612,8 @@ export function AddFriendModal({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 24px)' }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">添加 AI 好友</h2>
@@ -1165,7 +1681,8 @@ export function GroupManagementModal({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      className="absolute inset-x-4 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 24px)' }}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">管理分组</h2>

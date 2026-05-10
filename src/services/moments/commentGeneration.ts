@@ -1,4 +1,4 @@
-import type { ApiConfig, Character, MomentComment, MomentItem } from '../../types';
+import type { ApiConfig, Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
@@ -13,10 +13,12 @@ import {
   inferMomentIntent,
   inferMomentTone,
 } from './triggers';
+import { hasOwnershipClaimRisk } from './publicThreadPolicy';
 
 type BaseCommentGenerationOptions = {
   activeConfig: ApiConfig;
   characters: Character[];
+  chatGroups?: ChatGroup[];
   userName: string;
 };
 
@@ -24,12 +26,13 @@ export async function generateMomentBodyComment(options: BaseCommentGenerationOp
   replyCharacter: Character;
   moment: MomentItem;
 }) {
-  const { activeConfig, replyCharacter, moment, characters, userName } = options;
+  const { activeConfig, replyCharacter, moment, characters, chatGroups, userName } = options;
   return generateMomentAutoComment({
     activeConfig,
     replyCharacter,
     moment,
     characters,
+    chatGroups,
     userName,
   });
 }
@@ -40,12 +43,13 @@ export async function generateMomentThreadReply(options: BaseCommentGenerationOp
   targetComment: MomentComment;
   recentChain?: MomentComment[];
 }) {
-  const { activeConfig, replyCharacter, moment, targetComment, characters, userName, recentChain = [] } = options;
+  const { activeConfig, replyCharacter, moment, targetComment, characters, chatGroups, userName, recentChain = [] } = options;
   const guidance = buildThreadReplyGuidance({
     moment,
     targetComment,
     replyCharacter,
     characters,
+    chatGroups,
     userName,
     recentChain,
   });
@@ -84,6 +88,8 @@ export async function generateMomentThreadReply(options: BaseCommentGenerationOp
     sections: [
       '回复时优先接住动态主线，不要把话题改成你和别的角色自己闲聊。',
       '如果当前楼层已经说得差不多了，就收短一点，不要继续扩展分支。',
+      '如果你和楼层人物不熟，不要突然亲密，不要代替别人认领用户，也不要说得像默认你们私下很熟。',
+      '除非你就是动态作者本人，否则禁止用“领走、带走、抱走、收到人了、乖乖等着、我的人”这类占位表达。',
     ],
   });
 
@@ -99,7 +105,16 @@ export async function generateMomentThreadReply(options: BaseCommentGenerationOp
       temperature: 0.75,
     });
 
-    return response?.trim() || fallback;
+    const normalized = response?.trim() || '';
+    if (
+      normalized
+      && options.replyCharacter.id !== options.moment.authorId
+      && hasOwnershipClaimRisk(normalized)
+    ) {
+      return fallback;
+    }
+
+    return normalized || fallback;
   } catch {
     return fallback;
   }

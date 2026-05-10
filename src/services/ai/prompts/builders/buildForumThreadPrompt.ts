@@ -1,10 +1,6 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import {
-  buildCharacterCoreSection,
-  buildUserMaskContextSection,
-  type CharacterCoreSectionsInput,
-} from '../character/characterCore';
+import { buildCharacterCoreSection, type CharacterCoreSectionsInput } from '../character/characterCore';
 import type { MemoryContextInput } from '../character/memoryContext';
 import { FORUM_SCENARIO_PROMPT } from '../scenarios/forum';
 import type { ForumChannel, ForumThreadType } from '../../../../features/forum-domain/types';
@@ -66,7 +62,6 @@ export function buildForumThreadPrompt(options: BuildForumThreadPromptOptions): 
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
-    buildUserMaskContextSection(options.characterCore ?? {}),
     buildForumMemorySection(options.memoryContext ?? {}),
     FORUM_SCENARIO_PROMPT,
     buildForumTaskSection(options),

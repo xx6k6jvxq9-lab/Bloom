@@ -1,4 +1,10 @@
-import type { Character, ChatMessage, ChatGroup, CoupleSpaceData } from '../../types';
+import type {
+  Character,
+  CharacterPublicThreadPeerHint,
+  ChatMessage,
+  ChatGroup,
+  CoupleSpaceData,
+} from '../../types';
 import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import {
@@ -42,6 +48,8 @@ function mergeSummaryText(...values: Array<string | undefined>): string | undefi
 
 type BuildRelationshipProjectionInput = {
   character: Character;
+  characters?: Character[];
+  chatGroups?: ChatGroup[];
   coupleSpace?: CoupleSpaceData;
   userName: string;
   directMessages?: ChatMessage[];
@@ -49,6 +57,165 @@ type BuildRelationshipProjectionInput = {
   groupRelationshipWaves?: ChatGroup['relationshipWaves'];
   factTraces?: import('./factTypes').FactTraceRecord[];
 };
+
+const PUBLIC_THREAD_FAMILIARITY_LABELS = {
+  stranger: 'not close in public',
+  aware: 'aware of each other in public',
+  familiar: 'fairly familiar in public',
+} as const;
+
+const PUBLIC_THREAD_STYLE_LABELS = {
+  guarded: 'guarded',
+  neutral: 'neutral',
+  banter: 'banter-friendly',
+  warm: 'warm',
+} as const;
+
+function compactPromptLine(value: string | undefined, maxLength = 72): string | undefined {
+  const normalized = (value || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+}
+
+function getLatestPublicThreadHintUpdateAt(left: Character, right: Character): number {
+  const leftUpdatedAt = left.publicThreadPeerHints
+    ?.find((hint) => hint.targetCharacterId === right.id)
+    ?.updatedAt || 0;
+  const rightUpdatedAt = right.publicThreadPeerHints
+    ?.find((hint) => hint.targetCharacterId === left.id)
+    ?.updatedAt || 0;
+
+  return Math.max(leftUpdatedAt, rightUpdatedAt);
+}
+
+function mergeExplicitPublicThreadHint(
+  leftHint: CharacterPublicThreadPeerHint | null,
+  rightHint: CharacterPublicThreadPeerHint | null,
+) {
+  if (!leftHint && !rightHint) {
+    return null;
+  }
+
+  const familiarityOrder: Record<CharacterPublicThreadPeerHint['familiarity'], number> = {
+    stranger: 0,
+    aware: 1,
+    familiar: 2,
+  };
+  const leftFamiliarity = leftHint?.familiarity || 'stranger';
+  const rightFamiliarity = rightHint?.familiarity || 'stranger';
+  const familiarity = familiarityOrder[leftFamiliarity] <= familiarityOrder[rightFamiliarity]
+    ? leftFamiliarity
+    : rightFamiliarity;
+
+  const interactionStyleOrder: Record<NonNullable<CharacterPublicThreadPeerHint['interactionStyle']>, number> = {
+    guarded: 0,
+    neutral: 1,
+    banter: 2,
+    warm: 3,
+  };
+  const leftInteractionStyle = leftHint?.interactionStyle;
+  const rightInteractionStyle = rightHint?.interactionStyle;
+  const interactionStyle = leftInteractionStyle && rightInteractionStyle
+    ? (interactionStyleOrder[leftInteractionStyle] <= interactionStyleOrder[rightInteractionStyle]
+      ? leftInteractionStyle
+      : rightInteractionStyle)
+    : leftInteractionStyle
+      || rightInteractionStyle;
+
+  const mergeBoolean = (
+    leftValue: boolean | undefined,
+    rightValue: boolean | undefined,
+  ) => {
+    if (leftValue === false || rightValue === false) return false;
+    if (leftValue === true || rightValue === true) return true;
+    return undefined;
+  };
+
+  return {
+    familiarity,
+    interactionStyle,
+    allowBanter: mergeBoolean(leftHint?.allowBanter, rightHint?.allowBanter),
+    allowIntimateTone: mergeBoolean(leftHint?.allowIntimateTone, rightHint?.allowIntimateTone),
+    allowOwnershipTone: mergeBoolean(leftHint?.allowOwnershipTone, rightHint?.allowOwnershipTone),
+    note: Array.from(new Set([
+      compactPromptLine(leftHint?.note, 72),
+      compactPromptLine(rightHint?.note, 72),
+    ].filter(Boolean))).join(' / ') || undefined,
+  };
+}
+
+function buildExplicitPublicAcquaintanceSummary(input: {
+  character: Character;
+  characters?: Character[];
+}): string | undefined {
+  const { character, characters = [] } = input;
+  if (characters.length === 0) {
+    return undefined;
+  }
+
+  const peerCandidates = characters.filter((peer) => {
+    if (peer.id === character.id) {
+      return false;
+    }
+
+    const currentCharacterHasHint = character.publicThreadPeerHints
+      ?.some((hint) => hint.targetCharacterId === peer.id);
+    const peerHasHint = peer.publicThreadPeerHints
+      ?.some((hint) => hint.targetCharacterId === character.id);
+
+    return !!(currentCharacterHasHint || peerHasHint);
+  });
+
+  const explicitLines = peerCandidates
+    .map((peer) => {
+      const explicitHint = mergeExplicitPublicThreadHint(
+        character.publicThreadPeerHints?.find((hint) => hint.targetCharacterId === peer.id) || null,
+        peer.publicThreadPeerHints?.find((hint) => hint.targetCharacterId === character.id) || null,
+      );
+      if (!explicitHint) {
+        return null;
+      }
+
+      const parts = [
+        PUBLIC_THREAD_FAMILIARITY_LABELS[explicitHint.familiarity],
+        explicitHint.interactionStyle ? `style ${PUBLIC_THREAD_STYLE_LABELS[explicitHint.interactionStyle]}` : '',
+        explicitHint.allowBanter === true ? 'banter ok' : explicitHint.allowBanter === false ? 'banter no' : '',
+        explicitHint.allowIntimateTone === true ? 'intimate ok' : explicitHint.allowIntimateTone === false ? 'intimate no' : '',
+        explicitHint.allowOwnershipTone === true ? 'ownership ok' : explicitHint.allowOwnershipTone === false ? 'ownership no' : '',
+      ].filter(Boolean);
+      const note = explicitHint.note;
+      const specificityScore =
+        (explicitHint.familiarity === 'familiar' ? 2 : explicitHint.familiarity === 'aware' ? 1 : 0)
+        + (explicitHint.interactionStyle ? 1 : 0)
+        + (explicitHint.allowBanter !== undefined ? 1 : 0)
+        + (explicitHint.allowIntimateTone !== undefined ? 1 : 0)
+        + (explicitHint.allowOwnershipTone !== undefined ? 1 : 0)
+        + (note ? 2 : 0);
+
+      return {
+        specificityScore,
+        updatedAt: getLatestPublicThreadHintUpdateAt(character, peer),
+        line: `Manual public relation override with ${peer.name}: ${parts.join('; ')}${note ? `; note ${note}` : ''}.`,
+      };
+    })
+    .filter((item): item is { specificityScore: number; updatedAt: number; line: string } => item !== null)
+    .sort((left, right) => (
+      right.specificityScore - left.specificityScore
+      || right.updatedAt - left.updatedAt
+      || left.line.localeCompare(right.line)
+    ))
+    .slice(0, 6)
+    .map((item) => item.line);
+
+  return explicitLines.length > 0 ? explicitLines.join('\n') : undefined;
+}
 
 function shouldUseCoupleSpaceForCharacter(
   character: Character,
@@ -89,12 +256,18 @@ export function buildRelationshipProjection(
     relationshipWaves: input.groupRelationshipWaves,
     factTraces: input.factTraces,
   });
-  const publicAcquaintanceSummary = buildPublicAcquaintanceSummary({
-    characterId: input.character.id,
-    characterName: input.character.name,
-    relationshipWaves: input.groupRelationshipWaves,
-    factTraces: input.factTraces,
-  });
+  const publicAcquaintanceSummary = mergeSummaryText(
+    buildExplicitPublicAcquaintanceSummary({
+      character: input.character,
+      characters: input.characters,
+    }),
+    buildPublicAcquaintanceSummary({
+      characterId: input.character.id,
+      characterName: input.character.name,
+      relationshipWaves: input.groupRelationshipWaves,
+      factTraces: input.factTraces,
+    }),
+  );
 
   return {
     characterScopedMemory: {

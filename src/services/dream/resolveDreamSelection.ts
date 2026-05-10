@@ -13,7 +13,7 @@ function normalizeDreamCustomTags(customTags: DreamSelection['customTags']): Dre
     .map((tag, index) => {
       const label = normalizeOptionalText(tag?.label);
       const category = tag?.category;
-      if (!label || !category || category === 'world') return null;
+      if (!label || !category) return null;
 
       const id = normalizeOptionalText(tag.id) || `custom-tag-${category}-${index + 1}`;
       const fingerprint = `${category}::${label.toLowerCase()}`;

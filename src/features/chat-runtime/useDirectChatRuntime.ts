@@ -29,7 +29,7 @@ import { findNearestChatMemorySnapshot } from '../../services/memory/chatMemoryT
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
-import { buildCharacterContext, resolveActiveUserMask } from '../../services/relationship-context/buildCharacterContext';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { buildPersistedSharedCharacterState } from '../../services/relationship-context/buildSharedCharacterState';
 import { buildCoupleSpaceInviteContext } from '../../services/couple-space/invite/buildCoupleSpaceInviteContext';
 import { generateCoupleSpaceInviteReply } from '../../services/couple-space/invite/generateCoupleSpaceInviteReply';
@@ -80,12 +80,13 @@ import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../.
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
-import { handleCommandTriggeredMomentPublish } from '../../services/moments/orchestrator';
+import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { getMessageMainText } from '../../utils';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
+import { hasOpenedCoupleSpaceForCharacter } from './coupleSpaceInviteGuard';
 import type { BaseSessionRuntimeState } from './types';
 
 const TRANSFER_BRACKET_REGEX = /\[转账\s*([\d.]+)\]/i;
@@ -98,6 +99,22 @@ const STRUCTURED_BILINGUAL_REPLY_TOKEN = '[BILINGUAL_REPLY]';
 const CJK_TEXT_REGEX = /[\u4e00-\u9fff]/u;
 const LATIN_TOKEN_REGEX = /[A-Za-z]{2,}/g;
 const AUTONOMOUS_AVATAR_TRIGGER_REGEX = /头像|照片|图片|样子|长相|看起来|外形|形象|自拍|封面|这张|那张|换成|换这张|像你|像不像|气质|profile|avatar|photo|picture|look/i;
+const VOICE_REPLY_INTENT_REGEX = /语音|声音|发语音|听你|听听|说话|语音消息|voice|audio|listen|speak|call/i;
+const EXPRESSIVE_VOICE_REPLY_REGEX = /[!?？！~～…]/;
+const VOICE_COMFORT_REGEX = /抱抱|乖|不哭|别怕|没事|慢慢|陪你|哄你|安慰|亲亲|摸摸|给你听|陪着你/i;
+const VOICE_WARMTH_REGEX = /晚安|早安|想你|喜欢|爱你|梦里|快睡|早点睡|早点休息|困了|想抱|好乖|亲爱的/i;
+const VOICE_FLIRTY_REGEX = /脸红|害羞|坏蛋|黏你|想亲|想抱|撒娇|听我|想听你|可爱死了/i;
+const VOICE_FORMAL_BLOCK_REGEX = /(?:^|\n)(?:1\.|2\.|3\.|第一|第二|第三|步骤|总结|方案|注意事项|操作说明)/i;
+const VOICE_EXPLANATORY_BLOCK_REGEX = /因为|所以|如果|但是|首先|其次|然后|另外|总之|总结一下/;
+const MAX_MIXED_VOICE_REPLY_LENGTH = 96;
+const RECENT_VOICE_WINDOW_MESSAGES = 6;
+
+type DirectVoiceCadenceStats = {
+  recentModelMessageCount: number;
+  recentVoiceMessageCount: number;
+  messagesSinceLastVoice: number | null;
+  consecutiveRecentVoiceMessages: number;
+};
 
 function isGameCardText(value: string | null | undefined): boolean {
   return (value?.trim() || '').startsWith('[GAME_CARD]');
@@ -363,6 +380,12 @@ function shouldApplyCharacterTts(character: Character) {
   return character.voiceProfile?.enabled === true;
 }
 
+function normalizeCharacterVoiceReplyMode(
+  mode: Character['voiceProfile'] extends { replyMode?: infer Mode } ? Mode : 'text' | 'mixed' | 'voice' | undefined,
+) : 'mixed' | 'voice' {
+  return mode === 'text' || !mode ? 'mixed' : mode;
+}
+
 function resolveCharacterTtsVoiceId(
   character: Character,
   fallbackVoiceId?: string,
@@ -379,6 +402,204 @@ function resolveCharacterTtsVoiceId(
   }
 
   return fallbackVoiceId?.trim() || undefined;
+}
+
+function isEligibleDirectReplyMessageForAudio(message: ChatMessage) {
+  const cleanText = message.text?.trim() || '';
+  if (
+    !cleanText
+    || message.role !== 'model'
+    || message.isSystem
+    || message.isRecalled
+    || !!message.audioUrl
+    || message.contentType === 'game-card'
+    || message.contentType === 'game-card-error'
+    || message.contentType === 'transfer'
+    || message.contentType === 'couple-space-invite'
+    || message.contentType === 'couple-space-invite-accepted'
+    || cleanText.startsWith('[GAME_CARD]')
+    || cleanText.startsWith('[COUPLE_SPACE_INVITE')
+    || cleanText.startsWith('[transfer]')
+    || /^\[转账\s*[\d.]+\]/.test(cleanText)
+    || /^TRANSFER\|[\d.]+\|/i.test(cleanText)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function hashStringToUnitInterval(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return ((hash >>> 0) % 10000) / 10000;
+}
+
+function getDirectVoiceCadenceStats(
+  messages: ChatMessage[],
+  currentTimestamp: number,
+): DirectVoiceCadenceStats {
+  const recentModelMessages = messages
+    .filter((message) => (
+      message.role === 'model'
+      && !message.isSystem
+      && !message.isRecalled
+      && message.timestamp < currentTimestamp
+    ))
+    .slice(-RECENT_VOICE_WINDOW_MESSAGES);
+
+  const recentVoiceMessageCount = recentModelMessages.filter((message) => !!message.audioUrl).length;
+  let messagesSinceLastVoice: number | null = null;
+  for (let index = recentModelMessages.length - 1; index >= 0; index -= 1) {
+    if (recentModelMessages[index].audioUrl) {
+      messagesSinceLastVoice = recentModelMessages.length - 1 - index;
+      break;
+    }
+  }
+
+  let consecutiveRecentVoiceMessages = 0;
+  for (let index = recentModelMessages.length - 1; index >= 0; index -= 1) {
+    if (!recentModelMessages[index].audioUrl) {
+      break;
+    }
+    consecutiveRecentVoiceMessages += 1;
+  }
+
+  return {
+    recentModelMessageCount: recentModelMessages.length,
+    recentVoiceMessageCount,
+    messagesSinceLastVoice,
+    consecutiveRecentVoiceMessages,
+  };
+}
+
+function shouldAutoGenerateDirectReplyAudio(
+  character: Character,
+  message: ChatMessage,
+  latestUserText: string,
+  messages: ChatMessage[],
+) {
+  if (!shouldApplyCharacterTts(character) || !isEligibleDirectReplyMessageForAudio(message)) {
+    return false;
+  }
+
+  const replyMode = normalizeCharacterVoiceReplyMode(character.voiceProfile?.replyMode);
+  if (replyMode === 'voice') {
+    return true;
+  }
+
+  const cleanReplyText = message.text.trim();
+  const cleanUserText = latestUserText.trim();
+  const cadenceStats = getDirectVoiceCadenceStats(messages, message.timestamp);
+  const explicitVoiceRequest = VOICE_REPLY_INTENT_REGEX.test(cleanUserText);
+  const comfortSignal = VOICE_COMFORT_REGEX.test(cleanUserText) || VOICE_COMFORT_REGEX.test(cleanReplyText);
+  const warmSignal = VOICE_WARMTH_REGEX.test(cleanUserText) || VOICE_WARMTH_REGEX.test(cleanReplyText);
+  const flirtySignal = VOICE_FLIRTY_REGEX.test(cleanUserText) || VOICE_FLIRTY_REGEX.test(cleanReplyText);
+  const conciseReply = cleanReplyText.length <= 28;
+  const replyHasTranslation = !!message.translation?.trim();
+  const hasFormalStructure = VOICE_FORMAL_BLOCK_REGEX.test(cleanReplyText);
+  const hasExplanatoryStructure = VOICE_EXPLANATORY_BLOCK_REGEX.test(cleanReplyText) && cleanReplyText.length >= 42;
+
+  if (!explicitVoiceRequest && cleanReplyText.length > MAX_MIXED_VOICE_REPLY_LENGTH) {
+    return false;
+  }
+
+  if (!explicitVoiceRequest && hasFormalStructure) {
+    return false;
+  }
+
+  if (
+    !explicitVoiceRequest
+    && cadenceStats.consecutiveRecentVoiceMessages >= 2
+    && !comfortSignal
+    && !warmSignal
+    && !flirtySignal
+  ) {
+    return false;
+  }
+
+  if (
+    explicitVoiceRequest
+    && cleanReplyText.length <= MAX_MIXED_VOICE_REPLY_LENGTH
+    && cadenceStats.consecutiveRecentVoiceMessages < 3
+  ) {
+    return true;
+  }
+
+  if (
+    conciseReply
+    && (comfortSignal || warmSignal || flirtySignal)
+    && cadenceStats.consecutiveRecentVoiceMessages === 0
+  ) {
+    return true;
+  }
+
+  let threshold = (
+    character.voiceProfile?.replyFrequency === 'high'
+      ? 0.72
+      : character.voiceProfile?.replyFrequency === 'low'
+        ? 0.2
+        : 0.45
+  );
+
+  if (explicitVoiceRequest) {
+    threshold = Math.max(threshold, 0.9);
+  }
+  if (comfortSignal) {
+    threshold += 0.16;
+  }
+  if (warmSignal) {
+    threshold += 0.14;
+  }
+  if (flirtySignal) {
+    threshold += 0.1;
+  }
+  if (EXPRESSIVE_VOICE_REPLY_REGEX.test(cleanReplyText)) {
+    threshold += 0.06;
+  }
+  if (conciseReply) {
+    threshold += 0.06;
+  }
+  if (cleanReplyText.length >= 60) {
+    threshold -= 0.08;
+  }
+  if (cleanReplyText.length >= 84) {
+    threshold -= 0.12;
+  }
+  if (replyHasTranslation && cleanReplyText.length >= 36) {
+    threshold -= 0.08;
+  }
+  if (hasExplanatoryStructure) {
+    threshold -= 0.08;
+  }
+
+  if (cadenceStats.messagesSinceLastVoice === 0) {
+    threshold -= 0.24;
+  } else if (cadenceStats.messagesSinceLastVoice === 1) {
+    threshold -= 0.14;
+  } else if (cadenceStats.messagesSinceLastVoice !== null && cadenceStats.messagesSinceLastVoice >= 3) {
+    threshold += 0.08;
+  }
+
+  if (
+    cadenceStats.recentModelMessageCount >= 4
+    && cadenceStats.recentVoiceMessageCount === 0
+  ) {
+    threshold += 0.12;
+  } else if (
+    cadenceStats.recentModelMessageCount >= 4
+    && cadenceStats.recentVoiceMessageCount >= 3
+  ) {
+    threshold -= 0.14;
+  }
+
+  const normalizedThreshold = Math.max(0, Math.min(1, threshold));
+  const decisionSeed = `${character.id}|${message.timestamp}|${cleanUserText}|${cleanReplyText}`;
+  return hashStringToUnitInterval(decisionSeed) < normalizedThreshold;
 }
 
 function parseDirectActionCue(segment: string): {
@@ -1318,10 +1539,11 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
 
 type UseDirectChatRuntimeArgs = {
   character: Character;
+  characters?: Character[];
   sharedStickers?: string[];
   history: ChatMessage[];
   setHistory: (history: ChatMessage[]) => void;
-  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig'>;
+  settings: Pick<AppSettings, 'activeConfigId' | 'configs' | 'apiCenterConfig' | 'sharedStickerMetadata'>;
   input: string;
   setInput: (value: string) => void;
   replyingTo: ChatMessage['replyTo'] | null;
@@ -1330,6 +1552,7 @@ type UseDirectChatRuntimeArgs = {
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
   coupleSpace?: CoupleSpaceData;
+  isCoupleSpaceDismissed?: boolean;
   userName: string;
   directChatHistory?: ChatHistory;
   chatGroups?: ChatGroup[];
@@ -1339,7 +1562,7 @@ type UseDirectChatRuntimeArgs = {
   onUpdateWalletData?: (data: WalletData) => void;
   onUpdateCharacter: (character: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: MomentImageCard }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
@@ -1522,6 +1745,7 @@ function extractSpeechTextForAudio(text: string): string {
 
 export function useDirectChatRuntime({
   character,
+  characters,
   sharedStickers = [],
   history,
   setHistory,
@@ -1534,6 +1758,7 @@ export function useDirectChatRuntime({
   worldBook = [],
   perception,
   coupleSpace,
+  isCoupleSpaceDismissed,
   userName,
   directChatHistory,
   chatGroups,
@@ -1672,12 +1897,36 @@ export function useDirectChatRuntime({
   } | null> => {
     const cleanText = text.trim();
     const spokenText = extractSpeechTextForAudio(cleanText);
-    if (!cleanText || !spokenText || !shouldApplyCharacterTts(character) || !voiceRuntimeConfig) {
+    if (!cleanText || !spokenText) {
+      console.warn('Character TTS skipped because the reply text is empty or not suitable for speech.', {
+        characterId: character.id,
+        cleanText,
+        spokenText,
+      });
+      return null;
+    }
+
+    if (!shouldApplyCharacterTts(character)) {
+      console.warn('Character TTS skipped because role voice is disabled.', {
+        characterId: character.id,
+      });
+      return null;
+    }
+
+    if (!voiceRuntimeConfig) {
+      console.warn('Character TTS skipped because no voice runtime config is available.', {
+        characterId: character.id,
+      });
       return null;
     }
 
     const preferredVoiceId = resolveCharacterTtsVoiceId(character, defaultTtsVoiceId);
     if (!preferredVoiceId) {
+      console.warn('Character TTS skipped because no voiceId could be resolved.', {
+        characterId: character.id,
+        mode: character.voiceProfile?.mode,
+        fallbackVoiceId: defaultTtsVoiceId,
+      });
       return null;
     }
 
@@ -1698,6 +1947,65 @@ export function useDirectChatRuntime({
       return null;
     }
   }, [character, defaultTtsVoiceId, voiceRuntimeConfig]);
+
+  const attachAudioToModelMessageTimestamp = useCallback(async (messageTimestamp: number) => {
+    const latestHistory = historyRef.current;
+    const messageIndex = latestHistory.findIndex((message) => (
+      message.timestamp === messageTimestamp
+      && message.role === 'model'
+      && !message.isSystem
+      && !message.isRecalled
+    ));
+
+    if (messageIndex < 0) {
+      return false;
+    }
+
+    const targetMessage = latestHistory[messageIndex];
+    if (!isEligibleDirectReplyMessageForAudio(targetMessage) || !shouldApplyCharacterTts(character)) {
+      return false;
+    }
+
+    const audioResult = await synthesizeCharacterReplyAudio(
+      targetMessage.text?.trim() || '',
+      `direct-auto-tts-${character.id}-${targetMessage.timestamp}`,
+    );
+    if (!audioResult) {
+      return false;
+    }
+
+    const nextHistory = [...latestHistory];
+    nextHistory[messageIndex] = {
+      ...targetMessage,
+      audioUrl: audioResult.audioUrl,
+      audioMimeType: audioResult.audioMimeType,
+      audioTranscript: audioResult.spokenText,
+    };
+    commitHistory(nextHistory);
+    return true;
+  }, [character, commitHistory, synthesizeCharacterReplyAudio]);
+
+  const queueAutoAudioForLatestModelReply = useCallback((messages: ChatMessage[], latestUserText: string) => {
+    const latestReplySegment = getLatestModelReplySegment(messages);
+    if (!latestReplySegment) {
+      return;
+    }
+
+    const targetMessageTimestamps = messages
+      .slice(latestReplySegment.start, latestReplySegment.end + 1)
+      .filter((message) => shouldAutoGenerateDirectReplyAudio(character, message, latestUserText, messages))
+      .map((message) => message.timestamp);
+
+    if (targetMessageTimestamps.length === 0) {
+      return;
+    }
+
+    void (async () => {
+      for (const messageTimestamp of targetMessageTimestamps) {
+        await attachAudioToModelMessageTimestamp(messageTimestamp);
+      }
+    })();
+  }, [attachAudioToModelMessageTimestamp, character, getLatestModelReplySegment]);
 
   const applyAvatarAction = useCallback((
     action: ParsedAvatarAction | null,
@@ -1843,7 +2151,7 @@ export function useDirectChatRuntime({
             nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
           });
 
-          const activeMask = resolveActiveUserMask(character.id, masks);
+          const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
           const activeWorldBooks = worldBook.filter((wb) => {
             const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
@@ -1880,6 +2188,7 @@ export function useDirectChatRuntime({
             mode: mode === 'proactive' ? 'chat' : 'autoReply',
             includeProtocolRules: mode !== 'proactive',
             character,
+            allCharacters: characters,
             userName,
             coupleSpace,
             activeMask,
@@ -2053,6 +2362,7 @@ export function useDirectChatRuntime({
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
           commitHistory(latestHistory);
+          queueAutoAudioForLatestModelReply(latestHistory, latestPendingUserMessage?.text || '');
           syncCharacterRuntimeState({
             history: latestHistory,
             continuityMode: characterTemporalState.continuityMode,
@@ -2081,7 +2391,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, perception, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, perception, queueAutoAudioForLatestModelReply, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
     text: string;
@@ -2316,6 +2626,7 @@ export function useDirectChatRuntime({
         onPublishMoment?.({
           authorId: character.id,
           content: commandMomentResult.momentContent,
+          translation: commandMomentResult.momentTranslation,
           imageCard: commandMomentResult.momentImageCard,
         });
         lastMomentPublishAtRef.current = Date.now();
@@ -2342,7 +2653,7 @@ export function useDirectChatRuntime({
         nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
       });
 
-      const activeMask = resolveActiveUserMask(character.id, masks);
+      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
 
       const activeWorldBooks = worldBook.filter((wb) => {
         const isManuallySelected = !!character.activeWorldBookIds?.includes(wb.id);
@@ -2377,6 +2688,7 @@ export function useDirectChatRuntime({
       const chatSceneInput = buildChatSceneInput({
         mode: 'chat',
         character,
+        allCharacters: characters,
         userName,
         coupleSpace,
         activeMask,
@@ -2561,6 +2873,7 @@ export function useDirectChatRuntime({
       currentResponseText = avatarActionResult.displayText;
       const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
       commitHistory(finalHistory);
+      queueAutoAudioForLatestModelReply(finalHistory, userMsg.text);
       syncCharacterRuntimeState({
         history: finalHistory,
         continuityMode: characterTemporalState.continuityMode,
@@ -2569,6 +2882,44 @@ export function useDirectChatRuntime({
         latestAssistantText: currentResponseText,
         sharedState: directSharedState,
       });
+      if (onPublishMoment) {
+        const autoMomentResult = await maybeAutoPublishMoment({
+          userText: userMsg.text,
+          assistantText: currentResponseText,
+          finalHistory,
+          recentContext: {
+            recentMessages: finalHistory
+              .filter((message) => !message.isSystem)
+              .slice(-8)
+              .map((message) => ({
+                role: message.role,
+                text: message.text,
+                timestamp: message.timestamp,
+              })),
+            recentMomentPublishedAt: lastMomentPublishAtRef.current,
+            now: Date.now(),
+          },
+          activeConfig: forumConfig || activeConfig,
+          character,
+          masks,
+          worldBook,
+        });
+
+        if (autoMomentResult.shouldPublish && autoMomentResult.momentContent) {
+          const noticeTimestamp = Date.now();
+          commitHistory([
+            ...finalHistory,
+            createMomentPublishedSystemMessage(character.name, noticeTimestamp),
+          ]);
+          onPublishMoment({
+            authorId: character.id,
+            content: autoMomentResult.momentContent,
+            translation: autoMomentResult.momentTranslation,
+            imageCard: autoMomentResult.momentImageCard,
+          });
+          lastMomentPublishAtRef.current = noticeTimestamp;
+        }
+      }
       applyAvatarAction(avatarActionResult.action, finalHistory);
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
@@ -2585,7 +2936,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, queueAutoAudioForLatestModelReply, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
@@ -2654,17 +3005,12 @@ export function useDirectChatRuntime({
       return;
     }
 
-    const openedPartnerIds = new Set<string>();
-    if (coupleSpace?.partnerId) {
-      openedPartnerIds.add(coupleSpace.partnerId);
-    }
-    for (const partnerId of coupleSpace?.addedPartnerIds || []) {
-      if (partnerId) {
-        openedPartnerIds.add(partnerId);
-      }
-    }
-
-    if (openedPartnerIds.has(character.id)) {
+    if (hasOpenedCoupleSpaceForCharacter({
+      characterId: character.id,
+      coupleSpace,
+      history: historyRef.current,
+      isDismissed: isCoupleSpaceDismissed,
+    })) {
       alert(`${character.name} 的情侣空间已经开通，不能重复邀请。`);
       return;
     }
@@ -2726,7 +3072,7 @@ export function useDirectChatRuntime({
         pendingCoupleSpaceInviteRef.current = false;
       }
     })();
-  }, [activeConfig, character, coupleSpace, onAcceptCoupleSpaceInvite, setHistory, userName]);
+  }, [activeConfig, character, coupleSpace, isCoupleSpaceDismissed, onAcceptCoupleSpaceInvite, setHistory, userName]);
 
   const sendInnerVoiceProbe = useCallback(() => {
     void handleSendRef.current({
@@ -3047,50 +3393,13 @@ export function useDirectChatRuntime({
     const targetMessage = latestHistory[index];
     if (
       !targetMessage
-      || targetMessage.role !== 'model'
-      || targetMessage.isSystem
-      || targetMessage.isRecalled
-      || targetMessage.audioUrl
       || !shouldApplyCharacterTts(character)
     ) {
       return false;
     }
 
-    const cleanText = targetMessage.text?.trim() || '';
-    if (
-      !cleanText
-      || targetMessage.contentType === 'game-card'
-      || targetMessage.contentType === 'game-card-error'
-      || targetMessage.contentType === 'transfer'
-      || targetMessage.contentType === 'couple-space-invite'
-      || targetMessage.contentType === 'couple-space-invite-accepted'
-      || cleanText.startsWith('[GAME_CARD]')
-      || cleanText.startsWith('[COUPLE_SPACE_INVITE')
-      || cleanText.startsWith('[transfer]')
-      || /^\[转账\s*[\d.]+\]/.test(cleanText)
-      || /^TRANSFER\|[\d.]+\|/i.test(cleanText)
-    ) {
-      return false;
-    }
-
-    const audioResult = await synthesizeCharacterReplyAudio(
-      cleanText,
-      `direct-manual-tts-${character.id}-${targetMessage.timestamp}`,
-    );
-    if (!audioResult) {
-      return false;
-    }
-
-    const nextHistory = [...latestHistory];
-    nextHistory[index] = {
-      ...targetMessage,
-      audioUrl: audioResult.audioUrl,
-      audioMimeType: audioResult.audioMimeType,
-      audioTranscript: audioResult.spokenText,
-    };
-    setHistory(nextHistory);
-    return true;
-  }, [character, setHistory, synthesizeCharacterReplyAudio]);
+    return attachAudioToModelMessageTimestamp(targetMessage.timestamp);
+  }, [attachAudioToModelMessageTimestamp, character]);
 
   const submitTransfer = useCallback((params: {
     transferAmount: string;

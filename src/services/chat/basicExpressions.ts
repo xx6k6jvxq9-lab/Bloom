@@ -49,6 +49,6 @@ export const BASIC_CHAT_EXPRESSIONS: BasicChatExpression[] = [
   { value: '( ˶ˆᗜˆ˵ )', kind: 'kaomoji' },
   { value: '(｡•́︿•̀｡)', kind: 'kaomoji' },
   { value: '(っ ̯ -｡)', kind: 'kaomoji' },
-  { value: "(ฅ'ω'ฅ)", kind: 'kaomoji' },
+  { value: '(ฅ' + "'" + 'ω' + "'" + 'ฅ)', kind: 'kaomoji' },
   { value: '(。•ω•。)ノ♡', kind: 'kaomoji' },
 ];

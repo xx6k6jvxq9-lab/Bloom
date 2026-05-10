@@ -24,6 +24,7 @@ import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
   character: Character;
+  allCharacters?: Character[];
   userName: string;
   coupleSpace?: CoupleSpaceData;
   activeMask?: Mask | null;
@@ -322,6 +323,8 @@ export function buildChatSceneInput(
   });
   const relationshipProjection = buildRelationshipProjection({
     character: params.character,
+    characters: params.allCharacters,
+    chatGroups: params.chatGroups,
     coupleSpace: params.coupleSpace,
     userName: params.userName,
     directMessages: params.directChatHistory?.[params.character.id] || [],

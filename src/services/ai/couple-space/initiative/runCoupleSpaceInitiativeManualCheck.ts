@@ -7,6 +7,7 @@ import type {
   CoupleSpaceInitiativeRuntimeRule,
   CoupleSpaceInitiativeSource,
   Mask,
+  PerceptionSettings,
   UserProfileExtended,
   WorldBookEntry,
 } from '../../../../types';
@@ -46,6 +47,7 @@ export type CoupleSpaceInitiativeCheckCommonContext = {
   user: UserProfileExtended;
   partner: Character;
   coupleSpace: CoupleSpaceData;
+  perception?: PerceptionSettings;
   chatHistory?: ChatHistory | null;
   masks?: Mask[] | null;
   worldBooks?: WorldBookEntry[] | null;
@@ -271,6 +273,7 @@ function buildUnifiedCommonPromptInput(
       user: input.user,
       partner: input.partner,
       coupleSpace: input.coupleSpace,
+      perception: input.perception,
       chatHistory: input.chatHistory,
       masks: input.masks ?? undefined,
       worldBooks: input.worldBooks ?? undefined,

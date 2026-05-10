@@ -1,5 +1,5 @@
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import { buildCharacterCoreSection, buildUserMaskContextSection } from '../character/characterCore';
+import { buildCharacterCoreSection } from '../character/characterCore';
 import { buildLongTermMemoryContextSection } from '../character/memoryContext';
 import { COUPLE_SPACE_BASE_PROMPT } from '../scenarios/coupleSpace';
 import type {
@@ -107,7 +107,6 @@ export function composeCoupleSpacePrompt({
 }: ComposeCoupleSpacePromptOptions): string {
   const sections = [
     buildCharacterCoreSection(common.characterCore ?? {}),
-    buildUserMaskContextSection(common.characterCore ?? {}),
     buildLongTermMemoryContextSection(common.memoryContext ?? {}),
     buildCharacterProfileSection(common.characterProfile),
     buildRelationshipContextSection(common.relationshipContext),
