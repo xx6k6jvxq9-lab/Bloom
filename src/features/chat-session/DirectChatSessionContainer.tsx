@@ -23,6 +23,7 @@ import { ChatSessionScreen } from './ChatSessionScreen';
 
 type DirectChatSessionContainerProps = {
   character: Character;
+  characters: Character[];
   isActive: boolean;
   onRuntimeBusyChange?: (characterId: string, busy: boolean) => void;
   chatHistory: ChatHistory;
@@ -44,6 +45,7 @@ type DirectChatSessionContainerProps = {
   worldBook?: WorldBookEntry[];
   perception?: PerceptionSettings;
   coupleSpace?: CoupleSpaceData;
+  isCoupleSpaceDismissed?: boolean;
   onViewForumPost?: (postId: string) => void;
   callHistory: CallRecord[];
   setCallHistory: (callHistory: CallRecord[]) => void;
@@ -53,7 +55,7 @@ type DirectChatSessionContainerProps = {
   setDatingRecords: (data: DatingRecordsData) => void;
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -61,6 +63,7 @@ type DirectChatSessionContainerProps = {
 
 export function DirectChatSessionContainer({
   character,
+  characters,
   isActive,
   onRuntimeBusyChange,
   chatHistory,
@@ -82,6 +85,7 @@ export function DirectChatSessionContainer({
   worldBook = [],
   perception,
   coupleSpace,
+  isCoupleSpaceDismissed,
   onViewForumPost,
   callHistory,
   setCallHistory,
@@ -166,6 +170,7 @@ export function DirectChatSessionContainer({
     <ChatSessionScreen
       key="chat-session"
       character={character}
+      characters={characters}
       history={history}
       setHistory={(newHistory) => {
         setChatHistory({
@@ -188,6 +193,7 @@ export function DirectChatSessionContainer({
       worldBook={worldBook}
       perception={perception}
       coupleSpace={coupleSpace}
+      isCoupleSpaceDismissed={isCoupleSpaceDismissed}
       settings={settings}
       onUpdateSettings={setSettings}
       onBack={onBack}

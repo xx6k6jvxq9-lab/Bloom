@@ -1,7 +1,7 @@
-import type { CoupleSpaceData, CoupleSpaceState } from '../../types';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 import { createDefaultCoupleSpaceInitiativeSettings } from '../../services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
+import type { CoupleSpaceData, CoupleSpaceState, PerceptionSettings } from '../../types';
 
 export function createDefaultCoupleSpaceData(
   overrides: Partial<CoupleSpaceData> = {},
@@ -38,7 +38,117 @@ export function createDefaultCoupleSpaceState(
   return {
     currentPartnerId,
     spacesByPartnerId: {},
+    dismissedPartnerIds: [],
   };
+}
+
+function normalizePartnerId(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function uniquePartnerIds(values: Array<unknown>): string[] {
+  const seen = new Set<string>();
+  const partnerIds: string[] = [];
+  for (const value of values) {
+    const partnerId = normalizePartnerId(value);
+    if (!partnerId || seen.has(partnerId)) {
+      continue;
+    }
+    seen.add(partnerId);
+    partnerIds.push(partnerId);
+  }
+  return partnerIds;
+}
+
+function collectKnownPartnerIds(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace?: CoupleSpaceData | null | undefined,
+): string[] {
+  const statePartnerIds = Object.keys(state?.spacesByPartnerId ?? {});
+  const stateCurrentPartnerId = normalizePartnerId(state?.currentPartnerId);
+
+  if (statePartnerIds.length > 0 || stateCurrentPartnerId) {
+    return uniquePartnerIds([
+      stateCurrentPartnerId,
+      ...statePartnerIds,
+    ]);
+  }
+
+  return uniquePartnerIds([
+    currentSpace?.partnerId,
+    ...(currentSpace?.addedPartnerIds ?? []),
+  ]);
+}
+
+function syncLegacyAddedPartnerIdsInSpace(
+  space: CoupleSpaceData,
+  partnerIds: string[],
+): CoupleSpaceData {
+  const normalizedPartnerIds = partnerIds.length > 0
+    ? partnerIds
+    : uniquePartnerIds([
+        ...(space.addedPartnerIds ?? []),
+        space.partnerId,
+      ]);
+  const existingPartnerIds = space.addedPartnerIds ?? [];
+
+  if (
+    existingPartnerIds.length === normalizedPartnerIds.length
+    && existingPartnerIds.every((partnerId, index) => partnerId === normalizedPartnerIds[index])
+  ) {
+    return space;
+  }
+
+  return {
+    ...space,
+    addedPartnerIds: normalizedPartnerIds,
+  };
+}
+
+function syncLegacyAddedPartnerIdsInState(
+  state: CoupleSpaceState,
+): CoupleSpaceState {
+  const partnerIds = collectKnownPartnerIds(state);
+  const normalizedDismissedPartnerIds = uniquePartnerIds(state.dismissedPartnerIds ?? []);
+  if (partnerIds.length === 0) {
+    return {
+      ...state,
+      dismissedPartnerIds: normalizedDismissedPartnerIds,
+    };
+  }
+
+  const openPartnerIdSet = new Set(partnerIds);
+  const dismissedPartnerIds = normalizedDismissedPartnerIds.filter((partnerId) => !openPartnerIdSet.has(partnerId));
+
+  const nextSpaces = partnerIds.reduce<Record<string, CoupleSpaceData>>((acc, partnerId) => {
+    const existingSpace = state.spacesByPartnerId[partnerId];
+    const hydratedSpace = hydrateCoupleSpace(
+      existingSpace ?? { partnerId },
+      createDefaultCoupleSpaceData({ partnerId }),
+    );
+    acc[partnerId] = syncLegacyAddedPartnerIdsInSpace(hydratedSpace, partnerIds);
+    return acc;
+  }, {});
+
+  const nextCurrentPartnerId = normalizePartnerId(state.currentPartnerId) ?? partnerIds[0] ?? null;
+
+  return {
+    ...state,
+    currentPartnerId: nextCurrentPartnerId,
+    spacesByPartnerId: nextSpaces,
+    dismissedPartnerIds,
+  };
+}
+
+function readSharedPerception(
+  source: Partial<CoupleSpaceState> | null | undefined,
+): PerceptionSettings | undefined {
+  return source?.sharedPerception;
 }
 
 export function hydrateCoupleSpace(
@@ -155,17 +265,39 @@ export function hydrateCoupleSpaceState(
   fallback: CoupleSpaceState,
 ): CoupleSpaceState {
   if (looksLikeLegacyCoupleSpace(source)) {
-    const legacyPartnerId = source.partnerId ?? fallback.currentPartnerId;
+    const legacyPartnerIds = uniquePartnerIds([
+      source.partnerId,
+      ...(Array.isArray(source.addedPartnerIds) ? source.addedPartnerIds : []),
+      fallback.currentPartnerId,
+    ]);
+    const legacyPartnerId = legacyPartnerIds[0] ?? null;
     if (!legacyPartnerId) {
-      return createDefaultCoupleSpaceState(null);
+      return {
+        ...createDefaultCoupleSpaceState(null),
+        sharedPerception: source.perception ?? fallback.sharedPerception,
+      };
     }
 
-    return {
+    return syncLegacyAddedPartnerIdsInState({
       currentPartnerId: legacyPartnerId,
-      spacesByPartnerId: {
-        [legacyPartnerId]: hydrateCoupleSpace(source, createDefaultCoupleSpaceData({ partnerId: legacyPartnerId })),
-      },
-    };
+      spacesByPartnerId: legacyPartnerIds.reduce<Record<string, CoupleSpaceData>>((acc, partnerId) => {
+        acc[partnerId] = hydrateCoupleSpace(
+          partnerId === legacyPartnerId
+            ? source
+            : {
+                partnerId,
+                addedPartnerIds: legacyPartnerIds,
+              },
+          createDefaultCoupleSpaceData({
+            partnerId,
+            addedPartnerIds: legacyPartnerIds,
+          }),
+        );
+        return acc;
+      }, {}),
+      sharedPerception: fallback.sharedPerception,
+      dismissedPartnerIds: fallback.dismissedPartnerIds,
+    });
   }
 
   const rawSpaces = source?.spacesByPartnerId ?? fallback.spacesByPartnerId ?? {};
@@ -178,9 +310,20 @@ export function hydrateCoupleSpaceState(
   }, {});
 
   const currentPartnerId = source?.currentPartnerId ?? fallback.currentPartnerId;
+  const sharedPerception =
+    readSharedPerception(source as Partial<CoupleSpaceState> | null | undefined)
+    ?? fallback.sharedPerception;
+  const dismissedPartnerIds = Array.isArray((source as Partial<CoupleSpaceState> | null | undefined)?.dismissedPartnerIds)
+    ? (source as Partial<CoupleSpaceState>).dismissedPartnerIds
+    : (fallback.dismissedPartnerIds ?? []);
   return {
-    currentPartnerId,
-    spacesByPartnerId: hydratedSpaces,
+    ...syncLegacyAddedPartnerIdsInState({
+      currentPartnerId,
+      spacesByPartnerId: hydratedSpaces,
+      sharedPerception,
+      dismissedPartnerIds,
+    }),
+    sharedPerception,
   };
 }
 
@@ -190,21 +333,33 @@ export function getCurrentCoupleSpaceData(
 ): CoupleSpaceData {
   const baseFallback = fallback ?? createDefaultCoupleSpaceData();
   const currentPartnerId = state?.currentPartnerId ?? baseFallback.partnerId ?? null;
+  const knownPartnerIds = collectKnownPartnerIds(state, baseFallback);
 
   if (!currentPartnerId) {
-    return createDefaultCoupleSpaceData({
+    return syncLegacyAddedPartnerIdsInSpace(createDefaultCoupleSpaceData({
       ...baseFallback,
       partnerId: null,
-    });
+      perception: state?.sharedPerception ?? baseFallback.perception,
+    }), knownPartnerIds);
   }
 
-  return hydrateCoupleSpace(
+  const currentSpace = hydrateCoupleSpace(
     state?.spacesByPartnerId?.[currentPartnerId] ?? { partnerId: currentPartnerId },
     createDefaultCoupleSpaceData({
       ...baseFallback,
       partnerId: currentPartnerId,
+      perception: state?.sharedPerception ?? baseFallback.perception,
     }),
   );
+
+  const nextCurrentSpace = state?.sharedPerception
+    ? {
+        ...currentSpace,
+        perception: state.sharedPerception,
+      }
+    : currentSpace;
+
+  return syncLegacyAddedPartnerIdsInSpace(nextCurrentSpace, knownPartnerIds);
 }
 
 export function resolveCoupleSpaceState(
@@ -225,6 +380,46 @@ export function resolveCurrentCoupleSpace(
     resolvedState,
     currentSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
   );
+}
+
+export function getPartnerCoupleSpaceData(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+): CoupleSpaceData {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  const sharedPerception = resolvedState.sharedPerception ?? currentSpace?.perception;
+  const existingSpace = resolvedState.spacesByPartnerId?.[partnerId];
+  if (!existingSpace) {
+    return createDefaultCoupleSpaceData({
+      partnerId: null,
+      perception: sharedPerception,
+      addedPartnerIds: collectKnownPartnerIds(resolvedState, currentSpace),
+    });
+  }
+
+  const partnerFallback = currentSpace?.partnerId === partnerId
+    ? (currentSpace ?? createDefaultCoupleSpaceData({ partnerId, perception: sharedPerception }))
+    : createDefaultCoupleSpaceData({ partnerId, perception: sharedPerception });
+
+  return getCurrentCoupleSpaceData(
+    {
+      currentPartnerId: partnerId,
+      spacesByPartnerId: resolvedState.spacesByPartnerId,
+      sharedPerception: resolvedState.sharedPerception,
+      dismissedPartnerIds: resolvedState.dismissedPartnerIds,
+    },
+    partnerFallback,
+  );
+}
+
+export function isPartnerCoupleSpaceDismissed(
+  state: CoupleSpaceState | null | undefined,
+  currentSpace: CoupleSpaceData | null | undefined,
+  partnerId: string,
+): boolean {
+  const resolvedState = resolveCoupleSpaceState(state, currentSpace);
+  return (resolvedState.dismissedPartnerIds ?? []).includes(partnerId);
 }
 
 function hydratePartnerSpace(
@@ -281,13 +476,27 @@ export function updateCurrentCoupleSpaceState(
         [currentPartnerId]: nextCurrentSpace,
       }
     : { ...resolvedState.spacesByPartnerId };
+  const shouldUpdateSharedPerception =
+    Boolean(nextPatch)
+    && typeof nextPatch === 'object'
+    && 'perception' in nextPatch;
 
-  return {
-    coupleSpaceState: {
+  const nextState = syncLegacyAddedPartnerIdsInState({
       currentPartnerId,
       spacesByPartnerId: nextSpaces,
-    },
-    coupleSpace: nextCurrentSpace,
+      sharedPerception: shouldUpdateSharedPerception
+        ? nextCurrentSpace.perception
+        : (
+            currentPartnerId
+              ? resolvedState.sharedPerception
+              : (nextCurrentSpace.perception ?? resolvedState.sharedPerception)
+          ),
+      dismissedPartnerIds: resolvedState.dismissedPartnerIds,
+    });
+
+  return {
+    coupleSpaceState: nextState,
+    coupleSpace: getCurrentCoupleSpaceData(nextState, nextCurrentSpace),
   };
 }
 
@@ -314,17 +523,18 @@ export function updatePartnerCoupleSpaceState(
   nextSpaces[partnerId] = nextPartnerSpace;
 
   const currentPartnerId = resolvedState.currentPartnerId ?? currentSpace?.partnerId ?? null;
+  const nextState = syncLegacyAddedPartnerIdsInState({
+    currentPartnerId,
+    spacesByPartnerId: nextSpaces,
+    sharedPerception: resolvedState.sharedPerception,
+    dismissedPartnerIds: resolvedState.dismissedPartnerIds,
+  });
+
   return {
-    coupleSpaceState: {
-      currentPartnerId,
-      spacesByPartnerId: nextSpaces,
-    },
+    coupleSpaceState: nextState,
     coupleSpace: currentPartnerId
       ? getCurrentCoupleSpaceData(
-          {
-            currentPartnerId,
-            spacesByPartnerId: nextSpaces,
-          },
+          nextState,
           currentSpace ?? createDefaultCoupleSpaceData({ partnerId: currentPartnerId }),
         )
       : (currentSpace ?? createDefaultCoupleSpaceData()),
@@ -342,20 +552,23 @@ export function switchCurrentCoupleSpaceState(
     {
       currentPartnerId: partnerId,
       spacesByPartnerId: nextSpaces,
+      sharedPerception: resolvedState.sharedPerception,
     },
     createDefaultCoupleSpaceData({
       ...(currentSpace || {}),
       partnerId,
     }),
   );
-  const nextState = {
+  const nextState = syncLegacyAddedPartnerIdsInState({
     currentPartnerId: partnerId,
     spacesByPartnerId: nextSpaces,
-  };
+    sharedPerception: resolvedState.sharedPerception,
+    dismissedPartnerIds: resolvedState.dismissedPartnerIds,
+  });
 
   return {
     coupleSpaceState: nextState,
-    coupleSpace: nextCurrentSpace,
+    coupleSpace: getCurrentCoupleSpaceData(nextState, nextCurrentSpace),
   };
 }
 
@@ -372,10 +585,16 @@ export function deletePartnerCoupleSpaceState(
   const nextCurrentPartnerId = resolvedState.currentPartnerId === partnerId
     ? (remainingPartnerIds[0] ?? null)
     : resolvedState.currentPartnerId;
-  const nextState = {
+  const nextDismissedPartnerIds = uniquePartnerIds([
+    ...(resolvedState.dismissedPartnerIds ?? []),
+    partnerId,
+  ]);
+  const nextState = syncLegacyAddedPartnerIdsInState({
     currentPartnerId: nextCurrentPartnerId,
     spacesByPartnerId: nextSpaces,
-  };
+    sharedPerception: resolvedState.sharedPerception,
+    dismissedPartnerIds: nextDismissedPartnerIds,
+  });
 
   return {
     coupleSpaceState: nextState,
@@ -397,7 +616,7 @@ export function acceptCoupleSpaceInviteState(
     partnerId,
     anniversaryDate: Date.now(),
   });
-  const nextState = {
+  const nextState = syncLegacyAddedPartnerIdsInState({
     currentPartnerId: partnerId,
     spacesByPartnerId: {
       ...resolvedState.spacesByPartnerId,
@@ -406,7 +625,9 @@ export function acceptCoupleSpaceInviteState(
         partnerId,
       },
     },
-  };
+    sharedPerception: resolvedState.sharedPerception,
+    dismissedPartnerIds: (resolvedState.dismissedPartnerIds ?? []).filter((id) => id !== partnerId),
+  });
 
   return {
     coupleSpaceState: nextState,
@@ -420,14 +641,18 @@ export function buildPersistableCoupleSpacePayload(
 ): { coupleSpaceState: CoupleSpaceState; coupleSpace: CoupleSpaceData } {
   const baseCoupleSpaceState = resolveCoupleSpaceState(state, currentSpace);
   const currentSpaceProjection = projectCoupleSpaceStateFromCurrentSpace(currentSpace);
-  const coupleSpaceState = {
+  const coupleSpaceState = syncLegacyAddedPartnerIdsInState({
     currentPartnerId:
       currentSpaceProjection.currentPartnerId ?? baseCoupleSpaceState.currentPartnerId,
     spacesByPartnerId: {
       ...baseCoupleSpaceState.spacesByPartnerId,
       ...currentSpaceProjection.spacesByPartnerId,
     },
-  };
+    sharedPerception:
+      currentSpaceProjection.sharedPerception
+      ?? baseCoupleSpaceState.sharedPerception,
+    dismissedPartnerIds: baseCoupleSpaceState.dismissedPartnerIds,
+  });
 
   return {
     coupleSpaceState,
@@ -453,20 +678,35 @@ export function hydratePersistedCoupleSpacePayload(
 export function projectCoupleSpaceStateFromCurrentSpace(
   currentSpace: CoupleSpaceData | null | undefined,
 ): CoupleSpaceState {
-  const partnerId = currentSpace?.partnerId ?? null;
+  const partnerIds = collectKnownPartnerIds(undefined, currentSpace);
+  const partnerId = normalizePartnerId(currentSpace?.partnerId) ?? partnerIds[0] ?? null;
   if (!partnerId || !currentSpace) {
-    return createDefaultCoupleSpaceState(null);
+    return {
+      ...createDefaultCoupleSpaceState(null),
+      sharedPerception: currentSpace?.perception,
+    };
   }
 
-  return {
+  return syncLegacyAddedPartnerIdsInState({
     currentPartnerId: partnerId,
-    spacesByPartnerId: {
-      [partnerId]: hydrateCoupleSpace(
-        currentSpace,
-        createDefaultCoupleSpaceData({ partnerId }),
-      ),
-    },
-  };
+    spacesByPartnerId: partnerIds.reduce<Record<string, CoupleSpaceData>>((acc, nextPartnerId) => {
+      acc[nextPartnerId] = hydrateCoupleSpace(
+        nextPartnerId === partnerId
+          ? currentSpace
+          : {
+              partnerId: nextPartnerId,
+              addedPartnerIds: partnerIds,
+            },
+        createDefaultCoupleSpaceData({
+          partnerId: nextPartnerId,
+          addedPartnerIds: partnerIds,
+        }),
+      );
+      return acc;
+    }, {}),
+    sharedPerception: undefined,
+    dismissedPartnerIds: [],
+  });
 }
 
 export function loadPersistedCoupleSpace(fallback: CoupleSpaceData): CoupleSpaceData {
@@ -475,8 +715,11 @@ export function loadPersistedCoupleSpace(fallback: CoupleSpaceData): CoupleSpace
   return getCurrentCoupleSpaceData(state, fallback);
 }
 
-export function persistCoupleSpace(data: CoupleSpaceData): void {
-  saveJson(STORAGE_KEYS.coupleSpace, projectCoupleSpaceStateFromCurrentSpace(data));
+export function persistCoupleSpace(
+  data: CoupleSpaceData,
+  state?: CoupleSpaceState | null,
+): void {
+  saveJson(STORAGE_KEYS.coupleSpace, state ?? projectCoupleSpaceStateFromCurrentSpace(data));
 }
 
 export function clearPersistedCoupleSpace(): void {
@@ -489,9 +732,11 @@ function looksLikeLegacyCoupleSpace(
   if (!value) return false;
   return (
     'partnerId' in value ||
+    'perception' in value ||
     'coNotes' in value ||
     'loveLetters' in value ||
     'messageBoard' in value ||
+    'addedPartnerIds' in value ||
     'initiativeDrafts' in value ||
     'initiativeRuntime' in value
   );

@@ -500,12 +500,20 @@ function parseTextResponse(rawResponse: string) {
 
   try {
     const data = JSON.parse(trimmedResponse);
+    const upstreamErrorDetail = normalizeErrorDetail(extractErrorDetail(data));
     const extractedText = sanitizeModelOutput(extractTextFromPayload(data));
     if (extractedText) {
       return extractedText;
     }
 
-    const preview = buildRawResponsePreview(trimmedResponse);
+    if (upstreamErrorDetail) {
+      throw new Error(
+        preview
+          ? `Upstream API error: ${upstreamErrorDetail}. Raw preview: ${preview}`
+          : `Upstream API error: ${upstreamErrorDetail}`,
+      );
+    }
+
     throw new Error(
       preview
         ? `Model response contained no extractable text. Raw preview: ${preview}`

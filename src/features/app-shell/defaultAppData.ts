@@ -1,8 +1,6 @@
 import type { AppData } from '../../types';
 import {
   DEFAULT_DESKTOP_WALLPAPER,
-  DEFAULT_DOCK_TINT_COLOR,
-  DEFAULT_DOCK_TINT_OPACITY,
   DEFAULT_HOME_ICONS,
   DEFAULT_HOME_WIDGETS,
   DEFAULT_NAV_BAR_BACKGROUND,
@@ -12,6 +10,7 @@ import { DEFAULT_CHARACTERS } from './defaultCharacters';
 import { DEFAULT_USER } from './defaultSettings';
 import { DEFAULT_MOMENTS, sanitizePersistedCharacters as sanitizePersistedCharactersFromStore } from '../persistence/appDataSanitizers';
 import { createDefaultCoupleSpaceData, createDefaultCoupleSpaceState } from '../persistence/coupleSpaceStore';
+import { createDefaultPerceptionSettings } from '../persistence/perceptionStore';
 
 export function createDefaultAppData(): AppData {
   return {
@@ -24,6 +23,7 @@ export function createDefaultAppData(): AppData {
     userProfile: DEFAULT_USER,
     masks: [],
     favorites: [],
+    perception: createDefaultPerceptionSettings(),
     friendRequests: [],
     chatGroups: [],
     callHistory: [],
@@ -57,8 +57,8 @@ export function createDefaultAppData(): AppData {
         gridGap: 16,
         dockBackgroundImage: '',
         dockBackgroundPreviewUrl: '',
-        dockTintColor: DEFAULT_DOCK_TINT_COLOR,
-        dockTintOpacity: DEFAULT_DOCK_TINT_OPACITY,
+        dockTintColor: '#f8fafc',
+        dockTintOpacity: 0.18,
       },
       chat: {
         background: '',
@@ -81,6 +81,10 @@ export function createDefaultAppData(): AppData {
         cardStyle: 'flat',
         cardBorderRadius: 24,
         cardOpacity: 1,
+        profileNameColor: '',
+        profileNameFontFamily: '',
+        profileMoodColor: '',
+        profileMoodFontFamily: '',
       },
       globalCss: '',
       themeScopedCss: {},

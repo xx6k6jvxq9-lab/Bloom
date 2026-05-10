@@ -25,6 +25,7 @@ import {
   updateCurrentCoupleSpaceState,
   updatePartnerCoupleSpaceState,
 } from '../../../features/persistence/coupleSpaceStore';
+import { clearCoupleSpaceCharacterMemory } from '../../../features/character-domain/clearCoupleSpaceCharacterMemory';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import {
   generateCoupleCoNote,
@@ -187,6 +188,8 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'date' | 'background' | 'avatarFrameUser' | 'avatarFramePartner' | 'deletePartner' | 'dataManagement' | 'loveLetterEnvelopeBg' | 'loveLetterEnvelopeColor' | 'loveLetterPaperTexture' | 'calendarBg' | 'loveLetterPaperBg' | null>(null);
   const [partnerToDelete, setPartnerToDelete] = useState<string | null>(null);
+  const [deletePartnerMode, setDeletePartnerMode] = useState<'space_only' | 'space_and_memory'>('space_only');
+  const [isPartnerManageMode, setIsPartnerManageMode] = useState(false);
   const [tempInput, setTempInput] = useState('');
   const [selectedPaperTexture, setSelectedPaperTexture] = useState<'default' | 'vintage' | 'grid' | 'floral'>('default');
   const [selectedEnvelopeColor, setSelectedEnvelopeColor] = useState('#f5e6d3');
@@ -218,7 +221,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
   const [initiativeAutoCheckTick, setInitiativeAutoCheckTick] = useState(0);
 
   const coupleSpaceState = resolveCoupleSpaceState(appData.coupleSpaceState, appData.coupleSpace);
-  const coupleSpace = resolveCurrentCoupleSpace(coupleSpaceState, appData.coupleSpace);
+  const resolvedCoupleSpace = resolveCurrentCoupleSpace(coupleSpaceState, appData.coupleSpace);
+  const coupleSpace = appData.perception
+    ? {
+        ...resolvedCoupleSpace,
+        perception: appData.perception,
+      }
+    : resolvedCoupleSpace;
 
   // Ensure addedPartnerIds is initialized
   useEffect(() => {
@@ -229,6 +238,12 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       setZoom(1);
     }
   }, [activeModal]);
+
+  useEffect(() => {
+    if (activeView !== 'settings') {
+      setIsPartnerManageMode(false);
+    }
+  }, [activeView]);
 
   const addedPartnerIds = Object.keys(coupleSpaceState.spacesByPartnerId).length > 0
     ? Object.keys(coupleSpaceState.spacesByPartnerId)
@@ -290,15 +305,26 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     });
   };
 
-  const handleDeletePartnerSpace = (partnerId: string) => {
+  const handleDeletePartnerSpace = (
+    partnerId: string,
+    options?: {
+      clearCharacterMemory?: boolean;
+    },
+  ) => {
     setAppData((prev: any) => {
       const { coupleSpaceState, coupleSpace } = deletePartnerCoupleSpaceState(
         prev.coupleSpaceState,
         prev.coupleSpace,
         partnerId,
       );
+      const nextCharacters = options?.clearCharacterMemory
+        ? (prev.characters || []).map((item: any) => (
+            item?.id === partnerId ? clearCoupleSpaceCharacterMemory(item) : item
+          ))
+        : prev.characters;
       return {
         ...prev,
+        characters: nextCharacters,
         coupleSpaceState,
         coupleSpace,
       };
@@ -398,6 +424,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         user,
         partner,
         coupleSpace,
+        perception: appData.perception,
         chatHistory: appData.chatHistory,
         masks: appData.masks,
         worldBooks: appData.worldBooks,
@@ -434,6 +461,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         user,
         partner,
         coupleSpace,
+        perception: appData.perception,
         chatHistory: appData.chatHistory,
         masks: appData.masks,
         worldBooks: appData.worldBooks,
@@ -515,6 +543,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
           user,
           partner,
           coupleSpace,
+          perception: appData.perception,
           chatHistory: appData.chatHistory,
           masks: appData.masks,
           worldBooks: appData.worldBooks,
@@ -836,9 +865,27 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                   <h3 className="font-bold text-zinc-800">选择伴侣</h3>
                   <span className="text-[11px] text-zinc-400">仅显示已建立空间的角色</span>
                 </div>
+                {addedPartners.length > 0 && (
+                  <div className="mb-3 flex items-center justify-between rounded-2xl bg-zinc-50 px-3 py-2">
+                    <span className="text-[11px] text-zinc-500">
+                      {isPartnerManageMode ? '当前为管理模式，点下方删除即可移除对应情侣空间。' : '点管理后再选择要删除的情侣空间。'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPartnerManageMode((current) => !current)}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 ${
+                        isPartnerManageMode
+                          ? 'bg-rose-100 text-rose-500'
+                          : 'bg-white text-zinc-500 shadow-sm'
+                      }`}
+                    >
+                      {isPartnerManageMode ? '完成' : '管理'}
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-3 overflow-x-auto pb-2 px-1">
                   {addedPartners.map((c: any) => (
-                    <div key={c.id} className="relative group">
+                    <div key={c.id} className="flex min-w-[70px] flex-col items-center gap-2">
                       <button
                         onClick={() => handleSwitchCoupleSpace(c.id)}
                         className={`flex flex-col items-center gap-2 p-2 rounded-xl min-w-[70px] transition-all ${coupleSpace.partnerId === c.id ? 'bg-rose-100 ring-2 ring-rose-300' : 'hover:bg-zinc-100'}`}
@@ -846,16 +893,19 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                         <ResolvedImage value={c.avatar} className="w-12 h-12 rounded-full object-cover" alt={c.name} />
                         <span className="text-xs font-medium text-zinc-700 truncate w-full text-center">{c.name}</span>
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPartnerToDelete(c.id);
-                          setActiveModal('deletePartner');
-                        }}
-                        className="absolute -top-1 -right-1 bg-white text-zinc-400 hover:text-red-500 rounded-full p-0.5 shadow-sm border border-zinc-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X size={12} />
-                      </button>
+                      {isPartnerManageMode && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPartnerToDelete(c.id);
+                            setDeletePartnerMode('space_only');
+                            setActiveModal('deletePartner');
+                          }}
+                          className="inline-flex items-center justify-center rounded-full bg-rose-50 px-3 py-1 text-[11px] font-medium text-rose-500 transition-transform active:scale-95"
+                        >
+                          删除
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1257,12 +1307,64 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
 
                       {activeModal === 'deletePartner' && (
                         <div className="space-y-4">
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setDeletePartnerMode('space_only')}
+                              className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                                deletePartnerMode === 'space_only'
+                                  ? 'border-rose-200 bg-rose-50/80 shadow-sm'
+                                  : 'border-zinc-200 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-zinc-800">只删除情侣空间</div>
+                                  <div className="mt-1 text-xs leading-5 text-zinc-500">
+                                    保留聊天记录和角色记忆，只移除这个角色的情侣空间内容。
+                                  </div>
+                                </div>
+                                <div className={`h-4 w-4 rounded-full border ${
+                                  deletePartnerMode === 'space_only'
+                                    ? 'border-rose-300 bg-rose-300'
+                                    : 'border-zinc-300 bg-white'
+                                }`} />
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletePartnerMode('space_and_memory')}
+                              className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                                deletePartnerMode === 'space_and_memory'
+                                  ? 'border-rose-200 bg-rose-50/80 shadow-sm'
+                                  : 'border-zinc-200 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-zinc-800">连角色记忆一起清除</div>
+                                  <div className="mt-1 text-xs leading-5 text-zinc-500">
+                                    会同时清除这个角色因情侣空间留下的近期关系记忆与共享余波。
+                                  </div>
+                                </div>
+                                <div className={`h-4 w-4 rounded-full border ${
+                                  deletePartnerMode === 'space_and_memory'
+                                    ? 'border-rose-300 bg-rose-300'
+                                    : 'border-zinc-300 bg-white'
+                                }`} />
+                              </div>
+                            </button>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-50 px-4 py-3 text-xs leading-5 text-zinc-500">
+                            不会删除普通聊天记录。删除后如果你想重新开启，可以再发送一次情侣空间邀请。
+                          </div>
                           <p className="text-zinc-600 text-center py-2">确定要删除这位伴侣吗？</p>
                           <div className="flex gap-3">
                             <button 
                               onClick={() => {
                                 setActiveModal(null);
                                 setPartnerToDelete(null);
+                                setDeletePartnerMode('space_only');
                               }}
                               className="flex-1 bg-zinc-100 text-zinc-600 py-2.5 rounded-xl font-bold active:scale-95 transition-transform"
                             >
@@ -1271,10 +1373,13 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
                             <button 
                               onClick={() => {
                                 if (partnerToDelete) {
-                                  handleDeletePartnerSpace(partnerToDelete);
+                                  handleDeletePartnerSpace(partnerToDelete, {
+                                    clearCharacterMemory: deletePartnerMode === 'space_and_memory',
+                                  });
                                 }
                                 setActiveModal(null);
                                 setPartnerToDelete(null);
+                                setDeletePartnerMode('space_only');
                               }} 
                               className="flex-1 bg-[#f6b6cd] text-white py-2.5 rounded-xl font-bold shadow-lg shadow-[#f6b6cd]/30 active:scale-95 transition-transform"
                             >
@@ -1771,6 +1876,7 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, rec
             user,
             partner,
             coupleSpace,
+            perception: coupleSpace.perception,
             chatHistory,
             masks,
             worldBooks,
@@ -2069,6 +2175,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSe
             user,
             partner,
             coupleSpace,
+            perception: coupleSpace.perception,
             chatHistory,
             masks,
             worldBooks,
@@ -2436,6 +2543,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
           user,
           partner,
           coupleSpace,
+          perception: coupleSpace.perception,
           chatHistory,
           masks,
           worldBooks,
@@ -2819,6 +2927,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, recordS
             user,
             partner,
             coupleSpace: nextCoupleSpaceForPrompt,
+            perception: nextCoupleSpaceForPrompt.perception,
             chatHistory,
             masks,
             worldBooks,
@@ -3060,6 +3169,7 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, rec
             user,
             partner,
             coupleSpace,
+            perception: coupleSpace.perception,
             chatHistory,
             masks,
             worldBooks,

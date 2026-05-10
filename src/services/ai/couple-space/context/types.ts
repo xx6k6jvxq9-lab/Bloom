@@ -6,6 +6,7 @@ import type {
   CoupleSpaceInitiativeSettings,
   CoupleSpaceInitiativeSource,
   Mask,
+  PerceptionSettings,
   UserProfileExtended,
   WorldBookEntry,
 } from '../../../../types';
@@ -20,8 +21,8 @@ export type CreateCoupleSpacePromptCommonInputSource = {
   user: UserProfileExtended;
   partner: Character;
   coupleSpace: CoupleSpaceData;
+  perception?: PerceptionSettings;
   chatHistory?: ChatHistory | null;
-  characters?: Character[];
   masks?: Mask[];
   worldBooks?: WorldBookEntry[];
   settings?: {

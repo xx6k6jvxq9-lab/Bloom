@@ -7,6 +7,7 @@ export type MomentPublishOrchestratorResult = {
   shouldPublish: boolean;
   chatReaction?: string;
   momentContent?: string;
+  momentTranslation?: string;
   momentImageCard?: MomentImageCard;
   triggerType?: 'command' | 'auto';
   reason?: string;
@@ -45,12 +46,15 @@ export async function handleCommandTriggeredMomentPublish(
     character,
     masks,
     worldBook,
+    privateCarryoverLevel: character.momentPrivateCarryoverLevel,
     requestText: text,
+    allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
   });
 
   return {
     shouldPublish: true,
     momentContent: momentPost.content,
+    momentTranslation: momentPost.translation,
     momentImageCard: momentPost.imageCard,
     triggerType: 'command',
     reason: 'command-triggered',
@@ -81,12 +85,15 @@ export async function maybeAutoPublishMoment(
     character,
     masks,
     worldBook,
+    privateCarryoverLevel: character.momentPrivateCarryoverLevel,
+    allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
     requestText: `自主发动态：${trigger.reason || 'auto'}`,
   });
 
   return {
     shouldPublish: true,
     momentContent: momentPost.content,
+    momentTranslation: momentPost.translation,
     momentImageCard: momentPost.imageCard,
     triggerType: 'auto',
     reason: trigger.reason,

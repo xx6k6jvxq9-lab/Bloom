@@ -22,7 +22,7 @@ import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExpor
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
-import { buildCharacterContext, resolveActiveUserMask } from '../../services/relationship-context/buildCharacterContext';
+import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
 import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -110,6 +110,76 @@ function ResolvedSettingsImage({
   const src = getDisplayableAssetValue(value, resolvedUrl);
   if (!src) return null;
   return <img src={src} alt={alt} className={className} />;
+}
+
+type PublicThreadPeerHint = NonNullable<Character['publicThreadPeerHints']>[number];
+type PublicThreadPeerFamiliarity = PublicThreadPeerHint['familiarity'];
+type PublicThreadPeerInteractionStyle = NonNullable<PublicThreadPeerHint['interactionStyle']>;
+
+const PUBLIC_THREAD_FAMILIARITY_OPTIONS: Array<{ value: PublicThreadPeerFamiliarity; label: string }> = [
+  { value: 'stranger', label: '不熟' },
+  { value: 'aware', label: '认识' },
+  { value: 'familiar', label: '比较熟' },
+];
+
+const PUBLIC_THREAD_INTERACTION_STYLE_OPTIONS: Array<{ value: PublicThreadPeerInteractionStyle; label: string }> = [
+  { value: 'guarded', label: '克制' },
+  { value: 'neutral', label: '正常' },
+  { value: 'banter', label: '互怼' },
+  { value: 'warm', label: '偏暖' },
+];
+
+function upsertPublicThreadPeerHint(
+  character: Character,
+  targetCharacterId: string,
+  updates: Partial<PublicThreadPeerHint>,
+) {
+  const currentHints = character.publicThreadPeerHints || [];
+  const existing = currentHints.find((hint) => hint.targetCharacterId === targetCharacterId);
+  const nextHint: PublicThreadPeerHint = {
+    targetCharacterId,
+    familiarity: updates.familiarity || existing?.familiarity || 'stranger',
+    ...(updates.interactionStyle !== undefined
+      ? { interactionStyle: updates.interactionStyle }
+      : existing?.interactionStyle
+        ? { interactionStyle: existing.interactionStyle }
+        : {}),
+    ...(updates.allowBanter !== undefined
+      ? { allowBanter: updates.allowBanter }
+      : existing && 'allowBanter' in existing
+        ? { allowBanter: existing.allowBanter }
+        : {}),
+    ...(updates.allowIntimateTone !== undefined
+      ? { allowIntimateTone: updates.allowIntimateTone }
+      : existing && 'allowIntimateTone' in existing
+        ? { allowIntimateTone: existing.allowIntimateTone }
+        : {}),
+    ...(updates.allowOwnershipTone !== undefined
+      ? { allowOwnershipTone: updates.allowOwnershipTone }
+      : existing && 'allowOwnershipTone' in existing
+        ? { allowOwnershipTone: existing.allowOwnershipTone }
+        : {}),
+    ...(updates.note !== undefined
+      ? (updates.note.trim() ? { note: updates.note.trim() } : {})
+      : existing?.note
+        ? { note: existing.note }
+        : {}),
+    updatedAt: Date.now(),
+  };
+
+  const shouldPersist = (
+    nextHint.familiarity !== 'stranger'
+    || nextHint.interactionStyle !== undefined
+    || typeof nextHint.allowBanter === 'boolean'
+    || typeof nextHint.allowIntimateTone === 'boolean'
+    || typeof nextHint.allowOwnershipTone === 'boolean'
+    || !!nextHint.note
+  );
+
+  const filtered = currentHints.filter((hint) => hint.targetCharacterId !== targetCharacterId);
+  return shouldPersist
+    ? [...filtered, nextHint]
+    : filtered.length > 0 ? filtered : undefined;
 }
 
 type StickerScope = 'shared' | 'character';
@@ -460,6 +530,7 @@ async function importStickerFiles(
 
 export function ChatSettingsPanel({ 
   character, 
+  characters,
   onUpdate, 
   onBack,
   history,
@@ -478,6 +549,7 @@ export function ChatSettingsPanel({
   onUpdateVisualSettings
 }: { 
   character: Character; 
+  characters: Character[];
   onUpdate: (c: Character) => void; 
   onBack: () => void;
   history: ChatMessage[];
@@ -503,6 +575,7 @@ export function ChatSettingsPanel({
     expressionStyle: 3000,
     boundaryPack: 2000,
     sceneHint: 1200,
+    publicThreadPeerNote: 240,
   } as const;
 
   const { setUploadedFile } = usePersistentFieldActions();
@@ -598,9 +671,12 @@ export function ChatSettingsPanel({
   const characterStickerMetadata = character.stickerMetadata || {};
   const hasManagedStickers = sharedStickers.length + characterStickers.length > 0;
   const selectedStickerCount = selectedSharedStickers.size + selectedCharacterStickers.size;
+  const normalizedReplyMode = character.voiceProfile?.replyMode === 'text'
+    ? 'mixed'
+    : (character.voiceProfile?.replyMode || 'voice');
 
   const voiceProfile = {
-    enabled: character.voiceProfile?.enabled !== false,
+    enabled: character.voiceProfile?.enabled === true,
     mode: character.voiceProfile?.mode || 'default',
     voiceId: character.voiceProfile?.voiceId || '',
     voiceName: character.voiceProfile?.voiceName || '',
@@ -608,7 +684,7 @@ export function ChatSettingsPanel({
     sampleAssetId: character.voiceProfile?.sampleAssetId,
     sampleName: character.voiceProfile?.sampleName,
     autoPlay: !!character.voiceProfile?.autoPlay,
-    replyMode: character.voiceProfile?.replyMode || 'voice',
+    replyMode: normalizedReplyMode,
     replyFrequency: character.voiceProfile?.replyFrequency || 'medium',
   } as NonNullable<Character['voiceProfile']>;
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
@@ -628,6 +704,11 @@ export function ChatSettingsPanel({
   const groupChatSceneHint = sceneHints.groupChat ?? '';
   const musicTogetherSceneHint = sceneHints.musicTogether ?? '';
   const forumSceneHint = sceneHints.forum ?? '';
+  const publicThreadPeerHints = character.publicThreadPeerHints ?? [];
+  const otherCharacters = characters
+    .filter((item) => item.id !== character.id)
+    .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
+  const publicThreadPeerHintMap = new Map(publicThreadPeerHints.map((hint) => [hint.targetCharacterId, hint] as const));
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
   const sharedStatePreview = [
@@ -661,6 +742,28 @@ export function ChatSettingsPanel({
     onUpdate({
       ...character,
       sceneHints: Object.keys(nextSceneHints).length > 0 ? nextSceneHints : undefined,
+    });
+  };
+  const updatePublicThreadPeerHint = (
+    targetCharacterId: string,
+    updates: Partial<PublicThreadPeerHint>,
+  ) => {
+    onUpdate({
+      ...character,
+      publicThreadPeerHints: upsertPublicThreadPeerHint(character, targetCharacterId, updates),
+    });
+  };
+  const clearPublicThreadPeerHint = (targetCharacterId: string) => {
+    onUpdate({
+      ...character,
+      publicThreadPeerHints: upsertPublicThreadPeerHint(character, targetCharacterId, {
+        familiarity: 'stranger',
+        interactionStyle: undefined,
+        allowBanter: undefined,
+        allowIntimateTone: undefined,
+        allowOwnershipTone: undefined,
+        note: '',
+      }),
     });
   };
   const sceneHintEditors = [
@@ -1116,14 +1219,15 @@ export function ChatSettingsPanel({
   };
 
   const handleVoiceSampleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) {
       return;
     }
 
     if (!isLikelyVoiceSampleFile(file)) {
       await showInAppAlert(getVoiceSampleValidationMessage());
-      event.currentTarget.value = '';
+      input.value = '';
       return;
     }
 
@@ -1133,7 +1237,6 @@ export function ChatSettingsPanel({
         ...character,
         voiceProfile: {
           ...voiceProfile,
-          enabled: true,
           mode: 'cloned',
           sampleAssetId: assetRef,
           sampleName: file.name,
@@ -1141,7 +1244,7 @@ export function ChatSettingsPanel({
       });
       setVoiceClonePreviewUrl('');
     } finally {
-      event.currentTarget.value = '';
+      input.value = '';
     }
   };
 
@@ -1206,7 +1309,6 @@ export function ChatSettingsPanel({
         ...character,
         voiceProfile: {
           ...voiceProfile,
-          enabled: true,
           mode: 'cloned',
           voiceId: result.voiceId,
           voiceName: `${character.name} 专属音色`,
@@ -1339,7 +1441,7 @@ export function ChatSettingsPanel({
       const summaryHistoryWindow = getSummaryHistoryWindow(history, effectiveMemoryLimit);
       const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
 
-      const activeMask = resolveActiveUserMask(character.id, masks);
+      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
       const activeWorldBooks = worldBooks.filter(wb =>
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)
@@ -1355,6 +1457,7 @@ export function ChatSettingsPanel({
       const mainChatPrompt = buildChatPrompt(buildChatSceneInput({
         mode: 'chat',
         character,
+        allCharacters: characters,
         userName: '用户',
         activeMask,
         activeWorldBooks,
@@ -1367,6 +1470,7 @@ export function ChatSettingsPanel({
         mode: 'autoReply',
         includeProtocolRules: false,
         character,
+        allCharacters: characters,
         userName: '用户',
         activeMask,
         activeWorldBooks,
@@ -1960,11 +2064,12 @@ export function ChatSettingsPanel({
                         type="file"
                         className="hidden"
                         onChange={async e => {
-                          const file = e.target.files?.[0];
+                          const input = e.currentTarget;
+                          const file = input.files?.[0];
                           if (file) {
                             const persistedValue = await setUploadedFile(file);
                             onUpdate({ ...character, avatar: persistedValue });
-                            e.currentTarget.value = '';
+                            input.value = '';
                           }
                         }}
                       />
@@ -2563,13 +2668,12 @@ export function ChatSettingsPanel({
                   <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
                     <div className="flex flex-col items-start">
                       <span className="text-[13px] text-zinc-700">回复形式</span>
-                      <span className="text-[10px] text-zinc-400">控制角色是只打字、文字语音混合，还是尽量都发语音</span>
+                      <span className="text-[10px] text-zinc-400">混合模式会参考语境、情绪和最近语音节奏决定这次要不要发语音</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {[
-                        { value: 'text', label: '纯文字' },
                         { value: 'mixed', label: '混合' },
-                        { value: 'voice', label: '多语音' },
+                        { value: 'voice', label: '纯语音' },
                       ].map((option) => {
                         const selected = voiceProfile.replyMode === option.value;
                         return (
@@ -2601,8 +2705,8 @@ export function ChatSettingsPanel({
                       <span className="text-[13px] text-zinc-700">语音频率</span>
                       <span className="text-[10px] text-zinc-400">
                         {voiceProfile.replyMode === 'mixed'
-                          ? '混合模式下，决定角色这次回复有多大概率发语音'
-                          : '只有在混合模式下会用到这个频率'}
+                          ? '混合模式下，会结合当前语境和最近节奏，再参考这个频率决定是否发语音'
+                          : '纯语音模式下每条合适回复都会尽量走语音，频率设置不会生效'}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -2698,6 +2802,47 @@ export function ChatSettingsPanel({
                       {freq === 'none' ? '关闭' : freq === 'low' ? '低' : freq === 'medium' ? '中' : '高'}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-900">
+                    <Share2 size={18} />
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[14px] text-zinc-700">动态私密度</span>
+                    <span className="text-[10px] text-zinc-400">带多少私密余波</span>
+                  </div>
+                </div>
+                <div className="flex bg-zinc-100 p-0.5 rounded-lg">
+                  {([
+                    { value: 'none', label: '不带' },
+                    { value: 'light', label: '轻' },
+                    { value: 'medium', label: '中' },
+                    { value: 'high', label: '多' },
+                  ] as const).map((option) => {
+                    const selectedLevel = character.momentPrivateCarryoverLevel
+                      || ((character.allowPrivateMomentCarryover ?? false) ? 'light' : 'none');
+                    const selected = selectedLevel === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => onUpdate({
+                          ...character,
+                          momentPrivateCarryoverLevel: option.value,
+                          allowPrivateMomentCarryover: option.value !== 'none',
+                        })}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                          selected
+                            ? 'bg-white text-zinc-900 shadow-sm'
+                            : 'text-zinc-400 hover:text-zinc-600'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -3336,6 +3481,7 @@ export function ChatSettingsPanel({
                   </div>
                 </div>
               </SettingsSection>
+
             </div>
           </motion.div>
         )}

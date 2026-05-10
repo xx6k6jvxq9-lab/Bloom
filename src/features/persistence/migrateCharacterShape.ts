@@ -3,6 +3,7 @@ import type {
   Character,
   CharacterAvatarLibraryEntry,
   CharacterOpenLoopEntry,
+  CharacterPublicThreadPeerHint,
   CharacterPresenceState,
   CharacterSharedState,
   MemoryLibraryEntry,
@@ -27,6 +28,46 @@ function normalizeSceneHints(value: unknown): Record<string, string> | undefined
     .filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function normalizePublicThreadPeerHints(value: unknown): CharacterPublicThreadPeerHint[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const entries = value
+    .map((item): CharacterPublicThreadPeerHint | null => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const targetCharacterId = normalizeOptionalText(record.targetCharacterId);
+      if (!targetCharacterId) {
+        return null;
+      }
+
+      const familiarity = record.familiarity === 'aware'
+        || record.familiarity === 'familiar'
+        ? record.familiarity
+        : 'stranger';
+      const interactionStyle = record.interactionStyle === 'guarded'
+        || record.interactionStyle === 'neutral'
+        || record.interactionStyle === 'banter'
+        || record.interactionStyle === 'warm'
+        ? record.interactionStyle
+        : undefined;
+      const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : undefined;
+
+      return {
+        targetCharacterId,
+        familiarity,
+        ...(interactionStyle ? { interactionStyle } : {}),
+        ...(typeof record.allowBanter === 'boolean' ? { allowBanter: record.allowBanter } : {}),
+        ...(typeof record.allowIntimateTone === 'boolean' ? { allowIntimateTone: record.allowIntimateTone } : {}),
+        ...(typeof record.allowOwnershipTone === 'boolean' ? { allowOwnershipTone: record.allowOwnershipTone } : {}),
+        ...(normalizeOptionalText(record.note) ? { note: normalizeOptionalText(record.note) } : {}),
+        ...(typeof updatedAt === 'number' ? { updatedAt } : {}),
+      };
+    })
+    .filter((entry): entry is CharacterPublicThreadPeerHint => Boolean(entry));
+
+  return entries.length > 0 ? entries : undefined;
 }
 
 function normalizeAvatarLibraryEntries(value: unknown): CharacterAvatarLibraryEntry[] | undefined {
@@ -344,9 +385,27 @@ export function migrateCharacterShape(character: Character): Character {
   const longTermMemoryProfile = resolveCharacterLongTermMemoryCompat(character);
   const shortTermSummary = normalizeOptionalText(character.shortTermSummary);
   const sceneHints = normalizeSceneHints(character.sceneHints);
+  const publicThreadPeerHints = normalizePublicThreadPeerHints(character.publicThreadPeerHints);
   const replyLanguageMode = normalizeReplyLanguageMode(character.replyLanguageMode);
   const nativeLanguage = normalizeOptionalText(character.nativeLanguage);
   const fixedReplyLanguage = normalizeOptionalText(character.fixedReplyLanguage);
+  const momentPrivateCarryoverLevel = character.momentPrivateCarryoverLevel === 'light'
+    || character.momentPrivateCarryoverLevel === 'medium'
+    || character.momentPrivateCarryoverLevel === 'high'
+    || character.momentPrivateCarryoverLevel === 'none'
+    ? character.momentPrivateCarryoverLevel
+    : typeof character.allowPrivateMomentCarryover === 'boolean'
+      ? character.allowPrivateMomentCarryover ? 'light' : 'none'
+      : undefined;
+  const allowPrivateMomentCarryover = typeof character.allowPrivateMomentCarryover === 'boolean'
+    ? character.allowPrivateMomentCarryover
+    : undefined;
+  const friendshipStatus = character.friendshipStatus === 'none' ? 'none' : 'friends';
+  const blockedByUser = character.blockedByUser === true;
+  const blockedByCharacter = character.blockedByCharacter === true;
+  const relationshipStatusUpdatedAt = Number.isFinite(character.relationshipStatusUpdatedAt)
+    ? Math.max(0, Math.floor(character.relationshipStatusUpdatedAt as number))
+    : undefined;
   const avatarLibraryEntries = normalizeAvatarLibraryEntries(character.avatarLibrary?.entries);
   const openLoopRegistry = normalizeOpenLoopRegistry(character.openLoopRegistry);
   const presenceState = normalizePresenceState(character.presenceState);
@@ -375,9 +434,16 @@ export function migrateCharacterShape(character: Character): Character {
     boundaryPack,
     extendedLore,
     sceneHints,
+    publicThreadPeerHints,
     replyLanguageMode,
     nativeLanguage,
     fixedReplyLanguage,
+    ...(momentPrivateCarryoverLevel ? { momentPrivateCarryoverLevel } : {}),
+    ...(typeof allowPrivateMomentCarryover === 'boolean' ? { allowPrivateMomentCarryover } : {}),
+    friendshipStatus,
+    blockedByUser,
+    blockedByCharacter,
+    relationshipStatusUpdatedAt,
     shortTermSummary,
     longTermMemoryProfile,
     memoryLibraryEntries,

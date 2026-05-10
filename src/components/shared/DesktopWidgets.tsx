@@ -42,6 +42,7 @@ export function DesktopWidget({
 
   const isPlaying = musicData?.isPlaying || false;
   const progress = musicData?.progress || 0;
+  const shouldFetchWeather = widget.type === 'weather' && !isPreview;
 
   useEffect(() => {
     setMusicDataRef.current = setMusicData;
@@ -60,61 +61,63 @@ export function DesktopWidget({
   };
 
   useEffect(() => {
-    if (widget.type === 'weather' && !isPreview) {
-      const fetchWeather = async (lat: number, lon: number) => {
-        try {
-          const res = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`
-          );
-          if (!res.ok) {
-            if (res.status === 429) {
-              setWeatherData(null);
-              return;
-            }
-            throw new Error(`Weather request failed with status ${res.status}`);
-          }
-          const data = await res.json();
-          const current = data.current ?? data.current_weather ?? null;
-          const daily = data.daily ?? null;
-          const temp = typeof current?.temperature_2m === 'number'
-            ? current.temperature_2m
-            : typeof current?.temperature === 'number'
-              ? current.temperature
-              : null;
-          const code = typeof current?.weather_code === 'number'
-            ? current.weather_code
-            : typeof current?.weathercode === 'number'
-              ? current.weathercode
-              : null;
-          const max = Array.isArray(daily?.temperature_2m_max) ? daily.temperature_2m_max[0] : null;
-          const min = Array.isArray(daily?.temperature_2m_min) ? daily.temperature_2m_min[0] : null;
-
-          if (temp === null || code === null || typeof max !== 'number' || typeof min !== 'number') {
-            throw new Error('Weather response missing required fields');
-          }
-
-          setWeatherData({
-            temp: Math.round(temp),
-            max: Math.round(max),
-            min: Math.round(min),
-            code,
-          });
-        } catch (err) {
-          console.error('Weather fetch error:', err);
-          setWeatherData(null);
-        }
-      };
-
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
-          () => fetchWeather(31.36, 113.14) // Fallback to a default location if denied
-        );
-      } else {
-        fetchWeather(31.36, 113.14);
-      }
+    if (!shouldFetchWeather) {
+      return;
     }
-  }, [isPreview, widget.type]);
+
+    const fetchWeather = async (lat: number, lon: number) => {
+      try {
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`
+        );
+        if (!res.ok) {
+          if (res.status === 429) {
+            setWeatherData(null);
+            return;
+          }
+          throw new Error(`Weather request failed with status ${res.status}`);
+        }
+        const data = await res.json();
+        const current = data.current ?? data.current_weather ?? null;
+        const daily = data.daily ?? null;
+        const temp = typeof current?.temperature_2m === 'number'
+          ? current.temperature_2m
+          : typeof current?.temperature === 'number'
+            ? current.temperature
+            : null;
+        const code = typeof current?.weather_code === 'number'
+          ? current.weather_code
+          : typeof current?.weathercode === 'number'
+            ? current.weathercode
+            : null;
+        const max = Array.isArray(daily?.temperature_2m_max) ? daily.temperature_2m_max[0] : null;
+        const min = Array.isArray(daily?.temperature_2m_min) ? daily.temperature_2m_min[0] : null;
+
+        if (temp === null || code === null || typeof max !== 'number' || typeof min !== 'number') {
+          throw new Error('Weather response missing required fields');
+        }
+
+        setWeatherData({
+          temp: Math.round(temp),
+          max: Math.round(max),
+          min: Math.round(min),
+          code,
+        });
+      } catch (err) {
+        console.error('Weather fetch error:', err);
+        setWeatherData(null);
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+        () => fetchWeather(31.36, 113.14) // Fallback to a default location if denied
+      );
+    } else {
+      fetchWeather(31.36, 113.14);
+    }
+  }, [shouldFetchWeather]);
 
   useEffect(() => {
     const timer = setInterval(() => {

@@ -16,33 +16,15 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
   return normalized ? normalized : undefined;
 }
 
-export function resolveActiveUserMask(
-  characterId: string,
-  masks: Mask[] | null | undefined,
-): Mask | null {
-  if (!characterId || !Array.isArray(masks) || masks.length === 0) {
-    return null;
-  }
-
-  for (let index = masks.length - 1; index >= 0; index -= 1) {
-    const mask = masks[index];
-    if (mask?.isActive && mask.linkedCharacters.includes(characterId)) {
-      return mask;
-    }
-  }
-
-  return null;
-}
-
-export function buildUserMaskPrompt(mask?: Mask | null): string | undefined {
+function buildMaskPrompt(mask?: Mask | null): string | undefined {
   if (!mask) return undefined;
 
   const parts = [
-    mask.name ? `User identity label: ${mask.name}` : '',
-    mask.personality ? `How the user comes across: ${mask.personality}` : '',
-    mask.occupation ? `User role or occupation in this identity: ${mask.occupation}` : '',
-    mask.relationship ? `How to read your relationship: ${mask.relationship}` : '',
-    mask.worldBackground ? `Interaction world or context: ${mask.worldBackground}` : '',
+    mask.name ? `Name: ${mask.name}` : '',
+    mask.personality ? `Personality: ${mask.personality}` : '',
+    mask.occupation ? `Occupation: ${mask.occupation}` : '',
+    mask.relationship ? `Relationship with you: ${mask.relationship}` : '',
+    mask.worldBackground ? `World Background: ${mask.worldBackground}` : '',
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join('\n') : undefined;
@@ -77,7 +59,7 @@ export function buildCharacterContext(input: BuildCharacterContextInput): Charac
     boundaryPack: normalizeOptionalText(input.character.boundaryPack),
     extendedLore: normalizeOptionalText(input.character.extendedLore),
     sceneHints: normalizeSceneHints(input.character.sceneHints),
-    maskPrompt: buildUserMaskPrompt(input.activeMask),
+    maskPrompt: buildMaskPrompt(input.activeMask),
     worldBookPrompt: buildWorldBookPrompt(input.activeWorldBooks, {
       worldBookQuery: input.worldBookQuery,
       worldBookRecentText: input.worldBookRecentText,

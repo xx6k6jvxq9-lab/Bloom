@@ -383,6 +383,7 @@ export function SettingsApp({
   defaultConfig,
   characters,
 }: SettingsAppProps) {
+  const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const voiceSampleInputRef = useRef<HTMLInputElement | null>(null);
   const { setUploadedFile } = usePersistentFieldActions();
   const [view, setView] = useState<'list' | 'edit'>('list');
@@ -392,6 +393,7 @@ export function SettingsApp({
     form: createEmptyApiConfig(defaultConfig),
   });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelSearchKeyword, setModelSearchKeyword] = useState('');
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isCloningDefaultVoice, setIsCloningDefaultVoice] = useState(false);
@@ -412,8 +414,8 @@ export function SettingsApp({
     [editor, sceneCards],
   );
   const filteredAvailableModels = useMemo(
-    () => filterAvailableModels(availableModels, currentConfigForm.model),
-    [availableModels, currentConfigForm.model],
+    () => filterAvailableModels(availableModels, modelSearchKeyword),
+    [availableModels, modelSearchKeyword],
   );
 
   const updateSettings = (nextSettings: AppSettings) => {
@@ -427,12 +429,14 @@ export function SettingsApp({
       form: createEmptyApiConfig(defaultConfig),
     });
     setAvailableModels([]);
+    setModelSearchKeyword('');
     setView('edit');
   };
 
   const handleAddSceneConfig = () => {
     setEditor(createSceneEditorState('group-chat', defaultConfig));
     setAvailableModels([]);
+    setModelSearchKeyword('');
     setView('edit');
   };
 
@@ -444,6 +448,7 @@ export function SettingsApp({
       form: normalizeConfigForEdit(config),
     });
     setAvailableModels([]);
+    setModelSearchKeyword('');
     setView('edit');
   };
 
@@ -465,6 +470,7 @@ export function SettingsApp({
       voiceLibraryRecords: card.voiceLibraryRecords || [],
     });
     setAvailableModels([]);
+    setModelSearchKeyword('');
     setView('edit');
   };
 
@@ -648,6 +654,7 @@ export function SettingsApp({
     if (isFetchingModels) return;
     setIsFetchingModels(true);
     setAvailableModels([]);
+    setModelSearchKeyword('');
     try {
       const result = await fetchAvailableModels(currentConfigForm);
       if (result.normalizedBaseUrl) {
@@ -657,7 +664,7 @@ export function SettingsApp({
       alert(`成功拉取 ${result.models.length} 个模型。`);
     } catch (error: any) {
       console.error('Fetch models error:', error);
-      alert(`拉取失败：${error.message}`);
+      alert(`拉取模型失败：${error.message}`);
     } finally {
       setIsFetchingModels(false);
     }
@@ -668,14 +675,15 @@ export function SettingsApp({
       return;
     }
 
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) {
       return;
     }
 
     if (!isLikelyVoiceSampleFile(file)) {
       alert(getVoiceSampleValidationMessage());
-      event.currentTarget.value = '';
+      input.value = '';
       return;
     }
 
@@ -688,7 +696,7 @@ export function SettingsApp({
       });
       setTtsPreviewAudioUrl('');
     } finally {
-      event.currentTarget.value = '';
+      input.value = '';
     }
   };
 
@@ -777,6 +785,16 @@ export function SettingsApp({
   };
 
   const updateCurrentConfig = (patch: Partial<ApiConfig>) => {
+    const shouldResetFetchedModels =
+      patch.provider !== undefined
+      || patch.baseUrl !== undefined
+      || patch.apiKey !== undefined;
+
+    if (shouldResetFetchedModels) {
+      setAvailableModels([]);
+      setModelSearchKeyword('');
+    }
+
     if (editor.kind === 'default') {
       setEditor({
         ...editor,
@@ -802,7 +820,10 @@ export function SettingsApp({
     >
       {view === 'list' ? (
         <>
-          <div className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3 pt-12">
+          <div
+            className="z-10 flex min-h-[64px] items-center justify-between bg-[#f7f7f9] px-4 pb-3"
+            style={{ paddingTop: settingsHeaderTopPadding }}
+          >
             <button onClick={onBack} className="-ml-1 flex items-center p-1 text-black active:opacity-70">
               <ChevronLeft size={26} />
             </button>
@@ -961,7 +982,10 @@ export function SettingsApp({
         </>
       ) : (
         <>
-          <div className="z-10 flex min-h-[64px] items-center justify-between bg-white px-4 pb-3 pt-12">
+          <div
+            className="z-10 flex min-h-[64px] items-center justify-between bg-white px-4 pb-3"
+            style={{ paddingTop: settingsHeaderTopPadding }}
+          >
             <button onClick={() => setView('list')} className="-ml-1 flex items-center p-1 text-black active:opacity-70">
               <ChevronLeft size={26} />
             </button>
@@ -1279,16 +1303,25 @@ export function SettingsApp({
               </div>
               <div className="relative">
                 {availableModels.length > 0 ? (
-                  <AppSelect
-                    value={currentConfigForm.model}
-                    onChange={(model) => updateCurrentConfig({ model })}
-                    options={(filteredAvailableModels.length > 0 ? filteredAvailableModels : availableModels).map((model) => ({
-                      value: model,
-                      label: model,
-                    }))}
-                    placeholder="请选择模型"
-                    emptyText="暂无可选模型"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={modelSearchKeyword}
+                      onChange={(event) => setModelSearchKeyword(event.target.value)}
+                      placeholder="搜索已拉取的模型，例如 gemini / gpt / claude"
+                      className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 text-[14px] text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-blue-500"
+                    />
+                    <AppSelect
+                      value={currentConfigForm.model}
+                      onChange={(model) => updateCurrentConfig({ model })}
+                      options={filteredAvailableModels.map((model) => ({
+                        value: model,
+                        label: model,
+                      }))}
+                      placeholder="请选择模型"
+                      emptyText="没有匹配的模型"
+                    />
+                  </div>
                 ) : (
                   <input
                     type="text"
@@ -1301,14 +1334,27 @@ export function SettingsApp({
                 {availableModels.length > 0 ? (
                   <div className="mt-1 flex items-center justify-between px-1">
                     <span className="text-[11px] text-zinc-400">
-                      已拉取 {availableModels.length} 个模型
+                      已拉取 {filteredAvailableModels.length}/{availableModels.length} 个模型
                     </span>
-                    <button
-                      onClick={() => updateCurrentConfig({ model: '' })}
-                      className="text-[11px] text-zinc-900 active:opacity-70"
-                    >
-                      清空查看全部
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {modelSearchKeyword ? (
+                        <button
+                          onClick={() => setModelSearchKeyword('')}
+                          className="text-[11px] text-zinc-500 active:opacity-70"
+                        >
+                          清空搜索
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => {
+                          setModelSearchKeyword('');
+                          updateCurrentConfig({ model: '' });
+                        }}
+                        className="text-[11px] text-zinc-900 active:opacity-70"
+                      >
+                        清空选择
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>

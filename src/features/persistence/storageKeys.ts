@@ -4,6 +4,7 @@ export const STORAGE_KEYS = {
   migrationMeta: 'persistence:migration-meta',
   characters: 'persistence:characters',
   visualSettings: 'persistence:visual-settings',
+  perception: 'persistence:perception',
   userProfile: 'persistence:user-profile',
   moments: 'persistence:moments',
   forumData: 'persistence:forum-data',

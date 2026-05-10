@@ -663,6 +663,7 @@ export type CharacterPublicThreadPeerHint = {
 };
 
 export type CharacterMomentPrivateCarryoverLevel = 'none' | 'light' | 'medium' | 'high';
+export type CharacterFriendshipStatus = 'friends' | 'none';
 
 export type Character = {
   id: string;
@@ -714,6 +715,10 @@ export type Character = {
   stickerMetadata?: Record<string, StickerMetadata>;
   maskId?: string; // Linked mask ID
   groupId?: string; // Group ID for contacts
+  friendshipStatus?: CharacterFriendshipStatus;
+  blockedByUser?: boolean;
+  blockedByCharacter?: boolean;
+  relationshipStatusUpdatedAt?: number;
   motto?: string;
   bubbleStyleCss?: string;
   userBubbleStyleCss?: string;
@@ -895,7 +900,9 @@ export type MomentImageCard = {
   theme: 'polaroid' | 'film' | 'note' | 'poster';
   layout?: 'card' | 'described-photo' | 'inner-voice';
   overlayText?: string;
+  translatedOverlayText?: string;
   frameCaptions?: string[];
+  translatedFrameCaptions?: string[];
 };
 
 export type MomentSourceChatMessageRef = {
@@ -1237,15 +1244,26 @@ export type ForumData = {
   globalSettings?: ForumGlobalSettings;
 };
 
+export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'superseded';
+export type FriendRequestDirection = 'incoming' | 'outgoing';
+export type FriendRequestInitiator = 'user' | 'character' | 'forum';
+export type FriendRequestKind = 'friend' | 'reconnect';
+
 export type FriendRequest = {
   id: string;
   fromUserId: string; // Virtual ID
   fromUserName: string;
   fromUserAvatar: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: FriendRequestStatus;
   timestamp: number;
   message?: string;
-  sourceScene?: 'forum' | 'manual';
+  sourceScene?: 'forum' | 'manual' | 'relationship';
+  direction?: FriendRequestDirection;
+  initiator?: FriendRequestInitiator;
+  requestKind?: FriendRequestKind;
+  characterId?: string;
+  resolutionMessage?: string;
+  lastUpdatedAt?: number;
   sourcePostId?: string;
   sourceTempChatAuthorId?: string;
   forumHandle?: string;

@@ -34,6 +34,7 @@ import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService'
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
+import { hasOpenedCoupleSpaceForCharacter } from '../chat-runtime/coupleSpaceInviteGuard';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
@@ -380,6 +381,7 @@ function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; classN
 
 export function ChatSessionScreen({ 
   character, 
+  characters,
   history, 
   setHistory, 
   onUpdateCharacter,
@@ -400,6 +402,7 @@ export function ChatSessionScreen({
   worldBook = [],
   perception,
   coupleSpace,
+  isCoupleSpaceDismissed,
   onViewForumPost,
   callHistory,
   onAddCallRecord,
@@ -417,6 +420,7 @@ export function ChatSessionScreen({
   onRuntimeBusyChange,
 }: { 
   character: Character;
+  characters: Character[];
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
   onUpdateCharacter: (c: Character) => void;
@@ -438,6 +442,7 @@ export function ChatSessionScreen({
   key?: string;
   perception?: PerceptionSettings;
   coupleSpace?: CoupleSpaceData;
+  isCoupleSpaceDismissed?: boolean;
   onViewForumPost?: (postId: string) => void;
   callHistory?: CallRecord[];
   onAddCallRecord?: (record: CallRecord) => void;
@@ -448,7 +453,7 @@ export function ChatSessionScreen({
   datingResumeSignal?: number;
   walletData?: WalletData;
   onUpdateWalletData?: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -599,6 +604,12 @@ export function ChatSessionScreen({
     savedDates?.find(
       session => session.characterId === character.id && (session.status || 'active') === 'active',
     ) || null;
+  const hasOpenedCoupleSpace = hasOpenedCoupleSpaceForCharacter({
+    characterId: character.id,
+    coupleSpace,
+    history,
+    isDismissed: isCoupleSpaceDismissed,
+  });
   const {
     isLoading,
     error,
@@ -631,6 +642,7 @@ export function ChatSessionScreen({
     handleRejectTransfer,
   } = useDirectChatRuntime({
     character,
+    characters,
     sharedStickers: settings.sharedStickers || [],
     history,
     setHistory,
@@ -643,6 +655,7 @@ export function ChatSessionScreen({
     worldBook,
     perception,
     coupleSpace,
+    isCoupleSpaceDismissed,
     userName,
     directChatHistory,
     chatGroups,
@@ -782,6 +795,8 @@ export function ChatSessionScreen({
     });
     const relationshipProjection = buildRelationshipProjection({
       character,
+      characters,
+      chatGroups,
       coupleSpace,
       userName,
       directMessages: history,
@@ -1481,6 +1496,7 @@ export function ChatSessionScreen({
   const settingsPanel = (
     <ChatSettingsPanel 
       character={character} 
+      characters={characters}
       onUpdate={onUpdateCharacter} 
       onBack={() => setShowSettings(false)} 
       history={history}
@@ -3090,11 +3106,19 @@ export function ChatSessionScreen({
                   <button 
                     onClick={() => {
                       setShowFunPanel(false);
+                      if (hasOpenedCoupleSpace) {
+                        return;
+                      }
                       sendCoupleSpaceInvitation();
                     }}
-                    className="chat-footer-fun-action flex flex-col items-center gap-2"
+                    disabled={hasOpenedCoupleSpace}
+                    className="chat-footer-fun-action flex flex-col items-center gap-2 disabled:cursor-not-allowed"
                   >
-                    <div className="chat-footer-fun-action-icon w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 active:scale-95 transition-transform">
+                    <div className={`chat-footer-fun-action-icon w-14 h-14 rounded-2xl flex items-center justify-center transition-transform ${
+                      hasOpenedCoupleSpace
+                        ? 'bg-pink-50 text-pink-300'
+                        : 'bg-zinc-100 text-zinc-900 active:scale-95'
+                    }`}>
                       <CoupleSpaceInviteIcon size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">情侣空间</span>

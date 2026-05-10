@@ -36,12 +36,14 @@ export function useAppPersistence({
 }: UseAppPersistenceParams): UseAppPersistenceResult {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
+  const [hasCompletedDeferredHydration, setHasCompletedDeferredHydration] = useState(false);
   const [shouldShowHydrationFallback, setShouldShowHydrationFallback] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
   const defaultAppData = useMemo(() => createDefaultAppData(), [createDefaultAppData]);
 
   useEffect(() => {
     let cancelled = false;
+    setHasCompletedDeferredHydration(false);
 
     const runBootstrap = async () => {
       try {
@@ -64,6 +66,30 @@ export function useAppPersistence({
         if (bootstrapped.migratedSettings) {
           void persistSettings(bootstrapped.migratedSettings);
         }
+
+        if (bootstrapped.loadDeferredAppData) {
+          void bootstrapped.loadDeferredAppData()
+            .then((deferredAppData) => {
+              if (cancelled) {
+                return;
+              }
+
+              setAppData((prev) => ({
+                ...prev,
+                ...deferredAppData,
+              }));
+            })
+            .catch((error) => {
+              console.error('[useAppPersistence] Failed to hydrate deferred app data', error);
+            })
+            .finally(() => {
+              if (!cancelled) {
+                setHasCompletedDeferredHydration(true);
+              }
+            });
+        } else {
+          setHasCompletedDeferredHydration(true);
+        }
       } catch (error) {
         console.error('[useAppPersistence] Failed to bootstrap persisted state', error);
         if (cancelled) {
@@ -71,6 +97,7 @@ export function useAppPersistence({
         }
         setSettings(defaultSettings);
         setAppData(defaultAppData);
+        setHasCompletedDeferredHydration(true);
       } finally {
         if (!cancelled) {
           setHasHydratedStorage(true);
@@ -99,9 +126,9 @@ export function useAppPersistence({
   }, [hasHydratedStorage, settings]);
 
   useEffect(() => {
-    if (!hasHydratedStorage) return;
+    if (!hasHydratedStorage || !hasCompletedDeferredHydration) return;
     void persistAppDataSnapshot(appData, defaultAppData);
-  }, [appData, defaultAppData, hasHydratedStorage]);
+  }, [appData, defaultAppData, hasCompletedDeferredHydration, hasHydratedStorage]);
 
   useEffect(() => {
     if (hasHydratedStorage) {

@@ -101,11 +101,17 @@ export function useCoupleSpaceAutoChecks({
       );
       const spaces = resolvedState.spacesByPartnerId || {};
 
-      for (const [partnerId, coupleSpace] of Object.entries(spaces)) {
+      for (const [partnerId, storedCoupleSpace] of Object.entries(spaces)) {
         const partner = currentAppData.characters.find((character) => character.id === partnerId) ?? null;
         if (!partner) {
           continue;
         }
+        const coupleSpace = currentAppData.perception
+          ? {
+              ...storedCoupleSpace,
+              perception: currentAppData.perception,
+            }
+          : storedCoupleSpace;
 
         const now = Date.now();
         const gateResult = evaluateCoupleSpaceInitiativeAutoCheckGate({
@@ -124,6 +130,7 @@ export function useCoupleSpaceAutoChecks({
             user: currentAppData.userProfile,
             partner,
             coupleSpace,
+            perception: currentAppData.perception,
             chatHistory: currentAppData.chatHistory,
             masks: currentAppData.masks,
             worldBooks: currentAppData.worldBooks,

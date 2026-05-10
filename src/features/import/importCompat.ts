@@ -292,7 +292,7 @@ function normalizeWorldBookRecord(item: unknown, index: number): WorldBookEntry 
     content,
     category: normalizeWorldBookCategory(normalizeOptionalText(item.category)),
     priorityLevel: normalizeWorldBookPriorityLevel(
-      typeof item.priorityLevel === 'string' ? item.priorityLevel : undefined,
+      (typeof item.priorityLevel === 'string' ? item.priorityLevel : undefined) as WorldBookEntry['priorityLevel'],
     ),
     isActive: !disabled,
     isGlobal: typeof item.isGlobal === 'boolean' ? item.isGlobal : characterIds.length === 0,

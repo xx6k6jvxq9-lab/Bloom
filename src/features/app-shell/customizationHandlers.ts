@@ -1,6 +1,7 @@
 import type { AppData } from '../../types';
 import { sanitizePersistedCharacters as sanitizePersistedCharactersFromStore } from '../persistence/appDataSanitizers';
 import { clearAllPersistentData } from '../persistence/backupArchive';
+import { createDefaultPerceptionSettings, hydratePerceptionSettings } from '../persistence/perceptionStore';
 import { sanitizeTransientAssetValue } from '../persistence/sanitizeTransientAssetValue';
 
 type HandleCustomizationImportDataParams = {
@@ -18,6 +19,12 @@ export function handleCustomizationImportData({
 }: HandleCustomizationImportDataParams) {
   try {
     const parsed = JSON.parse(data);
+    const importedPerception = hydratePerceptionSettings(
+      parsed.perception
+      ?? parsed.coupleSpaceState?.sharedPerception
+      ?? parsed.coupleSpace?.perception,
+      createDefaultPerceptionSettings(),
+    );
     setAppData({
       ...parsed,
       characters: sanitizePersistedCharactersFromStore(
@@ -31,6 +38,13 @@ export function handleCustomizationImportData({
             avatar: sanitizeTransientAssetValue(parsed.userProfile.avatar),
           }
         : parsed.userProfile,
+      perception: importedPerception,
+      coupleSpaceState: parsed.coupleSpaceState
+        ? {
+            ...parsed.coupleSpaceState,
+            sharedPerception: importedPerception,
+          }
+        : parsed.coupleSpaceState,
     });
     alert('导入成功！');
   } catch {

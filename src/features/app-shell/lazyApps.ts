@@ -74,6 +74,73 @@ export const loadPerceptionView = () =>
     })),
   );
 
+export const loadMomentsApp = () =>
+  loadWithChunkRecovery(() =>
+    import('../../components/moments/Page').then((module) => ({
+      default: module.MomentsApp,
+    })),
+  );
+
+export const loadChatSessionMount = () =>
+  loadWithChunkRecovery(() =>
+    import('../chat-session/ChatSessionMount').then((module) => ({
+      default: module.ChatSessionMount,
+    })),
+  );
+
+export const loadDreamAppPage = () =>
+  loadWithChunkRecovery(() =>
+    import('../../components/dream/Page').then((module) => ({
+      default: module.DreamAppPage,
+    })),
+  );
+
+export const loadWorldBookManager = () =>
+  loadWithChunkRecovery(() =>
+    import('../../components/main/WorldBookManager').then((module) => ({
+      default: module.WorldBookManager,
+    })),
+  );
+
+export const loadSettingsAppScreen = () =>
+  loadWithChunkRecovery(() =>
+    import('../../components/settings/SettingsApp').then((module) => ({
+      default: module.SettingsApp,
+    })),
+  );
+
 export const loadMusicApp = () => loadWithChunkRecovery(() => import('../../components/media/MusicApp'));
 export const loadForumApp = () => loadWithChunkRecovery(() => import('../../components/social/ForumApp/Page'));
 export const loadWalletApp = () => loadWithChunkRecovery(() => import('../../components/wallet/WalletApp/Page'));
+
+export function preloadAppScreen(app: string): Promise<unknown> | null {
+  switch (app) {
+    case 'chat':
+      return null;
+    case 'chat-session':
+    case 'group-chat-session':
+      return loadChatSessionMount();
+    case 'dream':
+      return loadDreamAppPage();
+    case 'worldbook':
+      return loadWorldBookManager();
+    case 'settings':
+      return loadSettingsAppScreen();
+    case 'monitor':
+      return loadMonitorApp();
+    case 'customization':
+      return loadCustomizationApp();
+    case 'couple-space':
+      return loadCoupleSpaceApp();
+    case 'perception':
+      return loadPerceptionView();
+    case 'music':
+      return loadMusicApp();
+    case 'forum':
+      return loadForumApp();
+    case 'wallet':
+      return loadWalletApp();
+    default:
+      return null;
+  }
+}

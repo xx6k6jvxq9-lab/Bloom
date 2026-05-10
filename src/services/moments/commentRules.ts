@@ -1,9 +1,16 @@
-import type { Character, MomentComment, MomentItem } from '../../types';
+import type { Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import {
+  getCharacterPublicThreadProfile,
+  inferCharacterPublicThreadRelation,
+  isLikelyUserDirectedMoment,
+  shouldSuppressAutoCommentsForMoment,
+} from './publicThreadPolicy';
 
 type PickInitialCommentersOptions = {
   moment: MomentItem;
   characters: Character[];
+  chatGroups?: ChatGroup[];
 };
 
 type PickNextResponderOptions = {
@@ -12,6 +19,7 @@ type PickNextResponderOptions = {
   triggerComment: MomentComment;
   recentChain: MomentComment[];
   usedAuthorIds?: string[];
+  chatGroups?: ChatGroup[];
 };
 
 type ThreadReplyGuidanceOptions = {
@@ -21,6 +29,7 @@ type ThreadReplyGuidanceOptions = {
   characters: Character[];
   userName: string;
   recentChain?: MomentComment[];
+  chatGroups?: ChatGroup[];
 };
 
 export type CommentTimeMode = 'fresh' | 'same_day' | 'recent' | 'days_later' | 'stale';
@@ -156,7 +165,7 @@ function pickWeightedCharacter(candidates: Array<{ character: Character; weight:
   return candidates[candidates.length - 1]?.character || null;
 }
 
-export function inferMomentAudience(moment: MomentItem, characters: Character[]) {
+export function inferMomentAudience(moment: MomentItem, characters: Character[], _chatGroups: ChatGroup[] = []) {
   if (moment.authorId === 'user') {
     return 'public' as const;
   }
@@ -166,18 +175,19 @@ export function inferMomentAudience(moment: MomentItem, characters: Character[])
     return 'public' as const;
   }
 
-  const relationStrength = getCharacterUserRelationStrength(author);
-  const isUserDirected = USER_DIRECTED_MOMENT_REGEX.test(moment.content.trim());
-  return relationStrength >= 1 && isUserDirected ? 'user_directed' : 'public';
+  return isLikelyUserDirectedMoment({
+    momentContent: moment.content,
+    author,
+  }) ? 'user_directed' : 'public';
 }
 
 function getMomentAgeHours(moment: MomentItem) {
   return Math.max((Date.now() - moment.timestamp) / (1000 * 60 * 60), 0);
 }
 
-export function buildCommentLoopContext(moment: MomentItem, characters: Character[]): CommentLoopContext {
+export function buildCommentLoopContext(moment: MomentItem, characters: Character[], chatGroups: ChatGroup[] = []): CommentLoopContext {
   const ageHours = getMomentAgeHours(moment);
-  const audience = inferMomentAudience(moment, characters);
+  const audience = inferMomentAudience(moment, characters, chatGroups);
 
   const timeMode: CommentTimeMode =
     ageHours <= 2
@@ -204,53 +214,21 @@ export function buildCommentLoopContext(moment: MomentItem, characters: Characte
   };
 }
 
-export function getCharacterRelationLevel(left: Character, right: Character): CharacterRelationLevel {
-  if (left.id === right.id) {
-    return 'familiar';
-  }
-
-  const leftSignals = getCharacterRelationSignalsToUser(left);
-  const rightSignals = getCharacterRelationSignalsToUser(right);
-
-  if (
-    (leftSignals.family && rightSignals.romantic)
-    || (leftSignals.romantic && rightSignals.family)
-    || (leftSignals.romantic && rightSignals.romantic)
-    || (leftSignals.protective && rightSignals.romantic)
-    || (leftSignals.romantic && rightSignals.protective)
-  ) {
-    return 'sensitive';
-  }
-
-  if (left.groupId && right.groupId && left.groupId === right.groupId) {
-    return 'familiar';
-  }
-
-  if (
-    leftSignals.family
-    || rightSignals.family
-    || leftSignals.close
-    || rightSignals.close
-    || leftSignals.protective
-    || rightSignals.protective
-  ) {
-    return 'aware';
-  }
-
-  return 'stranger';
+export function getCharacterRelationLevel(left: Character, right: Character, chatGroups: ChatGroup[] = []): CharacterRelationLevel {
+  return inferCharacterPublicThreadRelation(left, right, chatGroups);
 }
 
 function getRelationWeight(level: CharacterRelationLevel) {
   switch (level) {
     case 'sensitive':
-      return 1.45;
+      return 0.72;
     case 'familiar':
-      return 1.15;
+      return 1.08;
     case 'aware':
-      return 0.8;
+      return 0.5;
     case 'stranger':
     default:
-      return 0.25;
+      return 0.14;
   }
 }
 
@@ -348,30 +326,48 @@ function getRelationshipHint(
   replyCharacter: Character,
   targetCharacter: Character | null,
   momentAuthor: Character | null,
+  chatGroups: ChatGroup[] = [],
 ) {
   if (!targetCharacter) {
     if (momentAuthor && momentAuthor.id !== replyCharacter.id) {
-      const relation = getCharacterRelationLevel(replyCharacter, momentAuthor);
+      const relation = getCharacterRelationLevel(replyCharacter, momentAuthor, chatGroups);
+      const profile = getCharacterPublicThreadProfile(replyCharacter, momentAuthor, chatGroups);
       if (relation === 'sensitive') {
-        return '你和动态作者在用户关系链上有敏感张力，可以有一点在意、较劲或护短，但别抢主楼。';
+        return '你和动态作者都可能围着同一个人产生张力，但这不代表你们彼此很熟。只允许很短地酸一句或收一句，不能替对方认领、替对方做主，也别说得像默认同一阵线。';
       }
       if (relation === 'familiar') {
-        return '你和动态作者算熟，可以自然接一句，但不要聊成你们自己的私窗。';
+        if (!profile.allowIntimateTone) {
+          return '你和动态作者确实比较熟，能自然接一句，但你们这层熟不等于能说亲密话。保持熟人感即可，不要写成暧昧私聊或贴脸亲昵。';
+        }
+        return '你和动态作者确实比较熟，能自然接一句，也允许一点熟人感，但仍然是公开评论区，不要变成你们自己的小窗。';
+      }
+      if (relation === 'aware') {
+        return '你和动态作者只是知道彼此，最多顺着场合接一句，别突然亲密，也别替对方认领什么。';
+      }
+      if (profile.userOverlap !== 'none') {
+        return '你和动态作者都可能因为同一个人多看彼此两眼，但你们彼此并不熟，所以最多轻轻收一句，不要演成共同占位或熟人拌嘴。';
       }
     }
     return '你是在公开评论区顺手接一句，不要突然摆出私聊口气。';
   }
 
-  const relation = getCharacterRelationLevel(replyCharacter, targetCharacter);
+  const relation = getCharacterRelationLevel(replyCharacter, targetCharacter, chatGroups);
+  const profile = getCharacterPublicThreadProfile(replyCharacter, targetCharacter, chatGroups);
   switch (relation) {
     case 'sensitive':
-      return '你和对方在用户关系链上有敏感张力，可以有一点护短、别扭、试探或较劲，但别抢走主楼。';
+      return '你和对方在用户关系链上有点敏感张力，但不等于你们彼此很熟。可以短短较劲、阴阳或收一下话头，禁止用占有、接人、抱走、乖乖等着这类越界口气。';
     case 'familiar':
-      return '你和对方算熟，能自然回一句，也允许有轻微互动，但仍然要围绕动态主线。';
+      if (!profile.allowIntimateTone) {
+        return '你和对方确实算熟，可以自然回一句，也可以有一点熟人互动，但别突然说亲密话，更不要写成暧昧或长期私聊。';
+      }
+      return '你和对方确实算熟，能自然回一句，也允许轻微互动，但仍然要围绕动态主线，不要聊成你们自己的小窗。';
     case 'aware':
-      return '你和对方只是知道彼此，说话别太像老熟人，也别聊成你们自己的私话。';
+      return '你和对方只是知道彼此，说话别太像老熟人，更不要默认你能替对方表态、接人或站位。';
     case 'stranger':
     default:
+      if (profile.userOverlap !== 'none') {
+        return '你和对方其实并不熟，只是都可能因为同一个人而有点在意，所以只能非常克制地接一下，不能说成暧昧打趣或共同占位。';
+      }
       return '你和对方不算熟，这一句要克制，更多是顺着场合回应，不要过分亲昵或长篇互怼。';
   }
 }
@@ -382,8 +378,9 @@ function getJoinReasonHint(options: {
   targetCharacter: Character | null;
   momentAuthor: Character | null;
   targetComment: MomentComment;
+  chatGroups?: ChatGroup[];
 }) {
-  const { moment, replyCharacter, targetCharacter, momentAuthor, targetComment } = options;
+  const { moment, replyCharacter, targetCharacter, momentAuthor, targetComment, chatGroups = [] } = options;
   const anchor = inferMomentSemanticAnchor(moment.content);
 
   if (targetCharacter && hasDirectHookForCharacter(targetComment, replyCharacter)) {
@@ -395,12 +392,16 @@ function getJoinReasonHint(options: {
   }
 
   if (targetCharacter) {
-    const relation = getCharacterRelationLevel(replyCharacter, targetCharacter);
+    const relation = getCharacterRelationLevel(replyCharacter, targetCharacter, chatGroups);
+    const profile = getCharacterPublicThreadProfile(replyCharacter, targetCharacter, chatGroups);
     if (relation === 'sensitive') {
-      return '你这次下场，是因为你和当前楼层人物之间有敏感关系，这句容易戳到你。';
+      return '你这次下场，不是因为你和对方很熟，而是这句刚好戳到你或让你有点在意，所以只能短短接一下。';
     }
     if (relation === 'familiar') {
       return '你这次下场，是因为你和当前楼层人物本来就比较熟，这句你接得上。';
+    }
+    if (profile.userOverlap !== 'none') {
+      return '你这次下场，不是因为你和对方熟，而是这句让你有点在意，所以只适合克制地露一下态度。';
     }
   }
 
@@ -423,15 +424,19 @@ function inferThreadReplyAction(options: {
   replyCharacter: Character;
   targetCharacter: Character | null;
   recentChain: MomentComment[];
+  chatGroups?: ChatGroup[];
 }) {
-  const { moment, targetComment, replyCharacter, targetCharacter, recentChain } = options;
+  const { moment, targetComment, replyCharacter, targetCharacter, recentChain, chatGroups = [] } = options;
   const anchor = inferMomentSemanticAnchor(moment.content);
-  const context = buildCommentLoopContext(moment, targetCharacter ? [replyCharacter, targetCharacter] : [replyCharacter]);
+  const context = buildCommentLoopContext(moment, targetCharacter ? [replyCharacter, targetCharacter] : [replyCharacter], chatGroups);
+  const peerProfile = targetCharacter
+    ? getCharacterPublicThreadProfile(replyCharacter, targetCharacter, chatGroups)
+    : null;
 
   if (context.timeMode === 'days_later' || context.timeMode === 'stale') return 'late_follow_up';
   if (recentChain.length >= 2) return 'soft_close';
   if (anchor === 'anxious_support') return targetComment.authorId === moment.authorId ? 'comfort' : 'encourage';
-  if (anchor === 'happy_share') return 'light_tease';
+  if (anchor === 'happy_share') return peerProfile?.allowBanter ? 'light_tease' : 'answer_directly';
   if (anchor === 'venting') return targetComment.authorId === moment.authorId ? 'support_side' : 'answer_directly';
   if (targetCharacter && targetCharacter.id !== moment.authorId && replyCharacter.id === moment.authorId) return 'answer_directly';
   return 'answer_directly';
@@ -458,8 +463,8 @@ function getActionLabel(actionType: ThreadReplyAction) {
 }
 
 export function buildThreadReplyGuidance(options: ThreadReplyGuidanceOptions): ThreadReplyGuidance {
-  const { moment, targetComment, replyCharacter, characters, userName, recentChain = [] } = options;
-  const context = buildCommentLoopContext(moment, characters);
+  const { moment, targetComment, replyCharacter, characters, userName, recentChain = [], chatGroups = [] } = options;
+  const context = buildCommentLoopContext(moment, characters, chatGroups);
   const semanticAnchor = inferMomentSemanticAnchor(moment.content);
   const targetCharacter = targetComment.authorId === 'user'
     ? null
@@ -473,6 +478,7 @@ export function buildThreadReplyGuidance(options: ThreadReplyGuidanceOptions): T
     replyCharacter,
     targetCharacter,
     recentChain,
+    chatGroups,
   });
   const targetName = targetComment.authorId === 'user'
     ? userName
@@ -488,6 +494,7 @@ export function buildThreadReplyGuidance(options: ThreadReplyGuidanceOptions): T
     targetCharacter,
     momentAuthor,
     targetComment,
+    chatGroups,
   });
 
   const styleHints = [
@@ -498,14 +505,40 @@ export function buildThreadReplyGuidance(options: ThreadReplyGuidanceOptions): T
     joinReasonHint,
     '评论区不是群聊窗口，只顺手接一句或两句，不要自顾自开新话题。',
     '如果能接住动态情绪，就优先接情绪；如果只是和别的角色玩梗，就宁可收住。',
+    '如果你和楼里的人不熟，不要用亲昵称呼、共同占位、替别人做主或默认你们是一伙的。',
+    '除非你就是动态作者本人，否则不要说“领走、带走、抱走、收到人了、乖乖等着、我的人”这类占位话。',
   ];
+
+  const peerProfile = targetCharacter
+    ? getCharacterPublicThreadProfile(replyCharacter, targetCharacter, chatGroups)
+    : momentAuthor && momentAuthor.id !== replyCharacter.id
+      ? getCharacterPublicThreadProfile(replyCharacter, momentAuthor, chatGroups)
+      : null;
+
+  if (peerProfile) {
+    if (!peerProfile.allowBanter) {
+      styleHints.push('你和这层楼里的人不适合互怼玩梗，宁可收短一点，也不要写成熟人拌嘴。');
+    }
+    if (!peerProfile.allowIntimateTone) {
+      styleHints.push('不要用亲昵语气、私下昵称或像恋人/长期暧昧那样的说法。');
+    }
+    if (peerProfile.interactionStyle === 'guarded') {
+      styleHints.push('你们彼此更偏克制，说话留一点距离感。');
+    }
+    if (peerProfile.interactionStyle === 'warm' && peerProfile.familiarity === 'familiar') {
+      styleHints.push('允许一点自然熟人感，但仍然先服务动态主线，不要越聊越私。');
+    }
+    if (peerProfile.note?.trim()) {
+      styleHints.push(`补充关系备注：${peerProfile.note.trim()}`);
+    }
+  }
 
   return {
     semanticAnchor,
     semanticAnchorLabel: getAnchorLabel(semanticAnchor),
     actionType,
     actionLabel: getActionLabel(actionType),
-    relationshipHint: getRelationshipHint(replyCharacter, targetCharacter, momentAuthor),
+    relationshipHint: getRelationshipHint(replyCharacter, targetCharacter, momentAuthor, chatGroups),
     timeHint: getTimeHint(context),
     focusHint,
     joinReasonHint,
@@ -513,30 +546,48 @@ export function buildThreadReplyGuidance(options: ThreadReplyGuidanceOptions): T
   };
 }
 
-export function getMomentAutoCommentTargetCount(moment: MomentItem, characters: Character[]) {
+export function getMomentAutoCommentTargetCount(moment: MomentItem, characters: Character[], chatGroups: ChatGroup[] = []) {
   if (characters.length <= 1) return characters.length;
 
-  const context = buildCommentLoopContext(moment, characters);
+  const context = buildCommentLoopContext(moment, characters, chatGroups);
+  if (shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)) return 0;
   if (context.audience === 'user_directed') return 0;
   if (context.timeMode === 'days_later' || context.timeMode === 'stale') return 0;
+  if (moment.authorId !== 'user' && inferMomentSemanticAnchor(moment.content) === 'soft_signal') return 0;
   if (moment.authorId === 'user') return Math.min(characters.length, Math.random() < 0.55 ? 2 : 3);
   return Math.min(characters.length, Math.random() < 0.45 ? 2 : 3);
 }
 
 export function pickInitialCommenters(options: PickInitialCommentersOptions) {
-  const { moment, characters } = options;
-  const context = buildCommentLoopContext(moment, characters);
+  const { moment, characters, chatGroups = [] } = options;
+  const context = buildCommentLoopContext(moment, characters, chatGroups);
   if (context.audience === 'user_directed' || context.timeMode === 'days_later' || context.timeMode === 'stale') {
+    return [];
+  }
+  if (shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)) {
     return [];
   }
 
   const eligibleCharacters = characters.filter((character) => character.id !== moment.authorId);
-  const targetCount = getMomentAutoCommentTargetCount(moment, eligibleCharacters);
+  const targetCount = getMomentAutoCommentTargetCount(moment, characters, chatGroups);
   if (targetCount <= 0) return [];
+  const momentAuthor = moment.authorId === 'user'
+    ? null
+    : characters.find((character) => character.id === moment.authorId) || null;
 
   const weightedPool = shuffleCharacters(eligibleCharacters).map((character) => ({
     character,
-    weight: getParticipationWeight(character, moment),
+    weight: (() => {
+      let weight = getParticipationWeight(character, moment);
+      if (momentAuthor) {
+        const profile = getCharacterPublicThreadProfile(character, momentAuthor, chatGroups);
+        if (profile.familiarity === 'familiar') weight += 0.42;
+        if (profile.familiarity === 'aware') weight += 0.16;
+        if (profile.familiarity === 'stranger') weight -= 0.12;
+        if (profile.userOverlap === 'shared_claim' && profile.familiarity === 'stranger') weight -= 0.18;
+      }
+      return Math.max(weight, 0.08);
+    })(),
   }));
 
   const picked: Character[] = [];
@@ -558,16 +609,24 @@ export function shouldTriggerFollowUpReply(
   currentDepth: number,
   characters: Character[],
   recentChain: MomentComment[] = [],
+  chatGroups: ChatGroup[] = [],
 ) {
-  const context = buildCommentLoopContext(moment, characters);
+  const context = buildCommentLoopContext(moment, characters, chatGroups);
   if (currentDepth >= context.maxDepth) return false;
   if ((context.timeMode === 'days_later' || context.timeMode === 'stale') && currentDepth >= 1) return false;
   if (isLikelyOffTopicChain(moment, recentChain)) return false;
+  if (
+    shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups)
+    && triggerComment.authorId !== 'user'
+    && triggerComment.authorId !== moment.authorId
+  ) {
+    return false;
+  }
 
   const text = `${moment.content}\n${triggerComment.content}`.trim();
   let chance = moment.authorId === 'user' ? 0.42 : 0.6;
 
-  if (context.audience === 'user_directed') chance -= 0.1;
+  if (context.audience === 'user_directed') chance -= 0.22;
   if (context.timeMode === 'same_day') chance -= 0.05;
   if (context.timeMode === 'recent') chance -= 0.12;
   if (context.timeMode === 'days_later') chance -= 0.28;
@@ -582,9 +641,10 @@ export function shouldTriggerFollowUpReply(
 }
 
 export function pickNextResponder(options: PickNextResponderOptions) {
-  const { moment, characters, triggerComment, recentChain, usedAuthorIds = [] } = options;
-  const context = buildCommentLoopContext(moment, characters);
+  const { moment, characters, triggerComment, recentChain, usedAuthorIds = [], chatGroups = [] } = options;
+  const context = buildCommentLoopContext(moment, characters, chatGroups);
   const blockedIds = new Set<string>(usedAuthorIds);
+  const suppressThirdParty = shouldSuppressAutoCommentsForMoment(moment, characters, chatGroups);
 
   const triggerAuthor = characters.find((character) => character.id === triggerComment.authorId) || null;
   const targetAuthor = triggerComment.replyToAuthorId
@@ -600,8 +660,8 @@ export function pickNextResponder(options: PickNextResponderOptions) {
       const hooked = hasDirectHookForCharacter(triggerComment, character);
 
       if (character.id === moment.authorId) weight += 0.45;
-      if (targetAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, targetAuthor));
-      if (triggerAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, triggerAuthor)) * 0.65;
+      if (targetAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, targetAuthor, chatGroups));
+      if (triggerAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, triggerAuthor, chatGroups)) * 0.65;
       if (hooked) weight += 0.95;
 
       if (recentChain.slice(-2).some((comment) => comment.authorId === character.id)) {
@@ -609,7 +669,7 @@ export function pickNextResponder(options: PickNextResponderOptions) {
       }
 
       if (context.audience === 'user_directed' && character.id !== moment.authorId && !hooked) {
-        weight -= 0.75;
+        weight -= 1.1;
       }
       if (context.timeMode === 'recent' && character.id !== moment.authorId && !hooked) {
         weight -= 0.15;
@@ -621,18 +681,26 @@ export function pickNextResponder(options: PickNextResponderOptions) {
         weight -= 0.35;
       }
 
-      const relationToTrigger = triggerAuthor ? getCharacterRelationLevel(character, triggerAuthor) : 'stranger';
-      const relationToTarget = targetAuthor ? getCharacterRelationLevel(character, targetAuthor) : 'stranger';
+      const relationToTrigger = triggerAuthor ? getCharacterRelationLevel(character, triggerAuthor, chatGroups) : 'stranger';
+      const relationToTarget = targetAuthor ? getCharacterRelationLevel(character, targetAuthor, chatGroups) : 'stranger';
       const canThirdPartyJoin =
         character.id === moment.authorId
         || hooked
         || relationToTrigger === 'familiar'
-        || relationToTrigger === 'sensitive'
-        || relationToTarget === 'familiar'
-        || relationToTarget === 'sensitive';
+        || relationToTarget === 'familiar';
 
       if (recentChain.length >= 1 && !canThirdPartyJoin) {
         weight -= 0.85;
+      }
+
+      if (suppressThirdParty && character.id !== moment.authorId && !hooked) {
+        weight -= 1.4;
+      }
+      if (relationToTrigger === 'sensitive' && !hooked && character.id !== moment.authorId) {
+        weight -= 0.28;
+      }
+      if (relationToTarget === 'sensitive' && !hooked && character.id !== moment.authorId) {
+        weight -= 0.22;
       }
 
       return { character, weight: Math.max(weight, 0.01) };

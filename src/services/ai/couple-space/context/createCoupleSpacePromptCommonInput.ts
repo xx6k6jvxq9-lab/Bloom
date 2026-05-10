@@ -11,11 +11,7 @@ import type {
 } from '../../../../types';
 import { getMessageMainText, getSummaryHistoryWindow } from '../../../../utils';
 import { buildResolvedMemoryLayers } from '../../../memory/buildResolvedMemoryLayers';
-import {
-  buildCharacterContext,
-  buildUserMaskPrompt,
-  resolveActiveUserMask,
-} from '../../../relationship-context/buildCharacterContext';
+import { buildCharacterContext } from '../../../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../../../relationship-context/buildRelationshipProjection';
 import { buildSharedCharacterState } from '../../../relationship-context/buildSharedCharacterState';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
@@ -59,6 +55,7 @@ export function createCoupleSpacePromptCommonInput(
   params: CreateCoupleSpacePromptCommonInputParams,
 ): CoupleSpacePromptCommonInputEnvelope {
   const { source, scene } = params;
+  const perception = source.perception ?? source.coupleSpace.perception;
   const options = mergeBuildOptions(params.options);
   const policy = buildRuntimePolicy(source, scene, options);
   const characterContext = buildCharacterContext({
@@ -98,13 +95,13 @@ export function createCoupleSpacePromptCommonInput(
   const temporalState = buildCharacterTemporalState({
     characterId: source.partner.id,
     now: source.now,
-    perception: source.coupleSpace.perception,
+    perception,
     directChatHistory: source.chatHistory ?? undefined,
     coupleSpace: source.coupleSpace,
   });
   const temporalContext = buildTemporalContextPrompt({
     now: source.now,
-    perception: source.coupleSpace.perception,
+    perception,
   });
   const sharedCharacterState = buildSharedCharacterState({
     character: source.partner,
@@ -329,7 +326,9 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
   usedMaskId?: string;
   usedWorldBookIds?: string[];
 } {
-  const activeMask = resolveActiveUserMask(source.partner.id, source.masks);
+  const activeMask = source.masks?.find(
+    (mask) => mask.isActive && mask.linkedCharacters.includes(source.partner.id),
+  );
   const activeWorldBooks = sortWorldBooksByPriority(
     source.worldBooks?.filter(
       (worldBook) =>
@@ -338,7 +337,15 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
     ) ?? [],
   );
 
-  const maskPrompt = buildUserMaskPrompt(activeMask);
+  const maskPrompt = activeMask
+    ? [
+        `Name: ${activeMask.name || ''}`,
+        `Personality: ${activeMask.personality || ''}`,
+        `Occupation: ${activeMask.occupation || ''}`,
+        `Relationship with you: ${activeMask.relationship || ''}`,
+        `World Background: ${activeMask.worldBackground || 'Standard'}`,
+      ].join('\n')
+    : undefined;
 
   const worldBookPrompt = buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
 
@@ -746,7 +753,7 @@ function resolveAuthorLabel(
   if (authorId === source.partner.id) {
     return source.partner.name;
   }
-  return source.characters?.find((character) => character.id === authorId)?.name ?? authorId;
+  return authorId;
 }
 
 function summarizeText(text: string | undefined): string {

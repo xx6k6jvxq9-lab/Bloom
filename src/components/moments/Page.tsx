@@ -11,18 +11,36 @@ import {
   runMomentCommentReplySequence,
   runMomentPublishCommentSequence,
 } from '../../services/moments/commentOrchestrator';
+import {
+  type AutoMomentSchedulerTrigger,
+} from '../../services/moments/autoScheduler';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import {
+  publishGeneratedCharacterMomentToFeed,
+  runAutoMomentSchedulerPass,
+} from '../../services/moments/autoRuntime';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, MomentItem, UserProfileExtended } from '../../types';
 
 type UserProfile = UserProfileExtended;
 type Comment = MomentComment;
 type Moment = MomentItem;
+type FloatingMenuPosition = { top: number; left: number; maxHeight: number };
 
 const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
 const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
 const CHAT_RUNTIME_IDLE_GRACE_MS = 4000;
 const MOMENT_AI_RETRY_DELAY_MS = 1800;
+const PROFILE_NAME_COLOR_PRESETS = [
+  '#18181b',
+  '#dc2626',
+  '#ea580c',
+  '#ca8a04',
+  '#16a34a',
+  '#2563eb',
+  '#7c3aed',
+  '#db2777',
+];
 
 function isChatRuntimeBusyNow() {
   const scope = globalThis as typeof globalThis & Record<string, unknown>;
@@ -90,6 +108,13 @@ function getMomentDescriptionOverlayText(moment: Moment) {
     || '一些安静的光影停在眼前';
 }
 
+function getMomentImageFrameCaptions(moment: Moment) {
+  return (moment.imageCard?.frameCaptions || [])
+    .map((caption) => caption.trim())
+    .filter(Boolean)
+    .slice(0, 9);
+}
+
 function isInnerVoiceMomentCard(moment: Moment) {
   return moment.imageCard?.layout === 'inner-voice';
 }
@@ -126,6 +151,50 @@ function getLinkedChatFavoriteState(appData: AppData, moment: Moment) {
   return linkedMessage?.isFavorited;
 }
 
+function buildOptionalTextStyle(
+  color?: string | null,
+  fontFamily?: string | null,
+): React.CSSProperties | undefined {
+  const nextStyle: React.CSSProperties = {};
+  const normalizedColor = color?.trim();
+  const normalizedFontFamily = fontFamily?.trim();
+
+  if (normalizedColor) {
+    nextStyle.color = normalizedColor;
+  }
+
+  if (normalizedFontFamily) {
+    nextStyle.fontFamily = normalizedFontFamily;
+  }
+
+  return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
+}
+
+function resolveColorPickerValue(value: string | null | undefined, fallback: string) {
+  const normalizedValue = value?.trim() || '';
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalizedValue) ? normalizedValue : fallback;
+}
+
+function buildFloatingMenuPosition(
+  rootRect: DOMRect,
+  anchorRect: DOMRect,
+  menuWidth: number,
+): FloatingMenuPosition {
+  const viewportPadding = 12;
+  const nextTop = anchorRect.bottom - rootRect.top + 8;
+  const nextLeft = Math.min(
+    Math.max(viewportPadding, anchorRect.left - rootRect.left),
+    Math.max(viewportPadding, rootRect.width - menuWidth - viewportPadding),
+  );
+  const nextMaxHeight = Math.max(180, Math.min(rootRect.height - nextTop - viewportPadding, 320));
+
+  return {
+    top: nextTop,
+    left: nextLeft,
+    maxHeight: nextMaxHeight,
+  };
+}
+
 export function MomentsApp({
   appData,
   setAppData,
@@ -138,11 +207,14 @@ export function MomentsApp({
   const momentsRootRef = useRef<HTMLDivElement | null>(null);
   const publishRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const nameButtonRef = useRef<HTMLButtonElement | null>(null);
   const moodButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingMomentAiTasksRef = useRef<Array<() => Promise<void>>>([]);
   const momentAiRunningRef = useRef(false);
   const momentAiDrainTimerRef = useRef<number | null>(null);
+  const appDataRef = useRef(appData);
   const [showPublish, setShowPublish] = useState(false);
+  const [showNameColorMenu, setShowNameColorMenu] = useState(false);
   const [showMoodMenu, setShowMoodMenu] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -150,8 +222,10 @@ export function MomentsApp({
   const [commentText, setCommentText] = useState('');
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState('');
+  const [customProfileNameColor, setCustomProfileNameColor] = useState('');
   const [customMoodInput, setCustomMoodInput] = useState('');
-  const [moodMenuPosition, setMoodMenuPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const [nameColorMenuPosition, setNameColorMenuPosition] = useState<FloatingMenuPosition | null>(null);
+  const [moodMenuPosition, setMoodMenuPosition] = useState<FloatingMenuPosition | null>(null);
   const [replyTarget, setReplyTarget] = useState<{
     momentId: string;
     commentId: string;
@@ -163,6 +237,10 @@ export function MomentsApp({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [activeInnerVoiceMomentId, setActiveInnerVoiceMomentId] = useState<string | null>(null);
+  const [activeMomentVisualPreview, setActiveMomentVisualPreview] = useState<{
+    captions?: string[];
+    singleText?: string;
+  } | null>(null);
   useKeyboardSafeViewport({
     containerRef: publishRef,
     enabled: showPublish,
@@ -188,11 +266,23 @@ export function MomentsApp({
     settings,
     scene: 'forum',
   }).runtimeConfig;
+
+  useEffect(() => {
+    appDataRef.current = appData;
+  }, [appData]);
   const { getCharacterById, getCharacterDisplayName } = createCharacterDirectory({ characters });
   const { resolvedUrl: resolvedMomentsBackgroundUrl } = useResolvedPersistentValue(appData.visualSettings?.momentsBackground);
   const dynamicsBackgroundMode = appData.visualSettings?.dynamics?.backgroundMode ?? 'fullscreen';
   const useFullScreenMomentsBackground = Boolean(resolvedMomentsBackgroundUrl) && dynamicsBackgroundMode === 'fullscreen';
   const useHeaderMomentsBackground = Boolean(resolvedMomentsBackgroundUrl) && dynamicsBackgroundMode === 'header';
+  const profileNameTextStyle = buildOptionalTextStyle(
+    appData.visualSettings?.dynamics?.profileNameColor,
+    appData.visualSettings?.dynamics?.profileNameFontFamily,
+  );
+  const profileMoodTextStyle = buildOptionalTextStyle(
+    appData.visualSettings?.dynamics?.profileMoodColor,
+    appData.visualSettings?.dynamics?.profileMoodFontFamily,
+  );
   const isKnownMomentActorId = (actorId: string | undefined) =>
     !actorId || actorId === 'user' || !!getCharacterById(actorId);
   const resolveMomentAuthor = (authorId: string): UserProfile | Character | undefined => {
@@ -282,8 +372,37 @@ export function MomentsApp({
   }, [userProfile.mood]);
 
   useEffect(() => {
+    setCustomProfileNameColor(
+      appData.visualSettings?.dynamics?.profileNameColor
+      || appData.visualSettings?.themeTypography?.textColor
+      || '#18181b',
+    );
+  }, [
+    appData.visualSettings?.dynamics?.profileNameColor,
+    appData.visualSettings?.themeTypography?.textColor,
+  ]);
+
+  useEffect(() => {
     setBioDraft(userProfile.bio || '');
   }, [userProfile.bio]);
+
+  useEffect(() => {
+    if (!showNameColorMenu) {
+      setNameColorMenuPosition(null);
+      return;
+    }
+
+    const updateNameColorMenuPosition = () => {
+      if (!momentsRootRef.current || !nameButtonRef.current) return;
+      const rootRect = momentsRootRef.current.getBoundingClientRect();
+      const buttonRect = nameButtonRef.current.getBoundingClientRect();
+      setNameColorMenuPosition(buildFloatingMenuPosition(rootRect, buttonRect, 224));
+    };
+
+    updateNameColorMenuPosition();
+    window.addEventListener('resize', updateNameColorMenuPosition);
+    return () => window.removeEventListener('resize', updateNameColorMenuPosition);
+  }, [showNameColorMenu]);
 
   useEffect(() => {
     if (!showMoodMenu) {
@@ -295,18 +414,13 @@ export function MomentsApp({
       if (!momentsRootRef.current || !moodButtonRef.current) return;
       const rootRect = momentsRootRef.current.getBoundingClientRect();
       const buttonRect = moodButtonRef.current.getBoundingClientRect();
-      const menuWidth = 256;
-      const viewportPadding = 12;
-      const nextTop = buttonRect.bottom - rootRect.top + 8;
-      const nextLeft = Math.min(
-        Math.max(viewportPadding, buttonRect.right - rootRect.left - menuWidth),
-        Math.max(viewportPadding, rootRect.width - menuWidth - viewportPadding),
-      );
-      const nextMaxHeight = Math.max(180, Math.min(rootRect.height - nextTop - viewportPadding, 320));
+      const position = buildFloatingMenuPosition(rootRect, buttonRect, 256);
       setMoodMenuPosition({
-        top: nextTop,
-        left: nextLeft,
-        maxHeight: nextMaxHeight,
+        ...position,
+        left: Math.min(
+          Math.max(12, buttonRect.right - rootRect.left - 256),
+          Math.max(12, rootRect.width - 256 - 12),
+        ),
       });
     };
 
@@ -314,6 +428,25 @@ export function MomentsApp({
     window.addEventListener('resize', updateMoodMenuPosition);
     return () => window.removeEventListener('resize', updateMoodMenuPosition);
   }, [showMoodMenu]);
+
+  const applyProfileNameColor = (nextColor: string) => {
+    const normalizedColor = nextColor.trim();
+    setAppData((prev) => ({
+      ...prev,
+      visualSettings: {
+        ...prev.visualSettings,
+        dynamics: {
+          ...prev.visualSettings.dynamics,
+          profileNameColor: normalizedColor,
+        },
+      },
+    }));
+    setCustomProfileNameColor(
+      normalizedColor
+      || appData.visualSettings?.themeTypography?.textColor
+      || '#18181b',
+    );
+  };
 
   const applyMoodSelection = (nextMood: string) => {
     const normalizedMood = nextMood.trim() || defaultMood;
@@ -340,9 +473,15 @@ export function MomentsApp({
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(async () => {
-      setRefreshing(false);
-    }, 1000);
+    const startedAt = Date.now();
+    try {
+      await triggerAutoMomentScheduler('manual_refresh');
+    } finally {
+      const remaining = Math.max(260, 900 - (Date.now() - startedAt));
+      window.setTimeout(() => {
+        setRefreshing(false);
+      }, remaining);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -429,6 +568,20 @@ export function MomentsApp({
     scheduleMomentAiDrain();
   }, [scheduleMomentAiDrain]);
 
+  const runQueuedMomentAiTask = useCallback((task: () => Promise<void>) => (
+    new Promise<void>((resolve, reject) => {
+      enqueueMomentAiTask(async () => {
+        try {
+          await task();
+          resolve();
+        } catch (error) {
+          reject(error);
+          throw error;
+        }
+      });
+    })
+  ), [enqueueMomentAiTask]);
+
   useEffect(() => (
     () => {
       if (momentAiDrainTimerRef.current !== null) {
@@ -439,6 +592,50 @@ export function MomentsApp({
       momentAiRunningRef.current = false;
     }
   ), []);
+
+  const publishGeneratedCharacterMoment = useCallback(async (payload: {
+    authorId: string;
+    content: string;
+    imageCard?: import('../../types').MomentImageCard;
+  }) => {
+    await publishGeneratedCharacterMomentToFeed({
+      payload,
+      snapshot: appDataRef.current,
+      setAppData,
+      forumConfig,
+    });
+  }, [forumConfig, setAppData]);
+
+  const triggerAutoMomentScheduler = useCallback(async (trigger: AutoMomentSchedulerTrigger) => {
+    return runAutoMomentSchedulerPass({
+      trigger,
+      forumConfig,
+      getSnapshot: () => appDataRef.current,
+      publishGeneratedCharacterMoment,
+      executeTask: runQueuedMomentAiTask,
+    });
+  }, [forumConfig, publishGeneratedCharacterMoment, runQueuedMomentAiTask]);
+
+  useEffect(() => {
+    void triggerAutoMomentScheduler('moments_open');
+  }, [triggerAutoMomentScheduler]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void triggerAutoMomentScheduler('app_foreground');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [triggerAutoMomentScheduler]);
 
   const toggleCommentComposer = (momentId: string, nextReplyTarget: typeof replyTarget) => {
     const isSameMoment = commentingOn === momentId;
@@ -503,6 +700,7 @@ export function MomentsApp({
           activeConfig,
           moment: newMoment,
           characters,
+          chatGroups: appData.chatGroups || [],
           userName: userProfile.name,
           appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
         });
@@ -655,6 +853,7 @@ export function MomentsApp({
           activeConfig: forumConfig,
           moment,
           characters,
+          chatGroups: appData.chatGroups || [],
           userName: userProfile.name,
           triggerComment: newComment,
           appendComment: (comment) => appendCommentToMoment(momentId, comment),
@@ -810,12 +1009,27 @@ export function MomentsApp({
           </div>
           <div className="mb-1.5 flex-1 text-left">
             <div className="flex items-center justify-start gap-2">
-              <h2 className="text-[20px] font-bold text-zinc-900">{userProfile.name}</h2>
+              <button
+                ref={nameButtonRef}
+                type="button"
+                onClick={() => {
+                  setShowMoodMenu(false);
+                  setShowNameColorMenu((prev) => !prev);
+                }}
+                className="truncate text-[20px] font-bold text-zinc-900 transition-opacity hover:opacity-80"
+                style={profileNameTextStyle}
+              >
+                {userProfile.name}
+              </button>
               <button
                 ref={moodButtonRef}
                 type="button"
-                onClick={() => setShowMoodMenu((prev) => !prev)}
+                onClick={() => {
+                  setShowNameColorMenu(false);
+                  setShowMoodMenu((prev) => !prev);
+                }}
                 className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
+                style={profileMoodTextStyle}
               >
                 {userProfile.mood?.trim() || defaultMood}
               </button>
@@ -886,7 +1100,14 @@ export function MomentsApp({
                   </span>
                 </div>
                 {!isInnerVoiceMomentCard(moment) && (
-                  <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
+                  <div className="mt-1 space-y-2">
+                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{moment.content}</p>
+                    {moment.translation?.trim() ? (
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-500">
+                        翻译：{moment.translation.trim()}
+                      </p>
+                    ) : null}
+                  </div>
                 )}
 
                 {moment.imageCard && (
@@ -969,28 +1190,60 @@ export function MomentsApp({
                         </div>
                       </div>
                     );
-                  })() : ((moment.imageCard.layout === 'described-photo') || shouldRenderMomentDescriptionPhoto(moment.imageCard.theme)) ? (
-                    <div className="mt-3 overflow-hidden rounded-[24px] border border-zinc-200/80 bg-white p-2 shadow-sm">
-                      <div className={`relative aspect-[4/5] overflow-hidden rounded-[18px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] ${getMomentDescriptionPhotoStyle(moment.imageCard.theme)}`}>
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.42),transparent_46%),linear-gradient(180deg,transparent,rgba(255,255,255,0.2))]" />
-                        <div className="absolute left-3 top-3 rounded-full bg-black/8 px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] text-zinc-600 backdrop-blur-sm">
-                          图片描述
+                  })() : (() => {
+                    const frameCaptions = getMomentImageFrameCaptions(moment);
+                    if (frameCaptions.length > 1) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setActiveMomentVisualPreview({ captions: frameCaptions })}
+                          className={`mt-3 grid w-full gap-2 text-left ${frameCaptions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2 max-w-[78%]'}`}
+                        >
+                          {frameCaptions.map((caption, frameIndex) => (
+                            <div
+                              key={`${caption}-${frameIndex}`}
+                              className="relative aspect-square overflow-hidden rounded-[18px] border border-zinc-200 bg-white"
+                            >
+                              <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.96),rgba(244,244,245,0.92)_54%,rgba(228,228,231,0.88))]" />
+                              <div className="absolute left-2.5 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-zinc-400 shadow-sm">
+                                图片
+                              </div>
+                              <div className="relative z-10 flex h-full items-center justify-center px-4">
+                                <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
+                                  {caption}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </button>
+                      );
+                    }
+
+                    const pseudoImageText = getMomentDescriptionOverlayText(moment);
+                    if (!pseudoImageText.trim()) {
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setActiveMomentVisualPreview({ singleText: pseudoImageText })}
+                        className="mt-3 block w-full overflow-hidden rounded-[22px] border border-zinc-200 bg-white text-left"
+                      >
+                        <div className="relative aspect-[4/5]">
+                          <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
+                          <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
+                            图片
+                          </div>
+                          <div className="relative z-10 flex h-full items-center justify-center px-8">
+                            <p className="text-center text-[18px] leading-[1.7] text-black">
+                              {pseudoImageText}
+                            </p>
+                          </div>
                         </div>
-                        <div className="absolute inset-x-5 top-1/2 -translate-y-1/2 rounded-[22px] border border-white/65 bg-white/55 px-5 py-6 text-center shadow-[0_16px_32px_rgba(148,163,184,0.18)] backdrop-blur-md">
-                          <p className="text-[19px] font-medium leading-[1.7] tracking-[0.04em] text-zinc-700">
-                            {getMomentDescriptionOverlayText(moment)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={`mt-3 overflow-hidden rounded-[22px] border border-zinc-200/70 p-3 shadow-sm ${getMomentImageCardStyle(moment.imageCard.theme)}`}>
-                      <div className="mb-3 rounded-[18px] border border-white/30 bg-white/10 px-4 py-10 text-center backdrop-blur-sm">
-                        <p className="text-[18px] font-semibold tracking-[0.08em]">{moment.imageCard.title}</p>
-                      </div>
-                      <p className="text-[13px] leading-relaxed opacity-90">{moment.imageCard.description}</p>
-                    </div>
-                  )
+                      </button>
+                    );
+                  })()
                 )}
 
                 {moment.images && moment.images.length > 0 && (
@@ -1150,6 +1403,100 @@ export function MomentsApp({
       </div>
 
       <AnimatePresence>
+        {showNameColorMenu && nameColorMenuPosition && (
+          <>
+            <motion.button
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[55] cursor-default bg-transparent"
+              onClick={() => setShowNameColorMenu(false)}
+              aria-label="Close profile name color menu"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              className="absolute z-[56] flex w-56 flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white p-3 shadow-xl"
+              style={{
+                top: nameColorMenuPosition.top,
+                left: nameColorMenuPosition.left,
+                maxHeight: nameColorMenuPosition.maxHeight,
+              }}
+            >
+              <div className="text-[11px] font-medium text-zinc-400">名字颜色</div>
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {PROFILE_NAME_COLOR_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => {
+                      applyProfileNameColor(color);
+                      setShowNameColorMenu(false);
+                    }}
+                    className="h-9 rounded-xl border border-zinc-200 shadow-sm transition-transform active:scale-95"
+                    style={{ backgroundColor: color }}
+                    aria-label={`选择名字颜色 ${color}`}
+                  />
+                ))}
+              </div>
+              <div className="mt-3 rounded-xl border border-zinc-100 bg-zinc-50 p-2">
+                <div className="mb-2 text-[11px] text-zinc-400">自定义颜色</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={resolveColorPickerValue(customProfileNameColor, '#18181b')}
+                    onChange={(e) => {
+                      setCustomProfileNameColor(e.target.value);
+                      applyProfileNameColor(e.target.value);
+                    }}
+                    className="h-10 w-12 cursor-pointer rounded-lg border border-zinc-200 bg-white p-1"
+                  />
+                  <input
+                    type="text"
+                    value={customProfileNameColor}
+                    onChange={(e) => setCustomProfileNameColor(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        applyProfileNameColor(customProfileNameColor);
+                        setShowNameColorMenu(false);
+                      }
+                    }}
+                    placeholder="#18181b"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-zinc-400"
+                  />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyProfileNameColor(customProfileNameColor);
+                      setShowNameColorMenu(false);
+                    }}
+                    className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyProfileNameColor('');
+                      setShowNameColorMenu(false);
+                    }}
+                    className="flex-1 rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200"
+                  >
+                    跟随全局
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+                这里只改动态页顶部这个名字，不会影响外面的全局文字颜色。
+              </div>
+            </motion.div>
+          </>
+        )}
+
         {showMoodMenu && moodMenuPosition && (
           <>
             <motion.button
@@ -1262,6 +1609,62 @@ export function MomentsApp({
             </>
           );
         })()
+      )}
+
+      {activeMomentVisualPreview && (
+        <>
+          <div
+            className="fixed inset-0 z-[40] bg-white/50 backdrop-blur-[6px]"
+            onClick={() => setActiveMomentVisualPreview(null)}
+          />
+          <div className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8">
+            <div className="relative max-h-full w-full max-w-[26rem] overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-4 shadow-xl">
+              <button
+                type="button"
+                onClick={() => setActiveMomentVisualPreview(null)}
+                className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 active:scale-95"
+                aria-label="关闭图片预览"
+              >
+                <X size={16} />
+              </button>
+
+              {activeMomentVisualPreview.captions && activeMomentVisualPreview.captions.length > 1 ? (
+                <div className={`grid gap-3 ${activeMomentVisualPreview.captions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {activeMomentVisualPreview.captions.map((caption, frameIndex) => (
+                    <div
+                      key={`${caption}-${frameIndex}`}
+                      className="relative aspect-square overflow-hidden rounded-[18px] border border-zinc-200 bg-white"
+                    >
+                      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
+                      <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
+                        图片
+                      </div>
+                      <div className="relative z-10 flex h-full items-center justify-center px-4">
+                        <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
+                          {caption}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[22px] border border-zinc-200 bg-white">
+                  <div className="relative aspect-[4/5]">
+                    <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
+                    <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
+                      图片
+                    </div>
+                    <div className="relative z-10 flex h-full items-center justify-center px-8">
+                      <p className="text-center text-[18px] leading-[1.7] text-black">
+                        {activeMomentVisualPreview.singleText || ''}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
