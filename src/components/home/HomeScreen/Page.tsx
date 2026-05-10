@@ -176,6 +176,7 @@ export function HomeScreen({
   const [safeAreaTop, setSafeAreaTop] = useState(0);
   const [topOverlayOffset, setTopOverlayOffset] = useState(0);
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+  const [dockSafeFill, setDockSafeFill] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -411,21 +412,30 @@ export function HomeScreen({
         Math.round(measureCssLength('env(safe-area-inset-top, 0px)')),
       );
       const safeAreaVar =
-        computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
-        || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
-        || (isStandaloneMode
-          ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+        (isStandaloneMode
+          ? computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
           : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
+        || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
         || '0';
+      const fullSafeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim() || safeAreaVar;
       const resolvedSafeAreaBottom = !phoneContainer || !computed
         ? 0
         : safeAreaVar && safeAreaVar !== '0'
           ? measureCssLength(safeAreaVar)
           : parseFloat(computed.paddingBottom) || 0;
+      const resolvedFullSafeAreaBottom = !phoneContainer || !computed
+        ? 0
+        : fullSafeAreaVar && fullSafeAreaVar !== '0'
+          ? measureCssLength(fullSafeAreaVar)
+          : parseFloat(computed.paddingBottom) || 0;
       setSafeAreaTop(current => (current === nextSafeAreaTop ? current : nextSafeAreaTop));
       setTopOverlayOffset(current => (current === nextTopOverlayOffset ? current : nextTopOverlayOffset));
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
+      const nextDockSafeFill = isStandaloneMode
+        ? Math.round(Math.min(16, resolvedFullSafeAreaBottom * 0.45))
+        : 0;
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
+      setDockSafeFill(current => (current === nextDockSafeFill ? current : nextDockSafeFill));
     };
 
     updateViewport();
@@ -2247,7 +2257,7 @@ export function HomeScreen({
       {pageCount > 1 && (
         <div
           className="homeDesktop__pageDots pointer-events-auto absolute left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2"
-          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + 8}px` }}
+          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + dockSafeFill + 8}px` }}
         >
           {Array.from({ length: pageCount }, (_, page) => (
             <button
@@ -2266,7 +2276,7 @@ export function HomeScreen({
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
         iconSize={dockIconSize}
-        safeAreaInset={layoutMetrics.safeAreaBottom}
+        safeAreaFill={dockSafeFill}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
     </div>
@@ -2454,7 +2464,7 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
-  safeAreaInset,
+  safeAreaFill,
   backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
@@ -2462,21 +2472,21 @@ function StaticDock({
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
-  safeAreaInset: number;
+  safeAreaFill: number;
   backgroundImageUrl?: string;
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
-  const totalDockHeight = placement.height;
+  const totalDockHeight = placement.height + safeAreaFill;
 
   return (
     <motion.div
       className="homeDesktop__dock"
       initial={false}
-      animate={{ x: placement.x, y: placement.y }}
+      animate={{ x: placement.x, y: placement.y - safeAreaFill }}
       style={{ width: placement.width, height: totalDockHeight }}
     >
-      <div className="homeDesktop__dockBar" style={{ height: totalDockHeight }}>
+      <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
         {(backgroundImageUrl || dockTintOpacity > 0) ? (
           <div className="homeDesktop__dockMedia" aria-hidden="true">
             {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
@@ -2512,6 +2522,7 @@ function StaticDock({
           ))}
         </div>
       </div>
+      {safeAreaFill > 0 ? <div className="homeDesktop__dockSafeFill" style={{ height: safeAreaFill + 2 }} /> : null}
     </motion.div>
   );
 }
