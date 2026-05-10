@@ -1,11 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Clock, Calendar, Heart, Music, Play, SkipForward, SkipBack, Pause, RefreshCw, Cloud, Sun, CloudRain, Wind, Navigation, ImagePlus, MapPin } from 'lucide-react';
 import { WidgetConfig, MusicData } from '../../types';
-import { extractSingleImageUrl } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
+import {
+  KawaiiDesktopWidgetContent,
+  isFloatingKawaiiDesktopWidgetType,
+  isKawaiiDesktopWidgetType,
+  shouldShowKawaiiLauncherPlate,
+  shouldShowKawaiiScrapbookPlate,
+} from './KawaiiDesktopWidgets';
+import {
+  GlassDesktopWidgetContent,
+  isGlassDesktopWidgetType,
+} from './GlassDesktopWidgets';
 
-export function DesktopWidget({ widget, isPreview = false, musicData, setMusicData, onWidgetChange }: { widget: WidgetConfig, isPreview?: boolean, musicData?: MusicData, setMusicData?: React.Dispatch<React.SetStateAction<MusicData>>, onWidgetChange?: (updates: Partial<WidgetConfig>) => void }) {
+export function DesktopWidget({
+  widget,
+  isPreview = false,
+  musicData,
+  setMusicData,
+  onWidgetChange,
+  onRequestEdit,
+}: {
+  widget: WidgetConfig,
+  isPreview?: boolean,
+  musicData?: MusicData,
+  setMusicData?: React.Dispatch<React.SetStateAction<MusicData>>,
+  onWidgetChange?: (updates: Partial<WidgetConfig>) => void,
+  onRequestEdit?: () => void,
+}) {
   const [time, setTime] = useState(new Date());
   const [weatherData, setWeatherData] = useState<{ temp: number, max: number, min: number, code: number } | null>(null);
   const [editingField, setEditingField] = useState<'profileName' | 'handle' | 'bio' | 'location' | null>(null);
@@ -36,19 +60,48 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
   };
 
   useEffect(() => {
-    if (widget.type === 'weather') {
+    if (widget.type === 'weather' && !isPreview) {
       const fetchWeather = async (lat: number, lon: number) => {
         try {
-          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`
+          );
+          if (!res.ok) {
+            if (res.status === 429) {
+              setWeatherData(null);
+              return;
+            }
+            throw new Error(`Weather request failed with status ${res.status}`);
+          }
           const data = await res.json();
+          const current = data.current ?? data.current_weather ?? null;
+          const daily = data.daily ?? null;
+          const temp = typeof current?.temperature_2m === 'number'
+            ? current.temperature_2m
+            : typeof current?.temperature === 'number'
+              ? current.temperature
+              : null;
+          const code = typeof current?.weather_code === 'number'
+            ? current.weather_code
+            : typeof current?.weathercode === 'number'
+              ? current.weathercode
+              : null;
+          const max = Array.isArray(daily?.temperature_2m_max) ? daily.temperature_2m_max[0] : null;
+          const min = Array.isArray(daily?.temperature_2m_min) ? daily.temperature_2m_min[0] : null;
+
+          if (temp === null || code === null || typeof max !== 'number' || typeof min !== 'number') {
+            throw new Error('Weather response missing required fields');
+          }
+
           setWeatherData({
-            temp: Math.round(data.current_weather.temperature),
-            max: Math.round(data.daily.temperature_2m_max[0]),
-            min: Math.round(data.daily.temperature_2m_min[0]),
-            code: data.current_weather.weathercode
+            temp: Math.round(temp),
+            max: Math.round(max),
+            min: Math.round(min),
+            code,
           });
         } catch (err) {
           console.error('Weather fetch error:', err);
+          setWeatherData(null);
         }
       };
 
@@ -61,7 +114,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
         fetchWeather(31.36, 113.14);
       }
     }
-  }, [widget.type]);
+  }, [isPreview, widget.type]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -83,6 +136,11 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
   const profileLocation = widget.location || '自定义';
   const bannerUrl = widget.bannerUrl || '';
   const avatarUrl = widget.avatarUrl || '';
+  const isFloatingKawaiiWidget = isFloatingKawaiiDesktopWidgetType(widget.type);
+  const backgroundValue =
+    isFloatingKawaiiWidget && widget.background === '#f4efe8'
+      ? 'transparent'
+      : widget.background;
   const { resolvedUrl: resolvedBannerUrl } = useResolvedPersistentValue(bannerUrl);
   const { resolvedUrl: resolvedAvatarUrl } = useResolvedPersistentValue(avatarUrl);
   const { setRemoteUrl, setUploadedFile } = usePersistentFieldActions();
@@ -182,7 +240,18 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
     const scale = Math.min(widget.w || 2, widget.h || 2) / 2;
     const padding = Math.max(8, 16 * scale);
 
-    switch (widget.type) {
+    const widgetType = (widget as { type?: string }).type;
+
+    switch (widgetType) {
+      case 'kawaii-launcher':
+      case 'kawaii-couple-pills':
+      case 'kawaii-scrapbook':
+        return <KawaiiDesktopWidgetContent widget={widget} onWidgetChange={onWidgetChange} />;
+      case 'glass-duo-card':
+      case 'glass-vinyl-player':
+      case 'glass-polaroid-strip':
+      case 'glass-recent-grid':
+        return <GlassDesktopWidgetContent widget={widget} onWidgetChange={onWidgetChange} isPreview={isPreview} />;
       case 'time':
         if (widget.style === 'minimal') {
           return (
@@ -409,6 +478,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
           );
         }
       case 'music':
+        return null;
         if (widget.style === 'bar') {
           return (
             <div 
@@ -569,25 +639,44 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
     }
   };
 
-  const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(widget.background);
+  const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(backgroundValue);
   const isImageBackground = !!resolvedBackgroundUrl;
-  const isLightBg = widget.background === '#ffffff' || widget.background === '#fff';
+  const isLightBg = backgroundValue === '#ffffff' || backgroundValue === '#fff';
   const fallbackBackgroundColor =
-    widget.background && !widget.background.includes('://') && !widget.background.startsWith('data:')
-      ? widget.background
+    backgroundValue && !backgroundValue.includes('://') && !backgroundValue.startsWith('data:')
+      ? backgroundValue
       : '#ffffff';
+  const shouldApplyImageOverlay = widget.type !== 'blank' && !isKawaiiDesktopWidgetType(widget.type);
+  const canRequestEdit = Boolean(onRequestEdit && !isPreview && widget.type !== 'profile-card');
+  const launcherOwnsOpacity = widget.type === 'kawaii-launcher';
+  const launcherOwnsBackground = widget.type === 'kawaii-launcher';
+  const scrapbookOwnsOpacity = widget.type === 'kawaii-scrapbook';
+  const scrapbookOwnsBackground = widget.type === 'kawaii-scrapbook';
+  const glassOwnsChrome = isGlassDesktopWidgetType(widget.type);
+  const hideLauncherChrome = widget.type === 'kawaii-launcher' && !shouldShowKawaiiLauncherPlate(widget);
+  const hideScrapbookChrome = widget.type === 'kawaii-scrapbook' && !shouldShowKawaiiScrapbookPlate(widget);
+  const hideKawaiiChrome = hideLauncherChrome || hideScrapbookChrome || glassOwnsChrome;
+  const kawaiiOwnsOpacity = launcherOwnsOpacity || scrapbookOwnsOpacity;
+  const kawaiiOwnsBackground = launcherOwnsBackground || scrapbookOwnsBackground;
+  const widgetOwnsOpacity = kawaiiOwnsOpacity || glassOwnsChrome;
+  const widgetOwnsBackground = kawaiiOwnsBackground || glassOwnsChrome;
 
   return (
     <div 
-      className={`relative overflow-hidden shadow-sm border border-black/5 transition-all w-full h-full ${isPreview ? '' : 'hover:shadow-md'}`}
+      className={`relative w-full h-full transition-all ${isFloatingKawaiiWidget || hideKawaiiChrome ? 'overflow-visible border-transparent shadow-none' : 'overflow-hidden shadow-sm border border-black/5'} ${!isPreview && !isFloatingKawaiiWidget && !hideKawaiiChrome ? 'hover:shadow-md' : ''} ${canRequestEdit ? 'cursor-pointer active:scale-[0.99]' : ''}`}
+      onClick={() => {
+        if (canRequestEdit) {
+          onRequestEdit?.();
+        }
+      }}
       style={{
-        borderRadius: widget.borderRadius !== undefined ? widget.borderRadius : 24,
-        opacity: widget.opacity !== undefined ? widget.opacity : 1,
+        borderRadius: isFloatingKawaiiWidget ? 0 : widget.borderRadius !== undefined ? widget.borderRadius : 24,
+        opacity: widgetOwnsOpacity ? 1 : widget.opacity !== undefined ? widget.opacity : 1,
         aspectRatio: isPreview ? `${widget.w}/${widget.h}` : undefined,
-        backgroundColor: isImageBackground ? undefined : fallbackBackgroundColor,
+        backgroundColor: widgetOwnsBackground || hideKawaiiChrome ? 'transparent' : isImageBackground ? undefined : fallbackBackgroundColor,
       }}
     >
-      {isImageBackground && (
+      {isImageBackground && !widgetOwnsBackground && (
         <>
           <img 
             src={resolvedBackgroundUrl || undefined} 
@@ -595,7 +684,7 @@ export function DesktopWidget({ widget, isPreview = false, musicData, setMusicDa
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-110"
             draggable={false}
           />
-          {widget.type !== 'blank' && <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />}
+          {shouldApplyImageOverlay && <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />}
         </>
       )}
       <div className="absolute inset-0 z-10">
