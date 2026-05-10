@@ -29,15 +29,26 @@ export function AppSelect({
   menuClassName = '',
 }: AppSelectProps) {
   const [open, setOpen] = useState(false);
+  const [preferNativeSelect] = useState(
+    () => typeof window !== 'undefined' && /Android/i.test(window.navigator.userAgent || ''),
+  );
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedOption = useMemo(
+  const matchedSelectedOption = useMemo(
     () => options.find((option) => option.value === value) ?? null,
     [options, value],
   );
+  const selectedOption = matchedSelectedOption ?? (value ? { value, label: value } : null);
+  const nativeOptions = useMemo(() => {
+    if (!selectedOption || matchedSelectedOption) {
+      return options;
+    }
+
+    return [selectedOption, ...options];
+  }, [matchedSelectedOption, options, selectedOption]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || preferNativeSelect) return;
 
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       const target = event.target as Node | null;
@@ -53,10 +64,10 @@ export function AppSelect({
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('touchstart', handlePointerDown);
     };
-  }, [open]);
+  }, [open, preferNativeSelect]);
 
   useEffect(() => {
-    if (!open || !rootRef.current) {
+    if (!open || !rootRef.current || preferNativeSelect) {
       return;
     }
 
@@ -64,7 +75,45 @@ export function AppSelect({
     selectedNode?.scrollIntoView({
       block: 'nearest',
     });
-  }, [open, value]);
+  }, [open, preferNativeSelect, value]);
+
+  if (preferNativeSelect) {
+    return (
+      <div ref={rootRef} className={`relative ${className}`}>
+        <div className="relative">
+          <select
+            value={selectedOption?.value ?? ''}
+            onChange={(event) => onChange(event.target.value)}
+            className={`w-full appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 pr-10 text-left text-[15px] text-zinc-900 outline-none transition-colors focus:border-zinc-300 ${buttonClassName}`}
+          >
+            {!selectedOption ? (
+              <option value="" disabled hidden>
+                {placeholder}
+              </option>
+            ) : null}
+            {nativeOptions.length > 0 ? (
+              nativeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>
+                {emptyText}
+              </option>
+            )}
+          </select>
+          <ChevronDown
+            size={16}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400"
+          />
+        </div>
+        {selectedOption?.description ? (
+          <div className="mt-1 truncate px-1 text-[11px] text-zinc-500">{selectedOption.description}</div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
@@ -98,7 +147,10 @@ export function AppSelect({
           className={`absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ${menuClassName}`}
         >
           {options.length ? (
-            <div className="max-h-72 overflow-y-auto overscroll-contain p-1.5">
+            <div
+              className="max-h-72 overflow-y-auto overscroll-contain touch-pan-y [webkit-overflow-scrolling:touch] p-1.5"
+              role="listbox"
+            >
               {options.map((option) => {
                 const isSelected = option.value === value;
                 return (
