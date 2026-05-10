@@ -631,7 +631,7 @@ export function MomentsApp({
       forumConfig,
       getSnapshot: () => appDataRef.current,
       publishGeneratedCharacterMoment,
-      executeTask: runQueuedMomentAiTask,
+      executeTask: trigger === 'manual_refresh' ? undefined : runQueuedMomentAiTask,
     });
   }, [forumConfig, publishGeneratedCharacterMoment, runQueuedMomentAiTask]);
 
