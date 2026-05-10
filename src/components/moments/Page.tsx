@@ -103,12 +103,31 @@ function getMomentDescriptionPhotoStyle(theme: 'polaroid' | 'film' | 'note' | 'p
 }
 
 function getMomentDescriptionOverlayText(moment: Moment) {
-  return moment.imageCard?.overlayText?.trim()
-    || moment.imageCard?.description?.trim()
+  const translatedOverlayText = moment.imageCard?.translatedOverlayText?.trim();
+  if (translatedOverlayText) {
+    return translatedOverlayText;
+  }
+
+  const overlayText = moment.imageCard?.overlayText?.trim() || '';
+  const description = moment.imageCard?.description?.trim() || '';
+  const looksLikeEnglishOnly = /[A-Za-z]/.test(overlayText) && !/[\u4e00-\u9fff]/u.test(overlayText);
+
+  return (looksLikeEnglishOnly ? description : overlayText)
+    || description
+    || overlayText
     || '一些安静的光影停在眼前';
 }
 
 function getMomentImageFrameCaptions(moment: Moment) {
+  const translatedFrameCaptions = (moment.imageCard?.translatedFrameCaptions || [])
+    .map((caption) => caption.trim())
+    .filter(Boolean)
+    .slice(0, 9);
+
+  if (translatedFrameCaptions.length > 0) {
+    return translatedFrameCaptions;
+  }
+
   return (moment.imageCard?.frameCaptions || [])
     .map((caption) => caption.trim())
     .filter(Boolean)
@@ -1618,10 +1637,16 @@ export function MomentsApp({
             onClick={() => setActiveMomentVisualPreview(null)}
           />
           <div className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8">
-            <div className="relative max-h-full w-full max-w-[26rem] overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-4 shadow-xl">
+            <div
+              className="relative max-h-full w-full max-w-[26rem] overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-4 shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <button
                 type="button"
-                onClick={() => setActiveMomentVisualPreview(null)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActiveMomentVisualPreview(null);
+                }}
                 className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 active:scale-95"
                 aria-label="关闭图片预览"
               >

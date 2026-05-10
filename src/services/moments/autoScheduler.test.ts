@@ -102,3 +102,23 @@ test('manual refresh still respects daily cap', () => {
 
   assert.equal(plan.length, 0);
 });
+
+test('manual refresh can still pick a candidate without explicit state signals', () => {
+  const now = Date.parse('2026-05-11T12:00:00+08:00');
+  const character = createCharacter({
+    id: 'plain-char',
+    postFrequency: 'medium',
+  });
+  const moments = [createMoment(character.id, now - 60 * 60 * 1000)];
+
+  const plan = buildAutoMomentPlan({
+    characters: [character],
+    moments,
+    now,
+    lastCheckedAt: now - 30 * 60 * 1000,
+    trigger: 'manual_refresh',
+  });
+
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0]?.characterId, character.id);
+});

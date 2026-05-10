@@ -792,21 +792,22 @@ async function generateMomentVisualTextLines(options: {
 }) {
   const { activeConfig, character, momentContent, frameCount } = options;
   const prompt = [
-    'You are generating short text overlays for pseudo-images in a social post.',
-    `The role name is ${character.name}.`,
-    `Post body:\n${momentContent}`,
-    `Need ${frameCount} different image-text lines.`,
-    'Each line should describe what can be seen in a picture, not repeat the whole post.',
-    'Prefer visible things: object, place, selfie, body part, clothing, food, pet, desk, mirror, light, weather, screen, room corner, street, store, gym, or a captured gesture.',
-    'Use the same language as the post body.',
-    'Do not use placeholders like 某人, 某些人, someone, some people.',
-    'Each line should feel like a small visual focus, concise and specific.',
-    'Output one line per image, no numbering, no commentary.',
+    '你在为一条动态里的伪图片生成简短画面文案。',
+    `角色名：${character.name}`,
+    `动态正文：\n${momentContent}`,
+    `需要生成 ${frameCount} 条不同的图片文案。`,
+    '每条都只描述画面里能直接看到的东西，不要复述整条动态。',
+    '优先写具体可见内容：物品、地点、自拍、人物动作、穿搭、食物、宠物、桌面、镜子、灯光、天气、屏幕、房间角落、街景、店铺、健身房。',
+    '如果能写具体名词，就不要写抽象情绪词。',
+    '和动态正文保持同一种语言。',
+    '不要出现“某人”“某些人”这种占位词。',
+    '每条都要像一张图里最醒目的那一小块画面，短、具体、能看见。',
+    '一行一条，不要编号，不要解释。',
   ].join('\n');
 
   const raw = await generateSingleText({
     activeConfig,
-    prompt: 'Generate visual overlay lines for a pseudo-image post.',
+    prompt: '请为动态里的伪图片生成简短中文画面文案。',
     requestText: prompt,
     fallback: '',
   });
@@ -868,18 +869,18 @@ async function generateMomentVisualTranslations(options: {
 
   const fallbackTranslations = buildFallbackMomentVisualTranslations(lines);
   const prompt = [
-    'Translate the following pseudo-image caption lines into natural Simplified Chinese.',
-    'Keep one translated line for each original line in the same order.',
-    'Do not add numbering, quotes, commentary, or extra lines.',
-    'If a line is already natural Simplified Chinese, keep it as-is.',
+    '把下面这些伪图片文案翻成自然的简体中文。',
+    '保持原顺序，一条对应一条。',
+    '不要加编号、引号、解释、备注或额外内容。',
+    '如果原句已经是自然中文，就原样保留。',
     '',
-    'Original lines:',
+    '原文：',
     ...lines.map((line, index) => `${index + 1}. ${line}`),
   ].join('\n');
 
   const raw = await generateSingleText({
     activeConfig: options.activeConfig,
-    prompt: 'Translate pseudo-image caption lines into Simplified Chinese.',
+    prompt: '请把伪图片文案翻成简体中文。',
     requestText: prompt,
     fallback: '',
   });

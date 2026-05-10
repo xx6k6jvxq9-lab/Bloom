@@ -143,10 +143,10 @@ function RelationshipEditorSheet({
   return (
     <div className="absolute inset-0 z-[20] flex items-end bg-black/18 backdrop-blur-[1px]" onClick={onClose}>
       <div
-        className="w-full rounded-t-[32px] border border-[#ebe5d8]/90 bg-[#f6f3ec]/96 px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+18px)] pt-4 shadow-[0_-24px_60px_rgba(15,23,42,0.12)]"
+        className="w-full rounded-t-[32px] border border-zinc-200 bg-white px-4 pb-[calc(var(--app-safe-area-bottom-ui,0px)+18px)] pt-4 shadow-[0_-24px_60px_rgba(15,23,42,0.12)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#ddd5c7]" />
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-zinc-200" />
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <ResolvedCharacterAvatar value={selectedCharacter.avatar} alt={selectedCharacter.name} className="h-12 w-12 rounded-full object-cover" />
@@ -162,14 +162,14 @@ function RelationshipEditorSheet({
             <button
               type="button"
               onClick={onReset}
-              className="rounded-full border border-[#e4ded1] bg-[#fbf8f1] px-3 py-1.5 text-[11px] text-zinc-600 transition hover:bg-[#f4efe4]"
+              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[11px] text-zinc-600 transition hover:bg-zinc-100"
             >
               恢复自动
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#fbf8f1] text-zinc-500 transition hover:bg-[#f4efe4]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-50 text-zinc-500 transition hover:bg-zinc-100"
             >
               <X size={16} />
             </button>
@@ -183,7 +183,7 @@ function RelationshipEditorSheet({
             value={editingValue.note || ''}
             onChange={(event) => onUpdate(derivePublicThreadPeerHintPatchFromNote(event.target.value.slice(0, 240)))}
             placeholder="比如：他们只是认识，公开场合会比较克制，不要太亲，也别互怼。"
-            className="mt-2 min-h-[144px] w-full resize-none rounded-[22px] border border-[#e6dfd3] bg-[#fbf8f1] px-4 py-3 text-[12px] leading-6 outline-none focus:border-zinc-300"
+            className="mt-2 min-h-[144px] w-full resize-none rounded-[22px] border border-zinc-200 bg-white px-4 py-3 text-[12px] leading-6 outline-none focus:border-zinc-300"
           />
         </div>
       </div>
@@ -194,11 +194,9 @@ function RelationshipEditorSheet({
 export function RelationshipGraphPage({
   characters,
   chatGroups = [],
-  globalBackground,
   onBack,
   onUpdateCharacters,
 }: RelationshipGraphPageProps) {
-  const { resolvedUrl: resolvedBackgroundUrl } = useResolvedPersistentValue(globalBackground);
   const [pageMode, setPageMode] = useState<RelationshipPageMode>('guide');
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(characters[0]?.id || '');
   const [editingPeerId, setEditingPeerId] = useState<string | null>(null);
@@ -275,17 +273,12 @@ export function RelationshipGraphPage({
   const visibleItems = pageMode === 'guide' ? priorityRepairItems : peerItems;
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#f6f3ec]">
-      {resolvedBackgroundUrl ? (
-        <img src={resolvedBackgroundUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      ) : null}
-      <div className="absolute inset-0 bg-[#f6f3ec]/78" />
-
-      <div className="relative z-[1] flex items-center gap-3 border-b border-[#ece4d7]/90 bg-[#f6f3ec]/90 px-4 pb-3 pt-5">
+    <div className="relative flex h-full flex-col overflow-hidden bg-white">
+      <div className="relative z-[1] flex items-center gap-3 border-b border-zinc-100 bg-white px-4 pb-3 pt-5">
         <button
           type="button"
           onClick={onBack}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fbf8f1] text-zinc-700 shadow-sm transition hover:bg-white"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-50"
         >
           <ChevronLeft size={20} />
         </button>
@@ -296,13 +289,13 @@ export function RelationshipGraphPage({
       </div>
 
       <div className="relative z-[1] flex-1 overflow-y-auto px-4 pb-[calc(var(--app-safe-area-bottom-tab,0px)+24px)] pt-4">
-        <div className="rounded-[28px] border border-[#ece4d7]/90 bg-[#f8f5ee]/92 p-4 shadow-sm">
+        <div className="rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[13px] font-medium text-zinc-800">主角色</div>
               <div className="mt-1 text-[11px] text-zinc-500">先选一个角色。</div>
             </div>
-            <div className="rounded-full border border-[#e4ded1] bg-[#fbf8f1] px-3 py-1 text-[11px] text-zinc-500">
+            <div className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] text-zinc-500">
               {characters.length} 个角色
             </div>
           </div>
@@ -319,7 +312,7 @@ export function RelationshipGraphPage({
                 className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-left transition-all ${
                   selectedCharacter?.id === item.id
                     ? 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm'
-                    : 'border-[#e4ded1] bg-[#fbf8f1] text-zinc-600'
+                    : 'border-zinc-200 bg-white text-zinc-600'
                 }`}
               >
                 <ResolvedCharacterAvatar value={item.avatar} alt={item.name} className="h-7 w-7 rounded-full object-cover" />
@@ -335,7 +328,7 @@ export function RelationshipGraphPage({
               className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-all ${
                 pageMode === 'guide'
                   ? 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm'
-                  : 'border-[#e4ded1] bg-[#fbf8f1] text-zinc-500'
+                  : 'border-zinc-200 bg-white text-zinc-500'
               }`}
             >
               异常关系
@@ -346,7 +339,7 @@ export function RelationshipGraphPage({
               className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-all ${
                 pageMode === 'all'
                   ? 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm'
-                  : 'border-[#e4ded1] bg-[#fbf8f1] text-zinc-500'
+                  : 'border-zinc-200 bg-white text-zinc-500'
               }`}
             >
               全部关系
@@ -354,7 +347,7 @@ export function RelationshipGraphPage({
           </div>
         </div>
 
-        <div className="mt-4 rounded-[28px] border border-[#ece4d7]/90 bg-[#f8f5ee]/92 p-4 shadow-sm">
+        <div className="mt-4 rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="text-[13px] font-medium text-zinc-800">
             {pageMode === 'guide' ? '优先修这些' : '全部关系'}
           </div>
@@ -364,7 +357,7 @@ export function RelationshipGraphPage({
 
           <div className="mt-4 space-y-3">
             {visibleItems.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#e4ded1] bg-[#fbf8f1] px-4 py-5 text-center text-[12px] text-zinc-500">
+              <div className="rounded-[22px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center text-[12px] text-zinc-500">
                 暂时不用修。
               </div>
             ) : visibleItems.map((item) => {
@@ -377,7 +370,7 @@ export function RelationshipGraphPage({
                   className={`w-full rounded-[24px] border px-4 py-3 text-left transition-all ${
                     isEditing
                       ? 'border-sky-200 bg-sky-50/90 shadow-sm'
-                      : 'border-[#ece5d8] bg-[#fcfaf5]/94 hover:bg-[#ffffff]'
+                      : 'border-zinc-200 bg-white hover:bg-zinc-50'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">

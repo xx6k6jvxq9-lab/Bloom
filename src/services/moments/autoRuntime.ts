@@ -52,6 +52,93 @@ type RunAutoMomentSchedulerPassOptions = {
 
 let autoMomentSchedulerRunning = false;
 
+function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentItem[] = []) {
+  return moments
+    .filter((moment) => moment.authorId === characterId)
+    .reduce((latest, moment) => Math.max(latest, moment.timestamp), 0);
+}
+
+function buildForcedManualRefreshEntry(snapshot: AutoMomentRuntimeSnapshot) {
+  const rankedCharacters = [...(snapshot.characters || [])]
+    .map((character) => ({
+      character,
+      frequencyDisabled: (character.postFrequency || 'medium') === 'none',
+      latestMomentAt: getLatestMomentTimestampByAuthor(character.id, snapshot.moments || []),
+    }))
+    .sort((left, right) => {
+      if (left.frequencyDisabled !== right.frequencyDisabled) {
+        return left.frequencyDisabled ? 1 : -1;
+      }
+
+      if (left.latestMomentAt !== right.latestMomentAt) {
+        return left.latestMomentAt - right.latestMomentAt;
+      }
+
+      return left.character.id.localeCompare(right.character.id);
+    });
+
+  const picked = rankedCharacters[0]?.character || null;
+  if (!picked) {
+    return null;
+  }
+
+  return {
+    characterId: picked.id,
+    requestText: '自主发动态：手动刷新；请立即生成一条新的公开动态。',
+    extraPromptSections: [
+      picked.sharedState?.currentActivity?.trim() ? `当前生活状态：${picked.sharedState.currentActivity.trim()}` : '',
+      picked.presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${picked.presenceState.recentLifeBeat.trim()}` : '',
+      picked.sharedState?.publicCarryover?.trim() ? `公开余波：${picked.sharedState.publicCarryover.trim()}` : '',
+      '这是用户手动点击刷新后的强制刷新，必须产出一条新的动态。',
+      '优先写具体可见内容：物品、地点、自拍、穿搭、食物、桌面、镜子、街景、房间、天气、路上、宠物。',
+      '不要返回空白，不要解释说明，不要重复上一条动态。',
+    ].filter(Boolean),
+  };
+}
+
+async function executeMomentPlanEntry(options: {
+  entry: {
+    characterId: string;
+    requestText: string;
+    extraPromptSections: string[];
+  };
+  forumConfig: ApiConfig;
+  getSnapshot: () => AutoMomentRuntimeSnapshot;
+  publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<void>;
+}) {
+  const { entry, forumConfig, getSnapshot, publishGeneratedCharacterMoment } = options;
+  const latestData = getSnapshot();
+  const liveCharacter = latestData.characters.find((character) => character.id === entry.characterId) || null;
+  if (!liveCharacter) {
+    return false;
+  }
+
+  const generated = await generateMomentPostContent({
+    activeConfig: forumConfig,
+    character: liveCharacter,
+    masks: latestData.masks || [],
+    worldBook: latestData.worldBooks || [],
+    requestText: entry.requestText,
+    extraPromptSections: entry.extraPromptSections,
+    privateCarryoverLevel: liveCharacter.momentPrivateCarryoverLevel,
+    allowPrivateMomentCarryover: liveCharacter.allowPrivateMomentCarryover ?? false,
+  });
+
+  const content = generated.content.trim();
+  if (!content) {
+    return false;
+  }
+
+  await publishGeneratedCharacterMoment({
+    authorId: liveCharacter.id,
+    content,
+    translation: generated.translation,
+    imageCard: generated.imageCard,
+  });
+
+  return true;
+}
+
 function appendLikeToMoment(
   setAppData: React.Dispatch<React.SetStateAction<AppData>>,
   momentId: string,
@@ -166,8 +253,33 @@ export async function runAutoMomentSchedulerPass(
   options: RunAutoMomentSchedulerPassOptions,
 ): Promise<number> {
   const { trigger, forumConfig, getSnapshot, publishGeneratedCharacterMoment } = options;
-  if (!forumConfig || autoMomentSchedulerRunning) {
+  if (!forumConfig) {
     return 0;
+  }
+
+  const executeTask = options.executeTask || (async (task: () => Promise<void>) => task());
+
+  if (autoMomentSchedulerRunning) {
+    if (trigger !== 'manual_refresh') {
+      return 0;
+    }
+
+    const forcedEntry = buildForcedManualRefreshEntry(getSnapshot());
+    if (!forcedEntry) {
+      return 0;
+    }
+
+    let published = false;
+    await executeTask(async () => {
+      published = await executeMomentPlanEntry({
+        entry: forcedEntry,
+        forumConfig,
+        getSnapshot,
+        publishGeneratedCharacterMoment,
+      });
+    });
+
+    return published ? 1 : 0;
   }
 
   autoMomentSchedulerRunning = true;
@@ -183,46 +295,32 @@ export async function runAutoMomentSchedulerPass(
       trigger,
     });
 
-    if (plan.length === 0) {
+    const effectivePlan = plan.length > 0
+      ? plan
+      : trigger === 'manual_refresh'
+        ? [buildForcedManualRefreshEntry(currentData)].filter((entry): entry is NonNullable<ReturnType<typeof buildForcedManualRefreshEntry>> => Boolean(entry))
+        : [];
+
+    if (effectivePlan.length === 0) {
       return 0;
     }
 
-    const executeTask = options.executeTask || (async (task: () => Promise<void>) => task());
-
-    for (const entry of plan) {
+    let publishedCount = 0;
+    for (const entry of effectivePlan) {
       await executeTask(async () => {
-        const latestData = getSnapshot();
-        const liveCharacter = latestData.characters.find((character) => character.id === entry.characterId) || null;
-        if (!liveCharacter) {
-          return;
-        }
-
-        const generated = await generateMomentPostContent({
-          activeConfig: forumConfig,
-          character: liveCharacter,
-          masks: latestData.masks || [],
-          worldBook: latestData.worldBooks || [],
-          requestText: entry.requestText,
-          extraPromptSections: entry.extraPromptSections,
-          privateCarryoverLevel: liveCharacter.momentPrivateCarryoverLevel,
-          allowPrivateMomentCarryover: liveCharacter.allowPrivateMomentCarryover ?? false,
+        const published = await executeMomentPlanEntry({
+          entry,
+          forumConfig,
+          getSnapshot,
+          publishGeneratedCharacterMoment,
         });
-
-        const content = generated.content.trim();
-        if (!content) {
-          return;
+        if (published) {
+          publishedCount += 1;
         }
-
-        await publishGeneratedCharacterMoment({
-          authorId: liveCharacter.id,
-          content,
-          translation: generated.translation,
-          imageCard: generated.imageCard,
-        });
       });
     }
 
-    return plan.length;
+    return publishedCount;
   } finally {
     saveLastAutoMomentCheckAt(startedAt);
     autoMomentSchedulerRunning = false;
