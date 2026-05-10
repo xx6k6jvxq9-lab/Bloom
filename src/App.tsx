@@ -496,7 +496,7 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
+        {statusBarVisible && activeApp !== 'home' && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
           <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
