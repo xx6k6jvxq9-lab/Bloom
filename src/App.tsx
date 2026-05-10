@@ -289,23 +289,15 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
-  const showMockStatusBar = statusBarVisible
-    && activeApp !== 'wallet'
-    && activeApp !== 'forum'
-    && activeApp !== 'monitor'
-    && activeApp !== 'dream'
-    && !hideMockSystemChrome
-    && !isStandalone;
-  const homeStandaloneStatusBarOffset = statusBarVisible && activeApp === 'home' && isStandalone ? 44 : 0;
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? appSafeAreaBottomFull
     : '12px';
   const appSafeAreaBottomTab = isStandalone
-    ? '6px'
+    ? 'min(12px, env(safe-area-inset-bottom, 0px))'
     : '12px';
   const appSafeAreaBottomDock = isStandalone
-    ? '0px'
+    ? appSafeAreaBottomFull
     : '0px';
   const homeWallpaperBackgroundStyle =
     activeApp === 'home' && homeWallpaperDisplayUrl
@@ -320,7 +312,6 @@ export default function App() {
     ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
     backgroundColor: appChromeBackground,
     ...homeWallpaperBackgroundStyle,
-    '--home-top-overlay-offset': `${homeStandaloneStatusBarOffset}px`,
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
@@ -505,11 +496,8 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {showMockStatusBar && (
-          <div
-            className="pointer-events-none absolute left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white"
-            style={{ top: 0 }}
-          >
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
+          <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">
               {/* Signal Bars */}

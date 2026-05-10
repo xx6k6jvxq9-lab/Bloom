@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useCallback } from 'react';
-import { Trash2, RefreshCw, Wifi } from 'lucide-react';
+import { Trash2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
 import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicData, WidgetConfig } from '../../../types';
 import { DesktopWidget } from '../../shared/DesktopWidgets';
@@ -173,10 +173,7 @@ export function HomeScreen({
   const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const [navBarMeasuredWidth, setNavBarMeasuredWidth] = useState<number | null>(null);
   const [desktopViewport, setDesktopViewport] = useState({ width: 360, height: 720 });
-  const [safeAreaTop, setSafeAreaTop] = useState(0);
-  const [topOverlayOffset, setTopOverlayOffset] = useState(0);
   const [safeAreaBottom, setSafeAreaBottom] = useState(0);
-  const [dockSafeFill, setDockSafeFill] = useState(0);
   const [pageDirection, setPageDirection] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipeDragging, setIsSwipeDragging] = useState(false);
@@ -320,11 +317,6 @@ export function HomeScreen({
     && sizeTier !== 'compact'
     && desktopViewport.height >= (sizeTier === 'large' ? 880 : 820)
     && aspectRatio >= 2.05;
-  const showStandaloneMockStatusBar = topOverlayOffset > 0;
-  const standaloneMockStatusBarTop = showStandaloneMockStatusBar ? Math.max(8, safeAreaTop + 6) : 0;
-  const resolvedTopOverlayOffset = showStandaloneMockStatusBar
-    ? Math.max(Math.round(topOverlayOffset), Math.max(44, safeAreaTop + 12))
-    : 0;
   const layoutMetrics = useMemo(
     () =>
       getDesktopLayoutMetrics({
@@ -337,9 +329,8 @@ export function HomeScreen({
         gap: configuredGap,
         safeAreaBottom,
         isTallPhone,
-        topOverlayOffset: resolvedTopOverlayOffset,
       }),
-    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, resolvedTopOverlayOffset, safeAreaBottom, sizeTier],
+    [cols, configuredGap, configuredIconSize, desktopViewport.height, desktopViewport.width, isTallPhone, safeAreaBottom, sizeTier],
   );
   const iconSize = layoutMetrics.iconSize;
   const iconSizeBoost = isTabletLayout ? 4 : sizeTier === 'large' ? (isTallPhone ? 4 : 2) : sizeTier === 'regular' ? 2 : 0;
@@ -384,58 +375,34 @@ export function HomeScreen({
       const phoneContainer = document.getElementById('phone-container');
       const computed = phoneContainer ? window.getComputedStyle(phoneContainer) : null;
       const isStandaloneMode = document.documentElement.getAttribute('data-standalone') === 'true';
-      const measureCssLength = (cssLength: string) => {
-        if (!phoneContainer) return 0;
-        if (cssLength.endsWith('px')) {
-          return parseFloat(cssLength) || 0;
-        }
-        if (!cssLength || cssLength === '0') {
-          return 0;
-        }
-        const probe = document.createElement('div');
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.pointerEvents = 'none';
-        probe.style.inset = 'auto';
-        probe.style.height = cssLength;
-        phoneContainer.appendChild(probe);
-        const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
-        phoneContainer.removeChild(probe);
-        return measured;
-      };
-      const nextTopOverlayOffset = Math.max(
-        0,
-        Math.round(parseFloat(computed?.getPropertyValue('--home-top-overlay-offset')?.trim() || '0') || 0),
-      );
-      const nextSafeAreaTop = Math.max(
-        0,
-        Math.round(measureCssLength('env(safe-area-inset-top, 0px)')),
-      );
       const safeAreaVar =
-        (isStandaloneMode
-          ? computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
-          : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
+        computed?.getPropertyValue('--app-safe-area-bottom-dock')?.trim()
         || computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim()
+        || (isStandaloneMode
+          ? computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim()
+          : computed?.getPropertyValue('--app-safe-area-bottom-ui')?.trim())
         || '0';
-      const fullSafeAreaVar = computed?.getPropertyValue('--app-safe-area-bottom-full')?.trim() || safeAreaVar;
-      const resolvedSafeAreaBottom = !phoneContainer || !computed
-        ? 0
-        : safeAreaVar && safeAreaVar !== '0'
-          ? measureCssLength(safeAreaVar)
-          : parseFloat(computed.paddingBottom) || 0;
-      const resolvedFullSafeAreaBottom = !phoneContainer || !computed
-        ? 0
-        : fullSafeAreaVar && fullSafeAreaVar !== '0'
-          ? measureCssLength(fullSafeAreaVar)
-          : parseFloat(computed.paddingBottom) || 0;
-      setSafeAreaTop(current => (current === nextSafeAreaTop ? current : nextSafeAreaTop));
-      setTopOverlayOffset(current => (current === nextTopOverlayOffset ? current : nextTopOverlayOffset));
+      const resolvedSafeAreaBottom = (() => {
+        if (!phoneContainer || !computed) return 0;
+        if (safeAreaVar.endsWith('px')) {
+          return parseFloat(safeAreaVar) || 0;
+        }
+        if (safeAreaVar && safeAreaVar !== '0') {
+          const probe = document.createElement('div');
+          probe.style.position = 'absolute';
+          probe.style.visibility = 'hidden';
+          probe.style.pointerEvents = 'none';
+          probe.style.inset = 'auto';
+          probe.style.height = safeAreaVar;
+          phoneContainer.appendChild(probe);
+          const measured = parseFloat(window.getComputedStyle(probe).height) || 0;
+          phoneContainer.removeChild(probe);
+          return measured;
+        }
+        return parseFloat(computed.paddingBottom) || 0;
+      })();
       const nextSafeAreaBottom = Math.round(resolvedSafeAreaBottom);
-      const nextDockSafeFill = isStandaloneMode
-        ? Math.round(Math.min(16, resolvedFullSafeAreaBottom * 0.45))
-        : 0;
       setSafeAreaBottom(current => (current === nextSafeAreaBottom ? current : nextSafeAreaBottom));
-      setDockSafeFill(current => (current === nextDockSafeFill ? current : nextDockSafeFill));
     };
 
     updateViewport();
@@ -1783,31 +1750,6 @@ export function HomeScreen({
         />
       ) : null}
 
-      {showStandaloneMockStatusBar ? (
-        <div
-          className="pointer-events-none absolute left-0 right-0 z-[96] flex items-center justify-between px-7 text-white"
-          style={{ top: standaloneMockStatusBarTop }}
-          aria-hidden="true"
-        >
-          <span className="text-[15px] font-bold tracking-tight">{timeStr}</span>
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-end gap-[2px] h-[10px] mb-[1px]">
-              <div className="w-[3px] h-[3px] rounded-[0.5px] bg-current" />
-              <div className="w-[3px] h-[5px] rounded-[0.5px] bg-current" />
-              <div className="w-[3px] h-[7.5px] rounded-[0.5px] bg-current" />
-              <div className="w-[3px] h-[10px] rounded-[0.5px] bg-current" />
-            </div>
-            <Wifi size={16} strokeWidth={3.8} className="opacity-100" />
-            <div className="flex items-center gap-[1px]">
-              <div className="relative h-[11.5px] w-[22px] rounded-[3px] border border-current p-[1.5px]">
-                <div className="h-full w-full rounded-[1px] bg-current" />
-              </div>
-              <div className="h-[4px] w-[1.5px] rounded-r-[1px] bg-current opacity-50" />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className="absolute inset-0 z-30 overflow-hidden">
         <div
           className="homeDesktop__pageTrack absolute inset-0 flex"
@@ -2257,7 +2199,7 @@ export function HomeScreen({
       {pageCount > 1 && (
         <div
           className="homeDesktop__pageDots pointer-events-auto absolute left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2"
-          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + dockSafeFill + 8}px` }}
+          style={{ bottom: `${layoutMetrics.dockHeight + layoutMetrics.dockBottomGap + layoutMetrics.safeAreaBottom + 8}px` }}
         >
           {Array.from({ length: pageCount }, (_, page) => (
             <button
@@ -2276,7 +2218,7 @@ export function HomeScreen({
         apps={apps.filter(app => DOCK_APP_IDS.includes(app.id as (typeof DOCK_APP_IDS)[number]))}
         fontStyle={fontStyle}
         iconSize={dockIconSize}
-        safeAreaFill={dockSafeFill}
+        safeAreaInset={layoutMetrics.safeAreaBottom}
         backgroundImageUrl={dockBackgroundDisplayUrl}
       />
     </div>
@@ -2464,7 +2406,7 @@ function StaticDock({
   apps,
   fontStyle,
   iconSize,
-  safeAreaFill,
+  safeAreaInset,
   backgroundImageUrl,
 }: {
   placement: { x: number; y: number; width: number; height: number };
@@ -2472,21 +2414,22 @@ function StaticDock({
   apps: AppDefinition[];
   fontStyle: React.CSSProperties;
   iconSize: number;
-  safeAreaFill: number;
+  safeAreaInset: number;
   backgroundImageUrl?: string;
 }) {
   const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
   const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
-  const totalDockHeight = placement.height + safeAreaFill;
+  const resolvedSafeAreaInset = Math.max(0, safeAreaInset);
+  const totalDockHeight = placement.height + resolvedSafeAreaInset;
 
   return (
     <motion.div
       className="homeDesktop__dock"
       initial={false}
-      animate={{ x: placement.x, y: placement.y - safeAreaFill }}
+      animate={{ x: placement.x, y: placement.y }}
       style={{ width: placement.width, height: totalDockHeight }}
     >
-      <div className="homeDesktop__dockBar" style={{ height: placement.height }}>
+      <div className="homeDesktop__dockBar" style={{ height: totalDockHeight }}>
         {(backgroundImageUrl || dockTintOpacity > 0) ? (
           <div className="homeDesktop__dockMedia" aria-hidden="true">
             {backgroundImageUrl ? <img src={backgroundImageUrl} alt="" /> : null}
@@ -2522,7 +2465,6 @@ function StaticDock({
           ))}
         </div>
       </div>
-      {safeAreaFill > 0 ? <div className="homeDesktop__dockSafeFill" style={{ height: safeAreaFill + 2 }} /> : null}
     </motion.div>
   );
 }
