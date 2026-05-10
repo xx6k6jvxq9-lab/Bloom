@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Heart, MessageSquare, MoreVertical, RefreshC
 import { useMemo } from 'react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AppData, AppSettings, Character, ChatGroup, ForumData, FriendRequest, MomentComment, MomentItem } from '../../../types';
+import { AppData, AppSettings, Character, ChatGroup, FriendRequest, MomentComment, MomentItem } from '../../../types';
 import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboardSafeViewport';
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
@@ -19,19 +19,10 @@ import { buildCharacterContext } from '../../../services/relationship-context/bu
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
-import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
-import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
 } from '../../../features/app-shell/formatMessagePreview';
-
-const EMPTY_CONTACTS_FORUM_DATA: ForumData = {
-  posts: [],
-  notifications: [],
-  tempChats: {},
-  globalSettings: DEFAULT_FORUM_GLOBAL_SETTINGS,
-};
 
 function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
   const characterContext = buildCharacterContext({ character: character as Character });
@@ -131,7 +122,6 @@ function CharacterCardPreviewPage({
   onChangeMode: (mode: 'preview' | 'raw') => void;
   onBack: () => void;
 }) {
-  const contactsSheetTopInset = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -139,10 +129,7 @@ function CharacterCardPreviewPage({
       exit={{ x: '100%' }}
       className="absolute inset-0 z-[90] flex flex-col bg-white"
     >
-      <div
-        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
-        style={{ paddingTop: contactsSheetTopInset }}
-      >
+      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={22} />
         </button>
@@ -239,7 +226,7 @@ export function ContactsApp({
             const req = prev.friendRequests?.find(r => r.id === id);
             if (!req) return prev;
 
-            const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
+            const currentForumData = prev.forumData || {};
             const currentTempChats = currentForumData.tempChats || {};
             const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
             const bridged = req.sourceScene === 'forum'
@@ -324,7 +311,7 @@ export function ContactsApp({
               };
             }
 
-            const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
+            const currentForumData = prev.forumData || {};
             const currentTempChats = currentForumData.tempChats || {};
             const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
 
@@ -632,7 +619,6 @@ export function CharacterProfile({
   onUpdateGroup: (groupId: string | undefined) => void;
   onTogglePin?: () => void;
 }) {
-  const contactsHeaderTopInset = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   const [showRawCardPreview, setShowRawCardPreview] = useState(false);
   const [cardPreviewMode, setCardPreviewMode] = useState<'preview' | 'raw'>('preview');
   const displayName = character.remarkName?.trim() || character.name;
@@ -665,10 +651,7 @@ export function CharacterProfile({
       className="absolute inset-0 bg-white flex flex-col z-[80]"
     >
       {/* Header */}
-      <div
-        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
-        style={{ paddingTop: contactsHeaderTopInset }}
-      >
+      <div className="pt-8 pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={22} />
         </button>
@@ -817,7 +800,6 @@ export function CharacterMomentsProfile({
   moments: CharacterMoment[];
   onBack: () => void;
 }) {
-  const characterMomentsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState<{
@@ -937,10 +919,7 @@ export function CharacterMomentsProfile({
       exit={{ x: '100%' }}
       className="absolute inset-0 bg-zinc-50 flex flex-col z-[80]"
     >
-      <div
-        className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
-        style={{ paddingTop: characterMomentsHeaderTopPadding }}
-      >
+      <div className="min-h-[64px] pt-12 pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
           <ChevronLeft size={24} />
         </button>
@@ -1118,8 +1097,7 @@ export function AddFriendModal({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="absolute inset-x-4 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 24px)' }}
+      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">添加 AI 好友</h2>
@@ -1187,8 +1165,7 @@ export function GroupManagementModal({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="absolute inset-x-4 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 24px)' }}
+      className="absolute inset-x-4 top-24 max-h-[calc(100svh-8rem)] overflow-y-auto bg-white rounded-[32px] shadow-2xl z-[100] p-6 border border-zinc-100"
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-[18px] font-bold text-zinc-900">管理分组</h2>

@@ -11,7 +11,7 @@ export type Mask = {
   relationship: string;
   worldBackground: string; // New field
   isActive: boolean;
-  linkedCharacters: string[]; // IDs of characters that use this mask
+  linkedCharacters: string[]; // IDs of characters that read this user mask
 };
 
 export type FavoriteMessage = {

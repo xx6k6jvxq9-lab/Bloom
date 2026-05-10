@@ -1,6 +1,8 @@
 import type { AppData } from '../../types';
 import {
   DEFAULT_DESKTOP_WALLPAPER,
+  DEFAULT_DOCK_TINT_COLOR,
+  DEFAULT_DOCK_TINT_OPACITY,
   DEFAULT_HOME_ICONS,
   DEFAULT_HOME_WIDGETS,
   DEFAULT_NAV_BAR_BACKGROUND,
@@ -55,8 +57,8 @@ export function createDefaultAppData(): AppData {
         gridGap: 16,
         dockBackgroundImage: '',
         dockBackgroundPreviewUrl: '',
-        dockTintColor: '#f8fafc',
-        dockTintOpacity: 0.18,
+        dockTintColor: DEFAULT_DOCK_TINT_COLOR,
+        dockTintOpacity: DEFAULT_DOCK_TINT_OPACITY,
       },
       chat: {
         background: '',

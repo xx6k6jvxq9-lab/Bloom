@@ -1,6 +1,10 @@
 import { EXISTENCE_PROMPT } from '../base/existence';
 import { OUTPUT_RULES_PROMPT } from '../base/outputRules';
-import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import {
+  buildCharacterCoreSection,
+  buildUserMaskContextSection,
+  CharacterCoreSectionsInput,
+} from '../character/characterCore';
 import type { MemoryContextInput } from '../character/memoryContext';
 import { MOMENTS_SCENARIO_PROMPT } from '../scenarios/moments';
 
@@ -60,6 +64,7 @@ export function buildMomentsPrompt(options: BuildMomentsPromptOptions = {}): str
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
+    buildUserMaskContextSection(options.characterCore ?? {}),
     buildMomentsMemorySection(options.memoryContext ?? {}),
     MOMENTS_SCENARIO_PROMPT,
     buildPostContextSection(options.postContext),

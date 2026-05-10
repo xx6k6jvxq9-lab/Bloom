@@ -92,7 +92,6 @@ export function buildDreamBackgroundRequestKey(options: GenerateDreamScenarioOpt
   return JSON.stringify({
     characterId: options.character.id,
     configId: options.activeConfig.id,
-    generationMode: options.generationMode || 'light',
     entryMode: options.selection.entryMode,
     domainId: options.selection.domainId,
     depth: options.selection.depth,
@@ -149,7 +148,6 @@ function persistCompletedDream(
     JSON.stringify({
       resumeKind: 'background_exit',
       mode: options.selection.entryMode,
-      generationMode: options.generationMode,
       roleId: options.character.id,
       domain: options.selection.domainId,
       depth: options.selection.depth,

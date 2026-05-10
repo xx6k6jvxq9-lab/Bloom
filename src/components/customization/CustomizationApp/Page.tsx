@@ -18,6 +18,10 @@ import { useResolvedPersistentValue } from '../../../features/persistence/useRes
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, getThemeSelectedFontStack, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
 import {
+  DEFAULT_DOCK_TINT_COLOR,
+  DEFAULT_DOCK_TINT_OPACITY,
+} from '../../../features/app-shell/defaultAppConstants';
+import {
   type BackupRestoreProgress,
   buildModularBackupArchive,
   buildSplitModularBackupBundle,
@@ -823,8 +827,9 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <div className="mx-auto flex w-full max-w-[280px] flex-col items-center gap-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">Preview</div>
               <div className="relative w-full">
-                <div className="absolute inset-x-4 bottom-[-8px] h-6 rounded-b-[22px] border border-white/20 border-t-0 bg-white/25 blur-[0.2px]" />
-                <div className="relative flex min-h-[88px] items-center justify-around overflow-hidden rounded-[28px] border border-white/35 px-4 py-3 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur-[28px]">
+                <div className="absolute inset-0 rounded-[30px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_46%),linear-gradient(180deg,#13151a,#09090b)]" />
+                <div className="absolute inset-x-4 bottom-[-10px] h-7 rounded-b-[22px] bg-black/30 blur-md" />
+                <div className="relative flex min-h-[88px] items-center justify-around overflow-hidden rounded-[28px] border border-white/20 bg-[linear-gradient(180deg,rgba(240,243,247,0.24),rgba(180,189,202,0.16))] px-4 py-3 shadow-[0_18px_34px_rgba(15,23,42,0.24)] backdrop-blur-[30px]">
                   {dockBackgroundDisplayUrl ? (
                     <img
                       src={dockBackgroundDisplayUrl}
@@ -835,10 +840,11 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                   <div
                     className="absolute inset-0"
                     style={{
-                      backgroundColor: settings.desktop?.dockTintColor || '#f8fafc',
-                      opacity: settings.desktop?.dockTintOpacity ?? 0.18,
+                      backgroundColor: settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR,
+                      opacity: settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY,
                     }}
                   />
+                  <div className="pointer-events-none absolute inset-x-[1px] top-[1px] h-[42%] rounded-[27px] bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))]" />
                   {['钱包', '梦境', '自定义'].map((label, index) => (
                     <div key={label} className="relative z-10 flex flex-col items-center gap-1">
                       <div
@@ -847,7 +853,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                       >
                         {index === 0 ? <Banknote size={24} className="m-auto mt-3 text-zinc-700" /> : index === 1 ? <Moon size={24} className="m-auto mt-3 text-zinc-700" /> : <Settings size={24} className="m-auto mt-3 text-zinc-700" />}
                       </div>
-                      <span className="text-[11px] font-medium text-zinc-700">{label}</span>
+                      <span className="text-[11px] font-medium text-white/86 [text-shadow:0_1px_8px_rgba(0,0,0,0.36)]">{label}</span>
                     </div>
                   ))}
                 </div>
@@ -877,15 +883,15 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
             <div className="flex items-center gap-3">
               <input
                 type="color"
-                value={settings.desktop?.dockTintColor || '#f8fafc'}
+                value={settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR}
                 onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
                 className="h-11 w-14 cursor-pointer rounded-xl border border-zinc-200 bg-white p-1"
               />
               <input
                 type="text"
-                value={settings.desktop?.dockTintColor || '#f8fafc'}
+                value={settings.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR}
                 onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintColor: e.target.value } })}
-                placeholder="#f8fafc"
+                placeholder={DEFAULT_DOCK_TINT_COLOR}
                 className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-[13px] text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
               />
             </div>
@@ -894,14 +900,14 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
           <div className="space-y-2">
             <label className="text-xs font-bold text-zinc-500 flex justify-between">
               <span>Dock 颜色透明度</span>
-              <span>{Math.round((settings.desktop?.dockTintOpacity ?? 0.18) * 100)}%</span>
+              <span>{Math.round((settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY) * 100)}%</span>
             </label>
             <input
               type="range"
               min="0"
               max="0.75"
               step="0.05"
-              value={settings.desktop?.dockTintOpacity ?? 0.18}
+              value={settings.desktop?.dockTintOpacity ?? DEFAULT_DOCK_TINT_OPACITY}
               onChange={e => setSettings({ ...settings, desktop: { ...settings.desktop, dockTintOpacity: Number(e.target.value) } })}
               className="w-full accent-zinc-900"
             />

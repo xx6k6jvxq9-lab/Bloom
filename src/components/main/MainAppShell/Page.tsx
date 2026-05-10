@@ -116,8 +116,6 @@ export function MainApp({
   MomentsAppComponent: React.ComponentType<{ appData: AppData; setAppData: React.Dispatch<React.SetStateAction<AppData>>; settings: AppSettings }>;
   formatMessagePreview: (text: string | undefined) => string;
 }) {
-  const mainHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
-  const mainQuickActionsTop = 'calc(env(safe-area-inset-top, 0px) + 62px)';
   const tabOrder: Array<'chat' | 'contacts' | 'moments' | 'me'> = ['chat', 'contacts', 'moments', 'me'];
 
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -278,10 +276,7 @@ export function MainApp({
   };
 
   const header = !(activeTab === 'me' && meSection !== 'main') ? (
-    <div
-      className="relative z-10 flex min-h-[64px] shrink-0 items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 backdrop-blur-md"
-      style={{ paddingTop: mainHeaderTopPadding }}
-    >
+    <div className="relative z-10 flex min-h-[64px] shrink-0 items-center justify-between border-b border-zinc-100 bg-white px-4 pb-3 pt-12 backdrop-blur-md">
       <div className="flex items-center gap-2">
         <button onClick={onBack} className="p-1 -ml-1 text-zinc-400 active:text-zinc-600">
           <ChevronLeft size={24} />
@@ -355,8 +350,7 @@ export function MainApp({
                 initial={{ opacity: 0, y: -8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                className="absolute right-4 z-[75] w-[168px] overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-2xl"
-                style={{ top: mainQuickActionsTop }}
+                className="absolute right-4 top-[74px] z-[75] w-[168px] overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-2xl"
               >
                 <button
                   onClick={() => {

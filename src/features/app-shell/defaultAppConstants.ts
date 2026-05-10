@@ -28,6 +28,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export const DEFAULT_DESKTOP_WALLPAPER =
   'https://tse3.mm.bing.net/th/id/OIP.GdwwXxbY6ullokoEq_KO2gHaNK?rs=1&pid=ImgDetMain&o=7&rm=3';
 
+export const DEFAULT_DOCK_TINT_COLOR = '#d6dbe3';
+export const DEFAULT_DOCK_TINT_OPACITY = 0.14;
+export const LEGACY_DEFAULT_DOCK_TINT_COLOR = '#f8fafc';
+export const LEGACY_DEFAULT_DOCK_TINT_OPACITY = 0.18;
+
 export const DEFAULT_HOME_ICONS: DesktopIconConfig[] = [
   { id: 'chat', slotId: 'slot-1-2' },
   { id: 'settings', slotId: 'slot-1-3' },

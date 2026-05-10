@@ -1,20 +1,23 @@
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
-import { buildDreamScenarioCompactPrompt, buildDreamScenarioCompactRepairPrompt } from './buildDreamScenarioCompactPrompt';
-import { parseCompactDreamScenarioResult } from './dreamScenarioCompactRuntime';
+import { buildDreamPromptInput } from './buildDreamPromptInput';
+import { buildDreamScenarioPrompt } from './buildDreamScenarioPrompt';
+import { buildPresentation, computeShallowActCount, parseJsonResponse, sanitizeCustomAct, sanitizeCustomStoryFrame, toAct, type RawScenario } from './dreamRuntimeNormalize';
+import { hydrateDreamRuntimeScenario } from './dreamRuntimeSummaries';
 import type { DreamRuntimeScenario, GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 
-function buildDreamScenarioSeed(options: GenerateDreamScenarioOptions) {
-  return `${options.character.id}-${options.selection.domainId}-${options.selection.depth}-${options.selection.entryMode}-${Date.now()}-${Math.random()
+export async function generateDreamScenario(options: GenerateDreamScenarioOptions): Promise<DreamRuntimeScenario> {
+  const promptInput = buildDreamPromptInput(options);
+  const seed = `${options.character.id}-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${promptInput.resolvedSelection.entryMode}-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-}
+  const prompt = buildDreamScenarioPrompt(options, seed);
+  const expectedActs =
+    promptInput.resolvedSelection.depth === 'deep'
+      ? 4
+      : computeShallowActCount(`${options.character.id}-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.entryMode}`);
+  const presentation = buildPresentation(seed);
 
-function resolveCompactExpectedActs(options: GenerateDreamScenarioOptions) {
-  return options.selection.depth === 'deep' ? 4 : 4;
-}
-
-async function requestCompactScenario(options: GenerateDreamScenarioOptions, prompt: string, maxOutputTokens: number) {
-  return generateTextFromMessagesWithConfig({
+  const raw = await generateTextFromMessagesWithConfig({
     activeConfig: options.activeConfig,
     messages: [
       {
@@ -26,92 +29,51 @@ async function requestCompactScenario(options: GenerateDreamScenarioOptions, pro
         content: prompt,
       },
     ],
-    temperature: 0.94,
-    maxOutputTokens,
+    temperature: 0.98,
+    maxOutputTokens: 16000,
   });
-}
 
-function logCompactScenarioValidation(label: string, result: ReturnType<typeof parseCompactDreamScenarioResult>) {
-  console.info(label, {
-    isValid: result.isValid,
-    hasRuntimeScenario: Boolean(result.runtimeScenario),
-    issueCount: result.issues.length,
-    repairIssueCount: result.repairIssueCount,
-    qualityIssueCount: result.qualityIssueCount,
-    issues: result.issues.slice(0, 6),
-  });
-}
-
-export async function generateDreamScenario(options: GenerateDreamScenarioOptions): Promise<DreamRuntimeScenario> {
-  const seed = buildDreamScenarioSeed(options);
-  const expectedActs = resolveCompactExpectedActs(options);
-  const generationMode = options.generationMode || 'light';
-
-  const draftRaw = await requestCompactScenario(
-    options,
-    buildDreamScenarioCompactPrompt(options, seed, generationMode === 'woven' ? 'woven-draft' : 'light'),
-    generationMode === 'woven' ? 14000 : 12000,
+  const parsed = parseJsonResponse<RawScenario>(raw);
+  const normalizedActs = Array.from({ length: expectedActs }, (_, index) =>
+    sanitizeCustomAct(toAct(parsed.acts?.[index] || {}, index, presentation), promptInput.resolvedSelection),
   );
+  const storyFrame = sanitizeCustomStoryFrame({
+    worldTitle: parsed.storyFrame?.worldTitle?.trim() || '',
+    worldSummary: parsed.storyFrame?.worldSummary?.trim() || '',
+    userDreamIdentity: parsed.storyFrame?.userDreamIdentity?.trim() || '',
+    characterDreamIdentity: parsed.storyFrame?.characterDreamIdentity?.trim() || '',
+    dreamRelationship: parsed.storyFrame?.dreamRelationship?.trim() || '',
+    openingNode: parsed.storyFrame?.openingNode?.trim() || '',
+    storyObjective: parsed.storyFrame?.storyObjective?.trim() || '',
+    coreConflict: parsed.storyFrame?.coreConflict?.trim() || '',
+    realityAnchor: parsed.storyFrame?.realityAnchor?.trim() || '',
+    timeNode: parsed.storyFrame?.timeNode?.trim() || '',
+    currentCrisis: parsed.storyFrame?.currentCrisis?.trim() || '',
+    forbiddenRule: parsed.storyFrame?.forbiddenRule?.trim() || '',
+    immediateGoal: parsed.storyFrame?.immediateGoal?.trim() || '',
+  }, promptInput.resolvedSelection);
 
-  const draftResult = parseCompactDreamScenarioResult({
-    raw: draftRaw,
-    selection: options.selection,
-    expectedActs,
-    seed,
-    depth: options.selection.depth,
-    entryMode: options.selection.entryMode,
-    domainId: options.selection.domainId,
+  return hydrateDreamRuntimeScenario({
+    id: `dream-${promptInput.resolvedSelection.domainId}-${promptInput.resolvedSelection.depth}-${Date.now()}`,
+    coverTitle: parsed.coverTitle?.trim() || '今夜',
+    coverSubtitle: parsed.coverSubtitle?.trim() || '',
+    confirmHint: parsed.confirmHint?.trim() || '',
+    depth: promptInput.resolvedSelection.depth,
+    entryMode: promptInput.resolvedSelection.entryMode,
+    domainId: promptInput.resolvedSelection.domainId,
+    storyFrame,
+    presentation,
+    acts: normalizedActs,
+    decisionTrail: [],
+    endingInput: {
+      titlePoolKey: parsed.endingInput?.titlePoolKey?.trim() || 'default',
+      endingDirection: parsed.endingInput?.endingDirection?.trim() || '',
+      keyActionSummary: parsed.endingInput?.keyActionSummary?.trim() || '',
+    },
+    aftermathInput: {
+      relationshipShift: parsed.aftermathInput?.relationshipShift?.trim() || '',
+      toneDrift: parsed.aftermathInput?.toneDrift?.trim() || '',
+      messagePreviewDirection: parsed.aftermathInput?.messagePreviewDirection?.trim() || '',
+    },
   });
-  logCompactScenarioValidation('[dream][scenario] compact:draft', draftResult);
-
-  if (generationMode === 'light') {
-    if (draftResult.runtimeScenario) {
-      return draftResult.runtimeScenario;
-    }
-
-    throw new Error(
-      draftResult.issues[0]
-      || '轻入梦已生成内容，但结构整理失败。',
-    );
-  }
-
-  if (draftResult.runtimeScenario && !draftResult.needsRepair) {
-    return draftResult.runtimeScenario;
-  }
-
-  const repairedRaw = await requestCompactScenario(
-    options,
-    buildDreamScenarioCompactRepairPrompt({
-      options,
-      seed,
-      draftSource: draftRaw,
-      issues: draftResult.issues,
-    }),
-    14000,
-  );
-
-  const repairedResult = parseCompactDreamScenarioResult({
-    raw: repairedRaw,
-    selection: options.selection,
-    expectedActs,
-    seed,
-    depth: options.selection.depth,
-    entryMode: options.selection.entryMode,
-    domainId: options.selection.domainId,
-  });
-  logCompactScenarioValidation('[dream][scenario] compact:repair', repairedResult);
-
-  if (repairedResult.runtimeScenario && (!repairedResult.needsRepair || !draftResult.runtimeScenario)) {
-    return repairedResult.runtimeScenario;
-  }
-
-  if (draftResult.runtimeScenario) {
-    return draftResult.runtimeScenario;
-  }
-
-  throw new Error(
-    repairedResult.issues[0]
-    || draftResult.issues[0]
-    || '织成篇结构整理失败。',
-  );
 }

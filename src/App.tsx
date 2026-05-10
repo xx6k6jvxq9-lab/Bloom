@@ -74,7 +74,7 @@ import { useCoupleSpaceStateActions } from './features/persistence/useCoupleSpac
 import { buildThemeScopedCss } from './features/theme/themeScopedCss';
 import { useResolvedThemeTypographyCss } from './features/theme/useResolvedThemeTypographyCss';
 import { getThemeSelectedFontStack } from './features/theme/themeTypography';
-import { getDisplayableAssetValue, getPreviewAssetValue } from './features/persistence/persistentAssetRef';
+import { buildDisplayAssetCandidates } from './features/persistence/persistentAssetRef';
 import { useResolvedPersistentValue } from './features/persistence/useResolvedPersistentValue';
 import { useCharacterStateActions } from './features/character-domain/useCharacterStateActions';
 import { createDefaultCoupleSpaceInitiativeSettings } from './services/ai/couple-space/initiative/coupleSpaceTriggerPolicy';
@@ -275,9 +275,19 @@ export default function App() {
   const { generatedCss: themeTypographyCss } = useResolvedThemeTypographyCss(appData.visualSettings?.themeTypography);
   const appFontFamily = getThemeSelectedFontStack(appData.visualSettings?.themeTypography);
   const { resolvedUrl: resolvedHomeWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
-  const homeWallpaperDisplayUrl =
-    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedHomeWallpaperUrl)
-    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
+  const homeWallpaperDisplayUrl = useMemo(
+    () => buildDisplayAssetCandidates({
+      value: appData.visualSettings?.globalBackground,
+      resolvedUrl: resolvedHomeWallpaperUrl,
+      previewUrl: appData.visualSettings?.globalBackgroundPreviewUrl,
+      fallbackUrl: DEFAULT_DESKTOP_WALLPAPER,
+    })[0] ?? DEFAULT_DESKTOP_WALLPAPER,
+    [
+      appData.visualSettings?.globalBackground,
+      appData.visualSettings?.globalBackgroundPreviewUrl,
+      resolvedHomeWallpaperUrl,
+    ],
+  );
   const isStorageReady = hasHydratedStorage;
   const appChromeBackground = activeApp === 'home' || activeApp === 'dream' ? '#09090b' : '#f8fafc';
   const phoneContainerBackgroundClass =
@@ -289,6 +299,7 @@ export default function App() {
     && layoutViewportHeight > 0
     && visualViewportHeight < layoutViewportHeight - 40;
   const hideMockSystemChrome = !useDesktopStageLayout && !isStandalone && (keyboardVisible || browserKeyboardViewportCollapsed);
+  const appSafeAreaTop = 'env(safe-area-inset-top, 0px)';
   const appSafeAreaBottomFull = 'env(safe-area-inset-bottom, 0px)';
   const appSafeAreaBottomUi = isStandalone
     ? appSafeAreaBottomFull
@@ -312,6 +323,7 @@ export default function App() {
     ...(appFontFamily ? { fontFamily: appFontFamily } : {}),
     backgroundColor: appChromeBackground,
     ...homeWallpaperBackgroundStyle,
+    '--app-safe-area-top': appSafeAreaTop,
     '--app-safe-area-bottom-full': appSafeAreaBottomFull,
     '--app-safe-area-bottom': appSafeAreaBottomFull,
     '--app-safe-area-bottom-ui': appSafeAreaBottomUi,
@@ -496,7 +508,7 @@ export default function App() {
       >
         
         {/* Status Bar */}
-        {statusBarVisible && activeApp !== 'home' && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
+        {statusBarVisible && activeApp !== 'wallet' && activeApp !== 'forum' && activeApp !== 'monitor' && activeApp !== 'dream' && !isStandalone && !hideMockSystemChrome && (
           <div className="pointer-events-none absolute top-0 left-0 right-0 h-[44px] flex justify-between items-center px-7 z-50 text-white">
             <span className="text-[15px] font-bold tracking-tight">{time}</span>
             <div className="flex items-center gap-1.5">

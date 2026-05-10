@@ -64,3 +64,28 @@ export function getPreviewAssetValue(
   if (!trimmed) return null;
   return isValidDirectDisplayValue(trimmed) ? trimmed : null;
 }
+
+export function buildDisplayAssetCandidates(options: {
+  value?: string | null;
+  resolvedUrl?: string | null;
+  previewUrl?: string | null;
+  fallbackUrl?: string | null;
+}): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (candidate: string | null | undefined) => {
+    if (!candidate) return;
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    candidates.push(trimmed);
+  };
+
+  pushCandidate(options.resolvedUrl);
+  pushCandidate(getDisplayableAssetValue(options.value, null));
+  pushCandidate(getPreviewAssetValue(options.previewUrl));
+  pushCandidate(options.fallbackUrl);
+
+  return candidates;
+}

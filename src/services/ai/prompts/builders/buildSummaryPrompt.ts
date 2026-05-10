@@ -4,7 +4,11 @@ import {
   LONG_TERM_PROFILE_RULES,
   SHORT_TERM_SUMMARY_RULES,
 } from '../base/outputRules';
-import { buildCharacterCoreSection, CharacterCoreSectionsInput } from '../character/characterCore';
+import {
+  buildCharacterCoreSection,
+  buildUserMaskContextSection,
+  CharacterCoreSectionsInput,
+} from '../character/characterCore';
 import {
   buildLongTermMemoryContextSection,
   buildShortTermMemoryContextSection,
@@ -39,6 +43,7 @@ export function buildSummaryPrompt(options: BuildSummaryPromptOptions = {}): str
   const sections = [
     EXISTENCE_PROMPT,
     buildCharacterCoreSection(options.characterCore ?? {}),
+    buildUserMaskContextSection(options.characterCore ?? {}),
     memoryContextSection,
     scenario,
     COMMON_OUTPUT_RULES,

@@ -6,10 +6,19 @@ import { AppData, DesktopIconConfig, VisualSettings, UserProfileExtended, MusicD
 import { DesktopWidget } from '../../shared/DesktopWidgets';
 import { usePersistentFieldActions } from '../../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
+import {
+  DEFAULT_DESKTOP_WALLPAPER,
+  DEFAULT_DOCK_TINT_COLOR,
+  DEFAULT_DOCK_TINT_OPACITY,
+} from '../../../features/app-shell/defaultAppConstants';
 import { preloadPanelForApp } from '../../../features/app-shell/lazyPanels';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
-import { getDisplayableAssetValue, getPreviewAssetValue } from '../../../features/persistence/persistentAssetRef';
+import {
+  buildDisplayAssetCandidates,
+  getDisplayableAssetValue,
+  getPreviewAssetValue,
+} from '../../../features/persistence/persistentAssetRef';
 import {
   buildDesktopIconPlacements,
   getDesktopLayoutMetrics,
@@ -130,7 +139,6 @@ function observeElementSize(element: Element, onResize: () => void): () => void 
 
 type DesktopAppId = 'chat' | 'settings' | 'worldbook' | 'monitor' | 'couple-space' | 'perception' | 'music' | 'forum';
 
-const WALLPAPER_URL = 'https://tse4.mm.bing.net/th/id/OIP.Cg3l8e76ACyxyLdkdP_tSgAAAA?rs=1&pid=ImgDetMain&o=7&rm=3';
 const APP_ICON_URL = 'https://tu.tuhenmei.com/tu2026/2025120917/gg0qhoi1q2j25922.jpeg';
 const DESKTOP_ROWS = 7;
 const MIN_DESKTOP_PAGE_COUNT = 2;
@@ -583,12 +591,21 @@ export function HomeScreen({
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const hasWallpaperValue = Boolean(appData.visualSettings?.globalBackground?.trim());
   const { resolvedUrl: resolvedWallpaperUrl } = useResolvedPersistentValue(appData.visualSettings?.globalBackground);
-  const wallpaperDisplayUrl =
-    getDisplayableAssetValue(appData.visualSettings?.globalBackground, resolvedWallpaperUrl)
-    || getPreviewAssetValue(appData.visualSettings?.globalBackgroundPreviewUrl);
-  const finalWallpaperSrc = wallpaperDisplayUrl || (!hasWallpaperValue ? WALLPAPER_URL : undefined);
+  const wallpaperDisplaySources = useMemo(
+    () => buildDisplayAssetCandidates({
+      value: appData.visualSettings?.globalBackground,
+      resolvedUrl: resolvedWallpaperUrl,
+      previewUrl: appData.visualSettings?.globalBackgroundPreviewUrl,
+      fallbackUrl: DEFAULT_DESKTOP_WALLPAPER,
+    }),
+    [
+      appData.visualSettings?.globalBackground,
+      appData.visualSettings?.globalBackgroundPreviewUrl,
+      resolvedWallpaperUrl,
+    ],
+  );
+  const finalWallpaperSrc = wallpaperDisplaySources[0];
   const { resolvedUrl: resolvedDockBackgroundUrl } = useResolvedPersistentValue(visualSettings.desktop?.dockBackgroundImage || '');
   const { resolvedUrl: resolvedNavBarBackgroundUrl } = useResolvedPersistentValue(visualSettings.navBar?.backgroundImage);
   const { resolvedUrl: resolvedNavBarAvatarUrl } = useResolvedPersistentValue(visualSettings.navBar?.avatar);
@@ -1742,11 +1759,10 @@ export function HomeScreen({
       }
     >
       {finalWallpaperSrc ? (
-        <img
-          src={finalWallpaperSrc}
+        <ResilientWallpaperImage
+          sources={wallpaperDisplaySources}
           alt="Wallpaper"
           className="homeDesktop__wallpaper"
-          referrerPolicy="no-referrer"
         />
       ) : null}
 
@@ -2417,8 +2433,8 @@ function StaticDock({
   safeAreaInset: number;
   backgroundImageUrl?: string;
 }) {
-  const dockTintColor = visualSettings?.desktop?.dockTintColor || '#f8fafc';
-  const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, 0.18);
+  const dockTintColor = visualSettings?.desktop?.dockTintColor || DEFAULT_DOCK_TINT_COLOR;
+  const dockTintOpacity = clampDockOpacity(visualSettings?.desktop?.dockTintOpacity, DEFAULT_DOCK_TINT_OPACITY);
   const resolvedSafeAreaInset = Math.max(0, safeAreaInset);
   const totalDockHeight = placement.height + resolvedSafeAreaInset;
 
@@ -2528,6 +2544,43 @@ function ResilientAppIconImage({
         if (fallbackSrc && imageSrc !== fallbackSrc) {
           setImageSrc(fallbackSrc);
         }
+      }}
+    />
+  );
+}
+
+function ResilientWallpaperImage({
+  sources,
+  alt,
+  className,
+}: {
+  sources: string[];
+  alt: string;
+  className?: string;
+}) {
+  const [sourceIndex, setSourceIndex] = useState(0);
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [sources]);
+
+  const imageSrc = sources[sourceIndex];
+  if (!imageSrc) {
+    return null;
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      className={className}
+      alt={alt}
+      draggable={false}
+      onError={() => {
+        setSourceIndex((currentIndex) => (
+          currentIndex < sources.length - 1
+            ? currentIndex + 1
+            : currentIndex
+        ));
       }}
     />
   );

@@ -22,7 +22,7 @@ import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExpor
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
-import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
+import { buildCharacterContext, resolveActiveUserMask } from '../../services/relationship-context/buildCharacterContext';
 import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
 import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
@@ -598,9 +598,6 @@ export function ChatSettingsPanel({
   const characterStickerMetadata = character.stickerMetadata || {};
   const hasManagedStickers = sharedStickers.length + characterStickers.length > 0;
   const selectedStickerCount = selectedSharedStickers.size + selectedCharacterStickers.size;
-  const normalizedReplyMode = character.voiceProfile?.replyMode === 'text'
-    ? 'mixed'
-    : (character.voiceProfile?.replyMode || 'voice');
 
   const voiceProfile = {
     enabled: character.voiceProfile?.enabled !== false,
@@ -611,7 +608,7 @@ export function ChatSettingsPanel({
     sampleAssetId: character.voiceProfile?.sampleAssetId,
     sampleName: character.voiceProfile?.sampleName,
     autoPlay: !!character.voiceProfile?.autoPlay,
-    replyMode: normalizedReplyMode,
+    replyMode: character.voiceProfile?.replyMode || 'voice',
     replyFrequency: character.voiceProfile?.replyFrequency || 'medium',
   } as NonNullable<Character['voiceProfile']>;
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
@@ -1119,15 +1116,14 @@ export function ChatSettingsPanel({
   };
 
   const handleVoiceSampleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
+    const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
     if (!isLikelyVoiceSampleFile(file)) {
       await showInAppAlert(getVoiceSampleValidationMessage());
-      input.value = '';
+      event.currentTarget.value = '';
       return;
     }
 
@@ -1145,7 +1141,7 @@ export function ChatSettingsPanel({
       });
       setVoiceClonePreviewUrl('');
     } finally {
-      input.value = '';
+      event.currentTarget.value = '';
     }
   };
 
@@ -1343,7 +1339,7 @@ export function ChatSettingsPanel({
       const summaryHistoryWindow = getSummaryHistoryWindow(history, effectiveMemoryLimit);
       const summaryHistoryWindowText = summaryHistoryWindow.map(msg => `${msg.role === 'user' ? '用户' : character.name}: ${getMessageMainText(msg)}`).join('\n');
 
-      const activeMask = masks.find(m => m.isActive && m.linkedCharacters.includes(character.id));
+      const activeMask = resolveActiveUserMask(character.id, masks);
       const activeWorldBooks = worldBooks.filter(wb =>
         (wb.isActive && (wb.isGlobal || wb.characterIds?.includes(character.id))) ||
         character.activeWorldBookIds?.includes(wb.id)
@@ -1964,12 +1960,11 @@ export function ChatSettingsPanel({
                         type="file"
                         className="hidden"
                         onChange={async e => {
-                          const input = e.currentTarget;
-                          const file = input.files?.[0];
+                          const file = e.target.files?.[0];
                           if (file) {
                             const persistedValue = await setUploadedFile(file);
                             onUpdate({ ...character, avatar: persistedValue });
-                            input.value = '';
+                            e.currentTarget.value = '';
                           }
                         }}
                       />
@@ -2568,12 +2563,13 @@ export function ChatSettingsPanel({
                   <div className="space-y-2 rounded-2xl bg-white/70 px-3 py-3">
                     <div className="flex flex-col items-start">
                       <span className="text-[13px] text-zinc-700">回复形式</span>
-                      <span className="text-[10px] text-zinc-400">混合模式会参考语境、情绪和最近语音节奏决定这次要不要发语音</span>
+                      <span className="text-[10px] text-zinc-400">控制角色是只打字、文字语音混合，还是尽量都发语音</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {[
+                        { value: 'text', label: '纯文字' },
                         { value: 'mixed', label: '混合' },
-                        { value: 'voice', label: '纯语音' },
+                        { value: 'voice', label: '多语音' },
                       ].map((option) => {
                         const selected = voiceProfile.replyMode === option.value;
                         return (
@@ -2605,8 +2601,8 @@ export function ChatSettingsPanel({
                       <span className="text-[13px] text-zinc-700">语音频率</span>
                       <span className="text-[10px] text-zinc-400">
                         {voiceProfile.replyMode === 'mixed'
-                          ? '混合模式下，会结合当前语境和最近节奏，再参考这个频率决定是否发语音'
-                          : '纯语音模式下每条合适回复都会尽量走语音，频率设置不会生效'}
+                          ? '混合模式下，决定角色这次回复有多大概率发语音'
+                          : '只有在混合模式下会用到这个频率'}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
