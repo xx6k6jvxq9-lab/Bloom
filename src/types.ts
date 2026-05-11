@@ -813,6 +813,21 @@ export type ChatMessageContentType =
   | 'couple-space-invite'
   | 'couple-space-invite-accepted';
 
+export type LightInteractionMessageMeta = {
+  type: 'poke';
+  scene: 'direct' | 'group';
+  interactionId: string;
+  step: 'system' | 'assistant' | 'counter' | 'spectator';
+  actorRole: 'user' | 'character';
+  actorLabel: string;
+  targetLabel: string;
+  mood?: string;
+  streak?: number;
+  descriptors?: string[];
+  nextActions?: string[];
+  counterActionType?: 'none' | 'poke_back';
+};
+
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
@@ -858,6 +873,7 @@ export type ChatMessage = {
   groupRelayCard?: GroupRelayCard;
   groupTaskCard?: GroupTaskCard;
   memorySnapshot?: ChatMemorySnapshot;
+  lightInteractionMeta?: LightInteractionMessageMeta;
 };
 
 export type ChatHistory = {
@@ -1250,7 +1266,7 @@ export type ForumData = {
 export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'superseded';
 export type FriendRequestDirection = 'incoming' | 'outgoing';
 export type FriendRequestInitiator = 'user' | 'character' | 'forum';
-export type FriendRequestKind = 'friend' | 'reconnect';
+export type FriendRequestKind = 'friend' | 'reconnect' | 'relationship_event';
 
 export type FriendRequest = {
   id: string;
@@ -1268,6 +1284,8 @@ export type FriendRequest = {
   threadId?: string;
   attemptNo?: number;
   supersededById?: string;
+  isRelationshipEvent?: boolean;
+  eventKind?: 'user_blocked_character' | 'user_unblocked_character' | 'character_counter_blocked';
   resolutionMessage?: string;
   responseText?: string;
   lastUpdatedAt?: number;

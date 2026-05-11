@@ -96,6 +96,8 @@ export function MainApp({
   onOpenChat, 
   onOpenGroupChat,
   onOpenProfile,
+  defaultRelationshipThreadKey,
+  onRelationshipThreadHandled,
   onAddCharacter,
   onBack,
   settings,
@@ -109,6 +111,8 @@ export function MainApp({
   onOpenChat: (id: string) => void;
   onOpenGroupChat: (id: string) => void;
   onOpenProfile: (id: string) => void;
+  defaultRelationshipThreadKey?: string | null;
+  onRelationshipThreadHandled?: () => void;
   onAddCharacter: () => void;
   onBack: () => void;
   key?: string;
@@ -470,6 +474,8 @@ export function MainApp({
             setAppData={setAppData}
             onOpenChat={onOpenChat} 
             onOpenProfile={onOpenProfile}
+            defaultRelationshipThreadKey={defaultRelationshipThreadKey}
+            onRelationshipThreadHandled={onRelationshipThreadHandled}
             onAddFriend={() => setShowAddFriend(true)}
             onManageGroups={() => setShowManageGroups(true)}
             settings={settings}

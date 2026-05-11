@@ -539,6 +539,7 @@ export function ChatSettingsPanel({
   characters,
   onUpdate, 
   onBack,
+  onToggleRelationshipBlock,
   onOpenRelationshipProfile,
   history,
   setHistory,
@@ -560,6 +561,7 @@ export function ChatSettingsPanel({
   characters: Character[];
   onUpdate: (c: Character) => void; 
   onBack: () => void;
+  onToggleRelationshipBlock?: () => void;
   onOpenRelationshipProfile?: () => void;
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
@@ -707,6 +709,21 @@ export function ChatSettingsPanel({
   const relationshipStatusText = getCharacterRelationshipStatusText(character, friendRequests);
   const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
   const latestRelationshipRequest = getLatestCharacterRequest(friendRequests, character.id);
+  const relationshipStatusBadge = relationshipBlockState === 'mutual'
+    ? { label: '互相拉黑', className: 'bg-red-50 text-red-500' }
+    : relationshipBlockState === 'user'
+      ? { label: '你已拉黑', className: 'bg-zinc-100 text-zinc-600' }
+      : relationshipBlockState === 'character'
+        ? { label: '对方拒收中', className: 'bg-rose-50 text-rose-500' }
+        : pendingIncomingRequest
+          ? { label: '待你处理', className: 'bg-amber-50 text-amber-600' }
+          : { label: '普通聊天可用', className: 'bg-emerald-50 text-emerald-600' };
+  const relationshipActionLabel = relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
+    ? '解除拉黑'
+    : '拉黑对方';
+  const relationshipActionSubLabel = relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
+    ? '恢复后仍建议走关系页处理修复'
+    : '拉黑后普通聊天会暂停';
   const relationshipHint = pendingIncomingRequest
     ? `新的朋友里有一条来自 ${character.remarkName?.trim() || character.name} 的申请，等你去处理。`
     : relationshipBlockState === 'character' || relationshipBlockState === 'mutual'
@@ -2024,6 +2041,48 @@ export function ChatSettingsPanel({
               </div>
               <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'resource' ? '' : '-rotate-90'}`} />
             </button>
+            <div className="order-5 w-full rounded-2xl border border-white/40 bg-white/70 px-4 py-4 shadow-sm backdrop-blur-md">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-[15px] font-semibold text-zinc-800">关系快捷操作</h2>
+                  <p className="mt-1 text-[11px] text-zinc-500">{relationshipStatusText}</p>
+                </div>
+                {onOpenRelationshipProfile && (
+                  <button
+                    type="button"
+                    onClick={onOpenRelationshipProfile}
+                    className="shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
+                  >
+                    关系页
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 text-[12px] leading-5 text-zinc-400">
+                {relationshipHint}
+              </div>
+              {onToggleRelationshipBlock && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const isBlocking = relationshipBlockState !== 'user' && relationshipBlockState !== 'mutual';
+                    if (isBlocking) {
+                      const confirmed = await showInAppConfirm(`确定要拉黑“${character.remarkName?.trim() || character.name}”吗？拉黑后普通聊天会暂停。`);
+                      if (!confirmed) {
+                        return;
+                      }
+                    }
+                    onToggleRelationshipBlock();
+                  }}
+                  className={`mt-4 w-full rounded-2xl border px-4 py-3 text-[14px] font-semibold transition ${
+                    relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
+                      ? 'border-zinc-200 bg-zinc-100 text-zinc-800 active:bg-zinc-200'
+                      : 'border-red-100 bg-red-50 text-red-500 active:bg-red-100'
+                  }`}
+                >
+                  {relationshipActionLabel}
+                </button>
+              )}
+            </div>
             <button
               onClick={async () => {
                 if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);

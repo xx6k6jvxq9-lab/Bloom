@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2, AlertCircle } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2, AlertCircle, Hand } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
@@ -75,6 +75,10 @@ const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
 const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
+const CHAT_HISTORY_INITIAL_WINDOW = 90;
+const CHAT_HISTORY_LOAD_STEP = 60;
+const CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
+const DIRECT_POKE_DOUBLE_TAP_WINDOW_MS = 320;
 
 type ParsedGameCardDisplayData = {
   game: 'qna' | 'tod' | 'blocks';
@@ -122,7 +126,7 @@ function resetDatingScenePresentation(): void {
   phoneScreenRoot?.classList.remove('is-dating-scene');
 }
 
-function BubbleThemeAnchors() {
+const BubbleThemeAnchors = React.memo(function BubbleThemeAnchors() {
   return (
     <>
       <span aria-hidden="true" className="corner bubble-corner tl pointer-events-none absolute" />
@@ -138,7 +142,9 @@ function BubbleThemeAnchors() {
       </span>
     </>
   );
-}
+});
+
+BubbleThemeAnchors.displayName = 'BubbleThemeAnchors';
 
 function isStickerMessage(message: ChatMessage) {
   return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test(message.text.trim());
@@ -361,7 +367,7 @@ function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadS
   }
 }
 
-function PersistentImage({
+const PersistentImage = React.memo(function PersistentImage({
   value,
   fallbackValue,
   alt,
@@ -386,7 +392,9 @@ function PersistentImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} style={style} referrerPolicy={referrerPolicy} />;
-}
+});
+
+PersistentImage.displayName = 'PersistentImage';
 
 function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
   return <Star size={size} className={className} />;
@@ -498,6 +506,7 @@ export function ChatSessionScreen({
   const [transferAmount, setTransferAmount] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
   const sessionEnteredAtRef = useRef(Date.now());
+  const lastModelAvatarTapAtRef = useRef(0);
   const availableCustomStickers = Array.from(new Set([
     ...(settings.sharedStickers || []),
     ...(character.stickers || []),
@@ -556,6 +565,9 @@ export function ChatSessionScreen({
     latestMessageKey: '',
     isLoading: false,
   });
+  const previousActiveStateRef = useRef(isActive);
+  const historyWindowRestoreRef = useRef<{ previousScrollHeight: number; previousScrollTop: number } | null>(null);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(() => Math.min(history.length, CHAT_HISTORY_INITIAL_WINDOW));
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -648,6 +660,7 @@ export function ChatSessionScreen({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    sendPokeInteraction,
     sendCoupleSpaceInvitation,
     sendInnerVoiceProbe,
     sendSpeechTranscript,
@@ -1238,6 +1251,36 @@ export function ChatSessionScreen({
     });
   };
 
+  const handleModelAvatarTap = useCallback((e: React.MouseEvent, index: number) => {
+    if (multiSelectMode) {
+      handleMessageClick(e, index);
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (shouldPauseDirectChatComposer || isLoading) {
+      lastModelAvatarTapAtRef.current = 0;
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastModelAvatarTapAtRef.current <= DIRECT_POKE_DOUBLE_TAP_WINDOW_MS) {
+      lastModelAvatarTapAtRef.current = 0;
+      void sendPokeInteraction();
+      return;
+    }
+
+    lastModelAvatarTapAtRef.current = now;
+  }, [
+    handleMessageClick,
+    isLoading,
+    multiSelectMode,
+    sendPokeInteraction,
+    shouldPauseDirectChatComposer,
+  ]);
+
   const closeContextMenu = () => setContextMenu(null);
 
   const handleRecall = () => {
@@ -1539,9 +1582,54 @@ export function ChatSessionScreen({
     });
   };
 
+  const hiddenMessageCount = Math.max(0, history.length - visibleMessageCount);
+  const visibleWindowStartIndex = hiddenMessageCount;
+  const expandVisibleMessageWindow = useCallback(() => {
+    if (hiddenMessageCount <= 0) {
+      return;
+    }
+
+    if (historyWindowRestoreRef.current) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (container) {
+      historyWindowRestoreRef.current = {
+        previousScrollHeight: container.scrollHeight,
+        previousScrollTop: container.scrollTop,
+      };
+    }
+
+    setVisibleMessageCount((current) => Math.min(history.length, current + CHAT_HISTORY_LOAD_STEP));
+  }, [hiddenMessageCount, history.length]);
+
+  const handleMessageListScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (event.currentTarget.scrollTop <= CHAT_HISTORY_LOAD_MORE_THRESHOLD) {
+      expandVisibleMessageWindow();
+    }
+  }, [expandVisibleMessageWindow]);
+
   const latestMessageKey = history.length > 0
     ? getMessageSelectionKey(history[history.length - 1])
     : '';
+
+  useEffect(() => {
+    setVisibleMessageCount((current) => Math.min(current, history.length));
+  }, [history.length]);
+
+  useLayoutEffect(() => {
+    const wasActive = previousActiveStateRef.current;
+    previousActiveStateRef.current = isActive;
+
+    if (!isActive || wasActive === isActive) {
+      return;
+    }
+
+    latestViewReadyRef.current = false;
+    historyWindowRestoreRef.current = null;
+    setVisibleMessageCount(Math.min(history.length, CHAT_HISTORY_INITIAL_WINDOW));
+  }, [history.length, isActive]);
 
   useLayoutEffect(() => {
     const previousHistoryAutoscrollState = previousHistoryAutoscrollStateRef.current;
@@ -1564,6 +1652,18 @@ export function ChatSessionScreen({
 
     scrollToBottom('auto');
   }, [isActive, isLoading, latestMessageKey]);
+
+  useLayoutEffect(() => {
+    const restore = historyWindowRestoreRef.current;
+    const container = scrollRef.current;
+
+    if (!restore || !container) {
+      return;
+    }
+
+    container.scrollTop = restore.previousScrollTop + (container.scrollHeight - restore.previousScrollHeight);
+    historyWindowRestoreRef.current = null;
+  }, [visibleMessageCount]);
 
 
 
@@ -2010,7 +2110,19 @@ export function ChatSessionScreen({
         ref={scrollRef}
         className={`${layoutConfig.messageListClass} min-h-0 ${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
         style={chatMessageListStyle}
+        onScroll={handleMessageListScroll}
       >
+        {hiddenMessageCount > 0 && (
+          <div className="mb-4 flex justify-center">
+            <button
+              type="button"
+              onClick={expandVisibleMessageWindow}
+              className="rounded-full border border-zinc-200 bg-white/90 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
+            >
+              查看更早消息 ({hiddenMessageCount})
+            </button>
+          </div>
+        )}
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
             <div className="flex items-start justify-between gap-3">
@@ -2063,8 +2175,12 @@ export function ChatSessionScreen({
           </div>
         )}
         {history.map((msg, i) => {
+          if (i < hiddenMessageCount) {
+            return null;
+          }
+
           const messageSelectionKey = getMessageSelectionKey(msg);
-          const previousMessage = i > 0 ? history[i - 1] : undefined;
+          const previousMessage = i > visibleWindowStartIndex ? history[i - 1] : undefined;
           const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
           if (msg.isSystem) {
             return (
@@ -2133,8 +2249,14 @@ export function ChatSessionScreen({
                       borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
                       variant="lite"
                       scopeClassName="chat-avatar-frame-theme chat-avatar-frame-model"
-                      className="cursor-pointer"
-                      onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                      className={
+                        multiSelectMode
+                          ? 'cursor-pointer'
+                          : shouldPauseDirectChatComposer || isLoading
+                            ? 'cursor-not-allowed opacity-70'
+                            : 'cursor-pointer transition-transform active:scale-95'
+                      }
+                      onClick={(e) => handleModelAvatarTap(e, i)}
                     />
                   </div>
                 )}
@@ -3243,6 +3365,24 @@ export function ChatSessionScreen({
                     className="hidden" 
                     onChange={handleImageUpload} 
                   />
+
+                  <button
+                    onClick={() => {
+                      setShowFunPanel(false);
+                      void sendPokeInteraction();
+                    }}
+                    disabled={shouldPauseDirectChatComposer || isLoading}
+                    className="chat-footer-fun-action flex flex-col items-center gap-2 disabled:cursor-not-allowed"
+                  >
+                    <div className={`chat-footer-fun-action-icon w-14 h-14 rounded-2xl flex items-center justify-center transition-transform ${
+                      shouldPauseDirectChatComposer || isLoading
+                        ? 'bg-zinc-100/70 text-zinc-300'
+                        : 'bg-zinc-100 text-zinc-900 active:scale-95'
+                    }`}>
+                      <Hand size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">拍一拍</span>
+                  </button>
                   
                   <button 
                     onClick={startVoiceCall}

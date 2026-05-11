@@ -48,22 +48,12 @@ import { buildSharedStateWritePatch } from '../../services/relationship-context/
 import { saveCharacters } from '../persistence/charactersStore';
 import { removeCharacterById } from '../character-domain/characterMutations';
 import {
-  canCreateCharacterRequestAttempt,
   getCharacterFriendRequestThreadId,
-  getNextCharacterRequestAttemptNo,
 } from '../contacts/friendRequestThreads';
 import {
-  createCharacterRelationshipMessage,
-  createRelationshipSystemMessage,
-  decideCharacterBlockReaction,
-  decideCharacterFriendRequestResponse,
-  decideCharacterRequestAfterBeingBlocked,
-  decideCharacterRetryAfterRejectedRequest,
-  decideCharacterUnblockGesture,
-  getCharacterBlockState,
-  supersedePendingCharacterRequests,
-} from '../contacts/contactRelationship';
-import { generateRelationshipEventReply } from '../contacts/generateRelationshipEventReply';
+  runRelationshipBlockToggleFlow,
+  runRelationshipRequestSubmissionFlow,
+} from '../contacts/relationshipFlow';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -231,6 +221,7 @@ export function AppScreenContent({
   const [mountedChatDetailScreens, setMountedChatDetailScreens] = useState<AppScreen[]>(() => (
     isRetainedChatDetailScreen(activeApp) ? [activeApp] : []
   ));
+  const [contactsRelationshipThreadKey, setContactsRelationshipThreadKey] = useState<string | null>(null);
   const preloadedPredictedTargetsRef = useRef<Set<AppScreen>>(new Set());
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
@@ -253,14 +244,13 @@ export function AppScreenContent({
     settings,
     scene: 'forum',
   }).runtimeConfig;
-  const appendRelationshipMessages = (
-    currentHistory: AppData['chatHistory'],
-    characterId: string,
-    messages: Array<ReturnType<typeof createRelationshipSystemMessage>>,
-  ) => ({
-    ...currentHistory,
-    [characterId]: [...(currentHistory[characterId] || []), ...messages],
-  });
+  const relationshipFlowRuntime = {
+    appData,
+    settings,
+    setAppData,
+    coupleSpace: currentCoupleSpace,
+    persistCharacters: saveCharacters,
+  };
   const handleDeleteCharacterFromProfile = () => {
     if (!selectedCharacterId) {
       return;
@@ -296,407 +286,36 @@ export function AppScreenContent({
     setSelectedCharacterId(null);
     transitionToApp('chat');
   };
+  const handleToggleCharacterBlock = (
+    characterId: string,
+    targetCharacterOverride?: Character | null,
+  ) => {
+    runRelationshipBlockToggleFlow({
+      runtime: relationshipFlowRuntime,
+      characterId,
+      targetCharacter: targetCharacterOverride,
+    });
+  };
   const handleToggleCharacterBlockFromProfile = () => {
     if (!selectedCharacterId || !selectedCharacter) {
       return;
     }
 
-    const characterId = selectedCharacterId;
-    const targetCharacter = selectedCharacter;
-    const historySnapshot = appData.chatHistory[characterId] || [];
-    const timestamp = Date.now();
-    const isUnblocking = targetCharacter.blockedByUser === true;
-
-    setAppData((prev) => {
-      const nextCharacters = prev.characters.map((character) => (
-        character.id === characterId
-          ? {
-              ...character,
-              friendshipStatus: isUnblocking ? character.friendshipStatus : 'none' as const,
-              blockedByUser: !isUnblocking,
-              relationshipStatusUpdatedAt: timestamp,
-            }
-          : character
-      ));
-      const nextFriendRequests = supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp);
-      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(
-          isUnblocking
-            ? `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 从黑名单里放了出来。`
-            : `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 拉黑了。`,
-          timestamp,
-        ),
-      ]);
-
-      void saveCharacters(nextCharacters);
-      return {
-        ...prev,
-        characters: nextCharacters,
-        chatHistory: nextChatHistory,
-        friendRequests: nextFriendRequests,
-      };
-    });
-
-    void (async () => {
-      const generated = await generateRelationshipEventReply({
-        settings,
-        character: targetCharacter,
-        allCharacters: appData.characters,
-        userName: appData.userProfile.name,
-        history: historySnapshot,
-        directChatHistory: appData.chatHistory,
-        chatGroups: appData.chatGroups || [],
-        masks: appData.masks,
-        worldBook: appData.worldBooks || [],
-        perception: appData.perception,
-        coupleSpace: currentCoupleSpace,
-        event: {
-          kind: isUnblocking ? 'user_unblocked_character' : 'user_blocked_character',
-        },
-      });
-
-      setAppData((prev) => {
-        const currentCharacter = prev.characters.find((character) => character.id === characterId);
-        if (!currentCharacter || currentCharacter.relationshipStatusUpdatedAt !== timestamp) {
-          return prev;
-        }
-
-        const currentHistory = prev.chatHistory[characterId] || [];
-        let nextCharacters = prev.characters;
-        let nextFriendRequests = prev.friendRequests || [];
-
-        if (isUnblocking) {
-          const fallback = decideCharacterUnblockGesture(currentCharacter, currentHistory);
-          const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
-          const shouldSendRequest = generated?.decision === 'send_request'
-            ? true
-            : generated?.decision === 'wait_for_user'
-              ? false
-              : fallback.sendRequest;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  blockedByUser: false,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          if (shouldSendRequest) {
-            const requestId = `friend-request-${characterId}-${timestamp}`;
-            const threadId = getCharacterFriendRequestThreadId(characterId);
-            const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
-            nextFriendRequests = [
-              {
-                id: requestId,
-                fromUserId: characterId,
-                fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-                fromUserAvatar: currentCharacter.avatar,
-                status: 'pending' as const,
-                timestamp,
-                message: generated?.requestMessage || fallback.requestMessage,
-                direction: 'incoming' as const,
-                initiator: 'character' as const,
-                requestKind: 'reconnect' as const,
-                characterId,
-                threadId,
-                attemptNo,
-                sourceScene: 'relationship' as const,
-                lastUpdatedAt: timestamp,
-              },
-              ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
-            ];
-          }
-          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-            ...(shouldSendRequest
-              ? [createRelationshipSystemMessage(`${currentCharacter.remarkName?.trim() || currentCharacter.name} 没有直接加回你，而是回了一条新的好友申请。`, timestamp + 1)]
-              : []),
-            createCharacterRelationshipMessage(characterId, reactionText, timestamp + 2),
-          ]);
-
-          void saveCharacters(nextCharacters);
-          return {
-            ...prev,
-            characters: nextCharacters,
-            chatHistory: nextChatHistory,
-            friendRequests: nextFriendRequests,
-          };
-        } else {
-          const blockFallback = decideCharacterBlockReaction(currentCharacter, currentHistory);
-          const nextAttemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
-          const requestFallback = decideCharacterRequestAfterBeingBlocked(currentCharacter, currentHistory, nextAttemptNo);
-          const canRetry = canCreateCharacterRequestAttempt(prev.friendRequests || [], characterId, 'character');
-          const shouldSendRequest = canRetry && (
-            generated?.decision === 'send_request'
-              ? true
-              : generated?.decision === 'counter_block' || generated?.decision === 'no_counter_block'
-                ? false
-                : !!requestFallback.sendRequest
-          );
-          const reactionText = generated?.reactionText?.trim()
-            || (shouldSendRequest ? requestFallback.reactionText : blockFallback.reactionText);
-          const shouldCounterBlock = shouldSendRequest
-            ? false
-            : generated?.decision === 'counter_block'
-              ? true
-              : generated?.decision === 'no_counter_block'
-                ? false
-                : blockFallback.counterBlock;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'none' as const,
-                  blockedByUser: true,
-                  blockedByCharacter: shouldCounterBlock,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          if (shouldSendRequest) {
-            const requestId = `friend-request-${characterId}-${timestamp}`;
-            const threadId = getCharacterFriendRequestThreadId(characterId);
-            nextFriendRequests = [
-              {
-                id: requestId,
-                fromUserId: characterId,
-                fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-                fromUserAvatar: currentCharacter.avatar,
-                status: 'pending' as const,
-                timestamp,
-                message: generated?.requestMessage || requestFallback.requestMessage || '我还是想把这次关系认真问清楚。',
-                responseText: reactionText,
-                direction: 'incoming' as const,
-                initiator: 'character' as const,
-                requestKind: 'reconnect' as const,
-                characterId,
-                threadId,
-                attemptNo: nextAttemptNo,
-                sourceScene: 'relationship' as const,
-                lastUpdatedAt: timestamp,
-              },
-              ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
-            ];
-          }
-          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-            ...(shouldSendRequest
-              ? [createRelationshipSystemMessage(`${currentCharacter.remarkName?.trim() || currentCharacter.name} 气头上还是递来了一条新的好友申请。`, timestamp + 1)]
-              : []),
-            ...(shouldCounterBlock
-              ? [createRelationshipSystemMessage(`${currentCharacter.remarkName?.trim() || currentCharacter.name} 也把你拉黑了。`, timestamp + (shouldSendRequest ? 2 : 1))]
-              : []),
-            createCharacterRelationshipMessage(characterId, reactionText, timestamp + (shouldSendRequest ? 3 : 2)),
-          ]);
-
-          void saveCharacters(nextCharacters);
-          return {
-            ...prev,
-            characters: nextCharacters,
-            chatHistory: nextChatHistory,
-            friendRequests: nextFriendRequests,
-          };
-        }
-      });
-    })();
+    handleToggleCharacterBlock(selectedCharacterId, selectedCharacter);
   };
   const handleSubmitCharacterFriendRequest = (message: string) => {
     if (!selectedCharacterId || !selectedCharacter) {
       return;
     }
-
-    const characterId = selectedCharacterId;
-    const targetCharacter = selectedCharacter;
-    const historySnapshot = appData.chatHistory[characterId] || [];
-    const trimmedMessage = message.trim() || '想把你加回来，之后继续好好聊。';
-    const currentBlockState = getCharacterBlockState(targetCharacter);
-    const requestKind = currentBlockState === 'none' ? 'friend' as const : 'reconnect' as const;
-    const timestamp = Date.now();
-    const requestId = `friend-request-${characterId}-${timestamp}`;
-
-    setAppData((prev) => {
-      const nextCharacters = prev.characters.map((character) => (
-        character.id === characterId
-          ? {
-              ...character,
-              relationshipStatusUpdatedAt: timestamp,
-            }
-          : character
-      ));
-      const threadId = getCharacterFriendRequestThreadId(characterId);
-      const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'user');
-      const nextFriendRequests = [
-        {
-          id: requestId,
-          fromUserId: characterId,
-          fromUserName: targetCharacter.remarkName?.trim() || targetCharacter.name,
-          fromUserAvatar: targetCharacter.avatar,
-          status: 'pending' as const,
-          timestamp,
-          message: trimmedMessage,
-          direction: 'outgoing' as const,
-          initiator: 'user' as const,
-          requestKind,
-          characterId,
-          threadId,
-          attemptNo,
-          sourceScene: 'relationship' as const,
-          lastUpdatedAt: timestamp,
-        },
-        ...supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp, requestId),
-      ];
-      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(`你向 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 发出了一条好友申请。`, timestamp),
-      ]);
-
-      return {
-        ...prev,
-        characters: nextCharacters,
-        chatHistory: nextChatHistory,
-        friendRequests: nextFriendRequests,
-      };
+    const started = runRelationshipRequestSubmissionFlow({
+      runtime: relationshipFlowRuntime,
+      characterId: selectedCharacterId,
+      targetCharacter: selectedCharacter,
+      message,
     });
-
-    void (async () => {
-      const generated = await generateRelationshipEventReply({
-        settings,
-        character: targetCharacter,
-        allCharacters: appData.characters,
-        userName: appData.userProfile.name,
-        history: historySnapshot,
-        directChatHistory: appData.chatHistory,
-        chatGroups: appData.chatGroups || [],
-        masks: appData.masks,
-        worldBook: appData.worldBooks || [],
-        perception: appData.perception,
-        coupleSpace: currentCoupleSpace,
-        event: {
-          kind: 'user_sent_friend_request',
-          note: trimmedMessage,
-        },
-      });
-
-      setAppData((prev) => {
-        const currentCharacter = prev.characters.find((character) => character.id === characterId);
-        const pendingRequest = (prev.friendRequests || []).find((request) => request.id === requestId);
-        if (!currentCharacter || !pendingRequest || pendingRequest.status !== 'pending') {
-          return prev;
-        }
-
-        const currentHistory = prev.chatHistory[characterId] || [];
-        const fallback = decideCharacterFriendRequestResponse(currentCharacter, currentHistory, trimmedMessage);
-        const decision = generated?.decision;
-        const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
-        let nextCharacters = prev.characters;
-        let nextFriendRequests = prev.friendRequests || [];
-        let statusMessageText = `${currentCharacter.remarkName?.trim() || currentCharacter.name} 回复了你的好友申请。`;
-
-        if (decision === 'accept' || (!decision && fallback.outcome === 'accept')) {
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'friends' as const,
-                  blockedByUser: false,
-                  blockedByCharacter: false,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          nextFriendRequests = nextFriendRequests.map((request) => (
-            request.id === requestId
-              ? {
-                  ...request,
-                  status: 'accepted' as const,
-                  resolutionMessage: generated?.reactionText ? '对方通过了你的申请' : fallback.resolutionMessage,
-                  responseText: reactionText,
-                  lastUpdatedAt: timestamp,
-                }
-              : request
-          ));
-          statusMessageText = `${currentCharacter.remarkName?.trim() || currentCharacter.name} 通过了你的好友申请。`;
-        } else if (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request')) {
-          const counterRequestId = `friend-request-counter-${characterId}-${timestamp + 1}`;
-          const threadId = getCharacterFriendRequestThreadId(characterId);
-          const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
-          nextFriendRequests = [
-            {
-              id: counterRequestId,
-              fromUserId: characterId,
-              fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-              fromUserAvatar: currentCharacter.avatar,
-              status: 'pending' as const,
-              timestamp: timestamp + 1,
-              message: generated?.requestMessage || (fallback.outcome === 'counter_request' ? fallback.requestMessage : '这次换我来递申请。'),
-              direction: 'incoming' as const,
-              initiator: 'character' as const,
-              requestKind: 'reconnect' as const,
-              characterId,
-              threadId,
-              attemptNo,
-              sourceScene: 'relationship' as const,
-              lastUpdatedAt: timestamp + 1,
-            },
-            ...nextFriendRequests.map((request) => (
-              request.id === requestId
-                ? {
-                    ...request,
-                    status: 'superseded' as const,
-                    supersededById: counterRequestId,
-                    resolutionMessage: '对方没有直接通过，而是回了一条新的好友申请',
-                    responseText: reactionText,
-                    lastUpdatedAt: timestamp,
-                }
-              : request
-            )),
-          ];
-          statusMessageText = `${currentCharacter.remarkName?.trim() || currentCharacter.name} 没有直接通过，而是回了一条新的好友申请。`;
-        } else {
-          const shouldBlock = decision === 'reject_and_block'
-            ? true
-            : decision === 'reject'
-              ? false
-              : fallback.outcome === 'reject'
-                ? fallback.counterBlock
-                : false;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'none' as const,
-                  blockedByCharacter: shouldBlock,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          nextFriendRequests = nextFriendRequests.map((request) => (
-            request.id === requestId
-              ? {
-                  ...request,
-                  status: 'rejected' as const,
-                  resolutionMessage: shouldBlock ? '对方拒绝了申请，并把你拉黑了' : '对方拒绝了你的申请',
-                  responseText: reactionText,
-                  lastUpdatedAt: timestamp,
-                }
-              : request
-          ));
-          statusMessageText = shouldBlock
-            ? `${currentCharacter.remarkName?.trim() || currentCharacter.name} 拒绝了你的申请，并把你拉黑了。`
-            : `${currentCharacter.remarkName?.trim() || currentCharacter.name} 拒绝了你的好友申请。`;
-        }
-
-        const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-          createRelationshipSystemMessage(statusMessageText, timestamp + 1),
-        ]);
-
-        void saveCharacters(nextCharacters);
-        return {
-          ...prev,
-          characters: nextCharacters,
-          chatHistory: nextChatHistory,
-          friendRequests: nextFriendRequests,
-        };
-      });
-    })();
+    if (!started) {
+      alert('这条关系线程的申请次数已经到上限了。');
+    }
   };
   const appendLikeToMoment = (momentId: string, likerId: string) => {
     setAppData((prev) => ({
@@ -1063,6 +682,8 @@ export function AppScreenContent({
               setSelectedCharacterId(id);
               transitionToApp('character-profile');
             }}
+            defaultRelationshipThreadKey={contactsRelationshipThreadKey}
+            onRelationshipThreadHandled={() => setContactsRelationshipThreadKey(null)}
             onAddCharacter={() => transitionToApp('add-character')}
             onBack={() => transitionToApp('home')}
             settings={settings}
@@ -1085,6 +706,11 @@ export function AppScreenContent({
             onOpenMoments={() => {
               setCharacterMomentsBackApp('character-profile');
               transitionToApp('character-moments');
+            }}
+            onViewRelationshipThread={() => {
+              setContactsRelationshipThreadKey(getCharacterFriendRequestThreadId(selectedCharacter.id));
+              setActiveTab('contacts');
+              transitionToApp('chat');
             }}
             groups={appData.groups}
             friendRequests={appData.friendRequests || []}
@@ -1176,6 +802,7 @@ export function AppScreenContent({
             setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
             updateCharacter={handleMergeCharacter}
             patchCharacter={handlePatchCharacterById}
+            onToggleCharacterBlock={handleToggleCharacterBlock}
             onBackToChat={() => transitionToApp('chat')}
             onOpenCharacterProfile={(characterId) => {
               setSelectedCharacterId(characterId);

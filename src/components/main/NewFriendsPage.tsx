@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Search } from 'lucide-react';
 import { FriendRequest } from '../../types';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
@@ -32,19 +32,27 @@ export function NewFriendsPage({
   requests,
   onAccept,
   onReject,
+  onSubmitRequest,
+  defaultThreadKey,
+  onThreadClosed,
   onAddById,
   onBack,
 }: {
   requests: FriendRequest[];
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onSubmitRequest?: (characterId: string, message: string) => void;
+  defaultThreadKey?: string | null;
+  onThreadClosed?: () => void;
   onAddById: (id: string) => void;
   onBack: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
   const [activeThreadKey, setActiveThreadKey] = useState<string | null>(null);
-  const sortedRequests = [...requests].sort((left, right) => right.timestamp - left.timestamp);
+  const sortedRequests = [...requests]
+    .filter((request) => !request.isRelationshipEvent)
+    .sort((left, right) => right.timestamp - left.timestamp);
   const latestRequests = Array.from(new Map(
     sortedRequests.map((request) => [getFriendRequestThreadKey(request), request]),
   ).values());
@@ -55,6 +63,12 @@ export function NewFriendsPage({
     clampViewportHeight: true,
   });
 
+  useEffect(() => {
+    if (defaultThreadKey) {
+      setActiveThreadKey(defaultThreadKey);
+    }
+  }, [defaultThreadKey]);
+
   if (activeThreadKey) {
     return (
       <RelationshipThreadPage
@@ -62,7 +76,11 @@ export function NewFriendsPage({
         threadKey={activeThreadKey}
         onAccept={onAccept}
         onReject={onReject}
-        onBack={() => setActiveThreadKey(null)}
+        onSubmitRequest={onSubmitRequest}
+        onBack={() => {
+          setActiveThreadKey(null);
+          onThreadClosed?.();
+        }}
       />
     );
   }
@@ -150,7 +168,7 @@ export function NewFriendsPage({
                         event.stopPropagation();
                         onAccept(request.id);
                       }}
-                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white"
+                      className="rounded-lg bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600"
                     >
                       通过
                     </button>

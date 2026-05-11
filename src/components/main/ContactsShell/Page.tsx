@@ -23,31 +23,24 @@ import { buildForumSharedSettlement } from '../../../services/forum/buildForumSh
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
-  canCreateCharacterRequestAttempt,
-  getCharacterFriendRequestThreadId,
-  getNextCharacterRequestAttemptNo,
-} from '../../../features/contacts/friendRequestThreads';
-import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
 } from '../../../features/app-shell/formatMessagePreview';
 import {
-  buildCharacterIncomingRequestResolution,
   canChatWithCharacter,
-  createRelationshipSystemMessage,
-  decideCharacterRetryAfterRejectedRequest,
   getCharacterBlockState,
   getCharacterFriendshipStatus,
   getCharacterRelationshipStatusText,
   getFriendRequestCharacterId,
-  getFriendRequestStatusLabel,
   getLatestCharacterRequest,
   getPendingCharacterRequest,
   isIncomingFriendRequest,
-  resolveFriendRequestDirection,
-  supersedePendingCharacterRequests,
 } from '../../../features/contacts/contactRelationship';
-import { generateRelationshipEventReply } from '../../../features/contacts/generateRelationshipEventReply';
+import {
+  applyNonForumFriendRequestResolution,
+  runHandledRelationshipRequestReactionFlow,
+  runRelationshipRequestSubmissionFlow,
+} from '../../../features/contacts/relationshipFlow';
 
 const EMPTY_CONTACTS_FORUM_DATA: ForumData = {
   posts: [],
@@ -224,6 +217,8 @@ export function ContactsApp({
   setAppData,
   onOpenChat, 
   onOpenProfile,
+  defaultRelationshipThreadKey,
+  onRelationshipThreadHandled,
   onAddFriend,
   onManageGroups,
   settings,
@@ -232,6 +227,8 @@ export function ContactsApp({
   setAppData: React.Dispatch<React.SetStateAction<AppData>>;
   onOpenChat: (id: string) => void; 
   onOpenProfile: (id: string) => void;
+  defaultRelationshipThreadKey?: string | null;
+  onRelationshipThreadHandled?: () => void;
   onAddFriend: () => void;
   onManageGroups: () => void;
   settings: AppSettings;
@@ -239,9 +236,18 @@ export function ContactsApp({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'new-friends' | 'group-manager'>('list');
+  const [relationshipThreadKey, setRelationshipThreadKey] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const { characters, groups } = appData;
   const friendRequests = appData.friendRequests || [];
+
+  useEffect(() => {
+    if (!defaultRelationshipThreadKey) {
+      return;
+    }
+    setView('new-friends');
+    setRelationshipThreadKey(defaultRelationshipThreadKey);
+  }, [defaultRelationshipThreadKey]);
 
   // Sort characters by name
   const sortedCharacters = [...characters].sort((a, b) => {
@@ -260,106 +266,12 @@ export function ContactsApp({
   const pendingIncomingFriendRequestCount = friendRequests.filter((request) => (
     request.status === 'pending' && isIncomingFriendRequest(request)
   )).length;
-
-  const appendRelationshipMessages = (
-    currentHistory: AppData['chatHistory'],
-    characterId: string,
-    messages: ReturnType<typeof createRelationshipSystemMessage>[],
-  ) => ({
-    ...currentHistory,
-    [characterId]: [...(currentHistory[characterId] || []), ...messages],
-  });
-
-  const queueRelationshipRequestReaction = (params: {
-    requestId: string;
-    characterId: string;
-    accepted: boolean;
-  }) => {
-    const targetCharacter = appData.characters.find((character) => character.id === params.characterId);
-    if (!targetCharacter) {
-      return;
-    }
-
-    const historySnapshot = appData.chatHistory[params.characterId] || [];
-
-    void (async () => {
-      const generated = await generateRelationshipEventReply({
-        settings,
-        character: targetCharacter,
-        allCharacters: appData.characters,
-        userName: appData.userProfile.name,
-        history: historySnapshot,
-        directChatHistory: appData.chatHistory,
-        chatGroups: appData.chatGroups || [],
-        masks: appData.masks,
-        worldBook: appData.worldBooks || [],
-        perception: appData.perception,
-        coupleSpace: appData.coupleSpace,
-        event: {
-          kind: params.accepted ? 'user_accepted_character_request' : 'user_rejected_character_request',
-        },
-      });
-
-      setAppData((prev) => {
-        const currentCharacter = prev.characters.find((character) => character.id === params.characterId);
-        const currentRequest = (prev.friendRequests || []).find((request) => request.id === params.requestId);
-        if (!currentCharacter || !currentRequest || currentRequest.status !== (params.accepted ? 'accepted' : 'rejected')) {
-          return prev;
-        }
-
-        const nextAttemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], params.characterId, 'character');
-        const retryFallback = decideCharacterRetryAfterRejectedRequest(currentCharacter, prev.chatHistory[params.characterId] || [], nextAttemptNo);
-        const canRetry = !params.accepted && canCreateCharacterRequestAttempt(prev.friendRequests || [], params.characterId, 'character');
-        const shouldSendFollowupRequest = canRetry && (
-          generated?.decision === 'send_request'
-            ? true
-            : generated?.decision === 'none'
-              ? false
-              : !!retryFallback.sendRequest
-        );
-        const reactionText = generated?.reactionText?.trim()
-          || (!params.accepted && shouldSendFollowupRequest
-            ? retryFallback.reactionText
-            : buildCharacterIncomingRequestResolution(currentCharacter, params.accepted));
-        const followupRequestId = shouldSendFollowupRequest
-          ? `friend-request-${params.characterId}-${Date.now()}`
-          : null;
-        const followupThreadId = followupRequestId ? getCharacterFriendRequestThreadId(params.characterId) : null;
-        return {
-          ...prev,
-          friendRequests: [
-            ...(shouldSendFollowupRequest && followupRequestId && followupThreadId
-              ? [{
-                  id: followupRequestId,
-                  fromUserId: params.characterId,
-                  fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-                  fromUserAvatar: currentCharacter.avatar,
-                  status: 'pending' as const,
-                  timestamp: Date.now(),
-                  message: generated?.requestMessage || retryFallback.requestMessage || '我还是想把这次关系再认真问一次。',
-                  direction: 'incoming' as const,
-                  initiator: 'character' as const,
-                  requestKind: currentRequest.requestKind || 'reconnect',
-                  characterId: params.characterId,
-                  threadId: followupThreadId,
-                  attemptNo: nextAttemptNo,
-                  sourceScene: 'relationship' as const,
-                  lastUpdatedAt: Date.now(),
-                }]
-              : []),
-            ...(prev.friendRequests || []).map((request) => (
-              request.id === params.requestId
-                ? {
-                    ...request,
-                    responseText: reactionText,
-                    lastUpdatedAt: Date.now(),
-                  }
-                : request
-            )),
-          ],
-        };
-      });
-    })();
+  const relationshipFlowRuntime = {
+    appData,
+    settings,
+    setAppData,
+    coupleSpace: appData.coupleSpace,
+    persistCharacters: saveCharacters,
   };
 
   const handleAcceptFriendRequest = (id: string) => {
@@ -434,68 +346,21 @@ export function ContactsApp({
         };
       }
 
-      const characterId = getFriendRequestCharacterId(req);
-      if (!characterId) {
-        return {
-          ...prev,
-          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
-            ...r,
-            status: 'accepted',
-            resolutionMessage: '你已通过这条好友申请',
-            lastUpdatedAt: Date.now(),
-          } : r),
-        };
-      }
-
-      const timestamp = Date.now();
-      const targetCharacter = prev.characters.find((character) => character.id === characterId);
-      const nextCharacters = prev.characters.map((character) => (
-        character.id === characterId
-          ? {
-              ...character,
-              friendshipStatus: 'friends' as const,
-              blockedByUser: false,
-              blockedByCharacter: false,
-              relationshipStatusUpdatedAt: timestamp,
-            }
-          : character
-      ));
-      const nextFriendRequests = (prev.friendRequests || []).map((request) => {
-        if (getFriendRequestCharacterId(request) !== characterId || request.status !== 'pending') {
-          return request;
-        }
-        if (request.id === id) {
-          return {
-            ...request,
-            status: 'accepted' as const,
-            resolutionMessage: '你已通过这条好友申请',
-            lastUpdatedAt: timestamp,
-          };
-        }
-        return {
-          ...request,
-          status: 'superseded' as const,
-          resolutionMessage: '关系已恢复，旧申请自动归档',
-          lastUpdatedAt: timestamp,
-        };
+      const resolution = applyNonForumFriendRequestResolution(prev, {
+        requestId: id,
+        accepted: true,
       });
-      const nextHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(`你通过了 ${targetCharacter?.remarkName?.trim() || targetCharacter?.name || '对方'} 的好友申请。`, timestamp),
-      ]);
-
-      void saveCharacters(nextCharacters);
-      return {
-        ...prev,
-        characters: nextCharacters,
-        chatHistory: nextHistory,
-        friendRequests: nextFriendRequests,
-      };
+      if (resolution.nextCharacters) {
+        void saveCharacters(resolution.nextCharacters);
+      }
+      return resolution.nextAppData;
     });
 
     if (initialRequest?.sourceScene !== 'forum') {
       const characterId = getFriendRequestCharacterId(initialRequest);
       if (characterId) {
-        queueRelationshipRequestReaction({
+        runHandledRelationshipRequestReactionFlow({
+          runtime: relationshipFlowRuntime,
           requestId: id,
           characterId,
           accepted: true,
@@ -541,46 +406,39 @@ export function ContactsApp({
         };
       }
 
-      const characterId = getFriendRequestCharacterId(req);
-      if (!characterId) {
-        return {
-          ...prev,
-          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
-            ...r,
-            status: 'rejected',
-            resolutionMessage: '你拒绝了这条好友申请',
-            lastUpdatedAt: Date.now(),
-          } : r),
-        };
-      }
-
-      const timestamp = Date.now();
-      const targetCharacter = prev.characters.find((character) => character.id === characterId);
-      const nextHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(`你拒绝了 ${targetCharacter?.remarkName?.trim() || targetCharacter?.name || '对方'} 的好友申请。`, timestamp),
-      ]);
-
-      return {
-        ...prev,
-        chatHistory: nextHistory,
-        friendRequests: prev.friendRequests?.map(r => r.id === id ? {
-          ...r,
-          status: 'rejected',
-          resolutionMessage: '你拒绝了这条好友申请',
-          lastUpdatedAt: timestamp,
-        } : r),
-      };
+      return applyNonForumFriendRequestResolution(prev, {
+        requestId: id,
+        accepted: false,
+      }).nextAppData;
     });
 
     if (initialRequest?.sourceScene !== 'forum') {
       const characterId = getFriendRequestCharacterId(initialRequest);
       if (characterId) {
-        queueRelationshipRequestReaction({
+        runHandledRelationshipRequestReactionFlow({
+          runtime: relationshipFlowRuntime,
           requestId: id,
           characterId,
           accepted: false,
         });
       }
+    }
+  };
+
+  const handleSubmitRelationshipThreadRequest = (characterId: string, message: string) => {
+    const targetCharacter = appData.characters.find((character) => character.id === characterId);
+    if (!targetCharacter) {
+      return;
+    }
+
+    const started = runRelationshipRequestSubmissionFlow({
+      runtime: relationshipFlowRuntime,
+      characterId,
+      targetCharacter,
+      message,
+    });
+    if (!started) {
+      alert('这条关系线程的申请次数已经到上限了。');
     }
   };
 
@@ -590,6 +448,12 @@ export function ContactsApp({
         requests={friendRequests}
         onAccept={handleAcceptFriendRequest}
         onReject={handleRejectFriendRequest}
+        onSubmitRequest={handleSubmitRelationshipThreadRequest}
+        defaultThreadKey={relationshipThreadKey}
+        onThreadClosed={() => {
+          setRelationshipThreadKey(null);
+          onRelationshipThreadHandled?.();
+        }}
         onAddById={(id) => {
           // Mock adding by ID
           const newReq: FriendRequest = {
@@ -612,7 +476,11 @@ export function ContactsApp({
           }));
           alert('已发送好友申请（模拟）');
         }}
-        onBack={() => setView('list')}
+        onBack={() => {
+          setRelationshipThreadKey(null);
+          onRelationshipThreadHandled?.();
+          setView('list');
+        }}
       />
     );
   }
@@ -867,6 +735,7 @@ export function CharacterProfile({
   onBack, 
   onChat,
   onOpenMoments,
+  onViewRelationshipThread,
   groups,
   friendRequests,
   onUpdateGroup,
@@ -880,6 +749,7 @@ export function CharacterProfile({
   onBack: () => void; 
   onChat: () => void;
   onOpenMoments: () => void;
+  onViewRelationshipThread?: () => void;
   groups: string[];
   friendRequests: FriendRequest[];
   onUpdateGroup: (groupId: string | undefined) => void;
@@ -1109,6 +979,15 @@ export function CharacterProfile({
 
         {/* Actions */}
         <div className="mt-5 px-4 space-y-2.5 pb-7">
+          {onViewRelationshipThread && (
+            <button
+              type="button"
+              onClick={onViewRelationshipThread}
+              className="w-full rounded-2xl border border-zinc-200 bg-white py-3.5 text-[14px] font-medium text-zinc-700 active:bg-zinc-50"
+            >
+              查看关系线程
+            </button>
+          )}
           {!!pendingIncomingRequest && (
             <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-[12px] leading-5 text-amber-900">
               <div className="font-medium">新的朋友里有一条来自 {displayName} 的申请。</div>
