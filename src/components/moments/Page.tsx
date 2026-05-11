@@ -1225,7 +1225,7 @@ export function MomentsApp({
                             >
                               <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.96),rgba(244,244,245,0.92)_54%,rgba(228,228,231,0.88))]" />
                               <div className="absolute left-2.5 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-zinc-400 shadow-sm">
-                                图片
+                                画面
                               </div>
                               <div className="relative z-10 flex h-full items-center justify-center px-4">
                                 <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
@@ -1252,7 +1252,7 @@ export function MomentsApp({
                         <div className="relative aspect-[4/5]">
                           <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
                           <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
-                            图片
+                            画面
                           </div>
                           <div className="relative z-10 flex h-full items-center justify-center px-8">
                             <p className="text-center text-[18px] leading-[1.7] text-black">
@@ -1646,7 +1646,7 @@ export function MomentsApp({
                 type="button"
                 onClick={() => setActiveMomentVisualPreview(null)}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm active:scale-95"
-                aria-label="关闭图片预览"
+                aria-label="关闭画面预览"
               >
                 <X size={18} />
               </button>
@@ -1661,7 +1661,7 @@ export function MomentsApp({
                   >
                     <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
                     <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
-                      图片
+                      画面
                     </div>
                     <div className="relative z-10 flex h-full items-center justify-center px-4">
                       <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
@@ -1676,7 +1676,7 @@ export function MomentsApp({
                 <div className="relative aspect-[4/5]">
                   <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
                   <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
-                    图片
+                    画面
                   </div>
                   <div className="relative z-10 flex h-full items-center justify-center px-8">
                     <p className="text-center text-[18px] leading-[1.7] text-black">

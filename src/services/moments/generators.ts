@@ -736,6 +736,7 @@ function buildMomentVisualAnchors(content: string): string[] {
     /自拍|镜子|穿搭/i.test(normalized) ? '镜子里的今日穿搭' : '',
     /雨|下雨/i.test(normalized) ? '伞边的雨线' : '',
     /夜风|晚风/i.test(normalized) ? '夜风吹过的街口' : '',
+    /鲷鱼烧|豆沙/i.test(normalized) ? '纸袋里还热着的鲷鱼烧' : '',
   ].filter(Boolean) as string[];
 
   return Array.from(new Set(anchors));
@@ -770,6 +771,61 @@ function normalizeMomentVisualTextLine(text: string) {
     .replace(/[。！？!?,，；;:\s]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isEnglishMomentVisualCaption(text: string) {
+  const normalized = text.toLowerCase().trim();
+  if (!normalized || normalized.length > 48) {
+    return false;
+  }
+
+  if (/why|again|slow|home|wonder|maybe|think|feel|today i|don't know|dont know/.test(normalized)) {
+    return false;
+  }
+
+  return /(mirror|outfit|selfie|look|headphone|earphone|screen|desk|window|glass|reflection|light|lamp|shadow|room|corner|street|store|shop|gym|cat|dog|pet|coffee|tea|milk tea|hot dog|cake|train|subway|bus|rain|umbrella|hand|finger|sunlight|moonlight|sunset)/.test(normalized)
+    || /(in the|on the|by the|under the|through the|at the|lit|glow|holding|resting|mirror)/.test(normalized);
+}
+
+function isMomentVisualCaption(text: string) {
+  const normalized = normalizeMomentVisualTextLine(text);
+  if (!normalized) {
+    return false;
+  }
+
+  const containsChinese = /[\u4e00-\u9fff]/u.test(normalized);
+  const containsLatin = /[A-Za-z]/.test(normalized);
+
+  if (!containsChinese && containsLatin) {
+    return isEnglishMomentVisualCaption(normalized);
+  }
+
+  if (normalized.length > 24) {
+    return false;
+  }
+
+  if (
+    /^(也|还|又|就|但|不过|而且|所以|因为|如果|只是|其实|嗯|啊|欸|唉)/.test(normalized)
+    || /(不知道为什么|也不知道|特别想|想慢点开|放了好几遍|达标了|回家|会不会|为什么|想起来|觉得|好像|可能|应该|突然想|凉掉|还是热的)/.test(normalized)
+    || /(正好|刚好|一遍了|达标了|慢点开|回家|会不会凉掉)$/.test(normalized)
+  ) {
+    return false;
+  }
+
+  const hasConcreteVisual = /(镜子|镜头|耳机|耳机线|锁屏|热狗|奶茶|咖啡|拉面|蛋糕|夜宵|早餐|便当|烧烤|鲷鱼烧|豆沙|桌面|桌上|屏幕|键盘|工位|电脑|文件|玻璃|反光|灯|灯光|路灯|街灯|街口|门口|车窗|车厢|地铁|公交|卧室|房间|床边|窗边|阳台|角落|倒影|影子|穿搭|外套|裙|鞋|头发|发尾|雨线|雨伞|宠物|猫|狗|健身房|汗|锁骨|腰线|腹肌|食物|杯|手|指尖|掌心|花|云|海|晚霞|月光|阳光|光线|街景|店铺|超市|便利店|画面)/.test(normalized);
+  const hasVisualStructure = /(里的|镜头前|镜头里|画面里|手里|手边|桌上|门口|路上|房间里|伞边|灯光里|玻璃反光|倒影|光影|角落|热气|自拍|穿搭|被拍下|拍到|露出来|摊着|捏着|吹乱|亮着|趴在)/.test(normalized);
+
+  return hasConcreteVisual || hasVisualStructure;
+}
+
+function collectMomentVisualCaptionCandidates(lines: string[], maxItems: number) {
+  return Array.from(new Set(
+    lines
+      .map((line) => normalizeMomentVisualTextLine(line))
+      .filter(Boolean)
+      .filter((line) => !/某人|某些人|someone|some people/i.test(line))
+      .filter((line) => isMomentVisualCaption(line)),
+  )).slice(0, maxItems);
 }
 
 function parseMomentVisualTextLines(text: string, maxItems: number): string[] {
@@ -821,23 +877,10 @@ function buildMomentFrameCaptions(content: string, frameCount: number): string[]
     return [];
   }
 
-  const fragments = normalized
-    .split(/\n+/)
-    .flatMap((line) => line.split(/[，,。！？!?\u2026]/))
-    .map((item) => item.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  const merged = Array.from(new Set([
+  return collectMomentVisualCaptionCandidates([
+    ...buildMomentVisualAnchors(normalized),
     ...buildMomentVisualDirections(normalized),
-    ...fragments
-      .map((item) => item.slice(0, 16).trim())
-      .filter(Boolean),
-  ]));
-  if (merged.length === 0) {
-    return [];
-  }
-
-  return merged.slice(0, frameCount);
+  ], frameCount);
 }
 
 function needsMomentVisualTranslation(text: string) {
@@ -912,16 +955,23 @@ async function generateMomentImageCard(options: {
     : blueprint?.shape === 'music_diary' || blueprint?.shape === 'cheerful_share'
       ? 4
       : 1;
-  const generatedVisualLines = await generateMomentVisualTextLines({
+  const rawGeneratedVisualLines = await generateMomentVisualTextLines({
     activeConfig,
     character,
     momentContent: normalized,
     frameCount: requestedFrameCount,
   });
+  const generatedVisualLines = collectMomentVisualCaptionCandidates(rawGeneratedVisualLines, requestedFrameCount);
+  const fallbackFrameCaptions = buildMomentFrameCaptions(normalized, requestedFrameCount);
   const frameCaptions = requestedFrameCount > 1
-    ? (generatedVisualLines.length > 1 ? generatedVisualLines : buildMomentFrameCaptions(normalized, requestedFrameCount))
+    ? Array.from(new Set([
+        ...generatedVisualLines,
+        ...fallbackFrameCaptions,
+      ])).slice(0, requestedFrameCount)
     : [];
   const overlayText = generatedVisualLines[0]
+    || fallbackFrameCaptions[0]
+    || buildMomentVisualAnchors(firstParagraph)[0]
     || buildMomentVisualDirections(firstParagraph)[0]
     || createChineseMomentPhotoDescription(firstParagraph);
   const visualLines = frameCaptions.length > 1 ? frameCaptions : [overlayText];
