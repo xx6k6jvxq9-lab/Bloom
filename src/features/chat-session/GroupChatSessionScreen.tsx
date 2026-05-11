@@ -464,6 +464,7 @@ function GroupMessageAvatar({
   borderRadius = 20,
   borderWidth = 0,
   borderColor = '#e4e4e7',
+  frameVariant = 'full',
 }: {
   value?: string | null;
   fallbackValue?: string | null;
@@ -474,6 +475,7 @@ function GroupMessageAvatar({
   borderRadius?: number;
   borderWidth?: number;
   borderColor?: string;
+  frameVariant?: 'full' | 'lite';
 }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
@@ -503,6 +505,7 @@ function GroupMessageAvatar({
       onImageError={() => setHasError(true)}
       scopeClassName={scopeClassName}
       className="shrink-0 shadow-[0_2px_6px_rgba(15,23,42,0.05)]"
+      variant={frameVariant}
     />
   );
 }
@@ -621,6 +624,7 @@ export function GroupChatSessionScreen({
   patchCharacter,
   inviteableCharacters,
   onRuntimeBusyChange,
+  isActive = true,
 }: {
   group: ChatGroup;
   members: Character[];
@@ -642,6 +646,7 @@ export function GroupChatSessionScreen({
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   inviteableCharacters: Character[];
   onRuntimeBusyChange?: (busy: boolean) => void;
+  isActive?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -708,6 +713,7 @@ export function GroupChatSessionScreen({
     keyboardOpen: false,
     pendingMessageKey: '',
   });
+  const previousActiveStateRef = useRef(isActive);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -1118,6 +1124,33 @@ export function GroupChatSessionScreen({
       window.cancelAnimationFrame(frameTwo);
     };
   }, [chatKeyboardOpen, pendingMessageKey]);
+
+  useEffect(() => {
+    const wasActive = previousActiveStateRef.current;
+    previousActiveStateRef.current = isActive;
+
+    if (!isActive || wasActive === isActive) {
+      return;
+    }
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          return;
+        }
+        chatFooterRef.current?.scrollIntoView({ block: 'end' });
+        messagesEndRef.current?.scrollIntoView({ block: 'end' });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [isActive]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
@@ -3059,6 +3092,7 @@ export function GroupChatSessionScreen({
                   fallbackValue={undefined}
                   alt={isUser ? groupUserDisplayName : senderName}
                   fit={isUser ? 'contain' : 'cover'}
+                  frameVariant="lite"
                   scopeClassName={isUser
                     ? 'group-avatar-frame-theme group-avatar-frame-user'
                     : `group-avatar-frame-theme group-avatar-frame-model ${senderCharacter?.id ? `group-avatar-frame-char-${toAvatarFrameScopeId(senderCharacter.id)}` : ''}`}

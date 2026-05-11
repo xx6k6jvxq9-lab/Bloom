@@ -399,6 +399,7 @@ export function ChatSessionScreen({
   setHistory, 
   onUpdateCharacter,
   onPatchCharacter,
+  onToggleCharacterBlock,
   settings, 
   onUpdateSettings,
   onBack,
@@ -433,6 +434,7 @@ export function ChatSessionScreen({
   onAcceptCoupleSpaceInvite,
   onRuntimeBusyChange,
   friendRequests = [],
+  isActive = true,
 }: { 
   character: Character;
   characters: Character[];
@@ -440,6 +442,7 @@ export function ChatSessionScreen({
   setHistory: (h: ChatMessage[]) => void;
   onUpdateCharacter: (c: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
+  onToggleCharacterBlock?: () => void;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -475,6 +478,7 @@ export function ChatSessionScreen({
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
   onRuntimeBusyChange?: (busy: boolean) => void;
   friendRequests?: FriendRequest[];
+  isActive?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
@@ -547,6 +551,7 @@ export function ChatSessionScreen({
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
   const previousChatKeyboardOpenRef = useRef(false);
+  const previousActiveStateRef = useRef(isActive);
   const previousHistoryAutoscrollStateRef = useRef({
     latestMessageKey: '',
     isLoading: false,
@@ -1571,6 +1576,7 @@ export function ChatSessionScreen({
       characters={characters}
       onUpdate={onUpdateCharacter} 
       onBack={() => setShowSettings(false)} 
+      onToggleRelationshipBlock={onToggleCharacterBlock}
       onOpenRelationshipProfile={onOpenCharacterProfile ? () => {
         setShowSettings(false);
         onOpenCharacterProfile();
@@ -1698,6 +1704,28 @@ export function ChatSessionScreen({
       window.cancelAnimationFrame(frameTwo);
     };
   }, [chatKeyboardOpen]);
+
+  useEffect(() => {
+    const wasActive = previousActiveStateRef.current;
+    previousActiveStateRef.current = isActive;
+
+    if (!isActive || wasActive === isActive) {
+      return;
+    }
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [isActive]);
 
   useEffect(() => {
     const textarea = inputTextareaRef.current;
@@ -2103,6 +2131,7 @@ export function ChatSessionScreen({
                       borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
                       borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
                       borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      variant="lite"
                       scopeClassName="chat-avatar-frame-theme chat-avatar-frame-model"
                       className="cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
@@ -2118,6 +2147,7 @@ export function ChatSessionScreen({
                       borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
                       borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
                       borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      variant="lite"
                       scopeClassName="chat-avatar-frame-theme chat-avatar-frame-user"
                       className="cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}

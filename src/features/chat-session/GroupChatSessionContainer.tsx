@@ -189,6 +189,7 @@ export function GroupChatSessionContainer({
       patchCharacter={patchCharacter}
       inviteableCharacters={inviteableCharacters}
       onRuntimeBusyChange={handleRuntimeBusyChange}
+      isActive={isActive}
     />
   );
 }

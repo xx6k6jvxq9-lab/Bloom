@@ -32,6 +32,7 @@ type DirectChatSessionContainerProps = {
   chatGroups: ChatGroup[];
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
+  onToggleCharacterBlock?: (characterId: string) => void;
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -74,6 +75,7 @@ export function DirectChatSessionContainer({
   chatGroups,
   updateCharacter,
   patchCharacter,
+  onToggleCharacterBlock,
   settings,
   setSettings,
   onBack,
@@ -195,6 +197,7 @@ export function DirectChatSessionContainer({
       }}
       onUpdateCharacter={updateCharacter}
       onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
+      onToggleCharacterBlock={() => onToggleCharacterBlock?.(character.id)}
       worldBook={worldBook}
       perception={perception}
       coupleSpace={coupleSpace}
@@ -254,6 +257,7 @@ export function DirectChatSessionContainer({
       onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
       onRuntimeBusyChange={handleRuntimeBusyChange}
       friendRequests={friendRequests}
+      isActive={isActive}
     />
   );
 }
