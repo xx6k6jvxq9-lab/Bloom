@@ -56,7 +56,6 @@ type ChatSessionMountProps = {
   setWalletData: (data: WalletData) => void;
   updateCharacter: (updatedCharacter: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
-  onToggleCharacterBlock?: (characterId: string) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
@@ -143,7 +142,6 @@ export function ChatSessionMount({
   setWalletData,
   updateCharacter,
   patchCharacter,
-  onToggleCharacterBlock,
   onBackToChat,
   onViewForumPost,
   onPublishMoment,
@@ -279,7 +277,6 @@ export function ChatSessionMount({
               chatGroups={chatGroups}
               updateCharacter={updateCharacter}
               patchCharacter={patchCharacter}
-              onToggleCharacterBlock={onToggleCharacterBlock}
               worldBook={worldBook}
               perception={perception}
               coupleSpace={characterCoupleSpace}

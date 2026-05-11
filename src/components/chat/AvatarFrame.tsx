@@ -1,10 +1,10 @@
-import React, { memo } from 'react';
+import type React from 'react';
 
 function joinClassNames(...values: Array<string | undefined | null | false>): string {
   return values.filter(Boolean).join(' ');
 }
 
-export const AvatarFrame = memo(function AvatarFrame({
+export function AvatarFrame({
   src,
   alt,
   size,
@@ -101,6 +101,4 @@ export const AvatarFrame = memo(function AvatarFrame({
       </div>
     </div>
   );
-});
-
-AvatarFrame.displayName = 'AvatarFrame';
+}

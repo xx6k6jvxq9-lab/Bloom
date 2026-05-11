@@ -1594,100 +1594,102 @@ export function MomentsApp({
           );
 
           return (
-            <div
-              className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8"
-              onClick={() => setActiveInnerVoiceMomentId(null)}
-            >
-              <div className="absolute inset-0 bg-white/42 backdrop-blur-[6px]" />
+            <>
               <div
-                className="relative max-h-full overflow-y-auto"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => setActiveInnerVoiceMomentId(null)}
-                  className="absolute right-2 top-3 z-10 flex h-7 w-7 items-center justify-center text-zinc-500 active:scale-95"
-                  aria-label="关闭心声动态卡片"
-                >
-                  <X size={16} />
-                </button>
-                <InnerVoiceUnlockCard
-                  showShareButton={false}
-                  characterName={activeInnerVoiceAuthor.name}
-                  date={new Date(activeInnerVoiceMoment.timestamp).toLocaleDateString([], {
-                    month: '2-digit',
-                    day: '2-digit',
-                  })}
-                  headline={expandedCard.headline}
-                  body={expandedCard.body}
-                  ps={expandedCard.ps}
-                  isSaved={(activeInnerVoiceMoment ? (getLinkedChatFavoriteState(appData, activeInnerVoiceMoment) ?? !!activeInnerVoiceMoment.isCollected) : false)}
-                  onSave={() => handleCollect(activeInnerVoiceMoment.id)}
-                  onShare={() => setActiveInnerVoiceMomentId(null)}
-                />
+                className="fixed inset-0 z-[40] bg-white/42 backdrop-blur-[6px]"
+                onClick={() => setActiveInnerVoiceMomentId(null)}
+              />
+              <div className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8">
+                <div className="relative max-h-full overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveInnerVoiceMomentId(null)}
+                    className="absolute right-2 top-3 z-10 flex h-7 w-7 items-center justify-center text-zinc-500 active:scale-95"
+                    aria-label="关闭心声动态卡片"
+                  >
+                    <X size={16} />
+                  </button>
+                  <InnerVoiceUnlockCard
+                    showShareButton={false}
+                    characterName={activeInnerVoiceAuthor.name}
+                    date={new Date(activeInnerVoiceMoment.timestamp).toLocaleDateString([], {
+                      month: '2-digit',
+                      day: '2-digit',
+                    })}
+                    headline={expandedCard.headline}
+                    body={expandedCard.body}
+                    ps={expandedCard.ps}
+                    isSaved={(activeInnerVoiceMoment ? (getLinkedChatFavoriteState(appData, activeInnerVoiceMoment) ?? !!activeInnerVoiceMoment.isCollected) : false)}
+                    onSave={() => handleCollect(activeInnerVoiceMoment.id)}
+                    onShare={() => setActiveInnerVoiceMomentId(null)}
+                  />
+                </div>
               </div>
-            </div>
+            </>
           );
         })()
       )}
 
       {activeMomentVisualPreview && (
-        <div
-          className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8"
-          onClick={() => setActiveMomentVisualPreview(null)}
-        >
-          <div className="absolute inset-0 bg-white/50 backdrop-blur-[6px]" />
+        <>
           <div
-            className="relative max-h-full w-full max-w-[26rem] overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-4 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex justify-end">
+            className="fixed inset-0 z-[40] bg-white/50 backdrop-blur-[6px]"
+            onClick={() => setActiveMomentVisualPreview(null)}
+          />
+          <div className="fixed inset-0 z-[41] flex items-center justify-center px-4 py-8">
+            <div
+              className="relative max-h-full w-full max-w-[26rem] overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-4 shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <button
                 type="button"
-                onClick={() => setActiveMomentVisualPreview(null)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm active:scale-95"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActiveMomentVisualPreview(null);
+                }}
+                className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 active:scale-95"
                 aria-label="关闭图片预览"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
-            </div>
 
-            {activeMomentVisualPreview.captions && activeMomentVisualPreview.captions.length > 1 ? (
-              <div className={`grid gap-3 ${activeMomentVisualPreview.captions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                {activeMomentVisualPreview.captions.map((caption, frameIndex) => (
-                  <div
-                    key={`${caption}-${frameIndex}`}
-                    className="relative aspect-square overflow-hidden rounded-[18px] border border-zinc-200 bg-white"
-                  >
+              {activeMomentVisualPreview.captions && activeMomentVisualPreview.captions.length > 1 ? (
+                <div className={`grid gap-3 ${activeMomentVisualPreview.captions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {activeMomentVisualPreview.captions.map((caption, frameIndex) => (
+                    <div
+                      key={`${caption}-${frameIndex}`}
+                      className="relative aspect-square overflow-hidden rounded-[18px] border border-zinc-200 bg-white"
+                    >
+                      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
+                      <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
+                        图片
+                      </div>
+                      <div className="relative z-10 flex h-full items-center justify-center px-4">
+                        <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
+                          {caption}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[22px] border border-zinc-200 bg-white">
+                  <div className="relative aspect-[4/5]">
                     <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
-                    <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
+                    <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
                       图片
                     </div>
-                    <div className="relative z-10 flex h-full items-center justify-center px-4">
-                      <p className="text-center text-[13px] font-medium leading-[1.55] text-black">
-                        {caption}
+                    <div className="relative z-10 flex h-full items-center justify-center px-8">
+                      <p className="text-center text-[18px] leading-[1.7] text-black">
+                        {activeMomentVisualPreview.singleText || ''}
                       </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-[22px] border border-zinc-200 bg-white">
-                <div className="relative aspect-[4/5]">
-                  <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.98),rgba(244,244,245,0.9)_56%,rgba(228,228,231,0.86))]" />
-                  <div className="absolute left-4 top-4 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-zinc-400 shadow-sm">
-                    图片
-                  </div>
-                  <div className="relative z-10 flex h-full items-center justify-center px-8">
-                    <p className="text-center text-[18px] leading-[1.7] text-black">
-                      {activeMomentVisualPreview.singleText || ''}
-                    </p>
-                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

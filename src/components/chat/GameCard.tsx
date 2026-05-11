@@ -15,7 +15,7 @@ interface GameCardProps {
   translation?: string;
 }
 
-export const GameCard: React.FC<GameCardProps> = React.memo(function GameCard({ data, isUser, disabled, translation }) {
+export const GameCard: React.FC<GameCardProps> = ({ data, isUser, disabled, translation }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const normalizedTranslation = (translation || '').trim();
@@ -235,7 +235,5 @@ export const GameCard: React.FC<GameCardProps> = React.memo(function GameCard({ 
       )}
     </>
   );
-});
-
-GameCard.displayName = 'GameCard';
+};
 

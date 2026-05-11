@@ -67,7 +67,6 @@ import {
   type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
 import { getStickerMetadata } from '../../services/chat/stickerMetadata';
-import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
 import { getCharacterBlockState } from '../contacts/contactRelationship';
 import {
   createBlockedDeliveryMessage,
@@ -87,7 +86,6 @@ import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../.
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
-import { collectRecentDirectPokeState } from '../../services/chat/lightInteractionHistory';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
@@ -1580,7 +1578,6 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   sendText: () => Promise<void>;
   handleSend: (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
-  sendPokeInteraction: () => Promise<void>;
   requestManualReply: () => void;
   handleVoiceCallAIResponse: (userText: string) => Promise<{
     text: string;
@@ -1751,19 +1748,6 @@ function extractSpeechTextForAudio(text: string): string {
     .replace(/\s*\n\s*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function getLatestVisibleDirectUserText(messages: ChatMessage[]): string {
-  const latestUserMessage = [...messages]
-    .reverse()
-    .find((message) => (
-      message.role === 'user'
-      && !message.isSystem
-      && !message.isRecalled
-      && getMessageMainText(message).trim()
-    ));
-
-  return latestUserMessage ? getMessageMainText(latestUserMessage).trim() : '';
 }
 
 export function useDirectChatRuntime({
@@ -3050,222 +3034,6 @@ export function useDirectChatRuntime({
     });
   }, []);
 
-  const sendPokeInteraction = useCallback(async () => {
-    if (isLoading) {
-      return;
-    }
-
-    const blockState = getCharacterBlockState(character);
-    const blockedInteractionError = getDirectChatBlockedManualReplyError(blockState);
-    if (blockedInteractionError) {
-      setErrorState(blockedInteractionError);
-      return;
-    }
-
-    const baseHistory = prepareBaseHistoryForOutgoingMessage();
-    if (!activeConfig) {
-      const missingConfigMessage = '错误: 当前未选择有效的 API 配置。';
-      setErrorState(missingConfigMessage);
-      commitHistory(appendSystemMessageIfNotDuplicate(baseHistory, missingConfigMessage));
-      return;
-    }
-
-    await runGeneration(async ({ generationId, isCurrent }) => {
-      try {
-        const targetDisplayLabel = character.remarkName?.trim() || character.name;
-        const recentPokeState = collectRecentDirectPokeState(baseHistory);
-        const historyLimit = getDirectMemoryMessageLimit(character.memoryLimit);
-        const characterTemporalState = buildCharacterTemporalState({
-          characterId: character.id,
-          perception,
-          directChatHistory,
-          groupMessages: [],
-          coupleSpace,
-        });
-        const historyWindow = getDirectHistoryWindowByTemporalMode(
-          baseHistory,
-          historyLimit,
-          characterTemporalState.continuityMode,
-        );
-        const contextLayers = buildDirectContextLayers({
-          messages: baseHistory,
-          liveMessages: historyWindow,
-          continuityMode: characterTemporalState.continuityMode,
-          nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
-        });
-        const activeMask = masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id));
-        const activeWorldBooks = worldBook.filter((entry) => {
-          const isManuallySelected = !!character.activeWorldBookIds?.includes(entry.id);
-          if (isManuallySelected) {
-            return true;
-          }
-
-          return !!entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id));
-        });
-        const latestVisibleUserText = getLatestVisibleDirectUserText(baseHistory) || '拍一拍互动';
-
-        let perceptionPrompt = buildTemporalContextPrompt({
-          perception,
-          now: Date.now(),
-        });
-        if (perception) {
-          const parts = [perceptionPrompt];
-          if (perception.enabled || perception.location?.enabled) {
-            if (perception.location?.value) parts.push(`[Virtual Location: ${perception.location.value}]`);
-          }
-          if (perception.enabled || perception.weather?.enabled) {
-            if (perception.weather?.value) parts.push(`[Virtual Weather: ${perception.weather.value}]`);
-          }
-          if (perception.enabled || perception.temperature?.enabled) {
-            if (perception.temperature?.value) parts.push(`[Virtual Temperature: ${perception.temperature.value}]`);
-          }
-          if (perception.enabled || perception.climate?.enabled) {
-            if (perception.climate?.value) parts.push(`[Virtual Climate: ${perception.climate.value}]`);
-          }
-          perceptionPrompt = parts.filter(Boolean).join('\n');
-        }
-
-        const chatSceneInput = buildChatSceneInput({
-          mode: 'chat',
-          character,
-          allCharacters: characters,
-          userName,
-          coupleSpace,
-          activeMask,
-          activeWorldBooks,
-          worldBooks: worldBook,
-          perception,
-          perceptionPrompt,
-          directChatHistory,
-          chatGroups,
-          worldBookQuery: latestVisibleUserText,
-          latestUserText: latestVisibleUserText,
-        });
-
-        const interactionResult = await generateLightInteraction({
-          activeConfig,
-          type: 'poke',
-          scene: 'direct',
-          actor: {
-            role: 'user',
-            label: '你',
-          },
-          target: {
-            character,
-            label: targetDisplayLabel,
-          },
-          sceneInput: chatSceneInput,
-          recentMessages: contextLayers.liveMessages,
-          recentSystemLines: recentPokeState.recentSystemLines,
-          recentDescriptors: recentPokeState.recentDescriptors,
-          latestMood: recentPokeState.latestMood,
-          latestNextActions: recentPokeState.latestNextActions,
-          latestCounterActionType: recentPokeState.latestCounterActionType,
-          upcomingStreak: recentPokeState.upcomingStreak,
-        });
-
-        if (activeGenerationIdRef.current !== generationId || !isCurrent()) {
-          return;
-        }
-
-        const baseTimestamp = Date.now();
-        const interactionId = `poke:${character.id}:${baseTimestamp}`;
-        const interactionMeta = {
-          type: 'poke' as const,
-          scene: 'direct' as const,
-          interactionId,
-          actorRole: 'user' as const,
-          actorLabel: '你',
-          targetLabel: targetDisplayLabel,
-          mood: interactionResult.interactionState?.mood,
-          streak: interactionResult.interactionState?.streak ?? recentPokeState.upcomingStreak,
-          descriptors: interactionResult.interactionState?.recentDescriptors,
-          nextActions: interactionResult.nextActions,
-          counterActionType: interactionResult.counterAction?.type ?? 'none',
-        };
-        const normalizedCounterSystemLine = interactionResult.counterAction?.type === 'poke_back'
-          ? (
-              interactionResult.counterAction.systemLine?.trim().includes('拍')
-                ? interactionResult.counterAction.systemLine.trim()
-                : `${targetDisplayLabel}拍了拍你`
-            )
-          : '';
-        const nextMessages: ChatMessage[] = [
-          {
-            role: 'model',
-            text: interactionResult.systemLine,
-            timestamp: baseTimestamp,
-            isSystem: true,
-            lightInteractionMeta: {
-              ...interactionMeta,
-              step: 'system',
-            },
-          },
-          ...interactionResult.assistantBubbles.map((bubble, index) => ({
-            role: 'model' as const,
-            text: bubble,
-            timestamp: baseTimestamp + index + 1,
-            lightInteractionMeta: {
-              ...interactionMeta,
-              step: 'assistant' as const,
-            },
-          })),
-          ...(normalizedCounterSystemLine
-            ? [{
-                role: 'model' as const,
-                text: normalizedCounterSystemLine,
-                timestamp: baseTimestamp + interactionResult.assistantBubbles.length + 1,
-                isSystem: true,
-                lightInteractionMeta: {
-                  ...interactionMeta,
-                  step: 'counter' as const,
-                },
-              }]
-            : []),
-        ];
-        const finalHistory = [...baseHistory, ...nextMessages];
-        commitHistory(finalHistory);
-
-        if (interactionResult.assistantBubbles.length > 0) {
-          queueAutoAudioForLatestModelReply(finalHistory, '拍一拍');
-        }
-
-        syncCharacterRuntimeState({
-          history: finalHistory,
-          continuityMode: characterTemporalState.continuityMode,
-          shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
-          latestAssistantText: interactionResult.assistantBubbles[interactionResult.assistantBubbles.length - 1],
-        });
-      } catch (interactionError) {
-        if (activeGenerationIdRef.current !== generationId || !isCurrent()) {
-          return;
-        }
-
-        console.error('Poke interaction error:', interactionError);
-        const formattedError = formatChatApiError(interactionError);
-        setErrorState(formattedError);
-        commitHistory(appendSystemMessageIfNotDuplicate(baseHistory, formattedError));
-      }
-    });
-  }, [
-    activeConfig,
-    character,
-    characters,
-    chatGroups,
-    commitHistory,
-    coupleSpace,
-    directChatHistory,
-    isLoading,
-    masks,
-    perception,
-    prepareBaseHistoryForOutgoingMessage,
-    queueAutoAudioForLatestModelReply,
-    runGeneration,
-    syncCharacterRuntimeState,
-    userName,
-    worldBook,
-  ]);
-
   const sendCoupleSpaceInvitation = useCallback(() => {
     if (pendingCoupleSpaceInviteRef.current) {
       alert('情侣空间邀请发送中，请稍候。');
@@ -3852,7 +3620,6 @@ export function useDirectChatRuntime({
     sendText: () => handleSend(),
     handleSend,
     handleSendRef,
-    sendPokeInteraction,
     requestManualReply,
     handleVoiceCallAIResponse,
     sendImageMessage,

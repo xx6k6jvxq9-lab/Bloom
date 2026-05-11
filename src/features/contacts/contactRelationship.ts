@@ -5,8 +5,7 @@ import type {
   FriendRequest,
   FriendRequestDirection,
 } from '../../types';
-import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
-import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { getLegacyTranslationParts } from '../../services/chat/messageText';
 
 const POSITIVE_HINTS = ['谢谢', '喜欢', '想你', '重新', '和好', '在乎', '认真', '愿意', '可以吗', '回来', '继续', '别生气', '抱抱'];
 const NEGATIVE_HINTS = ['讨厌', '别烦', '滚', '算了', '不想', '烦', '闭嘴', '离我远点', '拉黑', '屏蔽', '删掉', '别来'];
@@ -212,42 +211,6 @@ export function createCharacterRelationshipMessage(
     senderCharacterId: characterId,
     ...(translation ? { translation } : {}),
   };
-}
-
-export function createCharacterRelationshipMessages(
-  characterId: string,
-  text: string,
-  timestamp = Date.now(),
-  options?: {
-    assistantAliases?: string[];
-    maxBubbles?: number;
-  },
-): ChatMessage[] {
-  const { mainText, translation } = getLegacyTranslationParts(text);
-  const normalizedMainText = stripAssistantSpeakerPrefix(
-    sanitizePipeMarkers(mainText || text, '\n'),
-    options?.assistantAliases || [],
-  );
-  const mainParts = splitDirectAssistantReplyText(normalizedMainText, options?.maxBubbles ?? 3);
-  const normalizedTranslation = sanitizePipeMarkers(translation, '\n');
-  const translationParts = normalizedTranslation
-    ? splitDirectAssistantReplyText(normalizedTranslation, options?.maxBubbles ?? 3)
-    : [];
-  const pairTranslationByIndex = translationParts.length === mainParts.length;
-
-  return mainParts.map((part, index) => ({
-    role: 'model' as const,
-    text: part,
-    timestamp: timestamp + index,
-    senderCharacterId: characterId,
-    ...(
-      pairTranslationByIndex
-        ? (translationParts[index] ? { translation: translationParts[index] } : {})
-        : index === 0 && normalizedTranslation
-          ? { translation: normalizedTranslation }
-          : {}
-    ),
-  }));
 }
 
 export function decideCharacterBlockReaction(

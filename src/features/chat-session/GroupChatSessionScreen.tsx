@@ -1,7 +1,6 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { MouseEventHandler } from 'react';
-import { memo, useCallback, useLayoutEffect } from 'react';
+import { useCallback, useLayoutEffect } from 'react';
 import {
   Camera,
   ChevronDown,
@@ -119,11 +118,7 @@ const getGroupMessageSelectionKey = (message: ChatMessage) => (
 );
 
 const AUTO_OPENING_DEDUPE_WINDOW_MS = 1500;
-const GROUP_POKE_DOUBLE_TAP_WINDOW_MS = 320;
 const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
-const GROUP_CHAT_HISTORY_INITIAL_WINDOW = 90;
-const GROUP_CHAT_HISTORY_LOAD_STEP = 60;
-const GROUP_CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
 
 function removeBackdropBlurClassNames(className: string) {
   return className
@@ -459,7 +454,7 @@ function toAvatarFrameScopeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
-const GroupMessageAvatar = memo(function GroupMessageAvatar({
+function GroupMessageAvatar({
   value,
   fallbackValue,
   alt,
@@ -470,8 +465,6 @@ const GroupMessageAvatar = memo(function GroupMessageAvatar({
   borderWidth = 0,
   borderColor = '#e4e4e7',
   frameVariant = 'full',
-  onClick,
-  className,
 }: {
   value?: string | null;
   fallbackValue?: string | null;
@@ -483,8 +476,6 @@ const GroupMessageAvatar = memo(function GroupMessageAvatar({
   borderWidth?: number;
   borderColor?: string;
   frameVariant?: 'full' | 'lite';
-  onClick?: MouseEventHandler<HTMLDivElement>;
-  className?: string;
 }) {
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const { resolvedUrl: resolvedFallbackUrl } = useResolvedPersistentValue(fallbackValue);
@@ -513,14 +504,11 @@ const GroupMessageAvatar = memo(function GroupMessageAvatar({
       fit={fit}
       onImageError={() => setHasError(true)}
       scopeClassName={scopeClassName}
-      className={`shrink-0 shadow-[0_2px_6px_rgba(15,23,42,0.05)] ${className || ''}`.trim()}
-      onClick={onClick}
+      className="shrink-0 shadow-[0_2px_6px_rgba(15,23,42,0.05)]"
       variant={frameVariant}
     />
   );
-});
-
-GroupMessageAvatar.displayName = 'GroupMessageAvatar';
+}
 
 function GroupStickerPreview({
   value,
@@ -535,7 +523,7 @@ function GroupStickerPreview({
   return <img src={src} alt={alt} className="h-full w-full object-cover" />;
 }
 
-const GroupMessageImage = memo(function GroupMessageImage({
+function GroupMessageImage({
   value,
   alt,
   className,
@@ -550,11 +538,9 @@ const GroupMessageImage = memo(function GroupMessageImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} />;
-});
+}
 
-GroupMessageImage.displayName = 'GroupMessageImage';
-
-const GroupBubbleResolvedImageStyle = memo(function GroupBubbleResolvedImageStyle({
+function GroupBubbleResolvedImageStyle({
   value,
   children,
 }: {
@@ -564,9 +550,7 @@ const GroupBubbleResolvedImageStyle = memo(function GroupBubbleResolvedImageStyl
   const { resolvedUrl } = useResolvedPersistentValue(value);
   const resolvedImageUrl = getDisplayableAssetValue(value, resolvedUrl) || undefined;
   return <>{children(resolvedImageUrl)}</>;
-});
-
-GroupBubbleResolvedImageStyle.displayName = 'GroupBubbleResolvedImageStyle';
+}
 
 function isStickerMessage(message: ChatMessage, content: string) {
   if (!message.imageUrl) {
@@ -597,7 +581,7 @@ function getReadableTextColor(backgroundColor: string): string {
   return luminance > 0.72 ? '#111827' : '#ffffff';
 }
 
-const BubbleThemeAnchors = memo(function BubbleThemeAnchors() {
+function BubbleThemeAnchors() {
   return (
     <>
       <span aria-hidden="true" className="corner bubble-corner tl pointer-events-none absolute" />
@@ -613,9 +597,7 @@ const BubbleThemeAnchors = memo(function BubbleThemeAnchors() {
       </span>
     </>
   );
-});
-
-BubbleThemeAnchors.displayName = 'GroupBubbleThemeAnchors';
+}
 
 function clampGroupBubbleScale(value: number | undefined): number {
   return Math.min(1.3, Math.max(0.8, value ?? 1));
@@ -702,7 +684,6 @@ export function GroupChatSessionScreen({
     messageText: string;
   } | null>(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
-  const lastGroupMemberAvatarTapRef = useRef<{ memberId: string; at: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const preservedScrollTopRef = useRef<number | null>(null);
   const didTryOpeningRef = useRef(false);
@@ -724,7 +705,7 @@ export function GroupChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
-    clampViewportHeight: false,
+    clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
@@ -733,8 +714,6 @@ export function GroupChatSessionScreen({
     pendingMessageKey: '',
   });
   const latestViewReadyRef = useRef(false);
-  const previousActiveStateRef = useRef(isActive);
-  const historyWindowRestoreRef = useRef<{ previousScrollHeight: number; previousScrollTop: number } | null>(null);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -1022,7 +1001,6 @@ export function GroupChatSessionScreen({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
-    sendPokeInteraction,
     regenerateLatestReplyAt,
     requestManualReply,
     maybeOpenScene,
@@ -1106,50 +1084,6 @@ export function GroupChatSessionScreen({
   const latestRenderedMessageKey = renderedHistory.length > 0
     ? `${renderedHistory[renderedHistory.length - 1].timestamp}:${renderedHistory[renderedHistory.length - 1].role}:${renderedHistory[renderedHistory.length - 1].senderCharacterId ?? ''}:${renderedHistory[renderedHistory.length - 1].text}:${renderedHistory[renderedHistory.length - 1].isPending ? 'pending' : 'final'}`
     : '';
-  const [visibleRenderedMessageCount, setVisibleRenderedMessageCount] = useState(() => Math.min(renderedHistory.length, GROUP_CHAT_HISTORY_INITIAL_WINDOW));
-  const hiddenRenderedMessageCount = Math.max(0, renderedHistory.length - visibleRenderedMessageCount);
-  const visibleRenderedWindowStartIndex = hiddenRenderedMessageCount;
-  const expandVisibleRenderedMessageWindow = useCallback(() => {
-    if (hiddenRenderedMessageCount <= 0) {
-      return;
-    }
-
-    if (historyWindowRestoreRef.current) {
-      return;
-    }
-
-    const container = scrollRef.current;
-    if (container) {
-      historyWindowRestoreRef.current = {
-        previousScrollHeight: container.scrollHeight,
-        previousScrollTop: container.scrollTop,
-      };
-    }
-
-    setVisibleRenderedMessageCount((current) => Math.min(renderedHistory.length, current + GROUP_CHAT_HISTORY_LOAD_STEP));
-  }, [hiddenRenderedMessageCount, renderedHistory.length]);
-  const handleRenderedHistoryScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    if (event.currentTarget.scrollTop <= GROUP_CHAT_HISTORY_LOAD_MORE_THRESHOLD) {
-      expandVisibleRenderedMessageWindow();
-    }
-  }, [expandVisibleRenderedMessageWindow]);
-
-  useEffect(() => {
-    setVisibleRenderedMessageCount((current) => Math.min(current, renderedHistory.length));
-  }, [renderedHistory.length]);
-
-  useLayoutEffect(() => {
-    const wasActive = previousActiveStateRef.current;
-    previousActiveStateRef.current = isActive;
-
-    if (!isActive || wasActive === isActive) {
-      return;
-    }
-
-    latestViewReadyRef.current = false;
-    historyWindowRestoreRef.current = null;
-    setVisibleRenderedMessageCount(Math.min(renderedHistory.length, GROUP_CHAT_HISTORY_INITIAL_WINDOW));
-  }, [isActive, renderedHistory.length]);
   useEffect(() => {
     const previousKeyboardAssistState = previousKeyboardAssistStateRef.current;
     const keyboardJustOpened = !previousKeyboardAssistState.keyboardOpen && chatKeyboardOpen;
@@ -1218,36 +1152,19 @@ export function GroupChatSessionScreen({
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
     latestViewReadyRef.current = true;
   }, [isActive, isLoading, latestRenderedMessageKey]);
-
-  useLayoutEffect(() => {
-    const restore = historyWindowRestoreRef.current;
-    const container = scrollRef.current;
-
-    if (!restore || !container) {
-      return;
-    }
-
-    container.scrollTop = restore.previousScrollTop + (container.scrollHeight - restore.previousScrollHeight);
-    historyWindowRestoreRef.current = null;
-  }, [visibleRenderedMessageCount]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
-  const keyboardViewportOffset = chatKeyboardOpen
-    ? 'var(--app-keyboard-inset, 0px)'
-    : '0px';
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
     contain: chatKeyboardOpen ? 'layout paint style' : undefined,
-    transform: chatKeyboardOpen ? 'translateY(calc(var(--app-keyboard-inset, 0px) * -1))' : undefined,
-    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease, transform 180ms ease',
-    willChange: chatKeyboardOpen ? 'transform' : undefined,
+    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `calc(8px + ${keyboardViewportOffset})`,
-    scrollPaddingBottom: `calc(12px + ${keyboardViewportOffset})`,
+    paddingBottom: '8px',
+    scrollPaddingBottom: '12px',
   };
   const chatRootClassName = 'relative z-50 isolate flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
   const chatRootSizeStyle: React.CSSProperties = {
@@ -1607,29 +1524,6 @@ export function GroupChatSessionScreen({
     event.preventDefault();
     openContextMenu(event, index);
   };
-
-  const handleGroupMemberAvatarTap = useCallback((event: React.MouseEvent, memberId?: string | null) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!memberId || isLoading || !!pendingMessage) {
-      lastGroupMemberAvatarTapRef.current = null;
-      return;
-    }
-
-    const now = Date.now();
-    const latestTap = lastGroupMemberAvatarTapRef.current;
-    if (latestTap && latestTap.memberId === memberId && now - latestTap.at <= GROUP_POKE_DOUBLE_TAP_WINDOW_MS) {
-      lastGroupMemberAvatarTapRef.current = null;
-      void sendPokeInteraction(memberId);
-      return;
-    }
-
-    lastGroupMemberAvatarTapRef.current = {
-      memberId,
-      at: now,
-    };
-  }, [isLoading, pendingMessage, sendPokeInteraction]);
 
   const closeContextMenu = () => setContextMenu(null);
 
@@ -2928,42 +2822,24 @@ export function GroupChatSessionScreen({
         </div>
       )}
 
-      <div className={`${layoutConfig.messageListClass} relative z-10 ${hasVisibleMessages ? '' : 'flex flex-col justify-end'}`} ref={scrollRef} style={chatMessageListStyle} onScroll={handleRenderedHistoryScroll}>
+      <div className={`${layoutConfig.messageListClass} relative z-10 ${hasVisibleMessages ? '' : 'flex flex-col justify-end'}`} ref={scrollRef} style={chatMessageListStyle}>
         <div>
-        {hiddenRenderedMessageCount > 0 && (
-          <div className="mb-4 flex justify-center">
-            <button
-              type="button"
-              onClick={expandVisibleRenderedMessageWindow}
-              className="rounded-full border border-zinc-200 bg-white/90 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
-            >
-              查看更早消息 ({hiddenRenderedMessageCount})
-            </button>
-          </div>
-        )}
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
             {error}
           </div>
         )}
         {renderedHistory.map((msg, idx) => {
-          if (idx < hiddenRenderedMessageCount) {
-            return null;
-          }
-
           const isUser = msg.role === 'user';
           const { senderId, senderName, avatar, content, badge, bubbleColor, roleLabel, character: senderCharacter } = resolveSenderInfo(msg);
           const visualKind = getMessageVisualKind(msg, content);
-          const previousMessage = idx > visibleRenderedWindowStartIndex ? renderedHistory[idx - 1] : undefined;
+          const previousMessage = renderedHistory[idx - 1];
           const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
           const previousVisualKind = previousMessage
             ? getMessageVisualKind(previousMessage, previousResolved?.content || '')
             : null;
           let sameSenderStreak = 0;
           for (let reverseIndex = idx - 1; reverseIndex >= 0; reverseIndex -= 1) {
-            if (reverseIndex < visibleRenderedWindowStartIndex) {
-              break;
-            }
             const streakMessage = renderedHistory[reverseIndex];
             if (
               streakMessage.isSystem
@@ -3005,20 +2881,19 @@ export function GroupChatSessionScreen({
                     </div>
                   </div>
                 )}
-                <div className="mb-4 flex justify-center" style={{ marginTop: settings.visualSettings?.chat?.messageSpacing ?? 16 }}>
-                  <div className="relative max-w-[88%] rounded-full bg-zinc-200/60 px-3 py-1 pr-8 text-[11px] font-medium text-zinc-500 backdrop-blur-sm">
+                <div className="flex justify-center py-1">
+                  <div className="chat-notice-card relative max-w-[88%] rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
                     <button
                       type="button"
                       onClick={() => deleteMessageByIndex(idx)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-300/60 hover:text-zinc-600"
+                      className="absolute right-2 top-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
                       aria-label="删除通知"
                       title="删除通知"
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
-                    <span className="block whitespace-pre-wrap break-words pr-1 text-center">
-                      {content.replace(/^\[notice\]\s*/i, '')}
-                    </span>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">NOTICE</div>
+                    <div className="text-[14px] leading-6 text-zinc-700">{content.replace(/^\[notice\]\s*/i, '')}</div>
                   </div>
                 </div>
               </div>
@@ -3225,18 +3100,6 @@ export function GroupChatSessionScreen({
                   borderRadius={settings.visualSettings?.chat?.avatarBorderRadius ?? 20}
                   borderWidth={settings.visualSettings?.chat?.avatarBorderWidth ?? 0}
                   borderColor={settings.visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
-                  className={
-                    !isUser && senderCharacter?.id
-                      ? isLoading || !!pendingMessage
-                        ? 'cursor-not-allowed opacity-70'
-                        : 'cursor-pointer transition-transform active:scale-95'
-                      : undefined
-                  }
-                  onClick={
-                    !isUser && senderCharacter?.id
-                      ? (event) => handleGroupMemberAvatarTap(event, senderCharacter.id)
-                      : undefined
-                  }
                 />
               )}
               <div
