@@ -67,6 +67,13 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* Mobile browsers and embedded WebViews can still auto-zoom portal-mounted fields outside the phone container. */
+  body input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']),
+  body textarea,
+  body select {
+    font-size: 16px !important;
+  }
+
   html,
   body,
   #root {
