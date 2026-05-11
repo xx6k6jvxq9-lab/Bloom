@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -551,7 +551,7 @@ export function ChatSessionScreen({
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
   const previousChatKeyboardOpenRef = useRef(false);
-  const previousActiveStateRef = useRef(isActive);
+  const latestViewReadyRef = useRef(false);
   const previousHistoryAutoscrollStateRef = useRef({
     latestMessageKey: '',
     isLoading: false,
@@ -1543,7 +1543,7 @@ export function ChatSessionScreen({
     ? getMessageSelectionKey(history[history.length - 1])
     : '';
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousHistoryAutoscrollState = previousHistoryAutoscrollStateRef.current;
     const contentChanged = (
       latestMessageKey !== previousHistoryAutoscrollState.latestMessageKey
@@ -1558,8 +1558,12 @@ export function ChatSessionScreen({
       return;
     }
 
-    scrollToBottom(chatKeyboardOpen ? 'auto' : 'smooth');
-  }, [chatKeyboardOpen, isLoading, latestMessageKey]);
+    if (!isActive) {
+      return;
+    }
+
+    scrollToBottom('auto');
+  }, [isActive, isLoading, latestMessageKey]);
 
 
 
@@ -1705,27 +1709,23 @@ export function ChatSessionScreen({
     };
   }, [chatKeyboardOpen]);
 
-  useEffect(() => {
-    const wasActive = previousActiveStateRef.current;
-    previousActiveStateRef.current = isActive;
-
-    if (!isActive || wasActive === isActive) {
+  useLayoutEffect(() => {
+    if (!isActive) {
+      latestViewReadyRef.current = false;
       return;
     }
 
-    let frameOne = 0;
-    let frameTwo = 0;
-    frameOne = window.requestAnimationFrame(() => {
-      frameTwo = window.requestAnimationFrame(() => {
-        scrollToBottom('auto');
-      });
-    });
+    if (!latestMessageKey && !isLoading) {
+      return;
+    }
 
-    return () => {
-      window.cancelAnimationFrame(frameOne);
-      window.cancelAnimationFrame(frameTwo);
-    };
-  }, [isActive]);
+    if (latestViewReadyRef.current) {
+      return;
+    }
+
+    scrollToBottom('auto');
+    latestViewReadyRef.current = true;
+  }, [isActive, isLoading, latestMessageKey]);
 
   useEffect(() => {
     const textarea = inputTextareaRef.current;

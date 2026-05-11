@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect } from 'react';
 import {
   Camera,
   ChevronDown,
@@ -713,7 +713,7 @@ export function GroupChatSessionScreen({
     keyboardOpen: false,
     pendingMessageKey: '',
   });
-  const previousActiveStateRef = useRef(isActive);
+  const latestViewReadyRef = useRef(false);
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
     settings,
@@ -1081,6 +1081,9 @@ export function GroupChatSessionScreen({
   const pendingMessageKey = pendingMessage
     ? `${pendingMessage.timestamp}:${pendingMessage.speakerId}:${pendingMessage.text}`
     : '';
+  const latestRenderedMessageKey = renderedHistory.length > 0
+    ? `${renderedHistory[renderedHistory.length - 1].timestamp}:${renderedHistory[renderedHistory.length - 1].role}:${renderedHistory[renderedHistory.length - 1].senderCharacterId ?? ''}:${renderedHistory[renderedHistory.length - 1].text}:${renderedHistory[renderedHistory.length - 1].isPending ? 'pending' : 'final'}`
+    : '';
   useEffect(() => {
     const previousKeyboardAssistState = previousKeyboardAssistStateRef.current;
     const keyboardJustOpened = !previousKeyboardAssistState.keyboardOpen && chatKeyboardOpen;
@@ -1125,32 +1128,30 @@ export function GroupChatSessionScreen({
     };
   }, [chatKeyboardOpen, pendingMessageKey]);
 
-  useEffect(() => {
-    const wasActive = previousActiveStateRef.current;
-    previousActiveStateRef.current = isActive;
-
-    if (!isActive || wasActive === isActive) {
+  useLayoutEffect(() => {
+    if (!isActive) {
+      latestViewReadyRef.current = false;
       return;
     }
 
-    let frameOne = 0;
-    let frameTwo = 0;
-    frameOne = window.requestAnimationFrame(() => {
-      frameTwo = window.requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          return;
-        }
-        chatFooterRef.current?.scrollIntoView({ block: 'end' });
-        messagesEndRef.current?.scrollIntoView({ block: 'end' });
-      });
-    });
+    if (!latestRenderedMessageKey && !isLoading) {
+      return;
+    }
 
-    return () => {
-      window.cancelAnimationFrame(frameOne);
-      window.cancelAnimationFrame(frameTwo);
-    };
-  }, [isActive]);
+    if (latestViewReadyRef.current) {
+      return;
+    }
+
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      latestViewReadyRef.current = true;
+      return;
+    }
+
+    chatFooterRef.current?.scrollIntoView({ block: 'end' });
+    messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    latestViewReadyRef.current = true;
+  }, [isActive, isLoading, latestRenderedMessageKey]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
@@ -1229,7 +1230,7 @@ export function GroupChatSessionScreen({
     && !isLoading
   ), [isLoading]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!scrollRef.current) {
       return;
     }
