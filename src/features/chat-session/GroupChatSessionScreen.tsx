@@ -120,6 +120,13 @@ const getGroupMessageSelectionKey = (message: ChatMessage) => (
 const AUTO_OPENING_DEDUPE_WINDOW_MS = 1500;
 const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
 
+function removeBackdropBlurClassNames(className: string) {
+  return className
+    .replace(/\bbackdrop-blur(?:-\[[^\]]+\]|-[^\s]+)?\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildGroupNoticeDismissKey(groupId: string, notice: string): string {
   return `group_notice_dismissed:${groupId}:${notice.trim()}`;
 }
@@ -689,13 +696,17 @@ export function GroupChatSessionScreen({
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   const {
     keyboardVisible,
-    visualViewportHeight,
   } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
     clampViewportHeight: true,
     scrollFocusedIntoView: false,
+  });
+  const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
+  const previousKeyboardAssistStateRef = useRef({
+    keyboardOpen: false,
+    pendingMessageKey: '',
   });
   const { getCharacterById, getCharacterByName } = createCharacterDirectory({ characters: members });
   const activeConfig = resolveSceneTextApiConfig({
@@ -962,6 +973,19 @@ export function GroupChatSessionScreen({
     };
   }
 
+  if (chatKeyboardOpen) {
+    groupHeaderClassName = removeBackdropBlurClassNames(groupHeaderClassName);
+    groupFooterClassName = removeBackdropBlurClassNames(groupFooterClassName);
+    groupHeaderStyle.backgroundColor = 'rgba(255, 255, 255, 0.96)';
+    groupHeaderStyle.backdropFilter = 'none';
+    groupHeaderStyle.WebkitBackdropFilter = 'none';
+    groupHeaderStyle.boxShadow = 'none';
+    groupFooterStyle.backgroundColor = 'rgba(255, 255, 255, 0.98)';
+    groupFooterStyle.backdropFilter = 'none';
+    groupFooterStyle.WebkitBackdropFilter = 'none';
+    groupFooterStyle.boxShadow = 'none';
+  }
+
   const {
     isLoading,
     error,
@@ -1048,40 +1072,60 @@ export function GroupChatSessionScreen({
         isPending: true,
       }]
     : history;
+  const pendingMessageKey = pendingMessage
+    ? `${pendingMessage.timestamp}:${pendingMessage.speakerId}:${pendingMessage.text}`
+    : '';
   useEffect(() => {
+    const previousKeyboardAssistState = previousKeyboardAssistStateRef.current;
+    const keyboardJustOpened = !previousKeyboardAssistState.keyboardOpen && chatKeyboardOpen;
+    const pendingMessageChanged = !!pendingMessageKey && pendingMessageKey !== previousKeyboardAssistState.pendingMessageKey;
+    previousKeyboardAssistStateRef.current = {
+      keyboardOpen: chatKeyboardOpen,
+      pendingMessageKey,
+    };
+
     if (
       typeof document === 'undefined'
-      || !keyboardVisible
-      || !ownsFocusedKeyboard
+      || !chatKeyboardOpen
+      || (!keyboardJustOpened && !pendingMessageChanged)
       || document.activeElement !== textareaRef.current
     ) {
       return;
     }
 
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      const runScroll = () => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          return;
+        }
+        chatFooterRef.current?.scrollIntoView({ block: 'end' });
+        messagesEndRef.current?.scrollIntoView({ block: 'end' });
+      };
+
+      if (keyboardJustOpened) {
+        frameTwo = window.requestAnimationFrame(runScroll);
         return;
       }
-      chatFooterRef.current?.scrollIntoView({ block: 'end' });
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+
+      runScroll();
     });
-  }, [
-    history,
-    isLoading,
-    keyboardVisible,
-    ownsFocusedKeyboard,
-    pendingMessage?.text,
-    pendingMessage?.timestamp,
-    visualViewportHeight,
-  ]);
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [chatKeyboardOpen, pendingMessageKey]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
-    transition: 'padding-bottom 180ms ease',
+    contain: chatKeyboardOpen ? 'layout paint style' : undefined,
+    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,

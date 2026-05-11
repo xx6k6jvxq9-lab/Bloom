@@ -164,6 +164,13 @@ function clampChatBubbleScale(value: number | undefined): number {
   return Math.min(1.3, Math.max(0.8, value ?? 1));
 }
 
+function removeBackdropBlurClassNames(className: string) {
+  return className
+    .replace(/\bbackdrop-blur(?:-\[[^\]]+\]|-[^\s]+)?\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getDirectTextBubbleStyle({
   role,
   visualSettings,
@@ -531,13 +538,18 @@ export function ChatSessionScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     keyboardVisible,
-    visualViewportHeight,
   } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
     clampViewportHeight: true,
     scrollFocusedIntoView: false,
+  });
+  const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
+  const previousChatKeyboardOpenRef = useRef(false);
+  const previousHistoryAutoscrollStateRef = useRef({
+    latestMessageKey: '',
+    isLoading: false,
   });
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1509,22 +1521,40 @@ export function ChatSessionScreen({
     }
   };
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     const container = scrollRef.current;
     if (!container) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior });
       return;
     }
 
     container.scrollTo({
       top: container.scrollHeight,
-      behavior: 'smooth',
+      behavior,
     });
   };
 
+  const latestMessageKey = history.length > 0
+    ? getMessageSelectionKey(history[history.length - 1])
+    : '';
+
   useEffect(() => {
-    scrollToBottom();
-  }, [history, isLoading]);
+    const previousHistoryAutoscrollState = previousHistoryAutoscrollStateRef.current;
+    const contentChanged = (
+      latestMessageKey !== previousHistoryAutoscrollState.latestMessageKey
+      || isLoading !== previousHistoryAutoscrollState.isLoading
+    );
+    previousHistoryAutoscrollStateRef.current = {
+      latestMessageKey,
+      isLoading,
+    };
+
+    if (!contentChanged) {
+      return;
+    }
+
+    scrollToBottom(chatKeyboardOpen ? 'auto' : 'smooth');
+  }, [chatKeyboardOpen, isLoading, latestMessageKey]);
 
 
 
@@ -1643,24 +1673,31 @@ export function ChatSessionScreen({
   });
 
   useEffect(() => {
+    const wasKeyboardOpen = previousChatKeyboardOpenRef.current;
+    previousChatKeyboardOpenRef.current = chatKeyboardOpen;
+
     if (
       typeof document === 'undefined'
-      || !keyboardVisible
-      || !ownsFocusedKeyboard
+      || !chatKeyboardOpen
+      || wasKeyboardOpen
       || document.activeElement !== inputTextareaRef.current
     ) {
       return;
     }
 
-    requestAnimationFrame(() => {
-      const container = scrollRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-        return;
-      }
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
     });
-  }, [history, isLoading, keyboardVisible, ownsFocusedKeyboard, visualViewportHeight]);
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [chatKeyboardOpen]);
 
   useEffect(() => {
     const textarea = inputTextareaRef.current;
@@ -1692,6 +1729,7 @@ export function ChatSessionScreen({
   let headerClasses = 'relative z-20 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 ';
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
+  const shouldReduceKeyboardVisualEffects = chatKeyboardOpen;
   const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   let footerClassName = directFooterClassName;
@@ -1771,11 +1809,35 @@ export function ChatSessionScreen({
     };
   }
 
+  if (shouldReduceKeyboardVisualEffects) {
+    headerClasses = removeBackdropBlurClassNames(headerClasses);
+    footerClassName = removeBackdropBlurClassNames(footerClassName);
+    headerStyleObj = {
+      ...headerStyleObj,
+      backgroundColor: headerStyleType === 'transparent'
+        ? 'rgba(255, 255, 255, 0.94)'
+        : 'rgba(255, 255, 255, 0.96)',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      boxShadow: 'none',
+    };
+    footerStyleObj = {
+      ...footerStyleObj,
+      backgroundColor: footerStyleType === 'transparent'
+        ? 'rgba(255, 255, 255, 0.96)'
+        : 'rgba(255, 255, 255, 0.98)',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      boxShadow: 'none',
+    };
+  }
+
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: 'padding-bottom 180ms ease',
+    contain: shouldReduceKeyboardVisualEffects ? 'layout paint style' : undefined,
+    transition: shouldReduceKeyboardVisualEffects ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     paddingBottom: '8px',
@@ -1826,7 +1888,7 @@ export function ChatSessionScreen({
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
         // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...((visualSettings?.chat?.uiScale ?? 1) !== 1 && !keyboardVisible ? {
+        ...((visualSettings?.chat?.uiScale ?? 1) !== 1 && !chatKeyboardOpen ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
