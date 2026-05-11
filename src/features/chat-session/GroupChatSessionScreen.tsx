@@ -724,7 +724,7 @@ export function GroupChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
-    clampViewportHeight: true,
+    clampViewportHeight: false,
     scrollFocusedIntoView: false,
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
@@ -1231,18 +1231,23 @@ export function GroupChatSessionScreen({
     historyWindowRestoreRef.current = null;
   }, [visibleRenderedMessageCount]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
+  const keyboardViewportOffset = chatKeyboardOpen
+    ? 'var(--app-keyboard-inset, 0px)'
+    : '0px';
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
     contain: chatKeyboardOpen ? 'layout paint style' : undefined,
-    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease',
+    transform: chatKeyboardOpen ? 'translateY(calc(var(--app-keyboard-inset, 0px) * -1))' : undefined,
+    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease, transform 180ms ease',
+    willChange: chatKeyboardOpen ? 'transform' : undefined,
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: '8px',
-    scrollPaddingBottom: '12px',
+    paddingBottom: `calc(8px + ${keyboardViewportOffset})`,
+    scrollPaddingBottom: `calc(12px + ${keyboardViewportOffset})`,
   };
   const chatRootClassName = 'relative z-50 isolate flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
   const chatRootSizeStyle: React.CSSProperties = {
