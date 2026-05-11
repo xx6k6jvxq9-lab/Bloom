@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Activity, BellOff, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Database, Download, History, Image as ImageIcon, Languages, MessageCircle, MoreHorizontal, Phone, Pin, Plus, Share2, Smile, Star, Trash2, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, type MemoryLibraryEntry, type StickerMetadata } from '../../types';
+import { Character, ChatMessage, ApiConfig, WorldBookEntry, Mask, CallRecord, FavoriteMessage, VisualSettings, AppSettings, FriendRequest, type MemoryLibraryEntry, type StickerMetadata } from '../../types';
 import { ChatMemoryLibraryHome } from './ChatMemoryLibraryHome';
 import { ChatMemoryLibraryEntry } from './ChatMemoryLibraryEntry';
 import { ChatMemoryLibraryYear } from './ChatMemoryLibraryYear';
@@ -36,6 +36,12 @@ import {
   extractCompatibleChatSettingsImport,
   parseJsonWithCompatibility,
 } from '../../features/import/importCompat';
+import {
+  getCharacterBlockState,
+  getCharacterRelationshipStatusText,
+  getLatestCharacterRequest,
+  getPendingCharacterRequest,
+} from '../../features/contacts/contactRelationship';
 import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
 import { copyTextContent } from '../../services/chat/messageActions';
 import { fetchMinimaxVoices, type MinimaxVoiceRecord } from '../../services/ai/apiCenter/fetchMinimaxVoices';
@@ -533,6 +539,7 @@ export function ChatSettingsPanel({
   characters,
   onUpdate, 
   onBack,
+  onOpenRelationshipProfile,
   history,
   setHistory,
   groups,
@@ -546,12 +553,14 @@ export function ChatSettingsPanel({
   settings,
   onUpdateSettings,
   visualSettings,
-  onUpdateVisualSettings
+  onUpdateVisualSettings,
+  friendRequests = [],
 }: { 
   character: Character; 
   characters: Character[];
   onUpdate: (c: Character) => void; 
   onBack: () => void;
+  onOpenRelationshipProfile?: () => void;
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
   groups: string[];
@@ -566,6 +575,7 @@ export function ChatSettingsPanel({
   onUpdateSettings: (settings: AppSettings) => void;
   visualSettings: VisualSettings;
   onUpdateVisualSettings: (settings: VisualSettings) => void;
+  friendRequests?: FriendRequest[];
 }) {
   const CHARACTER_EDITOR_LIMITS = {
     remarkName: 32,
@@ -693,6 +703,17 @@ export function ChatSettingsPanel({
 
   const currentGroupLabel = character.groupId || '无分组';
   const remarkName = character.remarkName?.trim() || '';
+  const relationshipBlockState = getCharacterBlockState(character);
+  const relationshipStatusText = getCharacterRelationshipStatusText(character, friendRequests);
+  const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
+  const latestRelationshipRequest = getLatestCharacterRequest(friendRequests, character.id);
+  const relationshipHint = pendingIncomingRequest
+    ? `新的朋友里有一条来自 ${character.remarkName?.trim() || character.name} 的申请，等你去处理。`
+    : relationshipBlockState === 'character' || relationshipBlockState === 'mutual'
+      ? '对方当前拒收你的普通消息，想修复关系更适合走好友申请。'
+      : relationshipBlockState === 'user'
+        ? '你已经把对方拉黑了，普通聊天会暂停。'
+        : latestRelationshipRequest?.resolutionMessage?.trim() || '普通聊天负责聊天，申请和修关系请走关系页。';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
   const resolvedCorePersona = buildCharacterContext({ character }).corePersona ?? '';
   const extendedLore = character.extendedLore ?? '';
@@ -2117,6 +2138,25 @@ export function ChatSettingsPanel({
                 <div className={`absolute top-0.75 left-0.75 w-4 h-4 bg-white rounded-full transition-transform ${character.isPinned ? 'translate-x-4.5' : ''}`} />
               </div>
             </button>
+
+            <div className="border-b border-white/30 px-4 py-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[14px] font-medium text-zinc-700">当前关系</div>
+                  <div className="mt-1 text-[12px] text-zinc-500">{relationshipStatusText}</div>
+                  <div className="mt-2 text-[11px] leading-5 text-zinc-400">{relationshipHint}</div>
+                </div>
+                {onOpenRelationshipProfile && (
+                  <button
+                    type="button"
+                    onClick={onOpenRelationshipProfile}
+                    className="shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
+                  >
+                    查看关系页
+                  </button>
+                )}
+              </div>
+            </div>
 
             <div className="border-b border-white/30">
               <button

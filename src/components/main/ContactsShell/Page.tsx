@@ -23,14 +23,19 @@ import { buildForumSharedSettlement } from '../../../services/forum/buildForumSh
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
+  canCreateCharacterRequestAttempt,
+  getCharacterFriendRequestThreadId,
+  getNextCharacterRequestAttemptNo,
+} from '../../../features/contacts/friendRequestThreads';
+import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
 } from '../../../features/app-shell/formatMessagePreview';
 import {
   buildCharacterIncomingRequestResolution,
   canChatWithCharacter,
-  createCharacterRelationshipMessage,
   createRelationshipSystemMessage,
+  decideCharacterRetryAfterRejectedRequest,
   getCharacterBlockState,
   getCharacterFriendshipStatus,
   getCharacterRelationshipStatusText,
@@ -302,12 +307,56 @@ export function ContactsApp({
           return prev;
         }
 
-        const reactionText = generated?.reactionText?.trim() || buildCharacterIncomingRequestResolution(currentCharacter, params.accepted);
+        const nextAttemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], params.characterId, 'character');
+        const retryFallback = decideCharacterRetryAfterRejectedRequest(currentCharacter, prev.chatHistory[params.characterId] || [], nextAttemptNo);
+        const canRetry = !params.accepted && canCreateCharacterRequestAttempt(prev.friendRequests || [], params.characterId, 'character');
+        const shouldSendFollowupRequest = canRetry && (
+          generated?.decision === 'send_request'
+            ? true
+            : generated?.decision === 'none'
+              ? false
+              : !!retryFallback.sendRequest
+        );
+        const reactionText = generated?.reactionText?.trim()
+          || (!params.accepted && shouldSendFollowupRequest
+            ? retryFallback.reactionText
+            : buildCharacterIncomingRequestResolution(currentCharacter, params.accepted));
+        const followupRequestId = shouldSendFollowupRequest
+          ? `friend-request-${params.characterId}-${Date.now()}`
+          : null;
+        const followupThreadId = followupRequestId ? getCharacterFriendRequestThreadId(params.characterId) : null;
         return {
           ...prev,
-          chatHistory: appendRelationshipMessages(prev.chatHistory, params.characterId, [
-            createCharacterRelationshipMessage(params.characterId, reactionText, Date.now()),
-          ]),
+          friendRequests: [
+            ...(shouldSendFollowupRequest && followupRequestId && followupThreadId
+              ? [{
+                  id: followupRequestId,
+                  fromUserId: params.characterId,
+                  fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
+                  fromUserAvatar: currentCharacter.avatar,
+                  status: 'pending' as const,
+                  timestamp: Date.now(),
+                  message: generated?.requestMessage || retryFallback.requestMessage || '我还是想把这次关系再认真问一次。',
+                  direction: 'incoming' as const,
+                  initiator: 'character' as const,
+                  requestKind: currentRequest.requestKind || 'reconnect',
+                  characterId: params.characterId,
+                  threadId: followupThreadId,
+                  attemptNo: nextAttemptNo,
+                  sourceScene: 'relationship' as const,
+                  lastUpdatedAt: Date.now(),
+                }]
+              : []),
+            ...(prev.friendRequests || []).map((request) => (
+              request.id === params.requestId
+                ? {
+                    ...request,
+                    responseText: reactionText,
+                    lastUpdatedAt: Date.now(),
+                  }
+                : request
+            )),
+          ],
         };
       });
     })();

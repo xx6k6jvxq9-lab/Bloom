@@ -824,6 +824,9 @@ export type ChatMessage = {
   timestamp: number;
   senderCharacterId?: string;
   isPending?: boolean;
+  deliveryStatus?: 'normal' | 'failed_blocked';
+  deliveryErrorText?: string;
+  deliveryFailureReason?: 'blocked_by_character';
   isRecalled?: boolean;
   isEdited?: boolean;
   isFavorited?: boolean;
@@ -1262,7 +1265,11 @@ export type FriendRequest = {
   initiator?: FriendRequestInitiator;
   requestKind?: FriendRequestKind;
   characterId?: string;
+  threadId?: string;
+  attemptNo?: number;
+  supersededById?: string;
   resolutionMessage?: string;
+  responseText?: string;
   lastUpdatedAt?: number;
   sourcePostId?: string;
   sourceTempChatAuthorId?: string;

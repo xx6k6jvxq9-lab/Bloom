@@ -9,6 +9,7 @@ import type {
   CoupleSpaceData,
   DateSession,
   FavoriteMessage,
+  FriendRequest,
   Mask,
   PerceptionSettings,
   VisualSettings,
@@ -57,8 +58,10 @@ type DirectChatSessionContainerProps = {
   setWalletData: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
+  onOpenCharacterProfile?: (characterId: string) => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
+  friendRequests?: FriendRequest[];
 };
 
 export function DirectChatSessionContainer({
@@ -97,8 +100,10 @@ export function DirectChatSessionContainer({
   setWalletData,
   onPublishMoment,
   onOpenCharacterMoments,
+  onOpenCharacterProfile,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
+  friendRequests = [],
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
@@ -244,9 +249,11 @@ export function DirectChatSessionContainer({
       onUpdateWalletData={setWalletData}
       onPublishMoment={onPublishMoment}
       onOpenCharacterMoments={onOpenCharacterMoments}
+      onOpenCharacterProfile={() => onOpenCharacterProfile?.(character.id)}
       onStatusBarVisibilityChange={onStatusBarVisibilityChange}
       onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
       onRuntimeBusyChange={handleRuntimeBusyChange}
+      friendRequests={friendRequests}
     />
   );
 }

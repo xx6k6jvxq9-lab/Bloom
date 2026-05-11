@@ -3,6 +3,8 @@ import { ChevronLeft, Search } from 'lucide-react';
 import { FriendRequest } from '../../types';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
+import { RelationshipThreadPage } from './RelationshipThreadPage';
+import { getFriendRequestThreadKey } from '../../features/contacts/friendRequestThreads';
 import {
   getFriendRequestStatusLabel,
   isIncomingFriendRequest,
@@ -41,13 +43,29 @@ export function NewFriendsPage({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
+  const [activeThreadKey, setActiveThreadKey] = useState<string | null>(null);
   const sortedRequests = [...requests].sort((left, right) => right.timestamp - left.timestamp);
+  const latestRequests = Array.from(new Map(
+    sortedRequests.map((request) => [getFriendRequestThreadKey(request), request]),
+  ).values());
 
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
     clampViewportHeight: true,
   });
+
+  if (activeThreadKey) {
+    return (
+      <RelationshipThreadPage
+        requests={requests}
+        threadKey={activeThreadKey}
+        onAccept={onAccept}
+        onReject={onReject}
+        onBack={() => setActiveThreadKey(null)}
+      />
+    );
+  }
 
   return (
     <div ref={containerRef} className="absolute inset-0 z-50 flex flex-col bg-zinc-50">
@@ -85,16 +103,20 @@ export function NewFriendsPage({
         }}
       >
         <div className="px-4 py-2 text-[13px] text-zinc-500">好友申请</div>
-        {sortedRequests.length === 0 ? (
+        {latestRequests.length === 0 ? (
           <div className="py-10 text-center text-sm text-zinc-400">暂时还没有好友申请</div>
         ) : (
-          sortedRequests.map((request) => {
+          latestRequests.map((request) => {
             const isIncoming = isIncomingFriendRequest(request);
             const isPending = request.status === 'pending';
             const statusLabel = getFriendRequestStatusLabel(request);
 
             return (
-              <div key={request.id} className="flex items-center gap-3 border-b border-zinc-50 bg-white p-4">
+              <div
+                key={request.id}
+                onClick={() => setActiveThreadKey(getFriendRequestThreadKey(request))}
+                className="flex cursor-pointer items-center gap-3 border-b border-zinc-50 bg-white p-4 active:bg-zinc-50"
+              >
                 <ResolvedNewFriendAvatar
                   value={request.fromUserAvatar}
                   alt={request.fromUserName}
@@ -115,13 +137,19 @@ export function NewFriendsPage({
                 {isPending && isIncoming ? (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => onReject(request.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onReject(request.id);
+                      }}
                       className="rounded-lg bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600"
                     >
                       拒绝
                     </button>
                     <button
-                      onClick={() => onAccept(request.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAccept(request.id);
+                      }}
                       className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white"
                     >
                       通过

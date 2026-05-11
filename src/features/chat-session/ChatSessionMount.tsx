@@ -8,6 +8,7 @@ import type {
   CoupleSpaceState,
   DateSession,
   FavoriteMessage,
+  FriendRequest,
   Mask,
   PerceptionSettings,
   VisualSettings,
@@ -59,8 +60,10 @@ type ChatSessionMountProps = {
   onViewForumPost?: (postId: string) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
+  onOpenCharacterProfile?: (characterId: string) => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
+  friendRequests?: FriendRequest[];
 };
 
 const RETAINED_DIRECT_SESSION_LIMIT = 2;
@@ -143,8 +146,10 @@ export function ChatSessionMount({
   onViewForumPost,
   onPublishMoment,
   onOpenCharacterMoments,
+  onOpenCharacterProfile,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
+  friendRequests = [],
 }: ChatSessionMountProps) {
   const { getCharacterById } = createCharacterDirectory({ characters });
   const [mountedDirectCharacterIds, setMountedDirectCharacterIds] = useState<string[]>([]);
@@ -298,8 +303,10 @@ export function ChatSessionMount({
               setWalletData={setWalletData}
               onPublishMoment={onPublishMoment}
               onOpenCharacterMoments={onOpenCharacterMoments}
+              onOpenCharacterProfile={onOpenCharacterProfile}
               onStatusBarVisibilityChange={onStatusBarVisibilityChange}
               onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
+              friendRequests={friendRequests}
             />
           </div>
         );

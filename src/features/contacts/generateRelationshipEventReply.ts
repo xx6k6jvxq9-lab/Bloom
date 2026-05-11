@@ -1,4 +1,5 @@
 import type {
+  ApiConfig,
   AppSettings,
   Character,
   ChatGroup,
@@ -12,8 +13,10 @@ import type {
 import { generateQualityCheckedAssistantReply } from '../../services/ai/outputQuality';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
+import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
+import { getLegacyTranslationParts } from '../../services/chat/messageText';
 
 const REL_EVENT_PROTOCOL_TOKEN = '[[REL_EVENT]]';
 
@@ -66,9 +69,9 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
       return {
         userMessage:
           '【关系事件】用户刚刚把你拉黑了。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。',
-        allowedDecisions: ['counter_block', 'no_counter_block'] as RelationshipEventDecision[],
+        allowedDecisions: ['counter_block', 'no_counter_block', 'send_request'] as RelationshipEventDecision[],
         instruction:
-          '如果你觉得自己会把对方也拉黑，decision 写 counter_block；如果只是表达情绪但不反拉黑，decision 写 no_counter_block。',
+          '如果你觉得自己会把对方也拉黑，decision 写 counter_block；如果只是表达情绪但不反拉黑，decision 写 no_counter_block；如果你虽然生气但还是想主动递一条好友申请，decision 写 send_request，并填写 requestMessage。',
       };
     case 'user_unblocked_character':
       return {
@@ -97,8 +100,8 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
       return {
         userMessage:
           '【关系事件】用户刚刚拒绝了你发出的好友申请。请你只用角色口吻做出当下反应。',
-        allowedDecisions: ['none'] as RelationshipEventDecision[],
-        instruction: 'decision 固定写 none。',
+        allowedDecisions: ['none', 'send_request'] as RelationshipEventDecision[],
+        instruction: '如果你决定先停下，decision 写 none；如果你还想继续递下一条好友申请，decision 写 send_request，并填写这一次新的 requestMessage。',
       };
     default:
       return {
@@ -114,6 +117,106 @@ function buildPerceptionPrompt(perception: PerceptionSettings | undefined) {
     perception,
     now: Date.now(),
   });
+}
+
+function isChineseLanguageName(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase() || '';
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    '中文',
+    '汉语',
+    '普通话',
+    '简体中文',
+    '繁体中文',
+    'chinese',
+    'mandarin',
+    'simplified chinese',
+    'traditional chinese',
+  ].includes(normalized);
+}
+
+function shouldRequestRelationshipTranslation(character: Character) {
+  if (!character.autoTranslate) {
+    return false;
+  }
+
+  if (character.replyLanguageMode === 'follow-user' || character.replyLanguageMode === 'chinese-with-native-flavor') {
+    return false;
+  }
+
+  if (character.replyLanguageMode === 'native-first') {
+    return !isChineseLanguageName(character.nativeLanguage);
+  }
+
+  if (character.replyLanguageMode === 'fixed') {
+    return !isChineseLanguageName(character.fixedReplyLanguage);
+  }
+
+  return false;
+}
+
+function buildRelationshipTranslationPrompt(character: Character) {
+  const targetLanguage = character.replyLanguageMode === 'fixed'
+    ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
+    : (character.nativeLanguage?.trim() || '角色母语');
+
+  return [
+    '## 双语输出',
+    `本轮请先只输出角色实际会说的 ${targetLanguage} 原文。`,
+    '如果正文不是简体中文，必须在正文全部结束后另起一行输出 `---TRANSLATION---`，然后给出与正文严格对应的简体中文翻译。',
+    '如果正文拆成多句短消息，翻译也必须按相同顺序给出，并使用 `|||` 分隔。',
+    '翻译部分只做自然中文转写，不要补充解释、注释、语言标签、括号说明或额外寒暄。',
+  ].join('\n');
+}
+
+function hasLegacyTranslation(text: string) {
+  return getLegacyTranslationParts(text).translation.trim().length > 0;
+}
+
+async function backfillRelationshipTranslation(options: {
+  activeConfig: ApiConfig | null;
+  reactionText: string;
+}) {
+  const { activeConfig, reactionText } = options;
+  if (!activeConfig) {
+    return reactionText;
+  }
+
+  const { mainText, translation } = getLegacyTranslationParts(reactionText);
+  if (!mainText.trim() || translation.trim()) {
+    return reactionText;
+  }
+
+  const translated = await generateTextFromMessagesWithConfig({
+    activeConfig,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'Translate the following in-character reply into natural Simplified Chinese.',
+          'Return only the translation text itself.',
+          'If the original contains multiple short messages, keep the same order and separate each translated line with ` ||| `.',
+          'Do not add notes, quotes, labels, or explanations.',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: mainText,
+      },
+    ],
+      temperature: 0.2,
+      maxOutputTokens: 180,
+  });
+
+  const normalizedTranslation = translated.trim();
+  if (!normalizedTranslation) {
+    return reactionText;
+  }
+
+  return `${mainText}\n\n---TRANSLATION---\n${normalizedTranslation}`;
 }
 
 function toRuntimeHistoryMessage(message: ChatMessage) {
@@ -203,6 +306,7 @@ export async function generateRelationshipEventReply(
   }
 
   const eventSpec = buildRelationshipEventSpec(params.event);
+  const shouldTranslate = shouldRequestRelationshipTranslation(params.character);
   const activeMask = (params.masks || []).find((mask) => mask.isActive && mask.linkedCharacters.includes(params.character.id)) || null;
   const activeWorldBooks = (params.worldBook || []).filter((worldBook) => {
     const isManuallySelected = !!params.character.activeWorldBookIds?.includes(worldBook.id);
@@ -233,10 +337,12 @@ export async function generateRelationshipEventReply(
       '你现在收到的不是普通聊天，而是一条刚发生的关系事件。',
       '请只写角色本人此刻会说出口的话，像真实聊天一样，不要解释规则，不要分析流程，不要写旁白总结。',
       '反应控制在 1 到 3 句短消息的长度内，可以有情绪，但不要变成系统播报。',
+      ...(shouldTranslate ? [buildRelationshipTranslationPrompt(params.character)] : []),
       eventSpec.instruction,
       `最后另起一行输出 ${REL_EVENT_PROTOCOL_TOKEN} {"decision":"...","requestMessage":"..."}`,
       '如果这个事件不需要 requestMessage，就不要写这个字段。',
       `decision 只能从这几个值里选：${eventSpec.allowedDecisions.join(', ')}`,
+      '你显示给用户看的正文、翻译和 decision 必须互相一致，不要正文像是同意，但 decision 却写成拒绝。',
     ],
   });
 
@@ -254,6 +360,7 @@ export async function generateRelationshipEventReply(
       { role: 'user', content: eventSpec.userMessage },
     ],
     allowStructuredProtocols: true,
+    temperature: Math.min(activeConfig.temperature ?? 0.7, 0.45),
   });
 
   if (!qualityResult.ok) {
@@ -261,8 +368,14 @@ export async function generateRelationshipEventReply(
   }
 
   const parsed = parseRelationshipProtocol(qualityResult.cleanedText);
+  const reactionText = shouldTranslate && parsed.reactionText.trim() && !hasLegacyTranslation(parsed.reactionText)
+    ? await backfillRelationshipTranslation({
+        activeConfig,
+        reactionText: parsed.reactionText,
+      })
+    : parsed.reactionText;
   return {
-    reactionText: parsed.reactionText,
+    reactionText,
     decision: parsed.decision,
     requestMessage: parsed.requestMessage,
     rawText: qualityResult.cleanedText,

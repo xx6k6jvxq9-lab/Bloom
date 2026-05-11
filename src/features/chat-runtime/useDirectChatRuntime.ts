@@ -67,6 +67,12 @@ import {
   type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
 import { getStickerMetadata } from '../../services/chat/stickerMetadata';
+import { getCharacterBlockState } from '../contacts/contactRelationship';
+import {
+  createBlockedDeliveryMessage,
+  getDirectChatBlockedComposerError,
+  getDirectChatBlockedManualReplyError,
+} from './directChatDelivery';
 import {
   buildAutonomousAvatarLibraryPromptSection,
   buildAvatarActionPromptSection,
@@ -1629,6 +1635,7 @@ type DirectSendOverridePayload = {
   imageUrl?: string;
   audioUrl?: string;
   audioMimeType?: string;
+  audioTranscript?: string;
   duration?: number;
   stickerLabel?: string;
   locationData?: { name: string; address?: string; isVirtual?: boolean };
@@ -1856,6 +1863,24 @@ export function useDirectChatRuntime({
     historyRef.current = nextHistory;
     setHistory(nextHistory);
   }, [setHistory]);
+
+  const prepareBaseHistoryForOutgoingMessage = useCallback(() => {
+    let baseHistory = historyRef.current;
+    if (activeAssistantMessageIdRef.current !== null) {
+      const staleAssistantId = activeAssistantMessageIdRef.current;
+      const staleAssistantRenderCount = Math.max(1, activeAssistantRenderCountRef.current);
+      baseHistory = baseHistory.filter((message) => (
+        !(message.role === 'model'
+          && message.timestamp >= staleAssistantId
+          && message.timestamp < staleAssistantId + staleAssistantRenderCount)
+      ));
+      commitHistory(baseHistory);
+      activeAssistantMessageIdRef.current = null;
+      activeAssistantRenderCountRef.current = 0;
+    }
+
+    return baseHistory;
+  }, [commitHistory]);
 
   const getLatestModelReplySegment = useCallback((messages: ChatMessage[]) => {
     let end = -1;
@@ -2492,19 +2517,14 @@ export function useDirectChatRuntime({
 
     setErrorState(null);
 
-    await runGeneration(async ({ generationId }) => {
-    let baseHistory = historyRef.current;
-    if (activeAssistantMessageIdRef.current !== null) {
-      const staleAssistantId = activeAssistantMessageIdRef.current;
-      const staleAssistantRenderCount = Math.max(1, activeAssistantRenderCountRef.current);
-      baseHistory = baseHistory.filter(msg =>
-        !(msg.role === 'model' && msg.timestamp >= staleAssistantId && msg.timestamp < staleAssistantId + staleAssistantRenderCount)
-      );
-      commitHistory(baseHistory);
-      activeAssistantMessageIdRef.current = null;
-      activeAssistantRenderCountRef.current = 0;
+    const blockState = getCharacterBlockState(character);
+    const blockedComposerError = getDirectChatBlockedComposerError(blockState);
+    if (blockedComposerError) {
+      setErrorState(blockedComposerError);
+      return;
     }
 
+    const baseHistory = prepareBaseHistoryForOutgoingMessage();
     const shouldSuppressUserText = !!overridePayload?.suppressUserText && !!effectiveLocationData;
     const userMessageText = shouldSuppressUserText
       ? ''
@@ -2523,10 +2543,25 @@ export function useDirectChatRuntime({
       ...(effectiveLocationData ? { location: effectiveLocationData } : {}),
       ...(overridePayload?.imageUrl ? { imageUrl: overridePayload.imageUrl } : {}),
       ...(overridePayload?.audioUrl ? { audioUrl: overridePayload.audioUrl, audioMimeType: overridePayload.audioMimeType } : {}),
+      ...(overridePayload?.audioTranscript ? { audioTranscript: overridePayload.audioTranscript } : {}),
       ...(typeof overridePayload?.duration === 'number' ? { duration: overridePayload.duration } : {}),
       ...(overridePayload?.stickerLabel ? { stickerLabel: overridePayload.stickerLabel } : {}),
       ...(isInnerVoiceOverride ? { isInnerVoice: true } : {}),
     };
+
+    if (blockState === 'character') {
+      commitHistory([
+        ...baseHistory,
+        createBlockedDeliveryMessage(userMsg),
+      ]);
+      if (!overridePayload) {
+        setInput('');
+      }
+      setReplyingTo(null);
+      return;
+    }
+
+    await runGeneration(async ({ generationId }) => {
     const newHistory = [...baseHistory, userMsg];
     commitHistory(newHistory);
 
@@ -2936,7 +2971,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, queueAutoAudioForLatestModelReply, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
@@ -3532,6 +3567,13 @@ export function useDirectChatRuntime({
       return;
     }
 
+    const blockState = getCharacterBlockState(character);
+    const blockedManualReplyError = getDirectChatBlockedManualReplyError(blockState);
+    if (blockedManualReplyError) {
+      setErrorState(blockedManualReplyError);
+      return;
+    }
+
     const latestHistory = historyRef.current;
     const pendingUserBlock = getLatestPendingUserMessageBlock(latestHistory);
 
@@ -3541,7 +3583,7 @@ export function useDirectChatRuntime({
     }
 
     void generateDirectAssistantMessage(latestHistory, 'reply');
-  }, [generateDirectAssistantMessage, isLoading]);
+  }, [character, generateDirectAssistantMessage, isLoading, setErrorState]);
 
   const handleRejectTransfer = useCallback((index: number) => {
     const msg = history[index];

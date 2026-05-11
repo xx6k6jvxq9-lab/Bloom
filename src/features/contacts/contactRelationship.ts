@@ -5,6 +5,7 @@ import type {
   FriendRequest,
   FriendRequestDirection,
 } from '../../types';
+import { getLegacyTranslationParts } from '../../services/chat/messageText';
 
 const POSITIVE_HINTS = ['谢谢', '喜欢', '想你', '重新', '和好', '在乎', '认真', '愿意', '可以吗', '回来', '继续', '别生气', '抱抱'];
 const NEGATIVE_HINTS = ['讨厌', '别烦', '滚', '算了', '不想', '烦', '闭嘴', '离我远点', '拉黑', '屏蔽', '删掉', '别来'];
@@ -171,6 +172,7 @@ export function supersedePendingCharacterRequests(
   requests: FriendRequest[] | null | undefined,
   characterId: string,
   nextTimestamp = Date.now(),
+  supersededById?: string,
 ) {
   const requestList = Array.isArray(requests) ? requests : [];
   return requestList.map((request) => {
@@ -182,6 +184,7 @@ export function supersedePendingCharacterRequests(
       status: 'superseded' as const,
       resolutionMessage: request.resolutionMessage || '已被新的申请替代',
       lastUpdatedAt: nextTimestamp,
+      ...(supersededById ? { supersededById } : {}),
     };
   });
 }
@@ -200,11 +203,13 @@ export function createCharacterRelationshipMessage(
   text: string,
   timestamp = Date.now(),
 ): ChatMessage {
+  const { mainText, translation } = getLegacyTranslationParts(text);
   return {
     role: 'model',
-    text,
+    text: mainText || text,
     timestamp,
     senderCharacterId: characterId,
+    ...(translation ? { translation } : {}),
   };
 }
 
@@ -305,6 +310,78 @@ export function decideCharacterUnblockGesture(
   return {
     sendRequest: false,
     reactionText: `${character.name}应了一声：“黑名单开了就开了。想把关系补回来，还是得看你接下来怎么做。”`,
+  };
+}
+
+export function decideCharacterRequestAfterBeingBlocked(
+  character: Pick<Character, 'id' | 'name' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark' | 'blockedByCharacter'>,
+  history: ChatMessage[],
+  nextAttemptNo: number,
+) {
+  const { score, style, tone } = evaluateRelationshipMomentum(character, history, '');
+
+  if (nextAttemptNo > 10) {
+    return {
+      sendRequest: false,
+      reactionText: `${character.name}没有再继续追着递申请，只冷冷留下一句：“行，我知道了。”`,
+    };
+  }
+
+  if (style === 'warm' && score >= -1 && tone.positive >= tone.negative) {
+    return {
+      sendRequest: true,
+      reactionText: `${character.name}明明还在生气，却还是把话丢了回来：“你要拉黑就先拉黑，但这次申请我还是递给你。”`,
+      requestMessage: nextAttemptNo >= 3
+        ? '我知道你已经把我推开过了，但这次我还是认真再递一次。'
+        : '你先别急着把门关死，这次申请你看完再决定。',
+    };
+  }
+
+  return {
+    sendRequest: false,
+    reactionText: style === 'guarded'
+      ? `${character.name}把情绪压了回去，只淡淡丢下一句：“行，那我先不再往前走。”`
+      : `${character.name}像是把话忍住了，只低声回了一句：“好，那先这样。”`,
+  };
+}
+
+export function decideCharacterRetryAfterRejectedRequest(
+  character: Pick<Character, 'id' | 'name' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark' | 'blockedByCharacter'>,
+  history: ChatMessage[],
+  nextAttemptNo: number,
+) {
+  const { score, style, tone } = evaluateRelationshipMomentum(character, history, '');
+
+  if (nextAttemptNo > 10) {
+    return {
+      sendRequest: false,
+      reactionText: `${character.name}这次没有再继续递申请，只轻声说：“好，我知道你的答案了。”`,
+    };
+  }
+
+  if (style === 'warm' && score >= -1) {
+    return {
+      sendRequest: true,
+      reactionText: `${character.name}被你这次拒绝刺了一下，却还是没把手收回去：“那我再递一次，这次你看完再决定。”`,
+      requestMessage: nextAttemptNo >= 3
+        ? '我知道你已经拒过我了，但这次我还是想认真再问一次。'
+        : '刚才那次你没收，那我换一句再递给你。',
+    };
+  }
+
+  if (style === 'neutral' && score >= 1 && tone.positive >= Math.max(0, tone.negative - 1)) {
+    return {
+      sendRequest: true,
+      reactionText: `${character.name}沉默了一下，没有直接退开：“那我再发一次，你自己看着办。”`,
+      requestMessage: '这次我把话说清楚了，你要不要接，由你决定。',
+    };
+  }
+
+  return {
+    sendRequest: false,
+    reactionText: style === 'guarded'
+      ? `${character.name}没有再继续追着递申请，只淡淡留下一句：“行，我先不往前逼你。”`
+      : `${character.name}这次把话收了回去，只轻轻回了一句：“好，那先这样。”`,
   };
 }
 

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2 } from 'lucide-react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
   Character, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, CoupleSpaceData, DateSession, WalletData,
-  ChatGroup, ChatHistory,
+  ChatGroup, ChatHistory, FriendRequest,
 } from '../../types';
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
@@ -64,6 +64,12 @@ import {
 } from './replyPreviewStyles';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
 import { AvatarFrame } from '../../components/chat/AvatarFrame';
+import { getCharacterBlockState } from '../contacts/contactRelationship';
+import {
+  getDirectChatRelationshipBlockNotice,
+  isDirectChatBlockedByCharacter,
+  isDirectChatBlockedByUser,
+} from '../chat-runtime/directChatDelivery';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
@@ -415,9 +421,11 @@ export function ChatSessionScreen({
   onUpdateWalletData,
   onPublishMoment,
   onOpenCharacterMoments,
+  onOpenCharacterProfile,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
   onRuntimeBusyChange,
+  friendRequests = [],
 }: { 
   character: Character;
   characters: Character[];
@@ -455,9 +463,11 @@ export function ChatSessionScreen({
   onUpdateWalletData?: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
+  onOpenCharacterProfile?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
   onRuntimeBusyChange?: (busy: boolean) => void;
+  friendRequests?: FriendRequest[];
 }) {
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
@@ -742,8 +752,17 @@ export function ChatSessionScreen({
     && !message.isRecalled
     && !isLoading
   ), [isLoading]);
-  const showManualReplyButton = !character.autoReplyEnabled;
-  const canUseManualSpeakButton = !isLoading;
+  const directBlockState = getCharacterBlockState(character);
+  const isBlockedByUser = isDirectChatBlockedByUser(directBlockState);
+  const isBlockedByCharacter = isDirectChatBlockedByCharacter(directBlockState);
+  const shouldPauseDirectChatComposer = isBlockedByUser;
+  useEffect(() => {
+    if (shouldPauseDirectChatComposer && isVoiceMode) {
+      setIsVoiceMode(false);
+    }
+  }, [isVoiceMode, shouldPauseDirectChatComposer]);
+  const showManualReplyButton = !character.autoReplyEnabled && !isBlockedByUser && !isBlockedByCharacter;
+  const canUseManualSpeakButton = !isLoading && !isBlockedByUser && !isBlockedByCharacter;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
   const activeInnerVoiceMessage = activeInnerVoiceIndex !== null ? history[activeInnerVoiceIndex] : null;
   const activeInnerVoiceParts = activeInnerVoiceMessage?.isInnerVoice
@@ -758,6 +777,29 @@ export function ChatSessionScreen({
         '\n',
       )
     : '';
+  const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
+  const relationshipBlockNotice = getDirectChatRelationshipBlockNotice(directBlockState);
+  const renderUserMessageStatus = useCallback((message: ChatMessage) => {
+    if (message.role !== 'user') {
+      return null;
+    }
+
+    const statusLabel = getUserReadStatusLabel(message, latestModelReplyTimestamp);
+    if (!statusLabel) {
+      return null;
+    }
+
+    if (message.deliveryStatus === 'failed_blocked') {
+      return (
+        <span className="ml-1 inline-flex items-center gap-1 text-red-500">
+          <AlertCircle size={11} />
+          {statusLabel}
+        </span>
+      );
+    }
+
+    return <span className="ml-1">{statusLabel}</span>;
+  }, [latestModelReplyTimestamp]);
   const sendCurrentText = useCallback(async () => {
     const speechText = input.trim();
     const actionText = actionInput.trim();
@@ -1499,6 +1541,10 @@ export function ChatSessionScreen({
       characters={characters}
       onUpdate={onUpdateCharacter} 
       onBack={() => setShowSettings(false)} 
+      onOpenRelationshipProfile={onOpenCharacterProfile ? () => {
+        setShowSettings(false);
+        onOpenCharacterProfile();
+      } : undefined}
       history={history}
       setHistory={setHistory}
       groups={groups}
@@ -1513,6 +1559,7 @@ export function ChatSessionScreen({
       onUpdateSettings={onUpdateSettings}
       visualSettings={visualSettings}
       onUpdateVisualSettings={onUpdateVisualSettings}
+      friendRequests={friendRequests}
     />
   );
   const activeBackground =
@@ -1558,7 +1605,6 @@ export function ChatSessionScreen({
   );
   const headerState = getChatHeaderState(character, history, isLoading);
   const layoutConfig = getChatLayoutConfig();
-  const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
   const showChatTimeDividers = settings.showChatTimeDividers ?? true;
   const showChatMessageTime = settings.showChatMessageTime ?? character.showTime ?? true;
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
@@ -1891,6 +1937,17 @@ export function ChatSessionScreen({
                 <X size={14} />
               </button>
             </div>
+          </div>
+        )}
+        {relationshipBlockNotice && (
+          <div
+            className={`mb-4 rounded-2xl border px-4 py-3 text-[12px] leading-5 ${
+              isBlockedByUser
+                ? 'border-zinc-200 bg-zinc-100/90 text-zinc-600'
+                : 'border-red-100 bg-red-50/90 text-red-500'
+            }`}
+          >
+            {relationshipBlockNotice}
           </div>
         )}
         {showMemoryWindowHint && (
@@ -2258,9 +2315,7 @@ export function ChatSessionScreen({
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                    {msg.role === 'user' && (
-                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                    )}
+                                    {msg.role === 'user' && renderUserMessageStatus(msg)}
                                   </div>
                                 )}
                               </>
@@ -2329,9 +2384,7 @@ export function ChatSessionScreen({
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                    {msg.role === 'user' && (
-                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                    )}
+                                    {msg.role === 'user' && renderUserMessageStatus(msg)}
                                   </div>
                                 )}
                               </>
@@ -2442,9 +2495,7 @@ export function ChatSessionScreen({
                                         <span>{formatChatMessageTime(msg.timestamp)}</span>
                                       )}
                                       {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                      {msg.role === 'user' && (
-                                        <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                      )}
+                                      {msg.role === 'user' && renderUserMessageStatus(msg)}
                                     </div>
                                   )}
                                 </>
@@ -2832,10 +2883,20 @@ export function ChatSessionScreen({
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
             onClick={() => {
+              if (shouldPauseDirectChatComposer) {
+                return;
+              }
               setIsVoiceMode(!isVoiceMode);
               setIsInputExpanded(false);
             }}
-            className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
+            disabled={shouldPauseDirectChatComposer}
+            className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${
+              shouldPauseDirectChatComposer
+                ? 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
+                : isVoiceMode
+                  ? 'bg-zinc-100 text-zinc-800'
+                  : footerControlTone.iconButton
+            }`}
           >
             {isVoiceMode ? <Keyboard size={19} className="chat-footer-voice-toggle-icon" /> : <Mic size={19} className="chat-footer-voice-toggle-icon" />}
           </button>
@@ -2883,8 +2944,13 @@ export function ChatSessionScreen({
                 <button
                   type="button"
                   onClick={() => setShowActionInput(prev => !prev)}
+                  disabled={shouldPauseDirectChatComposer}
                   className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[12px] font-medium transition-colors ${
-                    showActionInput ? 'bg-zinc-100 text-zinc-700 shadow-inner' : 'text-zinc-500 hover:bg-zinc-100'
+                    shouldPauseDirectChatComposer
+                      ? 'text-zinc-300 cursor-not-allowed'
+                      : showActionInput
+                        ? 'bg-zinc-100 text-zinc-700 shadow-inner'
+                        : 'text-zinc-500 hover:bg-zinc-100'
                   }`}
                   title="场景动作描述"
                   aria-label="场景动作描述"
@@ -2896,6 +2962,7 @@ export function ChatSessionScreen({
                 ref={inputTextareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
+                disabled={shouldPauseDirectChatComposer}
                 onBlur={() => {
                   if (!input.trim()) {
                     setIsInputExpanded(false);
@@ -2907,7 +2974,7 @@ export function ChatSessionScreen({
                     void sendCurrentText();
                   }
                 }}
-                placeholder="发送消息..."
+                placeholder={shouldPauseDirectChatComposer ? '你已拉黑对方，普通聊天已暂停' : '发送消息...'}
                 className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-500 resize-none min-h-[24px]"
                 rows={1}
               />
@@ -2924,10 +2991,20 @@ export function ChatSessionScreen({
               </button>
               <button 
                 onClick={() => {
+                  if (shouldPauseDirectChatComposer) {
+                    return;
+                  }
                   setShowStickerPanel(!showStickerPanel);
                   if (showFunPanel) setShowFunPanel(false);
                 }} 
-                className={`chat-footer-emoji-button p-1 transition-colors shrink-0 ${showStickerPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                disabled={shouldPauseDirectChatComposer}
+                className={`chat-footer-emoji-button p-1 transition-colors shrink-0 ${
+                  shouldPauseDirectChatComposer
+                    ? 'text-zinc-300 cursor-not-allowed'
+                    : showStickerPanel
+                      ? 'text-zinc-900'
+                      : 'text-zinc-400 hover:text-zinc-600'
+                }`}
               >
                 <Smile size={20} className="chat-footer-emoji-icon" />
               </button>
@@ -2937,17 +3014,32 @@ export function ChatSessionScreen({
           {!isVoiceMode && (input.trim() || actionInput.trim()) ? (
             <button 
               onClick={() => void sendCurrentText()}
-              className="chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
+              disabled={shouldPauseDirectChatComposer}
+              className={`chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center transition-all shrink-0 ${
+                shouldPauseDirectChatComposer
+                  ? 'cursor-not-allowed text-zinc-300'
+                  : 'text-zinc-700 active:scale-90 active:bg-zinc-100'
+              }`}
             >
               <Send size={16} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button 
               onClick={() => {
+                if (shouldPauseDirectChatComposer) {
+                  return;
+                }
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`chat-footer-plus-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
+              disabled={shouldPauseDirectChatComposer}
+              className={`chat-footer-plus-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${
+                shouldPauseDirectChatComposer
+                  ? 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
+                  : showFunPanel
+                    ? 'bg-zinc-100 text-zinc-800 rotate-45'
+                    : footerControlTone.iconButton
+              }`}
             >
               <Plus size={20} className="chat-footer-plus-icon" />
             </button>
