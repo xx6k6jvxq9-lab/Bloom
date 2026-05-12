@@ -7,13 +7,9 @@ import type {
   FriendRequest,
 } from '../../types';
 import {
-  buildCharacterIncomingRequestResolution,
   createCharacterRelationshipMessages,
   createRelationshipSystemMessage,
-  decideCharacterBlockReaction,
   decideCharacterFriendRequestResponse,
-  decideCharacterRequestAfterBeingBlocked,
-  decideCharacterRetryAfterRejectedRequest,
   decideCharacterUnblockGesture,
   getCharacterBlockState,
   getFriendRequestCharacterId,
@@ -21,12 +17,14 @@ import {
   resolveCharacterBlockedFollowupDelayMs,
   supersedePendingCharacterRequests,
 } from './contactRelationship';
+import { applyRelationshipRecoveryContext } from './relationshipRecoveryContext';
 import {
   canCreateCharacterRequestAttempt,
   getCharacterFriendRequestThreadId,
   getFriendRequestRelationshipRoundId,
   getFriendRequestRelationshipRoundNo,
   getNextCharacterRequestAttemptNo,
+  markRelationshipRoundAbandoned,
   markRelationshipRoundResolved,
   resolveRelationshipRoundForWrite,
 } from './friendRequestThreads';
@@ -194,6 +192,11 @@ export function applyNonForumFriendRequestResolution(
             blockedByUser: false,
             blockedByCharacter: false,
             relationshipStatusUpdatedAt: timestamp,
+            ...(request.requestKind === 'reconnect'
+              ? {
+                  shortTermSummary: applyRelationshipRecoveryContext(character, 'reconnect_accepted'),
+                }
+              : {}),
           }
         : character
     ))
@@ -312,28 +315,21 @@ export function runHandledRelationshipRequestReactionFlow(params: {
         'character',
         relationshipRoundId,
       );
-      const retryFallback = decideCharacterRetryAfterRejectedRequest(
-        currentCharacter,
-        prev.chatHistory[characterId] || [],
-        nextAttemptNo,
-      );
       const canRetry = !accepted && canCreateCharacterRequestAttempt(
         prev.friendRequests || [],
         characterId,
         'character',
         relationshipRoundId,
       );
+      const reactionText = generated?.reactionText?.trim() || '';
+      const followupRequestMessage = generated?.requestMessage?.trim() || undefined;
       const shouldSendFollowupRequest = canRetry && (
         generated?.decision === 'send_request'
-          ? true
+          ? !!followupRequestMessage
           : generated?.decision === 'none'
             ? false
-            : !!retryFallback.sendRequest
+            : !!followupRequestMessage
       );
-      const reactionText = generated?.reactionText?.trim()
-        || (!accepted && shouldSendFollowupRequest
-          ? retryFallback.reactionText
-          : buildCharacterIncomingRequestResolution(currentCharacter, accepted));
       const reactionTimestamp = Date.now();
       const followupRequestId = shouldSendFollowupRequest
         ? `friend-request-${characterId}-${reactionTimestamp}`
@@ -342,42 +338,87 @@ export function runHandledRelationshipRequestReactionFlow(params: {
 
       return {
         ...prev,
-        friendRequests: [
-          ...(shouldSendFollowupRequest && followupRequestId && followupThreadId
-            ? [{
-                id: followupRequestId,
-                fromUserId: characterId,
-                fromUserName: getRelationshipDisplayName(currentCharacter),
-                fromUserAvatar: currentCharacter.avatar,
-                status: 'pending' as const,
-                timestamp: reactionTimestamp,
-                message: generated?.requestMessage || retryFallback.requestMessage || '我还是想把这次关系再认真问一次。',
-                direction: 'incoming' as const,
-                initiator: 'character' as const,
-                requestKind: currentRequest.requestKind || 'reconnect',
-                characterId,
-                threadId: followupThreadId,
-                relationshipRoundId,
-                relationshipRoundNo,
-                relationshipRoundStatus: 'active' as const,
-                attemptNo: nextAttemptNo,
-                isUnread: true,
-                unreadAt: reactionTimestamp,
-                sourceScene: 'relationship' as const,
-                lastUpdatedAt: reactionTimestamp,
-              }]
-            : []),
-          ...(prev.friendRequests || []).map((request) => (
-            request.id === requestId
-              ? {
-                  ...request,
-                  ...(accepted ? {} : params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
-                  responseText: reactionText,
-                  lastUpdatedAt: reactionTimestamp,
-                }
-              : request
-          )),
-        ],
+        ...((
+          !accepted
+          && relationshipRoundId
+          && !shouldSendFollowupRequest
+        )
+          ? {
+              friendRequests: markRelationshipRoundAbandoned([
+                ...(shouldSendFollowupRequest && followupRequestId && followupThreadId
+                  ? [{
+                      id: followupRequestId,
+                      fromUserId: characterId,
+                      fromUserName: getRelationshipDisplayName(currentCharacter),
+                      fromUserAvatar: currentCharacter.avatar,
+                      status: 'pending' as const,
+                      timestamp: reactionTimestamp,
+                      direction: 'incoming' as const,
+                      initiator: 'character' as const,
+                      requestKind: currentRequest.requestKind || 'reconnect',
+                      characterId,
+                      threadId: followupThreadId,
+                      relationshipRoundId,
+                      relationshipRoundNo,
+                      relationshipRoundStatus: 'active' as const,
+                      attemptNo: nextAttemptNo,
+                      isUnread: true,
+                      unreadAt: reactionTimestamp,
+                      sourceScene: 'relationship' as const,
+                      lastUpdatedAt: reactionTimestamp,
+                      ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
+                    }]
+                  : []),
+                ...(prev.friendRequests || []).map((request) => (
+                  request.id === requestId
+                    ? {
+                        ...request,
+                        ...(accepted ? {} : params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
+                        ...(reactionText ? { responseText: reactionText } : {}),
+                        lastUpdatedAt: reactionTimestamp,
+                      }
+                    : request
+                )),
+              ], relationshipRoundId, reactionTimestamp),
+            }
+          : {
+              friendRequests: [
+                ...(shouldSendFollowupRequest && followupRequestId && followupThreadId
+                  ? [{
+                      id: followupRequestId,
+                      fromUserId: characterId,
+                      fromUserName: getRelationshipDisplayName(currentCharacter),
+                      fromUserAvatar: currentCharacter.avatar,
+                      status: 'pending' as const,
+                      timestamp: reactionTimestamp,
+                      direction: 'incoming' as const,
+                      initiator: 'character' as const,
+                      requestKind: currentRequest.requestKind || 'reconnect',
+                      characterId,
+                      threadId: followupThreadId,
+                      relationshipRoundId,
+                      relationshipRoundNo,
+                      relationshipRoundStatus: 'active' as const,
+                      attemptNo: nextAttemptNo,
+                      isUnread: true,
+                      unreadAt: reactionTimestamp,
+                      sourceScene: 'relationship' as const,
+                      lastUpdatedAt: reactionTimestamp,
+                      ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
+                    }]
+                  : []),
+                ...(prev.friendRequests || []).map((request) => (
+                  request.id === requestId
+                    ? {
+                        ...request,
+                        ...(accepted ? {} : params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
+                        ...(reactionText ? { responseText: reactionText } : {}),
+                        lastUpdatedAt: reactionTimestamp,
+                      }
+                    : request
+                )),
+              ],
+            }),
       };
     });
   })();
@@ -498,7 +539,8 @@ export function runRelationshipRequestSubmissionFlow(params: {
       );
       const fallback = decideCharacterFriendRequestResponse(currentCharacter, currentHistory, trimmedMessage);
       const decision = generated?.decision;
-      const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
+      const reactionText = generated?.reactionText?.trim() || '';
+      const generatedRequestMessage = generated?.requestMessage?.trim() || undefined;
       let nextCharacters = prev.characters;
       let nextFriendRequests = prev.friendRequests || [];
       let statusMessageText = `${getRelationshipDisplayName(currentCharacter)} 回复了你的好友申请。`;
@@ -512,25 +554,30 @@ export function runRelationshipRequestSubmissionFlow(params: {
                 blockedByUser: false,
                 blockedByCharacter: false,
                 relationshipStatusUpdatedAt: timestamp,
+                ...(pendingRequest.requestKind === 'reconnect'
+                  ? {
+                      shortTermSummary: applyRelationshipRecoveryContext(character, 'reconnect_accepted'),
+                    }
+                  : {}),
               }
             : character
         ));
         nextFriendRequests = nextFriendRequests.map((request) => (
           request.id === requestId
-            ? {
-                ...request,
-                status: 'accepted' as const,
-                relationshipRoundStatus: 'resolved' as const,
-                relationshipRoundResolvedAt: timestamp,
-                resolutionMessage: generated?.reactionText ? '对方通过了你的申请' : fallback.resolutionMessage,
-                responseText: reactionText,
-                lastUpdatedAt: timestamp,
-              }
+              ? {
+                  ...request,
+                  status: 'accepted' as const,
+                  relationshipRoundStatus: 'resolved' as const,
+                  relationshipRoundResolvedAt: timestamp,
+                  resolutionMessage: fallback.resolutionMessage,
+                  ...(reactionText ? { responseText: reactionText } : {}),
+                  lastUpdatedAt: timestamp,
+                }
             : request
         ));
         nextFriendRequests = markRelationshipRoundResolved(nextFriendRequests, relationshipRoundId, timestamp);
         statusMessageText = `${getRelationshipDisplayName(currentCharacter)} 通过了你的好友申请。`;
-      } else if (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request')) {
+      } else if (generatedRequestMessage && (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request'))) {
         const counterRequestId = `friend-request-counter-${characterId}-${timestamp + 1}`;
         const threadId = getCharacterFriendRequestThreadId(characterId);
         const attemptNo = getNextCharacterRequestAttemptNo(
@@ -547,7 +594,6 @@ export function runRelationshipRequestSubmissionFlow(params: {
             fromUserAvatar: currentCharacter.avatar,
             status: 'pending' as const,
             timestamp: timestamp + 1,
-            message: generated?.requestMessage || (fallback.outcome === 'counter_request' ? fallback.requestMessage : '这次换我来递申请。'),
             direction: 'incoming' as const,
             initiator: 'character' as const,
             requestKind: 'reconnect' as const,
@@ -561,6 +607,7 @@ export function runRelationshipRequestSubmissionFlow(params: {
             unreadAt: timestamp + 1,
             sourceScene: 'relationship' as const,
             lastUpdatedAt: timestamp + 1,
+            ...(generatedRequestMessage ? { message: generatedRequestMessage } : {}),
           },
           ...nextFriendRequests.map((request) => (
             request.id === requestId
@@ -569,7 +616,7 @@ export function runRelationshipRequestSubmissionFlow(params: {
                   status: 'superseded' as const,
                   supersededById: counterRequestId,
                   resolutionMessage: '对方没有直接通过，而是回了一条新的好友申请',
-                  responseText: reactionText,
+                  ...(reactionText ? { responseText: reactionText } : {}),
                   lastUpdatedAt: timestamp,
                 }
               : request
@@ -596,15 +643,16 @@ export function runRelationshipRequestSubmissionFlow(params: {
         ));
         nextFriendRequests = nextFriendRequests.map((request) => (
           request.id === requestId
-            ? {
-                ...request,
-                status: 'rejected' as const,
-                resolutionMessage: shouldBlock ? '对方拒绝了申请，并把你拉黑了' : '对方拒绝了你的申请',
-                responseText: reactionText,
-                lastUpdatedAt: timestamp,
+              ? {
+                  ...request,
+                  status: 'rejected' as const,
+                  resolutionMessage: shouldBlock ? '对方拒绝了申请，并把你拉黑了' : '对方拒绝了你的申请',
+                  ...(reactionText ? { responseText: reactionText } : {}),
+                  lastUpdatedAt: timestamp,
               }
             : request
         ));
+        nextFriendRequests = markRelationshipRoundAbandoned(nextFriendRequests, relationshipRoundId, timestamp);
         statusMessageText = shouldBlock
           ? `${getRelationshipDisplayName(currentCharacter)} 拒绝了你的申请，并把你拉黑了。`
           : `${getRelationshipDisplayName(currentCharacter)} 拒绝了你的好友申请。`;
@@ -708,9 +756,10 @@ export function runRelationshipBlockToggleFlow(params: {
 
       if (isUnblocking) {
         const fallback = decideCharacterUnblockGesture(currentCharacter, currentHistory);
-        const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
+        const reactionText = generated?.reactionText?.trim() || '';
+        const followupRequestMessage = generated?.requestMessage?.trim() || undefined;
         const shouldSendRequest = generated?.decision === 'send_request'
-          ? true
+          ? !!followupRequestMessage
           : generated?.decision === 'wait_for_user'
             ? false
             : fallback.sendRequest;
@@ -720,6 +769,7 @@ export function runRelationshipBlockToggleFlow(params: {
                 ...character,
                 blockedByUser: false,
                 relationshipStatusUpdatedAt: timestamp,
+                shortTermSummary: applyRelationshipRecoveryContext(character, 'unblocked'),
               }
             : character
         ));
@@ -741,8 +791,6 @@ export function runRelationshipBlockToggleFlow(params: {
               fromUserAvatar: currentCharacter.avatar,
               status: 'pending' as const,
               timestamp,
-              message: generated?.requestMessage || fallback.requestMessage,
-              responseText: reactionText,
               direction: 'incoming' as const,
               initiator: 'character' as const,
               requestKind: 'reconnect' as const,
@@ -756,6 +804,8 @@ export function runRelationshipBlockToggleFlow(params: {
               unreadAt: timestamp,
               sourceScene: 'relationship' as const,
               lastUpdatedAt: timestamp,
+              ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
+              ...(reactionText ? { responseText: reactionText } : {}),
             },
             ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
           ];
@@ -768,12 +818,17 @@ export function runRelationshipBlockToggleFlow(params: {
               relationshipRoundId: relationshipRound.roundId,
               relationshipRoundNo: relationshipRound.roundNo,
               timestamp,
-              reactionText,
+              reactionText: reactionText || '',
               resolutionMessage: `你把 ${getRelationshipDisplayName(currentCharacter)} 从黑名单里放了出来。`,
               eventKind: 'user_unblocked_character',
             }),
             ...nextFriendRequests,
           ];
+          nextFriendRequests = markRelationshipRoundAbandoned(
+            nextFriendRequests,
+            relationshipRound.roundId,
+            timestamp,
+          );
         }
 
         const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
@@ -804,39 +859,31 @@ export function runRelationshipBlockToggleFlow(params: {
         };
       }
 
-      const blockFallback = decideCharacterBlockReaction(currentCharacter, currentHistory);
       const nextAttemptNo = getNextCharacterRequestAttemptNo(
         prev.friendRequests || [],
         characterId,
         'character',
         relationshipRound.roundId,
       );
-      const requestFallback = decideCharacterRequestAfterBeingBlocked(currentCharacter, currentHistory, nextAttemptNo);
       const canRetry = canCreateCharacterRequestAttempt(
         prev.friendRequests || [],
         characterId,
         'character',
         relationshipRound.roundId,
       );
-      const shouldSendRequest = canRetry && (
-        generated?.decision === 'send_request'
-          ? true
-          : generated?.decision === 'counter_block' || generated?.decision === 'no_counter_block'
-            ? false
-            : !!requestFallback.sendRequest
-      );
+      const reactionText = generated?.reactionText?.trim() || '';
+      const followupRequestMessage = generated?.requestMessage?.trim() || undefined;
+      const shouldSendRequest = canRetry && !!followupRequestMessage;
       const blockedFollowupReleaseAt = shouldSendRequest
         ? timestamp + resolveCharacterBlockedFollowupDelayMs(currentCharacter, currentHistory, nextAttemptNo)
         : null;
-      const reactionText = generated?.reactionText?.trim()
-        || (shouldSendRequest ? requestFallback.reactionText : blockFallback.reactionText);
       const shouldCounterBlock = shouldSendRequest
-        ? false
+        ? generated?.decision === 'counter_block'
         : generated?.decision === 'counter_block'
           ? true
           : generated?.decision === 'no_counter_block'
             ? false
-            : blockFallback.counterBlock;
+            : false;
       nextCharacters = prev.characters.map((character) => (
         character.id === characterId
           ? {
@@ -861,8 +908,11 @@ export function runRelationshipBlockToggleFlow(params: {
             relationshipRoundNo: relationshipRound.roundNo,
             timestamp,
             reactionText,
-            resolutionMessage: `你把 ${getRelationshipDisplayName(currentCharacter)} 拉黑了。`,
-            eventKind: 'user_blocked_character',
+            resolutionMessage: shouldCounterBlock
+              ? `${getRelationshipDisplayName(currentCharacter)} 也把你拉黑了。`
+              : `你把 ${getRelationshipDisplayName(currentCharacter)} 拉黑了。`,
+            eventKind: shouldCounterBlock ? 'character_counter_blocked' : 'user_blocked_character',
+            ...(shouldCounterBlock ? { isUnread: true } : {}),
           }),
           {
             id: requestId,
@@ -871,8 +921,6 @@ export function runRelationshipBlockToggleFlow(params: {
             fromUserAvatar: currentCharacter.avatar,
             status: 'pending' as const,
             timestamp: blockedFollowupReleaseAt || timestamp,
-            message: generated?.requestMessage || requestFallback.requestMessage || '我还是想把这次关系认真问清楚。',
-            responseText: reactionText,
             direction: 'incoming' as const,
             initiator: 'character' as const,
             requestKind: 'reconnect' as const,
@@ -887,6 +935,8 @@ export function runRelationshipBlockToggleFlow(params: {
             unreadAt: blockedFollowupReleaseAt || timestamp,
             sourceScene: 'relationship' as const,
             lastUpdatedAt: blockedFollowupReleaseAt || timestamp,
+            ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
+            ...(reactionText ? { responseText: reactionText } : {}),
           },
           ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
         ];
@@ -899,14 +949,20 @@ export function runRelationshipBlockToggleFlow(params: {
             relationshipRoundId: relationshipRound.roundId,
             relationshipRoundNo: relationshipRound.roundNo,
             timestamp,
-            reactionText,
+            reactionText: reactionText || '',
             resolutionMessage: shouldCounterBlock
               ? `${getRelationshipDisplayName(currentCharacter)} 也把你拉黑了。`
               : `你把 ${getRelationshipDisplayName(currentCharacter)} 拉黑了。`,
             eventKind: shouldCounterBlock ? 'character_counter_blocked' : 'user_blocked_character',
+            ...(shouldCounterBlock ? { isUnread: true } : {}),
           }),
           ...nextFriendRequests,
         ];
+        nextFriendRequests = markRelationshipRoundAbandoned(
+          nextFriendRequests,
+          relationshipRound.roundId,
+          timestamp,
+        );
       }
 
       const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [

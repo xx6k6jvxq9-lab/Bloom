@@ -365,6 +365,27 @@ export function markRelationshipRoundResolved(
   ));
 }
 
+export function markRelationshipRoundAbandoned(
+  requests: FriendRequest[] | null | undefined,
+  roundId: string,
+  abandonedAt = Date.now(),
+) {
+  const requestList = Array.isArray(requests) ? requests : [];
+
+  return requestList.map((request) => (
+    getFriendRequestRelationshipRoundId(request) === roundId
+      && request.relationshipRoundStatus !== 'resolved'
+      && request.status !== 'accepted'
+      ? {
+          ...request,
+          relationshipRoundStatus: 'abandoned' as const,
+          relationshipRoundResolvedAt: undefined,
+          lastUpdatedAt: Math.max(request.lastUpdatedAt || 0, abandonedAt),
+        }
+      : request
+  ));
+}
+
 export function getNextCharacterRequestAttemptNo(
   requests: FriendRequest[] | null | undefined,
   characterId: string,

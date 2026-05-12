@@ -39,6 +39,10 @@ function getRelationshipEventScopeLabel(roundNo: number) {
 }
 
 function getRelationshipEventUnreadLabel(request: FriendRequest) {
+  if (request.eventKind === 'character_counter_blocked') {
+    return '新反拉黑';
+  }
+
   if (request.eventKind === 'character_blocked_user_from_chat') {
     return '新拉黑';
   }
@@ -50,21 +54,32 @@ function getRelationshipEventUnreadLabel(request: FriendRequest) {
   return '新动态';
 }
 
-function getMessagePreviewText(text: string | null | undefined) {
+function getMessagePreviewContent(text: string | null | undefined) {
   const normalized = text?.trim() || '';
   if (!normalized) {
-    return '';
+    return {
+      mainText: '',
+      translationText: '',
+    };
   }
 
   const { mainText, translation } = getLegacyTranslationParts(normalized);
-  const preferred = translation.trim() || mainText || normalized;
-  return sanitizePipeMarkers(preferred, '\n');
+  return {
+    mainText: sanitizePipeMarkers(mainText || normalized, '\n'),
+    translationText: sanitizePipeMarkers(translation, '\n'),
+  };
 }
 
-function getRelationshipEventPreviewText(request: FriendRequest) {
-  return getMessagePreviewText(request.responseText)
-    || request.resolutionMessage
-    || '这轮关系刚有一条新的记录。';
+function getRelationshipEventPreviewContent(request: FriendRequest) {
+  const preview = getMessagePreviewContent(request.responseText);
+  if (preview.mainText || preview.translationText) {
+    return preview;
+  }
+
+  return {
+    mainText: request.resolutionMessage || '这一轮关系刚有一条新的记录。',
+    translationText: '',
+  };
 }
 
 export function NewFriendsPage({
@@ -93,6 +108,11 @@ export function NewFriendsPage({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
   const [activePageKey, setActivePageKey] = useState<string | null>(null);
+  const [rejectComposerTarget, setRejectComposerTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [rejectDraft, setRejectDraft] = useState('');
 
   const latestRequests = useMemo(() => {
     const visibleRequests = [...requests]
@@ -126,6 +146,19 @@ export function NewFriendsPage({
     }
   }, [defaultThreadKey, onMarkPageRead]);
 
+  const closeRejectComposer = () => {
+    setRejectComposerTarget(null);
+    setRejectDraft('');
+  };
+
+  const openRejectComposer = (request: FriendRequest) => {
+    setRejectComposerTarget({
+      id: request.id,
+      name: request.fromUserName,
+    });
+    setRejectDraft('');
+  };
+
   if (activePageKey) {
     return (
       <RelationshipThreadPage
@@ -156,16 +189,16 @@ export function NewFriendsPage({
         <h1 className="text-[18px] font-bold text-zinc-900">新的朋友</h1>
       </div>
 
-      <div className="bg-white p-4 mb-2">
+      <div className="mb-2 bg-white p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
           <input
             type="text"
             placeholder="输入虚拟 ID 添加朋友"
             value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && searchId.trim()) {
+            onChange={(event) => setSearchId(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && searchId.trim()) {
                 onAddById(searchId.trim());
                 setSearchId('');
               }
@@ -198,7 +231,7 @@ export function NewFriendsPage({
               : roundNo > 0
                 ? `第 ${roundNo} 轮关系修复`
                 : isIncoming
-                  ? '对方申请添加你'
+                  ? '对方向你发来申请'
                   : '你发出的申请';
             const unreadLabel = isUnread
               ? (
@@ -209,9 +242,16 @@ export function NewFriendsPage({
                     : '新申请'
               )
               : '';
-            const previewText = isRelationshipEvent
-              ? getRelationshipEventPreviewText(request)
-              : getMessagePreviewText(request.message) || (isIncoming ? '请求添加你为好友' : '等待对方处理你的申请');
+            const previewContent = isRelationshipEvent
+              ? getRelationshipEventPreviewContent(request)
+              : getMessagePreviewContent(request.message);
+            const previewMainText = previewContent.mainText
+              || previewContent.translationText
+              || (isIncoming ? '请求添加你为好友' : '等待对方处理你的申请');
+            const previewTranslationText = previewContent.translationText
+              && previewContent.translationText !== previewMainText
+              ? previewContent.translationText
+              : '';
 
             return (
               <div
@@ -237,15 +277,18 @@ export function NewFriendsPage({
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-zinc-400">
-                    {scopeLabel}
+                  <div className="mt-0.5 text-[11px] text-zinc-400">{scopeLabel}</div>
+                  <div className="mt-1 break-words text-[12px] leading-5 text-zinc-500">
+                    {previewMainText}
                   </div>
-                  <div className="mt-1 break-words text-[12px] text-zinc-500">
-                    {previewText}
-                  </div>
-                  {!!request.resolutionMessage && request.status !== 'pending' && !isRelationshipEvent && (
+                  {previewTranslationText ? (
+                    <div className="mt-1 break-words text-[11px] leading-5 text-zinc-400">
+                      {previewTranslationText}
+                    </div>
+                  ) : null}
+                  {!!request.resolutionMessage && request.status !== 'pending' && !isRelationshipEvent ? (
                     <div className="mt-1 text-[11px] text-zinc-400">{request.resolutionMessage}</div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {isPending && isIncoming && !isRelationshipEvent ? (
@@ -253,7 +296,7 @@ export function NewFriendsPage({
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
-                          onReject(request.id);
+                          openRejectComposer(request);
                         }}
                         className="rounded-lg bg-zinc-100 px-3 py-1.5 text-[12px] font-medium text-zinc-600"
                       >
@@ -301,6 +344,67 @@ export function NewFriendsPage({
           })
         )}
       </div>
+
+      {rejectComposerTarget ? (
+        <>
+          <button
+            type="button"
+            aria-label="关闭拒绝回复面板"
+            onClick={closeRejectComposer}
+            className="absolute inset-0 z-[60] bg-black/20"
+          />
+          <div className="absolute inset-x-0 bottom-0 z-[70] px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+            <div className="rounded-[28px] border border-zinc-100 bg-white p-4 shadow-2xl">
+              <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-zinc-200" />
+              <p className="text-[16px] font-bold text-zinc-900">拒绝前回一句</p>
+              <p className="mt-1 text-[12px] text-zinc-400">
+                给 {rejectComposerTarget.name} 留一句也可以，角色下一轮怎么追会参考这句。
+              </p>
+              <textarea
+                value={rejectDraft}
+                onChange={(event) => setRejectDraft(event.target.value.slice(0, 120))}
+                placeholder="比如：先别再这样追着我了，等你冷静下来再说。"
+                className="mt-4 min-h-[118px] w-full resize-none rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] leading-6 text-zinc-900 outline-none transition-colors focus:border-zinc-400 focus:bg-white"
+              />
+              <div className="mt-2 text-right text-[11px] text-zinc-400">{rejectDraft.length}/120</div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={closeRejectComposer}
+                  className="flex-1 rounded-2xl border border-zinc-200 bg-white py-3 text-[14px] font-medium text-zinc-600"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onReject(rejectComposerTarget.id);
+                    closeRejectComposer();
+                  }}
+                  className="flex-1 rounded-2xl border border-zinc-200 bg-zinc-100 py-3 text-[14px] font-medium text-zinc-700"
+                >
+                  直接拒绝
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onReject(rejectComposerTarget.id, rejectDraft.trim());
+                    closeRejectComposer();
+                  }}
+                  disabled={!rejectDraft.trim()}
+                  className={`flex-1 rounded-2xl border py-3 text-[14px] font-semibold ${
+                    rejectDraft.trim()
+                      ? 'border-zinc-200 bg-zinc-100 text-zinc-700'
+                      : 'border-zinc-100 bg-zinc-50 text-zinc-300'
+                  }`}
+                >
+                  发送并拒绝
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

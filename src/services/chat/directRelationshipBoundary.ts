@@ -165,6 +165,14 @@ export function analyzeDirectRelationshipBoundary(params: {
   const severeHits = countRegexMatches(latestUserText, HARD_INSULT_REGEX);
   const threatHits = countRegexMatches(latestUserText, THREAT_REGEX);
   const dismissiveHits = countRegexMatches(latestUserText, DISMISSIVE_REGEX);
+  const softFrictionHits = [
+    '少管我',
+    '别老管我',
+    '别逼我',
+    '行不行',
+    '别再这么',
+    '别总是',
+  ].some((fragment) => latestUserText.includes(fragment)) ? 1 : 0;
   const controllingHits = countRegexMatches(latestUserText, CONTROLLING_REGEX);
   const humiliationHits = countRegexMatches(latestUserText, HUMILIATION_REGEX);
   const apologyHits = countRegexMatches(latestUserText, APOLOGY_REGEX);
@@ -216,30 +224,62 @@ export function analyzeDirectRelationshipBoundary(params: {
   const repeatedDisrespect = assistantBoundaryHits > 0 && recentNegativeHits >= 2;
   const hardBlockSignal =
     threatHits > 0
-    || (severeHits > 0 && (repeatedDisrespect || persona.hardness >= 3 || persona.closeness === 'low'));
+    || (severeHits > 0 && repeatedDisrespect)
+    || (severeHits >= 2 && (persona.hardness >= 3 || persona.closeness === 'low'));
+  const consultSuppressedByRepair =
+    apologyHits > 0
+    && persona.closeness === 'high'
+    && (persona.actionStyle === 'indulgent' || persona.softness > persona.hardness)
+    && severeHits === 0
+    && threatHits === 0
+    && humiliationHits === 0
+    && assistantBoundaryHits === 0;
+  const softConsultSignal =
+    !consultSuppressedByRepair && (
+      offenseScore >= Math.max(2, warnThreshold - 2)
+      || dismissiveHits > 0
+      || softFrictionHits > 0
+      || controllingHits > 0
+      || humiliationHits > 0
+      || assistantBoundaryHits > 0
+    );
+  const blockIsAllowed =
+    hardBlockSignal
+    || offenseScore >= blockThreshold
+    || repeatedDisrespect
+    || (humiliationHits > 0 && (persona.hardness >= 2 || persona.closeness === 'low'));
+  const warnIsSuggested =
+    !consultSuppressedByRepair && (
+      offenseScore >= warnThreshold
+      || (assistantBoundaryHits > 0 && recentNegativeHits >= 1)
+      || (dismissiveHits > 0 && assistantBoundaryHits > 0)
+      || (humiliationHits > 0 && (persona.hardness >= 1 || persona.closeness === 'low'))
+    );
 
   let suggestedDecision: DirectRelationshipBoundaryDecision = 'none';
-  if (hardBlockSignal || offenseScore >= blockThreshold) {
+  if (hardBlockSignal) {
     suggestedDecision = 'block';
-  } else if (offenseScore >= warnThreshold) {
+  } else if (warnIsSuggested) {
     suggestedDecision = 'warn';
   }
 
   const risk: DirectRelationshipBoundaryRisk =
-    suggestedDecision === 'block'
+    hardBlockSignal
       ? 'critical'
-      : suggestedDecision === 'warn'
+      : blockIsAllowed || warnIsSuggested
         ? 'high'
-        : offenseScore >= Math.max(3, warnThreshold - 1)
+        : softConsultSignal
           ? 'medium'
           : 'low';
 
   const allowedDecisions: DirectRelationshipBoundaryDecision[] =
-    suggestedDecision === 'block'
+    hardBlockSignal
       ? ['warn', 'block']
-      : suggestedDecision === 'warn'
-        ? ['none', 'warn']
-        : ['none'];
+      : blockIsAllowed
+        ? ['none', 'warn', 'block']
+        : warnIsSuggested || softConsultSignal
+          ? ['none', 'warn']
+          : ['none'];
 
   const cues = [
     severeHits > 0 ? '最新这句里有明显的人身攻击或粗暴驱赶。' : '',
@@ -266,39 +306,6 @@ export function analyzeDirectRelationshipBoundary(params: {
     closeness: persona.closeness,
     actionStyle: persona.actionStyle,
   };
-}
-
-export function buildFallbackDirectBoundaryReply(params: {
-  character: Character;
-  boundary: DirectRelationshipBoundaryAnalysis;
-  decision: Exclude<DirectRelationshipBoundaryDecision, 'none'>;
-}) {
-  const displayName = params.character.remarkName?.trim() || params.character.name;
-  if (params.decision === 'block') {
-    switch (params.boundary.actionStyle) {
-      case 'guarded':
-        return `${displayName}冷了下来，只回了你一句：“到这里吧。你先别再来找我。”`;
-      case 'indulgent':
-        return `${displayName}这次没有再顺着你，只低声回你：“我没法继续这样跟你说下去。这次先到这里，我会把消息口关掉。”`;
-      case 'tsundere':
-        return `${displayName}像是被你彻底惹炸了，硬邦邦地回你：“行，就到这里。你这句我不接了。”`;
-      case 'steady':
-      default:
-        return `${displayName}把语气收得很冷：“先到这里吧。你冷静下来之前，我不继续接这轮了。”`;
-    }
-  }
-
-  switch (params.boundary.actionStyle) {
-    case 'guarded':
-      return `${displayName}语气冷了下来：“说话注意点。我不是来接你这种情绪的。再这样，我就不接了。”`;
-    case 'indulgent':
-      return `${displayName}明显压着火：“我现在是真的生气了。你可以跟我吵，但别拿这种话来伤我。”`;
-    case 'tsundere':
-      return `${displayName}被你惹得有点炸毛：“你再拿这种语气跟我说一句试试。我不是每次都会让着你。”`;
-    case 'steady':
-    default:
-      return `${displayName}没有顺着你，只是把边界说得很清楚：“先把语气收一收。我不接受你这样跟我说话。”`;
-  }
 }
 
 function isChineseLanguageName(value: string | null | undefined) {
@@ -535,11 +542,13 @@ export async function generateDirectRelationshipBoundaryReply(params: {
     sections: [
       ...(sceneInput.sections || []),
       '## 单聊边界事件',
-      '这不是普通自由发挥的新聊天，而是在判断这句对话有没有真的把你惹翻。',
+      '这不是在机械判定你该不该拉黑，而是在看这个角色此刻到底会怎么反应。',
       '请只写角色会发给用户的真实聊天回复，像微信里会发出的短消息，不要分析流程，不要解释规则。',
-      '如果你只是生气、冷下来、吵回去或明确划边界，但还没到切断聊天，decision 写 warn。',
-      '只有当你按自己的人设真的会在这句之后直接拒收普通消息，decision 才写 block。',
-      '如果这句虽然让你不舒服，但你还没升级到关系状态变化，decision 写 none。',
+      '你可以更冷、更刺、更怪、更敷衍、更阴阳、更受伤，也可以装没事但把火压住；不要把自己写成统一模板。',
+      'decision 写 none 时，不代表你必须温和。你依然可以顶回去、变冷、阴阳、短促、别扭，只是关系状态还没升级。',
+      'decision 写 warn 时，表示角色真的把边界抬到台面上，或者明显往后撤了一步。',
+      '只有当这个角色按自己的人设，真的会在这句之后直接拒收普通消息，decision 才写 block。',
+      '同一句话，不同角色的反应可以完全不同。不要机械地按关键词统一处理。',
       `这轮允许的 decision 只有：${params.boundary.allowedDecisions.join(', ')}`,
       ...(shouldTranslate ? [buildBoundaryTranslationPrompt(params.character)] : []),
       `最后另起一行输出 ${DIRECT_BOUNDARY_PROTOCOL_TOKEN} {"decision":"..."}`,

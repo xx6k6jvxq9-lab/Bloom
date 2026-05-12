@@ -3,7 +3,10 @@ import test from 'node:test';
 import type { FriendRequest } from '../../types';
 import {
   countUnreadIncomingFriendRequestPages,
+  getLatestCharacterRelationshipRound,
   getLatestUnreadRelationshipEventForCharacter,
+  markRelationshipRoundAbandoned,
+  resolveRelationshipRoundForWrite,
 } from './friendRequestThreads';
 
 function createRequest(overrides: Partial<FriendRequest> = {}): FriendRequest {
@@ -95,4 +98,38 @@ test('getLatestUnreadRelationshipEventForCharacter returns the newest unread eve
 
   assert.equal(latest?.id, 'event-new');
   assert.equal(latest?.eventKind, 'character_blocked_user_from_chat');
+});
+
+test('markRelationshipRoundAbandoned closes the current round and the next write opens a new one', () => {
+  const roundId = 'relationship-round:char-a:1:100';
+  const requests: FriendRequest[] = [
+    createRequest({
+      id: 'request-1',
+      status: 'rejected',
+      timestamp: 100,
+      lastUpdatedAt: 100,
+      relationshipRoundId: roundId,
+      relationshipRoundNo: 1,
+      relationshipRoundStatus: 'active',
+    }),
+    createRequest({
+      id: 'event-1',
+      status: 'superseded',
+      timestamp: 120,
+      lastUpdatedAt: 120,
+      relationshipRoundId: roundId,
+      relationshipRoundNo: 1,
+      isRelationshipEvent: true,
+      eventKind: 'user_unblocked_character',
+    }),
+  ];
+
+  const abandoned = markRelationshipRoundAbandoned(requests, roundId, 300);
+  const latestRound = getLatestCharacterRelationshipRound(abandoned, 'char-a');
+  const nextRound = resolveRelationshipRoundForWrite(abandoned, 'char-a', 400);
+
+  assert.equal(latestRound?.status, 'abandoned');
+  assert.equal(abandoned.every((request) => request.relationshipRoundStatus === 'abandoned'), true);
+  assert.notEqual(nextRound.roundId, roundId);
+  assert.equal(nextRound.roundNo, 2);
 });

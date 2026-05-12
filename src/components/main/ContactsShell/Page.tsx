@@ -802,12 +802,12 @@ export function CharacterProfile({
 
   const requestButtonLabel = isFriend
     ? '拉黑'
-    : blockState === 'user'
+    : blockState === 'user' || blockState === 'mutual'
       ? '解除拉黑'
       : pendingOutgoingRequest
         ? '再次申请'
         : '申请添加';
-  const requestButtonIcon = isFriend || blockState === 'user'
+  const requestButtonIcon = isFriend || blockState === 'user' || blockState === 'mutual'
     ? <X size={18} />
     : <UserPlus size={18} />;
   const requestSheetPlaceholder = blockState === 'character' || blockState === 'mutual'
@@ -858,7 +858,7 @@ export function CharacterProfile({
   };
 
   const handlePrimaryRelationshipAction = async () => {
-    if (isFriend || blockState === 'user') {
+    if (isFriend || blockState === 'user' || blockState === 'mutual') {
       if (isFriend && !(await showInAppConfirm(`确定要拉黑“${displayName}”吗？拉黑后需要重新申请才能恢复聊天。`))) {
         return;
       }
@@ -867,7 +867,7 @@ export function CharacterProfile({
     }
 
     setRequestMessage(
-      blockState === 'character' || blockState === 'mutual'
+      blockState === 'character'
         ? '这次我想认真把你加回来。'
         : '想把你加回来，之后继续好好聊。',
     );
@@ -1020,6 +1020,7 @@ export function CharacterProfile({
             <div
               className={`rounded-2xl px-4 py-3 text-[12px] leading-5 ${
                 latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+                || latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
                   ? 'border border-rose-100 bg-rose-50/80 text-rose-900'
                   : 'border border-amber-100 bg-amber-50/80 text-amber-900'
               }`}
@@ -1027,11 +1028,14 @@ export function CharacterProfile({
               <div className="font-medium">
                 {latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
                   ? `${displayName} 刚在聊天里把你拉黑了。`
-                  : `${displayName} 刚在聊天里跟你划了边界。`}
+                  : latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
+                    ? `${displayName} 刚把你也拉黑了。`
+                    : `${displayName} 刚在聊天里跟你划了边界。`}
               </div>
               <div
                 className={`mt-1 ${
                   latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+                  || latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
                     ? 'text-rose-700'
                     : 'text-amber-700'
                 }`}
@@ -1050,7 +1054,7 @@ export function CharacterProfile({
             className={`w-full py-3.5 rounded-2xl font-bold text-[15px] transition-all border flex items-center justify-center gap-2 ${
               isFriend
                 ? 'bg-red-50 text-red-500 border-red-100 active:bg-red-100'
-                : blockState === 'user'
+                : blockState === 'user' || blockState === 'mutual'
                   ? 'bg-zinc-100 text-zinc-800 border-zinc-200 active:bg-zinc-200'
                   : 'bg-white text-zinc-700 border-zinc-200 active:bg-zinc-50'
             }`}

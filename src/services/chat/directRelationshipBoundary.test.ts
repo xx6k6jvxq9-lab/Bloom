@@ -88,6 +88,29 @@ test('direct relationship boundary prefers warn before block for a tsundere char
   assert.equal(result.risk, 'high');
 });
 
+test('direct relationship boundary opens a consult window before hard escalation for low-grade friction', () => {
+  const character = createCharacter({
+    openingRemark: '嘴硬，别扭，爱回刺，但不至于一点火气就拉黑。',
+  });
+  const result = analyzeDirectRelationshipBoundary({
+    character,
+    messages: [
+      createMessage('user', '你别烦我，别老这么管我。'),
+    ],
+    intentAnalysis: null,
+    directCharacterDecision: createDecision({
+      relationshipCloseness: 'medium',
+      closenessScore: 60,
+      actionStyle: 'tsundere',
+      actionBiasScore: 6,
+    }),
+  });
+
+  assert.equal(result.suggestedDecision, 'none');
+  assert.deepEqual(result.allowedDecisions, ['none', 'warn']);
+  assert.equal(result.risk, 'medium');
+});
+
 test('direct relationship boundary stays below relationship escalation for a warm character when the user softens', () => {
   const character = createCharacter({
     openingRemark: '温柔，心软，很在乎对方，舍不得轻易断掉。',

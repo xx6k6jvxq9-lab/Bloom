@@ -69,9 +69,9 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
       return {
         userMessage:
           '【关系事件】用户刚刚把你拉黑了。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。',
-        allowedDecisions: ['counter_block', 'no_counter_block', 'send_request'] as RelationshipEventDecision[],
+        allowedDecisions: ['counter_block', 'send_request'] as RelationshipEventDecision[],
         instruction:
-          '如果你觉得自己会把对方也拉黑，decision 写 counter_block；如果只是表达情绪但不反拉黑，decision 写 no_counter_block；如果你虽然生气但还是想主动递一条好友申请，decision 写 send_request，并填写 requestMessage。不要机械地因为被拉黑就退让；有些角色会更不甘心、更嘴硬、更不死心，甚至立刻继续来敲门，只要这符合你的人设就可以。',
+          '这个场景里你会继续追发一条好友申请。如果你决定顺手也把对方拉黑，decision 写 counter_block；如果你不反拉黑，只继续追发申请，decision 写 send_request。无论哪种都要填写 requestMessage。reactionText 只负责表现你当下的情绪、嘴硬、委屈、较劲或不甘心，不要停在纯表态上。',
       };
     case 'user_unblocked_character':
       return {
@@ -101,7 +101,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
         userMessage:
           '【关系事件】用户刚刚拒绝了你发出的好友申请。请你只用角色口吻做出当下反应。',
         allowedDecisions: ['none', 'send_request'] as RelationshipEventDecision[],
-        instruction: '如果你决定先停下，decision 写 none；如果你还想继续递下一条好友申请，decision 写 send_request，并填写这一次新的 requestMessage。不要默认被拒一次就后退；有些角色会更不死心、更较劲，甚至会立刻再递一次，只要这符合你的人设就可以。',
+        instruction: '请按角色自己的人设和当下情绪决定：如果你还想继续追这段关系，就写 send_request，并补上这一次新的 requestMessage；如果你决定先停下，就写 none。reactionText 只负责表现你被拒之后的语气、情绪和态度变化。',
       };
     default:
       return {
@@ -292,6 +292,19 @@ function parseRelationshipProtocol(text: string) {
   }
 }
 
+function stripRelationshipProtocolText(text: string) {
+  const tokenIndex = text.lastIndexOf(REL_EVENT_PROTOCOL_TOKEN);
+  if (tokenIndex < 0) {
+    return text.trim();
+  }
+
+  return text.slice(0, tokenIndex).trim();
+}
+
+function decisionRequiresRelationshipRequestMessage(decision: RelationshipEventDecision | null | undefined) {
+  return decision === 'send_request' || decision === 'counter_request' || decision === 'counter_block';
+}
+
 export async function generateRelationshipEventReply(
   params: GenerateRelationshipEventReplyParams,
 ): Promise<RelationshipEventReplyResult | null> {
@@ -366,27 +379,82 @@ export async function generateRelationshipEventReply(
     temperature: Math.min(activeConfig.temperature ?? 0.7, 0.45),
   });
 
-  if (!qualityResult.ok) {
-    return null;
+  const parsed = qualityResult.ok
+    ? parseRelationshipProtocol(qualityResult.cleanedText)
+    : {
+        reactionText: '',
+        decision: null as RelationshipEventDecision | null,
+        requestMessage: undefined as string | undefined,
+      };
+  const resolvedDecision = parsed.decision ?? (eventSpec.allowedDecisions.length === 1 ? eventSpec.allowedDecisions[0] : null);
+
+  const generateMissingRelationshipText = async (
+    mode: 'reaction' | 'request_message',
+    knownReactionText?: string,
+  ) => {
+    const supplementPrompt = buildChatPrompt({
+      ...sceneInput,
+      sections: [
+        ...(sceneInput.sections || []),
+        '## 关系事件补写',
+        '上一轮结构化输出缺了一段文本，你现在只补这一段缺失字段。',
+        resolvedDecision ? `当前 decision 固定为：${resolvedDecision}` : '',
+        mode === 'reaction'
+          ? '只输出角色这一刻真正会发出来的短消息。不要协议，不要解释，不要系统播报。'
+          : '只输出角色接下来真正会发出去的好友申请附言。不要协议，不要解释，不要称呼标签。',
+        ...(shouldTranslate ? [buildRelationshipTranslationPrompt(params.character)] : []),
+      ].filter(Boolean),
+    });
+
+    const supplemented = await generateTextFromMessagesWithConfig({
+      activeConfig,
+      messages: [
+        { role: 'system', content: supplementPrompt },
+        {
+          role: 'user',
+          content: [
+            resolvedEventUserMessage,
+            resolvedDecision ? `当前 decision：${resolvedDecision}` : '',
+            knownReactionText?.trim() ? `已有角色当下反应：${knownReactionText.trim()}` : '',
+            mode === 'reaction'
+              ? '请补写角色此刻真实会说出来的话。'
+              : '请补写那条好友申请真正会写下的附言。',
+          ].filter(Boolean).join('\n'),
+        },
+      ],
+      temperature: Math.min(activeConfig.temperature ?? 0.7, 0.45),
+      maxOutputTokens: mode === 'reaction' ? 220 : 180,
+    });
+
+    return stripRelationshipProtocolText(supplemented);
+  };
+
+  let reactionText = parsed.reactionText.trim();
+  if (!reactionText) {
+    reactionText = await generateMissingRelationshipText('reaction');
+  }
+  if (shouldTranslate && reactionText && !hasLegacyTranslation(reactionText)) {
+    reactionText = await backfillRelationshipTranslation({
+      activeConfig,
+      reactionText,
+    });
   }
 
-  const parsed = parseRelationshipProtocol(qualityResult.cleanedText);
-  const reactionText = shouldTranslate && parsed.reactionText.trim() && !hasLegacyTranslation(parsed.reactionText)
-    ? await backfillRelationshipTranslation({
-        activeConfig,
-        reactionText: parsed.reactionText,
-      })
-    : parsed.reactionText;
-  const requestMessage = shouldTranslate && parsed.requestMessage?.trim() && !hasLegacyTranslation(parsed.requestMessage)
-    ? await backfillRelationshipTranslation({
-        activeConfig,
-        reactionText: parsed.requestMessage,
-      })
-    : parsed.requestMessage;
+  let requestMessage = parsed.requestMessage?.trim() || '';
+  if (decisionRequiresRelationshipRequestMessage(resolvedDecision) && !requestMessage) {
+    requestMessage = await generateMissingRelationshipText('request_message', reactionText);
+  }
+  if (shouldTranslate && requestMessage && !hasLegacyTranslation(requestMessage)) {
+    requestMessage = await backfillRelationshipTranslation({
+      activeConfig,
+      reactionText: requestMessage,
+    });
+  }
+
   return {
     reactionText,
-    decision: parsed.decision,
-    requestMessage,
-    rawText: qualityResult.cleanedText,
+    decision: resolvedDecision,
+    ...(requestMessage ? { requestMessage } : {}),
+    rawText: qualityResult.ok ? qualityResult.cleanedText : '',
   };
 }

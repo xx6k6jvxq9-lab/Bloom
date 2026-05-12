@@ -726,8 +726,13 @@ export function ChatSettingsPanel({
     ? { label: hasUnreadIncomingRequest ? '新申请' : '待你处理', className: 'bg-amber-50 text-amber-600' }
     : latestUnreadRelationshipEvent
       ? {
-          label: latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat' ? '新拉黑' : '新提醒',
+          label: latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
+            ? '新反拉黑'
+            : latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+              ? '新拉黑'
+              : '新提醒',
           className: latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+            || latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
             ? 'bg-rose-50 text-rose-500'
             : 'bg-amber-50 text-amber-600',
         }
@@ -751,7 +756,9 @@ export function ChatSettingsPanel({
     : latestUnreadRelationshipEvent
       ? latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
         ? `${character.remarkName?.trim() || character.name} 刚在聊天里把你拉黑了，关系页里有一条新记录。`
-        : `${character.remarkName?.trim() || character.name} 刚在聊天里跟你划了边界，关系页里有一条新记录。`
+        : latestUnreadRelationshipEvent.eventKind === 'character_counter_blocked'
+          ? `${character.remarkName?.trim() || character.name} 刚把你也拉黑了，但关系页里还有后续动作。`
+          : `${character.remarkName?.trim() || character.name} 刚在聊天里跟你划了边界，关系页里有一条新记录。`
     : relationshipBlockState === 'character' || relationshipBlockState === 'mutual'
       ? '对方当前拒收你的普通消息，想修复关系更适合走好友申请。'
       : relationshipBlockState === 'user'
@@ -3746,11 +3753,15 @@ export function ChatSettingsPanel({
                   />
                   <button
                     type="button"
-                    onClick={handleImportStickerLinks}
-                    disabled={!stickerLinkImportDraft.trim()}
+                    onClick={() => void handleImportStickerLinks()}
+                    disabled={!stickerLinkImportDraft.trim() || isImportingStickerLinks}
                     className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                   >
-                    {stickerLinkImportTarget === 'shared' ? '导入到共享表情包' : '导入到当前角色表情包'}
+                    {isImportingStickerLinks
+                      ? '正在缓存链接...'
+                      : stickerLinkImportTarget === 'shared'
+                        ? '导入到共享表情包'
+                        : '导入到当前角色表情包'}
                   </button>
                 </div>
               )}
@@ -3796,9 +3807,12 @@ export function ChatSettingsPanel({
                           const files = Array.from(input.files || []);
 
                           try {
-                            const newStickers = await importStickerFiles(files, setUploadedFile);
-                            if (newStickers.length > 0) {
-                              appendSharedStickers(newStickers);
+                            const importResult = await importStickerFiles(files, setUploadedFile, cacheRemoteAsset);
+                            if (importResult.stickers.length > 0) {
+                              appendSharedStickers(importResult.stickers);
+                            }
+                            if (importResult.fallbackCount > 0) {
+                              await showInAppAlert(`有 ${importResult.fallbackCount} 个远程表情没能缓存到本地，暂时仍然是外链，后续可能失效。`);
                             }
                           } catch (error) {
                             console.error('[chat-settings] Failed to import shared stickers.', error);
@@ -3890,9 +3904,12 @@ export function ChatSettingsPanel({
                         const files = Array.from(input.files || []);
 
                         try {
-                          const newStickers = await importStickerFiles(files, setUploadedFile);
-                          if (newStickers.length > 0) {
-                            appendCharacterStickers(newStickers);
+                          const importResult = await importStickerFiles(files, setUploadedFile, cacheRemoteAsset);
+                          if (importResult.stickers.length > 0) {
+                            appendCharacterStickers(importResult.stickers);
+                          }
+                          if (importResult.fallbackCount > 0) {
+                            await showInAppAlert(`有 ${importResult.fallbackCount} 个远程表情没能缓存到本地，暂时仍然是外链，后续可能失效。`);
                           }
                         } catch (error) {
                           console.error('[chat-settings] Failed to import character stickers.', error);

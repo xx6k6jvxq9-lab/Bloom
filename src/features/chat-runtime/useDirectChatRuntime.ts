@@ -28,6 +28,7 @@ import { buildReplyLanguageRules } from '../../services/ai/prompts/base/language
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { findNearestChatMemorySnapshot } from '../../services/memory/chatMemoryTimeline';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
+import { buildResolvedOpenLoopRegistry } from '../../services/memory/buildResolvedOpenLoopRegistry';
 import { buildCharacterTemporalState } from '../../services/relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../services/relationship-time/buildTemporalContextPrompt';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
@@ -91,7 +92,6 @@ import {
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import {
   analyzeDirectRelationshipBoundary,
-  buildFallbackDirectBoundaryReply,
   generateDirectRelationshipBoundaryReply,
 } from '../../services/chat/directRelationshipBoundary';
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
@@ -103,7 +103,7 @@ import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../ser
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { getMessageMainText } from '../../utils';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
-import { saveUploadedDataUrl } from '../persistence/persistentAssetService';
+import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistentAssetService';
 import {
   createRelationshipEventThreadEntry,
 } from '../contacts/relationshipFlow';
@@ -1078,7 +1078,7 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
   }));
 };
 
-const splitStreamingModelResponseIntoMessages = (
+export function splitStreamingModelResponseIntoMessages(
   text: string,
   baseTimestamp: number,
   options: {
@@ -1092,7 +1092,7 @@ const splitStreamingModelResponseIntoMessages = (
     userLabel?: string;
     modelLabel?: string;
   } = {}
-): ChatMessage[] => {
+): ChatMessage[] {
   const trimmedText = text.trim();
   const transferProtocol = parseTransferProtocol(trimmedText);
 
@@ -1168,18 +1168,9 @@ const splitStreamingModelResponseIntoMessages = (
         options.maxDirectReplyBubbles,
       )
     : [];
-  const shouldCollapseForTranslation =
-    !!legacyTranslationParts.translation.trim()
-    && parts.length > 1
-    && translationParts.filter(Boolean).length <= 1
-    && parts.every((part) => parseDirectActionCue(part).kind === 'normal');
-  const effectiveParts = shouldCollapseForTranslation ? [mainText] : parts;
-  const effectiveTranslationParts = shouldCollapseForTranslation
-    ? [sanitizePipeMarkers(legacyTranslationParts.translation, '\n')]
-    : translationParts;
   const stagedStickerRefs: string[] = [];
   const stagedStickerLabels: string[] = [];
-  const mappedMessages = effectiveParts.map((part, index) => {
+  const mappedMessages = parts.map((part, index) => {
     const cue = parseDirectActionCue(part);
     const stickerContext = {
       ...(options.stickerContext || {}),
@@ -1217,7 +1208,7 @@ const splitStreamingModelResponseIntoMessages = (
       contentType: 'text' as const,
       ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
       ...(replyTo ? { replyTo } : {}),
-      ...(effectiveTranslationParts[index] ? { translation: effectiveTranslationParts[index] } : {}),
+      ...(translationParts[index] ? { translation: translationParts[index] } : {}),
       timestamp: baseTimestamp + index,
     };
   });
@@ -1262,7 +1253,7 @@ const splitStreamingModelResponseIntoMessages = (
   }
 
   return visibleMessages;
-};
+}
 
 type ParsedGameCardState =
   | { status: 'ok'; data: Record<string, unknown> }
@@ -2381,7 +2372,7 @@ export function useDirectChatRuntime({
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
               buildOpenLoopRegistryPrompt({
-                existingEntries: character.openLoopRegistry,
+                existingEntries: buildResolvedOpenLoopRegistry(character),
                 shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
                 recentMessages: contextLayers.memoryMessages,
                 topicAnchors: chatSceneInput.recentContext?.topicAnchors,
@@ -2883,7 +2874,7 @@ export function useDirectChatRuntime({
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
           'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
           buildOpenLoopRegistryPrompt({
-            existingEntries: character.openLoopRegistry,
+            existingEntries: buildResolvedOpenLoopRegistry(character),
             shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
             recentMessages: contextLayers.memoryMessages,
             topicAnchors: chatSceneInput.recentContext?.topicAnchors,
@@ -3035,13 +3026,8 @@ export function useDirectChatRuntime({
         : boundaryAnalysis.suggestedDecision !== 'none' && boundaryAnalysis.allowedDecisions.length > 1
           ? boundaryAnalysis.suggestedDecision
           : 'none';
-      if (appliedBoundaryDecision === 'warn' || appliedBoundaryDecision === 'block') {
-        currentResponseText = boundaryReply?.reactionText?.trim()
-          || buildFallbackDirectBoundaryReply({
-            character,
-            boundary: boundaryAnalysis,
-            decision: appliedBoundaryDecision,
-          });
+      if (boundaryReply?.reactionText?.trim()) {
+        currentResponseText = boundaryReply.reactionText.trim();
       }
       const baseFinalHistory = replaceAssistantMessages(newHistory, currentResponseText);
       const boundaryTimestamp = Date.now();
@@ -3136,19 +3122,31 @@ export function useDirectChatRuntime({
 
   const persistImageValueIfNeeded = useCallback(async (imageValue: string) => {
     const trimmedImageValue = imageValue.trim();
-    if (!/^data:image\//i.test(trimmedImageValue)) {
+    if (!trimmedImageValue) {
       return trimmedImageValue;
     }
 
-    try {
-      return await saveUploadedDataUrl(
-        trimmedImageValue,
-        `direct-chat-image-${Date.now()}.png`,
-      );
-    } catch (error) {
-      console.error('Failed to persist direct chat image payload before send', error);
-      return trimmedImageValue;
+    if (/^data:image\//i.test(trimmedImageValue)) {
+      try {
+        return await saveUploadedDataUrl(
+          trimmedImageValue,
+          `direct-chat-image-${Date.now()}.png`,
+        );
+      } catch (error) {
+        console.error('Failed to persist direct chat image payload before send', error);
+        return trimmedImageValue;
+      }
     }
+
+    if (/^https?:\/\//i.test(trimmedImageValue)) {
+      try {
+        return await cacheRemoteAsset(trimmedImageValue, `direct-chat-image-${Date.now()}`);
+      } catch (error) {
+        console.error('Failed to cache direct chat remote image before send', error);
+      }
+    }
+
+    return trimmedImageValue;
   }, []);
 
   const sendImageMessage = useCallback((imageValue: string) => {
