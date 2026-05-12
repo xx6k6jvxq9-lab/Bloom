@@ -1,5 +1,6 @@
 import type { WorldBookEntry } from '../../types';
 import { getWorldBookPriorityWeight, normalizeWorldBookCategory, sortWorldBooksByPriority } from './worldBookMeta';
+import { buildWorldBookChunkKeywords, tokenizeWorldBookRecallText } from './worldBookDerived';
 
 export type WorldBookBudgetMode = 'direct' | 'group';
 
@@ -64,6 +65,30 @@ export type WorldBookPromptSelectionResult = {
     discarded: WorldBookSelectionDiagnostic[];
   };
 };
+
+export type WorldBookPromptDiagnostics = {
+  mode: WorldBookBudgetMode;
+  query?: string;
+  totalChars: number;
+  overviewChars: number;
+  overviewCount: number;
+  mustReadChars: number;
+  mustReadBookCount: number;
+  mustReadFactCount: number;
+  detailChars: number;
+  detailCount: number;
+  usedChars: number;
+  softCharBudget: number;
+  hardCharBudget: number;
+  maxSelections: number;
+  totalCandidates: number;
+  selectedCount: number;
+  selected: WorldBookSelectionDiagnostic[];
+  discarded: WorldBookSelectionDiagnostic[];
+};
+
+const WORLD_BOOK_OVERVIEW_MAX_CHARS = 96;
+const WORLD_BOOK_FACT_MAX_CHARS = 68;
 
 const BUDGET_BY_MODE: Record<WorldBookBudgetMode, WorldBookBudget> = {
   direct: {
@@ -144,7 +169,7 @@ function splitLargeBlock(block: string, maxChars: number): string[] {
 }
 
 export function buildWorldBookChunkCache(
-  entry: Pick<WorldBookEntry, 'id' | 'content'>,
+  entry: Pick<WorldBookEntry, 'id' | 'content'> & Partial<Pick<WorldBookEntry, 'title' | 'category' | 'keywords'>>,
   targetChunkChars: number = BUDGET_BY_MODE.direct.targetChunkChars,
 ): WorldBookChunkCacheEntry[] {
   const content = normalizeOptionalText(entry.content);
@@ -186,23 +211,13 @@ export function buildWorldBookChunkCache(
     id: buildChunkId(entry as WorldBookEntry, index),
     label: segments.length > 1 ? `片段 ${index + 1}` : '核心片段',
     content: segment,
-    keywords: [],
+    keywords: buildWorldBookChunkKeywords({
+      title: entry.title,
+      category: entry.category,
+      content: segment,
+      baseKeywords: entry.keywords,
+    }),
   }));
-}
-
-function tokenizeForRecall(text: string): string[] {
-  const normalized = text.toLowerCase();
-  const latinTokens = normalized.match(/[a-z0-9_/-]{2,}/g) || [];
-  const cjkRuns = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
-  const cjkBigrams = cjkRuns.flatMap((run) => {
-    const tokens: string[] = [];
-    for (let index = 0; index < run.length - 1; index += 1) {
-      tokens.push(run.slice(index, index + 2));
-    }
-    return tokens;
-  });
-
-  return Array.from(new Set([...latinTokens, ...cjkRuns, ...cjkBigrams].filter((token) => token.trim().length >= 2)));
 }
 
 function scoreChunkMatch(chunk: WorldBookChunk, options: WorldBookRetrievalOptions): number {
@@ -216,8 +231,8 @@ function scoreChunkMatch(chunk: WorldBookChunk, options: WorldBookRetrievalOptio
     .join('\n')
     .toLowerCase();
 
-  const queryTokens = tokenizeForRecall(options.query || '');
-  const recentTokens = tokenizeForRecall((options.recentText || []).join('\n'));
+  const queryTokens = tokenizeWorldBookRecallText(options.query || '');
+  const recentTokens = tokenizeWorldBookRecallText((options.recentText || []).join('\n'));
   const priorityScore = getWorldBookPriorityWeight(chunk.worldBook.priorityLevel) * 10;
   const earlyChunkBonus = Math.max(0, 18 - chunk.chunkIndex * 4);
   const exactTitleHit = options.query && chunk.worldBook.title.toLowerCase().includes(options.query.toLowerCase()) ? 30 : 0;
@@ -241,6 +256,93 @@ function getEntryChunkCache(entry: WorldBookEntry, targetChunkChars: number): Wo
   }
 
   return buildWorldBookChunkCache(entry, targetChunkChars);
+}
+
+function formatWorldBookOverviewLine(entry: WorldBookEntry): string {
+  const title = normalizeOptionalText(entry.title) || 'Untitled World Book';
+  const category = normalizeWorldBookCategory(entry.category);
+  const summarySource = normalizeOptionalText(entry.summary)
+    || normalizeOptionalText((entry.keywords || []).slice(0, 4).join(', '))
+    || normalizeOptionalText(entry.content);
+  const summary = summarySource ? limitText(summarySource, WORLD_BOOK_OVERVIEW_MAX_CHARS) : '';
+
+  return summary
+    ? `- [${category}] ${title}: ${summary}`
+    : `- [${category}] ${title}`;
+}
+
+function buildWorldBookOverviewSection(worldBooks: WorldBookEntry[]): string {
+  if (worldBooks.length === 0) {
+    return '';
+  }
+
+  return [
+    '[World Book Overview / Full Map]',
+    ...sortWorldBooksByPriority(worldBooks).map(formatWorldBookOverviewLine),
+  ].join('\n');
+}
+
+function formatWorldBookMustReadLine(entry: WorldBookEntry): string {
+  const title = normalizeOptionalText(entry.title) || 'Untitled World Book';
+  const facts = (entry.mustReadFacts || [])
+    .map((fact) => limitText(fact, WORLD_BOOK_FACT_MAX_CHARS))
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (facts.length === 0) {
+    return '';
+  }
+
+  return `- ${title}: ${facts.join(' | ')}`;
+}
+
+function buildWorldBookMustReadSection(worldBooks: WorldBookEntry[]): string {
+  const lines = sortWorldBooksByPriority(worldBooks)
+    .map(formatWorldBookMustReadLine)
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return [
+    '[World Book Must Read / Stable Rules]',
+    ...lines,
+  ].join('\n');
+}
+
+function buildWorldBookDetailEntriesSection(
+  entries: WorldBookEntry[],
+): string {
+  const sections = entries
+    .map((entry) => {
+      const title = normalizeOptionalText(entry.title);
+      const content = normalizeOptionalText(entry.content);
+
+      if (!title || !content) {
+        return '';
+      }
+
+      return `[${normalizeWorldBookCategory(entry.category)}] ${title}:\n${content}`;
+    })
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return '';
+  }
+
+  return [
+    '[World Book Details / Current Relevant Excerpts]',
+    ...sections,
+  ].join('\n\n');
+}
+
+function buildWorldBookDetailSection(
+  worldBooks: WorldBookEntry[] | undefined,
+  mode: WorldBookBudgetMode,
+  options: WorldBookRetrievalOptions = {},
+): string {
+  return buildWorldBookDetailEntriesSection(selectWorldBooksForPrompt(worldBooks, mode, options).entries);
 }
 
 function buildChunkCandidates(
@@ -438,18 +540,51 @@ export function buildBudgetedWorldBookPrompt(
   mode: WorldBookBudgetMode,
   options: WorldBookRetrievalOptions = {},
 ): string | undefined {
-  const sections = selectWorldBooksForPrompt(worldBooks, mode, options).entries
-    .map((entry) => {
-      const title = normalizeOptionalText(entry.title);
-      const content = normalizeOptionalText(entry.content);
-
-      if (!title || !content) {
-        return '';
-      }
-
-      return `[${normalizeWorldBookCategory(entry.category)}] ${title}:\n${content}`;
-    })
-    .filter(Boolean);
+  const orderedWorldBooks = sortWorldBooksByPriority(
+    (worldBooks || []).filter((entry) => !!normalizeOptionalText(entry.content)),
+  );
+  const sections = [
+    buildWorldBookOverviewSection(orderedWorldBooks),
+    buildWorldBookMustReadSection(orderedWorldBooks),
+    buildWorldBookDetailSection(orderedWorldBooks, mode, options),
+  ].filter(Boolean);
 
   return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
+export function buildWorldBookPromptDiagnostics(
+  worldBooks: WorldBookEntry[] | undefined,
+  mode: WorldBookBudgetMode,
+  options: WorldBookRetrievalOptions = {},
+): WorldBookPromptDiagnostics {
+  const orderedWorldBooks = sortWorldBooksByPriority(
+    (worldBooks || []).filter((entry) => !!normalizeOptionalText(entry.content)),
+  );
+  const selectionResult = selectWorldBooksForPrompt(orderedWorldBooks, mode, options);
+  const overviewSection = buildWorldBookOverviewSection(orderedWorldBooks);
+  const mustReadSection = buildWorldBookMustReadSection(orderedWorldBooks);
+  const detailSection = buildWorldBookDetailEntriesSection(selectionResult.entries);
+  const sections = [overviewSection, mustReadSection, detailSection].filter(Boolean);
+  const mustReadBooks = orderedWorldBooks.filter((entry) => (entry.mustReadFacts || []).length > 0);
+
+  return {
+    mode,
+    query: options.query,
+    totalChars: sections.join('\n\n').length,
+    overviewChars: overviewSection.length,
+    overviewCount: orderedWorldBooks.length,
+    mustReadChars: mustReadSection.length,
+    mustReadBookCount: mustReadBooks.length,
+    mustReadFactCount: mustReadBooks.reduce((count, entry) => count + ((entry.mustReadFacts || []).slice(0, 2).length), 0),
+    detailChars: detailSection.length,
+    detailCount: selectionResult.diagnostics.selectedCount,
+    usedChars: selectionResult.diagnostics.usedChars,
+    softCharBudget: selectionResult.diagnostics.softCharBudget,
+    hardCharBudget: selectionResult.diagnostics.hardCharBudget,
+    maxSelections: selectionResult.diagnostics.maxSelections,
+    totalCandidates: selectionResult.diagnostics.totalCandidates,
+    selectedCount: selectionResult.diagnostics.selectedCount,
+    selected: selectionResult.diagnostics.selected,
+    discarded: selectionResult.diagnostics.discarded,
+  };
 }

@@ -24,7 +24,11 @@ import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '..
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
-import { selectWorldBooksForPrompt, type WorldBookSelectionDiagnostic } from '../../services/world-book/worldBookBudget';
+import {
+  buildWorldBookPromptDiagnostics,
+  type WorldBookPromptDiagnostics,
+  type WorldBookSelectionDiagnostic,
+} from '../../services/world-book/worldBookBudget';
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -42,6 +46,11 @@ import {
   getLatestCharacterRequest,
   getPendingCharacterRequest,
 } from '../../features/contacts/contactRelationship';
+import {
+  getFriendRequestRelationshipRoundNo,
+  getLatestUnreadRelationshipEventForCharacter,
+  isFriendRequestUnread,
+} from '../../features/contacts/friendRequestThreads';
 import { cloneTtsVoice } from '../../services/ai/apiCenter/cloneTtsVoice';
 import { copyTextContent } from '../../services/chat/messageActions';
 import { fetchMinimaxVoices, type MinimaxVoiceRecord } from '../../services/ai/apiCenter/fetchMinimaxVoices';
@@ -610,24 +619,25 @@ export function ChatSettingsPanel({
     autoTranslate: 0,
     autoSummary: 0,
   });
-  const [worldBookDebug, setWorldBookDebug] = useState<{
-    selected: WorldBookSelectionDiagnostic[];
-    discarded: WorldBookSelectionDiagnostic[];
-    query?: string;
-    usedChars: number;
-    softCharBudget: number;
-    hardCharBudget: number;
-    maxSelections: number;
-    totalCandidates: number;
-  }>({
+  const [worldBookDebug, setWorldBookDebug] = useState<WorldBookPromptDiagnostics>({
+    mode: 'direct',
     selected: [],
     discarded: [],
     query: undefined,
+    totalChars: 0,
+    overviewChars: 0,
+    overviewCount: 0,
+    mustReadChars: 0,
+    mustReadBookCount: 0,
+    mustReadFactCount: 0,
+    detailChars: 0,
+    detailCount: 0,
     usedChars: 0,
     softCharBudget: 0,
     hardCharBudget: 0,
     maxSelections: 0,
     totalCandidates: 0,
+    selectedCount: 0,
   });
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
@@ -709,15 +719,25 @@ export function ChatSettingsPanel({
   const relationshipStatusText = getCharacterRelationshipStatusText(character, friendRequests);
   const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
   const latestRelationshipRequest = getLatestCharacterRequest(friendRequests, character.id);
-  const relationshipStatusBadge = relationshipBlockState === 'mutual'
-    ? { label: '互相拉黑', className: 'bg-red-50 text-red-500' }
-    : relationshipBlockState === 'user'
-      ? { label: '你已拉黑', className: 'bg-zinc-100 text-zinc-600' }
-      : relationshipBlockState === 'character'
-        ? { label: '对方拒收中', className: 'bg-rose-50 text-rose-500' }
-        : pendingIncomingRequest
-          ? { label: '待你处理', className: 'bg-amber-50 text-amber-600' }
-          : { label: '普通聊天可用', className: 'bg-emerald-50 text-emerald-600' };
+  const latestUnreadRelationshipEvent = getLatestUnreadRelationshipEventForCharacter(friendRequests, character.id);
+  const hasUnreadIncomingRequest = !!(pendingIncomingRequest && isFriendRequestUnread(pendingIncomingRequest));
+  const pendingIncomingRoundNo = pendingIncomingRequest ? getFriendRequestRelationshipRoundNo(pendingIncomingRequest) : 0;
+  const relationshipStatusBadge = pendingIncomingRequest
+    ? { label: hasUnreadIncomingRequest ? '新申请' : '待你处理', className: 'bg-amber-50 text-amber-600' }
+    : latestUnreadRelationshipEvent
+      ? {
+          label: latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat' ? '新拉黑' : '新提醒',
+          className: latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+            ? 'bg-rose-50 text-rose-500'
+            : 'bg-amber-50 text-amber-600',
+        }
+      : relationshipBlockState === 'mutual'
+        ? { label: '互相拉黑', className: 'bg-red-50 text-red-500' }
+        : relationshipBlockState === 'user'
+          ? { label: '你已拉黑', className: 'bg-zinc-100 text-zinc-600' }
+          : relationshipBlockState === 'character'
+            ? { label: '对方拒收中', className: 'bg-rose-50 text-rose-500' }
+            : { label: '普通聊天可用', className: 'bg-emerald-50 text-emerald-600' };
   const relationshipActionLabel = relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
     ? '解除拉黑'
     : '拉黑对方';
@@ -725,13 +745,63 @@ export function ChatSettingsPanel({
     ? '恢复后仍建议走关系页处理修复'
     : '拉黑后普通聊天会暂停';
   const relationshipHint = pendingIncomingRequest
-    ? `新的朋友里有一条来自 ${character.remarkName?.trim() || character.name} 的申请，等你去处理。`
+    ? hasUnreadIncomingRequest
+      ? `新的朋友里刚到了一条来自 ${character.remarkName?.trim() || character.name} 的${pendingIncomingRoundNo > 1 ? `第 ${pendingIncomingRoundNo} 轮` : ''}申请，等你去处理。`
+      : `新的朋友里有一条来自 ${character.remarkName?.trim() || character.name} 的申请，等你去处理。`
+    : latestUnreadRelationshipEvent
+      ? latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+        ? `${character.remarkName?.trim() || character.name} 刚在聊天里把你拉黑了，关系页里有一条新记录。`
+        : `${character.remarkName?.trim() || character.name} 刚在聊天里跟你划了边界，关系页里有一条新记录。`
     : relationshipBlockState === 'character' || relationshipBlockState === 'mutual'
       ? '对方当前拒收你的普通消息，想修复关系更适合走好友申请。'
       : relationshipBlockState === 'user'
         ? '你已经把对方拉黑了，普通聊天会暂停。'
         : latestRelationshipRequest?.resolutionMessage?.trim() || '普通聊天负责聊天，申请和修关系请走关系页。';
   const profileSummary = character.signature?.trim() || character.openingRemark?.trim() || '这个角色还没有填写个性签名。';
+  const relationshipQuickActionCard = (
+    <div className="order-9 w-full rounded-2xl border border-white/40 bg-white/70 px-4 py-4 shadow-sm backdrop-blur-md">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold text-zinc-800">关系快捷操作</h2>
+          <p className="mt-1 text-[11px] text-zinc-500">{relationshipStatusText}</p>
+        </div>
+        {onOpenRelationshipProfile && (
+          <button
+            type="button"
+            onClick={onOpenRelationshipProfile}
+            className="shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
+          >
+            关系页
+          </button>
+        )}
+      </div>
+      <div className="mt-3 text-[12px] leading-5 text-zinc-400">
+        {relationshipHint}
+      </div>
+      {onToggleRelationshipBlock && (
+        <button
+          type="button"
+          onClick={async () => {
+            const isBlocking = relationshipBlockState !== 'user' && relationshipBlockState !== 'mutual';
+            if (isBlocking) {
+              const confirmed = await showInAppConfirm(`确定要拉黑“${character.remarkName?.trim() || character.name}”吗？拉黑后普通聊天会暂停。`);
+              if (!confirmed) {
+                return;
+              }
+            }
+            onToggleRelationshipBlock();
+          }}
+          className={`mt-4 w-full rounded-2xl border px-4 py-3 text-[14px] font-semibold transition ${
+            relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
+              ? 'border-zinc-200 bg-zinc-100 text-zinc-800 active:bg-zinc-200'
+              : 'border-red-100 bg-red-50 text-red-500 active:bg-red-100'
+          }`}
+        >
+          {relationshipActionLabel}
+        </button>
+      )}
+    </div>
+  );
   const resolvedCorePersona = buildCharacterContext({ character }).corePersona ?? '';
   const extendedLore = character.extendedLore ?? '';
   const expressionStyle = character.expressionStyle ?? '';
@@ -1487,7 +1557,7 @@ export function ChatSettingsPanel({
       const latestUserText = [...history]
         .reverse()
         .find((msg) => msg.role === 'user' && getMessageMainText(msg).trim())?.text;
-      const worldBookSelection = selectWorldBooksForPrompt(activeWorldBooks, 'direct', {
+      const worldBookSelection = buildWorldBookPromptDiagnostics(activeWorldBooks, 'direct', {
         query: latestUserText,
         recentText: historyWindow.map((msg) => getMessageMainText(msg)),
       });
@@ -1545,16 +1615,7 @@ export function ChatSettingsPanel({
         autoTranslate: autoTranslatePrompt ? estimateTextTokens(autoTranslatePrompt) : 0,
         autoSummary: autoSummaryPrompt ? estimateTextTokens(autoSummaryPrompt) : 0,
       });
-      setWorldBookDebug({
-        selected: worldBookSelection.diagnostics.selected,
-        discarded: worldBookSelection.diagnostics.discarded,
-        query: worldBookSelection.diagnostics.query,
-        usedChars: worldBookSelection.diagnostics.usedChars,
-        softCharBudget: worldBookSelection.diagnostics.softCharBudget,
-        hardCharBudget: worldBookSelection.diagnostics.hardCharBudget,
-        maxSelections: worldBookSelection.diagnostics.maxSelections,
-        totalCandidates: worldBookSelection.diagnostics.totalCandidates,
-      });
+      setWorldBookDebug(worldBookSelection);
   };
 
   useEffect(() => {
@@ -2041,53 +2102,11 @@ export function ChatSettingsPanel({
               </div>
               <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'resource' ? '' : '-rotate-90'}`} />
             </button>
-            <div className="order-5 w-full rounded-2xl border border-white/40 bg-white/70 px-4 py-4 shadow-sm backdrop-blur-md">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[15px] font-semibold text-zinc-800">关系快捷操作</h2>
-                  <p className="mt-1 text-[11px] text-zinc-500">{relationshipStatusText}</p>
-                </div>
-                {onOpenRelationshipProfile && (
-                  <button
-                    type="button"
-                    onClick={onOpenRelationshipProfile}
-                    className="shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[12px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
-                  >
-                    关系页
-                  </button>
-                )}
-              </div>
-              <div className="mt-3 text-[12px] leading-5 text-zinc-400">
-                {relationshipHint}
-              </div>
-              {onToggleRelationshipBlock && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const isBlocking = relationshipBlockState !== 'user' && relationshipBlockState !== 'mutual';
-                    if (isBlocking) {
-                      const confirmed = await showInAppConfirm(`确定要拉黑“${character.remarkName?.trim() || character.name}”吗？拉黑后普通聊天会暂停。`);
-                      if (!confirmed) {
-                        return;
-                      }
-                    }
-                    onToggleRelationshipBlock();
-                  }}
-                  className={`mt-4 w-full rounded-2xl border px-4 py-3 text-[14px] font-semibold transition ${
-                    relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
-                      ? 'border-zinc-200 bg-zinc-100 text-zinc-800 active:bg-zinc-200'
-                      : 'border-red-100 bg-red-50 text-red-500 active:bg-red-100'
-                  }`}
-                >
-                  {relationshipActionLabel}
-                </button>
-              )}
-            </div>
             <button
               onClick={async () => {
                 if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
               }}
-              className="order-9 w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
+              className="order-10 w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
             >
               清空聊天记录
             </button>
@@ -3118,24 +3137,55 @@ export function ChatSettingsPanel({
                 <div className="mt-3 rounded-xl border border-white/40 bg-white/40 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[12px] font-medium text-zinc-700">世界书命中调试</div>
+                      <div className="text-[12px] font-medium text-zinc-700">世界书动态读取参考</div>
                       <div className="mt-1 text-[10px] text-zinc-400">
                         {worldBookDebug.query?.trim() ? `当前检索锚点：${worldBookDebug.query.trim().slice(0, 48)}` : '当前没有明确 query，主要按优先级与最近聊天选段。'}
                       </div>
+                      <div className="mt-1 text-[10px] text-zinc-400">
+                        角色会先读世界书总览和必读规则，再按当前话题动态补读相关细节。
+                      </div>
+                      <div className="mt-1 text-[10px] text-zinc-400">
+                        正文细节为 0，不等于世界书没读，只表示这轮暂时不需要额外展开正文。
+                      </div>
                     </div>
-                    <span className="text-[10px] text-zinc-400">{worldBookDebug.selected.length} / {worldBookDebug.maxSelections || '-'} 条已注入</span>
+                    <span className="text-[10px] text-zinc-400">本轮额外展开细节 {worldBookDebug.detailCount} 条</span>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-zinc-500">
                     <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
-                      已用预算 {worldBookDebug.usedChars} / {worldBookDebug.hardCharBudget || '-'}
+                      本轮已读世界书 {worldBookDebug.overviewCount} 本
                     </div>
                     <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
-                      软预算 {worldBookDebug.softCharBudget || '-'} / 候选 {worldBookDebug.totalCandidates}
+                      已读必读规则 {worldBookDebug.mustReadFactCount} 条
+                    </div>
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      本轮额外展开正文 {worldBookDebug.detailCount} 条
+                    </div>
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      可补读正文候选 {worldBookDebug.totalCandidates} 条
+                    </div>
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      总览与规则字符 {worldBookDebug.overviewChars + worldBookDebug.mustReadChars}
+                    </div>
+                    <div className="rounded-lg border border-zinc-100 bg-white/60 px-2.5 py-2">
+                      本轮世界书总字符 {worldBookDebug.totalChars}
                     </div>
                   </div>
+                  <div className="mt-2 text-[10px] leading-5 text-zinc-400">
+                    内部调试：正文细节的动态检索窗口为 {worldBookDebug.usedChars} / {worldBookDebug.hardCharBudget || '-'}，软窗口 {worldBookDebug.softCharBudget || '-'}。这只是本轮细节展开参考，不代表角色只能读这么多世界书。
+                  </div>
                   <div className="mt-3 space-y-2">
+                    {worldBookDebug.overviewCount > 0 && worldBookDebug.detailCount === 0 && (
+                      <div className="text-[11px] text-zinc-500">
+                        这轮已经读到了 {worldBookDebug.overviewCount} 本世界书的总览/规则，当前对话暂时不需要额外展开正文。
+                      </div>
+                    )}
+                    {worldBookDebug.overviewCount === 0 && worldBookDebug.totalChars === 0 && (
+                      <div className="text-[11px] text-zinc-500">
+                        当前没有可读世界书，或这些世界书没有可用内容。
+                      </div>
+                    )}
                     {worldBookDebug.selected.length === 0 ? (
-                      <div className="text-[11px] text-zinc-400">当前没有命中的世界书片段。</div>
+                      <div className="text-[11px] text-zinc-400">当前没有需要额外展开的正文世界书细节。</div>
                     ) : (
                       worldBookDebug.selected.map((item) => (
                         <div key={`${item.worldBookId}-${item.label}`} className="rounded-lg border border-zinc-100 bg-white/70 px-3 py-2">
@@ -3152,12 +3202,12 @@ export function ChatSettingsPanel({
                   </div>
                   <div className="mt-4 border-t border-white/40 pt-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-[11px] font-medium text-zinc-700">未注入片段</div>
+                      <div className="text-[11px] font-medium text-zinc-700">当前未额外展开的正文细节</div>
                       <span className="text-[10px] text-zinc-400">{worldBookDebug.discarded.length} 条</span>
                     </div>
                     <div className="mt-2 space-y-2">
                       {worldBookDebug.discarded.length === 0 ? (
-                        <div className="text-[11px] text-zinc-400">当前没有被丢弃的世界书片段。</div>
+                        <div className="text-[11px] text-zinc-400">当前没有额外待展开的正文世界书细节。</div>
                       ) : (
                         worldBookDebug.discarded.slice(0, 8).map((item) => (
                           <div key={`discarded-${item.worldBookId}-${item.label}`} className="rounded-lg border border-zinc-100 bg-white/55 px-3 py-2">
@@ -3177,7 +3227,7 @@ export function ChatSettingsPanel({
                     </div>
                     {worldBookDebug.discarded.length > 8 && (
                       <div className="mt-2 text-[10px] text-zinc-400">
-                        仅显示前 8 条未注入片段，剩余 {worldBookDebug.discarded.length - 8} 条未展开。
+                        仅显示前 8 条当前未额外展开的正文细节，剩余 {worldBookDebug.discarded.length - 8} 条未展开。
                       </div>
                     )}
                   </div>
@@ -3439,6 +3489,7 @@ export function ChatSettingsPanel({
         </SettingsSection>
         </div>
         )}
+        {relationshipQuickActionCard}
         </div>
       </div>
       <AnimatePresence>

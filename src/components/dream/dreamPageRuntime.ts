@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
 import { getWorldBookPriorityWeight, normalizeWorldBookCategory } from '../../services/world-book/worldBookMeta';
+import { applyDerivedWorldBookMetadata } from '../../services/world-book/worldBookDerived';
+import { getWorldBookAutoMergeReasonLabel, mergeImportedWorldBooksIntoLibrary } from '../../services/world-book/worldBookMerge';
 import type {
   DreamCustomTag,
   DreamDecisionRecord,
@@ -35,12 +37,20 @@ export type DreamAftermathView = {
   previewMessages: [string, string];
 };
 
-export function buildDreamWorldBookImportDrafts(entries: WorldBookEntry[]): DreamWorldBookImportDraft[] {
+export function buildDreamWorldBookImportDrafts(
+  entries: WorldBookEntry[],
+  existingEntries: WorldBookEntry[] = [],
+): DreamWorldBookImportDraft[] {
+  const mergePreview = mergeImportedWorldBooksIntoLibrary(existingEntries, entries).stats.decisions;
+
   return entries.map((entry, index) => ({
     ...entry,
     draftId: `${entry.id || 'dream-import'}-${index}-${Math.random().toString(16).slice(2)}`,
     include: true,
     mergeGroup: '',
+    autoMergeAction: mergePreview[index]?.action,
+    autoMergeReasonLabel: getWorldBookAutoMergeReasonLabel(mergePreview[index]?.reason || 'new_entry'),
+    autoMergeTargetTitle: mergePreview[index]?.targetTitle,
   }));
 }
 
@@ -48,7 +58,7 @@ function toDreamImportedWorldBookEntry(draft: DreamWorldBookImportDraft): WorldB
   const nextId = draft.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const content = draft.content.trim();
 
-  return {
+  return applyDerivedWorldBookMetadata({
     id: nextId,
     title: draft.title.trim(),
     content,
@@ -62,9 +72,11 @@ function toDreamImportedWorldBookEntry(draft: DreamWorldBookImportDraft): WorldB
     pinMode: draft.pinMode === 'always' ? 'always' : 'none',
     chunkCache: buildWorldBookChunkCache({
       id: nextId,
+      title: draft.title.trim(),
       content,
+      category: normalizeWorldBookCategory(draft.category),
     }),
-  };
+  });
 }
 
 function mergeDreamImportedDraftGroup(groupName: string, drafts: DreamWorldBookImportDraft[]): WorldBookEntry {
@@ -81,7 +93,7 @@ function mergeDreamImportedDraftGroup(groupName: string, drafts: DreamWorldBookI
     .join('\n\n');
   const nextId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-  return {
+  return applyDerivedWorldBookMetadata({
     id: nextId,
     title: normalizedGroupName || drafts[0].title.trim(),
     content: mergedContent,
@@ -93,9 +105,11 @@ function mergeDreamImportedDraftGroup(groupName: string, drafts: DreamWorldBookI
     pinMode: drafts.some((draft) => draft.pinMode === 'always') ? 'always' : 'none',
     chunkCache: buildWorldBookChunkCache({
       id: nextId,
+      title: normalizedGroupName || drafts[0].title.trim(),
       content: mergedContent,
+      category: categories.length === 1 ? categories[0] : '其他',
     }),
-  };
+  });
 }
 
 export function buildDreamImportedWorldBooksFromDrafts(drafts: DreamWorldBookImportDraft[]): WorldBookEntry[] {

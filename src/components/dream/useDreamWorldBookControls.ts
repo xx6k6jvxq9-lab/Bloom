@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type RefObject } from 'react';
 
-import { createDreamLocalWorldBooksFromFile, mergeDreamLocalWorldBooks, normalizeDreamWorldBookConfig } from '../../services/dream/dreamWorldBooks';
+import { createDreamLocalWorldBooksFromFile, mergeDreamLocalWorldBooksDetailed, normalizeDreamWorldBookConfig } from '../../services/dream/dreamWorldBooks';
 import type { DreamWorldBookConfig } from '../../services/dream/dreamRuntimeTypes';
 import type { Character, WorldBookEntry } from '../../types';
 import { buildDreamImportedWorldBooksFromDrafts, buildDreamWorldBookImportDrafts } from './dreamPageRuntime';
@@ -109,9 +109,15 @@ export function useDreamWorldBookControls({
       return;
     }
 
+    const mergeResult = mergeDreamLocalWorldBooksDetailed(
+      normalizedDreamWorldBookConfig.localEntries || [],
+      entries,
+      selectedCharacter.id,
+    );
+    const mergeSummary = mergeResult.stats;
     updateDreamWorldBookConfig((prev) => ({
       ...prev,
-      localEntries: mergeDreamLocalWorldBooks(prev.localEntries || [], entries, selectedCharacter.id),
+      localEntries: mergeResult.entries,
     }));
     closeDreamWorldBookImportReview();
     setDreamWorldBookNote({
@@ -120,7 +126,11 @@ export function useDreamWorldBookControls({
         ? `整理后带进今夜 ${entries.length} 条书页。`
         : '整理后带进今夜 1 条书页。',
     });
-  }, [closeDreamWorldBookImportReview, selectedCharacter, updateDreamWorldBookConfig]);
+    setDreamWorldBookNote({
+      tone: 'success',
+      text: `整理完成：新增 ${mergeSummary.insertedCount} 条，更新 ${mergeSummary.updatedCount} 条，跳过重复 ${mergeSummary.skippedCount} 条。`,
+    });
+  }, [closeDreamWorldBookImportReview, normalizedDreamWorldBookConfig.localEntries, selectedCharacter, updateDreamWorldBookConfig]);
 
   const handleDreamWorldBookImportDefault = useCallback(() => {
     if (!dreamWorldBookImportDrafts) return;
@@ -171,7 +181,10 @@ export function useDreamWorldBookControls({
         throw new Error('没有认出可导入的世界书内容。');
       }
 
-      setDreamWorldBookImportDrafts(buildDreamWorldBookImportDrafts(importedEntries));
+      setDreamWorldBookImportDrafts(buildDreamWorldBookImportDrafts(
+        importedEntries,
+        normalizedDreamWorldBookConfig.localEntries || [],
+      ));
       setShowAdvancedDreamWorldBookImportReview(false);
       setDreamWorldBookNote({
         tone: 'info',
@@ -183,7 +196,7 @@ export function useDreamWorldBookControls({
         text: error instanceof Error ? error.message : '导入失败了，换一个 JSON 或 TXT 文件再试试。',
       });
     }
-  }, [onRequireRolePicker, selectedCharacter]);
+  }, [normalizedDreamWorldBookConfig.localEntries, onRequireRolePicker, selectedCharacter]);
 
   const triggerDreamWorldBookImport = useCallback(() => {
     if (!selectedCharacter) {

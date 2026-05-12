@@ -6,8 +6,7 @@ import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
-import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
-import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
+import { selectActiveCharacterWorldBooks } from '../world-book/worldBookAccess';
 import { buildMomentPostBlueprint, type MomentPostBlueprint } from './postBlueprints';
 import {
   buildMomentTranslationInstruction,
@@ -97,32 +96,17 @@ const MOMENT_REPLY_LEAK_PATTERNS = [
     .join('\n');
 }
 
-function buildWorldBookPrompt(character: Character, worldBook: WorldBookEntry[]) {
-  const activeWorldBooks = sortWorldBooksByPriority(
-    worldBook.filter(
-      (entry) =>
-        (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
-        || character.activeWorldBookIds?.includes(entry.id),
-    ),
-  );
-
-  return buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
-}
-
 function buildMomentCharacterCore(options: {
   character: Character;
   masks: Mask[];
   worldBook: WorldBookEntry[];
 }) {
   const { character, masks, worldBook } = options;
+  const activeWorldBooks = selectActiveCharacterWorldBooks(character, worldBook);
   const characterContext = buildCharacterContext({
     character,
     activeMask: masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id)) ?? null,
-    activeWorldBooks: worldBook.filter(
-      (entry) =>
-        (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id)))
-        || character.activeWorldBookIds?.includes(entry.id),
-    ),
+    activeWorldBooks,
   });
 
   return {
@@ -135,7 +119,7 @@ function buildMomentCharacterCore(options: {
       .filter(Boolean)
       .join('\n\n'),
     maskPrompt: characterContext.maskPrompt || buildMaskPrompt(character.id, masks),
-    worldBookPrompt: characterContext.worldBookPrompt || buildWorldBookPrompt(character, worldBook),
+    worldBookPrompt: characterContext.worldBookPrompt,
   };
 }
 

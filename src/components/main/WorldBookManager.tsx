@@ -14,6 +14,11 @@ import {
 } from '../../services/world-book/worldBookMeta';
 import { extractCompatibleWorldBookEntriesFromFile } from '../../features/import/importCompat';
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
+import { applyDerivedWorldBookMetadata } from '../../services/world-book/worldBookDerived';
+import {
+  getWorldBookAutoMergeReasonLabel,
+  mergeImportedWorldBooksIntoLibrary,
+} from '../../services/world-book/worldBookMerge';
 import { showInAppConfirm } from '../../utils';
 import { WorldBookImportReviewSheet, type WorldBookImportDraft } from './WorldBookImportReviewSheet';
 
@@ -38,7 +43,7 @@ function normalizeWorldBookForRepair(entry: WorldBookEntry): WorldBookEntry {
   const title = typeof entry.title === 'string' ? entry.title.trim() : '';
   const content = typeof entry.content === 'string' ? entry.content.trim() : '';
 
-  return {
+  return applyDerivedWorldBookMetadata({
     ...entry,
     title,
     content,
@@ -50,9 +55,11 @@ function normalizeWorldBookForRepair(entry: WorldBookEntry): WorldBookEntry {
     pinMode: entry.pinMode === 'always' ? 'always' : 'none',
     chunkCache: buildWorldBookChunkCache({
       id: entry.id,
+      title,
       content,
+      category: normalizeWorldBookCategory(entry.category),
     }),
-  };
+  });
 }
 
 function countWorldBookRepairChanges(previous: WorldBookEntry, next: WorldBookEntry): number {
@@ -67,6 +74,10 @@ function countWorldBookRepairChanges(previous: WorldBookEntry, next: WorldBookEn
   if ((previous.pinMode === 'always' ? 'always' : 'none') !== next.pinMode) changes += 1;
   if (JSON.stringify(normalizeCharacterIds(previous.characterIds)) !== JSON.stringify(next.characterIds || [])) changes += 1;
   if (JSON.stringify(previous.chunkCache || []) !== JSON.stringify(next.chunkCache || [])) changes += 1;
+  if ((previous.summary || '') !== (next.summary || '')) changes += 1;
+  if (JSON.stringify(previous.mustReadFacts || []) !== JSON.stringify(next.mustReadFacts || [])) changes += 1;
+  if (JSON.stringify(previous.keywords || []) !== JSON.stringify(next.keywords || [])) changes += 1;
+  if ((previous.fingerprint || '') !== (next.fingerprint || '')) changes += 1;
 
   return changes;
 }
@@ -183,14 +194,19 @@ export function WorldBookManager({
     characters,
   );
 
-  const buildImportDrafts = (entries: WorldBookEntry[]): WorldBookImportDraft[] => (
-    entries.map((entry, index) => ({
+  const buildImportDrafts = (entries: WorldBookEntry[]): WorldBookImportDraft[] => {
+    const mergePreview = mergeImportedWorldBooksIntoLibrary(worldBooks, entries).stats.decisions;
+
+    return entries.map((entry, index) => ({
       ...entry,
       draftId: `${entry.id || 'import'}-${index}-${Math.random().toString(16).slice(2)}`,
       include: true,
       mergeGroup: '',
-    }))
-  );
+      autoMergeAction: mergePreview[index]?.action,
+      autoMergeReasonLabel: getWorldBookAutoMergeReasonLabel(mergePreview[index]?.reason || 'new_entry'),
+      autoMergeTargetTitle: mergePreview[index]?.targetTitle,
+    }));
+  };
 
   const mergeImportedDraftGroup = (groupName: string, drafts: WorldBookImportDraft[]): WorldBookEntry => {
     const normalizedGroupName = groupName.trim();
@@ -206,7 +222,7 @@ export function WorldBookManager({
       .join('\n\n');
     const nextId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    return {
+    return applyDerivedWorldBookMetadata({
       id: nextId,
       title: normalizedGroupName || drafts[0].title,
       content: mergedContent,
@@ -218,9 +234,11 @@ export function WorldBookManager({
       pinMode: drafts.some((draft) => draft.pinMode === 'always') ? 'always' : 'none',
       chunkCache: buildWorldBookChunkCache({
         id: nextId,
+        title: normalizedGroupName || drafts[0].title,
         content: mergedContent,
+        category: categories.length === 1 ? categories[0] : '其他',
       }),
-    };
+    });
   };
 
   const buildImportedWorldBooksFromDrafts = (drafts: WorldBookImportDraft[]): WorldBookEntry[] => {
@@ -231,13 +249,23 @@ export function WorldBookManager({
     selectedDrafts.forEach((draft) => {
       const groupName = draft.mergeGroup.trim();
       if (!groupName) {
-        standaloneEntries.push({
-          ...draft,
+        standaloneEntries.push(applyDerivedWorldBookMetadata({
+          id: draft.id,
+          title: draft.title,
+          content: draft.content,
+          category: normalizeWorldBookCategory(draft.category),
+          priorityLevel: normalizeWorldBookPriorityLevel(draft.priorityLevel),
+          isActive: draft.isActive !== false,
+          isGlobal: draft.isGlobal !== false,
+          characterIds: normalizeCharacterIds(draft.characterIds),
+          pinMode: draft.pinMode === 'always' ? 'always' : 'none',
           chunkCache: buildWorldBookChunkCache({
             id: draft.id,
+            title: draft.title,
             content: draft.content,
+            category: normalizeWorldBookCategory(draft.category),
           }),
-        });
+        }));
         return;
       }
 
@@ -259,10 +287,19 @@ export function WorldBookManager({
       return;
     }
 
-    setWorldBooks([...entries, ...worldBooks]);
+    const mergeResult = mergeImportedWorldBooksIntoLibrary(worldBooks, entries);
+    setWorldBooks(mergeResult.entries);
     setImportDrafts(null);
     setShowAdvancedImportReview(false);
-    alert(`成功导入 ${entries.length} 条世界书。`);
+    const { insertedCount, updatedCount, skippedCount } = mergeResult.stats;
+    alert(
+      [
+        '世界书已整理完成。',
+        `新增 ${insertedCount} 条`,
+        `更新 ${updatedCount} 条`,
+        `跳过重复 ${skippedCount} 条`,
+      ].join('，'),
+    );
   };
 
   const handleImportDefault = () => {
@@ -398,7 +435,7 @@ export function WorldBookManager({
     }
 
     const nextEntryId = editForm.id || Date.now().toString();
-    const nextEntry: WorldBookEntry = {
+    const nextEntry: WorldBookEntry = applyDerivedWorldBookMetadata({
       id: nextEntryId,
       title,
       content,
@@ -406,13 +443,15 @@ export function WorldBookManager({
       priorityLevel: normalizeWorldBookPriorityLevel(editForm.priorityLevel),
       isActive: editForm.isActive ?? true,
       isGlobal: editForm.isGlobal ?? true,
-      characterIds: editForm.characterIds || [],
+      characterIds: normalizeCharacterIds(editForm.characterIds),
       pinMode: editForm.pinMode === 'always' ? 'always' : 'none',
       chunkCache: buildWorldBookChunkCache({
         id: nextEntryId,
+        title,
         content,
+        category: normalizeWorldBookCategory(editForm.category),
       }),
-    };
+    });
 
     if (editForm.id) {
       setWorldBooks(worldBooks.map((worldBook) => (worldBook.id === editForm.id ? nextEntry : worldBook)));

@@ -5,6 +5,7 @@ import {
   normalizeWorldBookPriorityLevel,
 } from '../../services/world-book/worldBookMeta';
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
+import { applyDerivedWorldBookMetadata } from '../../services/world-book/worldBookDerived';
 
 type CharacterImportFields = Pick<
   Character,
@@ -286,7 +287,7 @@ function normalizeWorldBookRecord(item: unknown, index: number): WorldBookEntry 
   const characterIds = toStringArray(item.characterIds);
   const disabled = item.disable === true || item.enabled === false || item.isActive === false;
 
-  return {
+  return applyDerivedWorldBookMetadata({
     id: pickFirstText(item.id, item.uid) || `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
     title,
     content,
@@ -300,9 +301,11 @@ function normalizeWorldBookRecord(item: unknown, index: number): WorldBookEntry 
     pinMode: item.pinMode === 'always' ? 'always' : 'none',
     chunkCache: buildWorldBookChunkCache({
       id: pickFirstText(item.id, item.uid) || `${Date.now()}-${index}`,
+      title,
       content,
+      category: normalizeWorldBookCategory(normalizeOptionalText(item.category)),
     }),
-  };
+  });
 }
 
 function parseBooleanLike(value: unknown): boolean | undefined {

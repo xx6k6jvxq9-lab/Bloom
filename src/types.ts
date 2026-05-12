@@ -272,6 +272,10 @@ export type WorldBookEntry = {
   isGlobal: boolean;
   characterIds?: string[];
   pinMode?: 'none' | 'always';
+  summary?: string;
+  mustReadFacts?: string[];
+  keywords?: string[];
+  fingerprint?: string;
   chunkCache?: {
     id: string;
     label: string;
@@ -851,6 +855,7 @@ export type ChatMessage = {
   transferDisplayLabel?: string;
   transferTargetLabel?: string;
   isSystem?: boolean;
+  systemTone?: 'default' | 'danger';
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;
   replyTo?: {
@@ -1267,6 +1272,7 @@ export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'superse
 export type FriendRequestDirection = 'incoming' | 'outgoing';
 export type FriendRequestInitiator = 'user' | 'character' | 'forum';
 export type FriendRequestKind = 'friend' | 'reconnect' | 'relationship_event';
+export type RelationshipRoundStatus = 'active' | 'resolved' | 'abandoned';
 
 export type FriendRequest = {
   id: string;
@@ -1282,11 +1288,24 @@ export type FriendRequest = {
   requestKind?: FriendRequestKind;
   characterId?: string;
   threadId?: string;
+  relationshipRoundId?: string;
+  relationshipRoundNo?: number;
+  relationshipRoundStatus?: RelationshipRoundStatus;
+  relationshipRoundResolvedAt?: number;
   attemptNo?: number;
+  releaseAt?: number;
+  isUnread?: boolean;
+  unreadAt?: number;
   supersededById?: string;
   isRelationshipEvent?: boolean;
-  eventKind?: 'user_blocked_character' | 'user_unblocked_character' | 'character_counter_blocked';
+  eventKind?:
+    | 'user_blocked_character'
+    | 'user_unblocked_character'
+    | 'character_counter_blocked'
+    | 'character_warned_user_from_chat'
+    | 'character_blocked_user_from_chat';
   resolutionMessage?: string;
+  userDecisionNote?: string;
   responseText?: string;
   lastUpdatedAt?: number;
   sourcePostId?: string;

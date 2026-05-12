@@ -1952,12 +1952,18 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       }
     }
 
+    const forumRequestText = `论坛角色自主发帖：频道=${FORUM_CHANNEL_LABELS[channel]}；氛围=${activeChannelMeta.blurb}；角色论坛偏好=${forumHabit.persona}；写成角色本人会发在公共论坛的一条短帖。`;
     const generationContext = resolveForumGenerationContext({
       globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
       masks: appDataRef.current.masks || [],
       worldBooks: appDataRef.current.worldBooks || [],
       worldBookScope: 'character_post',
       maskScope: 'character_post',
+      worldBookQuery: [
+        forumRequestText,
+        pickedCharacter.name,
+        activeChannelMeta.blurb,
+      ].filter(Boolean).join('\n'),
     });
 
     const generated = await generateMomentPostContent({
@@ -1969,7 +1975,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         generationContext.worldBookPromptBlock,
         generationContext.maskPromptBlock,
       ].filter(Boolean),
-      requestText: `论坛角色自主发帖：频道=${FORUM_CHANNEL_LABELS[channel]}；氛围=${activeChannelMeta.blurb}；角色论坛偏好=${forumHabit.persona}；写成角色本人会发在公共论坛的一条短帖。`,
+      requestText: forumRequestText,
     });
 
     const content = generated.content.trim();

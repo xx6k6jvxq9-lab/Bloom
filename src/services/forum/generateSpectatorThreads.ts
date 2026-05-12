@@ -257,6 +257,11 @@ export async function generateSpectatorThreads(input: GenerateSpectatorThreadsIn
     worldBookScope: 'spectator_open',
     maskScope: 'spectator_open',
     spectatorSettings: input.settings,
+    worldBookQuery: [
+      input.currentUserName,
+      ...input.selectedCharacters.map((character) => character.name),
+      ...(input.existingPosts.slice(0, 4).map((post) => post.title).filter(Boolean)),
+    ].join('\n'),
   });
   const prompt = buildSpectatorThreadPrompt({
     settings: input.settings,

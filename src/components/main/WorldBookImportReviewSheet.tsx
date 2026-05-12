@@ -5,11 +5,15 @@ import {
   getWorldBookPriorityLabel,
   normalizeWorldBookCategory,
 } from '../../services/world-book/worldBookMeta';
+import type { WorldBookAutoMergeAction } from '../../services/world-book/worldBookMerge';
 
 export type WorldBookImportDraft = WorldBookEntry & {
   draftId: string;
   include: boolean;
   mergeGroup: string;
+  autoMergeAction?: WorldBookAutoMergeAction;
+  autoMergeReasonLabel?: string;
+  autoMergeTargetTitle?: string;
 };
 
 type WorldBookImportReviewSheetProps = {
@@ -27,6 +31,28 @@ function buildPreview(text: string, maxLength = 180) {
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}...`;
+}
+
+function getAutoMergeBadgeClass(action?: WorldBookAutoMergeAction) {
+  switch (action) {
+    case 'update':
+      return 'border-sky-100 bg-sky-50 text-sky-700';
+    case 'skip':
+      return 'border-emerald-100 bg-emerald-50 text-emerald-700';
+    case 'insert':
+    default:
+      return 'border-zinc-200 bg-zinc-100 text-zinc-600';
+  }
+}
+
+function getAutoMergeLabel(draft: WorldBookImportDraft): string {
+  if (draft.autoMergeAction === 'update') {
+    return `自动更新：${draft.autoMergeTargetTitle || '现有条目'}`;
+  }
+  if (draft.autoMergeAction === 'skip') {
+    return `自动跳过：${draft.autoMergeTargetTitle || '重复条目'}`;
+  }
+  return '自动新增';
 }
 
 export function WorldBookImportReviewSheet({
@@ -134,6 +160,11 @@ export function WorldBookImportReviewSheet({
                             合并到：{draft.mergeGroup.trim()}
                           </span>
                         ) : null}
+                        {!draft.mergeGroup.trim() ? (
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getAutoMergeBadgeClass(draft.autoMergeAction)}`}>
+                            {getAutoMergeLabel(draft)}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     {advancedMode ? (
@@ -146,6 +177,11 @@ export function WorldBookImportReviewSheet({
                   <div className="mt-3 text-[13px] leading-[1.8] text-zinc-600">
                     {buildPreview(draft.content)}
                   </div>
+                  {!draft.mergeGroup.trim() && draft.autoMergeReasonLabel ? (
+                    <div className="mt-2 text-[11px] text-zinc-500">
+                      自动识别：{draft.autoMergeReasonLabel}
+                    </div>
+                  ) : null}
 
                   {advancedMode ? (
                     <div className="mt-4 space-y-1.5">

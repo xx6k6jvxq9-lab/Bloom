@@ -26,6 +26,7 @@ import type {
   DateWritingPreset,
   PerceptionSettings,
   UserProfileExtended,
+  WorldBookEntry,
 } from '../../types';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
@@ -42,6 +43,7 @@ interface DatingModalProps {
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
   chatHistory: ChatMessage[];
+  worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   onSaveDate: (session: DateSession) => void;
   onCollectDate: (session: DateSession) => void;
@@ -132,6 +134,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
   userProfile,
   activeConfig,
   chatHistory,
+  worldBooks,
   perception,
   onSaveDate,
   onCollectDate,
@@ -377,6 +380,7 @@ export const DatingModal: React.FC<DatingModalProps> = ({
               userProfile={userProfile}
               activeConfig={activeConfig}
               chatHistory={chatHistory}
+              worldBooks={worldBooks}
               perception={perception}
               onBackToPlanner={handleDirectExit}
               onClose={handleDirectExit}

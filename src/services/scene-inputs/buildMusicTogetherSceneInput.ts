@@ -1,8 +1,9 @@
-import type { Character, ChatMessage, Song } from "../../types";
+import type { Character, ChatMessage, Song, WorldBookEntry } from "../../types";
 import type { BuildChatPromptOptions } from "../ai/prompts/builders/buildChatPrompt";
 import { buildCharacterContext } from "../relationship-context/buildCharacterContext";
 import { buildSharedCharacterStateFromCharacter } from "../relationship-context/buildSharedCharacterState";
 import { buildResolvedMemoryLayers } from "../memory/buildResolvedMemoryLayers";
+import { selectActiveCharacterWorldBooks } from "../world-book/worldBookAccess";
 
 export type MusicTogetherLyricLine = {
   text: string;
@@ -14,6 +15,7 @@ export type BuildMusicTogetherSceneInputParams = {
   userName: string;
   currentSong: Song | null;
   togetherDuration: string;
+  worldBooks?: WorldBookEntry[];
   directChatHistory?: ChatMessage[];
   currentLyric?: MusicTogetherLyricLine | null;
   nearbyLyrics?: MusicTogetherLyricLine[];
@@ -49,11 +51,26 @@ export function buildMusicTogetherSceneInput(
     userName,
     currentSong,
     togetherDuration,
+    worldBooks = [],
     directChatHistory = [],
     currentLyric = null,
     nearbyLyrics = [],
   } = params;
-  const characterContext = buildCharacterContext({ character });
+  const activeWorldBooks = selectActiveCharacterWorldBooks(character, worldBooks);
+  const worldBookQuery = [
+    currentSong?.title?.trim(),
+    currentSong?.artist?.trim(),
+    currentLyric?.text?.trim(),
+  ].filter(Boolean).join(' ');
+  const characterContext = buildCharacterContext({
+    character,
+    activeWorldBooks,
+    worldBookQuery: worldBookQuery || undefined,
+    worldBookRecentText: directChatHistory
+      .slice(-8)
+      .map((message) => message.text?.trim() || '')
+      .filter(Boolean),
+  });
   const memoryLayers = buildResolvedMemoryLayers(character);
   const sharedCharacterState = buildSharedCharacterStateFromCharacter({
     character,

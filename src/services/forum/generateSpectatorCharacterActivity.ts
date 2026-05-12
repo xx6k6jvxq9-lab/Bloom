@@ -156,6 +156,11 @@ export async function maybeGenerateSpectatorCharacterPost(input: GenerateSpectat
     spectatorSettings: settings,
     worldBookScope: 'character_post',
     maskScope: 'character_post',
+    worldBookQuery: [
+      currentUserName,
+      ...selectedCharacters.map((character) => character.name),
+      candidate.name,
+    ].filter(Boolean).join('\n'),
   });
 
   return generateCharacterSpectatorPost({
@@ -217,6 +222,12 @@ export async function maybeGenerateSpectatorCharacterReply(input: GenerateSpecta
     spectatorSettings: settings,
     worldBookScope: 'character_post',
     maskScope: 'character_post',
+    worldBookQuery: [
+      post.title,
+      post.content,
+      userComment,
+      candidate.name,
+    ].filter(Boolean).join('\n'),
   });
 
   return generateCharacterSpectatorReply({

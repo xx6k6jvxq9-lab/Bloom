@@ -1,8 +1,8 @@
 ﻿import React, { Suspense } from 'react';
-import { lazy, useEffect, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
-import type { AppData, AppSettings, Character, CoupleSpaceData, CoupleSpaceState } from '../../types';
+import type { AppData, AppSettings, Character, ChatHistory, CoupleSpaceData, CoupleSpaceState } from '../../types';
 import { HomeScreen } from '../../components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from '../../components/main/ContactsShell/Page';
 import { MainApp } from '../../components/main/MainAppShell/Page';
@@ -41,14 +41,24 @@ import { formatMessagePreview } from './formatMessagePreview';
 import { navigateToAppWithTransition, type AppScreen, type AppTab } from './appShellHandlers';
 import type { CoupleSpaceUpdateToast, DatingGenerationToast, DreamGenerationToast, MomentPublishToast } from './appShellTypes';
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
+import {
+  extractDirectFactTraces,
+  extractDirectRelationshipWaves,
+  extractGroupSessions,
+  saveChatHistoryRecords,
+} from '../persistence/chatHistoryStore';
+import { persistChatOrganization } from '../persistence/chatOrganizationStore';
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
+import { persistFriendRequests } from '../persistence/friendRequestsStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildSharedStateWritePatch } from '../../services/relationship-context/buildSharedCharacterState';
 import { saveCharacters } from '../persistence/charactersStore';
 import { removeCharacterById } from '../character-domain/characterMutations';
 import {
-  getCharacterFriendRequestThreadId,
+  getNextFriendRequestReleaseAt,
+  getLatestCharacterRelationshipPageKey,
+  releaseDueFriendRequests,
 } from '../contacts/friendRequestThreads';
 import {
   runRelationshipBlockToggleFlow,
@@ -62,6 +72,7 @@ const LazyChatSessionMount = lazy(loadChatSessionMount);
 const LazyDreamAppPage = lazy(loadDreamAppPage);
 const LazyWorldBookManager = lazy(loadWorldBookManager);
 const LazySettingsAppScreen = lazy(loadSettingsAppScreen);
+const CHAT_DOMAIN_PERSIST_DEBOUNCE_MS = 600;
 
 function DeferredMomentsApp({
   appData,
@@ -147,6 +158,7 @@ type AppScreenContentProps = {
   selectedCharacterId: string | null;
   selectedForumPostId: string | null;
   selectedGroupId: string | null;
+  isStorageReady: boolean;
   setActiveApp: Dispatch<SetStateAction<AppScreen>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   setAppData: Dispatch<SetStateAction<AppData>>;
@@ -196,6 +208,7 @@ export function AppScreenContent({
   selectedCharacterId,
   selectedForumPostId,
   selectedGroupId,
+  isStorageReady,
   setActiveApp,
   setActiveTab,
   setAppData,
@@ -223,6 +236,17 @@ export function AppScreenContent({
   ));
   const [contactsRelationshipThreadKey, setContactsRelationshipThreadKey] = useState<string | null>(null);
   const preloadedPredictedTargetsRef = useRef<Set<AppScreen>>(new Set());
+  const latestCharactersRef = useRef(appData.characters);
+  const latestDirectHistoryRef = useRef<ChatHistory>(appData.chatHistory);
+  const latestChatGroupsRef = useRef(appData.chatGroups || []);
+  const latestGroupsRef = useRef(appData.groups);
+  const latestFriendRequestsRef = useRef(appData.friendRequests || []);
+  const latestDirectRelationshipWavesRef = useRef(extractDirectRelationshipWaves(appData.chatHistory));
+  const latestDirectFactTracesRef = useRef(extractDirectFactTraces(appData.chatHistory));
+  const latestGroupSessionsRef = useRef(extractGroupSessions(appData.chatGroups || []));
+  const pendingImmediateDirectHistoryRef = useRef<ChatHistory | null>(null);
+  const pendingImmediateChatGroupsRef = useRef<typeof latestChatGroupsRef.current | null>(null);
+  const pendingChatDomainFlushTimerRef = useRef<number | null>(null);
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-transparent'
@@ -237,8 +261,16 @@ export function AppScreenContent({
     && (mountedChatDetailScreens.includes('character-moments') || activeApp === 'character-moments');
   const shouldRenderAddCharacter =
     mountedChatDetailScreens.includes('add-character') || activeApp === 'add-character';
-  const transitionToApp = (nextApp: AppScreen) => {
-    navigateToAppWithTransition(nextApp, setActiveApp);
+  const transitionToApp = (nextApp: AppScreen, options?: Parameters<typeof navigateToAppWithTransition>[2]) => {
+    void navigateToAppWithTransition(nextApp, setActiveApp, options);
+  };
+  const openDirectChatSession = (characterId: string) => {
+    setSelectedCharacterId(characterId);
+    transitionToApp('chat-session', { awaitPreload: true });
+  };
+  const openGroupChatSession = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    transitionToApp('group-chat-session', { awaitPreload: true });
   };
   const forumConfig = resolveSceneTextApiConfig({
     settings,
@@ -251,6 +283,243 @@ export function AppScreenContent({
     coupleSpace: currentCoupleSpace,
     persistCharacters: saveCharacters,
   };
+  const clearPendingChatDomainFlush = useCallback(() => {
+    if (pendingChatDomainFlushTimerRef.current === null) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(pendingChatDomainFlushTimerRef.current);
+    }
+    pendingChatDomainFlushTimerRef.current = null;
+  }, []);
+  const saveCombinedChatHistorySnapshot = useCallback(() => (
+    saveChatHistoryRecords({
+      directHistory: latestDirectHistoryRef.current,
+      directRelationshipWaves: latestDirectRelationshipWavesRef.current,
+      directFactTraces: latestDirectFactTracesRef.current,
+      groupSessions: latestGroupSessionsRef.current,
+    })
+  ), []);
+  const persistChatOrganizationSnapshot = useCallback((input?: {
+    groups?: string[];
+    chatGroups?: typeof latestChatGroupsRef.current;
+  }) => {
+    const groups = input?.groups ?? latestGroupsRef.current;
+    const chatGroups = input?.chatGroups ?? latestChatGroupsRef.current;
+    latestGroupsRef.current = groups;
+    latestChatGroupsRef.current = chatGroups;
+    return persistChatOrganization({
+      groups,
+      chatGroups,
+    });
+  }, []);
+  const persistFriendRequestsSnapshot = useCallback((friendRequests = latestFriendRequestsRef.current) => {
+    latestFriendRequestsRef.current = friendRequests;
+    return persistFriendRequests(friendRequests);
+  }, []);
+  const flushCurrentChatDomainSnapshot = useCallback(() => {
+    clearPendingChatDomainFlush();
+    latestDirectRelationshipWavesRef.current = extractDirectRelationshipWaves(latestDirectHistoryRef.current);
+    latestDirectFactTracesRef.current = extractDirectFactTraces(latestDirectHistoryRef.current);
+    latestGroupSessionsRef.current = extractGroupSessions(latestChatGroupsRef.current);
+    void saveCombinedChatHistorySnapshot();
+    void persistChatOrganizationSnapshot();
+    void persistFriendRequestsSnapshot();
+  }, [
+    clearPendingChatDomainFlush,
+    persistChatOrganizationSnapshot,
+    persistFriendRequestsSnapshot,
+    saveCombinedChatHistorySnapshot,
+  ]);
+  const scheduleChatDomainSnapshotFlush = useCallback(() => {
+    if (!isStorageReady || typeof window === 'undefined') {
+      return;
+    }
+
+    clearPendingChatDomainFlush();
+    pendingChatDomainFlushTimerRef.current = window.setTimeout(() => {
+      pendingChatDomainFlushTimerRef.current = null;
+      flushCurrentChatDomainSnapshot();
+    }, CHAT_DOMAIN_PERSIST_DEBOUNCE_MS);
+  }, [
+    clearPendingChatDomainFlush,
+    flushCurrentChatDomainSnapshot,
+    isStorageReady,
+  ]);
+  const setDirectChatHistory = useCallback((chatHistory: SetStateAction<ChatHistory>) => {
+    const nextChatHistory = typeof chatHistory === 'function'
+      ? chatHistory(latestDirectHistoryRef.current)
+      : chatHistory;
+
+    latestDirectHistoryRef.current = nextChatHistory;
+    pendingImmediateDirectHistoryRef.current = nextChatHistory;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.chatHistory === nextChatHistory
+        ? prev
+        : {
+            ...prev,
+            chatHistory: nextChatHistory,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+  const setPersistedChatGroups = useCallback((chatGroupsOrUpdater: SetStateAction<typeof latestChatGroupsRef.current>) => {
+    const resolvedChatGroups =
+      typeof chatGroupsOrUpdater === 'function'
+        ? chatGroupsOrUpdater(latestChatGroupsRef.current)
+        : chatGroupsOrUpdater;
+    const nextChatGroups = sanitizeChatGroupsWithCharactersFromStore(
+      resolvedChatGroups,
+      latestCharactersRef.current,
+    );
+
+    latestChatGroupsRef.current = nextChatGroups;
+    pendingImmediateChatGroupsRef.current = nextChatGroups;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.chatGroups === nextChatGroups
+        ? prev
+        : {
+            ...prev,
+            chatGroups: nextChatGroups,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+  const setPersistedFriendRequests = useCallback((friendRequestsOrUpdater: SetStateAction<typeof latestFriendRequestsRef.current>) => {
+    const nextFriendRequests =
+      typeof friendRequestsOrUpdater === 'function'
+        ? friendRequestsOrUpdater(latestFriendRequestsRef.current)
+        : friendRequestsOrUpdater;
+
+    latestFriendRequestsRef.current = nextFriendRequests;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.friendRequests === nextFriendRequests
+        ? prev
+        : {
+            ...prev,
+            friendRequests: nextFriendRequests,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+
+  useEffect(() => {
+    latestCharactersRef.current = appData.characters;
+    latestDirectHistoryRef.current = appData.chatHistory;
+    latestChatGroupsRef.current = appData.chatGroups || [];
+    latestGroupsRef.current = appData.groups;
+    latestFriendRequestsRef.current = appData.friendRequests || [];
+  }, [appData.characters, appData.chatGroups, appData.chatHistory, appData.friendRequests, appData.groups]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    if (pendingImmediateDirectHistoryRef.current === appData.chatHistory) {
+      pendingImmediateDirectHistoryRef.current = null;
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.chatHistory,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    const nextChatGroups = appData.chatGroups || [];
+    if (pendingImmediateChatGroupsRef.current === nextChatGroups) {
+      pendingImmediateChatGroupsRef.current = null;
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.chatGroups,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    void persistChatOrganizationSnapshot({ groups: appData.groups });
+  }, [appData.groups, isStorageReady, persistChatOrganizationSnapshot]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [appData.friendRequests, isStorageReady, scheduleChatDomainSnapshotFlush]);
+
+  useEffect(() => {
+    const friendRequests = appData.friendRequests || [];
+    const releasedRequests = releaseDueFriendRequests(friendRequests, Date.now());
+    if (releasedRequests !== friendRequests) {
+      setPersistedFriendRequests(releasedRequests);
+      return;
+    }
+
+    const nextReleaseAt = getNextFriendRequestReleaseAt(friendRequests, Date.now());
+    if (!nextReleaseAt || typeof window === 'undefined') {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setPersistedFriendRequests((prev) => releaseDueFriendRequests(prev, Date.now()));
+    }, Math.max(0, nextReleaseAt - Date.now()));
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [appData.friendRequests, setPersistedFriendRequests]);
+
+  useEffect(() => () => {
+    clearPendingChatDomainFlush();
+  }, [clearPendingChatDomainFlush]);
+
+  useEffect(() => {
+    if (!isStorageReady || typeof document === 'undefined' || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushCurrentChatDomainSnapshot();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushCurrentChatDomainSnapshot);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushCurrentChatDomainSnapshot);
+    };
+  }, [flushCurrentChatDomainSnapshot, isStorageReady]);
   const handleDeleteCharacterFromProfile = () => {
     if (!selectedCharacterId) {
       return;
@@ -674,10 +943,7 @@ export function AppScreenContent({
             appData={appData}
             setAppData={setAppData}
             onOpenChat={handleOpenChat}
-            onOpenGroupChat={(id) => {
-              setSelectedGroupId(id);
-              transitionToApp('group-chat-session');
-            }}
+            onOpenGroupChat={openGroupChatSession}
             onOpenProfile={(id) => {
               setSelectedCharacterId(id);
               transitionToApp('character-profile');
@@ -700,15 +966,15 @@ export function AppScreenContent({
           <CharacterProfile
             character={selectedCharacter}
             onBack={() => transitionToApp('chat')}
-            onChat={() => {
-              transitionToApp('chat-session');
-            }}
+            onChat={() => openDirectChatSession(selectedCharacter.id)}
             onOpenMoments={() => {
               setCharacterMomentsBackApp('character-profile');
               transitionToApp('character-moments');
             }}
             onViewRelationshipThread={() => {
-              setContactsRelationshipThreadKey(getCharacterFriendRequestThreadId(selectedCharacter.id));
+              setContactsRelationshipThreadKey(
+                getLatestCharacterRelationshipPageKey(appData.friendRequests || [], selectedCharacter.id),
+              );
               setActiveTab('contacts');
               transitionToApp('chat');
             }}
@@ -757,21 +1023,9 @@ export function AppScreenContent({
             selectedGroupId={selectedGroupId}
             characters={appData.characters}
             chatGroups={appData.chatGroups || []}
-            setChatGroups={(chatGroupsOrUpdater) =>
-              setAppData((prev) => {
-                const resolvedChatGroups =
-                  typeof chatGroupsOrUpdater === 'function'
-                    ? chatGroupsOrUpdater(prev.chatGroups || [])
-                    : chatGroupsOrUpdater;
-
-                return {
-                  ...prev,
-                  chatGroups: sanitizeChatGroupsWithCharactersFromStore(resolvedChatGroups, prev.characters),
-                };
-              })
-            }
+            setChatGroups={setPersistedChatGroups}
             chatHistory={appData.chatHistory}
-            setChatHistory={(chatHistory) => setAppData((prev) => ({ ...prev, chatHistory }))}
+            setChatHistory={setDirectChatHistory}
             settings={settings}
             setSettings={setSettings}
             userAvatar={appData.userProfile.avatar}
@@ -802,6 +1056,7 @@ export function AppScreenContent({
             setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
             updateCharacter={handleMergeCharacter}
             patchCharacter={handlePatchCharacterById}
+            setFriendRequests={setPersistedFriendRequests}
             onToggleCharacterBlock={handleToggleCharacterBlock}
             onBackToChat={() => transitionToApp('chat')}
             onOpenCharacterProfile={(characterId) => {
@@ -1047,6 +1302,7 @@ export function AppScreenContent({
             settings={settings}
             onPatchCharacter={handlePatchCharacterById}
             allCharacters={appData.characters}
+            worldBooks={appData.worldBooks || []}
             onBack={() => transitionToApp('home')}
             audioRef={audioRef}
           />
@@ -1059,10 +1315,7 @@ export function AppScreenContent({
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
             onClose={() => transitionToApp('home')}
             settings={settings}
-            onOpenChat={(characterId) => {
-              setSelectedCharacterId(characterId);
-              transitionToApp('chat-session');
-            }}
+            onOpenChat={openDirectChatSession}
             initialPostId={selectedForumPostId}
           />
         </Suspense>

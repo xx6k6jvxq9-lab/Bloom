@@ -6,11 +6,8 @@ import type {
   Mask,
   WorldBookEntry,
 } from '../../types';
-import {
-  getWorldBookPriorityLabel,
-  normalizeWorldBookCategory,
-  sortWorldBooksByPriority,
-} from '../world-book/worldBookMeta';
+import { normalizeWorldBookCategory, sortWorldBooksByPriority } from '../world-book/worldBookMeta';
+import { buildBudgetedWorldBookPrompt } from '../world-book/worldBookBudget';
 
 type ResolveForumGenerationContextInput = {
   globalSettings?: ForumGlobalSettings | null;
@@ -19,6 +16,8 @@ type ResolveForumGenerationContextInput = {
   worldBookScope?: ForumWorldBookUsageScope;
   maskScope?: ForumMaskUsageScope;
   spectatorSettings?: ForumSpectatorSettings | null;
+  worldBookQuery?: string;
+  worldBookRecentText?: string[];
 };
 
 type ResolvedForumGenerationContext = {
@@ -95,18 +94,23 @@ function resolveScopedMasks(
   return explicitlySelected.slice(0, 2);
 }
 
-function buildWorldBookPromptBlock(worldBooks: WorldBookEntry[]) {
-  if (!worldBooks.length) return '';
+function buildWorldBookPromptBlock(
+  worldBooks: WorldBookEntry[],
+  query?: string,
+  recentText?: string[],
+) {
+  const prompt = buildBudgetedWorldBookPrompt(worldBooks, 'group', {
+    query,
+    recentText,
+  });
 
-  const lines = [
+  if (!prompt) return '';
+
+  return [
     '## 论坛世界书上下文',
-    '以下是本条论坛生成链路允许读取的世界书内容。它们用于补充长期稳定设定、规则、关系和语境，只能自然融进帖子/回帖，不要写成说明书。',
-    ...worldBooks.map((item, index) => (
-      `${index + 1}. ${item.title}｜${normalizeWorldBookCategory(item.category)}｜${getWorldBookPriorityLabel(item.priorityLevel)}优先：${item.content.trim()}`
-    )),
-  ];
-
-  return lines.join('\n');
+    '以下是这条论坛生成链路允许读取的世界书内容。它们用于补充长期稳定设定、规则、关系和语境，只能自然融进帖子、回帖或楼层互动，不要写成说明书。',
+    prompt,
+  ].join('\n');
 }
 
 function buildMaskPromptBlock(
@@ -152,7 +156,11 @@ export function resolveForumGenerationContext(
   return {
     activeWorldBooks,
     activeMasks,
-    worldBookPromptBlock: buildWorldBookPromptBlock(activeWorldBooks),
+    worldBookPromptBlock: buildWorldBookPromptBlock(
+      activeWorldBooks,
+      input.worldBookQuery,
+      input.worldBookRecentText,
+    ),
     maskPromptBlock: buildMaskPromptBlock(activeMasks, input.spectatorSettings),
   };
 }

@@ -16,8 +16,7 @@ import { buildRelationshipProjection } from '../../../relationship-context/build
 import { buildSharedCharacterState } from '../../../relationship-context/buildSharedCharacterState';
 import { buildCharacterTemporalState } from '../../../relationship-time/buildCharacterTemporalState';
 import { buildTemporalContextPrompt } from '../../../relationship-time/buildTemporalContextPrompt';
-import { sortWorldBooksByPriority } from '../../../world-book/worldBookMeta';
-import { buildBudgetedWorldBookPrompt } from '../../../world-book/worldBookBudget';
+import { selectActiveCharacterWorldBooks } from '../../../world-book/worldBookAccess';
 import type {
   CoupleSpacePromptCommonInputDiagnostics,
   CoupleSpacePromptCommonInputEnvelope,
@@ -329,33 +328,18 @@ function buildCharacterCore(source: CreateCoupleSpacePromptCommonInputSource): {
   const activeMask = source.masks?.find(
     (mask) => mask.isActive && mask.linkedCharacters.includes(source.partner.id),
   );
-  const activeWorldBooks = sortWorldBooksByPriority(
-    source.worldBooks?.filter(
-      (worldBook) =>
-        (worldBook.isActive && (worldBook.isGlobal || worldBook.characterIds?.includes(source.partner.id))) ||
-        !!source.partner.activeWorldBookIds?.includes(worldBook.id),
-    ) ?? [],
-  );
-
-  const maskPrompt = activeMask
-    ? [
-        `Name: ${activeMask.name || ''}`,
-        `Personality: ${activeMask.personality || ''}`,
-        `Occupation: ${activeMask.occupation || ''}`,
-        `Relationship with you: ${activeMask.relationship || ''}`,
-        `World Background: ${activeMask.worldBackground || 'Standard'}`,
-      ].join('\n')
-    : undefined;
-
-  const worldBookPrompt = buildBudgetedWorldBookPrompt(activeWorldBooks, 'direct');
+  const activeWorldBooks = selectActiveCharacterWorldBooks(source.partner, source.worldBooks);
+  const characterContext = buildCharacterContext({
+    character: source.partner,
+    activeMask,
+    activeWorldBooks,
+  });
 
   return {
     value: {
-      characterSetting: buildCharacterContext({
-        character: source.partner,
-      }).corePersona,
-      maskPrompt,
-      worldBookPrompt,
+      characterSetting: characterContext.corePersona,
+      maskPrompt: characterContext.maskPrompt,
+      worldBookPrompt: characterContext.worldBookPrompt,
     },
     usedMaskId: activeMask?.id,
     usedWorldBookIds: activeWorldBooks.map((worldBook) => worldBook.id),
