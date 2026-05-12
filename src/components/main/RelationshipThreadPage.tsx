@@ -143,6 +143,23 @@ function getRoundStatusClass(status: 'active' | 'resolved' | 'abandoned') {
   return 'bg-amber-50 text-amber-600';
 }
 
+function normalizeComparableResponseText(text: string | null | undefined) {
+  return (text || '').trim().replace(/\s+/g, ' ');
+}
+
+export function shouldSuppressDuplicateRelationshipResponse(
+  request: FriendRequest,
+  previousRequest?: FriendRequest | null,
+) {
+  if (request.isRelationshipEvent || !request.responseText || !previousRequest?.isRelationshipEvent || !previousRequest.responseText) {
+    return false;
+  }
+
+  const currentText = normalizeComparableResponseText(request.responseText);
+  const previousText = normalizeComparableResponseText(previousRequest.responseText);
+  return currentText.length > 0 && currentText === previousText;
+}
+
 export function RelationshipThreadPage({
   requests,
   pageKey,
@@ -257,6 +274,8 @@ export function RelationshipThreadPage({
     const isIncoming = isIncomingFriendRequest(request);
     const isPending = request.status === 'pending';
     const isEventRecord = !!request.isRelationshipEvent;
+    const previousRequest = index > 0 ? visibleRequests[index - 1] : null;
+    const shouldHideDuplicateResponse = shouldSuppressDuplicateRelationshipResponse(request, previousRequest);
     const attemptLabel = isEventRecord ? '关系动作' : `第 ${request.attemptNo || index + 1} 次`;
     const statusLabel = isEventRecord ? '关系记录' : getFriendRequestStatusLabel(request);
     const entryTitle = isEventRecord
@@ -310,7 +329,7 @@ export function RelationshipThreadPage({
                 />
               )}
 
-              {!!request.responseText && (
+              {!!request.responseText && !shouldHideDuplicateResponse && (
                 <ThreadTextBlock
                   label={`${displayName} 的回应`}
                   text={request.responseText}

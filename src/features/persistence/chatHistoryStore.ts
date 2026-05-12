@@ -11,7 +11,7 @@ import { formatChatMessagePreview } from '../app-shell/formatMessagePreview';
 import { listJsonRecordKeys, loadJsonRecord, loadJsonRecordEnvelope, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson } from './localConfigStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
-import { areMemoryRecordDataEqual, loadMemoryRecordData, resetMemoryRecordData, saveMemoryRecordData } from './memoryRecordStore';
+import { areMemoryRecordDataEqual, loadPreferredMemoryRecordData, resetMemoryRecordData, saveMemoryRecordData } from './memoryRecordStore';
 import { STORAGE_KEYS } from './storageKeys';
 
 const CHAT_HISTORY_SHARD_INDEX_FORMAT = 'chat-history-shard-index';
@@ -565,13 +565,32 @@ async function persistShardedChatHistoryRecords(
 async function syncDerivedMemoryRecordData(
   persistedValue: PersistedChatHistoryData,
 ): Promise<void> {
-  const nextMemoryRecordData = buildMemoryRecordDataFromChatHistory(persistedValue);
-  const currentMemoryRecordData = loadMemoryRecordData({
+  const nextDerivedMemoryRecordData = buildMemoryRecordDataFromChatHistory(persistedValue);
+  const currentMemoryRecordData = await loadPreferredMemoryRecordData({
     recordsByCharacterId: {},
   });
-  if (!areMemoryRecordDataEqual(currentMemoryRecordData, nextMemoryRecordData)) {
+  const mergedMemoryRecordData = {
+    updatedAt: Math.max(
+      currentMemoryRecordData.updatedAt ?? 0,
+      nextDerivedMemoryRecordData.updatedAt ?? 0,
+    ),
+    recordsByCharacterId: Object.fromEntries(
+      [...new Set([
+        ...Object.keys(currentMemoryRecordData.recordsByCharacterId || {}),
+        ...Object.keys(nextDerivedMemoryRecordData.recordsByCharacterId || {}),
+      ])].map((characterId) => {
+        const preservedNonDerivedRecords = (currentMemoryRecordData.recordsByCharacterId[characterId] || [])
+          .filter((record) => record.kind !== 'fact' && record.kind !== 'relationship_wave');
+        const refreshedDerivedRecords = nextDerivedMemoryRecordData.recordsByCharacterId[characterId] || [];
+        return [characterId, [...preservedNonDerivedRecords, ...refreshedDerivedRecords]] as [string, typeof refreshedDerivedRecords];
+      })
+      .filter(([, records]) => records.length > 0),
+    ),
+  };
+
+  if (!areMemoryRecordDataEqual(currentMemoryRecordData, mergedMemoryRecordData)) {
     try {
-      await saveMemoryRecordData(nextMemoryRecordData);
+      await saveMemoryRecordData(mergedMemoryRecordData);
     } catch (error) {
       console.error('[chatHistoryStore] Failed to persist derived memory records', error);
     }

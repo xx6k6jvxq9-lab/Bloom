@@ -4,6 +4,7 @@ import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildCharacterForumHabit } from '../../features/forum-domain/characterForumPersona';
 import { buildCharacterForumAlias } from './buildCharacterForumAlias';
 import { buildCharacterForumBio } from './buildCharacterForumBio';
+import { getCharacterNumericId } from '../social-id/stableNumericId';
 
 export const CHARACTER_FORUM_ALIAS_VERSION = 4;
 
@@ -21,6 +22,7 @@ export function buildCharacterForumRuntimeProfile(
 
   return {
     id: character.id,
+    numericId: getCharacterNumericId(character),
     name: identity.displayName,
     handle: identity.handle,
     avatar: character.avatar,

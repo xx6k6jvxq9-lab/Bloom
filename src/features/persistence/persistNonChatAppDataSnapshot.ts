@@ -15,6 +15,10 @@ import { persistVisualSettings } from './visualSettingsStore';
 import { persistWalletData } from './walletDataStore';
 import { saveCallHistory } from './callHistoryStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+import {
+  normalizeCharactersWithNumericIds,
+  normalizeForumRuntimeAuthorProfiles,
+} from '../../services/social-id/stableNumericId';
 
 const EMPTY_SPECTATOR_SETTINGS: ForumSpectatorSettings = {
   subjectName: '',
@@ -82,8 +86,10 @@ export function buildPersistableNonChatAppDataSnapshot(
   appData: AppData,
   fallbackAppData: AppData,
 ): PersistableNonChatAppDataSnapshot {
-  const normalizedCharacters = stripCharacterChatPreviewFieldsFromList(
-    appData.characters ?? fallbackAppData.characters,
+  const normalizedCharacters = normalizeCharactersWithNumericIds(
+    stripCharacterChatPreviewFieldsFromList(
+      appData.characters ?? fallbackAppData.characters,
+    ),
   );
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
@@ -95,7 +101,14 @@ export function buildPersistableNonChatAppDataSnapshot(
   const normalizedSavedDates = appData.savedDates ?? fallbackAppData.savedDates ?? [];
   const normalizedCollectedDates = appData.collectedDates ?? fallbackAppData.collectedDates ?? [];
   const normalizedVisualSettings = appData.visualSettings ?? fallbackAppData.visualSettings;
-  const normalizedForumData = appData.forumData ?? fallbackAppData.forumData ?? EMPTY_FORUM_DATA;
+  const forumDataSource = appData.forumData ?? fallbackAppData.forumData ?? EMPTY_FORUM_DATA;
+  const normalizedForumData = {
+    ...forumDataSource,
+    runtimeAuthorProfiles: normalizeForumRuntimeAuthorProfiles(
+      forumDataSource.runtimeAuthorProfiles,
+      normalizedCharacters,
+    ),
+  };
   const normalizedMusicData = appData.musicData ?? fallbackAppData.musicData;
   const normalizedWalletData = appData.walletData ?? fallbackAppData.walletData ?? EMPTY_WALLET_DATA;
   const { coupleSpaceState, coupleSpace } = buildPersistableCoupleSpacePayload(

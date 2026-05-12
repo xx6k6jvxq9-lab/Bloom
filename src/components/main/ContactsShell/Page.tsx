@@ -15,11 +15,22 @@ import { createCharacterDirectory } from '../../../features/character-domain/use
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
-import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../../services/forum/forumTempChatState';
+import {
+  createEmptyForumTempChatSession,
+  markForumFriendRequestResolved,
+  markForumFriendRequestSent,
+} from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
+import { appendWorkingMemorySnapshots } from '../../../services/memory/memoryRecordSnapshots';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
+import {
+  type AddFriendSearchTarget,
+  type AddFriendLookupResult,
+  findAddFriendTargetByQuery,
+  resolveAddFriendQueryKind,
+} from '../../../features/contacts/addFriendSearch';
 import {
   countUnreadIncomingFriendRequestPages,
   getFriendRequestRelationshipRoundNo,
@@ -47,11 +58,17 @@ import {
   runHandledRelationshipRequestReactionFlow,
   runRelationshipRequestSubmissionFlow,
 } from '../../../features/contacts/relationshipFlow';
+import { getCharacterNumericId, resolveStableNumericId } from '../../../services/social-id/stableNumericId';
+import {
+  createOutgoingForumFriendRequest,
+  getPendingForumFriendRequest,
+} from '../../../services/forum/forumFriendRequests';
 
 const EMPTY_CONTACTS_FORUM_DATA: ForumData = {
   posts: [],
   notifications: [],
   tempChats: {},
+  runtimeAuthorProfiles: {},
   globalSettings: DEFAULT_FORUM_GLOBAL_SETTINGS,
 };
 
@@ -128,6 +145,15 @@ function applyForumFriendAcceptanceSettlement(
       actorName: input.actorName,
       content: input.content,
       timestamp: input.timestamp,
+    });
+    void appendWorkingMemorySnapshots({
+      characterId: character.id,
+      sourceScene: 'forum',
+      shortTermSummary: settlement.shortTermSummary,
+      sharedState: settlement.sharedState,
+      timestamp: input.timestamp,
+    }).catch((error) => {
+      console.error('[contacts-shell] Failed to persist forum acceptance settlement memory snapshots', error);
     });
 
     return {
@@ -246,6 +272,8 @@ export function ContactsApp({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const { characters, groups } = appData;
   const friendRequests = appData.friendRequests || [];
+  const forumData = hydrateForumData(appData.forumData, EMPTY_CONTACTS_FORUM_DATA);
+  const currentUserId = appData.userProfile.id;
 
   useEffect(() => {
     if (!defaultRelationshipThreadKey) {
@@ -303,6 +331,7 @@ export function ContactsApp({
 
         const newChar: Character = {
           id: req.fromUserId,
+          numericId: resolveStableNumericId(req.fromUserId),
           name: req.fromUserName,
           avatar: req.fromUserAvatar,
           gender: 'other',
@@ -468,6 +497,213 @@ export function ContactsApp({
     }));
   };
 
+  const buildCharacterLookupResult = (character: Character): AddFriendLookupResult => {
+    const displayName = character.remarkName?.trim() || character.name;
+    const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
+    const pendingOutgoingRequest = getPendingCharacterRequest(friendRequests, character.id, 'outgoing');
+    const relationshipStatusText = getCharacterRelationshipStatusText(character, friendRequests);
+    let canAdd = true;
+    let blockedReason = '';
+
+    if (canChatWithCharacter(character)) {
+      canAdd = false;
+      blockedReason = `${displayName} 已经是你的好友了`;
+    } else if (pendingIncomingRequest) {
+      canAdd = false;
+      blockedReason = `新的朋友里已经有一条来自 ${displayName} 的申请，先去处理它吧`;
+    } else if (pendingOutgoingRequest) {
+      canAdd = false;
+      blockedReason = `你已经给 ${displayName} 发过好友申请了`;
+    }
+
+    return {
+      target: {
+        kind: 'character',
+        character,
+      },
+      sourceLabel: '角色',
+      displayName,
+      avatar: character.avatar,
+      identifierText: `好友ID ${getCharacterNumericId(character)}`,
+      secondaryText: relationshipStatusText,
+      noteText: sanitizePreviewText(character.signature)
+        || sanitizePreviewText(character.openingRemark)
+        || sanitizePreviewText(character.corePersona)
+        || '找到这个角色后，可以发起一条正式好友申请。',
+      canAdd,
+      ...(blockedReason ? { blockedReason } : {}),
+    };
+  };
+
+  const buildForumAuthorLookupResult = (
+    author: Extract<AddFriendSearchTarget, { kind: 'forum_author' }>['author'],
+  ): AddFriendLookupResult => {
+    const displayName = author.name;
+    const pendingForumRequest = getPendingForumFriendRequest(friendRequests, author.id);
+    const currentSession = author.session || createEmptyForumTempChatSession(author.id);
+    const normalizedHandle = author.handle?.replace(/^@/, '').trim() || '';
+    let canAdd = true;
+    let blockedReason = '';
+
+    if (currentSession.addedAsFriend) {
+      canAdd = false;
+      blockedReason = `${displayName} 已经是你的好友了`;
+    } else if (pendingForumRequest) {
+      const isOutgoingRequest = pendingForumRequest.direction === 'outgoing' || pendingForumRequest.initiator === 'user';
+      canAdd = false;
+      blockedReason = isOutgoingRequest
+        ? `你已经给 ${displayName} 发过好友申请了`
+        : `${displayName} 已经先来加你了，去“新的朋友”里处理这条申请吧`;
+    }
+
+    const identifierParts = [
+      normalizedHandle ? `@${normalizedHandle}` : '',
+      author.numericId ? `好友ID ${author.numericId}` : '',
+    ].filter(Boolean);
+    const recentPostTitle = author.relatedPost?.title?.trim();
+
+    return {
+      target: {
+        kind: 'forum_author',
+        author,
+      },
+      sourceLabel: '论坛网友',
+      displayName,
+      avatar: author.avatar,
+      identifierText: identifierParts.join(' · ') || '论坛网友',
+      secondaryText: currentSession.addedAsFriend ? '已经转成正式好友' : '论坛网友资料命中',
+      noteText: sanitizePreviewText(author.bio)
+        || (recentPostTitle ? `最近在《${recentPostTitle}》这条线附近出现过。` : '找到这个论坛网友后，可以先确认再发好友申请。'),
+      canAdd,
+      ...(blockedReason ? { blockedReason } : {}),
+    };
+  };
+
+  const handleLookupAddTarget = (query: string): { result?: AddFriendLookupResult; error?: string } => {
+    const queryKind = resolveAddFriendQueryKind(query);
+    if (!queryKind) {
+      return {
+        error: '请输入8位好友ID，或以 @ 开头的论坛handle',
+      };
+    }
+
+    const target = findAddFriendTargetByQuery({
+      query,
+      characters,
+      forumData,
+      currentUserId,
+    });
+    if (!target) {
+      return {
+        error: queryKind === 'forum_handle' ? '没有找到这个论坛@handle' : '没有找到这个好友ID',
+      };
+    }
+
+    return {
+      result: target.kind === 'character'
+        ? buildCharacterLookupResult(target.character)
+        : buildForumAuthorLookupResult(target.author),
+    };
+  };
+
+  const handleConfirmAddTarget = (lookupResult: AddFriendLookupResult): { success: boolean; message: string } => {
+    const target = lookupResult.target;
+
+    if (target.kind === 'character') {
+      const displayName = target.character.remarkName?.trim() || target.character.name;
+      const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, target.character.id, 'incoming');
+      if (pendingIncomingRequest) {
+        return {
+          success: false,
+          message: `新的朋友里已经有一条来自 ${displayName} 的申请，先去处理它吧`,
+        };
+      }
+
+      const pendingOutgoingRequest = getPendingCharacterRequest(friendRequests, target.character.id, 'outgoing');
+      if (pendingOutgoingRequest) {
+        return {
+          success: false,
+          message: `你已经给 ${displayName} 发过好友申请了`,
+        };
+      }
+
+      if (canChatWithCharacter(target.character)) {
+        return {
+          success: false,
+          message: `${displayName} 已经是你的好友了`,
+        };
+      }
+
+      const started = runRelationshipRequestSubmissionFlow({
+        runtime: relationshipFlowRuntime,
+        characterId: target.character.id,
+        targetCharacter: target.character,
+        message: '通过好友ID找到你了，想正式认识一下。',
+      });
+
+      return started
+        ? {
+            success: true,
+            message: `已向 ${displayName} 发送好友申请`,
+          }
+        : {
+            success: false,
+            message: '这条关系线程的申请次数已经到上限了。',
+          };
+    }
+
+    const displayName = target.author.name;
+    const pendingForumRequest = getPendingForumFriendRequest(friendRequests, target.author.id);
+    if (pendingForumRequest) {
+      const isOutgoingRequest = pendingForumRequest.direction === 'outgoing' || pendingForumRequest.initiator === 'user';
+      return {
+        success: false,
+        message: isOutgoingRequest
+          ? `你已经给 ${displayName} 发过好友申请了`
+          : `${displayName} 已经先来加你了，去“新的朋友”里处理这条申请吧`,
+      };
+    }
+
+    const currentSession = target.author.session || createEmptyForumTempChatSession(target.author.id);
+    if (currentSession.addedAsFriend) {
+      return {
+        success: false,
+        message: `${displayName} 已经是你的好友了`,
+      };
+    }
+
+    const now = Date.now();
+    const nextRequest = createOutgoingForumFriendRequest({
+      author: target.author,
+      session: currentSession,
+      relatedPost: target.author.relatedPost,
+      now,
+    });
+
+    setAppData((prev) => {
+      const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
+      const currentTempChats = currentForumData.tempChats || {};
+      const existingSession = currentTempChats[target.author.id] || createEmptyForumTempChatSession(target.author.id, now);
+
+      return {
+        ...prev,
+        friendRequests: [nextRequest, ...(prev.friendRequests || [])],
+        forumData: {
+          ...currentForumData,
+          tempChats: {
+            ...currentTempChats,
+            [target.author.id]: markForumFriendRequestSent(existingSession, now),
+          },
+        },
+      };
+    });
+
+    return {
+      success: true,
+      message: `已向 ${displayName} 发送好友申请`,
+    };
+  };
+
   if (view === 'new-friends') {
     return (
       <NewFriendsPage 
@@ -482,28 +718,8 @@ export function ContactsApp({
         }}
         onDeletePage={handleDeleteFriendRequestPage}
         onMarkPageRead={handleMarkFriendRequestPageRead}
-        onAddById={(id) => {
-          // Mock adding by ID
-          const newReq: FriendRequest = {
-            id: Date.now().toString(),
-            fromUserId: id,
-            fromUserName: `用户 ${id.slice(0, 4)}`,
-            fromUserAvatar: `https://picsum.photos/seed/${id}/200`,
-            status: 'pending',
-            timestamp: Date.now(),
-            message: '通过虚拟ID查找添加',
-            direction: 'outgoing',
-            initiator: 'user',
-            requestKind: 'friend',
-            sourceScene: 'manual',
-            lastUpdatedAt: Date.now(),
-          };
-          setAppData(prev => ({
-            ...prev,
-            friendRequests: [newReq, ...(prev.friendRequests || [])]
-          }));
-          alert('已发送好友申请（模拟）');
-        }}
+        onLookupAddTarget={handleLookupAddTarget}
+        onConfirmAddTarget={handleConfirmAddTarget}
         onBack={() => {
           setRelationshipThreadKey(null);
           onRelationshipThreadHandled?.();
@@ -779,6 +995,7 @@ export function CharacterProfile({
   const [showRequestSheet, setShowRequestSheet] = useState(false);
   const [isEditingRemark, setIsEditingRemark] = useState(false);
   const displayName = character.remarkName?.trim() || character.name;
+  const characterNumericId = getCharacterNumericId(character);
   const currentRemarkName = character.remarkName?.trim() || '';
   const rawCardContent = resolveCharacterCardSource(character);
   const previewCardContent = sanitizePreviewText(rawCardContent);
@@ -832,13 +1049,13 @@ export function CharacterProfile({
   const handleCopyId = async () => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(character.id);
-        alert('角色 ID 已复制');
+        await navigator.clipboard.writeText(characterNumericId);
+        alert('好友ID 已复制');
       } else {
-        alert(`角色 ID：${character.id}`);
+        alert(`好友ID：${characterNumericId}`);
       }
     } catch {
-      alert(`角色 ID：${character.id}`);
+      alert(`好友ID：${characterNumericId}`);
     }
     closeManagementSheet();
   };
@@ -923,7 +1140,7 @@ export function CharacterProfile({
           <ResolvedContactsAvatar value={character.avatar} alt={displayName} className="w-14 h-14 rounded-xl object-cover shadow-sm" />
           <div className="flex-1 min-w-0">
             <h2 className="text-[18px] font-bold text-zinc-900 truncate">{displayName}</h2>
-            <p className="text-[12px] text-zinc-400 mt-0.5">ID: {character.id}</p>
+            <p className="text-[12px] text-zinc-400 mt-0.5">好友ID: {characterNumericId}</p>
             <p className="mt-1 text-[11px] text-zinc-500">{relationshipStatusText}</p>
           </div>
         </div>
@@ -1230,8 +1447,8 @@ export function CharacterProfile({
                         <Copy size={18} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[14px] font-medium text-zinc-900">复制角色 ID</p>
-                        <p className="mt-0.5 truncate text-[12px] text-zinc-400">{character.id}</p>
+                        <p className="text-[14px] font-medium text-zinc-900">复制好友ID</p>
+                        <p className="mt-0.5 truncate text-[12px] text-zinc-400">{characterNumericId}</p>
                       </div>
                     </button>
 

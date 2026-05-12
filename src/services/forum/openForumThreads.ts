@@ -2,6 +2,7 @@ import type { ApiConfig, ForumGlobalSettings, ForumPost, ForumRuntimeAuthorProfi
 import type { ForumChannel, ForumThreadType } from '../../features/forum-domain/types';
 import { FORUM_CHANNEL_TABS, FORUM_FILTER_THREAD_TYPES } from '../../features/forum-domain/forumPresentation';
 import { buildReadableForumHandle } from '../../features/forum-domain/characterForumPersona';
+import { resolveStableNumericId } from '../social-id/stableNumericId';
 import { generateForumThreads, type GeneratedForumAuthorDraft } from './generateForumThreads';
 import { pickRecurringForumAuthorsForChannel } from './forumReplyAuthorPool';
 import type { ForumTopicPackage } from './forumTopicPlanner';
@@ -171,6 +172,7 @@ function buildRuntimeProfile(author: GeneratedForumAuthorDraft, channel: ForumCh
   });
   return {
     id: author.id,
+    numericId: resolveStableNumericId(author.id),
     name: author.displayName,
     handle,
     avatar: buildAnimeAvatar(author.avatarSeed || `${author.displayName}${handle}`, author.displayName),

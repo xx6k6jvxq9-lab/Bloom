@@ -671,6 +671,7 @@ export type CharacterFriendshipStatus = 'friends' | 'none';
 
 export type Character = {
   id: string;
+  numericId?: string;
   name: string;
   gender: 'male' | 'female' | 'other';
   avatar: string;
@@ -1144,6 +1145,7 @@ export type ForumTempChatSession = {
 
 export type ForumRuntimeAuthorProfile = {
   id: string;
+  numericId?: string;
   name: string;
   handle: string;
   avatar: string;
@@ -1314,6 +1316,8 @@ export type FriendRequest = {
   forumHandle?: string;
   forumBio?: string;
   forumPersona?: string;
+  autoResolveAt?: number;
+  autoResolveKind?: 'forum_outgoing_request';
 };
 
 export type ChatGroup = {

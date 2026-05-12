@@ -25,6 +25,7 @@ import {
   loadPersistedForumData,
 } from './forumDataStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+import { normalizeForumRuntimeAuthorProfiles } from '../../services/social-id/stableNumericId';
 import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import {
   loadPreferredFriendRequests,
@@ -311,9 +312,16 @@ export async function bootstrapLocalAppState({
         ? (legacyAppData?.forumData ?? EMPTY_FORUM_DATA)
         : EMPTY_FORUM_DATA;
     const localForumData = loadPersistedForumData(forumDataFallback);
-    const forumData = hasIndexedDbForumData
+    const hydratedForumData = hasIndexedDbForumData
       ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
       : localForumData;
+    const forumData = {
+      ...hydratedForumData,
+      runtimeAuthorProfiles: normalizeForumRuntimeAuthorProfiles(
+        hydratedForumData.runtimeAuthorProfiles,
+        characters,
+      ),
+    };
 
     const friendRequests = await loadPreferredFriendRequests(
       !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],

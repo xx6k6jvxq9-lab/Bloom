@@ -72,6 +72,13 @@ function buildRelationshipReactionNoticeLabel(
     : `${displayName} 的反应`;
 }
 
+function createRelationshipFriendRequestNoticeMessage(displayName: string, timestamp: number) {
+  return createRelationshipSystemMessage(
+    `${displayName} 想正式加你为好友，已经进“新的朋友”了。`,
+    timestamp,
+  );
+}
+
 function buildRelationshipReactionMessages(
   character: Pick<Character, 'id' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
   reactionText: string,
@@ -831,23 +838,29 @@ export function runRelationshipBlockToggleFlow(params: {
           );
         }
 
+        const displayName = getRelationshipDisplayName(currentCharacter);
+        const reactionMessageStartAt = timestamp + (shouldSendRequest ? 3 : 2);
+        const reactionMessages = buildRelationshipReactionMessages(
+          currentCharacter,
+          reactionText,
+          reactionMessageStartAt,
+          {
+            intensity: shouldSendRequest ? 'high' : 'normal',
+          },
+        );
         const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
           ...(shouldSendRequest
-            ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 没有直接加回你，而是回了一条新的好友申请。`, timestamp + 1)]
+            ? [createRelationshipSystemMessage(`${displayName} 没有直接加回你，而是回了一条新的好友申请。`, timestamp + 1)]
             : []),
           createRelationshipSystemMessage(
-            buildRelationshipReactionNoticeLabel(getRelationshipDisplayName(currentCharacter), { kind: 'unblocked' }),
+            buildRelationshipReactionNoticeLabel(displayName, { kind: 'unblocked' }),
             timestamp + (shouldSendRequest ? 2 : 1),
             { tone: 'danger' },
           ),
-          ...buildRelationshipReactionMessages(
-            currentCharacter,
-            reactionText,
-            timestamp + (shouldSendRequest ? 3 : 2),
-            {
-              intensity: shouldSendRequest ? 'high' : 'normal',
-            },
-          ),
+          ...reactionMessages,
+          ...(shouldSendRequest
+            ? [createRelationshipFriendRequestNoticeMessage(displayName, reactionMessageStartAt + reactionMessages.length)]
+            : []),
         ]);
 
         persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);
@@ -899,25 +912,26 @@ export function runRelationshipBlockToggleFlow(params: {
       if (shouldSendRequest) {
         const requestId = `friend-request-${characterId}-${timestamp}`;
         const threadId = getCharacterFriendRequestThreadId(characterId);
+        const displayName = getRelationshipDisplayName(currentCharacter);
         nextFriendRequests = [
           createRelationshipEventThreadEntry({
             characterId,
-            characterName: getRelationshipDisplayName(currentCharacter),
+            characterName: displayName,
             characterAvatar: currentCharacter.avatar,
             relationshipRoundId: relationshipRound.roundId,
             relationshipRoundNo: relationshipRound.roundNo,
             timestamp,
             reactionText,
             resolutionMessage: shouldCounterBlock
-              ? `${getRelationshipDisplayName(currentCharacter)} 也把你拉黑了。`
-              : `你把 ${getRelationshipDisplayName(currentCharacter)} 拉黑了。`,
+              ? `${displayName} 也把你拉黑了。`
+              : `你把 ${displayName} 拉黑了。`,
             eventKind: shouldCounterBlock ? 'character_counter_blocked' : 'user_blocked_character',
             ...(shouldCounterBlock ? { isUnread: true } : {}),
           }),
           {
             id: requestId,
             fromUserId: characterId,
-            fromUserName: getRelationshipDisplayName(currentCharacter),
+            fromUserName: displayName,
             fromUserAvatar: currentCharacter.avatar,
             status: 'pending' as const,
             timestamp: blockedFollowupReleaseAt || timestamp,
@@ -936,7 +950,6 @@ export function runRelationshipBlockToggleFlow(params: {
             sourceScene: 'relationship' as const,
             lastUpdatedAt: blockedFollowupReleaseAt || timestamp,
             ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
-            ...(reactionText ? { responseText: reactionText } : {}),
           },
           ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
         ];
@@ -965,35 +978,41 @@ export function runRelationshipBlockToggleFlow(params: {
         );
       }
 
-      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        ...(shouldSendRequest
-          ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 看起来还没打算就这样算了。`, timestamp + 1)]
-          : []),
-        ...(shouldCounterBlock
-          ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 也把你拉黑了。`, timestamp + (shouldSendRequest ? 2 : 1))]
-          : []),
-        createRelationshipSystemMessage(
-          buildRelationshipReactionNoticeLabel(getRelationshipDisplayName(currentCharacter), { kind: 'blocked' }),
-          timestamp + (shouldSendRequest ? 3 : shouldCounterBlock ? 2 : 1),
-          { tone: 'danger' },
-        ),
-        ...buildRelationshipReactionMessages(
+        const displayName = getRelationshipDisplayName(currentCharacter);
+        const reactionMessageStartAt = timestamp + (shouldSendRequest ? 4 : shouldCounterBlock ? 3 : 2);
+        const reactionMessages = buildRelationshipReactionMessages(
           currentCharacter,
           reactionText,
-          timestamp + (shouldSendRequest ? 4 : shouldCounterBlock ? 3 : 2),
+          reactionMessageStartAt,
           {
             intensity: shouldSendRequest || shouldCounterBlock ? 'high' : 'normal',
           },
-        ),
-      ]);
+        );
+        const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+          ...(shouldSendRequest
+            ? [createRelationshipSystemMessage(`${displayName} 看起来还没打算就这样算了。`, timestamp + 1)]
+            : []),
+          ...(shouldCounterBlock
+            ? [createRelationshipSystemMessage(`${displayName} 也把你拉黑了。`, timestamp + (shouldSendRequest ? 2 : 1))]
+            : []),
+          createRelationshipSystemMessage(
+            buildRelationshipReactionNoticeLabel(displayName, { kind: 'blocked' }),
+            timestamp + (shouldSendRequest ? 3 : shouldCounterBlock ? 2 : 1),
+            { tone: 'danger' },
+          ),
+          ...reactionMessages,
+          ...(shouldSendRequest
+            ? [createRelationshipFriendRequestNoticeMessage(displayName, reactionMessageStartAt + reactionMessages.length)]
+            : []),
+        ]);
 
-      persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);
-      return {
-        ...prev,
-        characters: nextCharacters,
-        chatHistory: nextChatHistory,
-        friendRequests: nextFriendRequests,
-      };
+        persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);
+        return {
+          ...prev,
+          characters: nextCharacters,
+          chatHistory: nextChatHistory,
+          friendRequests: nextFriendRequests,
+        };
     });
   })();
 

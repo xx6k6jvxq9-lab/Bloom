@@ -23,6 +23,7 @@ type ForumUserProfilePostItem = {
 type ForumUserProfileViewProps = {
   user: {
     id: string;
+    numericId?: string;
     name: string;
     avatar: string;
     handle: string;
@@ -105,6 +106,9 @@ export function ForumUserProfileView({
                 <div className="min-w-0 flex-1">
                   <h2 className="text-[20px] font-bold text-zinc-900 leading-tight break-words">{user.name}</h2>
                   <p className="mt-1 text-[12px] text-zinc-500 break-all">{user.handle}</p>
+                  {user.numericId ? (
+                    <p className="mt-1 text-[11px] text-zinc-400 break-all">好友ID {user.numericId}</p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2 pt-1">
                   {canEditProfile && (

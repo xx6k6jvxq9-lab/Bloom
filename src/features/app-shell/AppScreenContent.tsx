@@ -65,6 +65,13 @@ import {
   runRelationshipBlockToggleFlow,
   runRelationshipRequestSubmissionFlow,
 } from '../contacts/relationshipFlow';
+import { buildForumSharedSettlement } from '../../services/forum/buildForumSharedSettlement';
+import { bridgeForumFriendToFormalChat } from '../../services/forum/forumFriendBridge';
+import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../services/forum/forumTempChatState';
+import {
+  appendForumFriendResolutionMessage,
+  resolveOutgoingForumFriendRequest,
+} from '../../services/forum/forumOutgoingFriendRequestResolution';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -129,6 +136,174 @@ function preloadPredictedAppTarget(app: AppScreen): Promise<unknown> | null {
     default:
       return null;
   }
+}
+
+function getNormalizedForumData(forumData: AppData['forumData']) {
+  return {
+    ...(forumData || {}),
+    posts: forumData?.posts || [],
+    notifications: forumData?.notifications || [],
+    followedUsers: forumData?.followedUsers || [],
+    followerMap: forumData?.followerMap || {},
+    tempChats: forumData?.tempChats || {},
+    runtimeAuthorProfiles: forumData?.runtimeAuthorProfiles || {},
+  };
+}
+
+function applyForumFriendAcceptanceSettlement(
+  characters: Character[],
+  input: {
+    characterId: string;
+    actorName: string;
+    content: string;
+    timestamp: number;
+  },
+) {
+  return characters.map((character) => {
+    if (!character || character.id !== input.characterId) {
+      return character;
+    }
+
+    const settlement = buildForumSharedSettlement(character, {
+      kind: 'friend_request_accepted',
+      actorName: input.actorName,
+      content: input.content,
+      timestamp: input.timestamp,
+    });
+
+    return {
+      ...character,
+      sharedContextSnapshots: settlement.sharedContextSnapshots,
+      shortTermSummary: settlement.shortTermSummary,
+      openLoopRegistry: settlement.openLoopRegistry,
+      sharedState: settlement.sharedState,
+    };
+  });
+}
+
+function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now()) {
+  const forumData = getNormalizedForumData(appData.forumData);
+  const pendingOutgoingRequests = (appData.friendRequests || []).filter((request) => (
+    request.sourceScene === 'forum'
+    && request.status === 'pending'
+    && (request.direction === 'outgoing' || request.initiator === 'user')
+    && request.autoResolveKind === 'forum_outgoing_request'
+    && typeof request.autoResolveAt === 'number'
+  ));
+
+  const dueRequests = pendingOutgoingRequests.filter((request) => (request.autoResolveAt || 0) <= now);
+  const nextDueAt = pendingOutgoingRequests
+    .map((request) => request.autoResolveAt)
+    .filter((value): value is number => typeof value === 'number' && value > now)
+    .sort((left, right) => left - right)[0] || null;
+
+  if (dueRequests.length === 0) {
+    return {
+      changed: false,
+      nextDueAt,
+    };
+  }
+
+  let nextCharacters = appData.characters;
+  let nextChatHistory = appData.chatHistory;
+  let nextTempChats = { ...forumData.tempChats };
+  const resolvedRequestIds = new Set<string>();
+
+  dueRequests.forEach((request) => {
+    const authorId = request.fromUserId;
+    const currentSession = nextTempChats[authorId] || createEmptyForumTempChatSession(authorId, now);
+    const relatedPost = request.sourcePostId
+      ? forumData.posts.find((post) => post.id === request.sourcePostId) || null
+      : forumData.posts
+          .filter((post) => post.authorId === authorId || post.comments.some((comment) => comment.authorId === authorId))
+          .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
+
+    const resolution = resolveOutgoingForumFriendRequest({
+      author: {
+        id: authorId,
+        name: request.fromUserName,
+        handle: request.forumHandle,
+        bio: request.forumBio,
+        persona: request.forumPersona,
+      },
+      session: currentSession,
+      relatedPost,
+      currentUserId: appData.userProfile.id,
+      followedUsers: forumData.followedUsers,
+      followerMap: forumData.followerMap,
+      now,
+    });
+
+    const resolvedSession = appendForumFriendResolutionMessage(
+      markForumFriendRequestResolved(currentSession, resolution.accepted ? 'accepted' : 'rejected', now),
+      resolution.responseText,
+      now,
+    );
+    nextTempChats[authorId] = resolvedSession;
+    resolvedRequestIds.add(request.id);
+
+    if (resolution.accepted) {
+      const bridged = bridgeForumFriendToFormalChat({
+        appData: {
+          ...appData,
+          characters: nextCharacters,
+          chatHistory: nextChatHistory,
+        } as any,
+        author: {
+          id: authorId,
+          name: request.fromUserName,
+          avatar: request.fromUserAvatar,
+          handle: request.forumHandle,
+          bio: request.forumBio,
+          persona: request.forumPersona,
+        },
+        session: resolvedSession,
+        now,
+      });
+
+      nextCharacters = applyForumFriendAcceptanceSettlement(bridged.nextCharacters, {
+        characterId: authorId,
+        actorName: request.fromUserName,
+        content: resolution.responseText,
+        timestamp: now,
+      });
+      nextChatHistory = bridged.nextChatHistory as ChatHistory;
+      nextTempChats[authorId] = bridged.nextTempSession;
+    }
+  });
+
+  return {
+    changed: true,
+    nextDueAt,
+    nextAppData: {
+      ...appData,
+      characters: nextCharacters,
+      chatHistory: nextChatHistory,
+      friendRequests: (appData.friendRequests || []).map((request) => (
+        !resolvedRequestIds.has(request.id)
+          ? request
+          : {
+              ...request,
+              status: dueRequests.find((item) => item.id === request.id) ? (
+                nextTempChats[request.fromUserId]?.addedAsFriend ? 'accepted' : 'rejected'
+              ) : request.status,
+              resolutionMessage: nextTempChats[request.fromUserId]?.addedAsFriend
+                ? '对方通过了你的申请'
+                : '对方暂时没有通过你的申请',
+              responseText: nextTempChats[request.fromUserId]?.messages[nextTempChats[request.fromUserId].messages.length - 1]?.text || request.responseText,
+              autoResolveAt: undefined,
+              autoResolveKind: undefined,
+              lastUpdatedAt: now,
+            }
+      )),
+      forumData: {
+        ...appData.forumData,
+        ...forumData,
+        tempChats: nextTempChats,
+      },
+    },
+    nextCharacters,
+  };
 }
 
 type AppScreenContentProps = {
@@ -525,6 +700,40 @@ export function AppScreenContent({
       window.clearTimeout(timerId);
     };
   }, [appData.friendRequests, setPersistedFriendRequests]);
+
+  useEffect(() => {
+    const resolution = resolveDueOutgoingForumFriendRequests(appData, Date.now());
+    if (resolution.changed && resolution.nextAppData) {
+      if (resolution.nextCharacters && resolution.nextCharacters !== appData.characters) {
+        void saveCharacters(resolution.nextCharacters);
+      }
+      setAppData(resolution.nextAppData);
+      return;
+    }
+
+    if (!resolution.nextDueAt || typeof window === 'undefined') {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      let resolvedCharacters: Character[] | null = null;
+      setAppData((prev) => {
+        const nextResolution = resolveDueOutgoingForumFriendRequests(prev, Date.now());
+        if (!nextResolution.changed || !nextResolution.nextAppData) {
+          return prev;
+        }
+        resolvedCharacters = nextResolution.nextCharacters || null;
+        return nextResolution.nextAppData;
+      });
+      if (resolvedCharacters) {
+        void saveCharacters(resolvedCharacters);
+      }
+    }, Math.max(0, resolution.nextDueAt - Date.now()));
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [appData, setAppData]);
 
   useEffect(() => () => {
     clearPendingChatDomainFlush();

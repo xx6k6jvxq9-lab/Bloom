@@ -1,9 +1,12 @@
 import type { Character, FriendRequest, ForumPost, ForumTempChatSession } from '../../types';
+import { resolveStableNumericId } from '../social-id/stableNumericId';
+import { resolveOutgoingForumFriendRequestDelayMs } from './forumOutgoingFriendRequestResolution';
 
 type ForumFriendAuthor = {
   id: string;
   name: string;
   avatar: string;
+  numericId?: string;
   handle?: string;
   bio?: string;
   description?: string;
@@ -52,11 +55,71 @@ export function createForumFriendRequest(input: {
     timestamp: now,
     message,
     sourceScene: 'forum',
+    direction: 'incoming',
+    initiator: 'forum',
+    requestKind: 'friend',
     sourcePostId: relatedPost?.id,
     sourceTempChatAuthorId: session.authorId,
     forumHandle: author.handle,
     forumBio: author.bio || author.description,
     forumPersona: author.persona,
+    lastUpdatedAt: now,
+  };
+}
+
+export function createOutgoingForumFriendRequest(input: {
+  author: ForumFriendAuthor;
+  session?: ForumTempChatSession | null;
+  relatedPost?: ForumPost | null;
+  now?: number;
+  message?: string;
+}): FriendRequest {
+  const { author, relatedPost } = input;
+  const now = input.now || Date.now();
+  const relatedTitle = relatedPost?.title?.trim();
+  const resolutionDelayMs = resolveOutgoingForumFriendRequestDelayMs({
+    author,
+    session: input.session || {
+      authorId: author.id,
+      createdAt: now,
+      updatedAt: now,
+      messages: [],
+      sessionOrigin: 'user_opened',
+      canAddFriend: false,
+      addedAsFriend: false,
+      completedExchangeRounds: 0,
+      meaningfulReplyCount: 0,
+      proactiveNpcTurnCount: 0,
+      friendRequestState: 'none',
+    },
+  });
+  const message = input.message?.trim()
+    || (
+      relatedTitle
+        ? `通过好友ID找到你了，想继续聊聊《${relatedTitle}》这条线。`
+        : '通过好友ID找到你了，想正式认识一下。'
+    );
+
+  return {
+    id: `forum-friend-request-outgoing-${author.id}-${now}`,
+    fromUserId: author.id,
+    fromUserName: author.name,
+    fromUserAvatar: author.avatar,
+    status: 'pending',
+    timestamp: now,
+    message,
+    sourceScene: 'forum',
+    direction: 'outgoing',
+    initiator: 'user',
+    requestKind: 'friend',
+    sourcePostId: relatedPost?.id,
+    sourceTempChatAuthorId: input.session?.authorId || author.id,
+    forumHandle: author.handle,
+    forumBio: author.bio || author.description,
+    forumPersona: author.persona,
+    lastUpdatedAt: now,
+    autoResolveKind: 'forum_outgoing_request',
+    autoResolveAt: now + resolutionDelayMs,
   };
 }
 
@@ -68,11 +131,22 @@ export function hasPendingForumFriendRequest(friendRequests: FriendRequest[], au
   ));
 }
 
+export function getPendingForumFriendRequest(friendRequests: FriendRequest[], authorId: string) {
+  return [...friendRequests]
+    .filter((request) => (
+      request.fromUserId === authorId
+      && request.sourceScene === 'forum'
+      && request.status === 'pending'
+    ))
+    .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
+}
+
 export function buildForumFriendBridgeCharacter(request: FriendRequest): Character {
   const profileText = request.forumPersona || request.forumBio || `${request.fromUserName}是在论坛里认识的新朋友。`;
 
   return {
     id: request.fromUserId,
+    numericId: resolveStableNumericId(request.fromUserId),
     name: request.fromUserName,
     gender: 'other',
     avatar: request.fromUserAvatar,
@@ -83,6 +157,10 @@ export function buildForumFriendBridgeCharacter(request: FriendRequest): Charact
     lastMessage: '终于不用隔着论坛说话了。',
     lastTime: Date.now(),
     groupId: '论坛网友',
+    friendshipStatus: 'friends',
+    blockedByUser: false,
+    blockedByCharacter: false,
+    relationshipStatusUpdatedAt: Date.now(),
     maxReplies: 3,
     autoReplyEnabled: true,
     postFrequency: 'medium',

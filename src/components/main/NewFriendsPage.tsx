@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Search, Trash2 } from 'lucide-react';
 import type { FriendRequest } from '../../types';
+import type { AddFriendLookupResult } from '../../features/contacts/addFriendSearch';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
@@ -91,7 +92,8 @@ export function NewFriendsPage({
   onThreadClosed,
   onDeletePage,
   onMarkPageRead,
-  onAddById,
+  onLookupAddTarget,
+  onConfirmAddTarget,
   onBack,
 }: {
   requests: FriendRequest[];
@@ -102,11 +104,17 @@ export function NewFriendsPage({
   onThreadClosed?: () => void;
   onDeletePage?: (pageKey: string) => void;
   onMarkPageRead?: (pageKey: string) => void;
-  onAddById: (id: string) => void;
+  onLookupAddTarget: (query: string) => { result?: AddFriendLookupResult; error?: string };
+  onConfirmAddTarget: (result: AddFriendLookupResult) => { success: boolean; message: string };
   onBack: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchId, setSearchId] = useState('');
+  const [addFriendLookup, setAddFriendLookup] = useState<AddFriendLookupResult | null>(null);
+  const [addFriendNotice, setAddFriendNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
   const [activePageKey, setActivePageKey] = useState<string | null>(null);
   const [rejectComposerTarget, setRejectComposerTarget] = useState<{
     id: string;
@@ -159,6 +167,57 @@ export function NewFriendsPage({
     setRejectDraft('');
   };
 
+  const handleLookupAddTarget = () => {
+    const normalizedQuery = searchId.trim();
+    if (!normalizedQuery) {
+      setAddFriendLookup(null);
+      setAddFriendNotice({
+        tone: 'error',
+        message: '先输入好友ID或论坛@handle',
+      });
+      return;
+    }
+
+    const lookup = onLookupAddTarget(normalizedQuery);
+    if (lookup.error) {
+      setAddFriendLookup(null);
+      setAddFriendNotice({
+        tone: 'error',
+        message: lookup.error,
+      });
+      return;
+    }
+
+    if (!lookup.result) {
+      setAddFriendLookup(null);
+      setAddFriendNotice({
+        tone: 'error',
+        message: '没有找到这个好友',
+      });
+      return;
+    }
+
+    setAddFriendLookup(lookup.result);
+    setAddFriendNotice(null);
+  };
+
+  const handleConfirmAddTarget = () => {
+    if (!addFriendLookup) {
+      return;
+    }
+
+    const outcome = onConfirmAddTarget(addFriendLookup);
+    setAddFriendNotice({
+      tone: outcome.success ? 'success' : 'error',
+      message: outcome.message,
+    });
+
+    if (outcome.success) {
+      setSearchId('');
+      setAddFriendLookup(null);
+    }
+  };
+
   if (activePageKey) {
     return (
       <RelationshipThreadPage
@@ -194,18 +253,84 @@ export function NewFriendsPage({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
           <input
             type="text"
-            placeholder="输入虚拟 ID 添加朋友"
+            placeholder="输入好友ID或论坛@handle"
             value={searchId}
-            onChange={(event) => setSearchId(event.target.value)}
+            onChange={(event) => {
+              setSearchId(event.target.value);
+              setAddFriendLookup(null);
+              setAddFriendNotice(null);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && searchId.trim()) {
-                onAddById(searchId.trim());
-                setSearchId('');
+                handleLookupAddTarget();
               }
             }}
-            className="w-full rounded-xl bg-zinc-100 py-2 pl-10 pr-4 text-[14px] outline-none focus:ring-2 focus:ring-zinc-900/10"
+            className="w-full rounded-xl bg-zinc-100 py-2 pl-10 pr-[76px] text-[14px] outline-none focus:ring-2 focus:ring-zinc-900/10"
           />
+          <button
+            type="button"
+            onClick={handleLookupAddTarget}
+            disabled={!searchId.trim()}
+            className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-3 py-1.5 text-[12px] font-medium ${
+              searchId.trim()
+                ? 'bg-white text-zinc-700 shadow-sm'
+                : 'bg-zinc-200 text-zinc-400'
+            }`}
+          >
+            搜索
+          </button>
         </div>
+        <div className="mt-2 text-[11px] text-zinc-400">支持精确搜索 8 位好友ID，前面带 @ 也可以；论坛资料页里的 @handle 也能搜。</div>
+        {addFriendNotice ? (
+          <div
+            className={`mt-3 rounded-2xl px-3.5 py-3 text-[12px] leading-5 ${
+              addFriendNotice.tone === 'success'
+                ? 'border border-emerald-100 bg-emerald-50 text-emerald-700'
+                : 'border border-amber-100 bg-amber-50 text-amber-700'
+            }`}
+          >
+            {addFriendNotice.message}
+          </div>
+        ) : null}
+        {addFriendLookup ? (
+          <div className="mt-3 rounded-[24px] border border-zinc-100 bg-zinc-50/80 p-3.5">
+            <div className="flex items-center gap-3">
+              <ResolvedNewFriendAvatar
+                value={addFriendLookup.avatar}
+                alt={addFriendLookup.displayName}
+                className="h-12 w-12 rounded-full bg-zinc-100 object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="truncate text-[15px] font-semibold text-zinc-900">{addFriendLookup.displayName}</div>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                    {addFriendLookup.sourceLabel}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[11px] text-zinc-400">{addFriendLookup.identifierText}</div>
+                <div className="mt-1 text-[12px] leading-5 text-zinc-600">{addFriendLookup.secondaryText}</div>
+                {addFriendLookup.noteText ? (
+                  <div className="mt-1 text-[11px] leading-5 text-zinc-400">{addFriendLookup.noteText}</div>
+                ) : null}
+                {!addFriendLookup.canAdd && addFriendLookup.blockedReason ? (
+                  <div className="mt-2 text-[11px] leading-5 text-amber-700">{addFriendLookup.blockedReason}</div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={handleConfirmAddTarget}
+                disabled={!addFriendLookup.canAdd}
+                className={`shrink-0 rounded-2xl px-4 py-2 text-[13px] font-semibold ${
+                  addFriendLookup.canAdd
+                    ? 'border border-zinc-200 bg-white text-zinc-700 shadow-sm active:bg-zinc-100'
+                    : 'border border-zinc-100 bg-zinc-100 text-zinc-400'
+                }`}
+              >
+                添加
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div

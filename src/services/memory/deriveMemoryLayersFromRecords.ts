@@ -126,6 +126,10 @@ function buildDerivedOpenLoopEntry(
     };
   }
 
+  if (record.kind !== 'relationship_wave') {
+    return null;
+  }
+
   if (
     record.eventKind !== 'conflict'
     && record.eventKind !== 'reconcile'

@@ -11,6 +11,10 @@ import type {
 import { resolveCharacterCorePersonaCompat, resolveCharacterLongTermMemoryCompat } from '../../services/character/characterCompat';
 import { normalizeMemoryLibraryEntries } from '../../services/memory/memoryLibrary';
 import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
+import {
+  getCharacterNumericId,
+  normalizeCharactersWithNumericIds,
+} from '../../services/social-id/stableNumericId';
 import type { CharacterSharedContextSnapshot } from '../../services/relationship-context/types';
 import { CHARACTER_SCHEMA_VERSION } from './schemaVersions';
 
@@ -429,6 +433,7 @@ export function migrateCharacterShape(character: Character): Character {
 
   return {
     ...character,
+    numericId: getCharacterNumericId(character),
     corePersona,
     expressionStyle,
     boundaryPack,
@@ -466,7 +471,7 @@ export function migrateCharacterShape(character: Character): Character {
 
 export function migrateCharacterShapes(characters: Character[] | null | undefined): Character[] {
   if (!Array.isArray(characters)) return [];
-  return characters.map(migrateCharacterShape);
+  return normalizeCharactersWithNumericIds(characters.map(migrateCharacterShape));
 }
 
 export function getCharacterSchemaVersion(): number {

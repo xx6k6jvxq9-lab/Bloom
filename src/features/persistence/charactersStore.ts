@@ -4,12 +4,13 @@ import { loadJson, remove as removeStoredJson, saveJson } from './localConfigSto
 import {
   buildCharacterMemoryRecord,
   clearPersistedCharacterMemoryRecord,
-  loadPersistedCharacterMemoryRecord,
   loadPreferredCharacterMemoryRecord,
   mergeCharacterMemoryIntoCharacters,
   saveCharacterMemoryRecord,
   stripCharacterMemoryFromCharacters,
 } from './characterMemoryStore';
+import type { CharacterMemoryRecord } from './characterMemoryStore';
+import { appendLegacyCharacterMemoryRecordAsNotes } from '../../services/memory/memoryRecordSnapshots';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import {
   stripCharacterChatPreviewFields,
@@ -47,27 +48,36 @@ export function hydrateCharacters(
 
 export function loadCharacters(fallback: Character[] = []): Character[] {
   const persisted = loadJson<Character[] | null>(STORAGE_KEYS.characters, null);
-  const characters = hydrateCharacters(persisted, fallback);
-  return mergeCharacterMemoryIntoCharacters(
-    characters,
-    loadPersistedCharacterMemoryRecord(buildCharacterMemoryRecord(characters)),
-  );
+  return hydrateCharacters(persisted, fallback);
 }
 
 export async function loadPreferredCharacters(fallback: Character[] = []): Promise<Character[]> {
   const localCharacters = loadCharacters(fallback);
   const localMemoryRecord = buildCharacterMemoryRecord(localCharacters);
   const preferredMemoryRecord = await loadPreferredCharacterMemoryRecord(localMemoryRecord);
+  let effectiveMemoryRecord: CharacterMemoryRecord = preferredMemoryRecord;
+  let didMigrateLegacyCharacterMemory = false;
   const strippedLocalCharacters = stripCharacterChatPreviewFieldsFromList(
     stripCharacterMemoryFromCharacters(localCharacters),
   );
+
+  if (Object.keys(preferredMemoryRecord).length > 0) {
+    try {
+      await appendLegacyCharacterMemoryRecordAsNotes(preferredMemoryRecord);
+      await saveCharacterMemoryRecord({});
+      effectiveMemoryRecord = {};
+      didMigrateLegacyCharacterMemory = true;
+    } catch (error) {
+      console.error('[charactersStore] Failed to migrate legacy character memory into memoryRecords', error);
+    }
+  }
 
   try {
     const persisted = await loadJsonRecord<Character[]>(STORAGE_KEYS.characters);
     if (Array.isArray(persisted)) {
       const indexedDbCharacters = mergeCharacterMemoryIntoCharacters(
         hydrateCharacters(persisted, fallback),
-        preferredMemoryRecord,
+        effectiveMemoryRecord,
       );
       const strippedIndexedDbCharacters = stripCharacterChatPreviewFieldsFromList(
         stripCharacterMemoryFromCharacters(indexedDbCharacters),
@@ -81,7 +91,7 @@ export async function loadPreferredCharacters(fallback: Character[] = []): Promi
         });
       }
 
-      if (JSON.stringify(preferredMemoryRecord) !== JSON.stringify(nextMemoryRecord)) {
+      if (!didMigrateLegacyCharacterMemory && JSON.stringify(effectiveMemoryRecord) !== JSON.stringify(nextMemoryRecord)) {
         try {
           await saveCharacterMemoryRecord(nextMemoryRecord);
         } catch (error) {
@@ -100,20 +110,36 @@ export async function loadPreferredCharacters(fallback: Character[] = []): Promi
     console.error('[charactersStore] Failed to migrate local-only characters into IndexedDB', error);
   });
 
-  return localCharacters;
+  return didMigrateLegacyCharacterMemory
+    ? stripCharacterMemoryFromCharacters(localCharacters)
+    : localCharacters;
 }
 
 export async function saveCharacters(value: Character[]): Promise<void> {
-  const characterMemoryRecord = buildCharacterMemoryRecord(value);
+  const normalizedCharacters = migrateCharacterShapes(value);
+  const legacyCharacterMemoryRecord = buildCharacterMemoryRecord(normalizedCharacters);
   const strippedCharacters = stripCharacterChatPreviewFieldsFromList(
-    stripCharacterMemoryFromCharacters(value),
+    stripCharacterMemoryFromCharacters(normalizedCharacters),
   );
-  const persistableFallbackCharacters = value.map(stripCharacterChatPreviewFields);
+  const persistableFallbackCharacters = normalizedCharacters.map(stripCharacterChatPreviewFields);
 
   try {
-    await saveCharacterMemoryRecord(characterMemoryRecord);
+    if (Object.keys(legacyCharacterMemoryRecord).length > 0) {
+      await appendLegacyCharacterMemoryRecordAsNotes(legacyCharacterMemoryRecord);
+    }
+    await saveCharacterMemoryRecord({});
   } catch (error) {
-    console.error('[charactersStore] Failed to persist dedicated character memory store, falling back to embedded character save', error);
+    console.error('[charactersStore] Failed to migrate character memory into memoryRecords, falling back to legacy character memory store', error);
+    try {
+      await saveCharacterMemoryRecord(legacyCharacterMemoryRecord);
+    } catch (memoryError) {
+      console.error('[charactersStore] Failed to persist fallback character memory store, falling back to embedded character save', memoryError);
+      saveJson(STORAGE_KEYS.characters, persistableFallbackCharacters);
+      return saveJsonRecord(STORAGE_KEYS.characters, persistableFallbackCharacters).catch((saveError) => {
+        console.error('[charactersStore] Failed to persist fallback embedded characters into IndexedDB', saveError);
+      });
+    }
+
     saveJson(STORAGE_KEYS.characters, persistableFallbackCharacters);
     return saveJsonRecord(STORAGE_KEYS.characters, persistableFallbackCharacters).catch((saveError) => {
       console.error('[charactersStore] Failed to persist fallback embedded characters into IndexedDB', saveError);
