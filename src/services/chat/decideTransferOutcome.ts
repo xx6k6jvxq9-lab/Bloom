@@ -1,6 +1,7 @@
 import type { ApiConfig, Character, ChatMessage } from '../../types';
 import { streamTextWithConfig } from '../ai/runtimeClient';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { formatTransferMessageForContext } from './transferContextText';
 
 export type TransferDecision = {
   decision: 'accept' | 'reject';
@@ -81,6 +82,24 @@ function resolveTransferPersonaSummary(character: Character): string {
   return parts.length > 0 ? parts.join('\n') : '未提供';
 }
 
+function formatCompactHistoryLine(
+  message: ChatMessage,
+  options: {
+    userName: string;
+    characterName: string;
+  },
+): string {
+  const transferContextText = formatTransferMessageForContext(message, {
+    userLabel: options.userName,
+    characterLabel: options.characterName,
+  });
+  if (transferContextText) {
+    return transferContextText;
+  }
+
+  return `${message.role === 'user' ? options.userName : options.characterName}: ${message.text}`;
+}
+
 export async function decideTransferOutcome(options: {
   activeConfig: ApiConfig;
   character: Character;
@@ -91,7 +110,10 @@ export async function decideTransferOutcome(options: {
   const { activeConfig, character, amount, history, userName } = options;
   const compactHistory = history
     .slice(-6)
-    .map(message => `${message.role === 'user' ? userName : character.name}: ${message.text}`)
+    .map(message => formatCompactHistoryLine(message, {
+      userName,
+      characterName: character.name,
+    }))
     .join('\n');
   const personaSummary = resolveTransferPersonaSummary(character);
 
@@ -130,7 +152,10 @@ export async function generateTransferEventReaction(options: {
   const { activeConfig, character, amount, history, userName, direction } = options;
   const compactHistory = history
     .slice(-8)
-    .map(message => `${message.role === 'user' ? userName : character.name}: ${message.text}`)
+    .map(message => formatCompactHistoryLine(message, {
+      userName,
+      characterName: character.name,
+    }))
     .join('\n');
   const personaSummary = resolveTransferPersonaSummary(character);
 

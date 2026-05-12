@@ -1,5 +1,6 @@
 import type { AppData, ForumData, ForumSpectatorSettings, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
+import { stripCharacterChatPreviewFieldsFromList } from './characterChatPreview';
 import { saveCharacters } from './charactersStore';
 import { buildPersistableCoupleSpacePayload, persistCoupleSpace } from './coupleSpaceStore';
 import { saveDatingRecords } from './datingRecordsStore';
@@ -54,14 +55,36 @@ const EMPTY_WALLET_DATA: WalletData = {
 
 function persistIndexedDbOnly<T>(key: string, value: T): Promise<void> {
   return saveJsonRecord(key, value).catch((error) => {
-    console.error(`[persistAppDataSnapshot] Failed to persist key "${key}" into IndexedDB`, error);
+    console.error(`[persistNonChatAppDataSnapshot] Failed to persist key "${key}" into IndexedDB`, error);
   });
 }
 
-export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: AppData): Promise<void> {
-  // Chat-domain persistence is handled independently so high-frequency message updates
-  // do not get rewritten through the slower whole-app snapshot path.
-  const normalizedCharacters = appData.characters ?? fallbackAppData.characters;
+export type PersistableNonChatAppDataSnapshot = {
+  characters: AppData['characters'];
+  userProfile: AppData['userProfile'];
+  masks: AppData['masks'];
+  favorites: AppData['favorites'];
+  perception?: AppData['perception'];
+  worldBooks: AppData['worldBooks'];
+  moments: AppData['moments'];
+  callHistory: NonNullable<AppData['callHistory']>;
+  savedDates: NonNullable<AppData['savedDates']>;
+  collectedDates: NonNullable<AppData['collectedDates']>;
+  visualSettings: AppData['visualSettings'];
+  forumData: ForumData;
+  musicData?: AppData['musicData'];
+  walletData: WalletData;
+  coupleSpace: AppData['coupleSpace'];
+  coupleSpaceState: AppData['coupleSpaceState'];
+};
+
+export function buildPersistableNonChatAppDataSnapshot(
+  appData: AppData,
+  fallbackAppData: AppData,
+): PersistableNonChatAppDataSnapshot {
+  const normalizedCharacters = stripCharacterChatPreviewFieldsFromList(
+    appData.characters ?? fallbackAppData.characters,
+  );
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
   const normalizedFavorites = appData.favorites ?? fallbackAppData.favorites ?? [];
@@ -80,31 +103,54 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
     appData.coupleSpace ?? fallbackAppData.coupleSpace,
   );
 
+  return {
+    characters: normalizedCharacters,
+    userProfile: normalizedUserProfile,
+    masks: normalizedMasks,
+    favorites: normalizedFavorites,
+    perception: normalizedPerception,
+    worldBooks: normalizedWorldBooks,
+    moments: normalizedMoments,
+    callHistory: normalizedCallHistory,
+    savedDates: normalizedSavedDates,
+    collectedDates: normalizedCollectedDates,
+    visualSettings: normalizedVisualSettings,
+    forumData: normalizedForumData,
+    musicData: normalizedMusicData,
+    walletData: normalizedWalletData,
+    coupleSpace,
+    coupleSpaceState,
+  };
+}
+
+export async function persistNonChatAppDataSnapshot(
+  snapshot: PersistableNonChatAppDataSnapshot,
+): Promise<void> {
   await Promise.all([
-    saveCharacters(normalizedCharacters),
-    persistUserProfile(normalizedUserProfile),
+    saveCharacters(snapshot.characters),
+    persistUserProfile(snapshot.userProfile),
     persistMeData({
-      masks: normalizedMasks,
-      favorites: normalizedFavorites,
-      worldBooks: normalizedWorldBooks,
+      masks: snapshot.masks,
+      favorites: snapshot.favorites,
+      worldBooks: snapshot.worldBooks,
     }),
-    normalizedPerception ? persistPerception(normalizedPerception) : Promise.resolve(),
-    persistMoments(normalizedMoments),
-    saveCallHistory(normalizedCallHistory),
+    snapshot.perception ? persistPerception(snapshot.perception) : Promise.resolve(),
+    persistMoments(snapshot.moments),
+    saveCallHistory(snapshot.callHistory),
     saveDatingRecords({
-      savedDates: normalizedSavedDates,
-      collectedDates: normalizedCollectedDates,
+      savedDates: snapshot.savedDates,
+      collectedDates: snapshot.collectedDates,
     }),
-    persistVisualSettings(normalizedVisualSettings),
-    Promise.resolve(persistForumData(normalizedForumData)).then(() =>
-      persistIndexedDbOnly(STORAGE_KEYS.forumData, normalizedForumData),
+    persistVisualSettings(snapshot.visualSettings),
+    Promise.resolve(persistForumData(snapshot.forumData)).then(() =>
+      persistIndexedDbOnly(STORAGE_KEYS.forumData, snapshot.forumData),
     ),
-    Promise.resolve(persistCoupleSpace(coupleSpace, coupleSpaceState)).then(() =>
-      persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, coupleSpaceState),
+    Promise.resolve(persistCoupleSpace(snapshot.coupleSpace, snapshot.coupleSpaceState)).then(() =>
+      persistIndexedDbOnly(STORAGE_KEYS.coupleSpace, snapshot.coupleSpaceState),
     ),
-    normalizedMusicData ? persistMusicData(normalizedMusicData) : Promise.resolve(),
-    Promise.resolve(persistWalletData(normalizedWalletData)).then(() =>
-      persistIndexedDbOnly(STORAGE_KEYS.walletData, normalizedWalletData),
+    snapshot.musicData ? persistMusicData(snapshot.musicData) : Promise.resolve(),
+    Promise.resolve(persistWalletData(snapshot.walletData)).then(() =>
+      persistIndexedDbOnly(STORAGE_KEYS.walletData, snapshot.walletData),
     ),
   ]);
 }

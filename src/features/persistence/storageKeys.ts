@@ -3,6 +3,8 @@ export const STORAGE_KEYS = {
   settings: 'ai_phone_settings',
   migrationMeta: 'persistence:migration-meta',
   characters: 'persistence:characters',
+  characterMemory: 'persistence:character-memory',
+  memoryRecords: 'persistence:memory-records',
   visualSettings: 'persistence:visual-settings',
   perception: 'persistence:perception',
   userProfile: 'persistence:user-profile',
@@ -23,6 +25,6 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const PERSISTENCE_DB_NAME = 'app-persistence-db';
-export const PERSISTENCE_DB_VERSION = 4;
+export const PERSISTENCE_DB_VERSION = 5;
 export const PERSISTENCE_ASSETS_STORE = 'assets';
 export const PERSISTENCE_JSON_STORE = 'json';

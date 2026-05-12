@@ -10,12 +10,14 @@ import { loadPreferredCallHistory } from './callHistoryStore';
 import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
 import {
   loadPreferredChatHistoryRecords,
+  mergeDirectSessionMetadataIntoCharacters,
   mergeGroupSessionsIntoChatGroups,
 } from './chatHistoryStore';
 import {
   loadPreferredChatOrganization,
 } from './chatOrganizationStore';
 import { loadPreferredCharacters } from './charactersStore';
+import { stripCharacterChatPreviewFieldsFromList } from './characterChatPreview';
 import { hydratePersistedCoupleSpacePayload } from './coupleSpaceStore';
 import { loadPreferredDatingRecords } from './datingRecordsStore';
 import {
@@ -356,6 +358,7 @@ export async function bootstrapLocalAppState({
       !hasIndexedDbChatHistory && !hasLocalChatHistory
         ? legacyAppData?.chatHistory || {}
         : {},
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -427,9 +430,14 @@ export async function bootstrapLocalAppState({
     persistedChatHistory.groupSessions,
   );
 
+  const charactersWithChatPreview = mergeDirectSessionMetadataIntoCharacters(
+    characters,
+    persistedChatHistory,
+  );
+
   nextAppData = {
     ...defaultAppData,
-    characters,
+    characters: charactersWithChatPreview,
     chatHistory: persistedChatHistory.directHistory,
     userProfile,
     masks: meData.masks,
@@ -456,7 +464,7 @@ export async function bootstrapLocalAppState({
 
   await migrateCriticalRecordsIfNeeded({
     [STORAGE_KEYS.settings]: nextSettings,
-    [STORAGE_KEYS.characters]: nextAppData.characters,
+    [STORAGE_KEYS.characters]: stripCharacterChatPreviewFieldsFromList(nextAppData.characters),
     [STORAGE_KEYS.chatHistory]: persistedChatHistory,
     [STORAGE_KEYS.chatOrganization]: {
       groups: nextAppData.groups,

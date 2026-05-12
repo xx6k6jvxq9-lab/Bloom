@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildDerivedMemoryLayersFromRecords } from './deriveMemoryLayersFromRecords';
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
@@ -292,7 +293,12 @@ export function decayShortTermSummaryForContinuity(
     .join('\n');
 }
 
-export function buildShortTermSummary(character: Pick<Character, 'shortTermSummary'>): string | undefined {
+export function buildShortTermSummary(character: Pick<Character, 'id' | 'shortTermSummary'>): string | undefined {
+  const derived = buildDerivedMemoryLayersFromRecords(character).shortTermSummary;
+  if (derived) {
+    return derived;
+  }
+
   const normalized = normalizeOptionalText(character.shortTermSummary);
   if (!normalized) {
     return normalized;

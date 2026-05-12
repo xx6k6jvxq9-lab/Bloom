@@ -1,4 +1,4 @@
-import type { ChatGroup, ChatHistory, ChatMessage, GroupTopicState } from '../../types';
+import type { Character, ChatGroup, ChatHistory, ChatMessage, GroupTopicState } from '../../types';
 import { buildGroupFactTraceRecords } from '../../services/relationship-context/buildGroupFactTraceRecords';
 import { buildDirectFactTraceRecords } from '../../services/relationship-context/buildDirectFactTraceRecords';
 import { buildDirectRelationshipWaveRecords } from '../../services/relationship-context/buildDirectRelationshipWaveRecords';
@@ -8,9 +8,25 @@ import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLong
 import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
 import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
 import { formatChatMessagePreview } from '../app-shell/formatMessagePreview';
-import { loadJsonRecordEnvelope, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { listJsonRecordKeys, loadJsonRecord, loadJsonRecordEnvelope, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson } from './localConfigStore';
+import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
+import { areMemoryRecordDataEqual, loadMemoryRecordData, resetMemoryRecordData, saveMemoryRecordData } from './memoryRecordStore';
 import { STORAGE_KEYS } from './storageKeys';
+
+const CHAT_HISTORY_SHARD_INDEX_FORMAT = 'chat-history-shard-index';
+const CHAT_HISTORY_SHARD_VERSION = 1;
+const CHAT_HISTORY_DIRECT_SESSION_PREFIX = `${STORAGE_KEYS.chatHistory}:direct:`;
+const CHAT_HISTORY_GROUP_SESSION_PREFIX = `${STORAGE_KEYS.chatHistory}:group:`;
+
+export type PersistedDirectSession = {
+  history: ChatMessage[];
+  lastViewedMessageTimestamp?: number;
+};
+
+export type PersistedDirectSessionMetadata = {
+  lastViewedMessageTimestamp?: number;
+};
 
 export type PersistedGroupSession = {
   history: ChatMessage[];
@@ -27,15 +43,156 @@ export type PersistedGroupSession = {
 export type PersistedChatHistoryData = {
   updatedAt?: number;
   directHistory: ChatHistory;
+  directSessionMetadata: Record<string, PersistedDirectSessionMetadata>;
   directRelationshipWaves: Record<string, RelationshipWaveRecord[]>;
   directFactTraces: Record<string, FactTraceRecord[]>;
   groupSessions: Record<string, PersistedGroupSession>;
 };
 
+type PersistedChatHistoryShardIndex = {
+  format: typeof CHAT_HISTORY_SHARD_INDEX_FORMAT;
+  version: typeof CHAT_HISTORY_SHARD_VERSION;
+  updatedAt: number;
+  directSessionIds: string[];
+  groupSessionIds: string[];
+};
+
 let chatHistoryCache: PersistedChatHistoryData | null = null;
+let chatHistoryShardIndexCache: PersistedChatHistoryShardIndex | null = null;
 
 function isChatMessageArray(value: unknown): value is ChatMessage[] {
   return Array.isArray(value);
+}
+
+function isPersistedDirectSession(value: unknown): value is PersistedDirectSession {
+  return !!value && typeof value === 'object' && isChatMessageArray((value as PersistedDirectSession).history);
+}
+
+function sanitizeDirectSessionMetadata(
+  value: unknown,
+  fallback: Record<string, PersistedDirectSessionMetadata>,
+): Record<string, PersistedDirectSessionMetadata> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return fallback;
+  }
+
+  const result: Record<string, PersistedDirectSessionMetadata> = {};
+  for (const [key, metadata] of Object.entries(value as Record<string, unknown>)) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      continue;
+    }
+
+    const lastViewedMessageTimestamp =
+      typeof (metadata as PersistedDirectSessionMetadata).lastViewedMessageTimestamp === 'number'
+      && Number.isFinite((metadata as PersistedDirectSessionMetadata).lastViewedMessageTimestamp)
+        ? (metadata as PersistedDirectSessionMetadata).lastViewedMessageTimestamp
+        : undefined;
+
+    if (typeof lastViewedMessageTimestamp === 'number') {
+      result[key] = { lastViewedMessageTimestamp };
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : fallback;
+}
+
+function isPersistedChatHistoryShardIndex(value: unknown): value is PersistedChatHistoryShardIndex {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<PersistedChatHistoryShardIndex>;
+  return candidate.format === CHAT_HISTORY_SHARD_INDEX_FORMAT
+    && candidate.version === CHAT_HISTORY_SHARD_VERSION
+    && typeof candidate.updatedAt === 'number'
+    && Array.isArray(candidate.directSessionIds)
+    && Array.isArray(candidate.groupSessionIds);
+}
+
+function buildDirectSessionStorageKey(characterId: string): string {
+  return `${CHAT_HISTORY_DIRECT_SESSION_PREFIX}${characterId}`;
+}
+
+function buildGroupSessionStorageKey(groupId: string): string {
+  return `${CHAT_HISTORY_GROUP_SESSION_PREFIX}${groupId}`;
+}
+
+function buildShardIndex(
+  data: PersistedChatHistoryData,
+): PersistedChatHistoryShardIndex {
+  return {
+    format: CHAT_HISTORY_SHARD_INDEX_FORMAT,
+    version: CHAT_HISTORY_SHARD_VERSION,
+    updatedAt: data.updatedAt ?? Date.now(),
+    directSessionIds: Object.keys(data.directHistory).sort(),
+    groupSessionIds: Object.keys(data.groupSessions).sort(),
+  };
+}
+
+function sanitizeDirectSession(value: unknown): PersistedDirectSession | null {
+  if (isChatMessageArray(value)) {
+    return {
+      history: value,
+    };
+  }
+
+  if (isPersistedDirectSession(value)) {
+    const lastViewedMessageTimestamp =
+      typeof value.lastViewedMessageTimestamp === 'number' && Number.isFinite(value.lastViewedMessageTimestamp)
+        ? value.lastViewedMessageTimestamp
+        : undefined;
+    return {
+      history: value.history,
+      ...(typeof lastViewedMessageTimestamp === 'number' ? { lastViewedMessageTimestamp } : {}),
+    };
+  }
+
+  return null;
+}
+
+function serializeDirectSession(session: PersistedDirectSession | null | undefined): string {
+  return JSON.stringify(session ?? { history: [] });
+}
+
+function serializeGroupSession(session: PersistedGroupSession | null | undefined): string {
+  return JSON.stringify(session ?? null);
+}
+
+function sanitizeShardIndexIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+    .sort();
+}
+
+async function loadPersistedShardIndex(): Promise<PersistedChatHistoryShardIndex | null> {
+  try {
+    const persisted = await loadJsonRecord<unknown>(STORAGE_KEYS.chatHistory);
+    if (!isPersistedChatHistoryShardIndex(persisted)) {
+      return null;
+    }
+
+    return {
+      ...persisted,
+      directSessionIds: sanitizeShardIndexIds(persisted.directSessionIds),
+      groupSessionIds: sanitizeShardIndexIds(persisted.groupSessionIds),
+    };
+  } catch (error) {
+    console.error('[chatHistoryStore] Failed to inspect sharded chat history index', error);
+    return null;
+  }
+}
+
+async function listStoredChatHistoryShardKeys(): Promise<string[]> {
+  const [directKeys, groupKeys] = await Promise.all([
+    listJsonRecordKeys(CHAT_HISTORY_DIRECT_SESSION_PREFIX),
+    listJsonRecordKeys(CHAT_HISTORY_GROUP_SESSION_PREFIX),
+  ]);
+
+  return [...directKeys, ...groupKeys];
 }
 
 function sanitizeDirectHistory(value: unknown, fallback: ChatHistory): ChatHistory {
@@ -209,18 +366,30 @@ export function hydrateChatHistoryRecords(
   fallback: PersistedChatHistoryData,
 ): PersistedChatHistoryData {
   const updatedAt = resolveChatHistoryUpdatedAt(source, fallback.updatedAt ?? 0);
+  const directHistory = sanitizeDirectHistory(source?.directHistory, fallback.directHistory);
+  const directSessionMetadata = sanitizeDirectSessionMetadata(
+    source?.directSessionMetadata,
+    fallback.directSessionMetadata,
+  );
+  const directRelationshipWaves = sanitizeDirectRelationshipWaves(
+    source?.directRelationshipWaves,
+    {},
+  );
+  const directFactTraces = sanitizeDirectFactTraces(
+    source?.directFactTraces,
+    {},
+  );
 
   return {
     ...(updatedAt > 0 ? { updatedAt } : {}),
-    directHistory: sanitizeDirectHistory(source?.directHistory, fallback.directHistory),
-    directRelationshipWaves: sanitizeDirectRelationshipWaves(
-      source?.directRelationshipWaves,
-      fallback.directRelationshipWaves,
-    ),
-    directFactTraces: sanitizeDirectFactTraces(
-      source?.directFactTraces,
-      fallback.directFactTraces,
-    ),
+    directHistory,
+    directSessionMetadata,
+    directRelationshipWaves: Object.keys(directRelationshipWaves).length > 0
+      ? directRelationshipWaves
+      : extractDirectRelationshipWaves(directHistory),
+    directFactTraces: Object.keys(directFactTraces).length > 0
+      ? directFactTraces
+      : extractDirectFactTraces(directHistory),
     groupSessions: sanitizeGroupSessions(
       source?.groupSessions ?? (source as { groupHistories?: unknown } | null | undefined)?.groupHistories,
       fallback.groupSessions,
@@ -231,6 +400,7 @@ export function hydrateChatHistoryRecords(
 export function loadChatHistoryRecords(
   fallback: PersistedChatHistoryData = {
     directHistory: {},
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -239,9 +409,179 @@ export function loadChatHistoryRecords(
   return chatHistoryCache ?? fallback;
 }
 
+async function loadShardedChatHistoryRecords(
+  shardIndex: PersistedChatHistoryShardIndex,
+  fallback: PersistedChatHistoryData,
+): Promise<PersistedChatHistoryData> {
+  const [directSessions, groupSessions] = await Promise.all([
+    Promise.all(
+      shardIndex.directSessionIds.map(async (characterId) => {
+        const session = sanitizeDirectSession(
+          await loadJsonRecord<unknown>(buildDirectSessionStorageKey(characterId)),
+        );
+        return session ? [characterId, session] as const : null;
+      }),
+    ),
+    Promise.all(
+      shardIndex.groupSessionIds.map(async (groupId) => {
+        const session = sanitizeGroupSessions(
+          { [groupId]: await loadJsonRecord<unknown>(buildGroupSessionStorageKey(groupId)) },
+          {},
+        )[groupId];
+        return session ? [groupId, session] as const : null;
+      }),
+    ),
+  ]);
+
+  return hydrateChatHistoryRecords({
+    updatedAt: shardIndex.updatedAt,
+    directHistory: Object.fromEntries(
+      directSessions
+        .filter((entry): entry is readonly [string, PersistedDirectSession] => entry !== null)
+        .map(([characterId, session]) => [characterId, session.history] as const),
+    ),
+    directSessionMetadata: Object.fromEntries(
+      directSessions
+        .filter((entry): entry is readonly [string, PersistedDirectSession] => entry !== null)
+        .flatMap(([characterId, session]) => (
+          typeof session.lastViewedMessageTimestamp === 'number'
+            ? [[characterId, { lastViewedMessageTimestamp: session.lastViewedMessageTimestamp }] as const]
+            : []
+        )),
+    ),
+    groupSessions: Object.fromEntries(
+      groupSessions.filter((entry): entry is readonly [string, PersistedGroupSession] => entry !== null),
+    ),
+  }, fallback);
+}
+
+function buildPersistedValue(
+  value: PersistedChatHistoryData,
+): PersistedChatHistoryData {
+  return hydrateChatHistoryRecords({
+    ...value,
+    updatedAt: Date.now(),
+  }, {
+    directHistory: {},
+    directSessionMetadata: {},
+    directRelationshipWaves: {},
+    directFactTraces: {},
+    groupSessions: {},
+  });
+}
+
+async function persistShardedChatHistoryRecords(
+  value: PersistedChatHistoryData,
+  options: {
+    clearExistingShards?: boolean;
+  } = {},
+): Promise<void> {
+  const persistedValue = buildPersistedValue(value);
+  const shardIndex = buildShardIndex(persistedValue);
+  const previousCache = chatHistoryCache;
+  const previousShardIndex = chatHistoryShardIndexCache ?? await loadPersistedShardIndex();
+  const writes: Promise<void>[] = [];
+
+  for (const characterId of shardIndex.directSessionIds) {
+    const nextSession: PersistedDirectSession = {
+      history: persistedValue.directHistory[characterId] || [],
+      ...(
+        typeof persistedValue.directSessionMetadata[characterId]?.lastViewedMessageTimestamp === 'number'
+          ? { lastViewedMessageTimestamp: persistedValue.directSessionMetadata[characterId]?.lastViewedMessageTimestamp }
+          : {}
+      ),
+    };
+    const previousSession: PersistedDirectSession | undefined = previousCache?.directHistory[characterId]
+      ? {
+          history: previousCache.directHistory[characterId] || [],
+          ...(
+            typeof previousCache.directSessionMetadata[characterId]?.lastViewedMessageTimestamp === 'number'
+              ? { lastViewedMessageTimestamp: previousCache.directSessionMetadata[characterId]?.lastViewedMessageTimestamp }
+              : {}
+          ),
+        }
+      : undefined;
+    const shouldWrite =
+      options.clearExistingShards
+      || previousSession === undefined
+      || serializeDirectSession(previousSession) !== serializeDirectSession(nextSession);
+
+    if (shouldWrite) {
+      writes.push(saveJsonRecord(buildDirectSessionStorageKey(characterId), nextSession));
+    }
+  }
+
+  for (const groupId of shardIndex.groupSessionIds) {
+    const nextSession = persistedValue.groupSessions[groupId];
+    const previousSession = previousCache?.groupSessions[groupId];
+    const shouldWrite =
+      options.clearExistingShards
+      || !previousSession
+      || serializeGroupSession(previousSession) !== serializeGroupSession(nextSession);
+
+    if (shouldWrite) {
+      writes.push(saveJsonRecord(buildGroupSessionStorageKey(groupId), nextSession));
+    }
+  }
+
+  const staleShardKeys = options.clearExistingShards
+    ? (await listStoredChatHistoryShardKeys()).filter((key) => {
+        if (key.startsWith(CHAT_HISTORY_DIRECT_SESSION_PREFIX)) {
+          const characterId = key.slice(CHAT_HISTORY_DIRECT_SESSION_PREFIX.length);
+          return !shardIndex.directSessionIds.includes(characterId);
+        }
+
+        if (key.startsWith(CHAT_HISTORY_GROUP_SESSION_PREFIX)) {
+          const groupId = key.slice(CHAT_HISTORY_GROUP_SESSION_PREFIX.length);
+          return !shardIndex.groupSessionIds.includes(groupId);
+        }
+
+        return false;
+      })
+    : [
+        ...(previousShardIndex?.directSessionIds || [])
+          .filter((characterId) => !shardIndex.directSessionIds.includes(characterId))
+          .map((characterId) => buildDirectSessionStorageKey(characterId)),
+        ...(previousShardIndex?.groupSessionIds || [])
+          .filter((groupId) => !shardIndex.groupSessionIds.includes(groupId))
+          .map((groupId) => buildGroupSessionStorageKey(groupId)),
+      ];
+
+  await Promise.all([
+    ...writes,
+    ...staleShardKeys.map((key) => removeJsonRecord(key).catch((error) => {
+      console.error(`[chatHistoryStore] Failed to remove stale chat history shard "${key}"`, error);
+    })),
+    saveJsonRecord(STORAGE_KEYS.chatHistory, shardIndex),
+  ]);
+
+  chatHistoryCache = persistedValue;
+  chatHistoryShardIndexCache = shardIndex;
+  removeStoredJson(STORAGE_KEYS.chatHistory);
+
+  await syncDerivedMemoryRecordData(persistedValue);
+}
+
+async function syncDerivedMemoryRecordData(
+  persistedValue: PersistedChatHistoryData,
+): Promise<void> {
+  const nextMemoryRecordData = buildMemoryRecordDataFromChatHistory(persistedValue);
+  const currentMemoryRecordData = loadMemoryRecordData({
+    recordsByCharacterId: {},
+  });
+  if (!areMemoryRecordDataEqual(currentMemoryRecordData, nextMemoryRecordData)) {
+    try {
+      await saveMemoryRecordData(nextMemoryRecordData);
+    } catch (error) {
+      console.error('[chatHistoryStore] Failed to persist derived memory records', error);
+    }
+  }
+}
+
 export async function loadPreferredChatHistoryRecords(
   fallback: PersistedChatHistoryData = {
     directHistory: {},
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -250,24 +590,40 @@ export async function loadPreferredChatHistoryRecords(
   const legacyLocalHistory = loadJson<Partial<PersistedChatHistoryData> | null>(STORAGE_KEYS.chatHistory, null);
 
   try {
-    const persistedEnvelope = await loadJsonRecordEnvelope<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
-    const indexedDbUpdatedAt = resolveChatHistoryUpdatedAt(
-      persistedEnvelope.value,
-      persistedEnvelope.updatedAt ?? 0,
-    );
+    const persistedEnvelope = await loadJsonRecordEnvelope<unknown>(STORAGE_KEYS.chatHistory);
     const localUpdatedAt = resolveChatHistoryUpdatedAt(legacyLocalHistory, 0);
-    const shouldPreferIndexedDb = !!persistedEnvelope.value && (
-      !legacyLocalHistory || indexedDbUpdatedAt >= localUpdatedAt
-    );
 
-    if (shouldPreferIndexedDb && persistedEnvelope.value) {
-      const indexedDbHistory = hydrateChatHistoryRecords({
+    if (isPersistedChatHistoryShardIndex(persistedEnvelope.value)) {
+      const shardIndex: PersistedChatHistoryShardIndex = {
         ...persistedEnvelope.value,
-        ...(indexedDbUpdatedAt > 0 ? { updatedAt: indexedDbUpdatedAt } : {}),
-      }, fallback);
-      chatHistoryCache = indexedDbHistory;
-      removeStoredJson(STORAGE_KEYS.chatHistory);
-      return indexedDbHistory;
+        directSessionIds: sanitizeShardIndexIds(persistedEnvelope.value.directSessionIds),
+        groupSessionIds: sanitizeShardIndexIds(persistedEnvelope.value.groupSessionIds),
+      };
+      const indexedDbHistory = await loadShardedChatHistoryRecords(shardIndex, fallback);
+      const shouldPreferIndexedDb = !legacyLocalHistory || shardIndex.updatedAt >= localUpdatedAt;
+
+      if (shouldPreferIndexedDb) {
+        chatHistoryCache = indexedDbHistory;
+        chatHistoryShardIndexCache = shardIndex;
+        removeStoredJson(STORAGE_KEYS.chatHistory);
+        await syncDerivedMemoryRecordData(indexedDbHistory);
+        return indexedDbHistory;
+      }
+    } else if (persistedEnvelope.value) {
+      const indexedDbUpdatedAt = resolveChatHistoryUpdatedAt(
+        persistedEnvelope.value as Partial<PersistedChatHistoryData>,
+        persistedEnvelope.updatedAt ?? 0,
+      );
+      const shouldPreferIndexedDb = !legacyLocalHistory || indexedDbUpdatedAt >= localUpdatedAt;
+
+      if (shouldPreferIndexedDb) {
+        const indexedDbHistory = hydrateChatHistoryRecords({
+          ...(persistedEnvelope.value as Partial<PersistedChatHistoryData>),
+          ...(indexedDbUpdatedAt > 0 ? { updatedAt: indexedDbUpdatedAt } : {}),
+        }, fallback);
+        await persistShardedChatHistoryRecords(indexedDbHistory, { clearExistingShards: true });
+        return indexedDbHistory;
+      }
     }
   } catch (error) {
     console.error('[chatHistoryStore] Failed to load chat history from IndexedDB', error);
@@ -275,11 +631,8 @@ export async function loadPreferredChatHistoryRecords(
 
   if (legacyLocalHistory) {
     const migratedHistory = hydrateChatHistoryRecords(legacyLocalHistory, fallback);
-    chatHistoryCache = migratedHistory;
-
     try {
-      await saveJsonRecord(STORAGE_KEYS.chatHistory, migratedHistory);
-      removeStoredJson(STORAGE_KEYS.chatHistory);
+      await persistShardedChatHistoryRecords(migratedHistory, { clearExistingShards: true });
     } catch (error) {
       console.error('[chatHistoryStore] Failed to migrate legacy local chat history into IndexedDB', error);
     }
@@ -288,18 +641,12 @@ export async function loadPreferredChatHistoryRecords(
   }
 
   chatHistoryCache = fallback;
+  chatHistoryShardIndexCache = null;
   return fallback;
 }
 
 export function saveChatHistoryRecords(value: PersistedChatHistoryData): Promise<void> {
-  const persistedValue: PersistedChatHistoryData = {
-    ...value,
-    updatedAt: Date.now(),
-  };
-  chatHistoryCache = persistedValue;
-  removeStoredJson(STORAGE_KEYS.chatHistory);
-
-  return saveJsonRecord(STORAGE_KEYS.chatHistory, persistedValue).catch((error) => {
+  return persistShardedChatHistoryRecords(value).catch((error) => {
     console.error('[chatHistoryStore] Failed to persist chat history into IndexedDB', error);
   });
 }
@@ -308,6 +655,7 @@ export function patchChatHistoryRecords(
   updater: (current: PersistedChatHistoryData) => PersistedChatHistoryData,
   fallback: PersistedChatHistoryData = {
     directHistory: {},
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -319,10 +667,22 @@ export function patchChatHistoryRecords(
 
 export function resetChatHistoryRecords(): void {
   chatHistoryCache = null;
+  chatHistoryShardIndexCache = null;
+  resetMemoryRecordData();
   removeStoredJson(STORAGE_KEYS.chatHistory);
-  void removeJsonRecord(STORAGE_KEYS.chatHistory).catch((error) => {
-    console.error('[chatHistoryStore] Failed to remove chat history from IndexedDB', error);
-  });
+  void (async () => {
+    const shardKeys = await listStoredChatHistoryShardKeys().catch((error) => {
+      console.error('[chatHistoryStore] Failed to list chat history shards for reset', error);
+      return [] as string[];
+    });
+
+    await Promise.all([
+      removeJsonRecord(STORAGE_KEYS.chatHistory),
+      ...shardKeys.map((key) => removeJsonRecord(key)),
+    ]).catch((error) => {
+      console.error('[chatHistoryStore] Failed to remove chat history from IndexedDB', error);
+    });
+  })();
 }
 
 export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, PersistedGroupSession> {
@@ -349,6 +709,58 @@ export function extractGroupSessions(chatGroups: ChatGroup[]): Record<string, Pe
     };
     return acc;
   }, {});
+}
+
+export function extractDirectSessionMetadata(
+  characters: Character[],
+  directHistory: ChatHistory,
+): Record<string, PersistedDirectSessionMetadata> {
+  const characterById = new Map(characters.map((character) => [character.id, character]));
+  const sessionIds = new Set([
+    ...Object.keys(directHistory),
+    ...characters
+      .filter((character) => typeof character.lastViewedMessageTimestamp === 'number')
+      .map((character) => character.id),
+  ]);
+
+  return Array.from(sessionIds).reduce<Record<string, PersistedDirectSessionMetadata>>((acc, characterId) => {
+    const character = characterById.get(characterId);
+    if (
+      !character
+      || typeof character.lastViewedMessageTimestamp !== 'number'
+      || !Number.isFinite(character.lastViewedMessageTimestamp)
+    ) {
+      return acc;
+    }
+
+    acc[characterId] = {
+      lastViewedMessageTimestamp: character.lastViewedMessageTimestamp,
+    };
+    return acc;
+  }, {});
+}
+
+export function mergeDirectSessionMetadataIntoCharacters(
+  characters: Character[],
+  persistedChatHistory: PersistedChatHistoryData,
+): Character[] {
+  return characters.map((character) => {
+    const history = persistedChatHistory.directHistory[character.id] || [];
+    const latestPreviewableMessage = findLatestPreviewableMessage(history);
+    const sessionMetadata = persistedChatHistory.directSessionMetadata[character.id];
+    const nextCharacter: Character = { ...character };
+
+    if (latestPreviewableMessage) {
+      nextCharacter.lastMessage = formatChatMessagePreview(latestPreviewableMessage);
+      nextCharacter.lastTime = latestPreviewableMessage.timestamp;
+    }
+
+    if (typeof sessionMetadata?.lastViewedMessageTimestamp === 'number') {
+      nextCharacter.lastViewedMessageTimestamp = sessionMetadata.lastViewedMessageTimestamp;
+    }
+
+    return nextCharacter;
+  });
 }
 
 export function extractDirectRelationshipWaves(

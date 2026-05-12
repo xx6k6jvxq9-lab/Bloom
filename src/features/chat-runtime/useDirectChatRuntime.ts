@@ -71,6 +71,10 @@ import {
 import { getStickerMetadata } from '../../services/chat/stickerMetadata';
 import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
 import {
+  extractTransferAmountText as extractTransferAmount,
+  formatTransferMessageForContext,
+} from '../../services/chat/transferContextText';
+import {
   createRelationshipSystemMessage,
   getCharacterBlockState,
   supersedePendingCharacterRequests,
@@ -868,6 +872,8 @@ function toPromptHistoryContent(
   options: {
     nowTimestamp: number;
     continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+    userLabel: string;
+    characterLabel: string;
   },
 ): string {
   const prefix = buildPromptHistoryPrefix(message, options);
@@ -884,6 +890,14 @@ function toPromptHistoryContent(
       return `${prefix}${describeStickerMessageForPrompt(message)}`;
     }
     return `${prefix}[sent an image]`;
+  }
+
+  const transferContextText = formatTransferMessageForContext(message, {
+    userLabel: options.userLabel,
+    characterLabel: options.characterLabel,
+  });
+  if (transferContextText) {
+    return `${prefix}${transferContextText}`;
   }
 
   if (message.role === 'user') {
@@ -988,21 +1002,6 @@ function buildDirectResumeModePrompt(
     '[明确限制] 除非用户主动提起，或上一轮有明显未完的强情绪线，否则不要默认直接续昨天或更早的话题。',
   ].join('\n');
 }
-
-const extractTransferAmount = (text: string) => {
-  const bracketMatch = text.match(TRANSFER_BRACKET_REGEX);
-  if (bracketMatch?.[1]) {
-    return bracketMatch[1];
-  }
-
-  const blockMatch = text.match(TRANSFER_BLOCK_REGEX);
-  if (blockMatch?.[1]) {
-    return blockMatch[1];
-  }
-
-  const pipeMatch = text.trim().match(TRANSFER_PIPE_REGEX);
-  return pipeMatch?.[1] ?? null;
-};
 
 const parseTransferProtocol = (text: string) => {
   const trimmedText = text.trim();
@@ -2406,6 +2405,8 @@ export function useDirectChatRuntime({
               content: toPromptHistoryContent(m, {
                 nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
                 continuityMode: characterTemporalState.continuityMode,
+                userLabel: userName,
+                characterLabel: character.name,
               }),
               ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
               ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
@@ -2908,6 +2909,8 @@ export function useDirectChatRuntime({
           content: toPromptHistoryContent(m, {
             nowTimestamp: characterTemporalState.temporalFacts.nowTimestamp,
             continuityMode: characterTemporalState.continuityMode,
+            userLabel: userName,
+            characterLabel: character.name,
           }),
           ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
@@ -3539,26 +3542,30 @@ export function useDirectChatRuntime({
 
     const amountStr = extractTransferAmount(transferMessage.text) || '0.00';
     const amount = parseFloat(amountStr);
+    const settledAt = Date.now();
     const nextHistory = [...latestHistory];
     nextHistory[transferIndex] = {
       ...transferMessage,
       transferStatus: status,
+      transferSettledAt: settledAt,
     };
 
     nextHistory.push({
       role: 'model',
       text: `[转账 ${amountStr}]`,
-      timestamp: Date.now(),
+      contentType: 'transfer',
+      timestamp: settledAt,
       transferStatus: status,
       transferDisplayLabel: status === 'received' ? '已收款' : '已退回',
       transferTargetLabel: character.name,
+      transferSettledAt: settledAt,
     });
 
     if (replyText) {
       nextHistory.push({
         role: 'model',
         text: replyText,
-        timestamp: Date.now(),
+        timestamp: settledAt + 1,
       });
     }
 
@@ -3585,8 +3592,8 @@ export function useDirectChatRuntime({
       }
     }
 
-    setHistory(nextHistory);
-  }, [character.name, onUpdateWalletData, setHistory, walletData]);
+    commitHistory(nextHistory);
+  }, [character.name, commitHistory, onUpdateWalletData, walletData]);
 
   const queueTransferDecision = useCallback((params: {
     transferId: string;
@@ -3624,7 +3631,7 @@ export function useDirectChatRuntime({
       });
   }, [activeConfig, applyTransferDecision, character, userName]);
 
-  const triggerTransferEventReaction = (params: {
+  const triggerTransferEventReaction = useCallback((params: {
     amount: number;
     direction: 'character_to_user_received' | 'character_to_user_rejected';
   }) => {
@@ -3648,7 +3655,7 @@ export function useDirectChatRuntime({
         }
 
         const reactionMessages = splitTransferReactionIntoMessages(replyText, Date.now());
-        setHistory([
+        commitHistory([
           ...historyRef.current,
           ...reactionMessages,
         ]);
@@ -3656,7 +3663,7 @@ export function useDirectChatRuntime({
       .catch(error => {
         console.error('Transfer reaction failed:', error);
       });
-  };
+  }, [activeConfig, character, commitHistory, userName]);
 
   const finalizeVoiceCall = useCallback((params: {
     duration: number;
@@ -3890,7 +3897,7 @@ export function useDirectChatRuntime({
         transferCardId: selectedCardId,
       };
       const nextHistory = [...historyRef.current, transferMessage];
-      setHistory(nextHistory);
+      commitHistory(nextHistory);
       queueTransferDecision({
         transferId,
         amount,
@@ -3907,16 +3914,21 @@ export function useDirectChatRuntime({
       transferStatus: 'pending',
       transferId: `transfer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     };
-    setHistory([...historyRef.current, modelMsg]);
+    commitHistory([...historyRef.current, modelMsg]);
     return true;
-  }, [activeConfig, character.name, onUpdateWalletData, queueTransferDecision, setHistory, walletData]);
+  }, [activeConfig, character.name, commitHistory, onUpdateWalletData, queueTransferDecision, walletData]);
 
   const handleReceiveTransfer = useCallback((index: number) => {
     const msg = history[index];
     if (!msg || msg.transferStatus === 'received' || msg.transferStatus === 'rejected') return;
 
     const newHistory = [...history];
-    newHistory[index] = { ...msg, transferStatus: 'received' };
+    const settledAt = Date.now();
+    newHistory[index] = {
+      ...msg,
+      transferStatus: 'received',
+      transferSettledAt: settledAt,
+    };
 
     const amountStr = extractTransferAmount(msg.text) || '0.00';
     const amount = parseFloat(amountStr);
@@ -3924,13 +3936,14 @@ export function useDirectChatRuntime({
       role: 'user',
       text: `[转账 ${amountStr}]`,
       contentType: 'transfer',
-      timestamp: Date.now(),
+      timestamp: settledAt,
       transferStatus: 'received',
       transferDisplayLabel: '已收款',
       transferTargetLabel: userName,
+      transferSettledAt: settledAt,
     };
 
-    setHistory([...newHistory, receiptCard]);
+    commitHistory([...newHistory, receiptCard]);
 
     if (msg.role === 'model' && !isNaN(amount) && amount > 0) {
       const cards = walletData?.cards || MOCK_CARDS;
@@ -3956,7 +3969,7 @@ export function useDirectChatRuntime({
         direction: 'character_to_user_received',
       });
     }
-  }, [activeConfig, character, character.name, history, onUpdateWalletData, setHistory, userName, walletData]);
+  }, [activeConfig, character, character.name, commitHistory, history, onUpdateWalletData, triggerTransferEventReaction, userName, walletData]);
 
   const requestManualReply = useCallback(() => {
     if (isLoading) {
@@ -3988,18 +4001,24 @@ export function useDirectChatRuntime({
     const amountStr = extractTransferAmount(msg.text) || '0.00';
     const amount = parseFloat(amountStr);
     const nextHistory = [...history];
-    nextHistory[index] = { ...msg, transferStatus: 'rejected' };
+    const settledAt = Date.now();
+    nextHistory[index] = {
+      ...msg,
+      transferStatus: 'rejected',
+      transferSettledAt: settledAt,
+    };
     nextHistory.push({
       role: 'user',
       text: `[转账 ${amountStr}]`,
       contentType: 'transfer',
-      timestamp: Date.now(),
+      timestamp: settledAt,
       transferStatus: 'rejected',
       transferDisplayLabel: '已退回',
       transferTargetLabel: character.name,
+      transferSettledAt: settledAt,
     });
 
-    setHistory(nextHistory);
+    commitHistory(nextHistory);
 
     if (!Number.isNaN(amount) && amount > 0) {
       triggerTransferEventReaction({
@@ -4007,7 +4026,7 @@ export function useDirectChatRuntime({
         direction: 'character_to_user_rejected',
       });
     }
-  }, [character.name, history, setHistory]);
+  }, [character.name, commitHistory, history, triggerTransferEventReaction]);
 
   return {
     isLoading,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loadJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { listJsonRecordKeys, loadJsonRecord, saveJsonRecord } from './browserJsonStore';
 import {
   loadPreferredChatHistoryRecords,
   resetChatHistoryRecords,
@@ -25,6 +25,7 @@ function buildHistoryValue(text: string, timestamp: number): PersistedChatHistor
         },
       ],
     },
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -33,7 +34,7 @@ function buildHistoryValue(text: string, timestamp: number): PersistedChatHistor
 
 async function clearChatHistoryState() {
   resetChatHistoryRecords();
-  await clearPersistenceKeys([STORAGE_KEYS.chatHistory]);
+  await clearPersistenceKeys([STORAGE_KEYS.chatHistory, STORAGE_KEYS.memoryRecords]);
 }
 
 test.beforeEach(async () => {
@@ -46,22 +47,67 @@ test('loadPreferredChatHistoryRecords migrates legacy localStorage chat history 
   fakeLocalStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(legacyHistory));
 
   const hydrated = await loadPreferredChatHistoryRecords();
-  const persisted = await loadJsonRecord<PersistedChatHistoryData>(STORAGE_KEYS.chatHistory);
+  const persistedIndex = await loadJsonRecord<Record<string, unknown>>(STORAGE_KEYS.chatHistory);
+  const persistedDirectSession = await loadJsonRecord<{ history?: Array<{ text?: string }> }>(
+    `${STORAGE_KEYS.chatHistory}:direct:char-a`,
+  );
+  const persistedMemoryRecords = await loadJsonRecord<{
+    recordsByCharacterId?: Record<string, Array<{ kind?: string; summary?: string }>>;
+  }>(STORAGE_KEYS.memoryRecords);
 
   assert.equal(hydrated.directHistory['char-a']?.[0]?.text, 'legacy hello');
-  assert.equal(persisted?.directHistory['char-a']?.[0]?.text, 'legacy hello');
+  assert.equal(persistedDirectSession?.history?.[0]?.text, 'legacy hello');
+  assert.equal(Array.isArray(persistedIndex?.directSessionIds), true);
+  assert.equal(
+    persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.kind,
+    undefined,
+  );
   assert.equal(fakeLocalStorage.getItem(STORAGE_KEYS.chatHistory), null);
 });
 
-test('saveChatHistoryRecords only writes chatHistory into IndexedDB', async () => {
+test('saveChatHistoryRecords writes sharded chat sessions into IndexedDB', async () => {
   const nextHistory = buildHistoryValue('idb only', 202);
 
   await saveChatHistoryRecords(nextHistory);
 
-  const persisted = await loadJsonRecord<PersistedChatHistoryData>(STORAGE_KEYS.chatHistory);
+  const persistedIndex = await loadJsonRecord<Record<string, unknown>>(STORAGE_KEYS.chatHistory);
+  const persistedDirectSession = await loadJsonRecord<{ history?: Array<{ text?: string }> }>(
+    `${STORAGE_KEYS.chatHistory}:direct:char-a`,
+  );
+  const persistedMemoryRecords = await loadJsonRecord<{
+    recordsByCharacterId?: Record<string, Array<{ kind?: string; summary?: string }>>;
+  }>(STORAGE_KEYS.memoryRecords);
+  const shardKeys = await listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:direct:`);
 
-  assert.equal(persisted?.directHistory['char-a']?.[0]?.text, 'idb only');
+  assert.equal(Array.isArray(persistedIndex?.directSessionIds), true);
+  assert.equal(persistedDirectSession?.history?.[0]?.text, 'idb only');
+  assert.equal(
+    Array.isArray(persistedMemoryRecords?.recordsByCharacterId?.['char-a']),
+    false,
+  );
+  assert.deepEqual(shardKeys, [`${STORAGE_KEYS.chatHistory}:direct:char-a`]);
   assert.equal(fakeLocalStorage.getItem(STORAGE_KEYS.chatHistory), null);
+});
+
+test('saveChatHistoryRecords keeps direct-session lastViewed metadata inside chat shards', async () => {
+  const nextHistory = {
+    ...buildHistoryValue('remember view state', 404),
+    directSessionMetadata: {
+      'char-a': {
+        lastViewedMessageTimestamp: 401,
+      },
+    },
+  } satisfies PersistedChatHistoryData;
+
+  await saveChatHistoryRecords(nextHistory);
+
+  const persistedDirectSession = await loadJsonRecord<{
+    history?: Array<{ text?: string }>;
+    lastViewedMessageTimestamp?: number;
+  }>(`${STORAGE_KEYS.chatHistory}:direct:char-a`);
+
+  assert.equal(persistedDirectSession?.history?.[0]?.text, 'remember view state');
+  assert.equal(persistedDirectSession?.lastViewedMessageTimestamp, 401);
 });
 
 test('loadPreferredChatHistoryRecords prefers IndexedDB and clears stale localStorage copies', async () => {
@@ -92,9 +138,56 @@ test('loadPreferredChatHistoryRecords prefers newer local snapshots over stale I
   fakeLocalStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(newerLocalHistory));
 
   const hydrated = await loadPreferredChatHistoryRecords();
-  const persisted = await loadJsonRecord<PersistedChatHistoryData>(STORAGE_KEYS.chatHistory);
+  const persistedDirectSession = await loadJsonRecord<{ history?: Array<{ text?: string }> }>(
+    `${STORAGE_KEYS.chatHistory}:direct:char-a`,
+  );
 
   assert.equal(hydrated.directHistory['char-a']?.[0]?.text, 'newer local');
-  assert.equal(persisted?.directHistory['char-a']?.[0]?.text, 'newer local');
+  assert.equal(persistedDirectSession?.history?.[0]?.text, 'newer local');
   assert.equal(fakeLocalStorage.getItem(STORAGE_KEYS.chatHistory), null);
+});
+
+test('saveChatHistoryRecords also writes derived memory records from fact traces', async () => {
+  const nextHistory: PersistedChatHistoryData = {
+    updatedAt: 999,
+    directHistory: {
+      'char-a': [
+        {
+          role: 'model',
+          text: '我最近总想喝热可可',
+          timestamp: 999,
+        },
+      ],
+    },
+    directSessionMetadata: {},
+    directRelationshipWaves: {},
+    directFactTraces: {
+      'char-a': [
+        {
+          sourceScene: 'direct_chat',
+          factType: 'preference',
+          subjectType: 'character',
+          subjectId: 'char-a',
+          relatedCharacterIds: ['char-a'],
+          visibility: 'cross_scene_readable',
+          stability: 'situational',
+          confidence: 'explicit',
+          summary: '最近喜欢热可可',
+          timestamp: 999,
+          decayHint: 'medium',
+        },
+      ],
+    },
+    groupSessions: {},
+  };
+
+  await saveChatHistoryRecords(nextHistory);
+
+  const persistedMemoryRecords = await loadJsonRecord<{
+    recordsByCharacterId?: Record<string, Array<{ kind?: string; factType?: string; summary?: string }>>;
+  }>(STORAGE_KEYS.memoryRecords);
+
+  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.kind, 'fact');
+  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.factType, 'preference');
+  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.summary, '最近喜欢热可可');
 });

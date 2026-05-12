@@ -44,6 +44,7 @@ import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFro
 import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
   extractGroupSessions,
   saveChatHistoryRecords,
 } from '../persistence/chatHistoryStore';
@@ -244,6 +245,9 @@ export function AppScreenContent({
   const latestDirectRelationshipWavesRef = useRef(extractDirectRelationshipWaves(appData.chatHistory));
   const latestDirectFactTracesRef = useRef(extractDirectFactTraces(appData.chatHistory));
   const latestGroupSessionsRef = useRef(extractGroupSessions(appData.chatGroups || []));
+  const latestDirectSessionMetadataSignatureRef = useRef(
+    JSON.stringify(extractDirectSessionMetadata(appData.characters, appData.chatHistory)),
+  );
   const pendingImmediateDirectHistoryRef = useRef<ChatHistory | null>(null);
   const pendingImmediateChatGroupsRef = useRef<typeof latestChatGroupsRef.current | null>(null);
   const pendingChatDomainFlushTimerRef = useRef<number | null>(null);
@@ -296,6 +300,10 @@ export function AppScreenContent({
   const saveCombinedChatHistorySnapshot = useCallback(() => (
     saveChatHistoryRecords({
       directHistory: latestDirectHistoryRef.current,
+      directSessionMetadata: extractDirectSessionMetadata(
+        latestCharactersRef.current,
+        latestDirectHistoryRef.current,
+      ),
       directRelationshipWaves: latestDirectRelationshipWavesRef.current,
       directFactTraces: latestDirectFactTracesRef.current,
       groupSessions: latestGroupSessionsRef.current,
@@ -423,6 +431,27 @@ export function AppScreenContent({
     latestGroupsRef.current = appData.groups;
     latestFriendRequestsRef.current = appData.friendRequests || [];
   }, [appData.characters, appData.chatGroups, appData.chatHistory, appData.friendRequests, appData.groups]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    const nextSignature = JSON.stringify(
+      extractDirectSessionMetadata(appData.characters, appData.chatHistory),
+    );
+    if (nextSignature === latestDirectSessionMetadataSignatureRef.current) {
+      return;
+    }
+
+    latestDirectSessionMetadataSignatureRef.current = nextSignature;
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.characters,
+    appData.chatHistory,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
 
   useEffect(() => {
     if (!isStorageReady) {

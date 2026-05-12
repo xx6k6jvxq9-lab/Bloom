@@ -854,6 +854,7 @@ export type ChatMessage = {
   transferCardId?: string;
   transferDisplayLabel?: string;
   transferTargetLabel?: string;
+  transferSettledAt?: number;
   isSystem?: boolean;
   systemTone?: 'default' | 'danger';
   needsReply?: boolean;

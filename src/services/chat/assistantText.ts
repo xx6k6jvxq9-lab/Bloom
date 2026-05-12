@@ -318,7 +318,7 @@ export function splitDirectAssistantReplyText(text: string, maxBubbles?: number)
   if (explicitParts.length > 1) {
     return mergeRhythmParts(explicitParts, bubbleCap)
       .slice(0, bubbleCap)
-      .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1));
+      .map((part) => normalizeChatPunctuationNoise(part));
   }
 
   const parts = splitByBracketActionBlocks(normalized)
