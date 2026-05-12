@@ -5,6 +5,10 @@ type RegistryEntry = {
 
 const registry = new Map<string, RegistryEntry>();
 
+export function peek(id: string): string | null {
+  return registry.get(id)?.url || null;
+}
+
 export function getOrCreate(id: string, blob: Blob): string {
   const existing = registry.get(id);
   if (existing) {

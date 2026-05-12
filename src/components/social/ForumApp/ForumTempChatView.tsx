@@ -58,14 +58,27 @@ export function ForumTempChatView({
   topInsetStyle,
 }: ForumTempChatViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
   const pendingReply = session.pendingReply;
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
+  const latestTempChatMessageKey = sortedMessages.length > 0
+    ? `${sortedMessages[sortedMessages.length - 1].id}:${sortedMessages[sortedMessages.length - 1].timestamp}`
+    : '';
   useKeyboardSafeViewport({
     containerRef,
     enabled: true,
     clampViewportHeight: true,
   });
+
+  React.useLayoutEffect(() => {
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, [latestTempChatMessageKey, pendingReply?.status]);
 
   return (
     <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
@@ -96,6 +109,7 @@ export function ForumTempChatView({
       </div>
 
       <div
+        ref={messageListRef}
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3"
         style={{
           paddingBottom: 'calc(var(--app-safe-area-bottom-ui, 0px) + 16px)',

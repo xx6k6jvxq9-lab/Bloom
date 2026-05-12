@@ -7,12 +7,19 @@ import type {
 } from '../../types';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
 import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { isFriendRequestReleased } from './friendRequestThreads';
 
 const POSITIVE_HINTS = ['谢谢', '喜欢', '想你', '重新', '和好', '在乎', '认真', '愿意', '可以吗', '回来', '继续', '别生气', '抱抱'];
 const NEGATIVE_HINTS = ['讨厌', '别烦', '滚', '算了', '不想', '烦', '闭嘴', '离我远点', '拉黑', '屏蔽', '删掉', '别来'];
 const APOLOGY_HINTS = ['对不起', '抱歉', '别生气', '重新认识', '重新加', '和好', '给我一次机会', '想继续'];
 const WARM_PERSONA_HINTS = ['温柔', '照顾', '心软', '在乎', '护着', '想念', '喜欢', '关心', '体贴', '舍不得', '嘴硬心软'];
 const GUARDED_PERSONA_HINTS = ['克制', '冷', '疏离', '理智', '边界', '戒备', '别靠近', '强势', '冷淡', '不近人情'];
+const EXCITABLE_PERSONA_HINTS = ['冲动', '暴躁', '炸毛', '易怒', '情绪化', '嘴硬', '占有欲', '直球', '别扭', '话痨', '激动', '疯'];
+const STUBBORN_PERSONA_HINTS = ['嘴硬', '不服输', '认死理', '执拗', '倔', '倔强', '不甘心', '死心眼', '较劲', '硬撑'];
+const PRIDE_PERSONA_HINTS = ['自尊', '体面', '骄傲', '要面子', '不肯低头', '不服软', '高傲', '嘴硬'];
+const ATTACHMENT_PERSONA_HINTS = ['舍不得', '离不开', '想念', '黏人', '依赖', '护着', '放不下', '惦记', '在乎'];
+const POSSESSIVE_PERSONA_HINTS = ['占有欲', '控制欲', '不许走', '不肯放手', '盯得紧', '吃醋', '护短', '认领'];
+const DIRECT_PERSONA_HINTS = ['直球', '不拐弯', '会追', '会抢', '主动', '步步紧逼', '不绕弯'];
 
 export type CharacterBlockState = 'none' | 'user' | 'character' | 'mutual';
 export type CharacterFriendRequestDecision =
@@ -131,6 +138,10 @@ export function getFriendRequestCharacterId(request: FriendRequest) {
     || (request.sourceScene !== 'forum' && request.fromUserId ? request.fromUserId : undefined);
 }
 
+function countRegexMatches(text: string, pattern: RegExp) {
+  return text.match(pattern)?.length || 0;
+}
+
 export function resolveFriendRequestDirection(request: FriendRequest): FriendRequestDirection {
   if (request.direction === 'incoming' || request.direction === 'outgoing') {
     return request.direction;
@@ -154,6 +165,7 @@ export function getPendingCharacterRequest(
   const requestList = Array.isArray(requests) ? requests : [];
   return [...requestList]
     .filter((request) => request.status === 'pending')
+    .filter((request) => isFriendRequestReleased(request))
     .filter((request) => getFriendRequestCharacterId(request) === characterId)
     .filter((request) => !direction || resolveFriendRequestDirection(request) === direction)
     .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
@@ -165,6 +177,7 @@ export function getLatestCharacterRequest(
 ) {
   const requestList = Array.isArray(requests) ? requests : [];
   return [...requestList]
+    .filter((request) => isFriendRequestReleased(request))
     .filter((request) => getFriendRequestCharacterId(request) === characterId)
     .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
 }
@@ -190,12 +203,190 @@ export function supersedePendingCharacterRequests(
   });
 }
 
-export function createRelationshipSystemMessage(text: string, timestamp = Date.now()): ChatMessage {
+export function createRelationshipSystemMessage(
+  text: string,
+  timestamp = Date.now(),
+  options?: {
+    tone?: 'default' | 'danger';
+  },
+): ChatMessage {
   return {
     role: 'model',
     text,
     timestamp,
     isSystem: true,
+    systemTone: options?.tone || 'default',
+  };
+}
+
+function buildRelationshipPursuitProfile(
+  character: Pick<Character, 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  history: ChatMessage[],
+) {
+  const personaText = [
+    character.corePersona,
+    character.expressionStyle,
+    character.signature,
+    character.openingRemark,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+  const style = resolvePersonaStyle(character);
+  const tone = summarizeRecentRelationshipTone(history);
+  const attachment = countHints(personaText, ATTACHMENT_PERSONA_HINTS);
+  const stubbornness = countHints(personaText, STUBBORN_PERSONA_HINTS);
+  const possessiveness = countHints(personaText, POSSESSIVE_PERSONA_HINTS);
+  const pride = countHints(personaText, PRIDE_PERSONA_HINTS);
+  const volatility = countHints(personaText, EXCITABLE_PERSONA_HINTS);
+  const directness = countHints(personaText, DIRECT_PERSONA_HINTS);
+  const warmth = countHints(personaText, WARM_PERSONA_HINTS);
+  const guardedness = countHints(personaText, GUARDED_PERSONA_HINTS);
+  const closenessBias = tone.positive - tone.negative;
+  const chaseDrive =
+    attachment * 2
+    + stubbornness * 2
+    + possessiveness * 2
+    + volatility
+    + directness
+    + (warmth > guardedness ? 1 : 0)
+    + Math.max(0, closenessBias);
+  const selfProtect =
+    pride * 2
+    + guardedness * 2
+    + Math.max(0, tone.negative - tone.positive);
+
+  return {
+    style,
+    tone,
+    attachment,
+    stubbornness,
+    possessiveness,
+    pride,
+    volatility,
+    directness,
+    warmth,
+    guardedness,
+    chaseDrive,
+    selfProtect,
+  };
+}
+
+function hashSeedToUnitInterval(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 33 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  return (hash % 1000) / 999;
+}
+
+function shouldPersonaKeepPushing(
+  profile: ReturnType<typeof buildRelationshipPursuitProfile>,
+  nextAttemptNo: number,
+  options: {
+    scenario: 'blocked' | 'rejected';
+  },
+) {
+  const fatigue = nextAttemptNo <= 3 ? 0 : nextAttemptNo <= 6 ? 1 : 2;
+  const threshold = options.scenario === 'blocked' ? 1 : 2;
+  const effectiveDrive = profile.chaseDrive - fatigue;
+
+  if (profile.stubbornness >= 2 || profile.possessiveness >= 2) {
+    return effectiveDrive >= 0;
+  }
+
+  if (profile.attachment >= 2 || profile.volatility >= 2) {
+    return effectiveDrive >= threshold;
+  }
+
+  if (profile.pride >= 2 && profile.chaseDrive <= profile.selfProtect) {
+    return false;
+  }
+
+  if (profile.style === 'warm' && profile.attachment >= 1) {
+    return effectiveDrive >= threshold;
+  }
+
+  return effectiveDrive >= threshold + (profile.selfProtect > profile.chaseDrive ? 1 : 0);
+}
+
+function buildBlockedFollowupCopy(
+  character: Pick<Character, 'name'>,
+  profile: ReturnType<typeof buildRelationshipPursuitProfile>,
+  nextAttemptNo: number,
+) {
+  if (profile.possessiveness >= 2 || profile.volatility >= 2) {
+    return {
+      reactionText: `${character.name}火气明明已经顶上来了，却还是不肯把手收回去：“行，你拉黑。你真以为我会就这么算了？这次申请我还是照递。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '你要是真想把门关死，就当面再拒我一次。申请我还是会递。'
+        : '你先别急着装看不见，把这条申请认真看完再决定。',
+    };
+  }
+
+  if (profile.stubbornness >= 2 || profile.directness >= 2) {
+    return {
+      reactionText: `${character.name}被你这一手惹得更不服气，话却追了上来：“你拉黑你的，我申请照发。你不点开，我就继续递。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '你可以继续装没看见，但这次申请我不会自己收回去。'
+        : '这条申请你先收下，再决定要不要继续跟我硬碰硬。',
+    };
+  }
+
+  if (profile.attachment >= 2 || profile.style === 'warm') {
+    return {
+      reactionText: `${character.name}明明被你气到了，却还是没舍得彻底断掉：“你先拉黑也行，但这次申请我还是想递给你。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '我知道你已经把我推开过几次了，但我这次还是想认真再递一次。'
+        : '你先别把门关死，这次申请你看完再决定。',
+    };
+  }
+
+  return {
+    reactionText: `${character.name}停了两秒，还是把申请递了回来：“我不想就这么断掉。你拉黑归拉黑，这条申请你还是看一眼。”`,
+    requestMessage: nextAttemptNo >= 4
+      ? '你要不要接由你决定，但我这次不想直接退。'
+      : '这次我把申请递过来，你看完再决定要不要继续挡着我。',
+  };
+}
+
+function buildRejectedFollowupCopy(
+  character: Pick<Character, 'name'>,
+  profile: ReturnType<typeof buildRelationshipPursuitProfile>,
+  nextAttemptNo: number,
+) {
+  if (profile.possessiveness >= 2 || profile.volatility >= 2) {
+    return {
+      reactionText: `${character.name}被你拒了一次反而更上头，话追得又急又硬：“你拒一次我就再递一次。你真想甩开我，就别只是点一下拒绝。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '你可以继续拒，但我这次还没打算自己停。'
+        : '刚才那次你没收，那我就再递一次，你看完再决定。',
+    };
+  }
+
+  if (profile.stubbornness >= 2 || profile.directness >= 2) {
+    return {
+      reactionText: `${character.name}被你拒了也没往后退，反倒更像跟你较上劲：“行，你拒你的，我再发我的。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '这次我把话说得更明白一点，你要不要接，继续由你。'
+        : '你刚才没收，那我换一句再递给你。',
+    };
+  }
+
+  if (profile.attachment >= 2 || profile.style === 'warm') {
+    return {
+      reactionText: `${character.name}被你拒绝之后还是没舍得把手收回去，声音都放轻了：“那我再认真问一次，这次你看完再答我。”`,
+      requestMessage: nextAttemptNo >= 4
+        ? '我知道你已经拒过我了，但我还是想认真再问一次。'
+        : '刚才那次你没收，那我换一句再递给你。',
+    };
+  }
+
+  return {
+    reactionText: `${character.name}沉默了一下，还是没有直接退开：“那我再发一次。你不想现在答，也至少把这条看完。”`,
+    requestMessage: nextAttemptNo >= 4
+      ? '这次我把话说清楚了，你要不要接，还是由你决定。'
+      : '这次我再递一条，你看完再做决定。',
   };
 }
 
@@ -248,6 +439,57 @@ export function createCharacterRelationshipMessages(
           : {}
     ),
   }));
+}
+
+export function getRelationshipReactionBubbleCap(
+  character: Pick<Character, 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  text: string,
+  options?: {
+    intensity?: 'normal' | 'high';
+  },
+) {
+  const style = resolvePersonaStyle(character);
+  const personaText = [
+    character.corePersona,
+    character.expressionStyle,
+    character.signature,
+    character.openingRemark,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+  const excitableScore = countHints(personaText, EXCITABLE_PERSONA_HINTS);
+  const punctuationBurst = countRegexMatches(text, /[!?！？]/g);
+  const lineBreaks = countRegexMatches(text, /\n/g);
+  const compactLength = text.replace(/\s/gu, '').length;
+
+  let cap = 3;
+  if (compactLength >= 36) cap = 4;
+  if (compactLength >= 64) cap = 5;
+  if (compactLength >= 96) cap = 6;
+  if (compactLength >= 132) cap = 7;
+  if (compactLength >= 170) cap = 8;
+
+  if (options?.intensity === 'high') {
+    cap += 1;
+  }
+
+  if (excitableScore > 0) {
+    cap += Math.min(2, excitableScore);
+  }
+
+  if (punctuationBurst >= 3) {
+    cap += 1;
+  }
+
+  if (lineBreaks >= 2) {
+    cap += 1;
+  }
+
+  if (style === 'guarded') {
+    cap -= 1;
+  }
+
+  return Math.max(3, Math.min(cap, 10));
 }
 
 export function decideCharacterBlockReaction(
@@ -355,7 +597,7 @@ export function decideCharacterRequestAfterBeingBlocked(
   history: ChatMessage[],
   nextAttemptNo: number,
 ) {
-  const { score, style, tone } = evaluateRelationshipMomentum(character, history, '');
+  const profile = buildRelationshipPursuitProfile(character, history);
 
   if (nextAttemptNo > 10) {
     return {
@@ -364,21 +606,37 @@ export function decideCharacterRequestAfterBeingBlocked(
     };
   }
 
-  if (style === 'warm' && score >= -1 && tone.positive >= tone.negative) {
+  const shouldUsuallyChaseAfterFirstBlock = nextAttemptNo === 1
+    && !(
+      profile.pride >= 2
+      && profile.guardedness >= 2
+      && profile.chaseDrive + 1 < profile.selfProtect
+    );
+  if (shouldUsuallyChaseAfterFirstBlock) {
+    const followup = buildBlockedFollowupCopy(character, profile, nextAttemptNo);
     return {
       sendRequest: true,
-      reactionText: `${character.name}明明还在生气，却还是把话丢了回来：“你要拉黑就先拉黑，但这次申请我还是递给你。”`,
-      requestMessage: nextAttemptNo >= 3
-        ? '我知道你已经把我推开过了，但这次我还是认真再递一次。'
-        : '你先别急着把门关死，这次申请你看完再决定。',
+      reactionText: followup.reactionText,
+      requestMessage: followup.requestMessage,
+    };
+  }
+
+  if (shouldPersonaKeepPushing(profile, nextAttemptNo, { scenario: 'blocked' })) {
+    const followup = buildBlockedFollowupCopy(character, profile, nextAttemptNo);
+    return {
+      sendRequest: true,
+      reactionText: followup.reactionText,
+      requestMessage: followup.requestMessage,
     };
   }
 
   return {
     sendRequest: false,
-    reactionText: style === 'guarded'
+    reactionText: profile.pride >= 2 || profile.guardedness >= 2
       ? `${character.name}把情绪压了回去，只淡淡丢下一句：“行，那我先不再往前走。”`
-      : `${character.name}像是把话忍住了，只低声回了一句：“好，那先这样。”`,
+      : profile.attachment >= 1
+        ? `${character.name}像是把想说的话全忍了回去，只低声回了一句：“好，那我先不逼你。”`
+        : `${character.name}像是把话忍住了，只低声回了一句：“好，那先这样。”`,
   };
 }
 
@@ -387,7 +645,7 @@ export function decideCharacterRetryAfterRejectedRequest(
   history: ChatMessage[],
   nextAttemptNo: number,
 ) {
-  const { score, style, tone } = evaluateRelationshipMomentum(character, history, '');
+  const profile = buildRelationshipPursuitProfile(character, history);
 
   if (nextAttemptNo > 10) {
     return {
@@ -396,29 +654,22 @@ export function decideCharacterRetryAfterRejectedRequest(
     };
   }
 
-  if (style === 'warm' && score >= -1) {
+  if (shouldPersonaKeepPushing(profile, nextAttemptNo, { scenario: 'rejected' })) {
+    const followup = buildRejectedFollowupCopy(character, profile, nextAttemptNo);
     return {
       sendRequest: true,
-      reactionText: `${character.name}被你这次拒绝刺了一下，却还是没把手收回去：“那我再递一次，这次你看完再决定。”`,
-      requestMessage: nextAttemptNo >= 3
-        ? '我知道你已经拒过我了，但这次我还是想认真再问一次。'
-        : '刚才那次你没收，那我换一句再递给你。',
-    };
-  }
-
-  if (style === 'neutral' && score >= 1 && tone.positive >= Math.max(0, tone.negative - 1)) {
-    return {
-      sendRequest: true,
-      reactionText: `${character.name}沉默了一下，没有直接退开：“那我再发一次，你自己看着办。”`,
-      requestMessage: '这次我把话说清楚了，你要不要接，由你决定。',
+      reactionText: followup.reactionText,
+      requestMessage: followup.requestMessage,
     };
   }
 
   return {
     sendRequest: false,
-    reactionText: style === 'guarded'
+    reactionText: profile.pride >= 2 || profile.guardedness >= 2
       ? `${character.name}没有再继续追着递申请，只淡淡留下一句：“行，我先不往前逼你。”`
-      : `${character.name}这次把话收了回去，只轻轻回了一句：“好，那先这样。”`,
+      : profile.attachment >= 1
+        ? `${character.name}这次把手收了回去，声音也低了下来：“好，那我先不再追着你问。”`
+        : `${character.name}这次把话收了回去，只轻轻回了一句：“好，那先这样。”`,
   };
 }
 
@@ -483,4 +734,30 @@ export function getFriendRequestStatusLabel(request: FriendRequest) {
     return '已拒绝';
   }
   return '已替换';
+}
+export function resolveCharacterBlockedFollowupDelayMs(
+  character: Pick<Character, 'id' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  history: ChatMessage[],
+  nextAttemptNo: number,
+) {
+  const profile = buildRelationshipPursuitProfile(character, history);
+  const baseMinMs = profile.volatility >= 2 || profile.directness >= 2
+    ? 12_000
+    : profile.attachment >= 2 || profile.style === 'warm'
+      ? 35_000
+      : 20_000;
+  const baseMaxMs = profile.pride >= 2 || profile.guardedness >= 2
+    ? 120_000
+    : profile.attachment >= 2 || profile.style === 'warm'
+      ? 95_000
+      : 75_000;
+  const fatigueExtensionMs = nextAttemptNo <= 1 ? 0 : Math.min(25_000, (nextAttemptNo - 1) * 8_000);
+  const minMs = Math.min(115_000, baseMinMs + Math.floor(fatigueExtensionMs * 0.35));
+  const maxMs = Math.min(120_000, Math.max(minMs + 5_000, baseMaxMs + fatigueExtensionMs));
+  const ratio = hashSeedToUnitInterval(`${character.id}|blocked-followup|${nextAttemptNo}`);
+
+  return Math.min(
+    120_000,
+    minMs + Math.round((maxMs - minMs) * ratio),
+  );
 }

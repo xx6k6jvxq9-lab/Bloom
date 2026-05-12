@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { MouseEventHandler } from 'react';
-import { memo, useCallback, useLayoutEffect } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo } from 'react';
 import {
   Camera,
   ChevronDown,
@@ -54,7 +54,7 @@ import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroup
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
 import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
-import { saveUploadedBlob } from '../persistence/persistentAssetService';
+import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { GroupSettingsScreen } from '../group-settings/components/GroupSettingsScreen';
 import {
@@ -124,6 +124,7 @@ const autoOpeningAttemptAtBySessionKey = new Map<string, number>();
 const GROUP_CHAT_HISTORY_INITIAL_WINDOW = 90;
 const GROUP_CHAT_HISTORY_LOAD_STEP = 60;
 const GROUP_CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
+const EMPTY_GROUP_STYLE: React.CSSProperties = {};
 
 function removeBackdropBlurClassNames(className: string) {
   return className
@@ -643,6 +644,7 @@ export function GroupChatSessionScreen({
   inviteableCharacters,
   onRuntimeBusyChange,
   isActive = true,
+  suspendHeavyRendering = false,
 }: {
   group: ChatGroup;
   members: Character[];
@@ -665,6 +667,7 @@ export function GroupChatSessionScreen({
   inviteableCharacters: Character[];
   onRuntimeBusyChange?: (busy: boolean) => void;
   isActive?: boolean;
+  suspendHeavyRendering?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -724,7 +727,7 @@ export function GroupChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
-    clampViewportHeight: false,
+    clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
@@ -741,7 +744,7 @@ export function GroupChatSessionScreen({
     scene: 'group-chat',
   }).runtimeConfig;
   const hasUsableConfig = !!activeConfig?.apiKey?.trim();
-  const layoutConfig = getChatLayoutConfig();
+  const layoutConfig = useMemo(() => getChatLayoutConfig(), []);
   const inputContainerClass = layoutConfig.inputContainerClass.replace('border-t', '').trim();
   const participantCount = members.length + 1;
   const actingRole = resolveGroupMemberRole(group, 'user');
@@ -751,7 +754,9 @@ export function GroupChatSessionScreen({
   const groupUserDisplayName = group.groupNickname?.trim() || userName;
   const groupNotice = group.groupNotice?.trim() || '';
   const { resolvedUrl: resolvedGroupBackgroundUrl } = useResolvedPersistentValue(group.groupBackground);
-  const groupBackgroundUrl = getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl);
+  const groupBackgroundUrl =
+    getDisplayableAssetValue(group.groupBackground, resolvedGroupBackgroundUrl)
+    || '';
   const headerStyleType = group.headerStyle || 'default';
   const headerOpacity = group.headerOpacity ?? 0.92;
   const footerStyleType = group.footerStyle || 'default';
@@ -804,16 +809,49 @@ export function GroupChatSessionScreen({
     })
     .filter(Boolean)
     .join('\n\n');
-  const getGroupBubbleTextStyle = (params: {
-    isUser: boolean;
-    senderBubbleStyleCss?: string;
-  }): React.CSSProperties => ({
-    ...extractBubbleTextStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss)),
-    ...extractBubbleTextStyle(parseBubbleStyleCss(
-      params.isUser ? settings.visualSettings?.chat?.userBubbleStyleCss : settings.visualSettings?.chat?.modelBubbleStyleCss,
-    )),
-    ...extractBubbleTextStyle(parseBubbleStyleCss(params.senderBubbleStyleCss)),
-  });
+  const sharedBubbleTextStyle = useMemo(
+    () => extractBubbleTextStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.bubbleStyleCss)),
+    [settings.visualSettings?.chat?.bubbleStyleCss],
+  );
+  const groupModelBubbleTextStyle = useMemo(
+    () => ({
+      ...sharedBubbleTextStyle,
+      ...extractBubbleTextStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.modelBubbleStyleCss)),
+    }),
+    [settings.visualSettings?.chat?.modelBubbleStyleCss, sharedBubbleTextStyle],
+  );
+  const groupUserBubbleTextStyle = useMemo(
+    () => ({
+      ...sharedBubbleTextStyle,
+      ...extractBubbleTextStyle(parseBubbleStyleCss(settings.visualSettings?.chat?.userBubbleStyleCss)),
+    }),
+    [settings.visualSettings?.chat?.userBubbleStyleCss, sharedBubbleTextStyle],
+  );
+  const groupSenderBubbleStyleMetaById = useMemo(() => {
+    const styleMap = new Map<string, {
+      hasSenderBubbleThemeCss: boolean;
+      senderBubbleStyle: React.CSSProperties;
+      hasSenderBubbleInlineSurfaceStyle: boolean;
+      textStyle: React.CSSProperties;
+    }>();
+
+    members.forEach((member) => {
+      const senderBubbleStyleCss = member.bubbleStyleCss;
+      const senderBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(senderBubbleStyleCss));
+
+      styleMap.set(member.id, {
+        hasSenderBubbleThemeCss: hasBubbleThemeCss(senderBubbleStyleCss),
+        senderBubbleStyle,
+        hasSenderBubbleInlineSurfaceStyle: Object.keys(senderBubbleStyle).length > 0,
+        textStyle: {
+          ...groupModelBubbleTextStyle,
+          ...extractBubbleTextStyle(parseBubbleStyleCss(senderBubbleStyleCss)),
+        },
+      });
+    });
+
+    return styleMap;
+  }, [groupModelBubbleTextStyle, members]);
   const groupSettingsMembers = [
     { id: 'user', name: groupUserDisplayName, avatar: userAvatar, remarkName: undefined, role: actingRole, voiceEnabled: false },
     ...members.map((member) => ({
@@ -1108,7 +1146,10 @@ export function GroupChatSessionScreen({
     : '';
   const [visibleRenderedMessageCount, setVisibleRenderedMessageCount] = useState(() => Math.min(renderedHistory.length, GROUP_CHAT_HISTORY_INITIAL_WINDOW));
   const hiddenRenderedMessageCount = Math.max(0, renderedHistory.length - visibleRenderedMessageCount);
-  const visibleRenderedWindowStartIndex = hiddenRenderedMessageCount;
+  const visibleRenderedHistory = useMemo(
+    () => renderedHistory.slice(hiddenRenderedMessageCount),
+    [hiddenRenderedMessageCount, renderedHistory],
+  );
   const expandVisibleRenderedMessageWindow = useCallback(() => {
     if (hiddenRenderedMessageCount <= 0) {
       return;
@@ -1200,6 +1241,11 @@ export function GroupChatSessionScreen({
       return;
     }
 
+    if (showGroupSettings) {
+      latestViewReadyRef.current = false;
+      return;
+    }
+
     if (!latestRenderedMessageKey && !isLoading) {
       return;
     }
@@ -1217,7 +1263,7 @@ export function GroupChatSessionScreen({
     chatFooterRef.current?.scrollIntoView({ block: 'end' });
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
     latestViewReadyRef.current = true;
-  }, [isActive, isLoading, latestRenderedMessageKey]);
+  }, [isActive, isLoading, latestRenderedMessageKey, showGroupSettings, visibleRenderedMessageCount]);
 
   useLayoutEffect(() => {
     const restore = historyWindowRestoreRef.current;
@@ -1231,29 +1277,25 @@ export function GroupChatSessionScreen({
     historyWindowRestoreRef.current = null;
   }, [visibleRenderedMessageCount]);
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
-  const keyboardViewportOffset = chatKeyboardOpen
-    ? 'var(--app-keyboard-inset, 0px)'
-    : '0px';
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
     contain: chatKeyboardOpen ? 'layout paint style' : undefined,
-    transform: chatKeyboardOpen ? 'translateY(calc(var(--app-keyboard-inset, 0px) * -1))' : undefined,
-    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease, transform 180ms ease',
-    willChange: chatKeyboardOpen ? 'transform' : undefined,
+    transition: chatKeyboardOpen ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     minHeight: 0,
-    paddingBottom: `calc(8px + ${keyboardViewportOffset})`,
-    scrollPaddingBottom: `calc(12px + ${keyboardViewportOffset})`,
+    paddingBottom: '8px',
+    scrollPaddingBottom: '12px',
   };
   const chatRootClassName = 'relative z-50 isolate flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
   const chatRootSizeStyle: React.CSSProperties = {
     height: '100%',
     minHeight: 0,
   };
+
   const canUseManualReplyButton = manualReplyModeEnabled
     && hasUsableConfig
     && !isLoading
@@ -1383,6 +1425,7 @@ export function GroupChatSessionScreen({
 
   useEffect(() => {
     const didJustOpen = showGroupSettings && !previousSettingsOpenRef.current;
+    const didJustClose = !showGroupSettings && previousSettingsOpenRef.current;
     const switchedGroup = previousSettingsGroupIdRef.current !== group.id;
 
     if (didJustOpen || switchedGroup) {
@@ -1390,9 +1433,15 @@ export function GroupChatSessionScreen({
       latestGroupBackgroundRef.current = group.groupBackground || '';
     }
 
+    if (didJustClose) {
+      latestViewReadyRef.current = false;
+      historyWindowRestoreRef.current = null;
+      setVisibleRenderedMessageCount(Math.min(renderedHistory.length, GROUP_CHAT_HISTORY_INITIAL_WINDOW));
+    }
+
     previousSettingsOpenRef.current = showGroupSettings;
     previousSettingsGroupIdRef.current = group.id;
-  }, [group, showGroupSettings]);
+  }, [group, renderedHistory.length, showGroupSettings]);
 
   useEffect(() => {
     if (!groupNotice) {
@@ -1552,17 +1601,23 @@ export function GroupChatSessionScreen({
     };
   };
 
-  const themeCharacterById = new Map<string, Character>();
-  members.forEach((member) => {
-    themeCharacterById.set(member.id, member);
-  });
-  renderedHistory.forEach((message) => {
-    const resolved = resolveSenderInfo(message);
-    if (resolved.character?.id) {
-      themeCharacterById.set(resolved.character.id, resolved.character);
-    }
-  });
-  const groupCharacterBubbleThemeCss = buildGroupCharacterBubbleThemeCss(Array.from(themeCharacterById.values()));
+  const themeCharacters = useMemo(() => {
+    const themeCharacterById = new Map<string, Character>();
+    members.forEach((member) => {
+      themeCharacterById.set(member.id, member);
+    });
+    renderedHistory.forEach((message) => {
+      const resolved = resolveSenderInfo(message);
+      if (resolved.character?.id) {
+        themeCharacterById.set(resolved.character.id, resolved.character);
+      }
+    });
+    return Array.from(themeCharacterById.values());
+  }, [members, renderedHistory]);
+  const groupCharacterBubbleThemeCss = useMemo(
+    () => buildGroupCharacterBubbleThemeCss(themeCharacters),
+    [themeCharacters],
+  );
 
   const getContextMenuMessageIndex = () => {
     if (!contextMenu) {
@@ -1831,17 +1886,19 @@ export function GroupChatSessionScreen({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      void sendImageMessage(base64String);
-      setShowFunPanel(false);
-    };
-    reader.readAsDataURL(file);
-
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+
+    void (async () => {
+      try {
+        const persistedImage = await saveUploadedFile(file);
+        await sendImageMessage(persistedImage);
+        setShowFunPanel(false);
+      } catch (error) {
+        console.error('Failed to persist group chat image before sending', error);
+      }
+    })();
   };
 
   const handleGroupAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -2693,7 +2750,7 @@ export function GroupChatSessionScreen({
     }, 280);
   };
 
-  const renderTextWithMentions = (text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
+  const renderTextWithMentions = useCallback((text: string, variant: 'incoming' | 'outgoing' = 'incoming') => {
     const parts = text.split(/(@[^\s@]+)/g);
     return parts.map((part, index) => {
       if (!part.startsWith('@')) {
@@ -2709,7 +2766,7 @@ export function GroupChatSessionScreen({
         </span>
       );
     });
-  };
+  }, []);
 
   const getMessageVisualKind = (message: ChatMessage, content: string) => {
     if (message.groupPollCard) {
@@ -2844,6 +2901,94 @@ export function GroupChatSessionScreen({
     return false;
   };
 
+  const visibleRenderedRows = useMemo(
+    () => visibleRenderedHistory.map((msg, visibleIndex) => {
+      const idx = hiddenRenderedMessageCount + visibleIndex;
+      const isUser = msg.role === 'user';
+      const resolvedSender = resolveSenderInfo(msg);
+      const { senderId, senderName, avatar, content, badge, bubbleColor, roleLabel, character: senderCharacter } = resolvedSender;
+      const visualKind = getMessageVisualKind(msg, content);
+      const previousMessage = visibleIndex > 0 ? visibleRenderedHistory[visibleIndex - 1] : undefined;
+      const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
+      const previousVisualKind = previousMessage
+        ? getMessageVisualKind(previousMessage, previousResolved?.content || '')
+        : null;
+
+      let sameSenderStreak = 0;
+      for (let reverseVisibleIndex = visibleIndex - 1; reverseVisibleIndex >= 0; reverseVisibleIndex -= 1) {
+        const streakMessage = visibleRenderedHistory[reverseVisibleIndex];
+        if (
+          streakMessage.isSystem
+          || streakMessage.role !== msg.role
+          || resolveSenderInfo(streakMessage).senderId !== senderId
+        ) {
+          break;
+        }
+        sameSenderStreak += 1;
+      }
+
+      const shouldShowIndependentBlock = !previousMessage || shouldBreakGroupedBubble({
+        previousMessage,
+        previousContent: previousResolved?.content || '',
+        currentMessage: msg,
+        currentContent: content,
+        streakIndex: sameSenderStreak,
+        previousVisualKind: previousVisualKind || 'normal',
+        currentVisualKind: visualKind,
+      });
+
+      return {
+        msg,
+        idx,
+        isUser,
+        senderId,
+        senderName,
+        avatar,
+        content,
+        badge,
+        bubbleColor,
+        roleLabel,
+        senderCharacter,
+        visualKind,
+        isGroupedWithPrevious: !!previousMessage
+          && !msg.isSystem
+          && !previousMessage.isSystem
+          && previousMessage.role === msg.role
+          && previousResolved?.senderId === senderId
+          && !shouldShowIndependentBlock,
+        shouldRenderTimeDivider: showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp),
+        groupReadCount: getGroupReadCount(renderedHistory, msg),
+        messageKey: `${getGroupMessageSelectionKey(msg)}::${idx}`,
+      };
+    }),
+    [
+      actingRole,
+      getCharacterById,
+      getCharacterByName,
+      group,
+      groupUserDisplayName,
+      hiddenRenderedMessageCount,
+      renderedHistory,
+      showChatTimeDividers,
+      userAvatar,
+      visibleRenderedHistory,
+    ],
+  );
+
+  if (suspendHeavyRendering) {
+    return (
+      <div
+        ref={chatRootRef}
+        className={chatRootClassName}
+        style={{
+          ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
+          ...chatRootSizeStyle,
+        }}
+        data-session-suspended="true"
+      />
+    );
+  }
+
   return (
     <div
       ref={chatRootRef}
@@ -2946,54 +3091,25 @@ export function GroupChatSessionScreen({
             {error}
           </div>
         )}
-        {renderedHistory.map((msg, idx) => {
-          if (idx < hiddenRenderedMessageCount) {
-            return null;
-          }
-
-          const isUser = msg.role === 'user';
-          const { senderId, senderName, avatar, content, badge, bubbleColor, roleLabel, character: senderCharacter } = resolveSenderInfo(msg);
-          const visualKind = getMessageVisualKind(msg, content);
-          const previousMessage = idx > visibleRenderedWindowStartIndex ? renderedHistory[idx - 1] : undefined;
-          const previousResolved = previousMessage ? resolveSenderInfo(previousMessage) : null;
-          const previousVisualKind = previousMessage
-            ? getMessageVisualKind(previousMessage, previousResolved?.content || '')
-            : null;
-          let sameSenderStreak = 0;
-          for (let reverseIndex = idx - 1; reverseIndex >= 0; reverseIndex -= 1) {
-            if (reverseIndex < visibleRenderedWindowStartIndex) {
-              break;
-            }
-            const streakMessage = renderedHistory[reverseIndex];
-            if (
-              streakMessage.isSystem
-              || streakMessage.role !== msg.role
-              || resolveSenderInfo(streakMessage).senderId !== senderId
-            ) {
-              break;
-            }
-            sameSenderStreak += 1;
-          }
-
-          const shouldShowIndependentBlock = !previousMessage || shouldBreakGroupedBubble({
-            previousMessage,
-            previousContent: previousResolved?.content || '',
-            currentMessage: msg,
-            currentContent: content,
-            streakIndex: sameSenderStreak,
-            previousVisualKind: previousVisualKind || 'normal',
-            currentVisualKind: visualKind,
-          });
-          const isGroupedWithPrevious = !!previousMessage
-            && !msg.isSystem
-            && !previousMessage.isSystem
-            && previousMessage.role === msg.role
-            && previousResolved?.senderId === senderId
-            && !shouldShowIndependentBlock;
-          const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
-          const groupReadCount = getGroupReadCount(renderedHistory, msg);
-
-          const messageKey = `${msg.timestamp}-${msg.role}-${msg.senderCharacterId || senderId}-${idx}`;
+        {visibleRenderedRows.map((row) => {
+          const {
+            msg,
+            idx,
+            isUser,
+            senderId,
+            senderName,
+            avatar,
+            content,
+            badge,
+            bubbleColor,
+            roleLabel,
+            senderCharacter,
+            visualKind,
+            isGroupedWithPrevious,
+            shouldRenderTimeDivider,
+            groupReadCount,
+            messageKey,
+          } = row;
 
           if (visualKind === 'notice') {
             return (
@@ -3164,10 +3280,12 @@ export function GroupChatSessionScreen({
 
           const isPendingMessage = !!msg.isPending;
 
-          const senderBubbleStyleCss = !isUser ? senderCharacter?.bubbleStyleCss : undefined;
-          const hasSenderBubbleThemeCss = hasBubbleThemeCss(senderBubbleStyleCss);
-          const senderBubbleStyle = sanitizeBubbleSurfaceStyle(parseBubbleStyleCss(senderBubbleStyleCss));
-          const hasSenderBubbleInlineSurfaceStyle = Object.keys(senderBubbleStyle).length > 0;
+          const senderBubbleStyleMeta = !isUser && senderCharacter?.id
+            ? groupSenderBubbleStyleMetaById.get(senderCharacter.id)
+            : null;
+          const hasSenderBubbleThemeCss = senderBubbleStyleMeta?.hasSenderBubbleThemeCss ?? false;
+          const senderBubbleStyle = senderBubbleStyleMeta?.senderBubbleStyle ?? EMPTY_GROUP_STYLE;
+          const hasSenderBubbleInlineSurfaceStyle = senderBubbleStyleMeta?.hasSenderBubbleInlineSurfaceStyle ?? false;
           const hasRoleBubbleTheme = isUser ? hasGroupUserTheme : hasGroupRoleTheme;
           const shouldRespectThemeSurface = hasSharedBubbleTheme || hasRoleBubbleTheme || hasSenderBubbleThemeCss;
           const senderBubbleColor = !isUser ? senderCharacter?.bubbleColor || undefined : undefined;
@@ -3308,10 +3426,9 @@ export function GroupChatSessionScreen({
                             color: resolvedMemberBubbleTextColor,
                         }
                         : undefined;
-                      const groupBubbleTextStyle = getGroupBubbleTextStyle({
-                        isUser,
-                        senderBubbleStyleCss,
-                      });
+                      const groupBubbleTextStyle = isUser
+                        ? groupUserBubbleTextStyle
+                        : senderBubbleStyleMeta?.textStyle ?? groupModelBubbleTextStyle;
                       const resolvedDefaultBubbleSurface =
                         !isStandaloneMedia
                         && !shouldUseResolvedMemberBubble

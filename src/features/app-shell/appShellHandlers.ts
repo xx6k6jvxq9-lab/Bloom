@@ -88,7 +88,7 @@ export const createAppShellHandlers = ({
 }: CreateAppShellHandlersParams) => ({
   handleOpenChat(characterId: string) {
     setSelectedCharacterId(characterId);
-    navigateToAppWithTransition('chat-session', setActiveApp);
+    void navigateToAppWithTransition('chat-session', setActiveApp, { awaitPreload: true });
   },
 
   handleAddCharacter(character: Character) {

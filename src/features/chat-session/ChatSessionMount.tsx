@@ -31,7 +31,7 @@ type ChatSessionMountProps = {
   chatGroups: ChatGroup[];
   setChatGroups: Dispatch<SetStateAction<ChatGroup[]>>;
   chatHistory: ChatHistory;
-  setChatHistory: (chatHistory: ChatHistory) => void;
+  setChatHistory: Dispatch<SetStateAction<ChatHistory>>;
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
   userAvatar: string;
@@ -56,6 +56,7 @@ type ChatSessionMountProps = {
   setWalletData: (data: WalletData) => void;
   updateCharacter: (updatedCharacter: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
+  setFriendRequests: Dispatch<SetStateAction<FriendRequest[]>>;
   onToggleCharacterBlock?: (characterId: string) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
@@ -69,6 +70,14 @@ type ChatSessionMountProps = {
 
 const RETAINED_DIRECT_SESSION_LIMIT = 2;
 const RETAINED_GROUP_SESSION_LIMIT = 1;
+
+function getInitialDirectSessionIds(activeApp: string, selectedCharacterId?: string | null): string[] {
+  return activeApp === 'chat-session' && selectedCharacterId ? [selectedCharacterId] : [];
+}
+
+function getInitialGroupSessionIds(activeApp: string, selectedGroupId?: string | null): string[] {
+  return activeApp === 'group-chat-session' && selectedGroupId ? [selectedGroupId] : [];
+}
 
 function appendRecentId(currentIds: string[], nextId: string | null | undefined, limit: number): string[] {
   if (!nextId) {
@@ -143,6 +152,7 @@ export function ChatSessionMount({
   setWalletData,
   updateCharacter,
   patchCharacter,
+  setFriendRequests,
   onToggleCharacterBlock,
   onBackToChat,
   onViewForumPost,
@@ -154,12 +164,20 @@ export function ChatSessionMount({
   friendRequests = [],
 }: ChatSessionMountProps) {
   const { getCharacterById } = createCharacterDirectory({ characters });
-  const [mountedDirectCharacterIds, setMountedDirectCharacterIds] = useState<string[]>([]);
-  const [mountedGroupIds, setMountedGroupIds] = useState<string[]>([]);
+  const [mountedDirectCharacterIds, setMountedDirectCharacterIds] = useState<string[]>(() => (
+    getInitialDirectSessionIds(activeApp, selectedCharacterId)
+  ));
+  const [mountedGroupIds, setMountedGroupIds] = useState<string[]>(() => (
+    getInitialGroupSessionIds(activeApp, selectedGroupId)
+  ));
   const [busyDirectCharacterIds, setBusyDirectCharacterIds] = useState<string[]>([]);
   const [busyGroupIds, setBusyGroupIds] = useState<string[]>([]);
-  const [retainedDirectCharacterIds, setRetainedDirectCharacterIds] = useState<string[]>([]);
-  const [retainedGroupIds, setRetainedGroupIds] = useState<string[]>([]);
+  const [retainedDirectCharacterIds, setRetainedDirectCharacterIds] = useState<string[]>(() => (
+    getInitialDirectSessionIds(activeApp, selectedCharacterId)
+  ));
+  const [retainedGroupIds, setRetainedGroupIds] = useState<string[]>(() => (
+    getInitialGroupSessionIds(activeApp, selectedGroupId)
+  ));
 
   useEffect(() => {
     if (activeApp === 'chat-session' && selectedCharacterId) {
@@ -252,6 +270,7 @@ export function ChatSessionMount({
         }
 
         const isDirectActive = activeApp === 'chat-session' && selectedCharacterId === characterId;
+        const isDirectBusy = busyDirectCharacterIds.includes(characterId);
         const characterCoupleSpace = getPartnerCoupleSpaceData(
           coupleSpaceState,
           coupleSpace,
@@ -310,6 +329,8 @@ export function ChatSessionMount({
               onStatusBarVisibilityChange={onStatusBarVisibilityChange}
               onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
               friendRequests={friendRequests}
+              setFriendRequests={setFriendRequests}
+              suspendHeavyRendering={!isDirectActive && !isDirectBusy}
             />
           </div>
         );
@@ -322,6 +343,7 @@ export function ChatSessionMount({
         }
 
         const isGroupActive = activeApp === 'group-chat-session' && selectedGroupId === groupId;
+        const isGroupBusy = busyGroupIds.includes(groupId);
 
         return (
           <div
@@ -346,6 +368,7 @@ export function ChatSessionMount({
               worldBooks={worldBook}
               perception={perception}
               directChatHistory={chatHistory}
+              suspendHeavyRendering={!isGroupActive && !isGroupBusy}
             />
           </div>
         );

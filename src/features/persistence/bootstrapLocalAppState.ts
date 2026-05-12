@@ -25,8 +25,7 @@ import {
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
 import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import {
-  hydrateFriendRequests,
-  loadPersistedFriendRequests,
+  loadPreferredFriendRequests,
 } from './friendRequestsStore';
 import { loadJson } from './localConfigStore';
 import {
@@ -314,15 +313,9 @@ export async function bootstrapLocalAppState({
       ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
       : localForumData;
 
-    const localFriendRequests = loadPersistedFriendRequests(
+    const friendRequests = await loadPreferredFriendRequests(
       !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
     );
-    const friendRequests = hasIndexedDbFriendRequests
-      ? hydrateFriendRequests(
-          indexedDbFriendRequests as typeof localFriendRequests,
-          localFriendRequests,
-        )
-      : localFriendRequests;
 
     const datingRecords = await loadPreferredDatingRecords({
       savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],

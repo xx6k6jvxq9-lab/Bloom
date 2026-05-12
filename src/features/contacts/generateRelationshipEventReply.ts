@@ -71,7 +71,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
           '【关系事件】用户刚刚把你拉黑了。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。',
         allowedDecisions: ['counter_block', 'no_counter_block', 'send_request'] as RelationshipEventDecision[],
         instruction:
-          '如果你觉得自己会把对方也拉黑，decision 写 counter_block；如果只是表达情绪但不反拉黑，decision 写 no_counter_block；如果你虽然生气但还是想主动递一条好友申请，decision 写 send_request，并填写 requestMessage。',
+          '如果你觉得自己会把对方也拉黑，decision 写 counter_block；如果只是表达情绪但不反拉黑，decision 写 no_counter_block；如果你虽然生气但还是想主动递一条好友申请，decision 写 send_request，并填写 requestMessage。不要机械地因为被拉黑就退让；有些角色会更不甘心、更嘴硬、更不死心，甚至立刻继续来敲门，只要这符合你的人设就可以。',
       };
     case 'user_unblocked_character':
       return {
@@ -79,7 +79,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
           '【关系事件】用户刚刚把你从黑名单里放了出来。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。',
         allowedDecisions: ['send_request', 'wait_for_user'] as RelationshipEventDecision[],
         instruction:
-          '如果你会主动再递一条好友申请，decision 写 send_request，并填写 requestMessage；如果你只是表态但暂时不主动申请，decision 写 wait_for_user。',
+          '如果你会主动再递一条好友申请，decision 写 send_request，并填写 requestMessage；如果你只是表态但暂时不主动申请，decision 写 wait_for_user。不要默认必须先观望；有些角色会当场就接住这次机会，再立刻把申请递回来。',
       };
     case 'user_sent_friend_request':
       return {
@@ -87,7 +87,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
           `【关系事件】用户刚刚向你发来一条好友申请，附言是：${event.note || '想把你加回来。'}。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。`,
         allowedDecisions: ['accept', 'reject', 'reject_and_block', 'counter_request'] as RelationshipEventDecision[],
         instruction:
-          '如果你愿意直接通过，decision 写 accept；如果你拒绝但不反拉黑，decision 写 reject；如果你拒绝并决定顺手把对方拉黑，decision 写 reject_and_block；如果你不直接通过，而是想反过来递一条申请让对方来收，decision 写 counter_request，并填写 requestMessage。',
+          '如果你愿意直接通过，decision 写 accept；如果你拒绝但不反拉黑，decision 写 reject；如果你拒绝并决定顺手把对方拉黑，decision 写 reject_and_block；如果你不直接通过，而是想反过来递一条申请让对方来收，decision 写 counter_request，并填写 requestMessage。不要把所有角色都写成统一的体面退让风格；是否心软、嘴硬、较劲、继续追，完全看这个角色自己会怎么反应。',
       };
     case 'user_accepted_character_request':
       return {
@@ -101,7 +101,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
         userMessage:
           '【关系事件】用户刚刚拒绝了你发出的好友申请。请你只用角色口吻做出当下反应。',
         allowedDecisions: ['none', 'send_request'] as RelationshipEventDecision[],
-        instruction: '如果你决定先停下，decision 写 none；如果你还想继续递下一条好友申请，decision 写 send_request，并填写这一次新的 requestMessage。',
+        instruction: '如果你决定先停下，decision 写 none；如果你还想继续递下一条好友申请，decision 写 send_request，并填写这一次新的 requestMessage。不要默认被拒一次就后退；有些角色会更不死心、更较劲，甚至会立刻再递一次，只要这符合你的人设就可以。',
       };
     default:
       return {
@@ -306,6 +306,9 @@ export async function generateRelationshipEventReply(
   }
 
   const eventSpec = buildRelationshipEventSpec(params.event);
+  const resolvedEventUserMessage = params.event.kind === 'user_rejected_character_request' && params.event.note?.trim()
+    ? `${eventSpec.userMessage}\n对方还留了一句附言：${params.event.note.trim()}`
+    : eventSpec.userMessage;
   const shouldTranslate = shouldRequestRelationshipTranslation(params.character);
   const activeMask = (params.masks || []).find((mask) => mask.isActive && mask.linkedCharacters.includes(params.character.id)) || null;
   const activeWorldBooks = (params.worldBook || []).filter((worldBook) => {
@@ -325,8 +328,8 @@ export async function generateRelationshipEventReply(
     perceptionPrompt: buildPerceptionPrompt(params.perception),
     directChatHistory: params.directChatHistory,
     chatGroups: params.chatGroups,
-    latestUserText: eventSpec.userMessage,
-    worldBookQuery: eventSpec.userMessage,
+    latestUserText: resolvedEventUserMessage,
+    worldBookQuery: resolvedEventUserMessage,
   });
 
   const systemPrompt = buildChatPrompt({
@@ -357,7 +360,7 @@ export async function generateRelationshipEventReply(
     messages: [
       { role: 'system', content: systemPrompt },
       ...historyMessages,
-      { role: 'user', content: eventSpec.userMessage },
+      { role: 'user', content: resolvedEventUserMessage },
     ],
     allowStructuredProtocols: true,
     temperature: Math.min(activeConfig.temperature ?? 0.7, 0.45),
@@ -374,10 +377,16 @@ export async function generateRelationshipEventReply(
         reactionText: parsed.reactionText,
       })
     : parsed.reactionText;
+  const requestMessage = shouldTranslate && parsed.requestMessage?.trim() && !hasLegacyTranslation(parsed.requestMessage)
+    ? await backfillRelationshipTranslation({
+        activeConfig,
+        reactionText: parsed.requestMessage,
+      })
+    : parsed.requestMessage;
   return {
     reactionText,
     decision: parsed.decision,
-    requestMessage: parsed.requestMessage,
+    requestMessage,
     rawText: qualityResult.cleanedText,
   };
 }

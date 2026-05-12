@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type {
   AppSettings,
   CallRecord,
@@ -28,7 +29,7 @@ type DirectChatSessionContainerProps = {
   isActive: boolean;
   onRuntimeBusyChange?: (characterId: string, busy: boolean) => void;
   chatHistory: ChatHistory;
-  setChatHistory: (chatHistory: ChatHistory) => void;
+  setChatHistory: Dispatch<SetStateAction<ChatHistory>>;
   chatGroups: ChatGroup[];
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
@@ -63,6 +64,8 @@ type DirectChatSessionContainerProps = {
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
   friendRequests?: FriendRequest[];
+  setFriendRequests?: Dispatch<SetStateAction<FriendRequest[]>>;
+  suspendHeavyRendering?: boolean;
 };
 
 export function DirectChatSessionContainer({
@@ -106,6 +109,8 @@ export function DirectChatSessionContainer({
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
   friendRequests = [],
+  setFriendRequests,
+  suspendHeavyRendering = false,
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
@@ -116,6 +121,61 @@ export function DirectChatSessionContainer({
     .reverse()
     .find((message) => !message.isSystem && !message.isRecalled) || null;
   const latestPreviewableMessage = findLatestPreviewableMessage(history);
+  const commitDirectHistory = useCallback((
+    nextHistory: ChatMessage[],
+    options?: {
+      syncPreview?: boolean;
+    },
+  ) => {
+    setChatHistory((prev) => ({
+      ...prev,
+      [character.id]: nextHistory,
+    }));
+
+    if (options?.syncPreview === false) {
+      return;
+    }
+
+    const nextLatestPreviewableMessage = findLatestPreviewableMessage(nextHistory);
+    const nextLastMessage = nextLatestPreviewableMessage
+      ? formatChatMessagePreview(nextLatestPreviewableMessage)
+      : formatMessagePreview(character.openingRemark);
+    const nextLastTime = nextLatestPreviewableMessage?.timestamp ?? character.lastTime;
+    const nextLastViewedMessageTimestamp =
+      isActive && nextLatestPreviewableMessage?.timestamp
+        ? nextLatestPreviewableMessage.timestamp
+        : character.lastViewedMessageTimestamp;
+    const characterPatch: Partial<Character> = {};
+
+    if (character.lastMessage !== nextLastMessage) {
+      characterPatch.lastMessage = nextLastMessage;
+    }
+
+    if (character.lastTime !== nextLastTime) {
+      characterPatch.lastTime = nextLastTime;
+    }
+
+    if (
+      isActive
+      && typeof nextLastViewedMessageTimestamp === 'number'
+      && character.lastViewedMessageTimestamp !== nextLastViewedMessageTimestamp
+    ) {
+      characterPatch.lastViewedMessageTimestamp = nextLastViewedMessageTimestamp;
+    }
+
+    if (Object.keys(characterPatch).length > 0) {
+      patchCharacter(character.id, characterPatch);
+    }
+  }, [
+    character.id,
+    character.lastMessage,
+    character.lastTime,
+    character.lastViewedMessageTimestamp,
+    character.openingRemark,
+    isActive,
+    patchCharacter,
+    setChatHistory,
+  ]);
 
   useEffect(() => {
     let lastMessageIndex = -1;
@@ -141,15 +201,11 @@ export function DirectChatSessionContainer({
       memorySnapshot: nextSnapshot,
     };
 
-    setChatHistory({
-      ...chatHistory,
-      [character.id]: nextHistory,
-    });
+    commitDirectHistory(nextHistory, { syncPreview: false });
   }, [
     character,
-    chatHistory,
+    commitDirectHistory,
     history,
-    setChatHistory,
   ]);
 
   useEffect(() => {
@@ -179,22 +235,7 @@ export function DirectChatSessionContainer({
       character={character}
       characters={characters}
       history={history}
-      setHistory={(newHistory) => {
-        setChatHistory({
-          ...chatHistory,
-          [character.id]: newHistory,
-        });
-        const latestPreviewableMessage = findLatestPreviewableMessage(newHistory);
-        patchCharacter(character.id, {
-          lastMessage: latestPreviewableMessage
-            ? formatChatMessagePreview(latestPreviewableMessage)
-            : formatMessagePreview(character.openingRemark),
-          lastTime: latestPreviewableMessage?.timestamp ?? character.lastTime,
-          ...(isActive && latestPreviewableMessage?.timestamp
-            ? { lastViewedMessageTimestamp: latestPreviewableMessage.timestamp }
-            : {}),
-        });
-      }}
+      setHistory={commitDirectHistory}
       onUpdateCharacter={updateCharacter}
       onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
       onToggleCharacterBlock={() => onToggleCharacterBlock?.(character.id)}
@@ -257,7 +298,9 @@ export function DirectChatSessionContainer({
       onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
       onRuntimeBusyChange={handleRuntimeBusyChange}
       friendRequests={friendRequests}
+      setFriendRequests={setFriendRequests}
       isActive={isActive}
+      suspendHeavyRendering={suspendHeavyRendering}
     />
   );
 }

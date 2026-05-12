@@ -8,8 +8,8 @@ import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLong
 import type { FactTraceRecord } from '../../services/relationship-context/factTypes';
 import type { RelationshipWaveRecord } from '../../services/relationship-context/types';
 import { formatChatMessagePreview } from '../app-shell/formatMessagePreview';
-import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
-import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
+import { loadJsonRecordEnvelope, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { loadJson, remove as removeStoredJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
 export type PersistedGroupSession = {
@@ -25,6 +25,7 @@ export type PersistedGroupSession = {
 };
 
 export type PersistedChatHistoryData = {
+  updatedAt?: number;
   directHistory: ChatHistory;
   directRelationshipWaves: Record<string, RelationshipWaveRecord[]>;
   directFactTraces: Record<string, FactTraceRecord[]>;
@@ -65,6 +66,55 @@ function isFactTraceArray(value: unknown): value is FactTraceRecord[] {
 
 function findLatestPreviewableMessage(messages: ChatMessage[]): ChatMessage | null {
   return [...messages].reverse().find((message) => !message.isSystem && !message.isRecalled) || null;
+}
+
+function getLatestMessageTimestamp(messages: ChatMessage[]): number {
+  return messages.reduce((latestTimestamp, message) => (
+    typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)
+      ? Math.max(latestTimestamp, message.timestamp)
+      : latestTimestamp
+  ), 0);
+}
+
+function resolveChatHistoryUpdatedAt(
+  source: Partial<PersistedChatHistoryData> | null | undefined,
+  fallbackUpdatedAt = 0,
+): number {
+  const explicitUpdatedAt = typeof source?.updatedAt === 'number' && Number.isFinite(source.updatedAt)
+    ? source.updatedAt
+    : 0;
+
+  const latestDirectTimestamp = Object.values(source?.directHistory || {}).reduce((latestTimestamp, history) => (
+    Array.isArray(history)
+      ? Math.max(latestTimestamp, getLatestMessageTimestamp(history))
+      : latestTimestamp
+  ), 0);
+
+  const latestGroupTimestamp = Object.values(source?.groupSessions || {}).reduce((latestTimestamp, session) => {
+    if (Array.isArray(session)) {
+      return Math.max(latestTimestamp, getLatestMessageTimestamp(session));
+    }
+
+    if (!session || typeof session !== 'object') {
+      return latestTimestamp;
+    }
+
+    const latestHistoryTimestamp = Array.isArray(session.history)
+      ? getLatestMessageTimestamp(session.history)
+      : 0;
+    const latestSessionTimestamp = typeof session.lastTime === 'number' && Number.isFinite(session.lastTime)
+      ? session.lastTime
+      : 0;
+
+    return Math.max(latestTimestamp, latestHistoryTimestamp, latestSessionTimestamp);
+  }, 0);
+
+  return Math.max(
+    explicitUpdatedAt,
+    latestDirectTimestamp,
+    latestGroupTimestamp,
+    Number.isFinite(fallbackUpdatedAt) ? fallbackUpdatedAt : 0,
+  );
 }
 
 function sanitizeDirectRelationshipWaves(
@@ -158,7 +208,10 @@ export function hydrateChatHistoryRecords(
   source: Partial<PersistedChatHistoryData> | null | undefined,
   fallback: PersistedChatHistoryData,
 ): PersistedChatHistoryData {
+  const updatedAt = resolveChatHistoryUpdatedAt(source, fallback.updatedAt ?? 0);
+
   return {
+    ...(updatedAt > 0 ? { updatedAt } : {}),
     directHistory: sanitizeDirectHistory(source?.directHistory, fallback.directHistory),
     directRelationshipWaves: sanitizeDirectRelationshipWaves(
       source?.directRelationshipWaves,
@@ -183,12 +236,7 @@ export function loadChatHistoryRecords(
     groupSessions: {},
   },
 ): PersistedChatHistoryData {
-  const persisted = loadJson<Partial<PersistedChatHistoryData> | null>(STORAGE_KEYS.chatHistory, null);
-  const hydrated = persisted
-    ? hydrateChatHistoryRecords(persisted, fallback)
-    : (chatHistoryCache ?? fallback);
-  chatHistoryCache = hydrated;
-  return hydrated;
+  return chatHistoryCache ?? fallback;
 }
 
 export async function loadPreferredChatHistoryRecords(
@@ -199,35 +247,59 @@ export async function loadPreferredChatHistoryRecords(
     groupSessions: {},
   },
 ): Promise<PersistedChatHistoryData> {
-  const localHistory = loadChatHistoryRecords(fallback);
+  const legacyLocalHistory = loadJson<Partial<PersistedChatHistoryData> | null>(STORAGE_KEYS.chatHistory, null);
 
   try {
-    const persisted = await loadJsonRecord<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
-    if (persisted) {
-      const indexedDbHistory = hydrateChatHistoryRecords(persisted, fallback);
+    const persistedEnvelope = await loadJsonRecordEnvelope<Partial<PersistedChatHistoryData>>(STORAGE_KEYS.chatHistory);
+    const indexedDbUpdatedAt = resolveChatHistoryUpdatedAt(
+      persistedEnvelope.value,
+      persistedEnvelope.updatedAt ?? 0,
+    );
+    const localUpdatedAt = resolveChatHistoryUpdatedAt(legacyLocalHistory, 0);
+    const shouldPreferIndexedDb = !!persistedEnvelope.value && (
+      !legacyLocalHistory || indexedDbUpdatedAt >= localUpdatedAt
+    );
+
+    if (shouldPreferIndexedDb && persistedEnvelope.value) {
+      const indexedDbHistory = hydrateChatHistoryRecords({
+        ...persistedEnvelope.value,
+        ...(indexedDbUpdatedAt > 0 ? { updatedAt: indexedDbUpdatedAt } : {}),
+      }, fallback);
       chatHistoryCache = indexedDbHistory;
-      const localSerialized = JSON.stringify(localHistory);
-      const indexedDbSerialized = JSON.stringify(indexedDbHistory);
-
-      if (localSerialized !== indexedDbSerialized) {
-        saveJson(STORAGE_KEYS.chatHistory, indexedDbHistory);
-      }
-
+      removeStoredJson(STORAGE_KEYS.chatHistory);
       return indexedDbHistory;
     }
   } catch (error) {
     console.error('[chatHistoryStore] Failed to load chat history from IndexedDB', error);
   }
 
-  chatHistoryCache = localHistory;
-  return localHistory;
+  if (legacyLocalHistory) {
+    const migratedHistory = hydrateChatHistoryRecords(legacyLocalHistory, fallback);
+    chatHistoryCache = migratedHistory;
+
+    try {
+      await saveJsonRecord(STORAGE_KEYS.chatHistory, migratedHistory);
+      removeStoredJson(STORAGE_KEYS.chatHistory);
+    } catch (error) {
+      console.error('[chatHistoryStore] Failed to migrate legacy local chat history into IndexedDB', error);
+    }
+
+    return migratedHistory;
+  }
+
+  chatHistoryCache = fallback;
+  return fallback;
 }
 
 export function saveChatHistoryRecords(value: PersistedChatHistoryData): Promise<void> {
-  chatHistoryCache = value;
-  saveJson(STORAGE_KEYS.chatHistory, value);
+  const persistedValue: PersistedChatHistoryData = {
+    ...value,
+    updatedAt: Date.now(),
+  };
+  chatHistoryCache = persistedValue;
+  removeStoredJson(STORAGE_KEYS.chatHistory);
 
-  return saveJsonRecord(STORAGE_KEYS.chatHistory, value).catch((error) => {
+  return saveJsonRecord(STORAGE_KEYS.chatHistory, persistedValue).catch((error) => {
     console.error('[chatHistoryStore] Failed to persist chat history into IndexedDB', error);
   });
 }

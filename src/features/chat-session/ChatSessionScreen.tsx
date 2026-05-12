@@ -1822,8 +1822,11 @@ export function ChatSessionScreen({
     character.userAvatarFrameCss,
     '.chat-avatar-frame-user',
   );
-  const headerState = getChatHeaderState(character, history, isLoading);
-  const layoutConfig = getChatLayoutConfig();
+  const headerState = useMemo(
+    () => getChatHeaderState(character, history, isLoading),
+    [character, history, isLoading],
+  );
+  const layoutConfig = useMemo(() => getChatLayoutConfig(), []);
   const showChatTimeDividers = settings.showChatTimeDividers ?? true;
   const showChatMessageTime = settings.showChatMessageTime ?? character.showTime ?? true;
   const visibleDirectRows = useMemo(

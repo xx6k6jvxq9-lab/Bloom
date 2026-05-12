@@ -7,6 +7,11 @@ type JsonRecord = {
   updatedAt: number;
 };
 
+export type JsonRecordEnvelope<T> = {
+  value: T | null;
+  updatedAt: number | null;
+};
+
 function runTransaction<T>(
   mode: IDBTransactionMode,
   executor: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
@@ -28,6 +33,20 @@ export async function loadJsonRecord<T>(key: string): Promise<T | null> {
     const request = store.get(key);
     request.onsuccess = () => resolve((request.result as JsonRecord | undefined)?.value as T ?? null);
     request.onerror = () => reject(request.error ?? new Error(`Failed to read JSON record "${key}"`));
+  });
+}
+
+export async function loadJsonRecordEnvelope<T>(key: string): Promise<JsonRecordEnvelope<T>> {
+  return runTransaction<JsonRecordEnvelope<T>>('readonly', (store, resolve, reject) => {
+    const request = store.get(key);
+    request.onsuccess = () => {
+      const result = request.result as JsonRecord | undefined;
+      resolve({
+        value: result?.value as T ?? null,
+        updatedAt: typeof result?.updatedAt === 'number' ? result.updatedAt : null,
+      });
+    };
+    request.onerror = () => reject(request.error ?? new Error(`Failed to read JSON record envelope "${key}"`));
   });
 }
 

@@ -8,6 +8,7 @@ import type {
 } from '../../types';
 import {
   buildCharacterIncomingRequestResolution,
+  createCharacterRelationshipMessages,
   createRelationshipSystemMessage,
   decideCharacterBlockReaction,
   decideCharacterFriendRequestResponse,
@@ -16,12 +17,18 @@ import {
   decideCharacterUnblockGesture,
   getCharacterBlockState,
   getFriendRequestCharacterId,
+  getRelationshipReactionBubbleCap,
+  resolveCharacterBlockedFollowupDelayMs,
   supersedePendingCharacterRequests,
 } from './contactRelationship';
 import {
   canCreateCharacterRequestAttempt,
   getCharacterFriendRequestThreadId,
+  getFriendRequestRelationshipRoundId,
+  getFriendRequestRelationshipRoundNo,
   getNextCharacterRequestAttemptNo,
+  markRelationshipRoundResolved,
+  resolveRelationshipRoundForWrite,
 } from './friendRequestThreads';
 import { generateRelationshipEventReply } from './generateRelationshipEventReply';
 
@@ -56,6 +63,37 @@ function getRuntimeCoupleSpace(runtime: RelationshipFlowRuntime) {
   return runtime.coupleSpace ?? runtime.appData.coupleSpace;
 }
 
+function buildRelationshipReactionNoticeLabel(
+  displayName: string,
+  options: {
+    kind: 'blocked' | 'unblocked';
+  },
+) {
+  return options.kind === 'blocked'
+    ? `${displayName} 的拉黑反应`
+    : `${displayName} 的反应`;
+}
+
+function buildRelationshipReactionMessages(
+  character: Pick<Character, 'id' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  reactionText: string,
+  timestamp: number,
+  options: {
+    intensity?: 'normal' | 'high';
+  },
+) {
+  return createCharacterRelationshipMessages(
+    character.id,
+    reactionText,
+    timestamp,
+    {
+      maxBubbles: getRelationshipReactionBubbleCap(character, reactionText, {
+        intensity: options.intensity,
+      }),
+    },
+  );
+}
+
 export function appendRelationshipMessages(
   currentHistory: AppData['chatHistory'],
   characterId: string,
@@ -71,10 +109,13 @@ export function createRelationshipEventThreadEntry(params: {
   characterId: string;
   characterName: string;
   characterAvatar?: string | null;
+  relationshipRoundId: string;
+  relationshipRoundNo: number;
   timestamp: number;
   reactionText: string;
   resolutionMessage: string;
   eventKind: FriendRequest['eventKind'];
+  isUnread?: boolean;
 }): FriendRequest {
   return {
     id: `relationship-event-${params.characterId}-${params.timestamp}`,
@@ -88,10 +129,14 @@ export function createRelationshipEventThreadEntry(params: {
     requestKind: 'relationship_event',
     characterId: params.characterId,
     threadId: getCharacterFriendRequestThreadId(params.characterId),
+    relationshipRoundId: params.relationshipRoundId,
+    relationshipRoundNo: params.relationshipRoundNo,
+    relationshipRoundStatus: 'active',
     isRelationshipEvent: true,
     eventKind: params.eventKind,
     resolutionMessage: params.resolutionMessage,
     responseText: params.reactionText,
+    ...(params.isUnread ? { isUnread: true, unreadAt: params.timestamp } : {}),
     sourceScene: 'relationship',
     lastUpdatedAt: params.timestamp,
   };
@@ -102,6 +147,7 @@ export function applyNonForumFriendRequestResolution(
   params: {
     requestId: string;
     accepted: boolean;
+    note?: string;
   },
 ): {
   nextAppData: AppData;
@@ -115,6 +161,7 @@ export function applyNonForumFriendRequestResolution(
 
   const characterId = getFriendRequestCharacterId(request);
   const timestamp = Date.now();
+  const relationshipRoundId = getFriendRequestRelationshipRoundId(request);
 
   if (!characterId) {
     return {
@@ -125,7 +172,10 @@ export function applyNonForumFriendRequestResolution(
             ? {
                 ...entry,
                 status: params.accepted ? 'accepted' : 'rejected',
+                isUnread: false,
+                unreadAt: undefined,
                 resolutionMessage: params.accepted ? '你已通过这条好友申请' : '你拒绝了这条好友申请',
+                ...(params.accepted ? {} : params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
                 lastUpdatedAt: timestamp,
               }
             : entry
@@ -148,7 +198,8 @@ export function applyNonForumFriendRequestResolution(
         : character
     ))
     : prev.characters;
-  const nextFriendRequests = params.accepted
+
+  let nextFriendRequests = params.accepted
     ? (prev.friendRequests || []).map((entry) => {
       if (getFriendRequestCharacterId(entry) !== characterId || entry.status !== 'pending') {
         return entry;
@@ -157,6 +208,8 @@ export function applyNonForumFriendRequestResolution(
         return {
           ...entry,
           status: 'accepted' as const,
+          isUnread: false,
+          unreadAt: undefined,
           resolutionMessage: '你已通过这条好友申请',
           lastUpdatedAt: timestamp,
         };
@@ -164,6 +217,8 @@ export function applyNonForumFriendRequestResolution(
       return {
         ...entry,
         status: 'superseded' as const,
+        isUnread: false,
+        unreadAt: undefined,
         resolutionMessage: '关系已恢复，旧申请自动归档',
         lastUpdatedAt: timestamp,
       };
@@ -173,11 +228,19 @@ export function applyNonForumFriendRequestResolution(
         ? {
             ...entry,
             status: 'rejected' as const,
+            isUnread: false,
+            unreadAt: undefined,
             resolutionMessage: '你拒绝了这条好友申请',
+            ...(params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
             lastUpdatedAt: timestamp,
           }
         : entry
     ));
+
+  if (params.accepted && relationshipRoundId) {
+    nextFriendRequests = markRelationshipRoundResolved(nextFriendRequests, relationshipRoundId, timestamp);
+  }
+
   const nextHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
     createRelationshipSystemMessage(
       params.accepted
@@ -204,6 +267,7 @@ export function runHandledRelationshipRequestReactionFlow(params: {
   requestId: string;
   characterId: string;
   accepted: boolean;
+  note?: string;
 }) {
   const { runtime, requestId, characterId, accepted } = params;
   const targetCharacter = runtime.appData.characters.find((character) => character.id === characterId);
@@ -228,6 +292,7 @@ export function runHandledRelationshipRequestReactionFlow(params: {
       coupleSpace: getRuntimeCoupleSpace(runtime),
       event: {
         kind: accepted ? 'user_accepted_character_request' : 'user_rejected_character_request',
+        note: accepted ? undefined : params.note?.trim(),
       },
     });
 
@@ -239,13 +304,25 @@ export function runHandledRelationshipRequestReactionFlow(params: {
         return prev;
       }
 
-      const nextAttemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
+      const relationshipRoundId = getFriendRequestRelationshipRoundId(currentRequest);
+      const relationshipRoundNo = Math.max(1, getFriendRequestRelationshipRoundNo(currentRequest));
+      const nextAttemptNo = getNextCharacterRequestAttemptNo(
+        prev.friendRequests || [],
+        characterId,
+        'character',
+        relationshipRoundId,
+      );
       const retryFallback = decideCharacterRetryAfterRejectedRequest(
         currentCharacter,
         prev.chatHistory[characterId] || [],
         nextAttemptNo,
       );
-      const canRetry = !accepted && canCreateCharacterRequestAttempt(prev.friendRequests || [], characterId, 'character');
+      const canRetry = !accepted && canCreateCharacterRequestAttempt(
+        prev.friendRequests || [],
+        characterId,
+        'character',
+        relationshipRoundId,
+      );
       const shouldSendFollowupRequest = canRetry && (
         generated?.decision === 'send_request'
           ? true
@@ -280,7 +357,12 @@ export function runHandledRelationshipRequestReactionFlow(params: {
                 requestKind: currentRequest.requestKind || 'reconnect',
                 characterId,
                 threadId: followupThreadId,
+                relationshipRoundId,
+                relationshipRoundNo,
+                relationshipRoundStatus: 'active' as const,
                 attemptNo: nextAttemptNo,
+                isUnread: true,
+                unreadAt: reactionTimestamp,
                 sourceScene: 'relationship' as const,
                 lastUpdatedAt: reactionTimestamp,
               }]
@@ -289,6 +371,7 @@ export function runHandledRelationshipRequestReactionFlow(params: {
             request.id === requestId
               ? {
                   ...request,
+                  ...(accepted ? {} : params.note?.trim() ? { userDecisionNote: params.note.trim() } : {}),
                   responseText: reactionText,
                   lastUpdatedAt: reactionTimestamp,
                 }
@@ -312,7 +395,14 @@ export function runRelationshipRequestSubmissionFlow(params: {
     return false;
   }
 
-  if (!canCreateCharacterRequestAttempt(runtime.appData.friendRequests || [], characterId, 'user')) {
+  const timestamp = Date.now();
+  const relationshipRound = resolveRelationshipRoundForWrite(
+    runtime.appData.friendRequests || [],
+    characterId,
+    timestamp,
+  );
+
+  if (!canCreateCharacterRequestAttempt(runtime.appData.friendRequests || [], characterId, 'user', relationshipRound.roundId)) {
     return false;
   }
 
@@ -320,7 +410,6 @@ export function runRelationshipRequestSubmissionFlow(params: {
   const trimmedMessage = message.trim() || '想把你加回来，之后继续好好聊。';
   const currentBlockState = getCharacterBlockState(targetCharacter);
   const requestKind = currentBlockState === 'none' ? 'friend' as const : 'reconnect' as const;
-  const timestamp = Date.now();
   const requestId = `friend-request-${characterId}-${timestamp}`;
 
   runtime.setAppData((prev) => {
@@ -333,7 +422,12 @@ export function runRelationshipRequestSubmissionFlow(params: {
         : character
     ));
     const threadId = getCharacterFriendRequestThreadId(characterId);
-    const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'user');
+    const nextAttemptNo = getNextCharacterRequestAttemptNo(
+      prev.friendRequests || [],
+      characterId,
+      'user',
+      relationshipRound.roundId,
+    );
     const nextFriendRequests = [
       {
         id: requestId,
@@ -348,7 +442,10 @@ export function runRelationshipRequestSubmissionFlow(params: {
         requestKind,
         characterId,
         threadId,
-        attemptNo,
+        relationshipRoundId: relationshipRound.roundId,
+        relationshipRoundNo: relationshipRound.roundNo,
+        relationshipRoundStatus: 'active' as const,
+        attemptNo: nextAttemptNo,
         sourceScene: 'relationship' as const,
         lastUpdatedAt: timestamp,
       },
@@ -394,6 +491,11 @@ export function runRelationshipRequestSubmissionFlow(params: {
       }
 
       const currentHistory = prev.chatHistory[characterId] || [];
+      const relationshipRoundId = getFriendRequestRelationshipRoundId(pendingRequest) || relationshipRound.roundId;
+      const relationshipRoundNo = Math.max(
+        1,
+        getFriendRequestRelationshipRoundNo(pendingRequest) || relationshipRound.roundNo,
+      );
       const fallback = decideCharacterFriendRequestResponse(currentCharacter, currentHistory, trimmedMessage);
       const decision = generated?.decision;
       const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
@@ -418,17 +520,25 @@ export function runRelationshipRequestSubmissionFlow(params: {
             ? {
                 ...request,
                 status: 'accepted' as const,
+                relationshipRoundStatus: 'resolved' as const,
+                relationshipRoundResolvedAt: timestamp,
                 resolutionMessage: generated?.reactionText ? '对方通过了你的申请' : fallback.resolutionMessage,
                 responseText: reactionText,
                 lastUpdatedAt: timestamp,
               }
             : request
         ));
+        nextFriendRequests = markRelationshipRoundResolved(nextFriendRequests, relationshipRoundId, timestamp);
         statusMessageText = `${getRelationshipDisplayName(currentCharacter)} 通过了你的好友申请。`;
       } else if (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request')) {
         const counterRequestId = `friend-request-counter-${characterId}-${timestamp + 1}`;
         const threadId = getCharacterFriendRequestThreadId(characterId);
-        const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
+        const attemptNo = getNextCharacterRequestAttemptNo(
+          prev.friendRequests || [],
+          characterId,
+          'character',
+          relationshipRoundId,
+        );
         nextFriendRequests = [
           {
             id: counterRequestId,
@@ -443,7 +553,12 @@ export function runRelationshipRequestSubmissionFlow(params: {
             requestKind: 'reconnect' as const,
             characterId,
             threadId,
+            relationshipRoundId,
+            relationshipRoundNo,
+            relationshipRoundStatus: 'active' as const,
             attemptNo,
+            isUnread: true,
+            unreadAt: timestamp + 1,
             sourceScene: 'relationship' as const,
             lastUpdatedAt: timestamp + 1,
           },
@@ -527,6 +642,11 @@ export function runRelationshipBlockToggleFlow(params: {
   const timestamp = Date.now();
   const isUnblocking = targetCharacter.blockedByUser === true;
   const displayName = getRelationshipDisplayName(targetCharacter);
+  const relationshipRound = resolveRelationshipRoundForWrite(
+    runtime.appData.friendRequests || [],
+    characterId,
+    timestamp,
+  );
 
   runtime.setAppData((prev) => {
     const nextCharacters = prev.characters.map((character) => (
@@ -603,10 +723,16 @@ export function runRelationshipBlockToggleFlow(params: {
               }
             : character
         ));
+
         if (shouldSendRequest) {
           const requestId = `friend-request-${characterId}-${timestamp}`;
           const threadId = getCharacterFriendRequestThreadId(characterId);
-          const attemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
+          const attemptNo = getNextCharacterRequestAttemptNo(
+            prev.friendRequests || [],
+            characterId,
+            'character',
+            relationshipRound.roundId,
+          );
           nextFriendRequests = [
             {
               id: requestId,
@@ -622,7 +748,12 @@ export function runRelationshipBlockToggleFlow(params: {
               requestKind: 'reconnect' as const,
               characterId,
               threadId,
+              relationshipRoundId: relationshipRound.roundId,
+              relationshipRoundNo: relationshipRound.roundNo,
+              relationshipRoundStatus: 'active' as const,
               attemptNo,
+              isUnread: true,
+              unreadAt: timestamp,
               sourceScene: 'relationship' as const,
               lastUpdatedAt: timestamp,
             },
@@ -634,6 +765,8 @@ export function runRelationshipBlockToggleFlow(params: {
               characterId,
               characterName: getRelationshipDisplayName(currentCharacter),
               characterAvatar: currentCharacter.avatar,
+              relationshipRoundId: relationshipRound.roundId,
+              relationshipRoundNo: relationshipRound.roundNo,
               timestamp,
               reactionText,
               resolutionMessage: `你把 ${getRelationshipDisplayName(currentCharacter)} 从黑名单里放了出来。`,
@@ -642,10 +775,24 @@ export function runRelationshipBlockToggleFlow(params: {
             ...nextFriendRequests,
           ];
         }
+
         const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
           ...(shouldSendRequest
             ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 没有直接加回你，而是回了一条新的好友申请。`, timestamp + 1)]
             : []),
+          createRelationshipSystemMessage(
+            buildRelationshipReactionNoticeLabel(getRelationshipDisplayName(currentCharacter), { kind: 'unblocked' }),
+            timestamp + (shouldSendRequest ? 2 : 1),
+            { tone: 'danger' },
+          ),
+          ...buildRelationshipReactionMessages(
+            currentCharacter,
+            reactionText,
+            timestamp + (shouldSendRequest ? 3 : 2),
+            {
+              intensity: shouldSendRequest ? 'high' : 'normal',
+            },
+          ),
         ]);
 
         persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);
@@ -658,9 +805,19 @@ export function runRelationshipBlockToggleFlow(params: {
       }
 
       const blockFallback = decideCharacterBlockReaction(currentCharacter, currentHistory);
-      const nextAttemptNo = getNextCharacterRequestAttemptNo(prev.friendRequests || [], characterId, 'character');
+      const nextAttemptNo = getNextCharacterRequestAttemptNo(
+        prev.friendRequests || [],
+        characterId,
+        'character',
+        relationshipRound.roundId,
+      );
       const requestFallback = decideCharacterRequestAfterBeingBlocked(currentCharacter, currentHistory, nextAttemptNo);
-      const canRetry = canCreateCharacterRequestAttempt(prev.friendRequests || [], characterId, 'character');
+      const canRetry = canCreateCharacterRequestAttempt(
+        prev.friendRequests || [],
+        characterId,
+        'character',
+        relationshipRound.roundId,
+      );
       const shouldSendRequest = canRetry && (
         generated?.decision === 'send_request'
           ? true
@@ -668,6 +825,9 @@ export function runRelationshipBlockToggleFlow(params: {
             ? false
             : !!requestFallback.sendRequest
       );
+      const blockedFollowupReleaseAt = shouldSendRequest
+        ? timestamp + resolveCharacterBlockedFollowupDelayMs(currentCharacter, currentHistory, nextAttemptNo)
+        : null;
       const reactionText = generated?.reactionText?.trim()
         || (shouldSendRequest ? requestFallback.reactionText : blockFallback.reactionText);
       const shouldCounterBlock = shouldSendRequest
@@ -688,17 +848,29 @@ export function runRelationshipBlockToggleFlow(params: {
             }
           : character
       ));
+
       if (shouldSendRequest) {
         const requestId = `friend-request-${characterId}-${timestamp}`;
         const threadId = getCharacterFriendRequestThreadId(characterId);
         nextFriendRequests = [
+          createRelationshipEventThreadEntry({
+            characterId,
+            characterName: getRelationshipDisplayName(currentCharacter),
+            characterAvatar: currentCharacter.avatar,
+            relationshipRoundId: relationshipRound.roundId,
+            relationshipRoundNo: relationshipRound.roundNo,
+            timestamp,
+            reactionText,
+            resolutionMessage: `你把 ${getRelationshipDisplayName(currentCharacter)} 拉黑了。`,
+            eventKind: 'user_blocked_character',
+          }),
           {
             id: requestId,
             fromUserId: characterId,
             fromUserName: getRelationshipDisplayName(currentCharacter),
             fromUserAvatar: currentCharacter.avatar,
             status: 'pending' as const,
-            timestamp,
+            timestamp: blockedFollowupReleaseAt || timestamp,
             message: generated?.requestMessage || requestFallback.requestMessage || '我还是想把这次关系认真问清楚。',
             responseText: reactionText,
             direction: 'incoming' as const,
@@ -706,9 +878,15 @@ export function runRelationshipBlockToggleFlow(params: {
             requestKind: 'reconnect' as const,
             characterId,
             threadId,
+            relationshipRoundId: relationshipRound.roundId,
+            relationshipRoundNo: relationshipRound.roundNo,
+            relationshipRoundStatus: 'active' as const,
             attemptNo: nextAttemptNo,
+            ...(blockedFollowupReleaseAt ? { releaseAt: blockedFollowupReleaseAt } : {}),
+            isUnread: true,
+            unreadAt: blockedFollowupReleaseAt || timestamp,
             sourceScene: 'relationship' as const,
-            lastUpdatedAt: timestamp,
+            lastUpdatedAt: blockedFollowupReleaseAt || timestamp,
           },
           ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
         ];
@@ -718,6 +896,8 @@ export function runRelationshipBlockToggleFlow(params: {
             characterId,
             characterName: getRelationshipDisplayName(currentCharacter),
             characterAvatar: currentCharacter.avatar,
+            relationshipRoundId: relationshipRound.roundId,
+            relationshipRoundNo: relationshipRound.roundNo,
             timestamp,
             reactionText,
             resolutionMessage: shouldCounterBlock
@@ -728,13 +908,27 @@ export function runRelationshipBlockToggleFlow(params: {
           ...nextFriendRequests,
         ];
       }
+
       const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
         ...(shouldSendRequest
-          ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 气头上还是递来了一条新的好友申请。`, timestamp + 1)]
+          ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 看起来还没打算就这样算了。`, timestamp + 1)]
           : []),
         ...(shouldCounterBlock
           ? [createRelationshipSystemMessage(`${getRelationshipDisplayName(currentCharacter)} 也把你拉黑了。`, timestamp + (shouldSendRequest ? 2 : 1))]
           : []),
+        createRelationshipSystemMessage(
+          buildRelationshipReactionNoticeLabel(getRelationshipDisplayName(currentCharacter), { kind: 'blocked' }),
+          timestamp + (shouldSendRequest ? 3 : shouldCounterBlock ? 2 : 1),
+          { tone: 'danger' },
+        ),
+        ...buildRelationshipReactionMessages(
+          currentCharacter,
+          reactionText,
+          timestamp + (shouldSendRequest ? 4 : shouldCounterBlock ? 3 : 2),
+          {
+            intensity: shouldSendRequest || shouldCounterBlock ? 'high' : 'normal',
+          },
+        ),
       ]);
 
       persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);

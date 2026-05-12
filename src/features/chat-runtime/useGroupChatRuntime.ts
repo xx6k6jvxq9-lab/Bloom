@@ -41,6 +41,7 @@ import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
+import { saveUploadedDataUrl } from '../persistence/persistentAssetService';
 
 type UseGroupChatRuntimeArgs = {
   members: Character[];
@@ -91,7 +92,7 @@ type UseGroupChatRuntimeResult = {
   } | null;
   sendText: () => Promise<void>;
   sendSpeechTranscript: (transcript: string) => Promise<void>;
-  sendImageMessage: (base64String: string) => Promise<void>;
+  sendImageMessage: (imageValue: string) => Promise<void>;
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
@@ -3491,20 +3492,38 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, replyingTo, setError, setInput, submitUserMessage]);
 
-  const sendImageMessage = useCallback(async (base64String: string) => {
+  const persistImageValueIfNeeded = useCallback(async (imageValue: string) => {
+    const trimmedImageValue = imageValue.trim();
+    if (!/^data:image\//i.test(trimmedImageValue)) {
+      return trimmedImageValue;
+    }
+
+    try {
+      return await saveUploadedDataUrl(
+        trimmedImageValue,
+        `group-chat-image-${Date.now()}.png`,
+      );
+    } catch (error) {
+      console.error('Failed to persist group chat image payload before send', error);
+      return trimmedImageValue;
+    }
+  }, []);
+
+  const sendImageMessage = useCallback(async (imageValue: string) => {
     if (!hasActiveConfig) return;
+    const persistedImageValue = await persistImageValueIfNeeded(imageValue);
 
     await submitUserMessage({
       message: {
         role: 'user',
         text: '[image]',
-        imageUrl: base64String,
+        imageUrl: persistedImageValue,
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
       promptText: '[sent an image]',
     });
-  }, [hasActiveConfig, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, persistImageValueIfNeeded, replyingTo, submitUserMessage]);
 
   const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => {
     if (!hasActiveConfig) return;
@@ -3531,23 +3550,24 @@ export function useGroupChatRuntime({
 
     const stickerMetadata = getStickerMetadata(runtimeAllStickerMetadata, sticker);
     const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
+    const persistedSticker = await persistImageValueIfNeeded(sticker);
 
     await submitUserMessage({
       message: {
         role: 'user',
         text: '[sticker]',
-        imageUrl: sticker,
+        imageUrl: persistedSticker,
         ...(stickerLabel ? { stickerLabel } : {}),
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
       promptText: describeStickerMessageForPrompt({
-        imageUrl: sticker,
+        imageUrl: persistedSticker,
         text: '[sticker]',
         stickerLabel,
       }),
     });
-  }, [hasActiveConfig, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
+  }, [hasActiveConfig, persistImageValueIfNeeded, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
 
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
     if (!hasActiveConfig) return;

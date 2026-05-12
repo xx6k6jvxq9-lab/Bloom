@@ -1,16 +1,9 @@
 import type { AppData, ForumData, ForumSpectatorSettings, WalletData } from '../../types';
 import { saveJsonRecord } from './browserJsonStore';
-import {
-  extractDirectFactTraces,
-  extractDirectRelationshipWaves,
-  extractGroupSessions,
-  saveChatHistoryRecords,
-} from './chatHistoryStore';
 import { saveCharacters } from './charactersStore';
 import { buildPersistableCoupleSpacePayload, persistCoupleSpace } from './coupleSpaceStore';
 import { saveDatingRecords } from './datingRecordsStore';
 import { persistForumData } from './forumDataStore';
-import { persistFriendRequests } from './friendRequestsStore';
 import { persistMeData } from './meDataStore';
 import { persistMoments } from './momentsStore';
 import { persistMusicData } from './musicDataStore';
@@ -19,7 +12,6 @@ import { STORAGE_KEYS } from './storageKeys';
 import { persistUserProfile } from './userProfileStore';
 import { persistVisualSettings } from './visualSettingsStore';
 import { persistWalletData } from './walletDataStore';
-import { persistChatOrganization } from './chatOrganizationStore';
 import { saveCallHistory } from './callHistoryStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
 
@@ -67,17 +59,15 @@ function persistIndexedDbOnly<T>(key: string, value: T): Promise<void> {
 }
 
 export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: AppData): Promise<void> {
+  // Chat-domain persistence is handled independently so high-frequency message updates
+  // do not get rewritten through the slower whole-app snapshot path.
   const normalizedCharacters = appData.characters ?? fallbackAppData.characters;
-  const normalizedDirectHistory = appData.chatHistory ?? fallbackAppData.chatHistory ?? {};
-  const normalizedChatGroups = appData.chatGroups ?? fallbackAppData.chatGroups ?? [];
-  const normalizedGroups = appData.groups ?? fallbackAppData.groups ?? [];
   const normalizedUserProfile = appData.userProfile ?? fallbackAppData.userProfile;
   const normalizedMasks = appData.masks ?? fallbackAppData.masks ?? [];
   const normalizedFavorites = appData.favorites ?? fallbackAppData.favorites ?? [];
   const normalizedPerception = appData.perception ?? fallbackAppData.perception;
   const normalizedWorldBooks = appData.worldBooks ?? fallbackAppData.worldBooks ?? [];
   const normalizedMoments = appData.moments ?? fallbackAppData.moments ?? [];
-  const normalizedFriendRequests = appData.friendRequests ?? fallbackAppData.friendRequests ?? [];
   const normalizedCallHistory = appData.callHistory ?? fallbackAppData.callHistory ?? [];
   const normalizedSavedDates = appData.savedDates ?? fallbackAppData.savedDates ?? [];
   const normalizedCollectedDates = appData.collectedDates ?? fallbackAppData.collectedDates ?? [];
@@ -92,16 +82,6 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
 
   await Promise.all([
     saveCharacters(normalizedCharacters),
-    saveChatHistoryRecords({
-      directHistory: normalizedDirectHistory,
-      directRelationshipWaves: extractDirectRelationshipWaves(normalizedDirectHistory),
-      directFactTraces: extractDirectFactTraces(normalizedDirectHistory),
-      groupSessions: extractGroupSessions(normalizedChatGroups),
-    }),
-    persistChatOrganization({
-      groups: normalizedGroups,
-      chatGroups: normalizedChatGroups,
-    }),
     persistUserProfile(normalizedUserProfile),
     persistMeData({
       masks: normalizedMasks,
@@ -110,9 +90,6 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
     }),
     normalizedPerception ? persistPerception(normalizedPerception) : Promise.resolve(),
     persistMoments(normalizedMoments),
-    Promise.resolve(persistFriendRequests(normalizedFriendRequests)).then(() =>
-      persistIndexedDbOnly(STORAGE_KEYS.friendRequests, normalizedFriendRequests),
-    ),
     saveCallHistory(normalizedCallHistory),
     saveDatingRecords({
       savedDates: normalizedSavedDates,

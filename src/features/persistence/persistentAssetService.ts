@@ -1,5 +1,5 @@
 import { deleteAsset, getAsset, putAsset, type StoredAssetRecord } from './browserDb';
-import { getOrCreate, revoke } from './objectUrlRegistry';
+import { getOrCreate, peek, revoke } from './objectUrlRegistry';
 import { createUploadedAssetRef, isUploadedAssetRef, parseUploadedAssetRef } from './persistentAssetRef';
 
 function createAssetId(): string {
@@ -154,6 +154,25 @@ export async function resolveValueToDisplayUrl(value: string | null | undefined)
   }
 
   return getOrCreate(parsedRef.id, record.blob);
+}
+
+export function resolveValueToImmediateDisplayUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || /^blob:/i.test(trimmed)) {
+    return null;
+  }
+
+  if (isDirectDisplayValue(trimmed)) {
+    return trimmed;
+  }
+
+  const parsedRef = parseUploadedAssetRef(trimmed);
+  if (!parsedRef) {
+    return null;
+  }
+
+  return peek(parsedRef.id);
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

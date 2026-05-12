@@ -28,6 +28,7 @@ type GroupChatSessionContainerProps = {
   onBack: () => void;
   userAvatar: string;
   userName: string;
+  suspendHeavyRendering?: boolean;
 };
 
 export function GroupChatSessionContainer({
@@ -47,6 +48,7 @@ export function GroupChatSessionContainer({
   onBack,
   userAvatar,
   userName,
+  suspendHeavyRendering = false,
 }: GroupChatSessionContainerProps) {
   const { getGroupMembers } = createCharacterDirectory({ characters });
   const history = group.history || [];
@@ -190,6 +192,7 @@ export function GroupChatSessionContainer({
       inviteableCharacters={inviteableCharacters}
       onRuntimeBusyChange={handleRuntimeBusyChange}
       isActive={isActive}
+      suspendHeavyRendering={suspendHeavyRendering}
     />
   );
 }

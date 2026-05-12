@@ -10,12 +10,13 @@ function cloneMemoryLibraryEntries(entries?: MemoryLibraryEntry[]): MemoryLibrar
 }
 
 export function createChatMemorySnapshot(
-  character: Pick<Character, 'shortTermSummary' | 'longTermMemoryProfile' | 'memoryLibraryEntries'>,
+  character: Pick<Character, 'shortTermSummary' | 'longTermMemoryProfile'>,
 ): ChatMemorySnapshot {
+  // Message-level snapshots stay intentionally small so long chats do not keep
+  // duplicating the entire memory library into every saved message.
   return {
     shortTermSummary: normalizeOptionalText(character.shortTermSummary),
     longTermMemoryProfile: normalizeOptionalText(character.longTermMemoryProfile),
-    memoryLibraryEntries: cloneMemoryLibraryEntries(character.memoryLibraryEntries),
   };
 }
 
@@ -23,15 +24,8 @@ export function areChatMemorySnapshotsEqual(
   left?: ChatMemorySnapshot | null,
   right?: ChatMemorySnapshot | null,
 ): boolean {
-  return JSON.stringify({
-    shortTermSummary: normalizeOptionalText(left?.shortTermSummary),
-    longTermMemoryProfile: normalizeOptionalText(left?.longTermMemoryProfile),
-    memoryLibraryEntries: cloneMemoryLibraryEntries(left?.memoryLibraryEntries),
-  }) === JSON.stringify({
-    shortTermSummary: normalizeOptionalText(right?.shortTermSummary),
-    longTermMemoryProfile: normalizeOptionalText(right?.longTermMemoryProfile),
-    memoryLibraryEntries: cloneMemoryLibraryEntries(right?.memoryLibraryEntries),
-  });
+  return normalizeOptionalText(left?.shortTermSummary) === normalizeOptionalText(right?.shortTermSummary)
+    && normalizeOptionalText(left?.longTermMemoryProfile) === normalizeOptionalText(right?.longTermMemoryProfile);
 }
 
 export function findNearestChatMemorySnapshot(
@@ -44,7 +38,9 @@ export function findNearestChatMemorySnapshot(
       return {
         shortTermSummary: normalizeOptionalText(snapshot.shortTermSummary),
         longTermMemoryProfile: normalizeOptionalText(snapshot.longTermMemoryProfile),
-        memoryLibraryEntries: cloneMemoryLibraryEntries(snapshot.memoryLibraryEntries),
+        ...(Array.isArray(snapshot.memoryLibraryEntries)
+          ? { memoryLibraryEntries: cloneMemoryLibraryEntries(snapshot.memoryLibraryEntries) }
+          : {}),
       };
     }
   }
@@ -52,6 +48,5 @@ export function findNearestChatMemorySnapshot(
   return {
     shortTermSummary: undefined,
     longTermMemoryProfile: undefined,
-    memoryLibraryEntries: [],
   };
 }

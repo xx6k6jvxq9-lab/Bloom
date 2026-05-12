@@ -10,6 +10,7 @@ import type {
   ChatMessageContentType,
   CoupleSpaceData,
   FavoriteMessage,
+  FriendRequest,
   Mask,
   MomentImageCard,
   PerceptionSettings,
@@ -68,7 +69,11 @@ import {
 } from '../../services/chat/assistantStickerPicker';
 import { getStickerMetadata } from '../../services/chat/stickerMetadata';
 import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
-import { getCharacterBlockState } from '../contacts/contactRelationship';
+import {
+  createRelationshipSystemMessage,
+  getCharacterBlockState,
+  supersedePendingCharacterRequests,
+} from '../contacts/contactRelationship';
 import {
   createBlockedDeliveryMessage,
   getDirectChatBlockedComposerError,
@@ -84,6 +89,11 @@ import {
   type ParsedAvatarAction,
 } from '../../services/chat/avatarActions';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
+import {
+  analyzeDirectRelationshipBoundary,
+  buildFallbackDirectBoundaryReply,
+  generateDirectRelationshipBoundaryReply,
+} from '../../services/chat/directRelationshipBoundary';
 import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitizePipeMarkers } from '../../services/chat/messageText';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
@@ -93,6 +103,11 @@ import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../ser
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { getMessageMainText } from '../../utils';
 import { MOCK_CARDS } from '../../components/wallet/WalletApp/mockData';
+import { saveUploadedDataUrl } from '../persistence/persistentAssetService';
+import {
+  createRelationshipEventThreadEntry,
+} from '../contacts/relationshipFlow';
+import { resolveRelationshipRoundForWrite } from '../contacts/friendRequestThreads';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { hasOpenedCoupleSpaceForCharacter } from './coupleSpaceInviteGuard';
 import type { BaseSessionRuntimeState } from './types';
@@ -771,7 +786,7 @@ function resolveCharacterReplyBubbleLimit(character: Pick<Character, 'maxReplies
     return 3;
   }
 
-  return Math.max(1, Math.min(Math.floor(character.maxReplies as number), 5));
+  return Math.max(1, Math.min(Math.floor(character.maxReplies as number), 10));
 }
 
 function isSameLocalDay(leftTimestamp: number, rightTimestamp: number): boolean {
@@ -1570,6 +1585,8 @@ type UseDirectChatRuntimeArgs = {
   onUpdateWalletData?: (data: WalletData) => void;
   onUpdateCharacter: (character: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
+  friendRequests?: FriendRequest[];
+  setFriendRequests?: (friendRequests: FriendRequest[] | ((prev: FriendRequest[]) => FriendRequest[])) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: MomentImageCard }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
@@ -1588,7 +1605,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
     audioUrl?: string;
     audioMimeType?: string;
   } | null>;
-  sendImageMessage: (base64String: string) => void;
+  sendImageMessage: (imageValue: string) => void;
   sendAudioMessage: (
     audioUrl: string,
     audioMimeType: string,
@@ -1674,6 +1691,7 @@ function buildDirectActionDescriptionPrompt(inputEnabled?: boolean, characterEna
       '用户可能会用中文全角括号“（）”描述动作、神态、环境或场景，括号外是说出口的话。',
       '你必须同时理解括号内的动作/场景和括号外的对话内容。',
       '你也可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
+      '如果你主动使用“（）”，请尽量把括号动作单独放一行，真正说出口的话另起一行。',
       '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
     ].join('\n');
   }
@@ -1684,6 +1702,7 @@ function buildDirectActionDescriptionPrompt(inputEnabled?: boolean, characterEna
       '如果用户消息里出现中文全角括号“（）”，括号内代表动作、神态、环境或场景，括号外代表说出口的话，你需要理解两部分。',
       '当前未开启用户侧动作输入入口，所以不要假设用户会频繁这样输入。',
       '但角色主动括号表达已开启；你可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
+      '如果你主动使用“（）”，请尽量把括号动作单独放一行，真正说出口的话另起一行。',
       '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
     ].join('\n');
   }
@@ -1791,6 +1810,8 @@ export function useDirectChatRuntime({
   onUpdateWalletData,
   onUpdateCharacter,
   onPatchCharacter,
+  friendRequests = [],
+  setFriendRequests,
   onPublishMoment,
   onAddCallRecord,
   onAcceptCoupleSpaceInvite,
@@ -1879,6 +1900,69 @@ export function useDirectChatRuntime({
     historyRef.current = nextHistory;
     setHistory(nextHistory);
   }, [setHistory]);
+
+  const patchCurrentCharacter = useCallback((patch: Partial<Character>) => {
+    if (onPatchCharacter) {
+      onPatchCharacter(patch);
+      return;
+    }
+
+    onUpdateCharacter({
+      ...character,
+      ...patch,
+    });
+  }, [character, onPatchCharacter, onUpdateCharacter]);
+
+  const recordDirectBoundaryEvent = useCallback((params: {
+    decision: 'warn' | 'block';
+    reactionText: string;
+    timestamp: number;
+  }) => {
+    if (params.decision === 'block') {
+      patchCurrentCharacter({
+        friendshipStatus: 'none',
+        blockedByCharacter: true,
+        relationshipStatusUpdatedAt: params.timestamp,
+      });
+    }
+
+    if (!setFriendRequests) {
+      return;
+    }
+
+    setFriendRequests((prevRequests) => {
+      const requestList = Array.isArray(prevRequests) ? prevRequests : [];
+      const relationshipRound = resolveRelationshipRoundForWrite(
+        requestList,
+        character.id,
+        params.timestamp,
+      );
+      const nextRequests = params.decision === 'block'
+        ? supersedePendingCharacterRequests(requestList, character.id, params.timestamp)
+        : requestList;
+      const displayName = character.remarkName?.trim() || character.name;
+
+      return [
+        createRelationshipEventThreadEntry({
+          characterId: character.id,
+          characterName: displayName,
+          characterAvatar: character.avatar,
+          relationshipRoundId: relationshipRound.roundId,
+          relationshipRoundNo: relationshipRound.roundNo,
+          timestamp: params.timestamp,
+          reactionText: params.reactionText,
+          resolutionMessage: params.decision === 'block'
+            ? `${displayName} 在聊天里把你拉黑了。`
+            : `${displayName} 在聊天里明确跟你划了边界。`,
+          eventKind: params.decision === 'block'
+            ? 'character_blocked_user_from_chat'
+            : 'character_warned_user_from_chat',
+          isUnread: true,
+        }),
+        ...nextRequests,
+      ];
+    });
+  }, [character.avatar, character.id, character.name, character.remarkName, patchCurrentCharacter, setFriendRequests]);
 
   const prepareBaseHistoryForOutgoingMessage = useCallback(() => {
     let baseHistory = historyRef.current;
@@ -2534,7 +2618,7 @@ export function useDirectChatRuntime({
     setErrorState(null);
 
     const blockState = getCharacterBlockState(character);
-    const blockedComposerError = getDirectChatBlockedComposerError(blockState);
+    const blockedComposerError = getDirectChatBlockedComposerError(character);
     if (blockedComposerError) {
       setErrorState(blockedComposerError);
       return;
@@ -2922,9 +3006,64 @@ export function useDirectChatRuntime({
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
       currentResponseText = avatarActionResult.displayText;
-      const finalHistory = replaceAssistantMessages(newHistory, currentResponseText);
+      const boundaryAnalysis = analyzeDirectRelationshipBoundary({
+        character,
+        messages: newHistory,
+        intentAnalysis: directIntentAnalysis,
+        directCharacterDecision,
+      });
+      const boundaryReply = boundaryAnalysis.allowedDecisions.length > 1
+        ? await generateDirectRelationshipBoundaryReply({
+            activeConfig,
+            character,
+            allCharacters: characters,
+            userName,
+            history: newHistory,
+            directChatHistory,
+            chatGroups,
+            masks,
+            worldBook,
+            perception,
+            coupleSpace,
+            latestUserText: userMsg.text,
+            draftReplyText: currentResponseText,
+            boundary: boundaryAnalysis,
+          })
+        : null;
+      const appliedBoundaryDecision = boundaryReply?.decision && boundaryAnalysis.allowedDecisions.includes(boundaryReply.decision)
+        ? boundaryReply.decision
+        : boundaryAnalysis.suggestedDecision !== 'none' && boundaryAnalysis.allowedDecisions.length > 1
+          ? boundaryAnalysis.suggestedDecision
+          : 'none';
+      if (appliedBoundaryDecision === 'warn' || appliedBoundaryDecision === 'block') {
+        currentResponseText = boundaryReply?.reactionText?.trim()
+          || buildFallbackDirectBoundaryReply({
+            character,
+            boundary: boundaryAnalysis,
+            decision: appliedBoundaryDecision,
+          });
+      }
+      const baseFinalHistory = replaceAssistantMessages(newHistory, currentResponseText);
+      const boundaryTimestamp = Date.now();
+      const finalHistory = appliedBoundaryDecision === 'block'
+        ? [
+            ...baseFinalHistory,
+            createRelationshipSystemMessage(
+              `${character.remarkName?.trim() || character.name} 已拒收普通消息。`,
+              boundaryTimestamp + 1,
+              { tone: 'danger' },
+            ),
+          ]
+        : baseFinalHistory;
       commitHistory(finalHistory);
-      queueAutoAudioForLatestModelReply(finalHistory, userMsg.text);
+      queueAutoAudioForLatestModelReply(baseFinalHistory, userMsg.text);
+      if (appliedBoundaryDecision === 'warn' || appliedBoundaryDecision === 'block') {
+        recordDirectBoundaryEvent({
+          decision: appliedBoundaryDecision,
+          reactionText: currentResponseText,
+          timestamp: boundaryTimestamp,
+        });
+      }
       syncCharacterRuntimeState({
         history: finalHistory,
         continuityMode: characterTemporalState.continuityMode,
@@ -2933,7 +3072,7 @@ export function useDirectChatRuntime({
         latestAssistantText: currentResponseText,
         sharedState: directSharedState,
       });
-      if (onPublishMoment) {
+      if (onPublishMoment && appliedBoundaryDecision === 'none') {
         const autoMomentResult = await maybeAutoPublishMoment({
           userText: userMsg.text,
           assistantText: currentResponseText,
@@ -2971,7 +3110,9 @@ export function useDirectChatRuntime({
           lastMomentPublishAtRef.current = noticeTimestamp;
         }
       }
-      applyAvatarAction(avatarActionResult.action, finalHistory);
+      if (appliedBoundaryDecision === 'none') {
+        applyAvatarAction(avatarActionResult.action, finalHistory);
+      }
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
     } catch (sendError: any) {
@@ -2987,19 +3128,39 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPatchCharacter, onPublishMoment, onUpdateCharacter, perception, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, characters, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPublishMoment, perception, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, recordDirectBoundaryEvent, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
   }, [handleSend]);
 
-  const sendImageMessage = useCallback((base64String: string) => {
-    void handleSendRef.current({
-      promptText: '[sent an image]',
-      userText: '[image]',
-      imageUrl: base64String,
-    });
+  const persistImageValueIfNeeded = useCallback(async (imageValue: string) => {
+    const trimmedImageValue = imageValue.trim();
+    if (!/^data:image\//i.test(trimmedImageValue)) {
+      return trimmedImageValue;
+    }
+
+    try {
+      return await saveUploadedDataUrl(
+        trimmedImageValue,
+        `direct-chat-image-${Date.now()}.png`,
+      );
+    } catch (error) {
+      console.error('Failed to persist direct chat image payload before send', error);
+      return trimmedImageValue;
+    }
   }, []);
+
+  const sendImageMessage = useCallback((imageValue: string) => {
+    void (async () => {
+      const persistedImageValue = await persistImageValueIfNeeded(imageValue);
+      await handleSendRef.current({
+        promptText: '[sent an image]',
+        userText: '[image]',
+        imageUrl: persistedImageValue,
+      });
+    })();
+  }, [persistImageValueIfNeeded]);
 
   const sendAudioMessage = useCallback((
     audioUrl: string,
@@ -3028,19 +3189,22 @@ export function useDirectChatRuntime({
   }, []);
 
   const sendStickerMessage = useCallback((sticker: string) => {
-    const stickerMetadata = getStickerMetadata(availableStickerMetadata, sticker);
-    const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
-    void handleSendRef.current({
-      promptText: describeStickerMessageForPrompt({
-        imageUrl: sticker,
-        text: '[sticker]',
+    void (async () => {
+      const stickerMetadata = getStickerMetadata(availableStickerMetadata, sticker);
+      const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
+      const persistedSticker = await persistImageValueIfNeeded(sticker);
+      await handleSendRef.current({
+        promptText: describeStickerMessageForPrompt({
+          imageUrl: persistedSticker,
+          text: '[sticker]',
+          stickerLabel,
+        }),
+        userText: '[sticker]',
+        imageUrl: persistedSticker,
         stickerLabel,
-      }),
-      userText: '[sticker]',
-      imageUrl: sticker,
-      stickerLabel,
-    });
-  }, [availableStickerMetadata]);
+      });
+    })();
+  }, [availableStickerMetadata, persistImageValueIfNeeded]);
 
   const sendLocationMessage = useCallback((text: string, locationData: { name: string; address?: string; isVirtual?: boolean }) => {
     void handleSendRef.current({
@@ -3056,7 +3220,7 @@ export function useDirectChatRuntime({
     }
 
     const blockState = getCharacterBlockState(character);
-    const blockedInteractionError = getDirectChatBlockedManualReplyError(blockState);
+    const blockedInteractionError = getDirectChatBlockedManualReplyError(character);
     if (blockedInteractionError) {
       setErrorState(blockedInteractionError);
       return;
@@ -3556,7 +3720,9 @@ export function useDirectChatRuntime({
     const patch: Partial<Character> = {
       shortTermSummary: memorySnapshot?.shortTermSummary,
       longTermMemoryProfile: memorySnapshot?.longTermMemoryProfile,
-      memoryLibraryEntries: memorySnapshot?.memoryLibraryEntries ?? [],
+      ...(Array.isArray(memorySnapshot?.memoryLibraryEntries)
+        ? { memoryLibraryEntries: memorySnapshot.memoryLibraryEntries }
+        : {}),
     };
 
     setHistory(nextHistory);
@@ -3800,7 +3966,7 @@ export function useDirectChatRuntime({
     }
 
     const blockState = getCharacterBlockState(character);
-    const blockedManualReplyError = getDirectChatBlockedManualReplyError(blockState);
+    const blockedManualReplyError = getDirectChatBlockedManualReplyError(character);
     if (blockedManualReplyError) {
       setErrorState(blockedManualReplyError);
       return;

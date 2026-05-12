@@ -9,8 +9,6 @@ import { useKeyboardSafeViewport } from '../../../features/app-shell/useKeyboard
 import { NewFriendsPage } from '../NewFriendsPage';
 import { GroupChatManagerPage } from '../GroupChatManagerPage';
 import { DEFAULT_WHITE_AVATAR, showInAppConfirm } from '../../../utils';
-import { patchChatHistoryRecords } from '../../../features/persistence/chatHistoryStore';
-import { persistChatOrganization } from '../../../features/persistence/chatOrganizationStore';
 import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
@@ -22,6 +20,14 @@ import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFrie
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
+import {
+  countUnreadIncomingFriendRequestPages,
+  getFriendRequestRelationshipRoundNo,
+  getLatestUnreadRelationshipEventForCharacter,
+  isFriendRequestUnread,
+  markFriendRequestPageRead,
+  matchFriendRequestToPageKey,
+} from '../../../features/contacts/friendRequestThreads';
 import {
   looksLikeStructuredCardText,
   sanitizePreviewText,
@@ -263,9 +269,7 @@ export function ContactsApp({
   const groupMembers = selectedGroup 
     ? characters.filter(c => c.groupId === selectedGroup || (selectedGroup === '星标' && c.isPinned))
     : [];
-  const pendingIncomingFriendRequestCount = friendRequests.filter((request) => (
-    request.status === 'pending' && isIncomingFriendRequest(request)
-  )).length;
+  const unreadIncomingFriendRequestCount = countUnreadIncomingFriendRequestPages(friendRequests);
   const relationshipFlowRuntime = {
     appData,
     settings,
@@ -369,7 +373,7 @@ export function ContactsApp({
     }
   };
 
-  const handleRejectFriendRequest = (id: string) => {
+  const handleRejectFriendRequest = (id: string, note?: string) => {
     const initialRequest = friendRequests.find((request) => request.id === id);
     setAppData(prev => {
       const req = prev.friendRequests?.find(r => r.id === id);
@@ -391,6 +395,7 @@ export function ContactsApp({
             ...r,
             status: 'rejected',
             resolutionMessage: '你拒绝了这条好友申请',
+            ...(note?.trim() ? { userDecisionNote: note.trim() } : {}),
             lastUpdatedAt: Date.now(),
           } : r),
           forumData: {
@@ -409,6 +414,7 @@ export function ContactsApp({
       return applyNonForumFriendRequestResolution(prev, {
         requestId: id,
         accepted: false,
+        note,
       }).nextAppData;
     });
 
@@ -420,6 +426,7 @@ export function ContactsApp({
           requestId: id,
           characterId,
           accepted: false,
+          note,
         });
       }
     }
@@ -442,6 +449,25 @@ export function ContactsApp({
     }
   };
 
+  const handleDeleteFriendRequestPage = (pageKey: string) => {
+    setAppData((prev) => ({
+      ...prev,
+      friendRequests: (prev.friendRequests || []).filter((request) => !matchFriendRequestToPageKey(request, pageKey)),
+    }));
+
+    if (relationshipThreadKey === pageKey) {
+      setRelationshipThreadKey(null);
+      onRelationshipThreadHandled?.();
+    }
+  };
+
+  const handleMarkFriendRequestPageRead = (pageKey: string) => {
+    setAppData((prev) => ({
+      ...prev,
+      friendRequests: markFriendRequestPageRead(prev.friendRequests || [], pageKey),
+    }));
+  };
+
   if (view === 'new-friends') {
     return (
       <NewFriendsPage 
@@ -454,6 +480,8 @@ export function ContactsApp({
           setRelationshipThreadKey(null);
           onRelationshipThreadHandled?.();
         }}
+        onDeletePage={handleDeleteFriendRequestPage}
+        onMarkPageRead={handleMarkFriendRequestPageRead}
         onAddById={(id) => {
           // Mock adding by ID
           const newReq: FriendRequest = {
@@ -521,21 +549,6 @@ export function ContactsApp({
           }));
         }}
         onDeleteGroup={(id) => {
-          const nextChatGroups = (appData.chatGroups || []).filter((group) => group.id !== id);
-
-          persistChatOrganization({
-            groups: appData.groups,
-            chatGroups: nextChatGroups,
-          });
-          patchChatHistoryRecords((current) => {
-            const nextGroupSessions = { ...current.groupSessions };
-            delete nextGroupSessions[id];
-
-            return {
-              ...current,
-              groupSessions: nextGroupSessions,
-            };
-          });
           setAppData(prev => ({
             ...prev,
             chatGroups: prev.chatGroups?.filter(g => g.id !== id)
@@ -579,9 +592,9 @@ export function ContactsApp({
             <div className="flex-1 text-left">
               <span className="text-[15px] font-medium text-zinc-800">新的朋友</span>
             </div>
-            {pendingIncomingFriendRequestCount > 0 && (
+            {unreadIncomingFriendRequestCount > 0 && (
               <div className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                {pendingIncomingFriendRequestCount}
+                {unreadIncomingFriendRequestCount}
               </div>
             )}
           </button>
@@ -783,6 +796,9 @@ export function CharacterProfile({
   const pendingIncomingRequest = getPendingCharacterRequest(friendRequests, character.id, 'incoming');
   const pendingOutgoingRequest = getPendingCharacterRequest(friendRequests, character.id, 'outgoing');
   const latestRequest = getLatestCharacterRequest(friendRequests, character.id);
+  const latestUnreadRelationshipEvent = getLatestUnreadRelationshipEventForCharacter(friendRequests, character.id);
+  const hasUnreadIncomingRequest = !!(pendingIncomingRequest && isFriendRequestUnread(pendingIncomingRequest));
+  const pendingIncomingRoundNo = pendingIncomingRequest ? getFriendRequestRelationshipRoundNo(pendingIncomingRequest) : 0;
 
   const requestButtonLabel = isFriend
     ? '拉黑'
@@ -990,11 +1006,41 @@ export function CharacterProfile({
           )}
           {!!pendingIncomingRequest && (
             <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-[12px] leading-5 text-amber-900">
-              <div className="font-medium">新的朋友里有一条来自 {displayName} 的申请。</div>
-              <div className="mt-1 text-amber-700">{pendingIncomingRequest.message || '等你去处理这条好友申请。'}</div>
+              <div className="font-medium">
+                {hasUnreadIncomingRequest
+                  ? `新的朋友里刚到了一条来自 ${displayName} 的${pendingIncomingRoundNo > 1 ? `第 ${pendingIncomingRoundNo} 轮` : ''}申请。`
+                  : `新的朋友里有一条来自 ${displayName} 的申请。`}
+              </div>
+              <div className="mt-1 text-amber-700">
+                {pendingIncomingRequest.message || (hasUnreadIncomingRequest ? '这是刚到的新申请，等你去处理。' : '等你去处理这条好友申请。')}
+              </div>
             </div>
           )}
-          {!pendingIncomingRequest && !!latestRequest?.resolutionMessage && !isFriend && (
+          {!pendingIncomingRequest && !!latestUnreadRelationshipEvent && (
+            <div
+              className={`rounded-2xl px-4 py-3 text-[12px] leading-5 ${
+                latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+                  ? 'border border-rose-100 bg-rose-50/80 text-rose-900'
+                  : 'border border-amber-100 bg-amber-50/80 text-amber-900'
+              }`}
+            >
+              <div className="font-medium">
+                {latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+                  ? `${displayName} 刚在聊天里把你拉黑了。`
+                  : `${displayName} 刚在聊天里跟你划了边界。`}
+              </div>
+              <div
+                className={`mt-1 ${
+                  latestUnreadRelationshipEvent.eventKind === 'character_blocked_user_from_chat'
+                    ? 'text-rose-700'
+                    : 'text-amber-700'
+                }`}
+              >
+                {latestUnreadRelationshipEvent.responseText || latestUnreadRelationshipEvent.resolutionMessage || '关系页里有一条新记录，点开可以看完整上下文。'}
+              </div>
+            </div>
+          )}
+          {!pendingIncomingRequest && !latestUnreadRelationshipEvent && !!latestRequest?.resolutionMessage && !isFriend && (
             <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-[12px] leading-5 text-zinc-500">
               {latestRequest.resolutionMessage}
             </div>
