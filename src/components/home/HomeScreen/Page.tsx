@@ -11,6 +11,7 @@ import {
   DEFAULT_DOCK_TINT_COLOR,
   DEFAULT_DOCK_TINT_OPACITY,
 } from '../../../features/app-shell/defaultAppConstants';
+import { isTextEntryElement } from '../../../features/app-shell/keyboardUtils';
 import { preloadPanelForApp } from '../../../features/app-shell/lazyPanels';
 import { useResolvedThemeTypographyCss } from '../../../features/theme/useResolvedThemeTypographyCss';
 import { getThemeImportedFontFamily, resolveThemeFontPriority } from '../../../features/theme/themeTypography';
@@ -490,6 +491,7 @@ export function HomeScreen({
     let frameOne = 0;
     let frameTwo = 0;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let focusExitTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleSettledUpdate = () => {
       frameOne = window.requestAnimationFrame(() => {
         frameTwo = window.requestAnimationFrame(() => {
@@ -503,11 +505,42 @@ export function HomeScreen({
 
     scheduleSettledUpdate();
 
+    const settleAfterTextEntryExit = () => {
+      if (isTextEntryElement(document.activeElement)) {
+        return;
+      }
+
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      frameOne = window.requestAnimationFrame(() => {
+        frameTwo = window.requestAnimationFrame(() => {
+          window.scrollTo(0, 0);
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          updateViewport();
+        });
+      });
+
+      if (focusExitTimer) {
+        clearTimeout(focusExitTimer);
+      }
+
+      focusExitTimer = setTimeout(() => {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        updateViewport();
+      }, 180);
+    };
+
     const removeSizeObserver = observeElementSize(node, updateViewport);
     const viewport = window.visualViewport;
     viewport?.addEventListener('resize', updateViewport);
     viewport?.addEventListener('scroll', updateViewport);
     window.addEventListener('pageshow', updateViewport);
+    document.addEventListener('focusout', settleAfterTextEntryExit, true);
 
     const root = document.documentElement;
     const phoneContainer = document.getElementById('phone-container');
@@ -527,11 +560,15 @@ export function HomeScreen({
       viewport?.removeEventListener('resize', updateViewport);
       viewport?.removeEventListener('scroll', updateViewport);
       window.removeEventListener('pageshow', updateViewport);
+      document.removeEventListener('focusout', settleAfterTextEntryExit, true);
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(frameOne);
       window.cancelAnimationFrame(frameTwo);
       if (settleTimer) {
         clearTimeout(settleTimer);
+      }
+      if (focusExitTimer) {
+        clearTimeout(focusExitTimer);
       }
     };
   }, []);
@@ -1662,7 +1699,7 @@ export function HomeScreen({
                             placeholder="输入名称..."
                             value={userProfile.name}
                             onChange={e => setUserProfile({ ...userProfile, name: e.target.value })}
-                            className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                            className="text-[16px] leading-6 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500"
                           />
                         </div>
                         <div className="h-[1px] bg-zinc-100" />
@@ -1673,7 +1710,7 @@ export function HomeScreen({
                             placeholder="粘贴图片链接..."
                             value={tempUrl}
                             onChange={e => setTempUrl(e.target.value)}
-                            className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                            className="text-[16px] leading-6 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500"
                           />
                           <div className="flex gap-1">
                             <button
@@ -1775,7 +1812,7 @@ export function HomeScreen({
                             }}
                             maxLength={24}
                             placeholder="自己输入"
-                            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] outline-none focus:border-zinc-900"
+                            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
                           />
                           <button
                             type="button"
@@ -1840,7 +1877,7 @@ export function HomeScreen({
                 onWidgetChange={(updates) => {
                   updateWidgetConfig(widget.id, updates);
                 }}
-                onRequestEdit={widget.type === 'profile-card' ? undefined : () => {
+                onRequestEdit={() => {
                   setWidgetDeleteTargetId(null);
                   setEditingWidgetId(widget.id);
                 }}
@@ -2181,7 +2218,7 @@ export function HomeScreen({
                           placeholder="输入名称..."
                           value={userProfile.name}
                           onChange={e => setUserProfile({ ...userProfile, name: e.target.value })}
-                          className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                          className="text-[16px] leading-6 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500"
                         />
                       </div>
                       <div className="h-[1px] bg-zinc-100" />
@@ -2192,7 +2229,7 @@ export function HomeScreen({
                           placeholder="粘贴图片链接..."
                           value={tempUrl}
                           onChange={e => setTempUrl(e.target.value)}
-                          className="text-[11px] bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                          className="text-[16px] leading-6 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2 outline-none focus:border-blue-500"
                         />
                         <div className="flex gap-1">
                           <button
@@ -2294,7 +2331,7 @@ export function HomeScreen({
                           }}
                           maxLength={24}
                           placeholder="自己输入"
-                          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] outline-none focus:border-zinc-900"
+                          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
                         />
                         <button
                           type="button"
@@ -2367,7 +2404,7 @@ export function HomeScreen({
               onWidgetChange={(updates) => {
                 updateWidgetConfig(widget.id, updates);
               }}
-              onRequestEdit={widget.type === 'profile-card' ? undefined : () => {
+              onRequestEdit={() => {
                 setWidgetDeleteTargetId(null);
                 setEditingWidgetId(widget.id);
               }}
