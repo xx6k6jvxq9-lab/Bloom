@@ -1279,7 +1279,6 @@ export function GroupChatSessionScreen({
   const manualReplyModeEnabled = group.manualReplyEnabled !== false;
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
-    paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...layoutConfig.inputContainerStyle,
     ...groupFooterStyle,
     contain: chatKeyboardOpen ? 'layout paint style' : undefined,
