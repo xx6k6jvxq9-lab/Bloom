@@ -1697,6 +1697,16 @@ function buildDirectActionDescriptionPrompt(inputEnabled?: boolean, characterEna
     ].join('\n');
   }
 
+  if (!inputEnabled && characterEnabled) {
+    return [
+      '## 场景动作描述格式',
+      '如果用户消息里出现中文全角括号“（）”，括号内代表动作、神态、环境或场景，括号外代表说出口的话，你需要理解两部分。',
+      '当前未开启用户侧动作输入入口，所以不要假设用户会频繁这样输入。',
+      '但角色主动括号表达已开启；你可以在自然需要时使用“（）”写简短动作、神态或场景，再在括号外写角色真正说出口的话。',
+      '不要每句话都强行加括号；括号内容要短、具体、贴合当前时间和关系，不要写成长篇旁白。',
+    ].join('\n');
+  }
+
   if (inputEnabled) {
     return [
       '## 场景动作描述格式',

@@ -229,6 +229,27 @@ export function DirectChatSessionContainer({
     patchCharacter,
   ]);
 
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const latestTimestamp = latestPreviewableMessage?.timestamp;
+    if (!latestTimestamp || latestTimestamp === character.lastViewedMessageTimestamp) {
+      return;
+    }
+
+    patchCharacter(character.id, {
+      lastViewedMessageTimestamp: latestTimestamp,
+    });
+  }, [
+    character.id,
+    character.lastViewedMessageTimestamp,
+    isActive,
+    latestPreviewableMessage?.timestamp,
+    patchCharacter,
+  ]);
+
   return (
     <ChatSessionScreen
       key="chat-session"
