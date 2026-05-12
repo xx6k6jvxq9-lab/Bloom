@@ -7,7 +7,6 @@ import { STORAGE_KEYS } from './storageKeys';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
 import {
   buildCharacterMemoryRecord,
-  mergeCharacterMemoryIntoCharacters,
   stripCharacterMemoryFromCharacters,
 } from './characterMemoryStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
@@ -44,6 +43,7 @@ export type FullBackupArchive = {
 export type ModularBackupModules = {
   settings: unknown;
   characters: unknown;
+  // Deprecated compatibility module. Memory content should live in memoryRecords.
   characterMemory: unknown;
   memoryRecords: unknown;
   chatHistory: unknown;
@@ -693,10 +693,7 @@ export async function clearAllPersistentData(): Promise<void> {
 
 function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<string, unknown> {
   const legacyCharacters = Array.isArray(modules.characters)
-    ? mergeCharacterMemoryIntoCharacters(
-        modules.characters as AppData['characters'],
-        (modules.characterMemory as ReturnType<typeof buildCharacterMemoryRecord> | null | undefined) ?? {},
-      )
+    ? modules.characters
     : [];
 
   return {
@@ -726,46 +723,66 @@ async function restoreModularModules(
   modules: ModularBackupModules,
   options?: RestoreOptions,
 ): Promise<void> {
+  const normalizedModules: ModularBackupModules = {
+    ...modules,
+    characterMemory: {},
+    memoryRecords: mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+      (
+        modules.memoryRecords
+        && typeof modules.memoryRecords === 'object'
+        && !Array.isArray(modules.memoryRecords)
+          ? modules.memoryRecords
+          : { recordsByCharacterId: {} }
+      ) as ReturnType<typeof loadMemoryRecordData>,
+      (
+        modules.characterMemory
+        && typeof modules.characterMemory === 'object'
+        && !Array.isArray(modules.characterMemory)
+          ? modules.characterMemory
+          : {}
+      ) as ReturnType<typeof buildCharacterMemoryRecord>,
+    ),
+  };
   const batches: Array<{ message: string; entries: RestoreEntry[] }> = [
     {
       message: '正在恢复基础设置',
       entries: [
-        { key: STORAGE_KEYS.settings, value: modules.settings },
-        { key: STORAGE_KEYS.perception, value: modules.perception },
-        { key: STORAGE_KEYS.userProfile, value: modules.userProfile },
-        { key: STORAGE_KEYS.visualSettings, value: modules.visualSettings },
+        { key: STORAGE_KEYS.settings, value: normalizedModules.settings },
+        { key: STORAGE_KEYS.perception, value: normalizedModules.perception },
+        { key: STORAGE_KEYS.userProfile, value: normalizedModules.userProfile },
+        { key: STORAGE_KEYS.visualSettings, value: normalizedModules.visualSettings },
       ],
     },
     {
       message: '正在恢复角色与组织数据',
       entries: [
-        { key: STORAGE_KEYS.characters, value: modules.characters },
-        { key: STORAGE_KEYS.characterMemory, value: modules.characterMemory },
-        { key: STORAGE_KEYS.memoryRecords, value: modules.memoryRecords },
-        { key: STORAGE_KEYS.chatOrganization, value: modules.chatOrganization },
-        { key: STORAGE_KEYS.meData, value: modules.meData },
-        { key: STORAGE_KEYS.friendRequests, value: modules.friendRequests },
+        { key: STORAGE_KEYS.characters, value: normalizedModules.characters },
+        { key: STORAGE_KEYS.characterMemory, value: normalizedModules.characterMemory },
+        { key: STORAGE_KEYS.memoryRecords, value: normalizedModules.memoryRecords },
+        { key: STORAGE_KEYS.chatOrganization, value: normalizedModules.chatOrganization },
+        { key: STORAGE_KEYS.meData, value: normalizedModules.meData },
+        { key: STORAGE_KEYS.friendRequests, value: normalizedModules.friendRequests },
       ],
     },
     {
       message: '正在恢复聊天与约会记录',
       entries: [
-        { key: STORAGE_KEYS.chatHistory, value: modules.chatHistory },
-        { key: STORAGE_KEYS.callHistory, value: modules.callHistory },
-        { key: STORAGE_KEYS.datingRecords, value: modules.datingRecords },
-        { key: STORAGE_KEYS.wechatRoleBindings, value: modules.wechatRoleBindings },
-        { key: STORAGE_KEYS.wechatBindSessions, value: modules.wechatBindSessions },
+        { key: STORAGE_KEYS.chatHistory, value: normalizedModules.chatHistory },
+        { key: STORAGE_KEYS.callHistory, value: normalizedModules.callHistory },
+        { key: STORAGE_KEYS.datingRecords, value: normalizedModules.datingRecords },
+        { key: STORAGE_KEYS.wechatRoleBindings, value: normalizedModules.wechatRoleBindings },
+        { key: STORAGE_KEYS.wechatBindSessions, value: normalizedModules.wechatBindSessions },
       ],
     },
     {
       message: '正在恢复世界内容与应用数据',
       entries: [
-        { key: STORAGE_KEYS.moments, value: modules.moments },
-        { key: STORAGE_KEYS.forumData, value: modules.forumData },
-        { key: STORAGE_KEYS.coupleSpace, value: modules.coupleSpace },
-        { key: STORAGE_KEYS.musicData, value: modules.musicData },
-        { key: STORAGE_KEYS.walletData, value: modules.walletData },
-        { key: STORAGE_KEYS.appData, value: buildLegacyAppDataFromModules(modules) },
+        { key: STORAGE_KEYS.moments, value: normalizedModules.moments },
+        { key: STORAGE_KEYS.forumData, value: normalizedModules.forumData },
+        { key: STORAGE_KEYS.coupleSpace, value: normalizedModules.coupleSpace },
+        { key: STORAGE_KEYS.musicData, value: normalizedModules.musicData },
+        { key: STORAGE_KEYS.walletData, value: normalizedModules.walletData },
+        { key: STORAGE_KEYS.appData, value: buildLegacyAppDataFromModules(normalizedModules) },
       ],
     },
   ];

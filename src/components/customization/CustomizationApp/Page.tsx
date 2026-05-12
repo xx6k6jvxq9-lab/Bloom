@@ -49,6 +49,7 @@ import {
   stripCharacterMemoryFromCharacters,
 } from '../../../features/persistence/characterMemoryStore';
 import { buildMemoryRecordDataFromChatHistory } from '../../../services/memory/buildMemoryRecordData';
+import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../../services/memory/memoryRecordSnapshots';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import {
   extractDirectFactTraces,
@@ -3333,12 +3334,15 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
             groupSessions: extractGroupSessions(normalizedAppData.chatGroups ?? []),
           };
           const characterMemory = buildCharacterMemoryRecord(importedCharacters);
-          const memoryRecords = buildMemoryRecordDataFromChatHistory(persistedChatHistory);
+          const memoryRecords = mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+            buildMemoryRecordDataFromChatHistory(persistedChatHistory),
+            characterMemory,
+          );
 
           const writes: Promise<void>[] = [
             writeImportedRecord(STORAGE_KEYS.settings, nextSettings),
             writeImportedRecord(STORAGE_KEYS.characters, stripCharacterMemoryFromCharacters(importedCharacters)),
-            writeImportedRecord(STORAGE_KEYS.characterMemory, characterMemory),
+            writeImportedRecord(STORAGE_KEYS.characterMemory, {}),
             writeImportedRecord(STORAGE_KEYS.memoryRecords, memoryRecords),
             writeImportedRecord(STORAGE_KEYS.chatHistory, persistedChatHistory),
             writeImportedRecord(STORAGE_KEYS.chatOrganization, {

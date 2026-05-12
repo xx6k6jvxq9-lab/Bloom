@@ -618,7 +618,6 @@ export type CharacterActiveDatingState = {
 export type ChatMemorySnapshot = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
-  memoryLibraryEntries?: MemoryLibraryEntry[];
 };
 
 export type CharacterAvatarLibraryEntryStatus =
@@ -709,6 +708,7 @@ export type Character = {
   memorySummary?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  // Deprecated compatibility field. New memory flows should persist into memoryRecords.
   memoryLibraryEntries?: MemoryLibraryEntry[];
   openLoopRegistry?: CharacterOpenLoopEntry[];
   presenceState?: CharacterPresenceState;

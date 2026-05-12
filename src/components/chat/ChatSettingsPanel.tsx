@@ -17,7 +17,6 @@ import {
   getDirectMemoryMessageLimit,
 } from '../../services/memory/memoryWindowLimits';
 import { getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
-import { deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExportFormat, type MemoryExportScope } from '../../services/memory/exportMemory';
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
@@ -1994,18 +1993,13 @@ export function ChatSettingsPanel({
       return;
     }
 
-    if (entry.id.startsWith('record:')) {
-      await removeMemoryRecordById({
-        characterId: character.id,
-        recordId: entry.id.slice('record:'.length),
-      });
-      setMemoryRecordRefreshTick((current) => current + 1);
-    } else {
-      onUpdate({
-        ...character,
-        memoryLibraryEntries: deleteMemoryLibraryEntry(character, entry.id),
-      });
-    }
+    await removeMemoryRecordById({
+      characterId: character.id,
+      recordId: entry.id.startsWith('record:')
+        ? entry.id.slice('record:'.length)
+        : entry.id,
+    });
+    setMemoryRecordRefreshTick((current) => current + 1);
     setActiveMemoryEntry(null);
   };
 
@@ -2109,16 +2103,9 @@ export function ChatSettingsPanel({
 
       setMemoryRecordRefreshTick((current) => current + 1);
     } catch (error) {
-      console.error('[chat-settings] Failed to persist imported memory into memoryRecords, falling back to legacy library storage.', error);
-      onUpdate({
-        ...character,
-        shortTermSummary: nextShortTermSummary,
-        longTermMemoryProfile: nextLongTermMemoryProfile,
-        memoryLibraryEntries: [
-          ...pendingMemoryImport.entries,
-          ...(character.memoryLibraryEntries || []),
-        ].sort((left, right) => right.createdAt - left.createdAt),
-      });
+      console.error('[chat-settings] Failed to persist imported memory into memoryRecords.', error);
+      await showInAppAlert('导入失败了，这次没有回退写入旧记忆库，避免新旧两套数据再混在一起。请稍后重试。');
+      return;
     }
 
     setPendingMemoryImport(null);

@@ -3725,9 +3725,6 @@ export function useDirectChatRuntime({
     const patch: Partial<Character> = {
       shortTermSummary: memorySnapshot?.shortTermSummary,
       longTermMemoryProfile: memorySnapshot?.longTermMemoryProfile,
-      ...(Array.isArray(memorySnapshot?.memoryLibraryEntries)
-        ? { memoryLibraryEntries: memorySnapshot.memoryLibraryEntries }
-        : {}),
     };
 
     setHistory(nextHistory);

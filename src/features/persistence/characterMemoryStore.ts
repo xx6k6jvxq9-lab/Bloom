@@ -188,27 +188,16 @@ export async function loadPreferredCharacterMemoryRecord(
     const indexedDbRecord = normalizeRecordValue(persistedEnvelope.value);
 
     if (Object.keys(indexedDbRecord).length === 0) {
-      if (Object.keys(localRecord).length > 0) {
-        await saveCharacterMemoryRecord(localRecord);
-      }
       return localRecord;
     }
 
-    const preferredRecord = shouldPreferIndexedDbRecord({
+    return shouldPreferIndexedDbRecord({
       indexedDbRecord,
       indexedDbUpdatedAt: persistedEnvelope.updatedAt ?? 0,
       localRecord,
     })
       ? mergeCharacterMemoryRecords(indexedDbRecord, fallback)
       : localRecord;
-
-    if (serializeRecord(preferredRecord) !== serializeRecord(indexedDbRecord)) {
-      await saveCharacterMemoryRecord(preferredRecord);
-    } else if (serializeRecord(loadStoredCharacterMemoryRecord()) !== serializeRecord(indexedDbRecord)) {
-      saveJson(STORAGE_KEYS.characterMemory, indexedDbRecord);
-    }
-
-    return preferredRecord;
   } catch (error) {
     console.error('[characterMemoryStore] Failed to load character memory from IndexedDB', error);
     return localRecord;

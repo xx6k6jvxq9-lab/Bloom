@@ -1,12 +1,8 @@
-import type { Character, ChatMemorySnapshot, ChatMessage, MemoryLibraryEntry } from '../../types';
+import type { Character, ChatMemorySnapshot, ChatMessage } from '../../types';
 
 function normalizeOptionalText(value?: string): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
-}
-
-function cloneMemoryLibraryEntries(entries?: MemoryLibraryEntry[]): MemoryLibraryEntry[] {
-  return (entries ?? []).map((entry) => ({ ...entry }));
 }
 
 export function createChatMemorySnapshot(
@@ -38,9 +34,6 @@ export function findNearestChatMemorySnapshot(
       return {
         shortTermSummary: normalizeOptionalText(snapshot.shortTermSummary),
         longTermMemoryProfile: normalizeOptionalText(snapshot.longTermMemoryProfile),
-        ...(Array.isArray(snapshot.memoryLibraryEntries)
-          ? { memoryLibraryEntries: cloneMemoryLibraryEntries(snapshot.memoryLibraryEntries) }
-          : {}),
       };
     }
   }
