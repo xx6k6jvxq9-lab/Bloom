@@ -139,7 +139,6 @@ export function DesktopWidget({
   const profileLocation = widget.location || '自定义';
   const bannerUrl = widget.bannerUrl || '';
   const avatarUrl = widget.avatarUrl || '';
-  const inlineEditingEnabled = Boolean(onWidgetChange) && !onRequestEdit && !isPreview;
   const isFloatingKawaiiWidget = isFloatingKawaiiDesktopWidgetType(widget.type);
   const backgroundValue =
     isFloatingKawaiiWidget && widget.background === '#f4efe8'
@@ -156,7 +155,7 @@ export function DesktopWidget({
   };
 
   const startEditing = (field: 'profileName' | 'handle' | 'bio' | 'location', value: string) => {
-    if (!inlineEditingEnabled) return;
+    if (!onWidgetChange) return;
     setEditingField(field);
     setDraftValue(value === '自定义' ? '' : value);
   };
@@ -176,7 +175,7 @@ export function DesktopWidget({
   };
 
   const openImageMenu = (target: 'bannerUrl' | 'avatarUrl', currentValue: string) => {
-    if (!inlineEditingEnabled) return;
+    if (!onWidgetChange) return;
     setImageMenuTarget(target);
     setImageUrlDraft(currentValue);
   };
@@ -195,7 +194,7 @@ export function DesktopWidget({
     className: string,
     multiline = false,
   ) => {
-    if (inlineEditingEnabled && editingField === field) {
+    if (editingField === field) {
       if (multiline) {
         return (
           <textarea
@@ -250,12 +249,12 @@ export function DesktopWidget({
       case 'kawaii-launcher':
       case 'kawaii-couple-pills':
       case 'kawaii-scrapbook':
-        return <KawaiiDesktopWidgetContent widget={widget} onWidgetChange={inlineEditingEnabled ? onWidgetChange : undefined} />;
+        return <KawaiiDesktopWidgetContent widget={widget} onWidgetChange={onWidgetChange} />;
       case 'glass-duo-card':
       case 'glass-vinyl-player':
       case 'glass-polaroid-strip':
       case 'glass-recent-grid':
-        return <GlassDesktopWidgetContent widget={widget} onWidgetChange={inlineEditingEnabled ? onWidgetChange : undefined} isPreview={isPreview} />;
+        return <GlassDesktopWidgetContent widget={widget} onWidgetChange={onWidgetChange} isPreview={isPreview} />;
       case 'time':
         if (widget.style === 'minimal') {
           return (
@@ -651,7 +650,7 @@ export function DesktopWidget({
       ? backgroundValue
       : '#ffffff';
   const shouldApplyImageOverlay = widget.type !== 'blank' && !isKawaiiDesktopWidgetType(widget.type);
-  const canRequestEdit = Boolean(onRequestEdit && !isPreview);
+  const canRequestEdit = Boolean(onRequestEdit && !isPreview && widget.type !== 'profile-card');
   const launcherOwnsOpacity = widget.type === 'kawaii-launcher';
   const launcherOwnsBackground = widget.type === 'kawaii-launcher';
   const scrapbookOwnsOpacity = widget.type === 'kawaii-scrapbook';

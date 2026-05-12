@@ -87,9 +87,9 @@ function PersistentImageField({
           value={draftValue}
           onChange={event => setDraftValue(event.target.value)}
           placeholder="支持图片链接或上传"
-          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-zinc-900"
         />
-        <label className="flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[14px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200">
+        <label className="flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-200">
           <Upload size={14} className="mr-1" />
           上传
           <input
@@ -117,7 +117,7 @@ function PersistentImageField({
           onClick={() => {
             void commitValue();
           }}
-          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[14px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
         >
           确认
         </button>
@@ -170,7 +170,7 @@ function PersistentAssetField({
         </div>
       ) : null}
       {kind === 'audio' && value ? (
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[14px] font-medium text-zinc-600">
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
           已设置音频资源
         </div>
       ) : null}
@@ -180,9 +180,9 @@ function PersistentAssetField({
           value={draftValue}
           onChange={event => setDraftValue(event.target.value)}
           placeholder={placeholder}
-          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-zinc-900"
         />
-        <label className="flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[14px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200">
+        <label className="flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-200">
           <Upload size={14} className="mr-1" />
           上传
           <input
@@ -210,7 +210,7 @@ function PersistentAssetField({
           onClick={() => {
             void commitValue();
           }}
-          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[14px] font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+          className="whitespace-nowrap rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
         >
           确认
         </button>
@@ -241,7 +241,7 @@ function WidgetTextField({
           onChange={event => onChange(event.target.value)}
           placeholder={placeholder}
           rows={3}
-          className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+          className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-zinc-900"
         />
       ) : (
         <input
@@ -249,7 +249,7 @@ function WidgetTextField({
           value={value}
           onChange={event => onChange(event.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-zinc-900"
         />
       )}
     </div>
@@ -279,7 +279,7 @@ function WidgetColorField({
           type="text"
           value={value || '#e0ddd9'}
           onChange={event => onChange(event.target.value)}
-          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+          className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-zinc-900"
           placeholder="#e0ddd9"
         />
       </div>
@@ -295,41 +295,6 @@ function KawaiiWidgetEditorFields({
   onChange: (updates: Partial<WidgetConfig>) => void;
 }) {
   switch (widget.type) {
-    case 'profile-card':
-      return (
-        <>
-          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-            <PersistentImageField
-              label="顶部封面"
-              value={widget.bannerUrl || ''}
-              onChange={value => onChange({ bannerUrl: value })}
-            />
-            <PersistentImageField
-              label="头像"
-              value={widget.avatarUrl || ''}
-              onChange={value => onChange({ avatarUrl: value })}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-            <WidgetTextField label="昵称" value={widget.profileName || ''} onChange={value => onChange({ profileName: value })} />
-            <WidgetTextField label="账号" value={widget.handle || ''} onChange={value => onChange({ handle: value })} />
-          </div>
-
-          <div className="rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-            <WidgetTextField
-              label="简介"
-              value={widget.bio || ''}
-              onChange={value => onChange({ bio: value })}
-              multiline
-            />
-          </div>
-
-          <div className="rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-            <WidgetTextField label="位置" value={widget.location || ''} onChange={value => onChange({ location: value })} />
-          </div>
-        </>
-      );
     case 'kawaii-launcher':
       return (
         <>
@@ -706,9 +671,9 @@ export function HomeWidgetEditorSheet({
 
                 {widget.type === 'profile-card' ? (
                   <div className="rounded-[22px] border border-zinc-200 bg-zinc-50 px-4 py-3 text-center">
-                    <p className="text-sm font-semibold text-zinc-900">资料卡片已统一到这里编辑</p>
+                    <p className="text-sm font-semibold text-zinc-900">资料卡片支持桌面直接编辑</p>
                     <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">
-                      手机端不再在桌面里原地弹小输入框，改头像、封面、昵称和简介都在这个面板完成。
+                      回到桌面后直接点封面、头像、名字、签名和定位，就能原地改图和改文字。
                     </p>
                   </div>
                 ) : null}
@@ -724,7 +689,7 @@ export function HomeWidgetEditorSheet({
                           if (!isSupportedDesktopWidgetType(nextType)) return;
                           onChange({ type: nextType, style: 'default' });
                         }}
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[16px] leading-6"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
                       >
                         {SUPPORTED_DESKTOP_WIDGET_TEMPLATES.map(template => (
                           <option key={template.type} value={template.type}>
@@ -739,7 +704,7 @@ export function HomeWidgetEditorSheet({
                       <select
                         value={widget.style || 'default'}
                         onChange={event => onChange({ style: event.target.value })}
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[16px] leading-6"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
                       >
                         {styleOptions.map(option => (
                           <option key={option.value} value={option.value}>
@@ -760,7 +725,7 @@ export function HomeWidgetEditorSheet({
                         value={widget.title || ''}
                         onChange={event => onChange({ title: event.target.value })}
                         placeholder="例如：在一起"
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
                       />
                     </div>
                     <div className="space-y-2">
@@ -769,7 +734,7 @@ export function HomeWidgetEditorSheet({
                         type="date"
                         value={widget.date || ''}
                         onChange={event => onChange({ date: event.target.value })}
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[16px] leading-6 outline-none focus:border-zinc-900"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
                       />
                     </div>
                   </div>
