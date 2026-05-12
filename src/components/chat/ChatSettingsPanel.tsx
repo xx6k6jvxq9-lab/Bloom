@@ -34,6 +34,11 @@ import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
 import { saveUploadedDataUrl } from '../../features/persistence/persistentAssetService';
+import {
+  cleanupUnusedRemoteCachedAssets,
+  inspectRemoteCacheUsage,
+  type RemoteCacheUsageSummary,
+} from '../../features/persistence/remoteCacheCleanup';
 import { usePersistentFieldActions } from '../../features/persistence/usePersistentFieldActions';
 import { useKeyboardSafeViewport } from '../../features/app-shell/useKeyboardSafeViewport';
 import {
@@ -669,6 +674,8 @@ export function ChatSettingsPanel({
   const [activeStickerCategory, setActiveStickerCategory] = useState<'all' | 'shared' | 'character'>('all');
   const [sharedStickerExpanded, setSharedStickerExpanded] = useState(false);
   const [characterStickerExpanded, setCharacterStickerExpanded] = useState(false);
+  const [isCleaningRemoteCache, setIsCleaningRemoteCache] = useState(false);
+  const [remoteCacheUsage, setRemoteCacheUsage] = useState<RemoteCacheUsageSummary | null>(null);
   const [minRepliesDraft, setMinRepliesDraft] = useState(String(character?.minReplies || 1));
   const [maxRepliesDraft, setMaxRepliesDraft] = useState(String(character?.maxReplies || 3));
   const [isCloningVoice, setIsCloningVoice] = useState(false);
@@ -685,6 +692,20 @@ export function ChatSettingsPanel({
   });
 
   if (!character) return null;
+
+  const formatBytesLabel = (bytes: number) => {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+    }
+
+    if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(bytes >= 100 * 1024 ? 0 : 1)} KB`;
+    }
+
+    return `${bytes} B`;
+  };
+  const REMOTE_CACHE_WARNING_BYTES = 120 * 1024 * 1024;
+  const REMOTE_CACHE_REMINDER_KEY = 'chat_remote_cache_cleanup_last_prompt_at';
 
   const settingsHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 16px)';
   const sharedStickers = settings.sharedStickers || [];
@@ -1523,6 +1544,87 @@ export function ChatSettingsPanel({
     setStickerLinkImportDraft('');
   };
 
+  const refreshRemoteCacheUsage = async (currentHistoryOverride?: ChatMessage[]) => {
+    try {
+      const usage = await inspectRemoteCacheUsage({
+        settings,
+        characters,
+        visualSettings,
+        directHistoryByCharacterId: {
+          [character.id]: currentHistoryOverride ?? history,
+        },
+      });
+      setRemoteCacheUsage(usage);
+      return usage;
+    } catch (error) {
+      console.error('[chat-settings] Failed to inspect remote cache usage.', error);
+      return null;
+    }
+  };
+
+  const handleCleanupUnusedRemoteCache = async (currentHistoryOverride?: ChatMessage[]) => {
+    if (isCleaningRemoteCache) {
+      return;
+    }
+
+    setIsCleaningRemoteCache(true);
+    try {
+      const result = await cleanupUnusedRemoteCachedAssets({
+        settings,
+        characters,
+        visualSettings,
+        directHistoryByCharacterId: {
+          [character.id]: currentHistoryOverride ?? history,
+        },
+      });
+
+      if (result.removedCount > 0) {
+        await refreshRemoteCacheUsage(currentHistoryOverride);
+        await showInAppAlert(`已清理 ${result.removedCount} 个无引用动态图缓存，释放 ${formatBytesLabel(result.freedBytes)}。`);
+        return;
+      }
+
+      await refreshRemoteCacheUsage(currentHistoryOverride);
+      await showInAppAlert(
+        result.scannedRemoteCacheCount > 0
+          ? '当前没有可清理的无引用动态图缓存。'
+          : '当前还没有可清理的动态图缓存。',
+      );
+    } catch (error) {
+      console.error('[chat-settings] Failed to clean unused remote cache assets.', error);
+      await showInAppAlert('清理动态图缓存失败，请稍后重试。');
+    } finally {
+      setIsCleaningRemoteCache(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const usage = await refreshRemoteCacheUsage();
+      if (cancelled || !usage || usage.totalBytes < REMOTE_CACHE_WARNING_BYTES || typeof window === 'undefined') {
+        return;
+      }
+
+      const lastPromptAt = Number(window.localStorage.getItem(REMOTE_CACHE_REMINDER_KEY) || 0);
+      const now = Date.now();
+      const reminderCooldownMs = 12 * 60 * 60 * 1000;
+      if (Number.isFinite(lastPromptAt) && now - lastPromptAt < reminderCooldownMs) {
+        return;
+      }
+
+      window.localStorage.setItem(REMOTE_CACHE_REMINDER_KEY, String(now));
+      await showInAppAlert(
+        `当前动态图缓存已占用 ${formatBytesLabel(usage.totalBytes)}，其中有 ${usage.unreferencedCount} 个未被聊天使用的缓存，建议去点一下“清理无引用动态图缓存”。`,
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id, characters, history, settings, visualSettings]);
+
   useEffect(() => {
     if (showStickers) {
       return;
@@ -2110,8 +2212,50 @@ export function ChatSettingsPanel({
               <ChevronDown size={18} className={`text-zinc-400 transition-transform ${expandedSection === 'resource' ? '' : '-rotate-90'}`} />
             </button>
             <button
+              onClick={() => void handleCleanupUnusedRemoteCache()}
+              disabled={isCleaningRemoteCache}
+              className={`order-9 w-full rounded-2xl border px-4 py-3.5 text-left shadow-sm transition-colors active:bg-white/85 disabled:cursor-not-allowed disabled:opacity-60 ${
+                remoteCacheUsage && remoteCacheUsage.totalBytes >= REMOTE_CACHE_WARNING_BYTES
+                  ? 'border-amber-200 bg-amber-50/90'
+                  : 'border-white/40 bg-white/70'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                  remoteCacheUsage && remoteCacheUsage.totalBytes >= REMOTE_CACHE_WARNING_BYTES
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-zinc-100 text-zinc-600'
+                }`}>
+                  <Database size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[14px] font-semibold ${
+                    remoteCacheUsage && remoteCacheUsage.totalBytes >= REMOTE_CACHE_WARNING_BYTES
+                      ? 'text-amber-900'
+                      : 'text-zinc-800'
+                  }`}>
+                    {isCleaningRemoteCache ? '正在清理动态图缓存...' : '清理无引用动态图缓存'}
+                  </div>
+                  <p className={`mt-1 text-[11px] leading-5 ${
+                    remoteCacheUsage && remoteCacheUsage.totalBytes >= REMOTE_CACHE_WARNING_BYTES
+                      ? 'text-amber-700'
+                      : 'text-zinc-500'
+                  }`}>
+                    {remoteCacheUsage
+                      ? `当前缓存 ${formatBytesLabel(remoteCacheUsage.totalBytes)} / ${remoteCacheUsage.totalCount} 项，可清理 ${remoteCacheUsage.unreferencedCount} 项。`
+                      : '正在统计当前动态图缓存占用...'}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-5 text-zinc-400">
+                    只会删除已经不再被聊天记录使用的远程动态图缓存，不会动你自己上传的表情。
+                  </p>
+                </div>
+              </div>
+            </button>
+            <button
               onClick={async () => {
-                if (await showInAppConfirm('确定要清空聊天记录吗？')) setHistory([]);
+                if (await showInAppConfirm('确定要清空聊天记录吗？')) {
+                  setHistory([]);
+                }
               }}
               className="order-10 w-full bg-white/80 backdrop-blur-md text-red-500 py-3.5 rounded-2xl font-bold text-[15px] border border-red-100/50 active:bg-red-50 transition-colors shadow-sm mt-2"
             >
@@ -3753,15 +3897,11 @@ export function ChatSettingsPanel({
                   />
                   <button
                     type="button"
-                    onClick={() => void handleImportStickerLinks()}
-                    disabled={!stickerLinkImportDraft.trim() || isImportingStickerLinks}
+                    onClick={handleImportStickerLinks}
+                    disabled={!stickerLinkImportDraft.trim()}
                     className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                   >
-                    {isImportingStickerLinks
-                      ? '正在缓存链接...'
-                      : stickerLinkImportTarget === 'shared'
-                        ? '导入到共享表情包'
-                        : '导入到当前角色表情包'}
+                    {stickerLinkImportTarget === 'shared' ? '导入到共享表情包' : '导入到当前角色表情包'}
                   </button>
                 </div>
               )}
@@ -3807,12 +3947,9 @@ export function ChatSettingsPanel({
                           const files = Array.from(input.files || []);
 
                           try {
-                            const importResult = await importStickerFiles(files, setUploadedFile, cacheRemoteAsset);
-                            if (importResult.stickers.length > 0) {
-                              appendSharedStickers(importResult.stickers);
-                            }
-                            if (importResult.fallbackCount > 0) {
-                              await showInAppAlert(`有 ${importResult.fallbackCount} 个远程表情没能缓存到本地，暂时仍然是外链，后续可能失效。`);
+                            const newStickers = await importStickerFiles(files, setUploadedFile);
+                            if (newStickers.length > 0) {
+                              appendSharedStickers(newStickers);
                             }
                           } catch (error) {
                             console.error('[chat-settings] Failed to import shared stickers.', error);
@@ -3904,12 +4041,9 @@ export function ChatSettingsPanel({
                         const files = Array.from(input.files || []);
 
                         try {
-                          const importResult = await importStickerFiles(files, setUploadedFile, cacheRemoteAsset);
-                          if (importResult.stickers.length > 0) {
-                            appendCharacterStickers(importResult.stickers);
-                          }
-                          if (importResult.fallbackCount > 0) {
-                            await showInAppAlert(`有 ${importResult.fallbackCount} 个远程表情没能缓存到本地，暂时仍然是外链，后续可能失效。`);
+                          const newStickers = await importStickerFiles(files, setUploadedFile);
+                          if (newStickers.length > 0) {
+                            appendCharacterStickers(newStickers);
                           }
                         } catch (error) {
                           console.error('[chat-settings] Failed to import character stickers.', error);

@@ -1,6 +1,8 @@
-import { deleteAsset, getAsset, putAsset, type StoredAssetRecord } from './browserDb';
+import { deleteAsset, findAssetByOriginalUrl, getAsset, putAsset, type StoredAssetRecord } from './browserDb';
 import { getOrCreate, peek, revoke } from './objectUrlRegistry';
 import { createUploadedAssetRef, isUploadedAssetRef, parseUploadedAssetRef } from './persistentAssetRef';
+
+const remoteAssetInflightRequests = new Map<string, Promise<string>>();
 
 function createAssetId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -50,6 +52,8 @@ export async function saveUploadedBlob(
   options?: {
     fileName?: string;
     mimeType?: string;
+    source?: StoredAssetRecord['source'];
+    originalUrl?: string;
   },
 ): Promise<string> {
   const id = createAssetId();
@@ -63,7 +67,8 @@ export async function saveUploadedBlob(
     fileName: options?.fileName,
     createdAt: now,
     updatedAt: now,
-    source: 'upload',
+    source: options?.source || 'upload',
+    ...(options?.originalUrl ? { originalUrl: options.originalUrl.trim() } : {}),
   };
 
   await putAsset(record);
@@ -84,6 +89,93 @@ export async function saveUploadedDataUrl(dataUrl: string, fileName = 'uploaded-
     fileName,
     mimeType: blob.type || 'image/png',
   });
+}
+
+function isRemoteHttpValue(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function isLikelyImageUrl(value: string): boolean {
+  return /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|apng)(?:$|[?#])/i.test(value);
+}
+
+function guessMimeTypeFromUrl(value: string): string {
+  const lowerValue = value.toLowerCase();
+  if (lowerValue.includes('.png')) return 'image/png';
+  if (lowerValue.includes('.jpg') || lowerValue.includes('.jpeg')) return 'image/jpeg';
+  if (lowerValue.includes('.webp')) return 'image/webp';
+  if (lowerValue.includes('.gif')) return 'image/gif';
+  if (lowerValue.includes('.bmp')) return 'image/bmp';
+  if (lowerValue.includes('.svg')) return 'image/svg+xml';
+  if (lowerValue.includes('.avif')) return 'image/avif';
+  if (lowerValue.includes('.apng')) return 'image/apng';
+  return 'application/octet-stream';
+}
+
+function buildRemoteAssetFileName(value: string): string {
+  try {
+    const pathname = new URL(value).pathname;
+    const candidate = pathname.split('/').pop()?.trim();
+    if (candidate) {
+      return candidate;
+    }
+  } catch {
+    // Fall back to a generated name when URL parsing fails.
+  }
+
+  const mimeType = guessMimeTypeFromUrl(value);
+  const extension = mimeType.startsWith('image/') ? mimeType.split('/')[1]?.replace('svg+xml', 'svg') || 'png' : 'bin';
+  return `remote-asset.${extension}`;
+}
+
+function createAssetRefFromRecord(record: StoredAssetRecord): string {
+  return createUploadedAssetRef(record.id, record.fileName);
+}
+
+export async function cacheRemoteAsset(url: string, fileName?: string): Promise<string> {
+  const trimmed = url.trim();
+  if (!isRemoteHttpValue(trimmed)) {
+    return trimmed;
+  }
+
+  const inflightRequest = remoteAssetInflightRequests.get(trimmed);
+  if (inflightRequest) {
+    return inflightRequest;
+  }
+
+  const requestPromise = (async () => {
+    const existingRecord = await findAssetByOriginalUrl(trimmed);
+    if (existingRecord) {
+      return createAssetRefFromRecord(existingRecord);
+    }
+
+    const response = await fetch(trimmed);
+    if (!response.ok) {
+      throw new Error(`Remote asset fetch failed with status ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const mimeType = blob.type || guessMimeTypeFromUrl(trimmed);
+    const isLikelyImage = mimeType.startsWith('image/') || isLikelyImageUrl(trimmed);
+    if (!isLikelyImage) {
+      throw new Error('Remote asset is not an image.');
+    }
+
+    return saveUploadedBlob(blob, {
+      fileName: fileName?.trim() || buildRemoteAssetFileName(trimmed),
+      mimeType,
+      source: 'remote-cache',
+      originalUrl: trimmed,
+    });
+  })();
+
+  remoteAssetInflightRequests.set(trimmed, requestPromise);
+
+  try {
+    return await requestPromise;
+  } finally {
+    remoteAssetInflightRequests.delete(trimmed);
+  }
 }
 
 export async function createImagePreviewDataUrl(
@@ -140,6 +232,13 @@ export async function resolveValueToDisplayUrl(value: string | null | undefined)
   }
 
   if (isDirectDisplayValue(trimmed)) {
+    if (isRemoteHttpValue(trimmed)) {
+      const cachedRecord = await findAssetByOriginalUrl(trimmed);
+      if (cachedRecord) {
+        return getOrCreate(cachedRecord.id, cachedRecord.blob);
+      }
+    }
+
     return trimmed;
   }
 
@@ -265,6 +364,13 @@ export async function resolveValueToModelInput(
         return trimmed;
       }
 
+      if (isRemoteHttpValue(trimmed)) {
+        const cachedRecord = await findAssetByOriginalUrl(trimmed);
+        if (cachedRecord) {
+          return blobToDataUrl(cachedRecord.blob);
+        }
+      }
+
       const response = await fetch(trimmed);
       const blob = await response.blob();
       return blobToDataUrl(blob);
@@ -272,6 +378,17 @@ export async function resolveValueToModelInput(
 
     if (/^data:/i.test(trimmed)) {
       return normalizeModelImageDataUrl(trimmed);
+    }
+
+    if (isRemoteHttpValue(trimmed)) {
+      const cachedRecord = await findAssetByOriginalUrl(trimmed);
+      if (cachedRecord) {
+        if (isGeminiFriendlyImageMimeType(cachedRecord.blob.type)) {
+          return blobToDataUrl(cachedRecord.blob);
+        }
+
+        return convertBlobToPngDataUrl(cachedRecord.blob);
+      }
     }
 
     const response = await fetch(trimmed);
