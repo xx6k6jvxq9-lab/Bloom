@@ -81,10 +81,6 @@ export function useKeyboardSafeViewport({
       return undefined;
     }
 
-    if (!clampViewportHeight && !scrollFocusedIntoView) {
-      return undefined;
-    }
-
     const container = containerRef.current;
     if (!container) {
       return undefined;

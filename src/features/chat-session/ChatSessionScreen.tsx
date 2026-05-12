@@ -555,7 +555,7 @@ export function ChatSessionScreen({
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
     enabled: true,
-    clampViewportHeight: false,
+    clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
@@ -1960,22 +1960,17 @@ export function ChatSessionScreen({
     };
   }
 
-  const keyboardViewportOffset = chatKeyboardOpen
-    ? 'var(--app-keyboard-inset, 0px)'
-    : '0px';
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
     contain: shouldReduceKeyboardVisualEffects ? 'layout paint style' : undefined,
-    transform: chatKeyboardOpen ? 'translateY(calc(var(--app-keyboard-inset, 0px) * -1))' : undefined,
-    transition: shouldReduceKeyboardVisualEffects ? 'none' : 'padding-bottom 180ms ease, transform 180ms ease',
-    willChange: chatKeyboardOpen ? 'transform' : undefined,
+    transition: shouldReduceKeyboardVisualEffects ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
-    paddingBottom: `calc(8px + ${keyboardViewportOffset})`,
+    paddingBottom: '8px',
     minHeight: 0,
-    scrollPaddingBottom: `calc(12px + ${keyboardViewportOffset})`,
+    scrollPaddingBottom: '12px',
   };
   const chatRootClassName = 'relative z-[60] flex h-full min-h-0 flex-col overflow-hidden bg-zinc-50 chat-bubble-theme-scope';
   const chatRootSizeStyle: React.CSSProperties = {
