@@ -15,12 +15,16 @@ import type {
   RelationshipWaveValence,
 } from '../relationship-context/types';
 
-export type MemoryRecordKind = 'fact' | 'relationship_wave';
+export type MemoryRecordKind = 'fact' | 'relationship_wave' | 'snapshot' | 'note';
 export type MemoryRecordVisibility = FactTraceVisibility | RelationshipWaveScope;
 export type MemoryRecordStability = FactTraceStability;
 export type MemoryRecordDecayHint = 'short' | 'medium' | 'stable';
-export type MemoryRecordSourceScene = FactTraceSourceScene | RelationshipWaveSourceScene;
+export type MemoryRecordSourceScene = FactTraceSourceScene | RelationshipWaveSourceScene | 'manual';
 export type MemoryRecordSourceSessionType = 'direct' | 'group';
+export type MemorySnapshotType = 'short_term_summary' | 'long_term_profile' | 'shared_state';
+export type MemoryRecordLibraryKind = 'short-term' | 'long-term';
+export type MemoryRecordLibrarySource = 'auto' | 'manual';
+export type MemoryNoteType = 'manual' | 'imported';
 
 type BaseMemoryRecord = {
   id: string;
@@ -58,4 +62,22 @@ export type RelationshipWaveMemoryRecord = BaseMemoryRecord & {
   targetUser?: boolean;
 };
 
-export type MemoryRecord = FactMemoryRecord | RelationshipWaveMemoryRecord;
+export type SnapshotMemoryRecord = BaseMemoryRecord & {
+  kind: 'snapshot';
+  snapshotType: MemorySnapshotType;
+  text: string;
+};
+
+export type NoteMemoryRecord = BaseMemoryRecord & {
+  kind: 'note';
+  noteType: MemoryNoteType;
+  libraryKind: MemoryRecordLibraryKind;
+  librarySource: MemoryRecordLibrarySource;
+  text: string;
+};
+
+export type MemoryRecord =
+  | FactMemoryRecord
+  | RelationshipWaveMemoryRecord
+  | SnapshotMemoryRecord
+  | NoteMemoryRecord;

@@ -16,11 +16,18 @@ import {
   DIRECT_MEMORY_LIMIT_MIN,
   getDirectMemoryMessageLimit,
 } from '../../services/memory/memoryWindowLimits';
-import { buildMemoryLibraryPatch, getMemoryLibraryEntries, getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
-import { appendMemoryLibraryEntries, deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
+import { getMemoryLibraryStats, groupMemoryLibraryEntriesByYear, type MemoryLibraryYearGroup } from '../../services/memory/memoryLibrary';
+import { deleteMemoryLibraryEntry } from '../../services/memory/memoryLibrary';
 import { buildMemoryExportPayload, stringifyMemoryExportAsText, type MemoryExportFormat, type MemoryExportScope } from '../../services/memory/exportMemory';
 import { prepareMemoryImportFromUnknown, type PreparedMemoryImport } from '../../services/memory/importMemory';
 import { buildShortTermSummary, compressShortTermSummaryAfterLongTerm } from '../../services/memory/buildShortTermSummary';
+import {
+  appendLibraryMemoryEntriesAsRecords,
+  appendSnapshotMemoryRecord,
+  buildSharedStateSnapshotText,
+  projectMemoryLibraryEntriesFromRecords,
+  removeMemoryRecordById,
+} from '../../services/memory/memoryRecordSnapshots';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 import { rebuildSharedStateFromCharacter } from '../../services/relationship-context/buildSharedCharacterState';
@@ -33,6 +40,7 @@ import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAp
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { loadMemoryRecordData } from '../../features/persistence/memoryRecordStore';
 import { saveUploadedDataUrl } from '../../features/persistence/persistentAssetService';
 import {
   cleanupUnusedRemoteCachedAssets,
@@ -115,6 +123,10 @@ function isRetryableSummaryStreamError(error: unknown): boolean {
 
   const message = error.message.toLowerCase();
   return message.includes('failed to fetch') || message.includes('networkerror');
+}
+
+function normalizeOptionalText(value: string | null | undefined): string {
+  return value?.trim() || '';
 }
 
 function ResolvedSettingsImage({
@@ -615,6 +627,11 @@ export function ChatSettingsPanel({
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isLongTermSummarizing, setIsLongTermSummarizing] = useState(false);
   const [isShortTermSummarizing, setIsShortTermSummarizing] = useState(false);
+  const [isEditingShortTermSummary, setIsEditingShortTermSummary] = useState(false);
+  const [isEditingLongTermMemoryProfile, setIsEditingLongTermMemoryProfile] = useState(false);
+  const [shortTermSummaryDraft, setShortTermSummaryDraft] = useState('');
+  const [longTermMemoryProfileDraft, setLongTermMemoryProfileDraft] = useState('');
+  const [, setMemoryRecordRefreshTick] = useState(0);
   const [showMemorySettings, setShowMemorySettings] = useState(false);
   const [showWorldBookSelector, setShowWorldBookSelector] = useState(false);
   const [showCallHistory, setShowCallHistory] = useState(false);
@@ -847,20 +864,37 @@ export function ChatSettingsPanel({
   const publicThreadPeerHintMap = new Map(publicThreadPeerHints.map((hint) => [hint.targetCharacterId, hint] as const));
   const shortTermSummary = buildShortTermSummary(character) || '';
   const longTermMemoryProfile = buildLongTermMemoryProfile(character) || '';
-  const sharedStatePreview = [
-    character.sharedState?.sourceScene ? `来源场景：${character.sharedState.sourceScene}` : '',
-    character.sharedState?.availability ? `在线状态：${character.sharedState.availability}` : '',
-    character.sharedState?.resumeTone ? `回线语气：${character.sharedState.resumeTone}` : '',
-    character.sharedState?.currentActivity ? `当前生活底色：${character.sharedState.currentActivity}` : '',
-    character.sharedState?.attentionNote ? `开口方式：${character.sharedState.attentionNote}` : '',
-    character.sharedState?.publicCarryover ? `公开可见余波：${character.sharedState.publicCarryover}` : '',
-    character.sharedState?.privateCarryover ? `私下余波：${character.sharedState.privateCarryover}` : '',
-  ].filter(Boolean).join('\n\n');
-  const shortTermMemoryEntries = getMemoryLibraryEntries(character, 'short-term');
-  const longTermMemoryEntries = getMemoryLibraryEntries(character, 'long-term');
+  const sharedStatePreview = buildSharedStateSnapshotText(character.sharedState);
+  const characterMemoryRecords = loadMemoryRecordData({
+    recordsByCharacterId: {},
+  }).recordsByCharacterId[character.id] || [];
+  const projectedShortTermMemoryEntries = projectMemoryLibraryEntriesFromRecords({
+    characterId: character.id,
+    kind: 'short-term',
+    records: characterMemoryRecords,
+  });
+  const projectedLongTermMemoryEntries = projectMemoryLibraryEntriesFromRecords({
+    characterId: character.id,
+    kind: 'long-term',
+    records: characterMemoryRecords,
+  });
+  const shortTermMemoryEntries = projectedShortTermMemoryEntries;
+  const longTermMemoryEntries = projectedLongTermMemoryEntries;
   const activeMemoryEntries = activeMemoryDetail === 'long-term' ? longTermMemoryEntries : shortTermMemoryEntries;
   const activeMemoryStats = getMemoryLibraryStats(activeMemoryEntries);
   const activeMemoryYearGroups = groupMemoryLibraryEntriesByYear(activeMemoryEntries);
+  useEffect(() => {
+    if (!isEditingShortTermSummary) {
+      setShortTermSummaryDraft(shortTermSummary);
+    }
+  }, [isEditingShortTermSummary, shortTermSummary]);
+
+  useEffect(() => {
+    if (!isEditingLongTermMemoryProfile) {
+      setLongTermMemoryProfileDraft(longTermMemoryProfile);
+    }
+  }, [isEditingLongTermMemoryProfile, longTermMemoryProfile]);
+
   const effectiveMemoryLimit = clampDirectMemoryLimit(character.memoryLimit);
   const updateMemoryLimit = (value: unknown) => {
     onUpdate({ ...character, memoryLimit: clampDirectMemoryLimit(value) });
@@ -1050,7 +1084,18 @@ export function ChatSettingsPanel({
         return current;
       }
 
-      return activeMemoryEntries.find((entry) => entry.id === current.id) ?? null;
+      const nextEntry = activeMemoryEntries.find((entry) => entry.id === current.id) ?? null;
+      if (!nextEntry) {
+        return null;
+      }
+
+      return (
+        nextEntry.id === current.id
+        && nextEntry.content === current.content
+        && nextEntry.createdAt === current.createdAt
+      )
+        ? current
+        : nextEntry;
     });
 
     setActiveMemoryYear((current) => {
@@ -1058,9 +1103,21 @@ export function ChatSettingsPanel({
         return current;
       }
 
-      return activeMemoryYearGroups.find((group) => group.key === current.key) ?? null;
+      const nextGroup = activeMemoryYearGroups.find((group) => group.key === current.key) ?? null;
+      if (!nextGroup) {
+        return null;
+      }
+
+      return (
+        nextGroup.key === current.key
+        && nextGroup.totalEntries === current.totalEntries
+        && nextGroup.totalChars === current.totalChars
+        && nextGroup.latestCreatedAt === current.latestCreatedAt
+      )
+        ? current
+        : nextGroup;
     });
-  }, [activeMemoryDetail, character.memoryLibraryEntries]);
+  }, [activeMemoryDetail, activeMemoryEntries, activeMemoryYearGroups]);
 
   const appendSharedStickers = (stickers: string[]) => {
     const nextStickers = normalizeStickerEntries([
@@ -1732,6 +1789,60 @@ export function ChatSettingsPanel({
     calculateTokens();
   }, [character, history, masks, worldBooks]);
 
+  const commitManualShortTermSummary = async () => {
+    const nextText = normalizeOptionalText(shortTermSummaryDraft);
+    const currentText = normalizeOptionalText(shortTermSummary);
+    setIsEditingShortTermSummary(false);
+
+    if (nextText === currentText) {
+      return;
+    }
+
+    onUpdate({
+      ...character,
+      shortTermSummary: nextText || undefined,
+    });
+
+    if (!nextText) {
+      return;
+    }
+
+    await appendSnapshotMemoryRecord({
+      characterId: character.id,
+      snapshotType: 'short_term_summary',
+      text: nextText,
+      sourceScene: 'manual',
+    });
+    setMemoryRecordRefreshTick((current) => current + 1);
+  };
+
+  const commitManualLongTermMemoryProfile = async () => {
+    const nextText = normalizeOptionalText(longTermMemoryProfileDraft);
+    const currentText = normalizeOptionalText(longTermMemoryProfile);
+    setIsEditingLongTermMemoryProfile(false);
+
+    if (nextText === currentText) {
+      return;
+    }
+
+    onUpdate({
+      ...character,
+      longTermMemoryProfile: nextText || undefined,
+    });
+
+    if (!nextText) {
+      return;
+    }
+
+    await appendSnapshotMemoryRecord({
+      characterId: character.id,
+      snapshotType: 'long_term_profile',
+      text: nextText,
+      sourceScene: 'manual',
+    });
+    setMemoryRecordRefreshTick((current) => current + 1);
+  };
+
   const toggleMute = () => onUpdate({ ...character, isMuted: !character.isMuted });
   const togglePin = () => onUpdate({ ...character, isPinned: !character.isPinned });
 
@@ -1745,7 +1856,7 @@ export function ChatSettingsPanel({
     mode: 'small' | 'large';
     shortTermSummary: string;
     longTermMemoryProfile: string;
-    onComplete: (responseText: string) => void;
+    onComplete: (responseText: string) => void | Promise<void>;
     setLoading: (value: boolean) => void;
   }) => {
     if (!activeConfig?.apiKey) {
@@ -1809,7 +1920,7 @@ export function ChatSettingsPanel({
       }
 
       if (responseText.trim()) {
-        onComplete(responseText.trim());
+        await onComplete(responseText.trim());
         alert('总结完成！');
       }
     } catch (error: any) {
@@ -1826,15 +1937,19 @@ export function ChatSettingsPanel({
       mode: 'small',
       shortTermSummary,
       longTermMemoryProfile,
-      onComplete: (responseText) => onUpdate({
-        ...character,
-        shortTermSummary: responseText,
-        ...buildMemoryLibraryPatch(character, {
-          kind: 'short-term',
-          source: 'manual',
-          content: responseText,
-        }),
-      }),
+      onComplete: async (responseText) => {
+        onUpdate({
+          ...character,
+          shortTermSummary: responseText,
+        });
+        await appendSnapshotMemoryRecord({
+          characterId: character.id,
+          snapshotType: 'short_term_summary',
+          text: responseText,
+          sourceScene: 'direct_chat',
+        });
+        setMemoryRecordRefreshTick((current) => current + 1);
+      },
       setLoading: setIsShortTermSummarizing,
     });
   };
@@ -1844,16 +1959,20 @@ export function ChatSettingsPanel({
       mode: 'large',
       shortTermSummary,
       longTermMemoryProfile,
-      onComplete: (responseText) => onUpdate({
-        ...character,
-        shortTermSummary: compressShortTermSummaryAfterLongTerm(shortTermSummary),
-        longTermMemoryProfile: responseText,
-        ...buildMemoryLibraryPatch(character, {
-          kind: 'long-term',
-          source: 'manual',
-          content: responseText,
-        }),
-      }),
+      onComplete: async (responseText) => {
+        onUpdate({
+          ...character,
+          shortTermSummary: compressShortTermSummaryAfterLongTerm(shortTermSummary),
+          longTermMemoryProfile: responseText,
+        });
+        await appendSnapshotMemoryRecord({
+          characterId: character.id,
+          snapshotType: 'long_term_profile',
+          text: responseText,
+          sourceScene: 'direct_chat',
+        });
+        setMemoryRecordRefreshTick((current) => current + 1);
+      },
       setLoading: setIsLongTermSummarizing,
     });
   };
@@ -1875,10 +1994,18 @@ export function ChatSettingsPanel({
       return;
     }
 
-    onUpdate({
-      ...character,
-      memoryLibraryEntries: deleteMemoryLibraryEntry(character, entry.id),
-    });
+    if (entry.id.startsWith('record:')) {
+      await removeMemoryRecordById({
+        characterId: character.id,
+        recordId: entry.id.slice('record:'.length),
+      });
+      setMemoryRecordRefreshTick((current) => current + 1);
+    } else {
+      onUpdate({
+        ...character,
+        memoryLibraryEntries: deleteMemoryLibraryEntry(character, entry.id),
+      });
+    }
     setActiveMemoryEntry(null);
   };
 
@@ -1929,7 +2056,7 @@ export function ChatSettingsPanel({
     event.target.value = '';
   };
 
-  const applyMemoryImport = (mode: 'library-only' | 'set-short-term' | 'set-long-term') => {
+  const applyMemoryImport = async (mode: 'library-only' | 'set-short-term' | 'set-long-term') => {
     if (!pendingMemoryImport) {
       return;
     }
@@ -1946,12 +2073,53 @@ export function ChatSettingsPanel({
         ? (pendingMemoryImport.longTermCurrentText || fallbackCurrentText)
         : character.longTermMemoryProfile;
 
-    onUpdate({
-      ...character,
-      shortTermSummary: nextShortTermSummary,
-      longTermMemoryProfile: nextLongTermMemoryProfile,
-      memoryLibraryEntries: appendMemoryLibraryEntries(character, pendingMemoryImport.entries),
-    });
+    try {
+      await appendLibraryMemoryEntriesAsRecords({
+        characterId: character.id,
+        entries: pendingMemoryImport.entries,
+        noteType: 'imported',
+        sourceScene: 'manual',
+      });
+
+      if (mode === 'set-short-term' || mode === 'set-long-term') {
+        onUpdate({
+          ...character,
+          shortTermSummary: nextShortTermSummary,
+          longTermMemoryProfile: nextLongTermMemoryProfile,
+        });
+      }
+
+      if (mode === 'set-short-term' && nextShortTermSummary?.trim()) {
+        await appendSnapshotMemoryRecord({
+          characterId: character.id,
+          snapshotType: 'short_term_summary',
+          text: nextShortTermSummary,
+          sourceScene: 'manual',
+        });
+      }
+
+      if (mode === 'set-long-term' && nextLongTermMemoryProfile?.trim()) {
+        await appendSnapshotMemoryRecord({
+          characterId: character.id,
+          snapshotType: 'long_term_profile',
+          text: nextLongTermMemoryProfile,
+          sourceScene: 'manual',
+        });
+      }
+
+      setMemoryRecordRefreshTick((current) => current + 1);
+    } catch (error) {
+      console.error('[chat-settings] Failed to persist imported memory into memoryRecords, falling back to legacy library storage.', error);
+      onUpdate({
+        ...character,
+        shortTermSummary: nextShortTermSummary,
+        longTermMemoryProfile: nextLongTermMemoryProfile,
+        memoryLibraryEntries: [
+          ...pendingMemoryImport.entries,
+          ...(character.memoryLibraryEntries || []),
+        ].sort((left, right) => right.createdAt - left.createdAt),
+      });
+    }
 
     setPendingMemoryImport(null);
     setActiveMemoryEntry(null);
@@ -3491,8 +3659,12 @@ export function ChatSettingsPanel({
                       </div>
                       <div className="px-4 py-3">
                       <textarea
-                        value={shortTermSummary}
-                        onChange={e => onUpdate({ ...character, shortTermSummary: e.target.value })}
+                        value={shortTermSummaryDraft}
+                        onFocus={() => setIsEditingShortTermSummary(true)}
+                        onChange={e => setShortTermSummaryDraft(e.target.value)}
+                        onBlur={() => {
+                          void commitManualShortTermSummary();
+                        }}
                         placeholder="最近几轮互动的状态、余波、未完事项会出现在这里..."
                         className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[132px] resize-none"
                       />
@@ -3507,13 +3679,29 @@ export function ChatSettingsPanel({
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <button
-                            onClick={() => onUpdate({
-                              ...character,
-                              sharedState: rebuildSharedStateFromCharacter({
+                            onClick={async () => {
+                              const nextSharedState = rebuildSharedStateFromCharacter({
                                 character,
                                 updatedAt: Date.now(),
-                              }),
-                            })}
+                              });
+                              onUpdate({
+                                ...character,
+                                sharedState: nextSharedState,
+                              });
+
+                              const snapshotText = buildSharedStateSnapshotText(nextSharedState);
+                              if (!snapshotText.trim()) {
+                                return;
+                              }
+
+                              await appendSnapshotMemoryRecord({
+                                characterId: character.id,
+                                snapshotType: 'shared_state',
+                                text: snapshotText,
+                                sourceScene: nextSharedState.sourceScene,
+                              });
+                              setMemoryRecordRefreshTick((current) => current + 1);
+                            }}
                             className="rounded-lg border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-[12px] text-zinc-900 hover:bg-zinc-200"
                           >
                             重算状态卡
@@ -3566,8 +3754,12 @@ export function ChatSettingsPanel({
                       <div className="px-4 py-3">
                         <div className="mb-2 text-[11px] text-zinc-400">当前生效的长期画像</div>
                         <textarea
-                          value={longTermMemoryProfile}
-                          onChange={e => onUpdate({ ...character, longTermMemoryProfile: e.target.value })}
+                          value={longTermMemoryProfileDraft}
+                          onFocus={() => setIsEditingLongTermMemoryProfile(true)}
+                          onChange={e => setLongTermMemoryProfileDraft(e.target.value)}
+                          onBlur={() => {
+                            void commitManualLongTermMemoryProfile();
+                          }}
                           placeholder="长期沉淀下来的稳定印象、偏好、边界和相处模式会保存在这里..."
                           className="w-full bg-white/70 border border-white/40 rounded-xl px-3 py-3 text-[13px] outline-none focus:border-zinc-900 min-h-[180px] resize-none"
                         />

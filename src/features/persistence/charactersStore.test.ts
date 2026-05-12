@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { Character, MemoryLibraryEntry } from '../../types';
 import { loadJsonRecord, saveJsonRecord } from './browserJsonStore';
 import type { CharacterMemoryRecord } from './characterMemoryStore';
-import { loadPreferredCharacters, resetCharacters, saveCharacters } from './charactersStore';
+import { loadCharacters, loadPreferredCharacters, resetCharacters, saveCharacters } from './charactersStore';
 import { STORAGE_KEYS } from './storageKeys';
 import {
   clearPersistenceKeys,
@@ -41,7 +41,7 @@ function buildCharacter(overrides: Partial<Character> = {}): Character {
 
 async function clearCharacterPersistenceState() {
   resetCharacters();
-  await clearPersistenceKeys([STORAGE_KEYS.characters, STORAGE_KEYS.characterMemory]);
+  await clearPersistenceKeys([STORAGE_KEYS.characters, STORAGE_KEYS.characterMemory, STORAGE_KEYS.memoryRecords]);
 }
 
 test.beforeEach(async () => {
@@ -62,6 +62,10 @@ test('saveCharacters stores memory library in dedicated characterMemory store', 
 
   const persistedCharacters = await loadJsonRecord<Character[]>(STORAGE_KEYS.characters);
   const persistedCharacterMemory = await loadJsonRecord<CharacterMemoryRecord>(STORAGE_KEYS.characterMemory);
+  const persistedMemoryRecordIndex = await loadJsonRecord<{ characterIds?: string[] }>(STORAGE_KEYS.memoryRecords);
+  const persistedMemoryRecordShard = await loadJsonRecord<
+    Array<{ kind?: string; libraryKind?: string; librarySource?: string; text?: string }>
+  >(`${STORAGE_KEYS.memoryRecords}:character:${character.id}`);
   const localCharacters = JSON.parse(fakeLocalStorage.getItem(STORAGE_KEYS.characters) || '[]') as Character[];
   const localCharacterMemory = JSON.parse(fakeLocalStorage.getItem(STORAGE_KEYS.characterMemory) || '{}') as CharacterMemoryRecord;
 
@@ -73,8 +77,13 @@ test('saveCharacters stores memory library in dedicated characterMemory store', 
   assert.equal(localCharacters[0]?.lastMessage, undefined);
   assert.equal(localCharacters[0]?.lastTime, undefined);
   assert.equal(localCharacters[0]?.lastViewedMessageTimestamp, undefined);
-  assert.equal(persistedCharacterMemory?.['char-memory-test']?.[0]?.content, memoryEntry.content);
-  assert.equal(localCharacterMemory['char-memory-test']?.[0]?.content, memoryEntry.content);
+  assert.deepEqual(persistedCharacterMemory, {});
+  assert.deepEqual(localCharacterMemory, {});
+  assert.deepEqual(persistedMemoryRecordIndex?.characterIds, [character.id]);
+  assert.equal(persistedMemoryRecordShard?.[0]?.kind, 'note');
+  assert.equal(persistedMemoryRecordShard?.[0]?.libraryKind, 'short-term');
+  assert.equal(persistedMemoryRecordShard?.[0]?.librarySource, 'manual');
+  assert.equal(persistedMemoryRecordShard?.[0]?.text, memoryEntry.content);
 });
 
 test('loadPreferredCharacters rebuilds characters from dedicated characterMemory store', async () => {
@@ -87,8 +96,32 @@ test('loadPreferredCharacters rebuilds characters from dedicated characterMemory
   } satisfies CharacterMemoryRecord);
 
   const hydrated = await loadPreferredCharacters();
+  const migratedCharacterMemory = await loadJsonRecord<CharacterMemoryRecord>(STORAGE_KEYS.characterMemory);
+  const migratedMemoryRecordIndex = await loadJsonRecord<{ characterIds?: string[] }>(STORAGE_KEYS.memoryRecords);
+  const migratedMemoryRecordShard = await loadJsonRecord<
+    Array<{ kind?: string; libraryKind?: string; text?: string }>
+  >(`${STORAGE_KEYS.memoryRecords}:character:${strippedCharacter.id}`);
 
-  assert.equal(hydrated[0]?.memoryLibraryEntries?.[0]?.content, memoryEntry.content);
+  assert.equal(hydrated[0]?.memoryLibraryEntries, undefined);
+  assert.deepEqual(migratedCharacterMemory, {});
+  assert.deepEqual(migratedMemoryRecordIndex?.characterIds, [strippedCharacter.id]);
+  assert.equal(migratedMemoryRecordShard?.[0]?.kind, 'note');
+  assert.equal(migratedMemoryRecordShard?.[0]?.libraryKind, 'short-term');
+  assert.equal(migratedMemoryRecordShard?.[0]?.text, memoryEntry.content);
+});
+
+test('loadCharacters does not eagerly merge dedicated characterMemory store into runtime characters', async () => {
+  const memoryEntry = buildMemoryEntry();
+  const strippedCharacter = buildCharacter();
+
+  await saveJsonRecord(STORAGE_KEYS.characters, [strippedCharacter]);
+  await saveJsonRecord(STORAGE_KEYS.characterMemory, {
+    [strippedCharacter.id]: [memoryEntry],
+  } satisfies CharacterMemoryRecord);
+
+  const loaded = loadCharacters();
+
+  assert.equal(loaded[0]?.memoryLibraryEntries, undefined);
 });
 
 test('loadPreferredCharacters migrates legacy embedded memory entries into dedicated store', async () => {
@@ -106,11 +139,16 @@ test('loadPreferredCharacters migrates legacy embedded memory entries into dedic
   const hydrated = await loadPreferredCharacters();
   const persistedCharacters = await loadJsonRecord<Character[]>(STORAGE_KEYS.characters);
   const persistedCharacterMemory = await loadJsonRecord<CharacterMemoryRecord>(STORAGE_KEYS.characterMemory);
+  const migratedMemoryRecordIndex = await loadJsonRecord<{ characterIds?: string[] }>(STORAGE_KEYS.memoryRecords);
+  const migratedMemoryRecordShard = await loadJsonRecord<
+    Array<{ kind?: string; libraryKind?: string; text?: string }>
+  >(`${STORAGE_KEYS.memoryRecords}:character:char-legacy-memory`);
 
-  assert.equal(hydrated[0]?.memoryLibraryEntries?.[0]?.content, memoryEntry.content);
+  assert.equal(hydrated[0]?.memoryLibraryEntries, undefined);
   assert.equal(persistedCharacters?.[0]?.memoryLibraryEntries, undefined);
-  assert.equal(
-    persistedCharacterMemory?.['char-legacy-memory']?.[0]?.content,
-    memoryEntry.content,
-  );
+  assert.deepEqual(persistedCharacterMemory, {});
+  assert.deepEqual(migratedMemoryRecordIndex?.characterIds, ['char-legacy-memory']);
+  assert.equal(migratedMemoryRecordShard?.[0]?.kind, 'note');
+  assert.equal(migratedMemoryRecordShard?.[0]?.libraryKind, 'short-term');
+  assert.equal(migratedMemoryRecordShard?.[0]?.text, memoryEntry.content);
 });

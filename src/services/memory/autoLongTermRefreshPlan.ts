@@ -1,4 +1,6 @@
 import type { Character, MemoryLibraryEntry } from '../../types';
+import type { MemoryRecord } from './memoryRecordTypes';
+import { projectMemoryLibraryEntriesFromRecords } from './memoryRecordSnapshots';
 
 const DEFAULT_MIN_AUTO_SHORT_TERM_ENTRIES_BEFORE_LONG_TERM = 5;
 const DEFAULT_MIN_AUTO_SHORT_TERM_DAY_SPAN = 2;
@@ -16,7 +18,9 @@ type BuildAutoLongTermRefreshPlanInput = Pick<
   Character,
   'memoryLibraryEntries' | 'autoLongTermMinShortTermEntries' | 'autoLongTermMinDaySpan'
 > & {
+  characterId?: string;
   latestShortTermSummary?: string;
+  memoryRecords?: MemoryRecord[];
   pendingEntries?: MemoryLibraryEntry[];
 };
 
@@ -57,7 +61,24 @@ export function buildAutoLongTermRefreshPlan(
     ? Math.max(1, Math.floor(input.autoLongTermMinDaySpan as number))
     : DEFAULT_MIN_AUTO_SHORT_TERM_DAY_SPAN;
 
-  const entries = [...(input.pendingEntries || input.memoryLibraryEntries || [])]
+  const projectedEntries = input.characterId
+    ? [
+        ...projectMemoryLibraryEntriesFromRecords({
+          characterId: input.characterId,
+          kind: 'short-term',
+          records: input.memoryRecords,
+        }),
+        ...projectMemoryLibraryEntriesFromRecords({
+          characterId: input.characterId,
+          kind: 'long-term',
+          records: input.memoryRecords,
+        }),
+      ]
+    : [];
+  const sourceEntries = input.pendingEntries
+    ?? (projectedEntries.length > 0 ? projectedEntries : input.memoryLibraryEntries)
+    ?? [];
+  const entries = [...sourceEntries]
     .sort((left, right) => right.createdAt - left.createdAt);
   const latestLongTermAnchorTimestamp = getLatestLongTermAnchorTimestamp(entries);
   const pendingShortTermEntries = entries.filter((entry) => (

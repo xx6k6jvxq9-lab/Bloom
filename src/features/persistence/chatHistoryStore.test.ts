@@ -13,6 +13,7 @@ import {
   fakeLocalStorage,
   installPersistenceTestEnvironment,
 } from './testPersistenceHarness';
+import { appendSnapshotMemoryRecord } from '../../services/memory/memoryRecordSnapshots';
 
 function buildHistoryValue(text: string, timestamp: number): PersistedChatHistoryData {
   return {
@@ -51,17 +52,12 @@ test('loadPreferredChatHistoryRecords migrates legacy localStorage chat history 
   const persistedDirectSession = await loadJsonRecord<{ history?: Array<{ text?: string }> }>(
     `${STORAGE_KEYS.chatHistory}:direct:char-a`,
   );
-  const persistedMemoryRecords = await loadJsonRecord<{
-    recordsByCharacterId?: Record<string, Array<{ kind?: string; summary?: string }>>;
-  }>(STORAGE_KEYS.memoryRecords);
+  const memoryRecordShardKeys = await listJsonRecordKeys(`${STORAGE_KEYS.memoryRecords}:character:`);
 
   assert.equal(hydrated.directHistory['char-a']?.[0]?.text, 'legacy hello');
   assert.equal(persistedDirectSession?.history?.[0]?.text, 'legacy hello');
   assert.equal(Array.isArray(persistedIndex?.directSessionIds), true);
-  assert.equal(
-    persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.kind,
-    undefined,
-  );
+  assert.deepEqual(memoryRecordShardKeys, []);
   assert.equal(fakeLocalStorage.getItem(STORAGE_KEYS.chatHistory), null);
 });
 
@@ -74,17 +70,14 @@ test('saveChatHistoryRecords writes sharded chat sessions into IndexedDB', async
   const persistedDirectSession = await loadJsonRecord<{ history?: Array<{ text?: string }> }>(
     `${STORAGE_KEYS.chatHistory}:direct:char-a`,
   );
-  const persistedMemoryRecords = await loadJsonRecord<{
-    recordsByCharacterId?: Record<string, Array<{ kind?: string; summary?: string }>>;
-  }>(STORAGE_KEYS.memoryRecords);
+  const persistedMemoryRecordIndex = await loadJsonRecord<{ characterIds?: string[] }>(STORAGE_KEYS.memoryRecords);
+  const memoryRecordShardKeys = await listJsonRecordKeys(`${STORAGE_KEYS.memoryRecords}:character:`);
   const shardKeys = await listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:direct:`);
 
   assert.equal(Array.isArray(persistedIndex?.directSessionIds), true);
   assert.equal(persistedDirectSession?.history?.[0]?.text, 'idb only');
-  assert.equal(
-    Array.isArray(persistedMemoryRecords?.recordsByCharacterId?.['char-a']),
-    false,
-  );
+  assert.equal(Array.isArray(persistedMemoryRecordIndex?.characterIds), true);
+  assert.deepEqual(memoryRecordShardKeys, []);
   assert.deepEqual(shardKeys, [`${STORAGE_KEYS.chatHistory}:direct:char-a`]);
   assert.equal(fakeLocalStorage.getItem(STORAGE_KEYS.chatHistory), null);
 });
@@ -183,11 +176,73 @@ test('saveChatHistoryRecords also writes derived memory records from fact traces
 
   await saveChatHistoryRecords(nextHistory);
 
-  const persistedMemoryRecords = await loadJsonRecord<{
-    recordsByCharacterId?: Record<string, Array<{ kind?: string; factType?: string; summary?: string }>>;
-  }>(STORAGE_KEYS.memoryRecords);
+  const persistedMemoryRecordIndex = await loadJsonRecord<{ characterIds?: string[] }>(STORAGE_KEYS.memoryRecords);
+  const persistedMemoryRecordShard = await loadJsonRecord<
+    Array<{ kind?: string; factType?: string; summary?: string }>
+  >(`${STORAGE_KEYS.memoryRecords}:character:char-a`);
 
-  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.kind, 'fact');
-  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.factType, 'preference');
-  assert.equal(persistedMemoryRecords?.recordsByCharacterId?.['char-a']?.[0]?.summary, '最近喜欢热可可');
+  assert.deepEqual(persistedMemoryRecordIndex?.characterIds, ['char-a']);
+  assert.equal(persistedMemoryRecordShard?.[0]?.kind, 'fact');
+  assert.equal(persistedMemoryRecordShard?.[0]?.factType, 'preference');
+  assert.equal(persistedMemoryRecordShard?.[0]?.summary, '最近喜欢热可可');
+});
+
+test('saveChatHistoryRecords preserves snapshot records while refreshing derived evidence', async () => {
+  await appendSnapshotMemoryRecord({
+    characterId: 'char-a',
+    snapshotType: 'short_term_summary',
+    text: '刚总结过一版短期状态',
+    sourceScene: 'direct_chat',
+    timestamp: 777,
+  });
+
+  await saveChatHistoryRecords({
+    updatedAt: 999,
+    directHistory: {
+      'char-a': [
+        {
+          role: 'model',
+          text: '最近喜欢热可可',
+          timestamp: 999,
+        },
+      ],
+    },
+    directSessionMetadata: {},
+    directRelationshipWaves: {},
+    directFactTraces: {
+      'char-a': [
+        {
+          sourceScene: 'direct_chat',
+          factType: 'preference',
+          subjectType: 'character',
+          subjectId: 'char-a',
+          relatedCharacterIds: ['char-a'],
+          visibility: 'cross_scene_readable',
+          stability: 'situational',
+          confidence: 'explicit',
+          summary: '最近喜欢热可可',
+          timestamp: 999,
+          decayHint: 'medium',
+        },
+      ],
+    },
+    groupSessions: {},
+  });
+
+  const persistedMemoryRecordShard = await loadJsonRecord<
+    Array<{ kind?: string; snapshotType?: string; summary?: string }>
+  >(`${STORAGE_KEYS.memoryRecords}:character:char-a`);
+
+  assert.equal(
+    persistedMemoryRecordShard?.some((record) => (
+      record.kind === 'snapshot' && record.snapshotType === 'short_term_summary'
+    )),
+    true,
+  );
+  assert.equal(
+    persistedMemoryRecordShard?.some((record) => (
+      record.kind === 'fact' && record.summary === '最近喜欢热可可'
+    )),
+    true,
+  );
 });

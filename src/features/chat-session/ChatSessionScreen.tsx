@@ -36,6 +36,7 @@ import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAss
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { hasOpenedCoupleSpaceForCharacter } from '../chat-runtime/coupleSpaceInviteGuard';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
+import { appendWorkingMemorySnapshots } from '../../services/memory/memoryRecordSnapshots';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
@@ -3717,6 +3718,15 @@ export function ChatSessionScreen({
                 sharedState: settlement.sharedState,
               });
             }
+            void appendWorkingMemorySnapshots({
+              characterId: character.id,
+              sourceScene: 'dating',
+              shortTermSummary: settlement.shortTermSummary,
+              sharedState: settlement.sharedState,
+              timestamp: archivedSession.endedAt || Date.now(),
+            }).catch((error) => {
+              console.error('[chat-session] Failed to persist dating settlement memory snapshots', error);
+            });
             if (!returnChatText.trim()) {
               return;
             }

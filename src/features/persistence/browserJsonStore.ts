@@ -70,6 +70,18 @@ export async function removeJsonRecord(key: string): Promise<void> {
   });
 }
 
+export async function listJsonRecordKeys(prefix?: string): Promise<string[]> {
+  return runTransaction<string[]>('readonly', (store, resolve, reject) => {
+    const request = store.getAllKeys();
+    request.onsuccess = () => {
+      const allKeys = (request.result as Array<string | number | Date>)
+        .map((key) => String(key));
+      resolve(prefix ? allKeys.filter((key) => key.startsWith(prefix)) : allKeys);
+    };
+    request.onerror = () => reject(request.error ?? new Error('Failed to list JSON record keys'));
+  });
+}
+
 export async function clearJsonRecords(): Promise<void> {
   return runTransaction<void>('readwrite', (store, resolve, reject) => {
     const request = store.clear();

@@ -1,13 +1,22 @@
 import type { AppData, AppSettings } from '../../types';
 import { clearAssets, listAssets, putAsset, type StoredAssetRecord } from './browserDb';
-import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { listJsonRecordKeys, loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { removeLocalStorageValue, syncLocalStorageJsonValue } from './localConfigStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
 import {
+  buildCharacterMemoryRecord,
+  mergeCharacterMemoryIntoCharacters,
+  stripCharacterMemoryFromCharacters,
+} from './characterMemoryStore';
+import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
+import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../services/memory/memoryRecordSnapshots';
+import { loadMemoryRecordData } from './memoryRecordStore';
+import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
   extractGroupSessions,
 } from './chatHistoryStore';
 
@@ -35,6 +44,8 @@ export type FullBackupArchive = {
 export type ModularBackupModules = {
   settings: unknown;
   characters: unknown;
+  characterMemory: unknown;
+  memoryRecords: unknown;
   chatHistory: unknown;
   chatOrganization: unknown;
   perception: unknown;
@@ -236,18 +247,35 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
     resolvedAppData.coupleSpaceState,
     resolvedAppData.coupleSpace,
   );
+  const characters = resolvedAppData.characters ?? [];
   const directHistory = resolvedAppData.chatHistory ?? {};
   const chatGroups = resolvedAppData.chatGroups ?? [];
+  const persistedChatHistory = {
+    directHistory,
+    directSessionMetadata: extractDirectSessionMetadata(characters, directHistory),
+    directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
+    directFactTraces: extractDirectFactTraces(directHistory),
+    groupSessions: extractGroupSessions(chatGroups),
+  };
+  const legacyCharacterMemory = buildCharacterMemoryRecord(characters);
+  const fallbackMemoryRecords = buildMemoryRecordDataFromChatHistory(persistedChatHistory);
+  const mergedMemoryRecords = mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+    (
+      modules?.memoryRecords
+      && typeof modules.memoryRecords === 'object'
+      && !Array.isArray(modules.memoryRecords)
+        ? modules.memoryRecords
+        : loadMemoryRecordData(fallbackMemoryRecords)
+    ) as ReturnType<typeof loadMemoryRecordData>,
+    legacyCharacterMemory,
+  );
 
   return {
     settings,
-    characters: resolvedAppData.characters ?? [],
-    chatHistory: {
-      directHistory,
-      directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
-      directFactTraces: extractDirectFactTraces(directHistory),
-      groupSessions: extractGroupSessions(chatGroups),
-    },
+    characters: stripCharacterMemoryFromCharacters(characters),
+    characterMemory: {},
+    memoryRecords: mergedMemoryRecords,
+    chatHistory: persistedChatHistory,
     chatOrganization: {
       groups: resolvedAppData.groups ?? [],
       chatGroups,
@@ -638,12 +666,23 @@ export async function clearAllPersistentData(): Promise<void> {
     window.localStorage.removeItem(key);
   });
 
+  const [directChatShardKeys, groupChatShardKeys, memoryRecordShardKeys] = await Promise.all([
+    listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:direct:`).catch(() => [] as string[]),
+    listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:group:`).catch(() => [] as string[]),
+    listJsonRecordKeys(`${STORAGE_KEYS.memoryRecords}:character:`).catch(() => [] as string[]),
+  ]);
+
   await Promise.all([
     clearAssets().catch((error) => {
       console.error('[backupArchive] Failed to clear IndexedDB assets during reset', error);
     }),
     Promise.all(
-      Object.values(STORAGE_KEYS).map((key) =>
+      [
+        ...Object.values(STORAGE_KEYS),
+        ...directChatShardKeys,
+        ...groupChatShardKeys,
+        ...memoryRecordShardKeys,
+      ].map((key) =>
         removeJsonRecord(key).catch((error) => {
           console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during reset`, error);
         }),
@@ -653,8 +692,15 @@ export async function clearAllPersistentData(): Promise<void> {
 }
 
 function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<string, unknown> {
+  const legacyCharacters = Array.isArray(modules.characters)
+    ? mergeCharacterMemoryIntoCharacters(
+        modules.characters as AppData['characters'],
+        (modules.characterMemory as ReturnType<typeof buildCharacterMemoryRecord> | null | undefined) ?? {},
+      )
+    : [];
+
   return {
-    characters: modules.characters,
+    characters: legacyCharacters,
     chatHistory: (modules.chatHistory as { directHistory?: unknown } | null | undefined)?.directHistory ?? {},
     groups: (modules.chatOrganization as { groups?: unknown } | null | undefined)?.groups ?? [],
     chatGroups: (modules.chatOrganization as { chatGroups?: unknown } | null | undefined)?.chatGroups ?? [],
@@ -694,6 +740,8 @@ async function restoreModularModules(
       message: '正在恢复角色与组织数据',
       entries: [
         { key: STORAGE_KEYS.characters, value: modules.characters },
+        { key: STORAGE_KEYS.characterMemory, value: modules.characterMemory },
+        { key: STORAGE_KEYS.memoryRecords, value: modules.memoryRecords },
         { key: STORAGE_KEYS.chatOrganization, value: modules.chatOrganization },
         { key: STORAGE_KEYS.meData, value: modules.meData },
         { key: STORAGE_KEYS.friendRequests, value: modules.friendRequests },

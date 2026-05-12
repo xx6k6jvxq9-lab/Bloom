@@ -41,7 +41,9 @@ import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
-import { saveUploadedDataUrl } from '../persistence/persistentAssetService';
+import { buildResolvedOpenLoopRegistry } from '../../services/memory/buildResolvedOpenLoopRegistry';
+import { appendWorkingMemorySnapshots } from '../../services/memory/memoryRecordSnapshots';
+import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistentAssetService';
 
 type UseGroupChatRuntimeArgs = {
   members: Character[];
@@ -1152,6 +1154,15 @@ export function useGroupChatRuntime({
       openLoopRegistry: settlement.openLoopRegistry,
       ...(sharedState ? { sharedState } : {}),
     });
+    void appendWorkingMemorySnapshots({
+      characterId: speaker.id,
+      sourceScene: 'group_chat',
+      shortTermSummary: settlement.shortTermSummary,
+      sharedState,
+      timestamp: latestTimestamp,
+    }).catch((error) => {
+      console.error('[group-chat] Failed to persist settlement memory snapshots', error);
+    });
   }, [patchCharacter]);
 
   const clearDelayedSpeakerTimer = useCallback(() => {
@@ -1410,7 +1421,7 @@ export function useGroupChatRuntime({
         sceneInput,
       }),
       buildOpenLoopRegistryPrompt({
-        existingEntries: params.speaker.openLoopRegistry,
+        existingEntries: buildResolvedOpenLoopRegistry(params.speaker),
         shortTermSummary: params.speaker.shortTermSummary,
         recentMessages: contextLayers.memoryMessages,
       }),
@@ -3494,19 +3505,31 @@ export function useGroupChatRuntime({
 
   const persistImageValueIfNeeded = useCallback(async (imageValue: string) => {
     const trimmedImageValue = imageValue.trim();
-    if (!/^data:image\//i.test(trimmedImageValue)) {
+    if (!trimmedImageValue) {
       return trimmedImageValue;
     }
 
-    try {
-      return await saveUploadedDataUrl(
-        trimmedImageValue,
-        `group-chat-image-${Date.now()}.png`,
-      );
-    } catch (error) {
-      console.error('Failed to persist group chat image payload before send', error);
-      return trimmedImageValue;
+    if (/^data:image\//i.test(trimmedImageValue)) {
+      try {
+        return await saveUploadedDataUrl(
+          trimmedImageValue,
+          `group-chat-image-${Date.now()}.png`,
+        );
+      } catch (error) {
+        console.error('Failed to persist group chat image payload before send', error);
+        return trimmedImageValue;
+      }
     }
+
+    if (/^https?:\/\//i.test(trimmedImageValue)) {
+      try {
+        return await cacheRemoteAsset(trimmedImageValue, `group-chat-image-${Date.now()}`);
+      } catch (error) {
+        console.error('Failed to cache group chat remote image before send', error);
+      }
+    }
+
+    return trimmedImageValue;
   }, []);
 
   const sendImageMessage = useCallback(async (imageValue: string) => {

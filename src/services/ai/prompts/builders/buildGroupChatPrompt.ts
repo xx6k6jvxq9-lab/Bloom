@@ -2,6 +2,7 @@ import { EXISTENCE_PROMPT } from '../base/existence';
 import { GROUP_CHAT_SCENARIO_PROMPT } from '../scenarios/groupChat';
 import { buildReplyLanguageRules } from '../base/languageRules';
 import type { GroupChatSceneInput } from '../../../scene-inputs/buildGroupChatSceneInput';
+import { buildMemoryRetrievalPromptFromView } from '../../../memory/buildMemoryRetrievalPrompt';
 
 export type BuildGroupChatPromptOptions = {
   sceneInput: GroupChatSceneInput;
@@ -93,6 +94,9 @@ function buildRecentContextBlock(sceneInput: GroupChatSceneInput): string {
     ),
     sceneInput.recentContext?.sharedRecentRelationshipSummary
       ? `跨场景共享关系余波：${sceneInput.recentContext.sharedRecentRelationshipSummary}`
+      : '',
+    sceneInput.recentContext?.retrievedMemory
+      ? buildMemoryRetrievalPromptFromView(sceneInput.recentContext.retrievedMemory)
       : '',
     sceneInput.recentContext?.sharedCharacterStatePrompt || '',
     sceneInput.recentContext?.relationshipTensionSummary

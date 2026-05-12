@@ -63,6 +63,24 @@ test('queryMemoryRecords filters by metadata and keyword relevance', async () =>
           confidence: 'explicit',
           relatedCharacterIds: ['char-query'],
         },
+        {
+          id: 'note-cold-night',
+          kind: 'note',
+          sourceScene: 'manual',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'char-query',
+          sourceEventIds: [],
+          characterIds: ['char-query'],
+          visibility: 'cross_scene_readable',
+          stability: 'stable',
+          decayHint: 'stable',
+          summary: '你怕冷，夜里聊天时会下意识照顾你。',
+          timestamp: now - 900,
+          noteType: 'imported',
+          libraryKind: 'long-term',
+          librarySource: 'manual',
+          text: '你怕冷，夜里聊天时会下意识照顾你。',
+        },
       ],
     },
   });
@@ -123,6 +141,24 @@ test('buildMemoryPromptView groups stable preferences and open tasks separately'
           confidence: 'explicit',
           relatedCharacterIds: ['char-query'],
         },
+        {
+          id: 'note-cold-night',
+          kind: 'note',
+          sourceScene: 'manual',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'char-query',
+          sourceEventIds: [],
+          characterIds: ['char-query'],
+          visibility: 'cross_scene_readable',
+          stability: 'stable',
+          decayHint: 'stable',
+          summary: '你怕冷，夜里聊天时会下意识照顾你。',
+          timestamp: now - 900,
+          noteType: 'imported',
+          libraryKind: 'long-term',
+          librarySource: 'manual',
+          text: '你怕冷，夜里聊天时会下意识照顾你。',
+        },
       ],
     },
   });
@@ -134,6 +170,10 @@ test('buildMemoryPromptView groups stable preferences and open tasks separately'
   const prompt = buildMemoryRetrievalPromptFromView(view);
 
   assert.equal(view.stablePreferences[0]?.record.id, 'fact-cocoa');
+  assert.equal(
+    view.stablePreferences.some((result) => result.record.id === 'note-cold-night'),
+    true,
+  );
   assert.equal(view.openTasks[0]?.record.id, 'plan-movie');
   assert.match(prompt, /Retrieved Related Facts/);
   assert.match(prompt, /Stable Preferences And Background/);

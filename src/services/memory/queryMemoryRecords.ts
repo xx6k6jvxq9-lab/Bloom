@@ -93,7 +93,11 @@ function matchesMetadata(record: MemoryRecord, query: MemoryQuery): boolean {
 }
 
 function scoreRecord(record: MemoryRecord, queryTerms: string[], nowTimestamp: number): MemoryQueryResult | null {
-  const summary = normalizeText(record.summary);
+  const summary = normalizeText(
+    record.kind === 'snapshot' || record.kind === 'note'
+      ? record.text
+      : record.summary,
+  );
   const matchedTerms: string[] = [];
   let score = 0;
 
