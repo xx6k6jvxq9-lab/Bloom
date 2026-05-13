@@ -125,6 +125,20 @@ function buildDefaultCounterSystemLine(input: LightInteractionGenerationInput) {
   return `${input.target.label}拍了拍${counterTarget}`;
 }
 
+function buildDefaultAssistantBubbles(input: LightInteractionGenerationInput) {
+  if (input.scene === 'direct' && input.actor.role === 'character') {
+    return ['拍你一下。'];
+  }
+
+  return ['……你拍我干嘛。'];
+}
+
+function getAssistantSpeakerCharacter(input: LightInteractionGenerationInput) {
+  return input.scene === 'direct'
+    ? input.responderCharacter
+    : input.target.character;
+}
+
 function extractJsonPayload(rawText: string) {
   const fencedMatch = rawText.match(JSON_CODE_BLOCK_REGEX);
   if (fencedMatch?.[1]) {
@@ -222,10 +236,11 @@ function normalizeAssistantBubbles(
   rawValue: unknown,
   input: LightInteractionGenerationInput,
 ) {
-  const aliases = [input.target.character.name, input.target.character.remarkName?.trim() || '']
+  const speakerCharacter = getAssistantSpeakerCharacter(input);
+  const aliases = [speakerCharacter.name, speakerCharacter.remarkName?.trim() || '']
     .filter((value): value is string => !!value);
   const defaultMaxBubbleCount = input.scene === 'group' ? 2 : 3;
-  const maxBubbleCount = Math.max(1, Math.min(Math.floor(input.target.character.maxReplies || defaultMaxBubbleCount), 5));
+  const maxBubbleCount = Math.max(1, Math.min(Math.floor(speakerCharacter.maxReplies || defaultMaxBubbleCount), 5));
   const resolvedBubbles: string[] = [];
 
   for (const rawBubble of normalizeRawBubbleEntries(rawValue)) {
@@ -277,6 +292,13 @@ function normalizeCounterAction(
   rawValue: unknown,
   input: LightInteractionGenerationInput,
 ) {
+  if (input.scene === 'direct' && input.actor.role === 'character') {
+    return {
+      type: 'none' as const,
+      systemLine: '',
+    };
+  }
+
   const defaultSystemLine = buildDefaultCounterSystemLine(input);
 
   if (rawValue === true) {
@@ -406,7 +428,7 @@ function buildFallbackResult(
     type: input.type,
     scene: input.scene,
     systemLine: normalizeSystemLine(systemCandidate, input, fallbackSystemLine),
-    assistantBubbles: assistantBubbles.length > 0 ? assistantBubbles : ['……你拍我干嘛。'],
+    assistantBubbles: assistantBubbles.length > 0 ? assistantBubbles : buildDefaultAssistantBubbles(input),
     counterAction: {
       type: 'none',
       systemLine: '',
@@ -467,7 +489,7 @@ function parseLightInteractionResult(
       type: input.type,
       scene: input.scene,
       systemLine: normalizedSystemLine,
-      assistantBubbles: assistantBubbles.length > 0 ? assistantBubbles : ['……你拍我干嘛。'],
+      assistantBubbles: assistantBubbles.length > 0 ? assistantBubbles : buildDefaultAssistantBubbles(input),
       ...(spectatorReply ? { spectatorReply } : {}),
       counterAction,
       ...(nextActions.length > 0 ? { nextActions } : {}),

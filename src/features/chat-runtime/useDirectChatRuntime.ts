@@ -1762,6 +1762,7 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSend: (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   sendPokeInteraction: () => Promise<void>;
+  sendCharacterPokeInteraction: () => Promise<void>;
   requestManualReply: () => void;
   handleVoiceCallAIResponse: (userText: string) => Promise<{
     text: string;
@@ -3422,12 +3423,11 @@ export function useDirectChatRuntime({
     });
   }, []);
 
-  const sendPokeInteraction = useCallback(async () => {
+  const runDirectPokeInteraction = useCallback(async (actorRole: 'user' | 'character') => {
     if (isLoading) {
       return;
     }
 
-    const blockState = getCharacterBlockState(character);
     const blockedInteractionError = getDirectChatBlockedManualReplyError(character);
     if (blockedInteractionError) {
       setErrorState(blockedInteractionError);
@@ -3444,7 +3444,9 @@ export function useDirectChatRuntime({
 
     await runGeneration(async ({ generationId, isCurrent }) => {
       try {
-        const targetDisplayLabel = character.remarkName?.trim() || character.name;
+        const characterDisplayLabel = character.remarkName?.trim() || character.name;
+        const actorLabel = actorRole === 'character' ? characterDisplayLabel : '你';
+        const targetLabel = actorRole === 'character' ? '你' : characterDisplayLabel;
         const recentPokeState = collectRecentDirectPokeState(baseHistory);
         const historyLimit = getDirectMemoryMessageLimit(character.memoryLimit);
         const characterTemporalState = buildCharacterTemporalState({
@@ -3474,7 +3476,9 @@ export function useDirectChatRuntime({
 
           return !!entry.isActive && (entry.isGlobal || entry.characterIds?.includes(character.id));
         });
-        const latestVisibleUserText = getLatestVisibleDirectUserText(baseHistory) || '拍一拍互动';
+        const latestVisibleUserText = getLatestVisibleDirectUserText(baseHistory) || (
+          actorRole === 'character' ? '角色主动拍一拍' : '拍一拍互动'
+        );
 
         let perceptionPrompt = buildTemporalContextPrompt({
           perception,
@@ -3518,13 +3522,20 @@ export function useDirectChatRuntime({
           activeConfig,
           type: 'poke',
           scene: 'direct',
-          actor: {
-            role: 'user',
-            label: '你',
-          },
+          actor: actorRole === 'character'
+            ? {
+                role: 'character',
+                label: actorLabel,
+                characterId: character.id,
+              }
+            : {
+                role: 'user',
+                label: actorLabel,
+              },
+          responderCharacter: character,
           target: {
             character,
-            label: targetDisplayLabel,
+            label: targetLabel,
           },
           sceneInput: chatSceneInput,
           recentMessages: contextLayers.liveMessages,
@@ -3546,20 +3557,22 @@ export function useDirectChatRuntime({
           type: 'poke' as const,
           scene: 'direct' as const,
           interactionId,
-          actorRole: 'user' as const,
-          actorLabel: '你',
-          targetLabel: targetDisplayLabel,
+          actorRole,
+          actorLabel,
+          targetLabel,
           mood: interactionResult.interactionState?.mood,
           streak: interactionResult.interactionState?.streak ?? recentPokeState.upcomingStreak,
           descriptors: interactionResult.interactionState?.recentDescriptors,
           nextActions: interactionResult.nextActions,
-          counterActionType: interactionResult.counterAction?.type ?? 'none',
+          counterActionType: actorRole === 'user'
+            ? interactionResult.counterAction?.type ?? 'none'
+            : 'none',
         };
-        const normalizedCounterSystemLine = interactionResult.counterAction?.type === 'poke_back'
+        const normalizedCounterSystemLine = actorRole === 'user' && interactionResult.counterAction?.type === 'poke_back'
           ? (
               interactionResult.counterAction.systemLine?.trim().includes('拍')
                 ? interactionResult.counterAction.systemLine.trim()
-                : `${targetDisplayLabel}拍了拍你`
+                : `${characterDisplayLabel}拍了拍你`
             )
           : '';
         const nextMessages: ChatMessage[] = [
@@ -3599,7 +3612,10 @@ export function useDirectChatRuntime({
         commitHistory(finalHistory);
 
         if (interactionResult.assistantBubbles.length > 0) {
-          queueAutoAudioForLatestModelReply(finalHistory, '拍一拍');
+          queueAutoAudioForLatestModelReply(
+            finalHistory,
+            actorRole === 'character' ? 'TA拍你' : '拍一拍',
+          );
         }
 
         syncCharacterRuntimeState({
@@ -3637,6 +3653,14 @@ export function useDirectChatRuntime({
     userName,
     worldBook,
   ]);
+
+  const sendPokeInteraction = useCallback(async () => {
+    await runDirectPokeInteraction('user');
+  }, [runDirectPokeInteraction]);
+
+  const sendCharacterPokeInteraction = useCallback(async () => {
+    await runDirectPokeInteraction('character');
+  }, [runDirectPokeInteraction]);
 
   const sendCoupleSpaceInvitation = useCallback(() => {
     if (pendingCoupleSpaceInviteRef.current) {
@@ -4240,6 +4264,7 @@ export function useDirectChatRuntime({
     handleSend,
     handleSendRef,
     sendPokeInteraction,
+    sendCharacterPokeInteraction,
     requestManualReply,
     handleVoiceCallAIResponse,
     sendImageMessage,
