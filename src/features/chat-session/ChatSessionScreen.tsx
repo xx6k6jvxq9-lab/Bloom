@@ -679,6 +679,7 @@ export function ChatSessionScreen({
     sendStickerMessage,
     sendLocationMessage,
     sendPokeInteraction,
+    sendCharacterPokeInteraction,
     sendCoupleSpaceInvitation,
     sendInnerVoiceProbe,
     sendSpeechTranscript,
@@ -3492,6 +3493,24 @@ export function ChatSessionScreen({
                       <Hand size={28} />
                     </div>
                     <span className="text-[12px] text-zinc-600">拍一拍</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowFunPanel(false);
+                      void sendCharacterPokeInteraction();
+                    }}
+                    disabled={shouldPauseDirectChatComposer || isLoading}
+                    className="chat-footer-fun-action flex flex-col items-center gap-2 disabled:cursor-not-allowed"
+                  >
+                    <div className={`chat-footer-fun-action-icon w-14 h-14 rounded-2xl flex items-center justify-center transition-transform ${
+                      shouldPauseDirectChatComposer || isLoading
+                        ? 'bg-zinc-100/70 text-zinc-300'
+                        : 'bg-zinc-100 text-zinc-900 active:scale-95'
+                    }`}>
+                      <Hand size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">TA拍你</span>
                   </button>
                   
                   <button 

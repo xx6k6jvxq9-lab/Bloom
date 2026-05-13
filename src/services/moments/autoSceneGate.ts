@@ -1,5 +1,5 @@
 import type { Character } from '../../types';
-import { rebuildSharedStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
+import { buildSceneSignalsFromRecords } from '../memory/sceneSignalRecords';
 import type { AutoMomentSchedulerTrigger } from './autoScheduler';
 
 export type AutoMomentSceneGateDecision = {
@@ -26,6 +26,41 @@ const STRONG_CHARACTER_SOURCE_SCENES = new Set<NonNullable<Character['sharedStat
   'music_together',
   'couple_space',
 ]);
+
+function resolveLatestStrongSceneEvidence(character: Character): {
+  sourceScene: NonNullable<Character['sharedState']>['sourceScene'];
+  updatedAt: number;
+} | null {
+  const recordSignals = buildSceneSignalsFromRecords({
+    characterId: character.id,
+    nowTimestamp: Date.now(),
+  });
+  const latestRecordSignal = [
+    ...(recordSignals.relationshipResidue || []),
+    ...(recordSignals.sceneResidue || []),
+    ...(recordSignals.topicAnchors || []),
+    ...(recordSignals.taskResidue || []),
+  ]
+    .filter((item) => STRONG_CHARACTER_SOURCE_SCENES.has(item.sourceScene))
+    .sort((left, right) => right.timestamp - left.timestamp)[0];
+
+  if (latestRecordSignal) {
+    return {
+      sourceScene: latestRecordSignal.sourceScene,
+      updatedAt: latestRecordSignal.timestamp,
+    };
+  }
+
+  const sharedState = character.sharedState;
+  if (!sharedState || !STRONG_CHARACTER_SOURCE_SCENES.has(sharedState.sourceScene)) {
+    return null;
+  }
+
+  return {
+    sourceScene: sharedState.sourceScene,
+    updatedAt: sharedState.updatedAt || 0,
+  };
+}
 
 export function isStrongAutoMomentInteractionSurface(activeApp: string) {
   return STRONG_INTERACTION_SURFACES.has(activeApp);
@@ -59,14 +94,12 @@ export function getCharacterAutoMomentSceneGate(options: {
     };
   }
 
-  const sharedState = rebuildSharedStateFromCharacter({
-    character,
-  });
-  if (!sharedState || !STRONG_CHARACTER_SOURCE_SCENES.has(sharedState.sourceScene)) {
+  const strongSceneEvidence = resolveLatestStrongSceneEvidence(character);
+  if (!strongSceneEvidence) {
     return { allowed: true };
   }
 
-  const updatedAt = sharedState.updatedAt || 0;
+  const updatedAt = strongSceneEvidence.updatedAt || 0;
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
     return { allowed: true };
   }
@@ -75,14 +108,14 @@ export function getCharacterAutoMomentSceneGate(options: {
     if (trigger === 'manual_refresh') {
       return {
         allowed: true,
-        reason: `recent-${sharedState.sourceScene}`,
+        reason: `recent-${strongSceneEvidence.sourceScene}`,
         restriction: 'scene_carryover_only',
       };
     }
 
     return {
       allowed: false,
-      reason: `recent-${sharedState.sourceScene}`,
+      reason: `recent-${strongSceneEvidence.sourceScene}`,
     };
   }
 

@@ -3,7 +3,15 @@ import test from 'node:test';
 import { parseLightInteractionResult } from './generateLightInteraction';
 import type { DirectLightInteractionGenerationInput } from './lightInteractionTypes';
 
-function createDirectInput(): DirectLightInteractionGenerationInput {
+function createDirectInput(
+  overrides: Partial<DirectLightInteractionGenerationInput> = {},
+): DirectLightInteractionGenerationInput {
+  const responderCharacter = {
+    id: 'char-1',
+    name: '小悟',
+    maxReplies: 3,
+  } as DirectLightInteractionGenerationInput['responderCharacter'];
+
   return {
     activeConfig: { provider: 'gemini', model: 'test-model' } as DirectLightInteractionGenerationInput['activeConfig'],
     type: 'poke',
@@ -12,16 +20,14 @@ function createDirectInput(): DirectLightInteractionGenerationInput {
       role: 'user',
       label: '你',
     },
+    responderCharacter,
     target: {
       label: '小悟',
-      character: {
-        id: 'char-1',
-        name: '小悟',
-        maxReplies: 3,
-      } as DirectLightInteractionGenerationInput['target']['character'],
+      character: responderCharacter,
     },
     sceneInput: {} as DirectLightInteractionGenerationInput['sceneInput'],
     recentMessages: [],
+    ...overrides,
   };
 }
 
@@ -39,6 +45,8 @@ test('parseLightInteractionResult strips malformed fenced JSON scaffolding from 
     '    "type": "none",',
     '    "systemLine": ""',
     '  }',
+    '}',
+    '```',
   ].join('\n');
 
   const result = parseLightInteractionResult(rawText, input);
@@ -63,4 +71,41 @@ test('parseLightInteractionResult repairs trailing commas before parsing JSON pa
 
   assert.equal(result.systemLine, '你拍了拍小悟');
   assert.deepEqual(result.assistantBubbles, ['别拍。', '说事。']);
+});
+
+test('parseLightInteractionResult drops counterAction when the character initiates a direct poke', () => {
+  const responderCharacter = {
+    id: 'char-1',
+    name: '小悟',
+    maxReplies: 3,
+  } as DirectLightInteractionGenerationInput['responderCharacter'];
+  const input = createDirectInput({
+    actor: {
+      role: 'character',
+      label: '小悟',
+      characterId: 'char-1',
+    },
+    responderCharacter,
+    target: {
+      label: '你',
+      character: responderCharacter,
+    },
+  });
+  const rawText = `{
+  "systemLine": "小悟拍了拍你",
+  "assistantBubbles": ["拍你一下。"],
+  "counterAction": {
+    "type": "poke_back",
+    "systemLine": "你拍了拍小悟"
+  }
+}`;
+
+  const result = parseLightInteractionResult(rawText, input);
+
+  assert.equal(result.systemLine, '小悟拍了拍你');
+  assert.deepEqual(result.assistantBubbles, ['拍你一下。']);
+  assert.deepEqual(result.counterAction, {
+    type: 'none',
+    systemLine: '',
+  });
 });
