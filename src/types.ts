@@ -272,6 +272,10 @@ export type WorldBookEntry = {
   isGlobal: boolean;
   characterIds?: string[];
   pinMode?: 'none' | 'always';
+  summary?: string;
+  mustReadFacts?: string[];
+  keywords?: string[];
+  fingerprint?: string;
   chunkCache?: {
     id: string;
     label: string;
@@ -614,7 +618,6 @@ export type CharacterActiveDatingState = {
 export type ChatMemorySnapshot = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
-  memoryLibraryEntries?: MemoryLibraryEntry[];
 };
 
 export type CharacterAvatarLibraryEntryStatus =
@@ -667,6 +670,7 @@ export type CharacterFriendshipStatus = 'friends' | 'none';
 
 export type Character = {
   id: string;
+  numericId?: string;
   name: string;
   gender: 'male' | 'female' | 'other';
   avatar: string;
@@ -704,6 +708,7 @@ export type Character = {
   memorySummary?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  // Deprecated compatibility field. New memory flows should persist into memoryRecords.
   memoryLibraryEntries?: MemoryLibraryEntry[];
   openLoopRegistry?: CharacterOpenLoopEntry[];
   presenceState?: CharacterPresenceState;
@@ -813,6 +818,21 @@ export type ChatMessageContentType =
   | 'couple-space-invite'
   | 'couple-space-invite-accepted';
 
+export type LightInteractionMessageMeta = {
+  type: 'poke';
+  scene: 'direct' | 'group';
+  interactionId: string;
+  step: 'system' | 'assistant' | 'counter' | 'spectator';
+  actorRole: 'user' | 'character';
+  actorLabel: string;
+  targetLabel: string;
+  mood?: string;
+  streak?: number;
+  descriptors?: string[];
+  nextActions?: string[];
+  counterActionType?: 'none' | 'poke_back';
+};
+
 export type ChatMessage = {
   role: 'user' | 'model';
   text: string;
@@ -824,6 +844,9 @@ export type ChatMessage = {
   timestamp: number;
   senderCharacterId?: string;
   isPending?: boolean;
+  deliveryStatus?: 'normal' | 'failed_blocked';
+  deliveryErrorText?: string;
+  deliveryFailureReason?: 'blocked_by_character';
   isRecalled?: boolean;
   isEdited?: boolean;
   isFavorited?: boolean;
@@ -832,7 +855,9 @@ export type ChatMessage = {
   transferCardId?: string;
   transferDisplayLabel?: string;
   transferTargetLabel?: string;
+  transferSettledAt?: number;
   isSystem?: boolean;
+  systemTone?: 'default' | 'danger';
   needsReply?: boolean;
   sharedPost?: SharedPostSnapshot;
   replyTo?: {
@@ -855,6 +880,7 @@ export type ChatMessage = {
   groupRelayCard?: GroupRelayCard;
   groupTaskCard?: GroupTaskCard;
   memorySnapshot?: ChatMemorySnapshot;
+  lightInteractionMeta?: LightInteractionMessageMeta;
 };
 
 export type ChatHistory = {
@@ -1119,6 +1145,7 @@ export type ForumTempChatSession = {
 
 export type ForumRuntimeAuthorProfile = {
   id: string;
+  numericId?: string;
   name: string;
   handle: string;
   avatar: string;
@@ -1247,7 +1274,8 @@ export type ForumData = {
 export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'superseded';
 export type FriendRequestDirection = 'incoming' | 'outgoing';
 export type FriendRequestInitiator = 'user' | 'character' | 'forum';
-export type FriendRequestKind = 'friend' | 'reconnect';
+export type FriendRequestKind = 'friend' | 'reconnect' | 'relationship_event';
+export type RelationshipRoundStatus = 'active' | 'resolved' | 'abandoned';
 
 export type FriendRequest = {
   id: string;
@@ -1262,13 +1290,34 @@ export type FriendRequest = {
   initiator?: FriendRequestInitiator;
   requestKind?: FriendRequestKind;
   characterId?: string;
+  threadId?: string;
+  relationshipRoundId?: string;
+  relationshipRoundNo?: number;
+  relationshipRoundStatus?: RelationshipRoundStatus;
+  relationshipRoundResolvedAt?: number;
+  attemptNo?: number;
+  releaseAt?: number;
+  isUnread?: boolean;
+  unreadAt?: number;
+  supersededById?: string;
+  isRelationshipEvent?: boolean;
+  eventKind?:
+    | 'user_blocked_character'
+    | 'user_unblocked_character'
+    | 'character_counter_blocked'
+    | 'character_warned_user_from_chat'
+    | 'character_blocked_user_from_chat';
   resolutionMessage?: string;
+  userDecisionNote?: string;
+  responseText?: string;
   lastUpdatedAt?: number;
   sourcePostId?: string;
   sourceTempChatAuthorId?: string;
   forumHandle?: string;
   forumBio?: string;
   forumPersona?: string;
+  autoResolveAt?: number;
+  autoResolveKind?: 'forum_outgoing_request';
 };
 
 export type ChatGroup = {

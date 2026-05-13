@@ -7,6 +7,11 @@ type JsonRecord = {
   updatedAt: number;
 };
 
+export type JsonRecordEnvelope<T> = {
+  value: T | null;
+  updatedAt: number | null;
+};
+
 function runTransaction<T>(
   mode: IDBTransactionMode,
   executor: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
@@ -31,6 +36,20 @@ export async function loadJsonRecord<T>(key: string): Promise<T | null> {
   });
 }
 
+export async function loadJsonRecordEnvelope<T>(key: string): Promise<JsonRecordEnvelope<T>> {
+  return runTransaction<JsonRecordEnvelope<T>>('readonly', (store, resolve, reject) => {
+    const request = store.get(key);
+    request.onsuccess = () => {
+      const result = request.result as JsonRecord | undefined;
+      resolve({
+        value: result?.value as T ?? null,
+        updatedAt: typeof result?.updatedAt === 'number' ? result.updatedAt : null,
+      });
+    };
+    request.onerror = () => reject(request.error ?? new Error(`Failed to read JSON record envelope "${key}"`));
+  });
+}
+
 export async function saveJsonRecord<T>(key: string, value: T): Promise<void> {
   return runTransaction<void>('readwrite', (store, resolve, reject) => {
     const request = store.put({
@@ -48,6 +67,18 @@ export async function removeJsonRecord(key: string): Promise<void> {
     const request = store.delete(key);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error ?? new Error(`Failed to delete JSON record "${key}"`));
+  });
+}
+
+export async function listJsonRecordKeys(prefix?: string): Promise<string[]> {
+  return runTransaction<string[]>('readonly', (store, resolve, reject) => {
+    const request = store.getAllKeys();
+    request.onsuccess = () => {
+      const allKeys = (request.result as Array<string | number | Date>)
+        .map((key) => String(key));
+      resolve(prefix ? allKeys.filter((key) => key.startsWith(prefix)) : allKeys);
+    };
+    request.onerror = () => reject(request.error ?? new Error('Failed to list JSON record keys'));
   });
 }
 

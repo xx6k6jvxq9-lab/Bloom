@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { Check, ChevronLeft, Sparkles } from 'lucide-react';
 import type { WorldBookEntry } from '../../types';
 import { getWorldBookPriorityLabel, normalizeWorldBookCategory } from '../../services/world-book/worldBookMeta';
+import type { WorldBookAutoMergeAction } from '../../services/world-book/worldBookMerge';
 import { DreamWorldBookGlyph } from './DreamWorldBookSheet';
 
 const dreamImportReviewThemeStyle = {
@@ -21,6 +22,9 @@ export type DreamWorldBookImportDraft = WorldBookEntry & {
   draftId: string;
   include: boolean;
   mergeGroup: string;
+  autoMergeAction?: WorldBookAutoMergeAction;
+  autoMergeReasonLabel?: string;
+  autoMergeTargetTitle?: string;
 };
 
 type DreamWorldBookImportReviewSheetProps = {
@@ -38,6 +42,40 @@ function buildPreview(text: string, maxLength = 124) {
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}...`;
+}
+
+function getAutoMergeTone(action?: WorldBookAutoMergeAction) {
+  switch (action) {
+    case 'update':
+      return {
+        borderColor: 'rgba(143,207,255,.24)',
+        backgroundColor: 'rgba(143,207,255,.10)',
+        color: 'var(--azure-bright)',
+      };
+    case 'skip':
+      return {
+        borderColor: 'rgba(130,224,170,.24)',
+        backgroundColor: 'rgba(130,224,170,.10)',
+        color: '#CFF4D8',
+      };
+    case 'insert':
+    default:
+      return {
+        borderColor: 'rgba(196,169,106,.18)',
+        backgroundColor: 'rgba(196,169,106,.08)',
+        color: 'var(--mist)',
+      };
+  }
+}
+
+function getAutoMergeLabel(draft: DreamWorldBookImportDraft): string {
+  if (draft.autoMergeAction === 'update') {
+    return `自动更新：${draft.autoMergeTargetTitle || '已有书页'}`;
+  }
+  if (draft.autoMergeAction === 'skip') {
+    return `自动跳过：${draft.autoMergeTargetTitle || '重复书页'}`;
+  }
+  return '自动新增';
 }
 
 export function DreamWorldBookImportReviewSheet({
@@ -213,6 +251,11 @@ export function DreamWorldBookImportReviewSheet({
                               合并到：{mergeGroup}
                             </span>
                           ) : null}
+                          {!mergeGroup ? (
+                            <span className="rounded-full border px-2 py-[3px] text-[10px]" style={getAutoMergeTone(draft.autoMergeAction)}>
+                              {getAutoMergeLabel(draft)}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       {advancedMode ? (
@@ -225,6 +268,11 @@ export function DreamWorldBookImportReviewSheet({
                     <div className="mt-3 text-[11px] leading-[1.95] tracking-[0.08em] text-[var(--paper-60)]">
                       {buildPreview(draft.content)}
                     </div>
+                    {!mergeGroup && draft.autoMergeReasonLabel ? (
+                      <div className="mt-2 text-[10px] tracking-[0.14em] text-[var(--mist)]">
+                        自动识别：{draft.autoMergeReasonLabel}
+                      </div>
+                    ) : null}
 
                     {advancedMode ? (
                       <div className="mt-4 space-y-1.5">

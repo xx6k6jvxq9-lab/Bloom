@@ -1,5 +1,6 @@
 import type { ForumData } from '../../types';
 import { normalizeForumGlobalSettings } from '../../services/forum/forumGlobalSettings';
+import { normalizeForumRuntimeAuthorProfiles } from '../../services/social-id/stableNumericId';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
@@ -7,6 +8,12 @@ export function hydrateForumData(
   source: Partial<ForumData> | null | undefined,
   fallback: ForumData,
 ): ForumData {
+  const runtimeAuthorProfiles = normalizeForumRuntimeAuthorProfiles(
+    source?.runtimeAuthorProfiles && typeof source.runtimeAuthorProfiles === 'object'
+      ? source.runtimeAuthorProfiles
+      : fallback.runtimeAuthorProfiles,
+  );
+
   return {
     posts: Array.isArray(source?.posts) ? source!.posts : fallback.posts,
     notifications: Array.isArray(source?.notifications) ? source!.notifications : fallback.notifications,
@@ -19,9 +26,7 @@ export function hydrateForumData(
       : fallback.tempChats,
     pinnedChatAuthorIds: Array.isArray(source?.pinnedChatAuthorIds) ? source!.pinnedChatAuthorIds : fallback.pinnedChatAuthorIds,
     pinnedPostIds: Array.isArray(source?.pinnedPostIds) ? source!.pinnedPostIds : fallback.pinnedPostIds,
-    runtimeAuthorProfiles: source?.runtimeAuthorProfiles && typeof source.runtimeAuthorProfiles === 'object'
-      ? source.runtimeAuthorProfiles
-      : fallback.runtimeAuthorProfiles,
+    runtimeAuthorProfiles,
     composerDraft: source?.composerDraft && typeof source.composerDraft === 'object'
       ? source.composerDraft
       : fallback.composerDraft,

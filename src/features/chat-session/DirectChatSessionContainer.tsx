@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type {
   AppSettings,
   CallRecord,
@@ -9,6 +10,7 @@ import type {
   CoupleSpaceData,
   DateSession,
   FavoriteMessage,
+  FriendRequest,
   Mask,
   PerceptionSettings,
   VisualSettings,
@@ -27,10 +29,11 @@ type DirectChatSessionContainerProps = {
   isActive: boolean;
   onRuntimeBusyChange?: (characterId: string, busy: boolean) => void;
   chatHistory: ChatHistory;
-  setChatHistory: (chatHistory: ChatHistory) => void;
+  setChatHistory: Dispatch<SetStateAction<ChatHistory>>;
   chatGroups: ChatGroup[];
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
+  onToggleCharacterBlock?: (characterId: string) => void;
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -57,8 +60,12 @@ type DirectChatSessionContainerProps = {
   setWalletData: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
+  onOpenCharacterProfile?: (characterId: string) => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
+  friendRequests?: FriendRequest[];
+  setFriendRequests?: Dispatch<SetStateAction<FriendRequest[]>>;
+  suspendHeavyRendering?: boolean;
 };
 
 export function DirectChatSessionContainer({
@@ -71,6 +78,7 @@ export function DirectChatSessionContainer({
   chatGroups,
   updateCharacter,
   patchCharacter,
+  onToggleCharacterBlock,
   settings,
   setSettings,
   onBack,
@@ -97,8 +105,12 @@ export function DirectChatSessionContainer({
   setWalletData,
   onPublishMoment,
   onOpenCharacterMoments,
+  onOpenCharacterProfile,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
+  friendRequests = [],
+  setFriendRequests,
+  suspendHeavyRendering = false,
 }: DirectChatSessionContainerProps) {
   const history = chatHistory[character.id] || [];
   const savedDatesForCharacter = savedDates.filter(session => session.characterId === character.id);
@@ -109,6 +121,61 @@ export function DirectChatSessionContainer({
     .reverse()
     .find((message) => !message.isSystem && !message.isRecalled) || null;
   const latestPreviewableMessage = findLatestPreviewableMessage(history);
+  const commitDirectHistory = useCallback((
+    nextHistory: ChatMessage[],
+    options?: {
+      syncPreview?: boolean;
+    },
+  ) => {
+    setChatHistory((prev) => ({
+      ...prev,
+      [character.id]: nextHistory,
+    }));
+
+    if (options?.syncPreview === false) {
+      return;
+    }
+
+    const nextLatestPreviewableMessage = findLatestPreviewableMessage(nextHistory);
+    const nextLastMessage = nextLatestPreviewableMessage
+      ? formatChatMessagePreview(nextLatestPreviewableMessage)
+      : formatMessagePreview(character.openingRemark);
+    const nextLastTime = nextLatestPreviewableMessage?.timestamp ?? character.lastTime;
+    const nextLastViewedMessageTimestamp =
+      isActive && nextLatestPreviewableMessage?.timestamp
+        ? nextLatestPreviewableMessage.timestamp
+        : character.lastViewedMessageTimestamp;
+    const characterPatch: Partial<Character> = {};
+
+    if (character.lastMessage !== nextLastMessage) {
+      characterPatch.lastMessage = nextLastMessage;
+    }
+
+    if (character.lastTime !== nextLastTime) {
+      characterPatch.lastTime = nextLastTime;
+    }
+
+    if (
+      isActive
+      && typeof nextLastViewedMessageTimestamp === 'number'
+      && character.lastViewedMessageTimestamp !== nextLastViewedMessageTimestamp
+    ) {
+      characterPatch.lastViewedMessageTimestamp = nextLastViewedMessageTimestamp;
+    }
+
+    if (Object.keys(characterPatch).length > 0) {
+      patchCharacter(character.id, characterPatch);
+    }
+  }, [
+    character.id,
+    character.lastMessage,
+    character.lastTime,
+    character.lastViewedMessageTimestamp,
+    character.openingRemark,
+    isActive,
+    patchCharacter,
+    setChatHistory,
+  ]);
 
   useEffect(() => {
     let lastMessageIndex = -1;
@@ -134,15 +201,32 @@ export function DirectChatSessionContainer({
       memorySnapshot: nextSnapshot,
     };
 
-    setChatHistory({
-      ...chatHistory,
-      [character.id]: nextHistory,
-    });
+    commitDirectHistory(nextHistory, { syncPreview: false });
   }, [
     character,
-    chatHistory,
+    commitDirectHistory,
     history,
-    setChatHistory,
+  ]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const latestTimestamp = latestPreviewableMessage?.timestamp;
+    if (!latestTimestamp || latestTimestamp === character.lastViewedMessageTimestamp) {
+      return;
+    }
+
+    patchCharacter(character.id, {
+      lastViewedMessageTimestamp: latestTimestamp,
+    });
+  }, [
+    character.id,
+    character.lastViewedMessageTimestamp,
+    isActive,
+    latestPreviewableMessage?.timestamp,
+    patchCharacter,
   ]);
 
   useEffect(() => {
@@ -172,24 +256,10 @@ export function DirectChatSessionContainer({
       character={character}
       characters={characters}
       history={history}
-      setHistory={(newHistory) => {
-        setChatHistory({
-          ...chatHistory,
-          [character.id]: newHistory,
-        });
-        const latestPreviewableMessage = findLatestPreviewableMessage(newHistory);
-        patchCharacter(character.id, {
-          lastMessage: latestPreviewableMessage
-            ? formatChatMessagePreview(latestPreviewableMessage)
-            : formatMessagePreview(character.openingRemark),
-          lastTime: latestPreviewableMessage?.timestamp ?? character.lastTime,
-          ...(isActive && latestPreviewableMessage?.timestamp
-            ? { lastViewedMessageTimestamp: latestPreviewableMessage.timestamp }
-            : {}),
-        });
-      }}
+      setHistory={commitDirectHistory}
       onUpdateCharacter={updateCharacter}
       onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
+      onToggleCharacterBlock={() => onToggleCharacterBlock?.(character.id)}
       worldBook={worldBook}
       perception={perception}
       coupleSpace={coupleSpace}
@@ -244,9 +314,14 @@ export function DirectChatSessionContainer({
       onUpdateWalletData={setWalletData}
       onPublishMoment={onPublishMoment}
       onOpenCharacterMoments={onOpenCharacterMoments}
+      onOpenCharacterProfile={() => onOpenCharacterProfile?.(character.id)}
       onStatusBarVisibilityChange={onStatusBarVisibilityChange}
       onAcceptCoupleSpaceInvite={onAcceptCoupleSpaceInvite}
       onRuntimeBusyChange={handleRuntimeBusyChange}
+      friendRequests={friendRequests}
+      setFriendRequests={setFriendRequests}
+      isActive={isActive}
+      suspendHeavyRendering={suspendHeavyRendering}
     />
   );
 }

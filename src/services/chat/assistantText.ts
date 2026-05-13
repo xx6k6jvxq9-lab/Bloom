@@ -40,7 +40,7 @@ export function stripAssistantSpeakerPrefix(text: string, aliases: string[]): st
 
 export function parseAssistantSpeakerLabel(text: string): { senderLabel: string; content: string } | null {
   const normalized = stripLeadingMeta(text);
-  const wrappedMatch = normalized.match(/^[【\[]([^】\]]+)[】\]]\s*[:：]?\s*(.*)$/u);
+  const wrappedMatch = normalized.match(/^[【\[]([^【】\]]+)[】\]]\s*[:：]?\s*(.*)$/u);
   if (wrappedMatch) {
     return {
       senderLabel: wrappedMatch[1].trim(),
@@ -59,25 +59,31 @@ export function parseAssistantSpeakerLabel(text: string): { senderLabel: string;
   };
 }
 
-const DIRECT_MAX_BUBBLES = 5;
-
-function resolveDirectBubbleCap(maxBubbles?: number): number {
-  if (!Number.isFinite(maxBubbles)) {
-    return DIRECT_MAX_BUBBLES;
-  }
-
-  return Math.max(1, Math.min(Math.floor(maxBubbles as number), DIRECT_MAX_BUBBLES));
-}
+const DIRECT_DEFAULT_MAX_BUBBLES = 5;
+const DIRECT_HARD_MAX_BUBBLES = 10;
 const DIRECT_ENDING_PUNCTUATION = /[\u3002\uFF01\uFF1F!?]+$/u;
 const DIRECT_SENTENCE_REGEX = /[^\u3002\uFF01\uFF1F!?\n]+(?:[\u3002\uFF01\uFF1F!?]+)?/gu;
-const DIRECT_SHORT_REACTION = /^(?:嗯|哦|喔|行|行吧|行啊|好|好吧|知道了|在呢|来了|收到|别闹|别急|没事|可以)$/u;
-const DIRECT_BREAK_STARTERS = /^(?:然后|而且|不过|所以|那|那就|还有|顺便|提前|另外|其实|反正|我先|我再|我就|你先|你就|要么|不然|别|过来|现在)/u;
+const DIRECT_BRACKET_ACTION_REGEX = /[\(\uFF08]([^\(\)\uFF08\uFF09\n]{1,80})[\)\uFF09]/gu;
+const DIRECT_SHORT_REACTION = /^(?:嗯|啊|哦|好|好吧|行|行吧|知道了|在呢|来了|收到|别闹|没事|可以)$/u;
+const DIRECT_BREAK_STARTERS = /^(?:然后|而且|不过|所以|那|那就|还有|顺便|提前|另外|其实|反正|我先|我再|我就|你先|你就|要么|不然|别|现在)/u;
 const DISPLAYABLE_EFFECTIVE_CHAR_REGEX = /[\p{L}\p{N}]/u;
 const DISPLAYABLE_PROTOCOL_ONLY_REGEX = /^\[(?:game_card|game_card_error|transfer|sticker|image|audio|notice|system)\b/i;
 
+function resolveDirectBubbleCap(maxBubbles?: number): number {
+  if (!Number.isFinite(maxBubbles)) {
+    return DIRECT_DEFAULT_MAX_BUBBLES;
+  }
+
+  return Math.max(1, Math.min(Math.floor(maxBubbles as number), DIRECT_HARD_MAX_BUBBLES));
+}
+
+function isBracketActionOnlyText(text: string): boolean {
+  return /^[\s]*[\(\uFF08][^\(\)\uFF08\uFF09\n]{1,80}[\)\uFF09][\s]*$/u.test(text);
+}
+
 function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
   const normalized = text.trim();
-  if (!normalized || isFinalBubble) {
+  if (!normalized || isFinalBubble || isBracketActionOnlyText(normalized)) {
     return normalized;
   }
 
@@ -95,6 +101,45 @@ function normalizeBubbleEnding(text: string, isFinalBubble: boolean): string {
 
 function splitBySentenceChunks(text: string): string[] {
   return text.match(DIRECT_SENTENCE_REGEX)?.map((part) => part.trim()).filter(Boolean) ?? [];
+}
+
+function splitByBracketActionBlocks(text: string): string[] {
+  const normalized = text.trim();
+  if (!normalized) return [];
+
+  const matches = Array.from(normalized.matchAll(DIRECT_BRACKET_ACTION_REGEX));
+  if (matches.length === 0) {
+    return [normalized];
+  }
+
+  const parts: string[] = [];
+  let cursor = 0;
+
+  for (const match of matches) {
+    const matchText = match[0]?.trim() || '';
+    const matchIndex = match.index ?? -1;
+    if (matchIndex < 0) {
+      continue;
+    }
+
+    const leadingText = normalized.slice(cursor, matchIndex).trim();
+    if (leadingText) {
+      parts.push(leadingText);
+    }
+
+    if (matchText) {
+      parts.push(matchText);
+    }
+
+    cursor = matchIndex + match[0].length;
+  }
+
+  const trailingText = normalized.slice(cursor).trim();
+  if (trailingText) {
+    parts.push(trailingText);
+  }
+
+  return parts.length > 0 ? parts : [normalized];
 }
 
 function splitDirectLongClause(text: string): string[] {
@@ -195,7 +240,7 @@ function splitByStarterRhythm(text: string): string[] {
   const normalized = text.trim();
   if (!normalized) return [];
 
-  for (const match of normalized.matchAll(/(?:^|[，,。！？!?；;\s])((?:然后|而且|不过|所以|顺便|提前|另外|其实|反正|我先|我再|你先|要么|不然|别|过来|现在))/gu)) {
+  for (const match of normalized.matchAll(/(?:^|[，。！？!?、\s])((?:然后|而且|不过|所以|顺便|提前|另外|其实|反正|我先|我再|你先|要么|不然|别|现在))/gu)) {
     const starter = match[1];
     const index = match.index ?? -1;
     if (index <= 0) continue;
@@ -213,7 +258,7 @@ function splitByStarterRhythm(text: string): string[] {
   return [normalized];
 }
 
-function mergeRhythmParts(parts: string[], maxBubbles = DIRECT_MAX_BUBBLES): string[] {
+function mergeRhythmParts(parts: string[], maxBubbles = DIRECT_DEFAULT_MAX_BUBBLES): string[] {
   if (parts.length <= maxBubbles) {
     return parts;
   }
@@ -238,6 +283,10 @@ export function isDisplayableAssistantBubbleText(text: string): boolean {
     return false;
   }
 
+  if (isBracketActionOnlyText(normalized)) {
+    return true;
+  }
+
   if (isUsableChatText(normalized)) {
     return true;
   }
@@ -260,21 +309,27 @@ export function splitDirectAssistantReplyText(text: string, maxBubbles?: number)
     return [];
   }
 
-  const explicitLines = normalized
+  const explicitParts = normalized
     .split(/\n+/)
+    .flatMap((part) => splitByBracketActionBlocks(part))
     .map((part) => part.trim())
     .filter(Boolean);
 
-  if (explicitLines.length > 1) {
-    return mergeRhythmParts(explicitLines, bubbleCap)
+  if (explicitParts.length > 1) {
+    return mergeRhythmParts(explicitParts, bubbleCap)
       .slice(0, bubbleCap)
-      .map((part, index, allParts) => normalizeBubbleEnding(part, index === allParts.length - 1));
+      .map((part) => normalizeChatPunctuationNoise(part));
   }
 
-  const parts = splitBySentenceChunks(normalized)
-    .flatMap((part) => splitDirectLongClause(part))
-    .flatMap((part) => splitByNaturalChatBeats(part))
-    .flatMap((part) => splitByStarterRhythm(part))
+  const parts = splitByBracketActionBlocks(normalized)
+    .flatMap((part) => (
+      isBracketActionOnlyText(part)
+        ? [part]
+        : splitBySentenceChunks(part)
+          .flatMap((segment) => splitDirectLongClause(segment))
+          .flatMap((segment) => splitByNaturalChatBeats(segment))
+          .flatMap((segment) => splitByStarterRhythm(segment))
+    ))
     .map((part) => part.trim())
     .filter(Boolean);
 

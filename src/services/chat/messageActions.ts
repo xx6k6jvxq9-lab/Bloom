@@ -494,6 +494,9 @@ export const getUserReadStatusLabel = (
   latestModelReplyTimestamp: number | null
 ): string => {
   if (message.role !== 'user') return '';
+  if (message.deliveryStatus === 'failed_blocked') {
+    return message.deliveryErrorText?.trim() || '发送失败';
+  }
   if (latestModelReplyTimestamp === null) return '';
   return latestModelReplyTimestamp > message.timestamp ? '已读' : '';
 };

@@ -5,29 +5,35 @@ import type {
   FriendRequest,
   FriendRequestDirection,
 } from '../../types';
+import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { getLegacyTranslationParts, sanitizePipeMarkers } from '../../services/chat/messageText';
+import { isFriendRequestReleased } from './friendRequestThreads';
 
 const POSITIVE_HINTS = ['谢谢', '喜欢', '想你', '重新', '和好', '在乎', '认真', '愿意', '可以吗', '回来', '继续', '别生气', '抱抱'];
 const NEGATIVE_HINTS = ['讨厌', '别烦', '滚', '算了', '不想', '烦', '闭嘴', '离我远点', '拉黑', '屏蔽', '删掉', '别来'];
 const APOLOGY_HINTS = ['对不起', '抱歉', '别生气', '重新认识', '重新加', '和好', '给我一次机会', '想继续'];
 const WARM_PERSONA_HINTS = ['温柔', '照顾', '心软', '在乎', '护着', '想念', '喜欢', '关心', '体贴', '舍不得', '嘴硬心软'];
 const GUARDED_PERSONA_HINTS = ['克制', '冷', '疏离', '理智', '边界', '戒备', '别靠近', '强势', '冷淡', '不近人情'];
+const EXCITABLE_PERSONA_HINTS = ['冲动', '暴躁', '炸毛', '易怒', '情绪化', '嘴硬', '占有欲', '直球', '别扭', '话痨', '激动', '疯'];
+const STUBBORN_PERSONA_HINTS = ['嘴硬', '不服输', '认死理', '执拗', '倔', '倔强', '不甘心', '死心眼', '较劲', '硬撑'];
+const PRIDE_PERSONA_HINTS = ['自尊', '体面', '骄傲', '要面子', '不肯低头', '不服软', '高傲', '嘴硬'];
+const ATTACHMENT_PERSONA_HINTS = ['舍不得', '离不开', '想念', '黏人', '依赖', '护着', '放不下', '惦记', '在乎'];
+const POSSESSIVE_PERSONA_HINTS = ['占有欲', '控制欲', '不许走', '不肯放手', '盯得紧', '吃醋', '护短', '认领'];
+const DIRECT_PERSONA_HINTS = ['直球', '不拐弯', '会追', '会抢', '主动', '步步紧逼', '不绕弯'];
 
 export type CharacterBlockState = 'none' | 'user' | 'character' | 'mutual';
 export type CharacterFriendRequestDecision =
   | {
       outcome: 'accept';
-      reactionText: string;
       resolutionMessage: string;
     }
   | {
       outcome: 'reject';
-      reactionText: string;
       resolutionMessage: string;
       counterBlock: boolean;
     }
   | {
       outcome: 'counter_request';
-      reactionText: string;
       resolutionMessage: string;
       requestMessage: string;
     };
@@ -129,6 +135,10 @@ export function getFriendRequestCharacterId(request: FriendRequest) {
     || (request.sourceScene !== 'forum' && request.fromUserId ? request.fromUserId : undefined);
 }
 
+function countRegexMatches(text: string, pattern: RegExp) {
+  return text.match(pattern)?.length || 0;
+}
+
 export function resolveFriendRequestDirection(request: FriendRequest): FriendRequestDirection {
   if (request.direction === 'incoming' || request.direction === 'outgoing') {
     return request.direction;
@@ -152,6 +162,7 @@ export function getPendingCharacterRequest(
   const requestList = Array.isArray(requests) ? requests : [];
   return [...requestList]
     .filter((request) => request.status === 'pending')
+    .filter((request) => isFriendRequestReleased(request))
     .filter((request) => getFriendRequestCharacterId(request) === characterId)
     .filter((request) => !direction || resolveFriendRequestDirection(request) === direction)
     .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
@@ -163,6 +174,7 @@ export function getLatestCharacterRequest(
 ) {
   const requestList = Array.isArray(requests) ? requests : [];
   return [...requestList]
+    .filter((request) => isFriendRequestReleased(request))
     .filter((request) => getFriendRequestCharacterId(request) === characterId)
     .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
 }
@@ -171,6 +183,7 @@ export function supersedePendingCharacterRequests(
   requests: FriendRequest[] | null | undefined,
   characterId: string,
   nextTimestamp = Date.now(),
+  supersededById?: string,
 ) {
   const requestList = Array.isArray(requests) ? requests : [];
   return requestList.map((request) => {
@@ -182,56 +195,173 @@ export function supersedePendingCharacterRequests(
       status: 'superseded' as const,
       resolutionMessage: request.resolutionMessage || '已被新的申请替代',
       lastUpdatedAt: nextTimestamp,
+      ...(supersededById ? { supersededById } : {}),
     };
   });
 }
 
-export function createRelationshipSystemMessage(text: string, timestamp = Date.now()): ChatMessage {
-  return {
-    role: 'model',
-    text,
-    timestamp,
-    isSystem: true,
-  };
-}
-
-export function createCharacterRelationshipMessage(
-  characterId: string,
+export function createRelationshipSystemMessage(
   text: string,
   timestamp = Date.now(),
+  options?: {
+    tone?: 'default' | 'danger';
+  },
 ): ChatMessage {
   return {
     role: 'model',
     text,
     timestamp,
-    senderCharacterId: characterId,
+    isSystem: true,
+    systemTone: options?.tone || 'default',
   };
 }
 
-export function decideCharacterBlockReaction(
-  character: Pick<Character, 'id' | 'name' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark' | 'blockedByCharacter'>,
+function buildRelationshipPursuitProfile(
+  character: Pick<Character, 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
   history: ChatMessage[],
 ) {
-  const { score, style, tone } = evaluateRelationshipMomentum(character, history, '');
-
-  if (style === 'guarded' || score < 0 || tone.negative > tone.positive) {
-    return {
-      counterBlock: true,
-      reactionText: `${character.name}安静了一会儿，最后只回了一句：“行，那我也先把门关上。”`,
-    };
-  }
-
-  if (style === 'warm') {
-    return {
-      counterBlock: false,
-      reactionText: `${character.name}像是被噎了一下，低声回你：“你真要这样，我就先退开。但这次我会记住。”`,
-    };
-  }
+  const personaText = [
+    character.corePersona,
+    character.expressionStyle,
+    character.signature,
+    character.openingRemark,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+  const style = resolvePersonaStyle(character);
+  const tone = summarizeRecentRelationshipTone(history);
+  const attachment = countHints(personaText, ATTACHMENT_PERSONA_HINTS);
+  const stubbornness = countHints(personaText, STUBBORN_PERSONA_HINTS);
+  const possessiveness = countHints(personaText, POSSESSIVE_PERSONA_HINTS);
+  const pride = countHints(personaText, PRIDE_PERSONA_HINTS);
+  const volatility = countHints(personaText, EXCITABLE_PERSONA_HINTS);
+  const directness = countHints(personaText, DIRECT_PERSONA_HINTS);
+  const warmth = countHints(personaText, WARM_PERSONA_HINTS);
+  const guardedness = countHints(personaText, GUARDED_PERSONA_HINTS);
+  const closenessBias = tone.positive - tone.negative;
+  const chaseDrive =
+    attachment * 2
+    + stubbornness * 2
+    + possessiveness * 2
+    + volatility
+    + directness
+    + (warmth > guardedness ? 1 : 0)
+    + Math.max(0, closenessBias);
+  const selfProtect =
+    pride * 2
+    + guardedness * 2
+    + Math.max(0, tone.negative - tone.positive);
 
   return {
-    counterBlock: false,
-    reactionText: `${character.name}沉默了几秒，语气平平地说：“好，我知道了。你想再来，就带着诚意来。”`,
+    style,
+    tone,
+    attachment,
+    stubbornness,
+    possessiveness,
+    pride,
+    volatility,
+    directness,
+    warmth,
+    guardedness,
+    chaseDrive,
+    selfProtect,
   };
+}
+
+function hashSeedToUnitInterval(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 33 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  return (hash % 1000) / 999;
+}
+
+export function createCharacterRelationshipMessages(
+  characterId: string,
+  text: string,
+  timestamp = Date.now(),
+  options?: {
+    assistantAliases?: string[];
+    maxBubbles?: number;
+  },
+): ChatMessage[] {
+  const { mainText, translation } = getLegacyTranslationParts(text);
+  const normalizedMainText = stripAssistantSpeakerPrefix(
+    sanitizePipeMarkers(mainText || text, '\n'),
+    options?.assistantAliases || [],
+  );
+  const mainParts = splitDirectAssistantReplyText(normalizedMainText, options?.maxBubbles ?? 3);
+  const normalizedTranslation = sanitizePipeMarkers(translation, '\n');
+  const translationParts = normalizedTranslation
+    ? splitDirectAssistantReplyText(normalizedTranslation, options?.maxBubbles ?? 3)
+    : [];
+  const pairTranslationByIndex = translationParts.length === mainParts.length;
+
+  return mainParts.map((part, index) => ({
+    role: 'model' as const,
+    text: part,
+    timestamp: timestamp + index,
+    senderCharacterId: characterId,
+    ...(
+      pairTranslationByIndex
+        ? (translationParts[index] ? { translation: translationParts[index] } : {})
+        : index === 0 && normalizedTranslation
+          ? { translation: normalizedTranslation }
+          : {}
+    ),
+  }));
+}
+
+export function getRelationshipReactionBubbleCap(
+  character: Pick<Character, 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  text: string,
+  options?: {
+    intensity?: 'normal' | 'high';
+  },
+) {
+  const style = resolvePersonaStyle(character);
+  const personaText = [
+    character.corePersona,
+    character.expressionStyle,
+    character.signature,
+    character.openingRemark,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+  const excitableScore = countHints(personaText, EXCITABLE_PERSONA_HINTS);
+  const punctuationBurst = countRegexMatches(text, /[!?！？]/g);
+  const lineBreaks = countRegexMatches(text, /\n/g);
+  const compactLength = text.replace(/\s/gu, '').length;
+
+  let cap = 3;
+  if (compactLength >= 36) cap = 4;
+  if (compactLength >= 64) cap = 5;
+  if (compactLength >= 96) cap = 6;
+  if (compactLength >= 132) cap = 7;
+  if (compactLength >= 170) cap = 8;
+
+  if (options?.intensity === 'high') {
+    cap += 1;
+  }
+
+  if (excitableScore > 0) {
+    cap += Math.min(2, excitableScore);
+  }
+
+  if (punctuationBurst >= 3) {
+    cap += 1;
+  }
+
+  if (lineBreaks >= 2) {
+    cap += 1;
+  }
+
+  if (style === 'guarded') {
+    cap -= 1;
+  }
+
+  return Math.max(3, Math.min(cap, 10));
 }
 
 export function decideCharacterFriendRequestResponse(
@@ -244,11 +374,6 @@ export function decideCharacterFriendRequestResponse(
   if (score >= 3 || (apologyScore > 0 && score >= 2)) {
     return {
       outcome: 'accept',
-      reactionText: style === 'guarded'
-        ? `${character.name}看完你的附言，嘴上还是淡淡的：“只这一次。加回来之后别又乱来。”`
-        : style === 'warm'
-          ? `${character.name}明显松了口气，轻声回你：“好，这次我通过。别再把我弄丢了。”`
-          : `${character.name}回得很快：“行，我通过了。之后好好说。”`,
       resolutionMessage: '对方通过了你的申请',
     };
   }
@@ -258,20 +383,12 @@ export function decideCharacterFriendRequestResponse(
     return {
       outcome: 'reject',
       counterBlock,
-      reactionText: counterBlock
-        ? `${character.name}看完你的附言，神情冷了下来：“现在还不行。既然你来来回回地推开，那这次换我不接。”`
-        : `${character.name}没有直接发火，只是回了一句：“我先不通过。你想清楚了再来。”`,
       resolutionMessage: counterBlock ? '对方拒绝了这次申请，并把你拉黑了' : '对方拒绝了这次申请',
     };
   }
 
   return {
     outcome: 'counter_request',
-    reactionText: style === 'warm'
-      ? `${character.name}像是还没完全放下戒备，却还是把话递了回来：“你先别急，我也给你发一条。你要是认真的，就自己收下。”`
-      : style === 'guarded'
-        ? `${character.name}没有直接答应，只抬了抬眼：“想加回来可以。先收下我这条申请，再让我看看你是不是真的来认领。”`
-        : `${character.name}回你：“我不直接点通过。换我发一条，你自己来收。”`,
     requestMessage: style === 'warm'
       ? '我不是不想加回来，只是想确认这次你不会再随手把我推开。'
       : style === 'guarded'
@@ -290,7 +407,6 @@ export function decideCharacterUnblockGesture(
   if (style === 'warm' && score >= 0) {
     return {
       sendRequest: true,
-      reactionText: `${character.name}听见你把黑名单放开，语气还是别扭：“既然门开了，那这次换我来敲。”`,
       requestMessage: '如果你这次是认真的，就把我这条申请收下吧。',
     };
   }
@@ -298,39 +414,12 @@ export function decideCharacterUnblockGesture(
   if (character.blockedByCharacter) {
     return {
       sendRequest: false,
-      reactionText: `${character.name}没有顺势松口，只淡淡地回你：“我知道了。想加回来，就正经发申请。”`,
     };
   }
 
   return {
     sendRequest: false,
-    reactionText: `${character.name}应了一声：“黑名单开了就开了。想把关系补回来，还是得看你接下来怎么做。”`,
   };
-}
-
-export function buildCharacterIncomingRequestResolution(
-  character: Pick<Character, 'name' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
-  accepted: boolean,
-) {
-  const style = resolvePersonaStyle(character);
-
-  if (accepted) {
-    if (style === 'guarded') {
-      return `${character.name}低低地“嗯”了一声：“通过了。以后别再拿这种事试我。”`;
-    }
-    if (style === 'warm') {
-      return `${character.name}像是终于松了口气：“好，这次算我们都点头了。”`;
-    }
-    return `${character.name}回你：“好，重新加上了。”`;
-  }
-
-  if (style === 'guarded') {
-    return `${character.name}没有追问，只留下一句：“行，我知道你的答案了。”`;
-  }
-  if (style === 'warm') {
-    return `${character.name}沉默了一会儿，还是把情绪压了下去：“那我先不往前逼你。”`;
-  }
-  return `${character.name}把话收了回去：“好，那先这样。”`;
 }
 
 export function getCharacterRelationshipStatusText(
@@ -369,4 +458,30 @@ export function getFriendRequestStatusLabel(request: FriendRequest) {
     return '已拒绝';
   }
   return '已替换';
+}
+export function resolveCharacterBlockedFollowupDelayMs(
+  character: Pick<Character, 'id' | 'corePersona' | 'expressionStyle' | 'signature' | 'openingRemark'>,
+  history: ChatMessage[],
+  nextAttemptNo: number,
+) {
+  const profile = buildRelationshipPursuitProfile(character, history);
+  const baseMinMs = profile.volatility >= 2 || profile.directness >= 2
+    ? 8_000
+    : profile.attachment >= 2 || profile.style === 'warm'
+      ? 18_000
+      : 12_000;
+  const baseMaxMs = profile.pride >= 2 || profile.guardedness >= 2
+    ? 60_000
+    : profile.attachment >= 2 || profile.style === 'warm'
+      ? 48_000
+      : 36_000;
+  const fatigueExtensionMs = nextAttemptNo <= 1 ? 0 : Math.min(12_000, (nextAttemptNo - 1) * 4_000);
+  const minMs = Math.min(50_000, baseMinMs + Math.floor(fatigueExtensionMs * 0.35));
+  const maxMs = Math.min(60_000, Math.max(minMs + 5_000, baseMaxMs + fatigueExtensionMs));
+  const ratio = hashSeedToUnitInterval(`${character.id}|blocked-followup|${nextAttemptNo}`);
+
+  return Math.min(
+    60_000,
+    minMs + Math.round((maxMs - minMs) * ratio),
+  );
 }

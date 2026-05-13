@@ -3,6 +3,8 @@ import {
 } from './storageKeys';
 import { openPersistenceDb } from './persistenceDb';
 
+const ASSET_ORIGINAL_URL_INDEX = 'originalUrl';
+
 export type StoredAssetRecord = {
   id: string;
   kind: 'image' | 'file';
@@ -45,6 +47,32 @@ export function getAsset(id: string): Promise<StoredAssetRecord | null> {
     request.onsuccess = () => resolve((request.result as StoredAssetRecord | undefined) ?? null);
     request.onerror = () => reject(request.error ?? new Error('Failed to read asset'));
   });
+}
+
+export function findAssetByOriginalUrl(originalUrl: string): Promise<StoredAssetRecord | null> {
+  const normalizedOriginalUrl = originalUrl.trim();
+  if (!normalizedOriginalUrl) {
+    return Promise.resolve(null);
+  }
+
+  return openPersistenceDb().then(
+    (db) =>
+      new Promise<StoredAssetRecord | null>((resolve, reject) => {
+        const tx = db.transaction(PERSISTENCE_ASSETS_STORE, 'readonly');
+        const store = tx.objectStore(PERSISTENCE_ASSETS_STORE);
+
+        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
+
+        if (!store.indexNames.contains(ASSET_ORIGINAL_URL_INDEX)) {
+          resolve(null);
+          return;
+        }
+
+        const request = store.index(ASSET_ORIGINAL_URL_INDEX).get(normalizedOriginalUrl);
+        request.onsuccess = () => resolve((request.result as StoredAssetRecord | undefined) ?? null);
+        request.onerror = () => reject(request.error ?? new Error('Failed to read asset by original URL'));
+      }),
+  );
 }
 
 export function deleteAsset(id: string): Promise<void> {

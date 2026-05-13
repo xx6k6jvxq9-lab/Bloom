@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { resolveValueToDisplayUrl } from './persistentAssetService';
+import { resolveValueToDisplayUrl, resolveValueToImmediateDisplayUrl } from './persistentAssetService';
 
 type ResolvedPersistentValueState = {
   resolvedUrl: string | null;
@@ -8,10 +8,13 @@ type ResolvedPersistentValueState = {
 };
 
 export function useResolvedPersistentValue(value: string | null | undefined): ResolvedPersistentValueState {
-  const [state, setState] = useState<ResolvedPersistentValueState>({
-    resolvedUrl: null,
-    loading: false,
-    error: null,
+  const [state, setState] = useState<ResolvedPersistentValueState>(() => {
+    const immediateResolvedUrl = resolveValueToImmediateDisplayUrl(value);
+    return {
+      resolvedUrl: immediateResolvedUrl,
+      loading: false,
+      error: null,
+    };
   });
 
   useEffect(() => {
@@ -22,7 +25,21 @@ export function useResolvedPersistentValue(value: string | null | undefined): Re
       return undefined;
     }
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    const immediateResolvedUrl = resolveValueToImmediateDisplayUrl(value);
+    if (immediateResolvedUrl) {
+      setState({
+        resolvedUrl: immediateResolvedUrl,
+        loading: false,
+        error: null,
+      });
+      return undefined;
+    }
+
+    setState({
+      resolvedUrl: null,
+      loading: true,
+      error: null,
+    });
 
     resolveValueToDisplayUrl(value)
       .then((resolvedUrl) => {

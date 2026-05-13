@@ -7,11 +7,12 @@ import type {
 } from '../../types';
 import { getMessageMainText } from '../../utils';
 import { buildRuntimeOpenLoopRegistry } from './buildOpenLoopRegistry';
+import { buildResolvedOpenLoopRegistry } from '../memory/buildResolvedOpenLoopRegistry';
 
 type ContinuityMode = 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
 
 type ReconcileCharacterRuntimeStateInput = {
-  character: Pick<Character, 'openLoopRegistry' | 'presenceState' | 'shortTermSummary'>;
+  character: Pick<Character, 'id' | 'openLoopRegistry' | 'presenceState' | 'shortTermSummary'>;
   history: ChatMessage[];
   continuityMode: ContinuityMode;
   nowTimestamp: number;
@@ -209,7 +210,7 @@ export function reconcileCharacterRuntimeState(
   });
   const latestUserText = normalizeText(input.latestUserText);
   const latestAssistantText = normalizeText(input.latestAssistantText);
-  const existingEntries = input.character.openLoopRegistry || [];
+  const existingEntries = buildResolvedOpenLoopRegistry(input.character);
   const mergedMap = new Map<string, CharacterOpenLoopEntry>();
 
   for (const entry of existingEntries) {

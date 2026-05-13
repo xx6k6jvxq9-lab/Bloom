@@ -12,6 +12,8 @@ import type {
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { formatGroupTopicStateForPrompt } from '../group-chat/topicState';
 import { filterTopicAnchorsForPrompt } from '../chat/topicRecall';
+import type { MemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
+import { buildMemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
 
 export type GroupChatSceneInput = {
   speakerName: string;
@@ -54,6 +56,7 @@ export type GroupChatSceneInput = {
     sharedRecentRelationshipSummary?: string;
     relationshipTensionSummary?: string;
     sharedCharacterStatePrompt?: string;
+    retrievedMemory?: MemoryPromptView;
   };
   historyTranscript: string;
 };
@@ -581,6 +584,16 @@ export function buildGroupChatSceneInput(
     temporalState: characterTemporalState,
     sceneScopedSignals: relationshipProjection.sceneScopedSignals,
   });
+  const retrievedMemory = buildMemoryPromptView({
+    characterId: options.speaker.id,
+    latestUserText: latestGroupUserText,
+  });
+  const hasRetrievedMemory = (
+    retrievedMemory.matchedFacts.length
+    || retrievedMemory.stablePreferences.length
+    || retrievedMemory.relationshipWaves.length
+    || retrievedMemory.openTasks.length
+  ) > 0;
   const memberRelationshipState = [
     getMemberRelationshipStateLabel(options.group?.memberRelationshipState),
     options.group?.memberRelationshipNote?.trim() || '',
@@ -647,6 +660,7 @@ export function buildGroupChatSceneInput(
       sharedRecentRelationshipSummary: sceneScopedSignals.sharedRecentRelationshipSummary,
       relationshipTensionSummary: buildRelationshipTensionSummary(options.speaker, options.members),
       sharedCharacterStatePrompt: sharedCharacterState.groupPrompt,
+      ...(hasRetrievedMemory ? { retrievedMemory } : {}),
     },
     historyTranscript: buildHistoryTranscript(options.history, options.userName),
   };

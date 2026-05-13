@@ -71,6 +71,13 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
     worldBooks,
     worldBookScope: 'character_post',
     maskScope: 'character_post',
+    worldBookQuery: [
+      post.title,
+      post.content,
+      userComment,
+      userReplyTargetContent,
+      userReplyTargetAuthorName,
+    ].filter(Boolean).join('\n'),
   });
 
   const prompt = [

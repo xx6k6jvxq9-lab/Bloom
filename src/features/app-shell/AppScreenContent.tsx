@@ -1,8 +1,8 @@
 ﻿import React, { Suspense } from 'react';
-import { lazy, useEffect, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
-import type { AppData, AppSettings, Character, CoupleSpaceData, CoupleSpaceState } from '../../types';
+import type { AppData, AppSettings, Character, ChatHistory, CoupleSpaceData, CoupleSpaceState } from '../../types';
 import { HomeScreen } from '../../components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from '../../components/main/ContactsShell/Page';
 import { MainApp } from '../../components/main/MainAppShell/Page';
@@ -41,22 +41,37 @@ import { formatMessagePreview } from './formatMessagePreview';
 import { navigateToAppWithTransition, type AppScreen, type AppTab } from './appShellHandlers';
 import type { CoupleSpaceUpdateToast, DatingGenerationToast, DreamGenerationToast, MomentPublishToast } from './appShellTypes';
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
+import {
+  extractDirectFactTraces,
+  extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
+  extractGroupSessions,
+  saveChatHistoryRecords,
+} from '../persistence/chatHistoryStore';
+import { persistChatOrganization } from '../persistence/chatOrganizationStore';
 import { switchCurrentCoupleSpaceState } from '../persistence/coupleSpaceStore';
+import { persistFriendRequests } from '../persistence/friendRequestsStore';
 import { runMomentPublishCommentSequence } from '../../services/moments/commentOrchestrator';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildSharedStateWritePatch } from '../../services/relationship-context/buildSharedCharacterState';
 import { saveCharacters } from '../persistence/charactersStore';
 import { removeCharacterById } from '../character-domain/characterMutations';
 import {
-  createCharacterRelationshipMessage,
-  createRelationshipSystemMessage,
-  decideCharacterBlockReaction,
-  decideCharacterFriendRequestResponse,
-  decideCharacterUnblockGesture,
-  getCharacterBlockState,
-  supersedePendingCharacterRequests,
-} from '../contacts/contactRelationship';
-import { generateRelationshipEventReply } from '../contacts/generateRelationshipEventReply';
+  getNextFriendRequestReleaseAt,
+  getLatestCharacterRelationshipPageKey,
+  releaseDueFriendRequests,
+} from '../contacts/friendRequestThreads';
+import {
+  runRelationshipBlockToggleFlow,
+  runRelationshipRequestSubmissionFlow,
+} from '../contacts/relationshipFlow';
+import { buildForumSharedSettlement } from '../../services/forum/buildForumSharedSettlement';
+import { bridgeForumFriendToFormalChat } from '../../services/forum/forumFriendBridge';
+import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../services/forum/forumTempChatState';
+import {
+  appendForumFriendResolutionMessage,
+  resolveOutgoingForumFriendRequest,
+} from '../../services/forum/forumOutgoingFriendRequestResolution';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -65,6 +80,7 @@ const LazyChatSessionMount = lazy(loadChatSessionMount);
 const LazyDreamAppPage = lazy(loadDreamAppPage);
 const LazyWorldBookManager = lazy(loadWorldBookManager);
 const LazySettingsAppScreen = lazy(loadSettingsAppScreen);
+const CHAT_DOMAIN_PERSIST_DEBOUNCE_MS = 600;
 
 function DeferredMomentsApp({
   appData,
@@ -122,6 +138,174 @@ function preloadPredictedAppTarget(app: AppScreen): Promise<unknown> | null {
   }
 }
 
+function getNormalizedForumData(forumData: AppData['forumData']) {
+  return {
+    ...(forumData || {}),
+    posts: forumData?.posts || [],
+    notifications: forumData?.notifications || [],
+    followedUsers: forumData?.followedUsers || [],
+    followerMap: forumData?.followerMap || {},
+    tempChats: forumData?.tempChats || {},
+    runtimeAuthorProfiles: forumData?.runtimeAuthorProfiles || {},
+  };
+}
+
+function applyForumFriendAcceptanceSettlement(
+  characters: Character[],
+  input: {
+    characterId: string;
+    actorName: string;
+    content: string;
+    timestamp: number;
+  },
+) {
+  return characters.map((character) => {
+    if (!character || character.id !== input.characterId) {
+      return character;
+    }
+
+    const settlement = buildForumSharedSettlement(character, {
+      kind: 'friend_request_accepted',
+      actorName: input.actorName,
+      content: input.content,
+      timestamp: input.timestamp,
+    });
+
+    return {
+      ...character,
+      sharedContextSnapshots: settlement.sharedContextSnapshots,
+      shortTermSummary: settlement.shortTermSummary,
+      openLoopRegistry: settlement.openLoopRegistry,
+      sharedState: settlement.sharedState,
+    };
+  });
+}
+
+function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now()) {
+  const forumData = getNormalizedForumData(appData.forumData);
+  const pendingOutgoingRequests = (appData.friendRequests || []).filter((request) => (
+    request.sourceScene === 'forum'
+    && request.status === 'pending'
+    && (request.direction === 'outgoing' || request.initiator === 'user')
+    && request.autoResolveKind === 'forum_outgoing_request'
+    && typeof request.autoResolveAt === 'number'
+  ));
+
+  const dueRequests = pendingOutgoingRequests.filter((request) => (request.autoResolveAt || 0) <= now);
+  const nextDueAt = pendingOutgoingRequests
+    .map((request) => request.autoResolveAt)
+    .filter((value): value is number => typeof value === 'number' && value > now)
+    .sort((left, right) => left - right)[0] || null;
+
+  if (dueRequests.length === 0) {
+    return {
+      changed: false,
+      nextDueAt,
+    };
+  }
+
+  let nextCharacters = appData.characters;
+  let nextChatHistory = appData.chatHistory;
+  let nextTempChats = { ...forumData.tempChats };
+  const resolvedRequestIds = new Set<string>();
+
+  dueRequests.forEach((request) => {
+    const authorId = request.fromUserId;
+    const currentSession = nextTempChats[authorId] || createEmptyForumTempChatSession(authorId, now);
+    const relatedPost = request.sourcePostId
+      ? forumData.posts.find((post) => post.id === request.sourcePostId) || null
+      : forumData.posts
+          .filter((post) => post.authorId === authorId || post.comments.some((comment) => comment.authorId === authorId))
+          .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
+
+    const resolution = resolveOutgoingForumFriendRequest({
+      author: {
+        id: authorId,
+        name: request.fromUserName,
+        handle: request.forumHandle,
+        bio: request.forumBio,
+        persona: request.forumPersona,
+      },
+      session: currentSession,
+      relatedPost,
+      currentUserId: appData.userProfile.id,
+      followedUsers: forumData.followedUsers,
+      followerMap: forumData.followerMap,
+      now,
+    });
+
+    const resolvedSession = appendForumFriendResolutionMessage(
+      markForumFriendRequestResolved(currentSession, resolution.accepted ? 'accepted' : 'rejected', now),
+      resolution.responseText,
+      now,
+    );
+    nextTempChats[authorId] = resolvedSession;
+    resolvedRequestIds.add(request.id);
+
+    if (resolution.accepted) {
+      const bridged = bridgeForumFriendToFormalChat({
+        appData: {
+          ...appData,
+          characters: nextCharacters,
+          chatHistory: nextChatHistory,
+        } as any,
+        author: {
+          id: authorId,
+          name: request.fromUserName,
+          avatar: request.fromUserAvatar,
+          handle: request.forumHandle,
+          bio: request.forumBio,
+          persona: request.forumPersona,
+        },
+        session: resolvedSession,
+        now,
+      });
+
+      nextCharacters = applyForumFriendAcceptanceSettlement(bridged.nextCharacters, {
+        characterId: authorId,
+        actorName: request.fromUserName,
+        content: resolution.responseText,
+        timestamp: now,
+      });
+      nextChatHistory = bridged.nextChatHistory as ChatHistory;
+      nextTempChats[authorId] = bridged.nextTempSession;
+    }
+  });
+
+  return {
+    changed: true,
+    nextDueAt,
+    nextAppData: {
+      ...appData,
+      characters: nextCharacters,
+      chatHistory: nextChatHistory,
+      friendRequests: (appData.friendRequests || []).map((request) => (
+        !resolvedRequestIds.has(request.id)
+          ? request
+          : {
+              ...request,
+              status: dueRequests.find((item) => item.id === request.id) ? (
+                nextTempChats[request.fromUserId]?.addedAsFriend ? 'accepted' : 'rejected'
+              ) : request.status,
+              resolutionMessage: nextTempChats[request.fromUserId]?.addedAsFriend
+                ? '对方通过了你的申请'
+                : '对方暂时没有通过你的申请',
+              responseText: nextTempChats[request.fromUserId]?.messages[nextTempChats[request.fromUserId].messages.length - 1]?.text || request.responseText,
+              autoResolveAt: undefined,
+              autoResolveKind: undefined,
+              lastUpdatedAt: now,
+            }
+      )),
+      forumData: {
+        ...appData.forumData,
+        ...forumData,
+        tempChats: nextTempChats,
+      },
+    },
+    nextCharacters,
+  };
+}
+
 type AppScreenContentProps = {
   activeApp: AppScreen;
   activeConfig: AppSettings['configs'][number];
@@ -150,6 +334,7 @@ type AppScreenContentProps = {
   selectedCharacterId: string | null;
   selectedForumPostId: string | null;
   selectedGroupId: string | null;
+  isStorageReady: boolean;
   setActiveApp: Dispatch<SetStateAction<AppScreen>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   setAppData: Dispatch<SetStateAction<AppData>>;
@@ -199,6 +384,7 @@ export function AppScreenContent({
   selectedCharacterId,
   selectedForumPostId,
   selectedGroupId,
+  isStorageReady,
   setActiveApp,
   setActiveTab,
   setAppData,
@@ -224,7 +410,22 @@ export function AppScreenContent({
   const [mountedChatDetailScreens, setMountedChatDetailScreens] = useState<AppScreen[]>(() => (
     isRetainedChatDetailScreen(activeApp) ? [activeApp] : []
   ));
+  const [contactsRelationshipThreadKey, setContactsRelationshipThreadKey] = useState<string | null>(null);
   const preloadedPredictedTargetsRef = useRef<Set<AppScreen>>(new Set());
+  const latestCharactersRef = useRef(appData.characters);
+  const latestDirectHistoryRef = useRef<ChatHistory>(appData.chatHistory);
+  const latestChatGroupsRef = useRef(appData.chatGroups || []);
+  const latestGroupsRef = useRef(appData.groups);
+  const latestFriendRequestsRef = useRef(appData.friendRequests || []);
+  const latestDirectRelationshipWavesRef = useRef(extractDirectRelationshipWaves(appData.chatHistory));
+  const latestDirectFactTracesRef = useRef(extractDirectFactTraces(appData.chatHistory));
+  const latestGroupSessionsRef = useRef(extractGroupSessions(appData.chatGroups || []));
+  const latestDirectSessionMetadataSignatureRef = useRef(
+    JSON.stringify(extractDirectSessionMetadata(appData.characters, appData.chatHistory)),
+  );
+  const pendingImmediateDirectHistoryRef = useRef<ChatHistory | null>(null);
+  const pendingImmediateChatGroupsRef = useRef<typeof latestChatGroupsRef.current | null>(null);
+  const pendingChatDomainFlushTimerRef = useRef<number | null>(null);
   const screenRootBackgroundClass =
     activeApp === 'home' || activeApp === 'dream'
       ? 'bg-transparent'
@@ -239,21 +440,324 @@ export function AppScreenContent({
     && (mountedChatDetailScreens.includes('character-moments') || activeApp === 'character-moments');
   const shouldRenderAddCharacter =
     mountedChatDetailScreens.includes('add-character') || activeApp === 'add-character';
-  const transitionToApp = (nextApp: AppScreen) => {
-    navigateToAppWithTransition(nextApp, setActiveApp);
+  const transitionToApp = (nextApp: AppScreen, options?: Parameters<typeof navigateToAppWithTransition>[2]) => {
+    void navigateToAppWithTransition(nextApp, setActiveApp, options);
+  };
+  const openDirectChatSession = (characterId: string) => {
+    setSelectedCharacterId(characterId);
+    transitionToApp('chat-session', { awaitPreload: true });
+  };
+  const openGroupChatSession = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    transitionToApp('group-chat-session', { awaitPreload: true });
   };
   const forumConfig = resolveSceneTextApiConfig({
     settings,
     scene: 'forum',
   }).runtimeConfig;
-  const appendRelationshipMessages = (
-    currentHistory: AppData['chatHistory'],
-    characterId: string,
-    messages: Array<ReturnType<typeof createRelationshipSystemMessage>>,
-  ) => ({
-    ...currentHistory,
-    [characterId]: [...(currentHistory[characterId] || []), ...messages],
-  });
+  const relationshipFlowRuntime = {
+    appData,
+    settings,
+    setAppData,
+    coupleSpace: currentCoupleSpace,
+    persistCharacters: saveCharacters,
+  };
+  const clearPendingChatDomainFlush = useCallback(() => {
+    if (pendingChatDomainFlushTimerRef.current === null) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(pendingChatDomainFlushTimerRef.current);
+    }
+    pendingChatDomainFlushTimerRef.current = null;
+  }, []);
+  const saveCombinedChatHistorySnapshot = useCallback(() => (
+    saveChatHistoryRecords({
+      directHistory: latestDirectHistoryRef.current,
+      directSessionMetadata: extractDirectSessionMetadata(
+        latestCharactersRef.current,
+        latestDirectHistoryRef.current,
+      ),
+      directRelationshipWaves: latestDirectRelationshipWavesRef.current,
+      directFactTraces: latestDirectFactTracesRef.current,
+      groupSessions: latestGroupSessionsRef.current,
+    })
+  ), []);
+  const persistChatOrganizationSnapshot = useCallback((input?: {
+    groups?: string[];
+    chatGroups?: typeof latestChatGroupsRef.current;
+  }) => {
+    const groups = input?.groups ?? latestGroupsRef.current;
+    const chatGroups = input?.chatGroups ?? latestChatGroupsRef.current;
+    latestGroupsRef.current = groups;
+    latestChatGroupsRef.current = chatGroups;
+    return persistChatOrganization({
+      groups,
+      chatGroups,
+    });
+  }, []);
+  const persistFriendRequestsSnapshot = useCallback((friendRequests = latestFriendRequestsRef.current) => {
+    latestFriendRequestsRef.current = friendRequests;
+    return persistFriendRequests(friendRequests);
+  }, []);
+  const flushCurrentChatDomainSnapshot = useCallback(() => {
+    clearPendingChatDomainFlush();
+    latestDirectRelationshipWavesRef.current = extractDirectRelationshipWaves(latestDirectHistoryRef.current);
+    latestDirectFactTracesRef.current = extractDirectFactTraces(latestDirectHistoryRef.current);
+    latestGroupSessionsRef.current = extractGroupSessions(latestChatGroupsRef.current);
+    void saveCombinedChatHistorySnapshot();
+    void persistChatOrganizationSnapshot();
+    void persistFriendRequestsSnapshot();
+  }, [
+    clearPendingChatDomainFlush,
+    persistChatOrganizationSnapshot,
+    persistFriendRequestsSnapshot,
+    saveCombinedChatHistorySnapshot,
+  ]);
+  const scheduleChatDomainSnapshotFlush = useCallback(() => {
+    if (!isStorageReady || typeof window === 'undefined') {
+      return;
+    }
+
+    clearPendingChatDomainFlush();
+    pendingChatDomainFlushTimerRef.current = window.setTimeout(() => {
+      pendingChatDomainFlushTimerRef.current = null;
+      flushCurrentChatDomainSnapshot();
+    }, CHAT_DOMAIN_PERSIST_DEBOUNCE_MS);
+  }, [
+    clearPendingChatDomainFlush,
+    flushCurrentChatDomainSnapshot,
+    isStorageReady,
+  ]);
+  const setDirectChatHistory = useCallback((chatHistory: SetStateAction<ChatHistory>) => {
+    const nextChatHistory = typeof chatHistory === 'function'
+      ? chatHistory(latestDirectHistoryRef.current)
+      : chatHistory;
+
+    latestDirectHistoryRef.current = nextChatHistory;
+    pendingImmediateDirectHistoryRef.current = nextChatHistory;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.chatHistory === nextChatHistory
+        ? prev
+        : {
+            ...prev,
+            chatHistory: nextChatHistory,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+  const setPersistedChatGroups = useCallback((chatGroupsOrUpdater: SetStateAction<typeof latestChatGroupsRef.current>) => {
+    const resolvedChatGroups =
+      typeof chatGroupsOrUpdater === 'function'
+        ? chatGroupsOrUpdater(latestChatGroupsRef.current)
+        : chatGroupsOrUpdater;
+    const nextChatGroups = sanitizeChatGroupsWithCharactersFromStore(
+      resolvedChatGroups,
+      latestCharactersRef.current,
+    );
+
+    latestChatGroupsRef.current = nextChatGroups;
+    pendingImmediateChatGroupsRef.current = nextChatGroups;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.chatGroups === nextChatGroups
+        ? prev
+        : {
+            ...prev,
+            chatGroups: nextChatGroups,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+  const setPersistedFriendRequests = useCallback((friendRequestsOrUpdater: SetStateAction<typeof latestFriendRequestsRef.current>) => {
+    const nextFriendRequests =
+      typeof friendRequestsOrUpdater === 'function'
+        ? friendRequestsOrUpdater(latestFriendRequestsRef.current)
+        : friendRequestsOrUpdater;
+
+    latestFriendRequestsRef.current = nextFriendRequests;
+
+    if (isStorageReady) {
+      scheduleChatDomainSnapshotFlush();
+    }
+
+    setAppData((prev) => (
+      prev.friendRequests === nextFriendRequests
+        ? prev
+        : {
+            ...prev,
+            friendRequests: nextFriendRequests,
+          }
+    ));
+  }, [isStorageReady, scheduleChatDomainSnapshotFlush, setAppData]);
+
+  useEffect(() => {
+    latestCharactersRef.current = appData.characters;
+    latestDirectHistoryRef.current = appData.chatHistory;
+    latestChatGroupsRef.current = appData.chatGroups || [];
+    latestGroupsRef.current = appData.groups;
+    latestFriendRequestsRef.current = appData.friendRequests || [];
+  }, [appData.characters, appData.chatGroups, appData.chatHistory, appData.friendRequests, appData.groups]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    const nextSignature = JSON.stringify(
+      extractDirectSessionMetadata(appData.characters, appData.chatHistory),
+    );
+    if (nextSignature === latestDirectSessionMetadataSignatureRef.current) {
+      return;
+    }
+
+    latestDirectSessionMetadataSignatureRef.current = nextSignature;
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.characters,
+    appData.chatHistory,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    if (pendingImmediateDirectHistoryRef.current === appData.chatHistory) {
+      pendingImmediateDirectHistoryRef.current = null;
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.chatHistory,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    const nextChatGroups = appData.chatGroups || [];
+    if (pendingImmediateChatGroupsRef.current === nextChatGroups) {
+      pendingImmediateChatGroupsRef.current = null;
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [
+    appData.chatGroups,
+    isStorageReady,
+    scheduleChatDomainSnapshotFlush,
+  ]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    void persistChatOrganizationSnapshot({ groups: appData.groups });
+  }, [appData.groups, isStorageReady, persistChatOrganizationSnapshot]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    scheduleChatDomainSnapshotFlush();
+  }, [appData.friendRequests, isStorageReady, scheduleChatDomainSnapshotFlush]);
+
+  useEffect(() => {
+    const friendRequests = appData.friendRequests || [];
+    const releasedRequests = releaseDueFriendRequests(friendRequests, Date.now());
+    if (releasedRequests !== friendRequests) {
+      setPersistedFriendRequests(releasedRequests);
+      return;
+    }
+
+    const nextReleaseAt = getNextFriendRequestReleaseAt(friendRequests, Date.now());
+    if (!nextReleaseAt || typeof window === 'undefined') {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setPersistedFriendRequests((prev) => releaseDueFriendRequests(prev, Date.now()));
+    }, Math.max(0, nextReleaseAt - Date.now()));
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [appData.friendRequests, setPersistedFriendRequests]);
+
+  useEffect(() => {
+    const resolution = resolveDueOutgoingForumFriendRequests(appData, Date.now());
+    if (resolution.changed && resolution.nextAppData) {
+      if (resolution.nextCharacters && resolution.nextCharacters !== appData.characters) {
+        void saveCharacters(resolution.nextCharacters);
+      }
+      setAppData(resolution.nextAppData);
+      return;
+    }
+
+    if (!resolution.nextDueAt || typeof window === 'undefined') {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      let resolvedCharacters: Character[] | null = null;
+      setAppData((prev) => {
+        const nextResolution = resolveDueOutgoingForumFriendRequests(prev, Date.now());
+        if (!nextResolution.changed || !nextResolution.nextAppData) {
+          return prev;
+        }
+        resolvedCharacters = nextResolution.nextCharacters || null;
+        return nextResolution.nextAppData;
+      });
+      if (resolvedCharacters) {
+        void saveCharacters(resolvedCharacters);
+      }
+    }, Math.max(0, resolution.nextDueAt - Date.now()));
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [appData, setAppData]);
+
+  useEffect(() => () => {
+    clearPendingChatDomainFlush();
+  }, [clearPendingChatDomainFlush]);
+
+  useEffect(() => {
+    if (!isStorageReady || typeof document === 'undefined' || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushCurrentChatDomainSnapshot();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushCurrentChatDomainSnapshot);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushCurrentChatDomainSnapshot);
+    };
+  }, [flushCurrentChatDomainSnapshot, isStorageReady]);
   const handleDeleteCharacterFromProfile = () => {
     if (!selectedCharacterId) {
       return;
@@ -289,327 +793,36 @@ export function AppScreenContent({
     setSelectedCharacterId(null);
     transitionToApp('chat');
   };
+  const handleToggleCharacterBlock = (
+    characterId: string,
+    targetCharacterOverride?: Character | null,
+  ) => {
+    runRelationshipBlockToggleFlow({
+      runtime: relationshipFlowRuntime,
+      characterId,
+      targetCharacter: targetCharacterOverride,
+    });
+  };
   const handleToggleCharacterBlockFromProfile = () => {
     if (!selectedCharacterId || !selectedCharacter) {
       return;
     }
 
-    const characterId = selectedCharacterId;
-    const targetCharacter = selectedCharacter;
-    const historySnapshot = appData.chatHistory[characterId] || [];
-    const timestamp = Date.now();
-    const isUnblocking = targetCharacter.blockedByUser === true;
-
-    setAppData((prev) => {
-      const nextCharacters = prev.characters.map((character) => (
-        character.id === characterId
-          ? {
-              ...character,
-              friendshipStatus: isUnblocking ? character.friendshipStatus : 'none' as const,
-              blockedByUser: !isUnblocking,
-              relationshipStatusUpdatedAt: timestamp,
-            }
-          : character
-      ));
-      const nextFriendRequests = supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp);
-      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(
-          isUnblocking
-            ? `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 从黑名单里放了出来。`
-            : `你把 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 拉黑了。`,
-          timestamp,
-        ),
-      ]);
-
-      void saveCharacters(nextCharacters);
-      return {
-        ...prev,
-        characters: nextCharacters,
-        chatHistory: nextChatHistory,
-        friendRequests: nextFriendRequests,
-      };
-    });
-
-    void (async () => {
-      const generated = await generateRelationshipEventReply({
-        settings,
-        character: targetCharacter,
-        allCharacters: appData.characters,
-        userName: appData.userProfile.name,
-        history: historySnapshot,
-        directChatHistory: appData.chatHistory,
-        chatGroups: appData.chatGroups || [],
-        masks: appData.masks,
-        worldBook: appData.worldBooks || [],
-        perception: appData.perception,
-        coupleSpace: currentCoupleSpace,
-        event: {
-          kind: isUnblocking ? 'user_unblocked_character' : 'user_blocked_character',
-        },
-      });
-
-      setAppData((prev) => {
-        const currentCharacter = prev.characters.find((character) => character.id === characterId);
-        if (!currentCharacter || currentCharacter.relationshipStatusUpdatedAt !== timestamp) {
-          return prev;
-        }
-
-        const currentHistory = prev.chatHistory[characterId] || [];
-        let nextCharacters = prev.characters;
-        let nextFriendRequests = prev.friendRequests || [];
-
-        if (isUnblocking) {
-          const fallback = decideCharacterUnblockGesture(currentCharacter, currentHistory);
-          const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
-          const shouldSendRequest = generated?.decision === 'send_request'
-            ? true
-            : generated?.decision === 'wait_for_user'
-              ? false
-              : fallback.sendRequest;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  blockedByUser: false,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          if (shouldSendRequest) {
-            nextFriendRequests = [
-              {
-                id: `friend-request-${characterId}-${timestamp}`,
-                fromUserId: characterId,
-                fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-                fromUserAvatar: currentCharacter.avatar,
-                status: 'pending' as const,
-                timestamp,
-                message: generated?.requestMessage || fallback.requestMessage,
-                direction: 'incoming' as const,
-                initiator: 'character' as const,
-                requestKind: 'reconnect' as const,
-                characterId,
-                sourceScene: 'relationship' as const,
-                lastUpdatedAt: timestamp,
-              },
-              ...nextFriendRequests,
-            ];
-          }
-          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-            createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
-          ]);
-
-          void saveCharacters(nextCharacters);
-          return {
-            ...prev,
-            characters: nextCharacters,
-            chatHistory: nextChatHistory,
-            friendRequests: nextFriendRequests,
-          };
-        } else {
-          const fallback = decideCharacterBlockReaction(currentCharacter, currentHistory);
-          const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
-          const shouldCounterBlock = generated?.decision === 'counter_block'
-            ? true
-            : generated?.decision === 'no_counter_block'
-              ? false
-              : fallback.counterBlock;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'none' as const,
-                  blockedByUser: true,
-                  blockedByCharacter: shouldCounterBlock,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-            createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
-          ]);
-
-          void saveCharacters(nextCharacters);
-          return {
-            ...prev,
-            characters: nextCharacters,
-            chatHistory: nextChatHistory,
-            friendRequests: nextFriendRequests,
-          };
-        }
-      });
-    })();
+    handleToggleCharacterBlock(selectedCharacterId, selectedCharacter);
   };
   const handleSubmitCharacterFriendRequest = (message: string) => {
     if (!selectedCharacterId || !selectedCharacter) {
       return;
     }
-
-    const characterId = selectedCharacterId;
-    const targetCharacter = selectedCharacter;
-    const historySnapshot = appData.chatHistory[characterId] || [];
-    const trimmedMessage = message.trim() || '想把你加回来，之后继续好好聊。';
-    const currentBlockState = getCharacterBlockState(targetCharacter);
-    const requestKind = currentBlockState === 'none' ? 'friend' as const : 'reconnect' as const;
-    const timestamp = Date.now();
-    const requestId = `friend-request-${characterId}-${timestamp}`;
-
-    setAppData((prev) => {
-      const nextFriendRequests = [
-        {
-          id: requestId,
-          fromUserId: characterId,
-          fromUserName: targetCharacter.remarkName?.trim() || targetCharacter.name,
-          fromUserAvatar: targetCharacter.avatar,
-          status: 'pending' as const,
-          timestamp,
-          message: trimmedMessage,
-          direction: 'outgoing' as const,
-          initiator: 'user' as const,
-          requestKind,
-          characterId,
-          sourceScene: 'relationship' as const,
-          lastUpdatedAt: timestamp,
-        },
-        ...supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp),
-      ];
-      const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-        createRelationshipSystemMessage(`你向 ${targetCharacter.remarkName?.trim() || targetCharacter.name} 发出了一条好友申请。`, timestamp),
-      ]);
-
-      return {
-        ...prev,
-        chatHistory: nextChatHistory,
-        friendRequests: nextFriendRequests,
-      };
+    const started = runRelationshipRequestSubmissionFlow({
+      runtime: relationshipFlowRuntime,
+      characterId: selectedCharacterId,
+      targetCharacter: selectedCharacter,
+      message,
     });
-
-    void (async () => {
-      const generated = await generateRelationshipEventReply({
-        settings,
-        character: targetCharacter,
-        allCharacters: appData.characters,
-        userName: appData.userProfile.name,
-        history: historySnapshot,
-        directChatHistory: appData.chatHistory,
-        chatGroups: appData.chatGroups || [],
-        masks: appData.masks,
-        worldBook: appData.worldBooks || [],
-        perception: appData.perception,
-        coupleSpace: currentCoupleSpace,
-        event: {
-          kind: 'user_sent_friend_request',
-          note: trimmedMessage,
-        },
-      });
-
-      setAppData((prev) => {
-        const currentCharacter = prev.characters.find((character) => character.id === characterId);
-        const pendingRequest = (prev.friendRequests || []).find((request) => request.id === requestId);
-        if (!currentCharacter || !pendingRequest || pendingRequest.status !== 'pending') {
-          return prev;
-        }
-
-        const currentHistory = prev.chatHistory[characterId] || [];
-        const fallback = decideCharacterFriendRequestResponse(currentCharacter, currentHistory, trimmedMessage);
-        const decision = generated?.decision;
-        const reactionText = generated?.reactionText?.trim() || fallback.reactionText;
-        let nextCharacters = prev.characters;
-        let nextFriendRequests = prev.friendRequests || [];
-
-        if (decision === 'accept' || (!decision && fallback.outcome === 'accept')) {
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'friends' as const,
-                  blockedByUser: false,
-                  blockedByCharacter: false,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          nextFriendRequests = nextFriendRequests.map((request) => (
-            request.id === requestId
-              ? {
-                  ...request,
-                  status: 'accepted' as const,
-                  resolutionMessage: generated?.reactionText ? '对方通过了你的申请' : fallback.resolutionMessage,
-                  lastUpdatedAt: timestamp,
-                }
-              : request
-          ));
-        } else if (decision === 'counter_request' || (!decision && fallback.outcome === 'counter_request')) {
-          nextFriendRequests = [
-            {
-              id: `friend-request-counter-${characterId}-${timestamp + 1}`,
-              fromUserId: characterId,
-              fromUserName: currentCharacter.remarkName?.trim() || currentCharacter.name,
-              fromUserAvatar: currentCharacter.avatar,
-              status: 'pending' as const,
-              timestamp: timestamp + 1,
-              message: generated?.requestMessage || (fallback.outcome === 'counter_request' ? fallback.requestMessage : '这次换我来递申请。'),
-              direction: 'incoming' as const,
-              initiator: 'character' as const,
-              requestKind: 'reconnect' as const,
-              characterId,
-              sourceScene: 'relationship' as const,
-              lastUpdatedAt: timestamp + 1,
-            },
-            ...nextFriendRequests.map((request) => (
-              request.id === requestId
-                ? {
-                    ...request,
-                    status: 'superseded' as const,
-                    resolutionMessage: '对方没有直接通过，而是回了一条新的好友申请',
-                    lastUpdatedAt: timestamp,
-                  }
-                : request
-            )),
-          ];
-        } else {
-          const shouldBlock = decision === 'reject_and_block'
-            ? true
-            : decision === 'reject'
-              ? false
-              : fallback.outcome === 'reject'
-                ? fallback.counterBlock
-                : false;
-          nextCharacters = prev.characters.map((character) => (
-            character.id === characterId
-              ? {
-                  ...character,
-                  friendshipStatus: 'none' as const,
-                  blockedByCharacter: shouldBlock,
-                  relationshipStatusUpdatedAt: timestamp,
-                }
-              : character
-          ));
-          nextFriendRequests = nextFriendRequests.map((request) => (
-            request.id === requestId
-              ? {
-                  ...request,
-                  status: 'rejected' as const,
-                  resolutionMessage: shouldBlock ? '对方拒绝了申请，并把你拉黑了' : '对方拒绝了你的申请',
-                  lastUpdatedAt: timestamp,
-                }
-              : request
-          ));
-        }
-
-        const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
-          createCharacterRelationshipMessage(characterId, reactionText, timestamp + 1),
-        ]);
-
-        void saveCharacters(nextCharacters);
-        return {
-          ...prev,
-          characters: nextCharacters,
-          chatHistory: nextChatHistory,
-          friendRequests: nextFriendRequests,
-        };
-      });
-    })();
+    if (!started) {
+      alert('这条关系线程的申请次数已经到上限了。');
+    }
   };
   const appendLikeToMoment = (momentId: string, likerId: string) => {
     setAppData((prev) => ({
@@ -968,14 +1181,13 @@ export function AppScreenContent({
             appData={appData}
             setAppData={setAppData}
             onOpenChat={handleOpenChat}
-            onOpenGroupChat={(id) => {
-              setSelectedGroupId(id);
-              transitionToApp('group-chat-session');
-            }}
+            onOpenGroupChat={openGroupChatSession}
             onOpenProfile={(id) => {
               setSelectedCharacterId(id);
               transitionToApp('character-profile');
             }}
+            defaultRelationshipThreadKey={contactsRelationshipThreadKey}
+            onRelationshipThreadHandled={() => setContactsRelationshipThreadKey(null)}
             onAddCharacter={() => transitionToApp('add-character')}
             onBack={() => transitionToApp('home')}
             settings={settings}
@@ -992,12 +1204,17 @@ export function AppScreenContent({
           <CharacterProfile
             character={selectedCharacter}
             onBack={() => transitionToApp('chat')}
-            onChat={() => {
-              transitionToApp('chat-session');
-            }}
+            onChat={() => openDirectChatSession(selectedCharacter.id)}
             onOpenMoments={() => {
               setCharacterMomentsBackApp('character-profile');
               transitionToApp('character-moments');
+            }}
+            onViewRelationshipThread={() => {
+              setContactsRelationshipThreadKey(
+                getLatestCharacterRelationshipPageKey(appData.friendRequests || [], selectedCharacter.id),
+              );
+              setActiveTab('contacts');
+              transitionToApp('chat');
             }}
             groups={appData.groups}
             friendRequests={appData.friendRequests || []}
@@ -1044,21 +1261,9 @@ export function AppScreenContent({
             selectedGroupId={selectedGroupId}
             characters={appData.characters}
             chatGroups={appData.chatGroups || []}
-            setChatGroups={(chatGroupsOrUpdater) =>
-              setAppData((prev) => {
-                const resolvedChatGroups =
-                  typeof chatGroupsOrUpdater === 'function'
-                    ? chatGroupsOrUpdater(prev.chatGroups || [])
-                    : chatGroupsOrUpdater;
-
-                return {
-                  ...prev,
-                  chatGroups: sanitizeChatGroupsWithCharactersFromStore(resolvedChatGroups, prev.characters),
-                };
-              })
-            }
+            setChatGroups={setPersistedChatGroups}
             chatHistory={appData.chatHistory}
-            setChatHistory={(chatHistory) => setAppData((prev) => ({ ...prev, chatHistory }))}
+            setChatHistory={setDirectChatHistory}
             settings={settings}
             setSettings={setSettings}
             userAvatar={appData.userProfile.avatar}
@@ -1089,7 +1294,13 @@ export function AppScreenContent({
             setWalletData={(data) => setAppData((prev) => ({ ...prev, walletData: data }))}
             updateCharacter={handleMergeCharacter}
             patchCharacter={handlePatchCharacterById}
+            setFriendRequests={setPersistedFriendRequests}
+            onToggleCharacterBlock={handleToggleCharacterBlock}
             onBackToChat={() => transitionToApp('chat')}
+            onOpenCharacterProfile={(characterId) => {
+              setSelectedCharacterId(characterId);
+              transitionToApp('character-profile');
+            }}
             onViewForumPost={(postId) => {
               openForumApp(postId);
             }}
@@ -1186,6 +1397,7 @@ export function AppScreenContent({
             }}
             onStatusBarVisibilityChange={setStatusBarVisible}
             onAcceptCoupleSpaceInvite={handleAcceptCoupleSpaceInvite}
+            friendRequests={appData.friendRequests || []}
           />
         </Suspense>
       )}
@@ -1328,6 +1540,7 @@ export function AppScreenContent({
             settings={settings}
             onPatchCharacter={handlePatchCharacterById}
             allCharacters={appData.characters}
+            worldBooks={appData.worldBooks || []}
             onBack={() => transitionToApp('home')}
             audioRef={audioRef}
           />
@@ -1340,10 +1553,7 @@ export function AppScreenContent({
             onUpdateAppData={(newData) => handleCustomizationUpdateAppData(newData, setAppData)}
             onClose={() => transitionToApp('home')}
             settings={settings}
-            onOpenChat={(characterId) => {
-              setSelectedCharacterId(characterId);
-              transitionToApp('chat-session');
-            }}
+            onOpenChat={openDirectChatSession}
             initialPostId={selectedForumPostId}
           />
         </Suspense>

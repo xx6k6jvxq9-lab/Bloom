@@ -7,6 +7,7 @@ import {
   normalizeWorldBookPriorityLevel,
 } from '../../services/world-book/worldBookMeta';
 import { buildWorldBookChunkCache } from '../../services/world-book/worldBookBudget';
+import { applyDerivedWorldBookMetadata } from '../../services/world-book/worldBookDerived';
 
 export type MeData = {
   masks: Mask[];
@@ -15,7 +16,7 @@ export type MeData = {
 };
 
 function normalizeWorldBookEntry(entry: WorldBookEntry): WorldBookEntry {
-  return {
+  return applyDerivedWorldBookMetadata({
     ...entry,
     title: typeof entry.title === 'string' ? entry.title.trim() : '',
     content: typeof entry.content === 'string' ? entry.content.trim() : '',
@@ -26,7 +27,7 @@ function normalizeWorldBookEntry(entry: WorldBookEntry): WorldBookEntry {
     characterIds: Array.isArray(entry.characterIds) ? entry.characterIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0) : [],
     pinMode: entry.pinMode === 'always' ? 'always' : 'none',
     chunkCache: buildWorldBookChunkCache(entry),
-  };
+  });
 }
 
 function mergeWorldBooks(

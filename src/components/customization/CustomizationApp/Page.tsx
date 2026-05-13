@@ -44,10 +44,17 @@ import {
   createDefaultPerceptionSettings,
   hydratePerceptionSettings,
 } from '../../../features/persistence/perceptionStore';
+import {
+  buildCharacterMemoryRecord,
+  stripCharacterMemoryFromCharacters,
+} from '../../../features/persistence/characterMemoryStore';
+import { buildMemoryRecordDataFromChatHistory } from '../../../services/memory/buildMemoryRecordData';
+import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../../services/memory/memoryRecordSnapshots';
 import { STORAGE_KEYS } from '../../../features/persistence/storageKeys';
 import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
   extractGroupSessions,
 } from '../../../features/persistence/chatHistoryStore';
 import { ChatBubbleThemeCustomizationSection } from './ChatBubbleThemeCustomizationSection';
@@ -3316,16 +3323,27 @@ function DataSettings({ onReset, appData, setAppData, settings, setSettings }: a
 
         const persistImportedSnapshot = async (nextAppData: any, nextSettings: any, source: any) => {
           const normalizedAppData = normalizeImportedAppData(nextAppData);
+          const importedCharacters = Array.isArray(normalizedAppData.characters)
+            ? normalizedAppData.characters
+            : [];
           const persistedChatHistory = {
             directHistory: normalizedAppData.chatHistory ?? {},
+            directSessionMetadata: extractDirectSessionMetadata(importedCharacters, normalizedAppData.chatHistory ?? {}),
             directRelationshipWaves: extractDirectRelationshipWaves(normalizedAppData.chatHistory ?? {}),
             directFactTraces: extractDirectFactTraces(normalizedAppData.chatHistory ?? {}),
             groupSessions: extractGroupSessions(normalizedAppData.chatGroups ?? []),
           };
+          const characterMemory = buildCharacterMemoryRecord(importedCharacters);
+          const memoryRecords = mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+            buildMemoryRecordDataFromChatHistory(persistedChatHistory),
+            characterMemory,
+          );
 
           const writes: Promise<void>[] = [
             writeImportedRecord(STORAGE_KEYS.settings, nextSettings),
-            writeImportedRecord(STORAGE_KEYS.characters, normalizedAppData.characters ?? []),
+            writeImportedRecord(STORAGE_KEYS.characters, stripCharacterMemoryFromCharacters(importedCharacters)),
+            writeImportedRecord(STORAGE_KEYS.characterMemory, {}),
+            writeImportedRecord(STORAGE_KEYS.memoryRecords, memoryRecords),
             writeImportedRecord(STORAGE_KEYS.chatHistory, persistedChatHistory),
             writeImportedRecord(STORAGE_KEYS.chatOrganization, {
               groups: normalizedAppData.groups ?? [],

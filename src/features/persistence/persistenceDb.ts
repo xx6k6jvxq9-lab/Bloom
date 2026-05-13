@@ -9,15 +9,33 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 const INDEXED_DB_OPEN_TIMEOUT_MS = 8000;
 let persistenceDbUnavailableError: Error | null = null;
 
-function ensurePersistenceStores(db: IDBDatabase) {
-  if (!db.objectStoreNames.contains(PERSISTENCE_ASSETS_STORE)) {
-    const assetStore = db.createObjectStore(PERSISTENCE_ASSETS_STORE, { keyPath: 'id' });
+export function resetPersistenceDbState(): void {
+  dbPromise = null;
+  persistenceDbUnavailableError = null;
+}
+
+function ensurePersistenceStores(db: IDBDatabase, upgradeTransaction?: IDBTransaction | null) {
+  const assetStore = db.objectStoreNames.contains(PERSISTENCE_ASSETS_STORE)
+    ? upgradeTransaction?.objectStore(PERSISTENCE_ASSETS_STORE) ?? null
+    : db.createObjectStore(PERSISTENCE_ASSETS_STORE, { keyPath: 'id' });
+
+  if (assetStore && !assetStore.indexNames.contains('updatedAt')) {
     assetStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+  }
+
+  if (assetStore && !assetStore.indexNames.contains('source')) {
     assetStore.createIndex('source', 'source', { unique: false });
   }
 
-  if (!db.objectStoreNames.contains(PERSISTENCE_JSON_STORE)) {
-    const jsonStore = db.createObjectStore(PERSISTENCE_JSON_STORE, { keyPath: 'key' });
+  if (assetStore && !assetStore.indexNames.contains('originalUrl')) {
+    assetStore.createIndex('originalUrl', 'originalUrl', { unique: false });
+  }
+
+  const jsonStore = db.objectStoreNames.contains(PERSISTENCE_JSON_STORE)
+    ? upgradeTransaction?.objectStore(PERSISTENCE_JSON_STORE) ?? null
+    : db.createObjectStore(PERSISTENCE_JSON_STORE, { keyPath: 'key' });
+
+  if (jsonStore && !jsonStore.indexNames.contains('updatedAt')) {
     jsonStore.createIndex('updatedAt', 'updatedAt', { unique: false });
   }
 }
@@ -27,9 +45,38 @@ function hasRequiredStores(db: IDBDatabase): boolean {
     && db.objectStoreNames.contains(PERSISTENCE_JSON_STORE);
 }
 
-function openDbAtVersion(version: number): Promise<IDBDatabase> {
+function attachVersionChangeHandler(db: IDBDatabase) {
+  db.onversionchange = () => {
+    db.close();
+    dbPromise = null;
+  };
+}
+
+function isIndexedDbVersionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  return 'name' in error && error.name === 'VersionError';
+}
+
+function getRecoveryVersion(db: IDBDatabase): number | null {
+  if (!hasRequiredStores(db)) {
+    return Math.max(PERSISTENCE_DB_VERSION, db.version + 1);
+  }
+
+  if (db.version < PERSISTENCE_DB_VERSION) {
+    return PERSISTENCE_DB_VERSION;
+  }
+
+  return null;
+}
+
+function openDbAtVersion(version?: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(PERSISTENCE_DB_NAME, version);
+    const request = typeof version === 'number'
+      ? indexedDB.open(PERSISTENCE_DB_NAME, version)
+      : indexedDB.open(PERSISTENCE_DB_NAME);
     let settled = false;
     const timeoutId = window.setTimeout(() => {
       if (settled) {
@@ -51,31 +98,37 @@ function openDbAtVersion(version: number): Promise<IDBDatabase> {
     request.onerror = () => settle(() => reject(request.error ?? new Error('Failed to open IndexedDB')));
     request.onblocked = () => settle(() => reject(new Error('IndexedDB upgrade was blocked by another open tab')));
     request.onupgradeneeded = () => {
-      ensurePersistenceStores(request.result);
+      ensurePersistenceStores(request.result, request.transaction);
     };
     request.onsuccess = () => settle(() => resolve(request.result));
   });
 }
 
-async function openPersistenceDbWithRecovery(): Promise<IDBDatabase> {
-  const db = await openDbAtVersion(PERSISTENCE_DB_VERSION);
+async function openInitialPersistenceDb(): Promise<IDBDatabase> {
+  try {
+    return await openDbAtVersion(PERSISTENCE_DB_VERSION);
+  } catch (error) {
+    if (!isIndexedDbVersionError(error)) {
+      throw error;
+    }
 
-  if (hasRequiredStores(db)) {
-    db.onversionchange = () => {
-      db.close();
-      dbPromise = null;
-    };
+    return openDbAtVersion();
+  }
+}
+
+async function openPersistenceDbWithRecovery(): Promise<IDBDatabase> {
+  const db = await openInitialPersistenceDb();
+  const recoveryVersion = getRecoveryVersion(db);
+
+  if (recoveryVersion === null) {
+    attachVersionChangeHandler(db);
     return db;
   }
 
-  const recoveryVersion = db.version + 1;
   db.close();
 
   const recoveredDb = await openDbAtVersion(recoveryVersion);
-  recoveredDb.onversionchange = () => {
-    recoveredDb.close();
-    dbPromise = null;
-  };
+  attachVersionChangeHandler(recoveredDb);
   return recoveredDb;
 }
 

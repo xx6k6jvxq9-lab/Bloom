@@ -20,6 +20,8 @@ import { buildTemporalSnapshotPrompt } from '../relationship-time/buildTemporalS
 import { buildPresenceSnapshotPrompt } from '../relationship-time/buildPresenceSnapshotPrompt';
 import { filterTopicAnchorsForPrompt, suppressTopicResidualsForPrompt } from '../chat/topicRecall';
 import { decayShortTermSummaryForContinuity } from '../memory/buildShortTermSummary';
+import { buildResolvedOpenLoopRegistry } from '../memory/buildResolvedOpenLoopRegistry';
+import { buildMemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
@@ -345,6 +347,7 @@ export function buildChatSceneInput(
     ],
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
+  const resolvedOpenLoopRegistry = buildResolvedOpenLoopRegistry(params.character);
   const directGroupMessages = directMemoryReadableGroups
     .flatMap((group) => group.history || [])
     .filter((message) => message.role === 'user' || message.senderCharacterId === params.character.id);
@@ -405,7 +408,7 @@ export function buildChatSceneInput(
         buildPresenceSnapshotPrompt({
           state: characterTemporalState,
           shortTermSummary: recentContext.shortTermSummary,
-          existingEntries: params.character.openLoopRegistry,
+          existingEntries: resolvedOpenLoopRegistry,
           latestUserText: params.latestUserText,
         }),
       ].filter(Boolean).join('\n\n'),
@@ -441,6 +444,21 @@ export function buildChatSceneInput(
         : '',
     ),
   });
+  const retrievedMemory = buildMemoryPromptView({
+    characterId: params.character.id,
+    latestUserText: params.latestUserText,
+  });
+  const resolvedRecentContext = (
+    retrievedMemory.matchedFacts.length
+    || retrievedMemory.stablePreferences.length
+    || retrievedMemory.relationshipWaves.length
+    || retrievedMemory.openTasks.length
+  ) > 0
+    ? {
+        ...budgetedContext.recentContext,
+        retrievedMemory,
+      }
+    : budgetedContext.recentContext;
 
   return {
     mode: params.mode,
@@ -463,7 +481,7 @@ export function buildChatSceneInput(
       perceptionPrompt: params.perceptionPrompt,
     },
     languagePolicy: params.character,
-    recentContext: budgetedContext.recentContext,
+    recentContext: resolvedRecentContext,
     sections: budgetedContext.sections,
   };
 }

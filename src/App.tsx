@@ -681,6 +681,7 @@ export default function App() {
             selectedCharacterId={selectedCharacterId}
             selectedForumPostId={selectedForumPostId}
             selectedGroupId={selectedGroupId}
+            isStorageReady={isStorageReady}
             setActiveApp={setActiveApp}
             setActiveTab={setActiveTab}
             setAppData={setAppData}
@@ -698,7 +699,7 @@ export default function App() {
             onOpenReadyDating={(characterId) => {
               setSelectedCharacterId(characterId);
               setDatingResumeSignal((prev) => prev + 1);
-              navigateToAppWithTransition('chat-session', setActiveApp);
+              void navigateToAppWithTransition('chat-session', setActiveApp, { awaitPreload: true });
               setDatingGenerationToast(null);
             }}
             onDismissDatingToast={() => setDatingGenerationToast(null)}

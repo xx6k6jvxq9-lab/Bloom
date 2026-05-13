@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildDerivedMemoryLayersFromRecords } from './deriveMemoryLayersFromRecords';
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
@@ -6,7 +7,12 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
 }
 
 export function buildLongTermMemoryProfile(
-  character: Pick<Character, 'longTermMemoryProfile'>,
+  character: Pick<Character, 'id' | 'longTermMemoryProfile'>,
 ): string | undefined {
+  const derived = buildDerivedMemoryLayersFromRecords(character).longTermMemoryProfile;
+  if (derived) {
+    return derived;
+  }
+
   return normalizeOptionalText(character.longTermMemoryProfile);
 }

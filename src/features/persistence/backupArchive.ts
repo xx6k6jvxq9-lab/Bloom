@@ -1,13 +1,21 @@
 import type { AppData, AppSettings } from '../../types';
 import { clearAssets, listAssets, putAsset, type StoredAssetRecord } from './browserDb';
-import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { listJsonRecordKeys, loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { removeLocalStorageValue, syncLocalStorageJsonValue } from './localConfigStore';
 import { createUploadedAssetRef } from './persistentAssetRef';
 import { STORAGE_KEYS } from './storageKeys';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
 import {
+  buildCharacterMemoryRecord,
+  stripCharacterMemoryFromCharacters,
+} from './characterMemoryStore';
+import { buildMemoryRecordDataFromChatHistory } from '../../services/memory/buildMemoryRecordData';
+import { mergeLegacyCharacterMemoryRecordIntoMemoryRecordData } from '../../services/memory/memoryRecordSnapshots';
+import { loadMemoryRecordData } from './memoryRecordStore';
+import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
   extractGroupSessions,
 } from './chatHistoryStore';
 
@@ -35,6 +43,9 @@ export type FullBackupArchive = {
 export type ModularBackupModules = {
   settings: unknown;
   characters: unknown;
+  // Deprecated compatibility module. Memory content should live in memoryRecords.
+  characterMemory: unknown;
+  memoryRecords: unknown;
   chatHistory: unknown;
   chatOrganization: unknown;
   perception: unknown;
@@ -236,18 +247,35 @@ function buildModularBackupModules({ appData, settings, modules }: ModularBackup
     resolvedAppData.coupleSpaceState,
     resolvedAppData.coupleSpace,
   );
+  const characters = resolvedAppData.characters ?? [];
   const directHistory = resolvedAppData.chatHistory ?? {};
   const chatGroups = resolvedAppData.chatGroups ?? [];
+  const persistedChatHistory = {
+    directHistory,
+    directSessionMetadata: extractDirectSessionMetadata(characters, directHistory),
+    directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
+    directFactTraces: extractDirectFactTraces(directHistory),
+    groupSessions: extractGroupSessions(chatGroups),
+  };
+  const legacyCharacterMemory = buildCharacterMemoryRecord(characters);
+  const fallbackMemoryRecords = buildMemoryRecordDataFromChatHistory(persistedChatHistory);
+  const mergedMemoryRecords = mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+    (
+      modules?.memoryRecords
+      && typeof modules.memoryRecords === 'object'
+      && !Array.isArray(modules.memoryRecords)
+        ? modules.memoryRecords
+        : loadMemoryRecordData(fallbackMemoryRecords)
+    ) as ReturnType<typeof loadMemoryRecordData>,
+    legacyCharacterMemory,
+  );
 
   return {
     settings,
-    characters: resolvedAppData.characters ?? [],
-    chatHistory: {
-      directHistory,
-      directRelationshipWaves: extractDirectRelationshipWaves(directHistory),
-      directFactTraces: extractDirectFactTraces(directHistory),
-      groupSessions: extractGroupSessions(chatGroups),
-    },
+    characters: stripCharacterMemoryFromCharacters(characters),
+    characterMemory: {},
+    memoryRecords: mergedMemoryRecords,
+    chatHistory: persistedChatHistory,
     chatOrganization: {
       groups: resolvedAppData.groups ?? [],
       chatGroups,
@@ -638,12 +666,23 @@ export async function clearAllPersistentData(): Promise<void> {
     window.localStorage.removeItem(key);
   });
 
+  const [directChatShardKeys, groupChatShardKeys, memoryRecordShardKeys] = await Promise.all([
+    listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:direct:`).catch(() => [] as string[]),
+    listJsonRecordKeys(`${STORAGE_KEYS.chatHistory}:group:`).catch(() => [] as string[]),
+    listJsonRecordKeys(`${STORAGE_KEYS.memoryRecords}:character:`).catch(() => [] as string[]),
+  ]);
+
   await Promise.all([
     clearAssets().catch((error) => {
       console.error('[backupArchive] Failed to clear IndexedDB assets during reset', error);
     }),
     Promise.all(
-      Object.values(STORAGE_KEYS).map((key) =>
+      [
+        ...Object.values(STORAGE_KEYS),
+        ...directChatShardKeys,
+        ...groupChatShardKeys,
+        ...memoryRecordShardKeys,
+      ].map((key) =>
         removeJsonRecord(key).catch((error) => {
           console.error(`[backupArchive] Failed to clear IndexedDB key "${key}" during reset`, error);
         }),
@@ -653,8 +692,12 @@ export async function clearAllPersistentData(): Promise<void> {
 }
 
 function buildLegacyAppDataFromModules(modules: ModularBackupModules): Record<string, unknown> {
+  const legacyCharacters = Array.isArray(modules.characters)
+    ? modules.characters
+    : [];
+
   return {
-    characters: modules.characters,
+    characters: legacyCharacters,
     chatHistory: (modules.chatHistory as { directHistory?: unknown } | null | undefined)?.directHistory ?? {},
     groups: (modules.chatOrganization as { groups?: unknown } | null | undefined)?.groups ?? [],
     chatGroups: (modules.chatOrganization as { chatGroups?: unknown } | null | undefined)?.chatGroups ?? [],
@@ -680,44 +723,66 @@ async function restoreModularModules(
   modules: ModularBackupModules,
   options?: RestoreOptions,
 ): Promise<void> {
+  const normalizedModules: ModularBackupModules = {
+    ...modules,
+    characterMemory: {},
+    memoryRecords: mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
+      (
+        modules.memoryRecords
+        && typeof modules.memoryRecords === 'object'
+        && !Array.isArray(modules.memoryRecords)
+          ? modules.memoryRecords
+          : { recordsByCharacterId: {} }
+      ) as ReturnType<typeof loadMemoryRecordData>,
+      (
+        modules.characterMemory
+        && typeof modules.characterMemory === 'object'
+        && !Array.isArray(modules.characterMemory)
+          ? modules.characterMemory
+          : {}
+      ) as ReturnType<typeof buildCharacterMemoryRecord>,
+    ),
+  };
   const batches: Array<{ message: string; entries: RestoreEntry[] }> = [
     {
       message: '正在恢复基础设置',
       entries: [
-        { key: STORAGE_KEYS.settings, value: modules.settings },
-        { key: STORAGE_KEYS.perception, value: modules.perception },
-        { key: STORAGE_KEYS.userProfile, value: modules.userProfile },
-        { key: STORAGE_KEYS.visualSettings, value: modules.visualSettings },
+        { key: STORAGE_KEYS.settings, value: normalizedModules.settings },
+        { key: STORAGE_KEYS.perception, value: normalizedModules.perception },
+        { key: STORAGE_KEYS.userProfile, value: normalizedModules.userProfile },
+        { key: STORAGE_KEYS.visualSettings, value: normalizedModules.visualSettings },
       ],
     },
     {
       message: '正在恢复角色与组织数据',
       entries: [
-        { key: STORAGE_KEYS.characters, value: modules.characters },
-        { key: STORAGE_KEYS.chatOrganization, value: modules.chatOrganization },
-        { key: STORAGE_KEYS.meData, value: modules.meData },
-        { key: STORAGE_KEYS.friendRequests, value: modules.friendRequests },
+        { key: STORAGE_KEYS.characters, value: normalizedModules.characters },
+        { key: STORAGE_KEYS.characterMemory, value: normalizedModules.characterMemory },
+        { key: STORAGE_KEYS.memoryRecords, value: normalizedModules.memoryRecords },
+        { key: STORAGE_KEYS.chatOrganization, value: normalizedModules.chatOrganization },
+        { key: STORAGE_KEYS.meData, value: normalizedModules.meData },
+        { key: STORAGE_KEYS.friendRequests, value: normalizedModules.friendRequests },
       ],
     },
     {
       message: '正在恢复聊天与约会记录',
       entries: [
-        { key: STORAGE_KEYS.chatHistory, value: modules.chatHistory },
-        { key: STORAGE_KEYS.callHistory, value: modules.callHistory },
-        { key: STORAGE_KEYS.datingRecords, value: modules.datingRecords },
-        { key: STORAGE_KEYS.wechatRoleBindings, value: modules.wechatRoleBindings },
-        { key: STORAGE_KEYS.wechatBindSessions, value: modules.wechatBindSessions },
+        { key: STORAGE_KEYS.chatHistory, value: normalizedModules.chatHistory },
+        { key: STORAGE_KEYS.callHistory, value: normalizedModules.callHistory },
+        { key: STORAGE_KEYS.datingRecords, value: normalizedModules.datingRecords },
+        { key: STORAGE_KEYS.wechatRoleBindings, value: normalizedModules.wechatRoleBindings },
+        { key: STORAGE_KEYS.wechatBindSessions, value: normalizedModules.wechatBindSessions },
       ],
     },
     {
       message: '正在恢复世界内容与应用数据',
       entries: [
-        { key: STORAGE_KEYS.moments, value: modules.moments },
-        { key: STORAGE_KEYS.forumData, value: modules.forumData },
-        { key: STORAGE_KEYS.coupleSpace, value: modules.coupleSpace },
-        { key: STORAGE_KEYS.musicData, value: modules.musicData },
-        { key: STORAGE_KEYS.walletData, value: modules.walletData },
-        { key: STORAGE_KEYS.appData, value: buildLegacyAppDataFromModules(modules) },
+        { key: STORAGE_KEYS.moments, value: normalizedModules.moments },
+        { key: STORAGE_KEYS.forumData, value: normalizedModules.forumData },
+        { key: STORAGE_KEYS.coupleSpace, value: normalizedModules.coupleSpace },
+        { key: STORAGE_KEYS.musicData, value: normalizedModules.musicData },
+        { key: STORAGE_KEYS.walletData, value: normalizedModules.walletData },
+        { key: STORAGE_KEYS.appData, value: buildLegacyAppDataFromModules(normalizedModules) },
       ],
     },
   ];

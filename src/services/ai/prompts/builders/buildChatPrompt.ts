@@ -12,6 +12,8 @@ import type {
   TaskResidueItem,
   TopicAnchorItem,
 } from '../../../relationship-context/types';
+import type { MemoryPromptView } from '../../../memory/buildMemoryRetrievalPrompt';
+import { buildMemoryRetrievalPromptFromView } from '../../../memory/buildMemoryRetrievalPrompt';
 
 export type BuildChatPromptOptions = {
   mode?: 'chat' | 'autoReply';
@@ -34,6 +36,7 @@ export type BuildChatPromptOptions = {
     recentCoupleSpaceSummary?: string;
     sharedRecentRelationshipSummary?: string;
     publicAcquaintanceSummary?: string;
+    retrievedMemory?: MemoryPromptView;
   };
   includeProtocolRules?: boolean;
   sections?: string[];
@@ -150,6 +153,9 @@ const buildRecentContextSection = (recentContext?: BuildChatPromptOptions['recen
       : '',
     !hasTypedContext && recentContext?.recentCoupleSpaceSummary?.trim()
       ? `[最近情侣空间关系事件摘要] ${recentContext.recentCoupleSpaceSummary.trim()}`
+      : '',
+    recentContext?.retrievedMemory
+      ? buildMemoryRetrievalPromptFromView(recentContext.retrievedMemory)
       : '',
   ].filter(Boolean);
 

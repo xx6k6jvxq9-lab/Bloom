@@ -1,4 +1,4 @@
-import type { ApiConfig, AppSettings, Character, ChatMessage, Song } from "../../types";
+import type { ApiConfig, AppSettings, Character, ChatMessage, Song, WorldBookEntry } from "../../types";
 import { buildChatPrompt } from "../../services/ai/prompts/builders/buildChatPrompt";
 import { generateTextFromMessagesWithConfig } from "../../services/ai/runtimeClient";
 import { resolveSceneTextApiConfig } from "../../services/ai/apiCenter/resolveSceneApiConfig";
@@ -31,6 +31,7 @@ type GenerateTogetherChatReplyParams = {
   currentSong: Song | null;
   togetherDuration: string;
   history: ChatMessage[];
+  worldBooks?: WorldBookEntry[];
   directChatHistory?: ChatMessage[];
   currentLyric?: MusicTogetherLyricLine | null;
   nearbyLyrics?: MusicTogetherLyricLine[];
@@ -50,6 +51,7 @@ export async function generateTogetherChatReply(
     userName,
     currentSong,
     togetherDuration,
+    worldBooks: params.worldBooks,
     directChatHistory: params.directChatHistory,
     currentLyric: params.currentLyric,
     nearbyLyrics: params.nearbyLyrics,

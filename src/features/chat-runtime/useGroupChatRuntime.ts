@@ -10,6 +10,8 @@ import { buildGroupChatPrompt } from '../../services/ai/prompts/builders/buildGr
 import { buildGroupContextLayers } from '../../services/chat/buildGroupContextLayers';
 import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from '../../services/chat/assistantText';
+import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
+import { collectRecentGroupPokeState } from '../../services/chat/lightInteractionHistory';
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import {
   buildAssistantStickerPromptSection,
@@ -39,6 +41,9 @@ import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
+import { buildResolvedOpenLoopRegistry } from '../../services/memory/buildResolvedOpenLoopRegistry';
+import { appendWorkingMemorySnapshots } from '../../services/memory/memoryRecordSnapshots';
+import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistentAssetService';
 
 type UseGroupChatRuntimeArgs = {
   members: Character[];
@@ -89,10 +94,11 @@ type UseGroupChatRuntimeResult = {
   } | null;
   sendText: () => Promise<void>;
   sendSpeechTranscript: (transcript: string) => Promise<void>;
-  sendImageMessage: (base64String: string) => Promise<void>;
+  sendImageMessage: (imageValue: string) => Promise<void>;
   sendAudioMessage: (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => Promise<void>;
   sendStickerMessage: (sticker: string) => Promise<void>;
   sendLocationMessage: (location: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
+  sendPokeInteraction: (memberId: string) => Promise<void>;
   regenerateLatestReplyAt: (index: number) => Promise<boolean>;
   requestManualReply: () => Promise<void>;
   maybeOpenScene: () => Promise<void>;
@@ -1148,6 +1154,15 @@ export function useGroupChatRuntime({
       openLoopRegistry: settlement.openLoopRegistry,
       ...(sharedState ? { sharedState } : {}),
     });
+    void appendWorkingMemorySnapshots({
+      characterId: speaker.id,
+      sourceScene: 'group_chat',
+      shortTermSummary: settlement.shortTermSummary,
+      sharedState,
+      timestamp: latestTimestamp,
+    }).catch((error) => {
+      console.error('[group-chat] Failed to persist settlement memory snapshots', error);
+    });
   }, [patchCharacter]);
 
   const clearDelayedSpeakerTimer = useCallback(() => {
@@ -1219,6 +1234,108 @@ export function useGroupChatRuntime({
 
     return computeGroupPresenceParticipationWeight(temporalState);
   }, [directChatHistory, perception]);
+
+  const buildSpeakerSceneContext = useCallback((params: {
+    speaker: Character;
+    currentHistory: ChatMessage[];
+    mode?: 'reply' | 'invited' | 'opening';
+    requestTimestamp?: number;
+  }) => {
+    const requestTimestamp = params.requestTimestamp ?? Date.now();
+    const temporalState = buildCharacterTemporalState({
+      characterId: params.speaker.id,
+      perception,
+      directChatHistory,
+      groupMessages: params.currentHistory,
+      sceneScope: 'group',
+    });
+    const contextLayers = buildGroupContextLayers({
+      messages: params.currentHistory,
+      continuityMode: temporalState.continuityMode,
+      nowTimestamp: requestTimestamp,
+    });
+    const sceneInput = buildGroupChatSceneInput({
+      speaker: params.speaker,
+      members,
+      group: groupMeta
+        ? {
+            id: 'runtime-group-meta',
+            name: '',
+            memberIds: members.map((member) => member.id),
+            creatorId: 'user',
+            createdAt: 0,
+            groupStage: groupMeta.groupStage,
+            activeWorldBookIds: groupMeta.activeWorldBookIds,
+            memberRelationSeeds: groupMeta.memberRelationSeeds,
+            backgroundSummary: groupMeta.backgroundSummary,
+            memberRelationshipState: groupMeta.memberRelationshipState,
+            memberRelationshipNote: groupMeta.memberRelationshipNote,
+            currentScene: groupMeta.currentScene,
+            publicFacts: groupMeta.publicFacts,
+            topicState: groupMeta.topicState,
+            groupShortTermSummary: groupMeta.groupShortTermSummary,
+            groupMemberPerspectiveSummaries: groupMeta.groupMemberPerspectiveSummaries,
+            groupLongTermMemory: groupMeta.groupLongTermMemory,
+          }
+        : undefined,
+      userName,
+      history: contextLayers.liveMessages,
+      mode: params.mode ?? 'reply',
+      directChatHistory,
+      activeWorldBooks: selectActiveGroupWorldBooks({
+        speaker: params.speaker,
+        group: groupMeta,
+        worldBooks,
+      }),
+      perception,
+      temporalContext: buildTemporalContextPrompt({
+        perception,
+        now: requestTimestamp,
+      }),
+    });
+    const sharedState = sceneInput.recentContext
+      ? buildPersistedSharedCharacterState({
+          character: {
+            shortTermSummary: sceneInput.recentContext.shortTermSummary,
+          },
+          temporalState,
+          sceneScopedSignals: {
+            relationshipResidue: sceneInput.recentContext.relationshipResidue,
+            sceneResidue: undefined,
+            topicAnchors: sceneInput.recentContext.topicAnchors,
+            taskResidue: sceneInput.recentContext.taskResidue,
+            sharedRecentRelationshipSummary: sceneInput.recentContext.sharedRecentRelationshipSummary,
+            publicAcquaintanceSummary: sceneInput.recentContext.publicAcquaintanceSummary,
+          },
+          sourceScene: 'group_chat',
+        })
+      : undefined;
+
+    return {
+      temporalState,
+      contextLayers,
+      sceneInput,
+      sharedState,
+    };
+  }, [
+    directChatHistory,
+    groupMeta?.activeWorldBookIds,
+    groupMeta?.backgroundSummary,
+    groupMeta?.currentScene,
+    groupMeta?.groupLongTermMemory,
+    groupMeta?.groupMemberPerspectiveSummaries,
+    groupMeta?.groupShortTermSummary,
+    groupMeta?.groupStage,
+    groupMeta?.memberRelationSeeds,
+    groupMeta?.memberRelationshipNote,
+    groupMeta?.memberRelationshipState,
+    groupMeta?.publicFacts,
+    groupMeta?.topicState,
+    members,
+    perception,
+    userName,
+    worldBooks,
+  ]);
 
   const generateMessageForSpeaker = useCallback(async (params: {
     speaker: Character;
@@ -1304,7 +1421,7 @@ export function useGroupChatRuntime({
         sceneInput,
       }),
       buildOpenLoopRegistryPrompt({
-        existingEntries: params.speaker.openLoopRegistry,
+        existingEntries: buildResolvedOpenLoopRegistry(params.speaker),
         shortTermSummary: params.speaker.shortTermSummary,
         recentMessages: contextLayers.memoryMessages,
       }),
@@ -1593,6 +1710,7 @@ export function useGroupChatRuntime({
     allowReplyOnFirstMessageOnly = false,
     sharedState?: Character['sharedState'],
     resolvedStickerPool?: string[],
+    lightInteractionMeta?: ChatMessage['lightInteractionMeta'],
   ): ChatMessage[] => {
     const messages = splitGroupReplyIntoMessages(text, speaker, timestamp);
     if (messages.length === 0) {
@@ -1687,6 +1805,7 @@ export function useGroupChatRuntime({
         ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
         isSystem: cue.kind === 'notice' ? true : undefined,
         replyTo: replyPayload || undefined,
+        ...(lightInteractionMeta ? { lightInteractionMeta } : {}),
       };
     }).filter((message) => {
       if (message.isSystem || message.imageUrl) {
@@ -1958,6 +2077,195 @@ export function useGroupChatRuntime({
     manualReplyModeEnabled,
     members,
     pickWeightedMember,
+  ]);
+
+  const sendPokeInteraction = useCallback(async (memberId: string) => {
+    if (!hasActiveConfig || isLoading || members.length === 0 || pendingMessage) {
+      return;
+    }
+
+    const targetMember = members.find((member) => member.id === memberId);
+    if (!targetMember) {
+      return;
+    }
+
+    clearDelayedSpeakerTimer();
+    const interactionId = activeInteractionIdRef.current + 1;
+    activeInteractionIdRef.current = interactionId;
+    openingRequestIdRef.current += 1;
+    secondarySpeakerRequestIdRef.current += 1;
+
+    const currentHistory = historyRef.current;
+    const recentPokeState = collectRecentGroupPokeState(currentHistory);
+    const targetDisplayLabel = targetMember.remarkName?.trim() || targetMember.name;
+    const requestTimestamp = Date.now();
+    setPendingMessage({
+      speakerId: targetMember.id,
+      speakerName: targetDisplayLabel,
+      speakerAvatar: targetMember.avatar,
+      timestamp: requestTimestamp,
+      text: '',
+    });
+
+    try {
+      await runGeneration(async ({ generationId, isCurrent }) => {
+        const targetContext = buildSpeakerSceneContext({
+          speaker: targetMember,
+          currentHistory,
+          mode: 'reply',
+          requestTimestamp,
+        });
+        const spectatorCandidates = members
+          .filter((member) => member.id !== targetMember.id)
+          .map((member) => ({
+            character: member,
+            label: member.remarkName?.trim() || member.name,
+          }));
+        const interactionResult = await generateLightInteraction({
+          activeConfig,
+          type: 'poke',
+          scene: 'group',
+          actor: {
+            role: 'user',
+            label: '你',
+          },
+          target: {
+            character: targetMember,
+            label: targetDisplayLabel,
+          },
+          spectatorCandidates,
+          sceneInput: targetContext.sceneInput,
+          recentMessages: targetContext.contextLayers.liveMessages,
+          recentSystemLines: recentPokeState.recentSystemLines,
+          recentDescriptors: recentPokeState.recentDescriptors,
+          latestMood: recentPokeState.latestMood,
+          latestCounterActionType: recentPokeState.latestCounterActionType,
+          upcomingStreak: recentPokeState.upcomingStreak,
+        });
+
+        if (!isMountedRef.current || activeInteractionIdRef.current !== interactionId || activeGenerationIdRef.current !== generationId || !isCurrent()) {
+          return;
+        }
+
+        setPendingMessage(null);
+        const baseTimestamp = Date.now();
+        const interactionTraceId = `group-poke:${targetMember.id}:${baseTimestamp}`;
+        const lightInteractionMetaBase: NonNullable<ChatMessage['lightInteractionMeta']> = {
+          type: 'poke',
+          scene: 'group',
+          interactionId: interactionTraceId,
+          step: 'system',
+          actorRole: 'user',
+          actorLabel: '你',
+          targetLabel: targetDisplayLabel,
+          mood: interactionResult.interactionState?.mood,
+          streak: interactionResult.interactionState?.streak ?? recentPokeState.upcomingStreak,
+          descriptors: interactionResult.interactionState?.recentDescriptors,
+          nextActions: interactionResult.nextActions,
+          counterActionType: interactionResult.counterAction?.type ?? 'none',
+        };
+        const systemMessage: ChatMessage = {
+          role: 'model',
+          text: interactionResult.systemLine,
+          timestamp: baseTimestamp,
+          isSystem: true,
+          lightInteractionMeta: {
+            ...lightInteractionMetaBase,
+            step: 'system',
+          },
+        };
+
+        let workingHistory = [...currentHistory, systemMessage];
+        historyRef.current = workingHistory;
+        setHistory(workingHistory);
+
+        const targetAppendedMessages = appendSpeakerMessage(
+          targetMember,
+          interactionResult.assistantBubbles.join('\n'),
+          baseTimestamp + 1,
+          workingHistory,
+          null,
+          true,
+          targetContext.sharedState,
+          undefined,
+          {
+            ...lightInteractionMetaBase,
+            step: 'assistant',
+          },
+        );
+        if (targetAppendedMessages.length > 0) {
+          workingHistory = [...workingHistory, ...targetAppendedMessages];
+          historyRef.current = workingHistory;
+        }
+
+        if (interactionResult.spectatorReply?.speakerLabel && interactionResult.spectatorReply.bubbles.length > 0) {
+          const spectator = resolveCharacterByPublicName(interactionResult.spectatorReply.speakerLabel, members);
+          if (spectator && spectator.id !== targetMember.id) {
+            const spectatorContext = buildSpeakerSceneContext({
+              speaker: spectator,
+              currentHistory: workingHistory,
+              mode: 'reply',
+              requestTimestamp: baseTimestamp + 2,
+            });
+            const spectatorAppendedMessages = appendSpeakerMessage(
+              spectator,
+              interactionResult.spectatorReply.bubbles.join('\n'),
+              baseTimestamp + 1 + targetAppendedMessages.length,
+              workingHistory,
+              null,
+              true,
+              spectatorContext.sharedState,
+              undefined,
+              {
+                ...lightInteractionMetaBase,
+                step: 'spectator',
+              },
+            );
+            if (spectatorAppendedMessages.length > 0) {
+              workingHistory = [...workingHistory, ...spectatorAppendedMessages];
+              historyRef.current = workingHistory;
+            }
+          }
+        }
+
+        if (interactionResult.counterAction?.type === 'poke_back') {
+          const counterSystemLine = interactionResult.counterAction.systemLine?.trim().includes('拍')
+            ? interactionResult.counterAction.systemLine.trim()
+            : `${targetDisplayLabel}拍了拍你`;
+          const counterMessage: ChatMessage = {
+            role: 'model',
+            text: counterSystemLine,
+            timestamp: baseTimestamp + 1 + targetAppendedMessages.length + (interactionResult.spectatorReply ? 1 : 0),
+            isSystem: true,
+            lightInteractionMeta: {
+              ...lightInteractionMetaBase,
+              step: 'counter',
+            },
+          };
+          workingHistory = [...workingHistory, counterMessage];
+          historyRef.current = workingHistory;
+          setHistory(workingHistory);
+        }
+      });
+    } catch (runtimeError) {
+      console.error('Group poke interaction error:', runtimeError);
+      setPendingMessage(null);
+      appendSystemFailure(runtimeError instanceof Error ? runtimeError.message : '\u7fa4\u804a\u62cd\u4e00\u62cd\u5931\u8d25');
+    }
+  }, [
+    activeGenerationIdRef,
+    activeInteractionIdRef,
+    activeConfig,
+    appendSpeakerMessage,
+    appendSystemFailure,
+    buildSpeakerSceneContext,
+    clearDelayedSpeakerTimer,
+    hasActiveConfig,
+    isLoading,
+    members,
+    pendingMessage,
+    runGeneration,
+    setHistory,
   ]);
 
   const submitUserMessage = useCallback(async (params: {
@@ -3195,20 +3503,50 @@ export function useGroupChatRuntime({
     });
   }, [hasActiveConfig, replyingTo, setError, setInput, submitUserMessage]);
 
-  const sendImageMessage = useCallback(async (base64String: string) => {
+  const persistImageValueIfNeeded = useCallback(async (imageValue: string) => {
+    const trimmedImageValue = imageValue.trim();
+    if (!trimmedImageValue) {
+      return trimmedImageValue;
+    }
+
+    if (/^data:image\//i.test(trimmedImageValue)) {
+      try {
+        return await saveUploadedDataUrl(
+          trimmedImageValue,
+          `group-chat-image-${Date.now()}.png`,
+        );
+      } catch (error) {
+        console.error('Failed to persist group chat image payload before send', error);
+        return trimmedImageValue;
+      }
+    }
+
+    if (/^https?:\/\//i.test(trimmedImageValue)) {
+      try {
+        return await cacheRemoteAsset(trimmedImageValue, `group-chat-image-${Date.now()}`);
+      } catch (error) {
+        console.error('Failed to cache group chat remote image before send', error);
+      }
+    }
+
+    return trimmedImageValue;
+  }, []);
+
+  const sendImageMessage = useCallback(async (imageValue: string) => {
     if (!hasActiveConfig) return;
+    const persistedImageValue = await persistImageValueIfNeeded(imageValue);
 
     await submitUserMessage({
       message: {
         role: 'user',
         text: '[image]',
-        imageUrl: base64String,
+        imageUrl: persistedImageValue,
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
       promptText: '[sent an image]',
     });
-  }, [hasActiveConfig, replyingTo, submitUserMessage]);
+  }, [hasActiveConfig, persistImageValueIfNeeded, replyingTo, submitUserMessage]);
 
   const sendAudioMessage = useCallback(async (audioUrl: string, audioMimeType: string, durationSeconds?: number, audioTranscript?: string) => {
     if (!hasActiveConfig) return;
@@ -3235,23 +3573,24 @@ export function useGroupChatRuntime({
 
     const stickerMetadata = getStickerMetadata(runtimeAllStickerMetadata, sticker);
     const stickerLabel = inferStickerSemanticLabel(sticker, undefined, stickerMetadata);
+    const persistedSticker = await persistImageValueIfNeeded(sticker);
 
     await submitUserMessage({
       message: {
         role: 'user',
         text: '[sticker]',
-        imageUrl: sticker,
+        imageUrl: persistedSticker,
         ...(stickerLabel ? { stickerLabel } : {}),
         timestamp: Date.now(),
         ...(replyingTo ? { replyTo: replyingTo } : {}),
       },
       promptText: describeStickerMessageForPrompt({
-        imageUrl: sticker,
+        imageUrl: persistedSticker,
         text: '[sticker]',
         stickerLabel,
       }),
     });
-  }, [hasActiveConfig, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
+  }, [hasActiveConfig, persistImageValueIfNeeded, replyingTo, runtimeAllStickerMetadata, submitUserMessage]);
 
   const sendLocationMessage = useCallback(async (location: { name: string; address?: string; isVirtual?: boolean }) => {
     if (!hasActiveConfig) return;
@@ -3278,6 +3617,7 @@ export function useGroupChatRuntime({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    sendPokeInteraction,
     regenerateLatestReplyAt,
     requestManualReply,
     maybeOpenScene,

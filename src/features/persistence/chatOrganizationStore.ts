@@ -1,16 +1,20 @@
 import type { ChatGroup } from '../../types';
-import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
+import { loadJsonRecordEnvelope, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
-import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
+import { loadJson, remove as removeStoredJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
 
 export type ChatOrganizationData = {
+  updatedAt?: number;
   groups: string[];
   chatGroups: ChatGroup[];
 };
 
 function projectChatOrganizationData(data: Partial<ChatOrganizationData> | ChatOrganizationData): ChatOrganizationData {
   return {
+    ...(typeof data.updatedAt === 'number' && Number.isFinite(data.updatedAt)
+      ? { updatedAt: data.updatedAt }
+      : {}),
     groups: mergeGroups(data.groups, []),
     chatGroups: Array.isArray(data.chatGroups)
       ? data.chatGroups.map(projectGroupOrganization)
@@ -34,6 +38,17 @@ function mergeGroups(primary: string[] | undefined, fallback: string[]): string[
   return mergedGroups.length > 0 ? mergedGroups : [...DEFAULT_CONTACT_GROUPS];
 }
 
+function resolveChatOrganizationUpdatedAt(
+  source: Partial<ChatOrganizationData> | null | undefined,
+  fallbackUpdatedAt = 0,
+): number {
+  if (typeof source?.updatedAt === 'number' && Number.isFinite(source.updatedAt)) {
+    return source.updatedAt;
+  }
+
+  return Number.isFinite(fallbackUpdatedAt) ? fallbackUpdatedAt : 0;
+}
+
 export function hydrateChatOrganization(
   source: Partial<ChatOrganizationData> | null | undefined,
   fallback: ChatOrganizationData,
@@ -53,51 +68,61 @@ export function hydrateChatOrganization(
 
 export function loadPersistedChatOrganization(fallback: ChatOrganizationData): ChatOrganizationData {
   const persisted = loadJson<Partial<ChatOrganizationData> | null>(STORAGE_KEYS.chatOrganization, null);
-  const hydrated = hydrateChatOrganization(persisted ?? fallback, fallback);
-  const projectedPersisted = persisted ? projectChatOrganizationData(persisted) : null;
-
-  if (projectedPersisted && JSON.stringify(hydrated) !== JSON.stringify(projectedPersisted)) {
-    persistChatOrganizationSync(hydrated);
-  }
-
-  return hydrated;
+  return hydrateChatOrganization(persisted ?? fallback, fallback);
 }
 
 export async function loadPreferredChatOrganization(fallback: ChatOrganizationData): Promise<ChatOrganizationData> {
-  const localOrganization = loadPersistedChatOrganization(fallback);
+  const legacyLocalOrganization = loadJson<Partial<ChatOrganizationData> | null>(STORAGE_KEYS.chatOrganization, null);
 
   try {
-    const persisted = await loadJsonRecord<Partial<ChatOrganizationData>>(STORAGE_KEYS.chatOrganization);
-    if (persisted) {
-      const indexedDbOrganization = hydrateChatOrganization(persisted, fallback);
-      const localSerialized = JSON.stringify(localOrganization);
-      const indexedDbSerialized = JSON.stringify(indexedDbOrganization);
+    const persistedEnvelope = await loadJsonRecordEnvelope<Partial<ChatOrganizationData>>(STORAGE_KEYS.chatOrganization);
+    const indexedDbUpdatedAt = resolveChatOrganizationUpdatedAt(
+      persistedEnvelope.value,
+      persistedEnvelope.updatedAt ?? 0,
+    );
+    const localUpdatedAt = resolveChatOrganizationUpdatedAt(legacyLocalOrganization, 0);
+    const shouldPreferIndexedDb = !!persistedEnvelope.value && (
+      !legacyLocalOrganization || indexedDbUpdatedAt >= localUpdatedAt
+    );
 
-      if (localSerialized !== indexedDbSerialized) {
-        persistChatOrganizationSync(indexedDbOrganization);
-      }
-
+    if (shouldPreferIndexedDb && persistedEnvelope.value) {
+      const indexedDbOrganization = hydrateChatOrganization({
+        ...persistedEnvelope.value,
+        ...(indexedDbUpdatedAt > 0 ? { updatedAt: indexedDbUpdatedAt } : {}),
+      }, fallback);
+      removeStoredJson(STORAGE_KEYS.chatOrganization);
       return indexedDbOrganization;
     }
   } catch (error) {
     console.error('[chatOrganizationStore] Failed to load chat organization from IndexedDB', error);
   }
 
-  return localOrganization;
+  if (legacyLocalOrganization) {
+    const migratedOrganization = hydrateChatOrganization(legacyLocalOrganization, fallback);
+
+    try {
+      await saveJsonRecord(STORAGE_KEYS.chatOrganization, projectChatOrganizationData(migratedOrganization));
+      removeStoredJson(STORAGE_KEYS.chatOrganization);
+    } catch (error) {
+      console.error('[chatOrganizationStore] Failed to migrate legacy local chat organization into IndexedDB', error);
+    }
+
+    return migratedOrganization;
+  }
+
+  return fallback;
 }
 
 export function persistChatOrganization(data: ChatOrganizationData): Promise<void> {
-  const projectedData = projectChatOrganizationData(data);
-
-  saveJson(STORAGE_KEYS.chatOrganization, projectedData);
+  const projectedData = projectChatOrganizationData({
+    ...data,
+    updatedAt: Date.now(),
+  });
+  removeStoredJson(STORAGE_KEYS.chatOrganization);
 
   return saveJsonRecord(STORAGE_KEYS.chatOrganization, projectedData).catch((error) => {
     console.error('[chatOrganizationStore] Failed to persist chat organization into IndexedDB', error);
   });
-}
-
-export function persistChatOrganizationSync(data: ChatOrganizationData): void {
-  saveJson(STORAGE_KEYS.chatOrganization, projectChatOrganizationData(data));
 }
 
 export function mergeChatGroupOrganization(

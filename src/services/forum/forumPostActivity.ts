@@ -3,6 +3,7 @@ import type { ForumChannel } from '../../features/forum-domain/types';
 import { buildHumanizedForumIdentity } from '../../features/forum-domain/runtimeAuthorStyle';
 import { buildCharacterForumRuntimeProfile } from './buildCharacterForumRuntimeProfile';
 import { getForumBoardScope } from './forumBoardScope';
+import { resolveStableNumericId } from '../social-id/stableNumericId';
 
 type SimulateForumAmbientActivityInput = {
   posts: ForumPost[];
@@ -81,8 +82,10 @@ function buildAmbientProfile(channel: ForumChannel, seed: string): ForumRuntimeA
     persona: seed,
   });
   const bioPool = CHANNEL_BIO_POOL[channel] || CHANNEL_BIO_POOL.junction;
+  const profileId = `forum_runtime_${hashString(seed).toString(36)}`;
   return {
-    id: `forum_runtime_${hashString(seed).toString(36)}`,
+    id: profileId,
+    numericId: resolveStableNumericId(profileId),
     name: identity.displayName,
     handle: identity.handle,
     avatar: buildAmbientAvatar(seed),

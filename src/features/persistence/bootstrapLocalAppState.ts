@@ -10,12 +10,14 @@ import { loadPreferredCallHistory } from './callHistoryStore';
 import { DEFAULT_CONTACT_GROUPS, normalizeContactGroups } from './contactGroupNames';
 import {
   loadPreferredChatHistoryRecords,
+  mergeDirectSessionMetadataIntoCharacters,
   mergeGroupSessionsIntoChatGroups,
 } from './chatHistoryStore';
 import {
   loadPreferredChatOrganization,
 } from './chatOrganizationStore';
 import { loadPreferredCharacters } from './charactersStore';
+import { stripCharacterChatPreviewFieldsFromList } from './characterChatPreview';
 import { hydratePersistedCoupleSpacePayload } from './coupleSpaceStore';
 import { loadPreferredDatingRecords } from './datingRecordsStore';
 import {
@@ -23,10 +25,10 @@ import {
   loadPersistedForumData,
 } from './forumDataStore';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../services/forum/forumGlobalSettings';
+import { normalizeForumRuntimeAuthorProfiles } from '../../services/social-id/stableNumericId';
 import { applyAutoStickerMetadata, normalizeStickerMetadataMap } from '../../services/chat/stickerMetadata';
 import {
-  hydrateFriendRequests,
-  loadPersistedFriendRequests,
+  loadPreferredFriendRequests,
 } from './friendRequestsStore';
 import { loadJson } from './localConfigStore';
 import {
@@ -310,19 +312,20 @@ export async function bootstrapLocalAppState({
         ? (legacyAppData?.forumData ?? EMPTY_FORUM_DATA)
         : EMPTY_FORUM_DATA;
     const localForumData = loadPersistedForumData(forumDataFallback);
-    const forumData = hasIndexedDbForumData
+    const hydratedForumData = hasIndexedDbForumData
       ? hydrateForumData(indexedDbForumData as Partial<typeof localForumData>, localForumData)
       : localForumData;
+    const forumData = {
+      ...hydratedForumData,
+      runtimeAuthorProfiles: normalizeForumRuntimeAuthorProfiles(
+        hydratedForumData.runtimeAuthorProfiles,
+        characters,
+      ),
+    };
 
-    const localFriendRequests = loadPersistedFriendRequests(
+    const friendRequests = await loadPreferredFriendRequests(
       !hasIndexedDbFriendRequests && !hasLocalFriendRequests ? legacyAppData?.friendRequests || [] : [],
     );
-    const friendRequests = hasIndexedDbFriendRequests
-      ? hydrateFriendRequests(
-          indexedDbFriendRequests as typeof localFriendRequests,
-          localFriendRequests,
-        )
-      : localFriendRequests;
 
     const datingRecords = await loadPreferredDatingRecords({
       savedDates: !hasLocalDatingRecords ? legacyAppData?.savedDates || [] : [],
@@ -363,6 +366,7 @@ export async function bootstrapLocalAppState({
       !hasIndexedDbChatHistory && !hasLocalChatHistory
         ? legacyAppData?.chatHistory || {}
         : {},
+    directSessionMetadata: {},
     directRelationshipWaves: {},
     directFactTraces: {},
     groupSessions: {},
@@ -434,9 +438,14 @@ export async function bootstrapLocalAppState({
     persistedChatHistory.groupSessions,
   );
 
+  const charactersWithChatPreview = mergeDirectSessionMetadataIntoCharacters(
+    characters,
+    persistedChatHistory,
+  );
+
   nextAppData = {
     ...defaultAppData,
-    characters,
+    characters: charactersWithChatPreview,
     chatHistory: persistedChatHistory.directHistory,
     userProfile,
     masks: meData.masks,
@@ -463,7 +472,7 @@ export async function bootstrapLocalAppState({
 
   await migrateCriticalRecordsIfNeeded({
     [STORAGE_KEYS.settings]: nextSettings,
-    [STORAGE_KEYS.characters]: nextAppData.characters,
+    [STORAGE_KEYS.characters]: stripCharacterChatPreviewFieldsFromList(nextAppData.characters),
     [STORAGE_KEYS.chatHistory]: persistedChatHistory,
     [STORAGE_KEYS.chatOrganization]: {
       groups: nextAppData.groups,

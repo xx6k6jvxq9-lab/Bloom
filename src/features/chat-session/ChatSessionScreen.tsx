@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2 } from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Wifi, ChevronLeft, ChevronRight, Send, Settings, Trash2, Plus, Check, X, Cpu, Pencil, Save, Link2, Key, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Image as ImageIcon, Upload, PlusCircle, Smile, Share2, Banknote, Heart, Mic, Keyboard, Copy, Star, Reply, MoreHorizontal, CheckCircle, Search, MessageSquarePlus, MessageCircle, ScanEye, Phone, PhoneOff, MapPin, Gamepad2, Coffee, Images, Volume2, AlertCircle, Hand } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mask, FavoriteMessage, VisualSettings, WorldBookEntry,
   Character, ChatMessage, PerceptionSettings,
   ApiConfig, AppSettings, CallRecord, CoupleSpaceData, DateSession, WalletData,
-  ChatGroup, ChatHistory,
+  ChatGroup, ChatHistory, FriendRequest,
 } from '../../types';
 import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
@@ -32,10 +32,11 @@ import { extractImageUrls } from '../../utils';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
-import { saveUploadedBlob } from '../persistence/persistentAssetService';
+import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAssetService';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { hasOpenedCoupleSpaceForCharacter } from '../chat-runtime/coupleSpaceInviteGuard';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
+import { appendWorkingMemorySnapshots } from '../../services/memory/memoryRecordSnapshots';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
@@ -64,11 +65,23 @@ import {
 } from './replyPreviewStyles';
 import type { DrawBlocksCharacterRuntimeContext } from '../../components/games/DrawBlocksGame';
 import { AvatarFrame } from '../../components/chat/AvatarFrame';
+import { getCharacterBlockState } from '../contacts/contactRelationship';
+import {
+  getDirectChatRelationshipBlockNotice,
+  isDirectChatBlockedByCharacter,
+  isDirectChatBlockedByUser,
+  isDirectChatRelationshipPendingRepair,
+  shouldPauseDirectChatComposerForCharacter,
+} from '../chat-runtime/directChatDelivery';
 
 const getMessageSelectionKey = (message: ChatMessage) => (
   `${message.timestamp}::${message.role}::${message.text}`
 );
 const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
+const CHAT_HISTORY_INITIAL_WINDOW = 90;
+const CHAT_HISTORY_LOAD_STEP = 60;
+const CHAT_HISTORY_LOAD_MORE_THRESHOLD = 120;
+const DIRECT_POKE_DOUBLE_TAP_WINDOW_MS = 320;
 
 type ParsedGameCardDisplayData = {
   game: 'qna' | 'tod' | 'blocks';
@@ -116,7 +129,7 @@ function resetDatingScenePresentation(): void {
   phoneScreenRoot?.classList.remove('is-dating-scene');
 }
 
-function BubbleThemeAnchors() {
+const BubbleThemeAnchors = React.memo(function BubbleThemeAnchors() {
   return (
     <>
       <span aria-hidden="true" className="corner bubble-corner tl pointer-events-none absolute" />
@@ -132,7 +145,9 @@ function BubbleThemeAnchors() {
       </span>
     </>
   );
-}
+});
+
+BubbleThemeAnchors.displayName = 'BubbleThemeAnchors';
 
 function isStickerMessage(message: ChatMessage) {
   return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test(message.text.trim());
@@ -156,6 +171,13 @@ function getDirectTextBubbleClass(role: ChatMessage['role'], maxWidthClass: stri
 
 function clampChatBubbleScale(value: number | undefined): number {
   return Math.min(1.3, Math.max(0.8, value ?? 1));
+}
+
+function removeBackdropBlurClassNames(className: string) {
+  return className
+    .replace(/\bbackdrop-blur(?:-\[[^\]]+\]|-[^\s]+)?\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function getDirectTextBubbleStyle({
@@ -267,6 +289,11 @@ function getDirectTextContentStyle({
   };
 }
 
+type DirectResolvedTextBubbleStyles = {
+  bubbleStyle: React.CSSProperties;
+  textStyle: React.CSSProperties;
+};
+
 type ParsedGameCardPayloadState =
   | {
       status: 'ok';
@@ -348,7 +375,7 @@ function parseGameCardPayloadState(message: ChatMessage): ParsedGameCardPayloadS
   }
 }
 
-function PersistentImage({
+const PersistentImage = React.memo(function PersistentImage({
   value,
   fallbackValue,
   alt,
@@ -373,7 +400,9 @@ function PersistentImage({
   if (!src) return null;
 
   return <img src={src} alt={alt} className={className} style={style} referrerPolicy={referrerPolicy} />;
-}
+});
+
+PersistentImage.displayName = 'PersistentImage';
 
 function CoupleSpaceInviteIcon({ size = 24, className }: { size?: number; className?: string }) {
   return <Star size={size} className={className} />;
@@ -386,6 +415,7 @@ export function ChatSessionScreen({
   setHistory, 
   onUpdateCharacter,
   onPatchCharacter,
+  onToggleCharacterBlock,
   settings, 
   onUpdateSettings,
   onBack,
@@ -415,9 +445,14 @@ export function ChatSessionScreen({
   onUpdateWalletData,
   onPublishMoment,
   onOpenCharacterMoments,
+  onOpenCharacterProfile,
   onStatusBarVisibilityChange,
   onAcceptCoupleSpaceInvite,
   onRuntimeBusyChange,
+  friendRequests = [],
+  setFriendRequests,
+  isActive = true,
+  suspendHeavyRendering = false,
 }: { 
   character: Character;
   characters: Character[];
@@ -425,6 +460,7 @@ export function ChatSessionScreen({
   setHistory: (h: ChatMessage[]) => void;
   onUpdateCharacter: (c: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
+  onToggleCharacterBlock?: () => void;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -455,9 +491,14 @@ export function ChatSessionScreen({
   onUpdateWalletData?: (data: WalletData) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
+  onOpenCharacterProfile?: () => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
   onRuntimeBusyChange?: (busy: boolean) => void;
+  friendRequests?: FriendRequest[];
+  setFriendRequests?: React.Dispatch<React.SetStateAction<FriendRequest[]>>;
+  isActive?: boolean;
+  suspendHeavyRendering?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage['replyTo'] | null>(null);
@@ -477,6 +518,7 @@ export function ChatSessionScreen({
   const [transferAmount, setTransferAmount] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
   const sessionEnteredAtRef = useRef(Date.now());
+  const lastModelAvatarTapAtRef = useRef(0);
   const availableCustomStickers = Array.from(new Set([
     ...(settings.sharedStickers || []),
     ...(character.stickers || []),
@@ -521,7 +563,6 @@ export function ChatSessionScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     keyboardVisible,
-    visualViewportHeight,
   } = useAppKeyboard();
   const { keyboardVisible: ownsFocusedKeyboard } = useKeyboardSafeViewport({
     containerRef: chatRootRef,
@@ -529,22 +570,35 @@ export function ChatSessionScreen({
     clampViewportHeight: true,
     scrollFocusedIntoView: false,
   });
+  const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
+  const previousChatKeyboardOpenRef = useRef(false);
+  const latestViewReadyRef = useRef(false);
+  const previousHistoryAutoscrollStateRef = useRef({
+    latestMessageKey: '',
+    isLoading: false,
+  });
+  const previousActiveStateRef = useRef(isActive);
+  const historyWindowRestoreRef = useRef<{ previousScrollHeight: number; previousScrollTop: number } | null>(null);
+  const previousTransientPanelOpenRef = useRef(false);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(() => Math.min(history.length, CHAT_HISTORY_INITIAL_WINDOW));
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      sendImageMessage(base64String);
-      setShowFunPanel(false);
-    };
-    reader.readAsDataURL(file);
-    
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+
+    void (async () => {
+      try {
+        const persistedImage = await saveUploadedFile(file);
+        sendImageMessage(persistedImage);
+        setShowFunPanel(false);
+      } catch (error) {
+        console.error('Failed to persist direct chat image before sending', error);
+        setError('图片保存失败，请重试。');
+      }
+    })();
   };
   const {
     isRecording: isAudioRecording,
@@ -621,6 +675,7 @@ export function ChatSessionScreen({
     sendAudioMessage,
     sendStickerMessage,
     sendLocationMessage,
+    sendPokeInteraction,
     sendCoupleSpaceInvitation,
     sendInnerVoiceProbe,
     sendSpeechTranscript,
@@ -668,6 +723,8 @@ export function ChatSessionScreen({
     onPublishMoment,
     onAddCallRecord,
     onAcceptCoupleSpaceInvite,
+    friendRequests,
+    setFriendRequests,
   });
 
   useEffect(() => {
@@ -742,8 +799,18 @@ export function ChatSessionScreen({
     && !message.isRecalled
     && !isLoading
   ), [isLoading]);
-  const showManualReplyButton = !character.autoReplyEnabled;
-  const canUseManualSpeakButton = !isLoading;
+  const directBlockState = getCharacterBlockState(character);
+  const isBlockedByUser = isDirectChatBlockedByUser(directBlockState);
+  const isBlockedByCharacter = isDirectChatBlockedByCharacter(directBlockState);
+  const isRelationshipPendingRepair = isDirectChatRelationshipPendingRepair(character);
+  const shouldPauseDirectChatComposer = shouldPauseDirectChatComposerForCharacter(character);
+  useEffect(() => {
+    if (shouldPauseDirectChatComposer && isVoiceMode) {
+      setIsVoiceMode(false);
+    }
+  }, [isVoiceMode, shouldPauseDirectChatComposer]);
+  const showManualReplyButton = !character.autoReplyEnabled && !isBlockedByUser && !isBlockedByCharacter && !isRelationshipPendingRepair;
+  const canUseManualSpeakButton = !isLoading && !isBlockedByUser && !isBlockedByCharacter && !isRelationshipPendingRepair;
   const showActionDescriptionButton = !!character.actionDescriptionEnabled;
   const activeInnerVoiceMessage = activeInnerVoiceIndex !== null ? history[activeInnerVoiceIndex] : null;
   const activeInnerVoiceParts = activeInnerVoiceMessage?.isInnerVoice
@@ -758,6 +825,29 @@ export function ChatSessionScreen({
         '\n',
       )
     : '';
+  const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
+  const relationshipBlockNotice = getDirectChatRelationshipBlockNotice(character);
+  const renderUserMessageStatus = useCallback((message: ChatMessage) => {
+    if (message.role !== 'user') {
+      return null;
+    }
+
+    const statusLabel = getUserReadStatusLabel(message, latestModelReplyTimestamp);
+    if (!statusLabel) {
+      return null;
+    }
+
+    if (message.deliveryStatus === 'failed_blocked') {
+      return (
+        <span className="ml-1 inline-flex items-center gap-1 text-red-500">
+          <AlertCircle size={11} />
+          {statusLabel}
+        </span>
+      );
+    }
+
+    return <span className="ml-1">{statusLabel}</span>;
+  }, [latestModelReplyTimestamp]);
   const sendCurrentText = useCallback(async () => {
     const speechText = input.trim();
     const actionText = actionInput.trim();
@@ -1179,6 +1269,36 @@ export function ChatSessionScreen({
     });
   };
 
+  const handleModelAvatarTap = useCallback((e: React.MouseEvent, index: number) => {
+    if (multiSelectMode) {
+      handleMessageClick(e, index);
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (shouldPauseDirectChatComposer || isLoading) {
+      lastModelAvatarTapAtRef.current = 0;
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastModelAvatarTapAtRef.current <= DIRECT_POKE_DOUBLE_TAP_WINDOW_MS) {
+      lastModelAvatarTapAtRef.current = 0;
+      void sendPokeInteraction();
+      return;
+    }
+
+    lastModelAvatarTapAtRef.current = now;
+  }, [
+    handleMessageClick,
+    isLoading,
+    multiSelectMode,
+    sendPokeInteraction,
+    shouldPauseDirectChatComposer,
+  ]);
+
   const closeContextMenu = () => setContextMenu(null);
 
   const handleRecall = () => {
@@ -1467,22 +1587,122 @@ export function ChatSessionScreen({
     }
   };
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     const container = scrollRef.current;
     if (!container) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior });
       return;
     }
 
     container.scrollTo({
       top: container.scrollHeight,
-      behavior: 'smooth',
+      behavior,
     });
   };
 
+  const hiddenMessageCount = Math.max(0, history.length - visibleMessageCount);
+  const visibleHistory = useMemo(
+    () => history.slice(hiddenMessageCount),
+    [hiddenMessageCount, history],
+  );
+  const expandVisibleMessageWindow = useCallback(() => {
+    if (hiddenMessageCount <= 0) {
+      return;
+    }
+
+    if (historyWindowRestoreRef.current) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (container) {
+      historyWindowRestoreRef.current = {
+        previousScrollHeight: container.scrollHeight,
+        previousScrollTop: container.scrollTop,
+      };
+    }
+
+    setVisibleMessageCount((current) => Math.min(history.length, current + CHAT_HISTORY_LOAD_STEP));
+  }, [hiddenMessageCount, history.length]);
+
+  const handleMessageListScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (event.currentTarget.scrollTop <= CHAT_HISTORY_LOAD_MORE_THRESHOLD) {
+      expandVisibleMessageWindow();
+    }
+  }, [expandVisibleMessageWindow]);
+
+  const latestMessageKey = history.length > 0
+    ? getMessageSelectionKey(history[history.length - 1])
+    : '';
+
   useEffect(() => {
-    scrollToBottom();
-  }, [history, isLoading]);
+    setVisibleMessageCount((current) => Math.min(current, history.length));
+  }, [history.length]);
+
+  useLayoutEffect(() => {
+    const wasActive = previousActiveStateRef.current;
+    previousActiveStateRef.current = isActive;
+
+    if (!isActive || wasActive === isActive) {
+      return;
+    }
+
+    latestViewReadyRef.current = false;
+    historyWindowRestoreRef.current = null;
+    setVisibleMessageCount(Math.min(history.length, CHAT_HISTORY_INITIAL_WINDOW));
+  }, [history.length, isActive]);
+
+  useLayoutEffect(() => {
+    const previousHistoryAutoscrollState = previousHistoryAutoscrollStateRef.current;
+    const contentChanged = (
+      latestMessageKey !== previousHistoryAutoscrollState.latestMessageKey
+      || isLoading !== previousHistoryAutoscrollState.isLoading
+    );
+    previousHistoryAutoscrollStateRef.current = {
+      latestMessageKey,
+      isLoading,
+    };
+
+    if (!contentChanged) {
+      return;
+    }
+
+    if (!isActive) {
+      return;
+    }
+
+    if (showSettings || showAvatarLibrary) {
+      return;
+    }
+
+    scrollToBottom('auto');
+  }, [isActive, isLoading, latestMessageKey, showAvatarLibrary, showSettings]);
+
+  useLayoutEffect(() => {
+    const restore = historyWindowRestoreRef.current;
+    const container = scrollRef.current;
+
+    if (!restore || !container) {
+      return;
+    }
+
+    container.scrollTop = restore.previousScrollTop + (container.scrollHeight - restore.previousScrollHeight);
+    historyWindowRestoreRef.current = null;
+  }, [visibleMessageCount]);
+
+  useLayoutEffect(() => {
+    const transientPanelOpen = showSettings || showAvatarLibrary;
+    const wasTransientPanelOpen = previousTransientPanelOpenRef.current;
+    previousTransientPanelOpenRef.current = transientPanelOpen;
+
+    if (transientPanelOpen || !wasTransientPanelOpen) {
+      return;
+    }
+
+    latestViewReadyRef.current = false;
+    historyWindowRestoreRef.current = null;
+    setVisibleMessageCount(Math.min(history.length, CHAT_HISTORY_INITIAL_WINDOW));
+  }, [history.length, showAvatarLibrary, showSettings]);
 
 
 
@@ -1499,6 +1719,11 @@ export function ChatSessionScreen({
       characters={characters}
       onUpdate={onUpdateCharacter} 
       onBack={() => setShowSettings(false)} 
+      onToggleRelationshipBlock={onToggleCharacterBlock}
+      onOpenRelationshipProfile={onOpenCharacterProfile ? () => {
+        setShowSettings(false);
+        onOpenCharacterProfile();
+      } : undefined}
       history={history}
       setHistory={setHistory}
       groups={groups}
@@ -1513,12 +1738,54 @@ export function ChatSessionScreen({
       onUpdateSettings={onUpdateSettings}
       visualSettings={visualSettings}
       onUpdateVisualSettings={onUpdateVisualSettings}
+      friendRequests={friendRequests}
     />
   );
   const activeBackground =
     getDisplayableAssetValue(character.background, resolvedCharacterBackgroundUrl)
     || resolvedChatBackgroundUrl
     || '';
+  const directResolvedTextBubbleStylesByRole = useMemo<Record<'model' | 'user', DirectResolvedTextBubbleStyles>>(() => ({
+    model: {
+      bubbleStyle: getDirectTextBubbleStyle({
+        role: 'model',
+        visualSettings,
+        activeBackground: activeBackground || undefined,
+        resolvedChatMessageBackgroundUrl: resolvedChatMessageBackgroundUrl || undefined,
+        resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
+        resolvedUserBubbleImageUrl: resolvedUserBubbleImageUrl || undefined,
+        character,
+      }),
+      textStyle: getDirectTextContentStyle({
+        role: 'model',
+        visualSettings,
+        character,
+      }),
+    },
+    user: {
+      bubbleStyle: getDirectTextBubbleStyle({
+        role: 'user',
+        visualSettings,
+        activeBackground: activeBackground || undefined,
+        resolvedChatMessageBackgroundUrl: resolvedChatMessageBackgroundUrl || undefined,
+        resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
+        resolvedUserBubbleImageUrl: resolvedUserBubbleImageUrl || undefined,
+        character,
+      }),
+      textStyle: getDirectTextContentStyle({
+        role: 'user',
+        visualSettings,
+        character,
+      }),
+    },
+  }), [
+    activeBackground,
+    character,
+    resolvedCharacterBubbleImageUrl,
+    resolvedChatMessageBackgroundUrl,
+    resolvedUserBubbleImageUrl,
+    visualSettings,
+  ]);
   const directBubbleThemeCss = buildScopedBubbleThemeCss(visualSettings?.chat?.bubbleStyleCss, '.chat-bubble-theme-scope');
   const directModelBubbleThemeCss = buildScopedBubbleVariantCss(
     visualSettings?.chat?.modelBubbleStyleCss,
@@ -1556,11 +1823,29 @@ export function ChatSessionScreen({
     character.userAvatarFrameCss,
     '.chat-avatar-frame-user',
   );
-  const headerState = getChatHeaderState(character, history, isLoading);
-  const layoutConfig = getChatLayoutConfig();
-  const latestModelReplyTimestamp = getLatestModelReplyTimestamp(history);
+  const headerState = useMemo(
+    () => getChatHeaderState(character, history, isLoading),
+    [character, history, isLoading],
+  );
+  const layoutConfig = useMemo(() => getChatLayoutConfig(), []);
   const showChatTimeDividers = settings.showChatTimeDividers ?? true;
   const showChatMessageTime = settings.showChatMessageTime ?? character.showTime ?? true;
+  const visibleDirectRows = useMemo(
+    () => visibleHistory.map((msg, visibleIndex) => {
+      const index = hiddenMessageCount + visibleIndex;
+      const messageSelectionKey = getMessageSelectionKey(msg);
+      const previousMessage = visibleIndex > 0 ? visibleHistory[visibleIndex - 1] : undefined;
+
+      return {
+        msg,
+        index,
+        messageSelectionKey,
+        messageRenderKey: `${messageSelectionKey}::${index}`,
+        shouldRenderTimeDivider: showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp),
+      };
+    }),
+    [hiddenMessageCount, showChatTimeDividers, visibleHistory],
+  );
   const chatFontFamily = getThemeSelectedFontStack(visualSettings?.themeTypography);
   const chatTextStyle = chatFontFamily ? { fontFamily: chatFontFamily } : undefined;
   const directChatFontCss = chatFontFamily
@@ -1597,24 +1882,54 @@ export function ChatSessionScreen({
   });
 
   useEffect(() => {
+    const wasKeyboardOpen = previousChatKeyboardOpenRef.current;
+    previousChatKeyboardOpenRef.current = chatKeyboardOpen;
+
     if (
       typeof document === 'undefined'
-      || !keyboardVisible
-      || !ownsFocusedKeyboard
+      || !chatKeyboardOpen
+      || wasKeyboardOpen
       || document.activeElement !== inputTextareaRef.current
     ) {
       return;
     }
 
-    requestAnimationFrame(() => {
-      const container = scrollRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-        return;
-      }
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    let frameOne = 0;
+    let frameTwo = 0;
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
     });
-  }, [history, isLoading, keyboardVisible, ownsFocusedKeyboard, visualViewportHeight]);
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [chatKeyboardOpen]);
+
+  useLayoutEffect(() => {
+    if (!isActive) {
+      latestViewReadyRef.current = false;
+      return;
+    }
+
+    if (showSettings || showAvatarLibrary) {
+      latestViewReadyRef.current = false;
+      return;
+    }
+
+    if (!latestMessageKey && !isLoading) {
+      return;
+    }
+
+    if (latestViewReadyRef.current) {
+      return;
+    }
+
+    scrollToBottom('auto');
+    latestViewReadyRef.current = true;
+  }, [isActive, isLoading, latestMessageKey, showAvatarLibrary, showSettings, visibleMessageCount]);
 
   useEffect(() => {
     const textarea = inputTextareaRef.current;
@@ -1646,6 +1961,7 @@ export function ChatSessionScreen({
   let headerClasses = 'relative z-20 px-4 pb-1.5 min-h-[52px] flex items-center shrink-0 ';
   let headerStyleObj: React.CSSProperties = {};
   let footerStyleObj: React.CSSProperties = {};
+  const shouldReduceKeyboardVisualEffects = chatKeyboardOpen;
   const chatHeaderTopPadding = 'calc(env(safe-area-inset-top, 0px) + 12px)';
   const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   let footerClassName = directFooterClassName;
@@ -1725,11 +2041,35 @@ export function ChatSessionScreen({
     };
   }
 
+  if (shouldReduceKeyboardVisualEffects) {
+    headerClasses = removeBackdropBlurClassNames(headerClasses);
+    footerClassName = removeBackdropBlurClassNames(footerClassName);
+    headerStyleObj = {
+      ...headerStyleObj,
+      backgroundColor: headerStyleType === 'transparent'
+        ? 'rgba(255, 255, 255, 0.94)'
+        : 'rgba(255, 255, 255, 0.96)',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      boxShadow: 'none',
+    };
+    footerStyleObj = {
+      ...footerStyleObj,
+      backgroundColor: footerStyleType === 'transparent'
+        ? 'rgba(255, 255, 255, 0.96)'
+        : 'rgba(255, 255, 255, 0.98)',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      boxShadow: 'none',
+    };
+  }
+
   const hasVisibleMessages = history.length > 0 || isLoading || !!error;
   const chatFooterStyle: React.CSSProperties = {
     paddingBottom: 'var(--app-safe-area-bottom-ui, 0px)',
     ...footerStyleObj,
-    transition: 'padding-bottom 180ms ease',
+    contain: shouldReduceKeyboardVisualEffects ? 'layout paint style' : undefined,
+    transition: shouldReduceKeyboardVisualEffects ? 'none' : 'padding-bottom 180ms ease',
   };
   const chatMessageListStyle: React.CSSProperties = {
     paddingBottom: '8px',
@@ -1741,6 +2081,21 @@ export function ChatSessionScreen({
     height: '100%',
     minHeight: 0,
   };
+
+  if (suspendHeavyRendering) {
+    return (
+      <div
+        ref={chatRootRef}
+        className={chatRootClassName}
+        style={{
+          ...chatRootSizeStyle,
+          fontSize: visualSettings?.chat?.fontSize ?? 14,
+          ...(chatFontFamily ? { fontFamily: chatFontFamily } : {}),
+        }}
+        data-session-suspended="true"
+      />
+    );
+  }
 
   if (showSettings) {
     return settingsPanel;
@@ -1780,7 +2135,7 @@ export function ChatSessionScreen({
         // keyboard-driven viewport changes are combined with CSS zoom. iOS
         // viewports are also prone to lifting the whole page when a focused
         // textarea lives inside a zoomed container.
-        ...((visualSettings?.chat?.uiScale ?? 1) !== 1 && !keyboardVisible ? {
+        ...((visualSettings?.chat?.uiScale ?? 1) !== 1 && !chatKeyboardOpen ? {
           // @ts-ignore
           zoom: visualSettings?.chat?.uiScale ?? 1,
         } : {}),
@@ -1874,7 +2229,19 @@ export function ChatSessionScreen({
         ref={scrollRef}
         className={`${layoutConfig.messageListClass} min-h-0 ${hasVisibleMessages ? '' : ' flex flex-col justify-end'}`}
         style={chatMessageListStyle}
+        onScroll={handleMessageListScroll}
       >
+        {hiddenMessageCount > 0 && (
+          <div className="mb-4 flex justify-center">
+            <button
+              type="button"
+              onClick={expandVisibleMessageWindow}
+              className="rounded-full border border-zinc-200 bg-white/90 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
+            >
+              查看更早消息 ({hiddenMessageCount})
+            </button>
+          </div>
+        )}
         {error && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-[13px] text-red-500">
             <div className="flex items-start justify-between gap-3">
@@ -1891,6 +2258,17 @@ export function ChatSessionScreen({
                 <X size={14} />
               </button>
             </div>
+          </div>
+        )}
+        {relationshipBlockNotice && (
+          <div
+            className={`mb-4 rounded-2xl border px-4 py-3 text-[12px] leading-5 ${
+              isBlockedByUser
+                ? 'border-zinc-200 bg-zinc-100/90 text-zinc-600'
+                : 'border-red-100 bg-red-50/90 text-red-500'
+            }`}
+          >
+            {relationshipBlockNotice}
           </div>
         )}
         {showMemoryWindowHint && (
@@ -1915,13 +2293,17 @@ export function ChatSessionScreen({
             </div>
           </div>
         )}
-        {history.map((msg, i) => {
-          const messageSelectionKey = getMessageSelectionKey(msg);
-          const previousMessage = i > 0 ? history[i - 1] : undefined;
-          const shouldRenderTimeDivider = showChatTimeDividers && shouldShowChatTimeDivider(msg.timestamp, previousMessage?.timestamp);
+        {visibleDirectRows.map((row) => {
+          const {
+            msg,
+            index: i,
+            messageSelectionKey,
+            messageRenderKey,
+            shouldRenderTimeDivider,
+          } = row;
           if (msg.isSystem) {
             return (
-              <div key={i}>
+              <div key={messageRenderKey}>
                 {shouldRenderTimeDivider && (
                   <div className="mb-3 flex justify-center">
                     <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
@@ -1930,11 +2312,21 @@ export function ChatSessionScreen({
                   </div>
                 )}
                 <div className="mb-4 flex justify-center" style={{ marginTop: visualSettings?.chat?.messageSpacing ?? 16 }}>
-                  <div className="relative max-w-[88%] rounded-full bg-zinc-200/60 px-3 py-1 pr-8 text-[11px] font-medium text-zinc-500 backdrop-blur-sm">
+                  <div
+                    className={`relative max-w-[88%] rounded-full px-3 py-1 pr-8 text-[11px] font-medium backdrop-blur-sm ${
+                      msg.systemTone === 'danger'
+                        ? 'bg-red-50/90 text-red-500'
+                        : 'bg-zinc-200/60 text-zinc-500'
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={() => deleteMessageAt(i)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-300/60 hover:text-zinc-600"
+                      className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 transition-colors ${
+                        msg.systemTone === 'danger'
+                          ? 'text-red-300 hover:bg-red-100 hover:text-red-500'
+                          : 'text-zinc-400 hover:bg-zinc-300/60 hover:text-zinc-600'
+                      }`}
                       aria-label="删除提示"
                       title="删除提示"
                     >
@@ -1950,7 +2342,7 @@ export function ChatSessionScreen({
           }
 
           return (
-            <div key={i}>
+            <div key={messageRenderKey}>
               {shouldRenderTimeDivider && (
                 <div className="mb-3 flex justify-center">
                   <div className="rounded-full bg-white/72 px-3 py-1 text-[11px] text-zinc-500 shadow-sm backdrop-blur-sm">
@@ -1984,9 +2376,16 @@ export function ChatSessionScreen({
                       borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
                       borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
                       borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      variant="lite"
                       scopeClassName="chat-avatar-frame-theme chat-avatar-frame-model"
-                      className="cursor-pointer"
-                      onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
+                      className={
+                        multiSelectMode
+                          ? 'cursor-pointer'
+                          : shouldPauseDirectChatComposer || isLoading
+                            ? 'cursor-not-allowed opacity-70'
+                            : 'cursor-pointer transition-transform active:scale-95'
+                      }
+                      onClick={(e) => handleModelAvatarTap(e, i)}
                     />
                   </div>
                 )}
@@ -1999,6 +2398,7 @@ export function ChatSessionScreen({
                       borderRadius={visualSettings?.chat?.avatarBorderRadius ?? 16}
                       borderWidth={visualSettings?.chat?.avatarBorderWidth ?? 0}
                       borderColor={visualSettings?.chat?.avatarBorderColor ?? '#e4e4e7'}
+                      variant="lite"
                       scopeClassName="chat-avatar-frame-theme chat-avatar-frame-user"
                       className="cursor-pointer"
                       onClick={(e) => !multiSelectMode && handleMessageClick(e, i)}
@@ -2258,9 +2658,7 @@ export function ChatSessionScreen({
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                    {msg.role === 'user' && (
-                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                    )}
+                                    {msg.role === 'user' && renderUserMessageStatus(msg)}
                                   </div>
                                 )}
                               </>
@@ -2329,9 +2727,7 @@ export function ChatSessionScreen({
                                       <span>{formatChatMessageTime(msg.timestamp)}</span>
                                     )}
                                     {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                    {msg.role === 'user' && (
-                                      <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                    )}
+                                    {msg.role === 'user' && renderUserMessageStatus(msg)}
                                   </div>
                                 )}
                               </>
@@ -2365,15 +2761,7 @@ export function ChatSessionScreen({
                                       msg.role === 'user' ? 'text-white' : 'text-zinc-800'
                                     }`}
                                     style={{
-                                      ...getDirectTextBubbleStyle({
-                                        role: msg.role,
-                                        visualSettings,
-                                        activeBackground: activeBackground || undefined,
-                                        resolvedChatMessageBackgroundUrl: resolvedChatMessageBackgroundUrl || undefined,
-                                        resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
-                                        resolvedUserBubbleImageUrl: resolvedUserBubbleImageUrl || undefined,
-                                        character,
-                                      }),
+                                      ...directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].bubbleStyle,
                                       ...(chatTextStyle || {}),
                                       ...getDirectBubbleScaleStyle({
                                         basePaddingX: 16,
@@ -2391,11 +2779,7 @@ export function ChatSessionScreen({
 
                                       if (translationText) {
                                         const normalizedTranslationText = sanitizePipeMarkers(translationText, '\n');
-                                        const bubbleTextStyle = getDirectTextContentStyle({
-                                          role: msg.role,
-                                          visualSettings,
-                                          character,
-                                        });
+                                        const bubbleTextStyle = directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle;
                                         return (
                                           <div className="flex flex-col gap-2">
                                             <span
@@ -2421,11 +2805,7 @@ export function ChatSessionScreen({
                                               className="block text-[14px] leading-6 whitespace-pre-wrap break-words text-left"
                                               style={{
                                                 ...chatTextStyle,
-                                                ...getDirectTextContentStyle({
-                                                  role: msg.role,
-                                                  visualSettings,
-                                                  character,
-                                                }),
+                                                ...directResolvedTextBubbleStylesByRole[msg.role === 'user' ? 'user' : 'model'].textStyle,
                                                 overflowWrap: 'anywhere',
                                                 wordBreak: 'break-word',
                                               }}
@@ -2442,9 +2822,7 @@ export function ChatSessionScreen({
                                         <span>{formatChatMessageTime(msg.timestamp)}</span>
                                       )}
                                       {msg.isEdited && <span className="ml-1">已编辑</span>}
-                                      {msg.role === 'user' && (
-                                        <span className="ml-1">{getUserReadStatusLabel(msg, latestModelReplyTimestamp)}</span>
-                                      )}
+                                      {msg.role === 'user' && renderUserMessageStatus(msg)}
                                     </div>
                                   )}
                                 </>
@@ -2747,15 +3125,7 @@ export function ChatSessionScreen({
               <div 
                 className="chat-bubble message-bubble bot-bubble left chat-bubble-left chat-loading-bubble border rounded-2xl px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                 style={{
-                  ...getDirectTextBubbleStyle({
-                    role: 'model',
-                    visualSettings,
-                    activeBackground: activeBackground || undefined,
-                    resolvedChatMessageBackgroundUrl: undefined,
-                    resolvedCharacterBubbleImageUrl: resolvedCharacterBubbleImageUrl || undefined,
-                    resolvedUserBubbleImageUrl: undefined,
-                    character,
-                  }),
+                  ...directResolvedTextBubbleStylesByRole.model.bubbleStyle,
                   ...getDirectBubbleScaleStyle({
                     basePaddingX: 16,
                     basePaddingY: 12,
@@ -2832,10 +3202,20 @@ export function ChatSessionScreen({
         <div className="chat-footer-controls flex items-end gap-1.5">
           <button 
             onClick={() => {
+              if (shouldPauseDirectChatComposer) {
+                return;
+              }
               setIsVoiceMode(!isVoiceMode);
               setIsInputExpanded(false);
             }}
-            className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${isVoiceMode ? 'bg-zinc-100 text-zinc-800' : footerControlTone.iconButton}`}
+            disabled={shouldPauseDirectChatComposer}
+            className={`chat-footer-voice-toggle-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${
+              shouldPauseDirectChatComposer
+                ? 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
+                : isVoiceMode
+                  ? 'bg-zinc-100 text-zinc-800'
+                  : footerControlTone.iconButton
+            }`}
           >
             {isVoiceMode ? <Keyboard size={19} className="chat-footer-voice-toggle-icon" /> : <Mic size={19} className="chat-footer-voice-toggle-icon" />}
           </button>
@@ -2883,8 +3263,13 @@ export function ChatSessionScreen({
                 <button
                   type="button"
                   onClick={() => setShowActionInput(prev => !prev)}
+                  disabled={shouldPauseDirectChatComposer}
                   className={`chat-footer-action-toggle-button -ml-1 flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[12px] font-medium transition-colors ${
-                    showActionInput ? 'bg-zinc-100 text-zinc-700 shadow-inner' : 'text-zinc-500 hover:bg-zinc-100'
+                    shouldPauseDirectChatComposer
+                      ? 'text-zinc-300 cursor-not-allowed'
+                      : showActionInput
+                        ? 'bg-zinc-100 text-zinc-700 shadow-inner'
+                        : 'text-zinc-500 hover:bg-zinc-100'
                   }`}
                   title="场景动作描述"
                   aria-label="场景动作描述"
@@ -2896,6 +3281,7 @@ export function ChatSessionScreen({
                 ref={inputTextareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
+                disabled={shouldPauseDirectChatComposer}
                 onBlur={() => {
                   if (!input.trim()) {
                     setIsInputExpanded(false);
@@ -2907,7 +3293,7 @@ export function ChatSessionScreen({
                     void sendCurrentText();
                   }
                 }}
-                placeholder="发送消息..."
+                placeholder={shouldPauseDirectChatComposer ? '你已拉黑对方，普通聊天已暂停' : '发送消息...'}
                 className="chat-footer-textarea w-full bg-transparent outline-none text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-500 resize-none min-h-[24px]"
                 rows={1}
               />
@@ -2924,10 +3310,20 @@ export function ChatSessionScreen({
               </button>
               <button 
                 onClick={() => {
+                  if (shouldPauseDirectChatComposer) {
+                    return;
+                  }
                   setShowStickerPanel(!showStickerPanel);
                   if (showFunPanel) setShowFunPanel(false);
                 }} 
-                className={`chat-footer-emoji-button p-1 transition-colors shrink-0 ${showStickerPanel ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                disabled={shouldPauseDirectChatComposer}
+                className={`chat-footer-emoji-button p-1 transition-colors shrink-0 ${
+                  shouldPauseDirectChatComposer
+                    ? 'text-zinc-300 cursor-not-allowed'
+                    : showStickerPanel
+                      ? 'text-zinc-900'
+                      : 'text-zinc-400 hover:text-zinc-600'
+                }`}
               >
                 <Smile size={20} className="chat-footer-emoji-icon" />
               </button>
@@ -2937,17 +3333,32 @@ export function ChatSessionScreen({
           {!isVoiceMode && (input.trim() || actionInput.trim()) ? (
             <button 
               onClick={() => void sendCurrentText()}
-              className="chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center text-zinc-700 active:scale-90 active:bg-zinc-100 transition-all shrink-0"
+              disabled={shouldPauseDirectChatComposer}
+              className={`chat-footer-send-button w-[34px] h-[34px] rounded-full border border-zinc-200 bg-white/92 shadow-sm flex items-center justify-center transition-all shrink-0 ${
+                shouldPauseDirectChatComposer
+                  ? 'cursor-not-allowed text-zinc-300'
+                  : 'text-zinc-700 active:scale-90 active:bg-zinc-100'
+              }`}
             >
               <Send size={16} className="chat-footer-send-icon" />
             </button>
           ) : (
             <button 
               onClick={() => {
+                if (shouldPauseDirectChatComposer) {
+                  return;
+                }
                 setShowFunPanel(!showFunPanel);
                 if (showStickerPanel) setShowStickerPanel(false);
               }}
-              className={`chat-footer-plus-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${showFunPanel ? 'bg-zinc-100 text-zinc-800 rotate-45' : footerControlTone.iconButton}`}
+              disabled={shouldPauseDirectChatComposer}
+              className={`chat-footer-plus-button w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-all ${
+                shouldPauseDirectChatComposer
+                  ? 'bg-zinc-100/70 text-zinc-300 cursor-not-allowed'
+                  : showFunPanel
+                    ? 'bg-zinc-100 text-zinc-800 rotate-45'
+                    : footerControlTone.iconButton
+              }`}
             >
               <Plus size={20} className="chat-footer-plus-icon" />
             </button>
@@ -3059,6 +3470,24 @@ export function ChatSessionScreen({
                     className="hidden" 
                     onChange={handleImageUpload} 
                   />
+
+                  <button
+                    onClick={() => {
+                      setShowFunPanel(false);
+                      void sendPokeInteraction();
+                    }}
+                    disabled={shouldPauseDirectChatComposer || isLoading}
+                    className="chat-footer-fun-action flex flex-col items-center gap-2 disabled:cursor-not-allowed"
+                  >
+                    <div className={`chat-footer-fun-action-icon w-14 h-14 rounded-2xl flex items-center justify-center transition-transform ${
+                      shouldPauseDirectChatComposer || isLoading
+                        ? 'bg-zinc-100/70 text-zinc-300'
+                        : 'bg-zinc-100 text-zinc-900 active:scale-95'
+                    }`}>
+                      <Hand size={28} />
+                    </div>
+                    <span className="text-[12px] text-zinc-600">拍一拍</span>
+                  </button>
                   
                   <button 
                     onClick={startVoiceCall}
@@ -3289,6 +3718,15 @@ export function ChatSessionScreen({
                 sharedState: settlement.sharedState,
               });
             }
+            void appendWorkingMemorySnapshots({
+              characterId: character.id,
+              sourceScene: 'dating',
+              shortTermSummary: settlement.shortTermSummary,
+              sharedState: settlement.sharedState,
+              timestamp: archivedSession.endedAt || Date.now(),
+            }).catch((error) => {
+              console.error('[chat-session] Failed to persist dating settlement memory snapshots', error);
+            });
             if (!returnChatText.trim()) {
               return;
             }
@@ -3308,6 +3746,7 @@ export function ChatSessionScreen({
           userProfile={{ name: userName, avatar: userAvatar, id: 'user', bio: '', mood: '' }}
           activeConfig={datingConfig}
           chatHistory={history}
+          worldBooks={worldBook || []}
           perception={perception}
           onSaveDate={onSaveDate || (() => {})}
           onCollectDate={onCollectDate || (() => {})}

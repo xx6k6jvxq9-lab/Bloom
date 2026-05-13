@@ -3,6 +3,7 @@ import { saveJsonRecord } from './browserJsonStore';
 import {
   extractDirectFactTraces,
   extractDirectRelationshipWaves,
+  extractDirectSessionMetadata,
   extractGroupSessions,
   saveChatHistoryRecords,
 } from './chatHistoryStore';
@@ -94,6 +95,7 @@ export async function persistAppDataSnapshot(appData: AppData, fallbackAppData: 
     saveCharacters(normalizedCharacters),
     saveChatHistoryRecords({
       directHistory: normalizedDirectHistory,
+      directSessionMetadata: extractDirectSessionMetadata(normalizedCharacters, normalizedDirectHistory),
       directRelationshipWaves: extractDirectRelationshipWaves(normalizedDirectHistory),
       directFactTraces: extractDirectFactTraces(normalizedDirectHistory),
       groupSessions: extractGroupSessions(normalizedChatGroups),

@@ -10,6 +10,8 @@ import {
   normalizeWorldBookPriorityLevel,
   sortWorldBooksByPriority,
 } from '../world-book/worldBookMeta';
+import { applyDerivedWorldBookMetadata, buildWorldBookFingerprint } from '../world-book/worldBookDerived';
+import { mergeImportedWorldBooksIntoLibrary, type WorldBookLibraryMergeResult } from '../world-book/worldBookMerge';
 
 function normalizeOptionalText(value: string | null | undefined): string {
   return value?.trim() || '';
@@ -17,13 +19,6 @@ function normalizeOptionalText(value: string | null | undefined): string {
 
 function uniqueStringList(values: string[] | undefined): string[] {
   return Array.from(new Set((values || []).map((value) => value.trim()).filter(Boolean)));
-}
-
-function buildWorldBookFingerprint(entry: Pick<WorldBookEntry, 'title' | 'content'>): string {
-  return [
-    normalizeOptionalText(entry.title).toLowerCase(),
-    normalizeOptionalText(entry.content).replace(/\s+/g, ' ').toLowerCase(),
-  ].join('::');
 }
 
 function buildDreamLocalWorldBookId(characterId: string, index: number): string {
@@ -44,7 +39,7 @@ function createDreamScopedWorldBookEntry(
 
   const id = normalizeOptionalText(source.id) || fallbackId;
 
-  return {
+  return applyDerivedWorldBookMetadata({
     id,
     title,
     content,
@@ -54,8 +49,13 @@ function createDreamScopedWorldBookEntry(
     isGlobal: false,
     characterIds: [characterId],
     pinMode: source.pinMode === 'always' ? 'always' : 'none',
-    chunkCache: buildWorldBookChunkCache({ id, content }),
-  };
+    chunkCache: buildWorldBookChunkCache({
+      id,
+      title,
+      content,
+      category: normalizeWorldBookCategory(source.category),
+    }),
+  });
 }
 
 export function normalizeDreamWorldBookConfig(config?: DreamWorldBookConfig | null): DreamWorldBookConfig {
@@ -112,11 +112,11 @@ export async function createDreamLocalWorldBooksFromFile(file: File, characterId
     .filter((entry): entry is WorldBookEntry => Boolean(entry));
 }
 
-export function mergeDreamLocalWorldBooks(
+export function mergeDreamLocalWorldBooksDetailed(
   existingEntries: WorldBookEntry[],
   incomingEntries: WorldBookEntry[],
   characterId: string,
-): WorldBookEntry[] {
+): WorldBookLibraryMergeResult {
   const normalizedIncoming = incomingEntries
     .map((entry, index) => createDreamScopedWorldBookEntry(entry, characterId, buildDreamLocalWorldBookId(characterId, index)))
     .filter((entry): entry is WorldBookEntry => Boolean(entry));
@@ -124,19 +124,20 @@ export function mergeDreamLocalWorldBooks(
     .map((entry, index) => createDreamScopedWorldBookEntry(entry, characterId, entry.id || buildDreamLocalWorldBookId(characterId, index + normalizedIncoming.length)))
     .filter((entry): entry is WorldBookEntry => Boolean(entry));
 
-  const seen = new Set<string>();
-  const merged: WorldBookEntry[] = [];
+  const mergeResult = mergeImportedWorldBooksIntoLibrary(normalizedExisting, normalizedIncoming);
 
-  [...normalizedIncoming, ...normalizedExisting].forEach((entry) => {
-    const fingerprint = buildWorldBookFingerprint(entry);
-    if (!fingerprint || seen.has(fingerprint)) {
-      return;
-    }
-    seen.add(fingerprint);
-    merged.push(entry);
-  });
+  return {
+    entries: sortWorldBooksByPriority(mergeResult.entries),
+    stats: mergeResult.stats,
+  };
+}
 
-  return sortWorldBooksByPriority(merged);
+export function mergeDreamLocalWorldBooks(
+  existingEntries: WorldBookEntry[],
+  incomingEntries: WorldBookEntry[],
+  characterId: string,
+): WorldBookEntry[] {
+  return mergeDreamLocalWorldBooksDetailed(existingEntries, incomingEntries, characterId).entries;
 }
 
 export function buildDreamPromptWorldBooks(input: {

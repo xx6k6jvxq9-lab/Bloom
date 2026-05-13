@@ -1,6 +1,7 @@
 import type { ForumChannel, ForumCommentV2, ForumThreadType, ForumThreadV2 } from './types';
 import type { ForumComment, ForumPost } from '../../types';
 import { forumThreadV2ToLegacyPost } from './adapters';
+import { resolveStableNumericId } from '../../services/social-id/stableNumericId';
 
 export type ForumSeedAuthorKind = 'forumNpc' | 'userCharacter' | 'userSelf';
 
@@ -40,6 +41,7 @@ export type ForumSeedThreadTemplate = {
 
 export type ForumSeedNpcProfile = {
   id: string;
+  numericId: string;
   name: string;
   handle: string;
   avatar: string;
@@ -80,6 +82,7 @@ const npcProfile = (
   bio: string,
 ): ForumSeedNpcProfile => ({
   id,
+  numericId: resolveStableNumericId(id),
   name,
   handle,
   avatar: seedAvatar(id, theme),
@@ -1455,8 +1458,18 @@ export function getForumSeedAuthorProfile(authorId: string): ForumSeedNpcProfile
   return SEED_NPC_MAP.get(authorId) || SEED_RUNTIME_AUTHOR_MAP.get(authorId) || null;
 }
 
-export function registerForumRuntimeAuthorProfile(profile: ForumSeedNpcProfile) {
-  SEED_RUNTIME_AUTHOR_MAP.set(profile.id, profile);
+export function registerForumRuntimeAuthorProfile(profile: {
+  id: string;
+  name: string;
+  handle: string;
+  avatar: string;
+  bio: string;
+  numericId?: string;
+}) {
+  SEED_RUNTIME_AUTHOR_MAP.set(profile.id, {
+    ...profile,
+    numericId: resolveStableNumericId(profile.id, profile.numericId),
+  });
 }
 
 function buildSeedHandle(displayName: string, fallbackSeed: string): string {
@@ -1603,14 +1616,15 @@ function toForumPost(template: ForumSeedThreadTemplate, postIndex: number, rando
   const likesCount = (likesSeed % 180) + 8;
   const viewCount = (viewSeed % 4200) + 120;
 
-  if (!SEED_NPC_MAP.has(authorId) && !SEED_RUNTIME_AUTHOR_MAP.has(authorId)) {
-    const authorTheme = getAvatarThemeByChannel(template.channel, template.author.identityMode !== 'nickname');
-    SEED_RUNTIME_AUTHOR_MAP.set(authorId, {
-      id: authorId,
-      name: template.author.displayName,
-      handle: buildSeedHandle(template.author.displayName, authorId),
-      avatar: seedAvatar(authorId, authorTheme),
-      bio: template.tags.join(' / '),
+    if (!SEED_NPC_MAP.has(authorId) && !SEED_RUNTIME_AUTHOR_MAP.has(authorId)) {
+      const authorTheme = getAvatarThemeByChannel(template.channel, template.author.identityMode !== 'nickname');
+      SEED_RUNTIME_AUTHOR_MAP.set(authorId, {
+        id: authorId,
+        numericId: resolveStableNumericId(authorId),
+        name: template.author.displayName,
+        handle: buildSeedHandle(template.author.displayName, authorId),
+        avatar: seedAvatar(authorId, authorTheme),
+        bio: template.tags.join(' / '),
     });
   }
 
@@ -1620,6 +1634,7 @@ function toForumPost(template: ForumSeedThreadTemplate, postIndex: number, rando
       const commentTheme = getAvatarThemeByChannel(template.channel, item.author.identityMode !== 'nickname');
       SEED_RUNTIME_AUTHOR_MAP.set(commentAuthorId, {
         id: commentAuthorId,
+        numericId: resolveStableNumericId(commentAuthorId),
         name: item.author.displayName,
         handle: buildSeedHandle(item.author.displayName, commentAuthorId),
         avatar: seedAvatar(commentAuthorId, commentTheme),
@@ -1667,6 +1682,7 @@ function buildSeedThreadV2(template: ForumSeedThreadTemplate, postIndex: number,
     const authorTheme = getAvatarThemeByChannel(template.channel, template.author.identityMode !== 'nickname');
     SEED_RUNTIME_AUTHOR_MAP.set(authorId, {
       id: authorId,
+      numericId: resolveStableNumericId(authorId),
       name: template.author.displayName,
       handle: buildSeedHandle(template.author.displayName, authorId),
       avatar: seedAvatar(authorId, authorTheme),
@@ -1682,6 +1698,7 @@ function buildSeedThreadV2(template: ForumSeedThreadTemplate, postIndex: number,
       const commentTheme = getAvatarThemeByChannel(template.channel, item.author.identityMode !== 'nickname');
       SEED_RUNTIME_AUTHOR_MAP.set(commentAuthorId, {
         id: commentAuthorId,
+        numericId: resolveStableNumericId(commentAuthorId),
         name: item.author.displayName,
         handle: buildSeedHandle(item.author.displayName, commentAuthorId),
         avatar: seedAvatar(commentAuthorId, commentTheme),

@@ -1,5 +1,5 @@
 import { Pause, Play, Volume2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 
@@ -31,7 +31,7 @@ function formatDuration(durationSeconds?: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function AudioMessageCard({
+export const AudioMessageCard = memo(function AudioMessageCard({
   value,
   durationSeconds,
   transcript,
@@ -258,4 +258,6 @@ export function AudioMessageCard({
       ) : null}
     </div>
   );
-}
+});
+
+AudioMessageCard.displayName = 'AudioMessageCard';

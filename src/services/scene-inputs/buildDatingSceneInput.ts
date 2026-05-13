@@ -16,7 +16,9 @@ import type {
   DateSession,
   PerceptionSettings,
   UserProfileExtended,
+  WorldBookEntry,
 } from '../../types';
+import { selectActiveCharacterWorldBooks } from '../world-book/worldBookAccess';
 
 export type DatingSceneInput = {
   mode: 'start' | 'continue';
@@ -49,6 +51,7 @@ type BuildDatingSceneInputOptions = {
   userProfile: UserProfileExtended;
   session: DateSession;
   chatHistory: ChatMessage[];
+  worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   latestUserInput?: string;
 };
@@ -265,6 +268,7 @@ function buildExtraSections(input: {
   expressionStyle?: string;
   boundaryPack?: string;
   extendedLore?: string;
+  worldBookPrompt?: string;
   datingSceneHint?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
@@ -310,8 +314,15 @@ function normalizeStyleValue<T extends string>(value: T | undefined, fallback: T
 }
 
 export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): DatingSceneInput {
+  const activeWorldBooks = selectActiveCharacterWorldBooks(options.character, options.worldBooks);
   const characterContext = buildCharacterContext({
     character: options.character,
+    activeWorldBooks,
+    worldBookQuery: options.latestUserInput,
+    worldBookRecentText: options.chatHistory
+      .slice(-8)
+      .map((message) => normalizeInlineText(message.text))
+      .filter(Boolean),
   });
   const directChatHistory: ChatHistory = {
     [options.character.id]: options.chatHistory,
@@ -336,24 +347,28 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
   const shortTermSummary = characterScopedMemory.longTermMemoryProfile
     ? compressShortTermSummaryAfterLongTerm(characterScopedMemory.shortTermSummary || '')
     : characterScopedMemory.shortTermSummary;
-  const sections = budgetSections(buildExtraSections({
-    sharedCharacterStatePrompt: truncateFromStart(sharedCharacterState.directPrompt, DATING_PROMPT_BUDGET.maxSectionChars),
-    temporalContext: buildTemporalContextPrompt({
-      perception: options.perception,
-      now: Date.now(),
+  const worldBookPromptSection = truncateFromStart(characterContext.worldBookPrompt, DATING_PROMPT_BUDGET.maxSectionChars);
+  const sections = budgetSections([
+    ...buildExtraSections({
+      sharedCharacterStatePrompt: truncateFromStart(sharedCharacterState.directPrompt, DATING_PROMPT_BUDGET.maxSectionChars),
+      temporalContext: buildTemporalContextPrompt({
+        perception: options.perception,
+        now: Date.now(),
+      }),
+      expressionStyle: truncateFromStart(characterContext.expressionStyle, DATING_PROMPT_BUDGET.maxSectionChars),
+      boundaryPack: truncateFromStart(characterContext.boundaryPack, DATING_PROMPT_BUDGET.maxSectionChars),
+      extendedLore: truncateFromStart(characterContext.extendedLore, DATING_PROMPT_BUDGET.maxSectionChars),
+      datingSceneHint: truncateFromStart(characterContext.sceneHints?.dating, DATING_PROMPT_BUDGET.maxSectionChars),
+      shortTermSummary: truncateFromStart(shortTermSummary, DATING_PROMPT_BUDGET.maxSectionChars),
+      longTermMemoryProfile: truncateFromStart(characterScopedMemory.longTermMemoryProfile, DATING_PROMPT_BUDGET.maxSectionChars),
+      relationshipResidue: sceneScopedSignals.relationshipResidue?.slice(0, 3),
+      topicAnchors: sceneScopedSignals.topicAnchors?.slice(0, 2),
+      taskResidue: sceneScopedSignals.taskResidue?.slice(0, 2),
+      recentCoupleSpaceSummary: truncateFromStart(sceneScopedSignals.recentCoupleSpaceSummary, DATING_PROMPT_BUDGET.maxSectionChars),
+      sharedRecentRelationshipSummary: truncateFromStart(sceneScopedSignals.sharedRecentRelationshipSummary, DATING_PROMPT_BUDGET.maxSectionChars),
     }),
-    expressionStyle: truncateFromStart(characterContext.expressionStyle, DATING_PROMPT_BUDGET.maxSectionChars),
-    boundaryPack: truncateFromStart(characterContext.boundaryPack, DATING_PROMPT_BUDGET.maxSectionChars),
-    extendedLore: truncateFromStart(characterContext.extendedLore, DATING_PROMPT_BUDGET.maxSectionChars),
-    datingSceneHint: truncateFromStart(characterContext.sceneHints?.dating, DATING_PROMPT_BUDGET.maxSectionChars),
-    shortTermSummary: truncateFromStart(shortTermSummary, DATING_PROMPT_BUDGET.maxSectionChars),
-    longTermMemoryProfile: truncateFromStart(characterScopedMemory.longTermMemoryProfile, DATING_PROMPT_BUDGET.maxSectionChars),
-    relationshipResidue: sceneScopedSignals.relationshipResidue?.slice(0, 3),
-    topicAnchors: sceneScopedSignals.topicAnchors?.slice(0, 2),
-    taskResidue: sceneScopedSignals.taskResidue?.slice(0, 2),
-    recentCoupleSpaceSummary: truncateFromStart(sceneScopedSignals.recentCoupleSpaceSummary, DATING_PROMPT_BUDGET.maxSectionChars),
-    sharedRecentRelationshipSummary: truncateFromStart(sceneScopedSignals.sharedRecentRelationshipSummary, DATING_PROMPT_BUDGET.maxSectionChars),
-  }));
+    worldBookPromptSection ? ['## World Book Context', worldBookPromptSection].join('\n') : '',
+  ]);
 
   return {
     mode: options.mode,

@@ -9,6 +9,7 @@ type SyncCharacterForumProfilesInput = {
 function areProfilesEqual(left?: ForumRuntimeAuthorProfile, right?: ForumRuntimeAuthorProfile) {
   if (!left || !right) return false;
   return left.id === right.id
+    && left.numericId === right.numericId
     && left.name === right.name
     && left.handle === right.handle
     && left.avatar === right.avatar
@@ -63,6 +64,7 @@ export function syncCharacterForumProfiles({
 
     const refreshedProfile: ForumRuntimeAuthorProfile = {
       ...existingProfile,
+      numericId: existingProfile.numericId || generatedProfile.numericId,
       bio: existingProfile.manuallyEdited ? existingProfile.bio : generatedProfile.bio,
       avatar: character.avatar,
       persona: existingProfile.persona || generatedProfile.persona,

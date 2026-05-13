@@ -509,7 +509,7 @@ function DirectImagePicker({
                 </button>
               </div>
             </div>,
-            document.body,
+            document.getElementById('phone-container') || document.body,
           )
         : null}
     </div>

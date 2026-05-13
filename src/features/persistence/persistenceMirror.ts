@@ -2,11 +2,8 @@ import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonS
 import { STORAGE_KEYS } from './storageKeys';
 
 const MIRRORED_STORAGE_KEYS = new Set<string>([
-  STORAGE_KEYS.chatHistory,
-  STORAGE_KEYS.chatOrganization,
   STORAGE_KEYS.coupleSpace,
   STORAGE_KEYS.datingRecords,
-  STORAGE_KEYS.friendRequests,
   STORAGE_KEYS.forumData,
   STORAGE_KEYS.meData,
   STORAGE_KEYS.moments,

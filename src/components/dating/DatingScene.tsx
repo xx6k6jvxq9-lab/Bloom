@@ -10,6 +10,7 @@ import type {
   DatingGeneratedContent,
   PerceptionSettings,
   UserProfileExtended,
+  WorldBookEntry,
 } from '../../types';
 import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
 import { buildDatingPrompt } from '../../services/ai/prompts/builders/buildDatingPrompt';
@@ -34,6 +35,7 @@ type DatingSceneProps = {
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;
   chatHistory: ChatMessage[];
+  worldBooks?: WorldBookEntry[];
   perception?: PerceptionSettings;
   onBackToPlanner: () => void;
   onClose: () => void;
@@ -408,6 +410,7 @@ export function DatingScene({
   userProfile,
   activeConfig,
   chatHistory,
+  worldBooks,
   perception,
   onBackToPlanner,
   onClose,
@@ -1057,6 +1060,7 @@ export function DatingScene({
           mode,
           character,
           userProfile,
+          worldBooks,
           session: {
             ...pendingSession,
             messages: workingMessages,

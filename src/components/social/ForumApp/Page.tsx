@@ -58,6 +58,7 @@ import { ForumUserProfileView } from './ForumUserProfileView';
 import { ForumOpenSettingsRoute, type ForumOpenDraft } from './ForumOpenSettingsRoute';
 import { ForumAuthorProfileEditor } from './ForumAuthorProfileEditor';
 import { ForumMessageManageSheet } from './ForumMessageManageSheet';
+import { appendWorkingMemorySnapshots } from '../../../services/memory/memoryRecordSnapshots';
 import { ForumProfilePostCard } from './ForumProfilePostCard';
 import { ForumTrendListView, type ForumTrendListItem } from './ForumTrendListView';
 import { ForumSettingsRoute } from './ForumSettingsRoute';
@@ -132,6 +133,10 @@ import {
 import { createForumTempUserMessage, queueForumTempUserMessage } from '../../../services/forum/forumTempChatCompose';
 import { appendForumNotification } from '../../../services/forum/forumNotificationState';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
+import {
+  normalizeForumRuntimeAuthorProfiles,
+  resolveStableNumericId,
+} from '../../../services/social-id/stableNumericId';
 
 type ForumAppProps = {
   appData: AppDataExtended;
@@ -144,6 +149,7 @@ type ForumAppProps = {
 
 type ForumAuthor = {
   id: string;
+  numericId?: string;
   name: string;
   avatar: string;
   handle?: string;
@@ -232,6 +238,7 @@ const buildLegacySeedFallback = (id: string): ForumAuthor | null => {
 
   return {
     id,
+    numericId: resolveStableNumericId(id),
     name: friendlyName,
     handle: suffixPool[pick],
     avatar: seedFallbackAvatar(id, friendlyName),
@@ -786,6 +793,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     if (!mask) return null;
     return {
       id: currentUser.id,
+      numericId: currentUserForumProfile.numericId,
       name: mask.name,
       avatar: resolveMaskAvatar(mask),
       handle: buildReadableForumHandle({ id: mask.id, name: mask.name }),
@@ -794,21 +802,28 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     };
   };
 
-  const buildForumDataState = (overrides: Partial<ForumData> = {}): ForumData => ({
-    posts: overrides.posts ?? postsRef.current,
-    notifications: overrides.notifications ?? (forumDataRef.current.notifications || []),
-    followedUsers: overrides.followedUsers ?? (forumDataRef.current.followedUsers || []),
-    followerMap: overrides.followerMap ?? (forumDataRef.current.followerMap || {}),
-    tempChats: overrides.tempChats ?? (forumDataRef.current.tempChats || {}),
-    pinnedChatAuthorIds: overrides.pinnedChatAuthorIds ?? (forumDataRef.current.pinnedChatAuthorIds || []),
-    pinnedPostIds: overrides.pinnedPostIds ?? (forumDataRef.current.pinnedPostIds || []),
-    runtimeAuthorProfiles: overrides.runtimeAuthorProfiles ?? (forumDataRef.current.runtimeAuthorProfiles || {}),
-    composerDraft: overrides.composerDraft ?? (forumDataRef.current.composerDraft || null),
-    spectatorSettings: overrides.spectatorSettings ?? (forumDataRef.current.spectatorSettings || DEFAULT_SPECTATOR_SETTINGS),
-    globalSettings: normalizeForumGlobalSettings(
-      overrides.globalSettings ?? (forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS),
-    ),
-  });
+  const buildForumDataState = (overrides: Partial<ForumData> = {}): ForumData => {
+    const runtimeAuthorProfiles = normalizeForumRuntimeAuthorProfiles(
+      overrides.runtimeAuthorProfiles ?? (forumDataRef.current.runtimeAuthorProfiles || {}),
+      appData.characters,
+    );
+
+    return {
+      posts: overrides.posts ?? postsRef.current,
+      notifications: overrides.notifications ?? (forumDataRef.current.notifications || []),
+      followedUsers: overrides.followedUsers ?? (forumDataRef.current.followedUsers || []),
+      followerMap: overrides.followerMap ?? (forumDataRef.current.followerMap || {}),
+      tempChats: overrides.tempChats ?? (forumDataRef.current.tempChats || {}),
+      pinnedChatAuthorIds: overrides.pinnedChatAuthorIds ?? (forumDataRef.current.pinnedChatAuthorIds || []),
+      pinnedPostIds: overrides.pinnedPostIds ?? (forumDataRef.current.pinnedPostIds || []),
+      runtimeAuthorProfiles,
+      composerDraft: overrides.composerDraft ?? (forumDataRef.current.composerDraft || null),
+      spectatorSettings: overrides.spectatorSettings ?? (forumDataRef.current.spectatorSettings || DEFAULT_SPECTATOR_SETTINGS),
+      globalSettings: normalizeForumGlobalSettings(
+        overrides.globalSettings ?? (forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS),
+      ),
+    };
+  };
 
   const mergeRuntimeAuthorProfiles = (profiles: ForumRuntimeAuthorProfile[]) => {
     const nextProfiles = {
@@ -820,7 +835,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       nextProfiles[profile.id] = profile;
     });
 
-    return nextProfiles;
+    return normalizeForumRuntimeAuthorProfiles(nextProfiles, appData.characters);
   };
 
   useEffect(() => {
@@ -859,6 +874,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     if (id === currentUser.id) {
       return {
         id: currentUser.id,
+        numericId: resolveStableNumericId(currentUser.id, currentUserForumProfile.numericId),
         name: currentUserForumProfile.name,
         avatar: currentUserForumProfile.avatar,
         bio: currentUserForumProfile.bio,
@@ -872,6 +888,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       const characterProfile = resolveCharacterForumDisplayProfile(character, runtimeProfile);
       return {
         id: character.id,
+        numericId: resolveStableNumericId(character.id, character.numericId),
         name: characterProfile.name,
         avatar: character.avatar || resolveForumAvatar(seedProfile?.avatar, `${character.id}${character.name}`, characterProfile.name),
         handle: characterProfile.handle,
@@ -886,6 +903,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     if (runtimeProfile) {
       return {
         id: runtimeProfile.id,
+        numericId: resolveStableNumericId(runtimeProfile.id, runtimeProfile.numericId),
         name: runtimeProfile.name,
         avatar: resolveForumAvatar(runtimeProfile.avatar, `${runtimeProfile.id}${runtimeProfile.handle || runtimeProfile.name}`, runtimeProfile.name),
         handle: runtimeProfile.handle,
@@ -900,6 +918,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     if (seedProfile) {
       return {
         id: seedProfile.id,
+        numericId: seedProfile.numericId,
         name: seedProfile.name,
         avatar: resolveForumAvatar(seedProfile.avatar, `${seedProfile.id}${seedProfile.handle || seedProfile.name}`, seedProfile.name),
         handle: seedProfile.handle,
@@ -907,10 +926,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       };
     }
 
-  const seedFallback = buildLegacySeedFallback(id);
-  if (seedFallback) {
-    return seedFallback;
-  }
+    const seedFallback = buildLegacySeedFallback(id);
+    if (seedFallback) {
+      return seedFallback;
+    }
 
     if (id.startsWith(SPECTATOR_BOARD_AUTHOR_PREFIX)) {
       const shell = parseSpectatorAuthorShell(id);
@@ -919,6 +938,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       const profile = buildSpectatorAuthorProfile(shell, index);
       return {
         id,
+        numericId: resolveStableNumericId(id),
         name: profile.name,
         avatar: seedFallbackAvatar(id, profile.name),
         handle: profile.handle,
@@ -928,6 +948,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     
     return {
       id,
+      numericId: resolveStableNumericId(id),
       name: id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? `网友${id.slice(-4)}` : `用户${id.slice(-4)}`,
       avatar: seedFallbackAvatar(id, id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? id.slice(-2).toUpperCase() : id.slice(-2)),
       handle: id.startsWith('forum_runtime_') || id.startsWith('forum_spectator_runtime_') ? buildReadableForumHandle({
@@ -1723,6 +1744,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           userIdentity: event.userIdentity,
           repeatedCount: event.repeatedCount,
         });
+        void appendWorkingMemorySnapshots({
+          characterId: nextCharacter.id,
+          sourceScene: 'forum',
+          shortTermSummary: settlement.shortTermSummary,
+          sharedState: settlement.sharedState,
+          timestamp: event.timestamp,
+        }).catch((error) => {
+          console.error('[forum] Failed to persist grouped settlement memory snapshots', error);
+        });
         nextCharacter = {
           ...nextCharacter,
           sharedContextSnapshots: settlement.sharedContextSnapshots,
@@ -1952,12 +1982,18 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       }
     }
 
+    const forumRequestText = `论坛角色自主发帖：频道=${FORUM_CHANNEL_LABELS[channel]}；氛围=${activeChannelMeta.blurb}；角色论坛偏好=${forumHabit.persona}；写成角色本人会发在公共论坛的一条短帖。`;
     const generationContext = resolveForumGenerationContext({
       globalSettings: forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS,
       masks: appDataRef.current.masks || [],
       worldBooks: appDataRef.current.worldBooks || [],
       worldBookScope: 'character_post',
       maskScope: 'character_post',
+      worldBookQuery: [
+        forumRequestText,
+        pickedCharacter.name,
+        activeChannelMeta.blurb,
+      ].filter(Boolean).join('\n'),
     });
 
     const generated = await generateMomentPostContent({
@@ -1969,7 +2005,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         generationContext.worldBookPromptBlock,
         generationContext.maskPromptBlock,
       ].filter(Boolean),
-      requestText: `论坛角色自主发帖：频道=${FORUM_CHANNEL_LABELS[channel]}；氛围=${activeChannelMeta.blurb}；角色论坛偏好=${forumHabit.persona}；写成角色本人会发在公共论坛的一条短帖。`,
+      requestText: forumRequestText,
     });
 
     const content = generated.content.trim();
@@ -2399,6 +2435,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         actorName: author.name,
         content: existingSession.messages.slice(-1)[0]?.text || '论坛里的关系已经往正式单聊过渡。',
         timestamp: bridgeTimestamp,
+      });
+      void appendWorkingMemorySnapshots({
+        characterId: character.id,
+        sourceScene: 'forum',
+        shortTermSummary: settlement.shortTermSummary,
+        sharedState: settlement.sharedState,
+        timestamp: bridgeTimestamp,
+      }).catch((error) => {
+        console.error('[forum] Failed to persist friend-bridge settlement memory snapshots', error);
       });
 
       return {
@@ -3595,6 +3640,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       <ForumUserProfileView
         user={{
           id: user.id,
+          numericId: user.numericId,
           name: user.name,
           avatar: user.avatar,
           handle,

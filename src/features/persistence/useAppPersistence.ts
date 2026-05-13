@@ -3,7 +3,10 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AppData, AppSettings } from '../../types';
 import type { UserProfile } from '../app-shell/appShellTypes';
 import { bootstrapLocalAppState } from './bootstrapLocalAppState';
-import { persistAppDataSnapshot } from './persistAppDataSnapshot';
+import {
+  buildPersistableNonChatAppDataSnapshot,
+  persistNonChatAppDataSnapshot,
+} from './persistNonChatAppDataSnapshot';
 import { persistSettings } from './settingsStore';
 
 type UseAppPersistenceParams = {
@@ -40,6 +43,14 @@ export function useAppPersistence({
   const [shouldShowHydrationFallback, setShouldShowHydrationFallback] = useState(false);
   const [appData, setAppData] = useState<AppData>(() => createDefaultAppData());
   const defaultAppData = useMemo(() => createDefaultAppData(), [createDefaultAppData]);
+  const persistableNonChatSnapshot = useMemo(
+    () => buildPersistableNonChatAppDataSnapshot(appData, defaultAppData),
+    [appData, defaultAppData],
+  );
+  const persistableNonChatSnapshotSignature = useMemo(
+    () => JSON.stringify(persistableNonChatSnapshot),
+    [persistableNonChatSnapshot],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +138,12 @@ export function useAppPersistence({
 
   useEffect(() => {
     if (!hasHydratedStorage || !hasCompletedDeferredHydration) return;
-    void persistAppDataSnapshot(appData, defaultAppData);
-  }, [appData, defaultAppData, hasCompletedDeferredHydration, hasHydratedStorage]);
+    void persistNonChatAppDataSnapshot(persistableNonChatSnapshot);
+  }, [
+    hasCompletedDeferredHydration,
+    hasHydratedStorage,
+    persistableNonChatSnapshotSignature,
+  ]);
 
   useEffect(() => {
     if (hasHydratedStorage) {

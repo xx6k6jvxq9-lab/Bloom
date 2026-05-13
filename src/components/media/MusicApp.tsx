@@ -35,6 +35,7 @@ import {
   ChatHistory,
   VisualSettings,
   AppSettings,
+  WorldBookEntry,
 } from "../../types";
 import { useResolvedPersistentValue } from "../../features/persistence/useResolvedPersistentValue";
 import {
@@ -141,6 +142,7 @@ type MusicAppProps = {
   onPatchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onBack: () => void;
   allCharacters: Character[];
+  worldBooks?: WorldBookEntry[];
   audioRef: React.MutableRefObject<HTMLAudioElement | null>;
 };
 
@@ -156,6 +158,7 @@ export default function MusicApp({
   onPatchCharacter,
   onBack,
   allCharacters,
+  worldBooks = [],
   audioRef,
 }: MusicAppProps) {
   const safeCharacter = useMemo(
@@ -412,11 +415,20 @@ export default function MusicApp({
     onUpdateMusicData,
   ]);
 
+  const latestTogetherChatMessageKey = currentMusicData.chatHistory.length > 0
+    ? `${currentMusicData.chatHistory[currentMusicData.chatHistory.length - 1].timestamp}:${currentMusicData.chatHistory[currentMusicData.chatHistory.length - 1].role}`
+    : "";
+
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (!showChat || !chatEndRef.current) {
+      return;
     }
-  }, [currentMusicData.chatHistory]);
+
+    chatEndRef.current.scrollIntoView({
+      behavior: "auto",
+      block: "end",
+    });
+  }, [isSendingTogetherChat, latestTogetherChatMessageKey, showChat]);
 
   // Audio Playback Logic
   useEffect(() => {
@@ -1040,6 +1052,7 @@ export default function MusicApp({
         currentSong: currentMusicData.currentSong,
         togetherDuration: getTogetherDuration(),
         history: updatedHistory,
+        worldBooks,
         directChatHistory: directChatHistory[sessionCharacterId] || [],
         currentLyric: currentLyricLine,
         nearbyLyrics: nearbyLyricLines,

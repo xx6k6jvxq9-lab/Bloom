@@ -66,6 +66,14 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       return undefined;
     }
 
+    type ViewportSnapshot = {
+      activeViewportHeight: number;
+      keyboardInset: number;
+      keyboardVisible: boolean;
+      layoutViewportHeight: number;
+      visualViewportHeight: number;
+    };
+
     const root = document.documentElement;
     const userAgent = window.navigator.userAgent.toLowerCase();
     const hasTouchMacUa = userAgent.includes('macintosh') && (window.navigator.maxTouchPoints || 0) > 1;
@@ -73,6 +81,10 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
     const isIosLike = /iphone|ipad|ipod/.test(userAgent) || hasTouchMacUa;
     let stableLayoutViewportHeight = 0;
     let lastInnerWidth = window.innerWidth;
+    let lastAppliedSnapshot: ViewportSnapshot | null = null;
+    let scheduledViewportUpdateHandle: number | null = null;
+    let scheduledWithAnimationFrame = false;
+    let disposed = false;
     const standaloneMedia = getMediaQueryList('(display-mode: standalone)');
     const isStandalone =
       (standaloneMedia?.matches ?? false) ||
@@ -94,7 +106,58 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
       root.removeAttribute('data-standalone');
     }
 
-    const updateViewportHeight = () => {
+    const applyViewportSnapshot = (nextSnapshot: ViewportSnapshot) => {
+      const previousSnapshot = lastAppliedSnapshot;
+
+      if (!previousSnapshot || previousSnapshot.layoutViewportHeight !== nextSnapshot.layoutViewportHeight) {
+        setLayoutViewportHeight(nextSnapshot.layoutViewportHeight);
+        root.style.setProperty('--app-layout-viewport-height', `${nextSnapshot.layoutViewportHeight}px`);
+        root.style.setProperty('--app-viewport-height', `${nextSnapshot.layoutViewportHeight}px`);
+      }
+
+      if (!previousSnapshot || previousSnapshot.activeViewportHeight !== nextSnapshot.activeViewportHeight) {
+        root.style.setProperty('--app-active-viewport-height', `${nextSnapshot.activeViewportHeight}px`);
+      }
+
+      if (!previousSnapshot || previousSnapshot.visualViewportHeight !== nextSnapshot.visualViewportHeight) {
+        setVisualViewportHeight(nextSnapshot.visualViewportHeight);
+        root.style.setProperty('--app-visible-viewport-height', `${nextSnapshot.visualViewportHeight}px`);
+      }
+
+      if (!previousSnapshot || previousSnapshot.keyboardInset !== nextSnapshot.keyboardInset) {
+        setKeyboardInset(nextSnapshot.keyboardInset);
+        root.style.setProperty('--app-keyboard-inset', `${nextSnapshot.keyboardInset}px`);
+      }
+
+      if (!previousSnapshot || previousSnapshot.keyboardVisible !== nextSnapshot.keyboardVisible) {
+        setKeyboardVisible(nextSnapshot.keyboardVisible);
+        if (nextSnapshot.keyboardVisible) {
+          root.setAttribute('data-keyboard-open', 'true');
+        } else {
+          root.removeAttribute('data-keyboard-open');
+        }
+      }
+
+      if (
+        !previousSnapshot
+        || previousSnapshot.keyboardInset !== nextSnapshot.keyboardInset
+        || previousSnapshot.keyboardVisible !== nextSnapshot.keyboardVisible
+        || previousSnapshot.layoutViewportHeight !== nextSnapshot.layoutViewportHeight
+        || previousSnapshot.visualViewportHeight !== nextSnapshot.visualViewportHeight
+      ) {
+        setAppKeyboardState({
+          keyboardInset: nextSnapshot.keyboardInset,
+          keyboardVisible: nextSnapshot.keyboardVisible,
+          layoutViewportHeight: nextSnapshot.layoutViewportHeight,
+          manualKeyboardAvoidanceEnabled,
+          visualViewportHeight: nextSnapshot.visualViewportHeight,
+        });
+      }
+
+      lastAppliedSnapshot = nextSnapshot;
+    };
+
+    const readViewportSnapshot = (): ViewportSnapshot => {
       const viewport = window.visualViewport;
       const currentInnerHeight = Math.round(window.innerHeight);
       const currentInnerWidth = window.innerWidth;
@@ -136,59 +199,86 @@ export function useAppEnvironment(): UseAppEnvironmentResult {
         ? Math.max(0, Math.round(visualViewportHeight + viewportOffsetTop))
         : resolvedLayoutViewportHeight;
 
-      setLayoutViewportHeight(resolvedLayoutViewportHeight);
-      setVisualViewportHeight(visualViewportHeight);
-      setKeyboardInset(resolvedKeyboardInset);
-      setKeyboardVisible(resolvedKeyboardVisible);
-      setAppKeyboardState({
+      return {
+        activeViewportHeight,
         keyboardInset: resolvedKeyboardInset,
         keyboardVisible: resolvedKeyboardVisible,
         layoutViewportHeight: resolvedLayoutViewportHeight,
-        manualKeyboardAvoidanceEnabled,
         visualViewportHeight,
-      });
-
-      root.style.setProperty('--app-layout-viewport-height', `${resolvedLayoutViewportHeight}px`);
-      root.style.setProperty('--app-active-viewport-height', `${activeViewportHeight}px`);
-      root.style.setProperty('--app-viewport-height', `${resolvedLayoutViewportHeight}px`);
-      root.style.setProperty('--app-visible-viewport-height', `${visualViewportHeight}px`);
-      root.style.setProperty('--app-keyboard-inset', `${resolvedKeyboardInset}px`);
-      if (resolvedKeyboardVisible) {
-        root.setAttribute('data-keyboard-open', 'true');
-      } else {
-        root.removeAttribute('data-keyboard-open');
-      }
+      };
     };
-    const scheduleViewportHeightUpdate = () => {
-      if (typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(updateViewportHeight);
+
+    const updateViewportHeight = () => {
+      if (disposed) {
         return;
       }
 
-      window.setTimeout(updateViewportHeight, 16);
+      applyViewportSnapshot(readViewportSnapshot());
+    };
+
+    const cancelScheduledViewportHeightUpdate = () => {
+      if (scheduledViewportUpdateHandle === null) {
+        return;
+      }
+
+      if (scheduledWithAnimationFrame && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(scheduledViewportUpdateHandle);
+      } else {
+        window.clearTimeout(scheduledViewportUpdateHandle);
+      }
+
+      scheduledViewportUpdateHandle = null;
+      scheduledWithAnimationFrame = false;
+    };
+
+    const scheduleViewportHeightUpdate = () => {
+      if (disposed || scheduledViewportUpdateHandle !== null) {
+        return;
+      }
+
+      // Keyboard animations can emit a burst of viewport events. Coalescing
+      // them to one measurement per frame keeps the global keyboard state
+      // stable without touching the text input event flow itself.
+      if (typeof window.requestAnimationFrame === 'function') {
+        scheduledWithAnimationFrame = true;
+        scheduledViewportUpdateHandle = window.requestAnimationFrame(() => {
+          scheduledViewportUpdateHandle = null;
+          scheduledWithAnimationFrame = false;
+          updateViewportHeight();
+        });
+        return;
+      }
+
+      scheduledWithAnimationFrame = false;
+      scheduledViewportUpdateHandle = window.setTimeout(() => {
+        scheduledViewportUpdateHandle = null;
+        updateViewportHeight();
+      }, 16);
     };
 
     updateViewportHeight();
     const viewport = window.visualViewport;
-    viewport?.addEventListener('resize', updateViewportHeight);
-    viewport?.addEventListener('scroll', updateViewportHeight);
-    window.addEventListener('resize', updateViewportHeight);
-    window.addEventListener('orientationchange', updateViewportHeight);
+    viewport?.addEventListener('resize', scheduleViewportHeightUpdate);
+    viewport?.addEventListener('scroll', scheduleViewportHeightUpdate);
+    window.addEventListener('resize', scheduleViewportHeightUpdate);
+    window.addEventListener('orientationchange', scheduleViewportHeightUpdate);
     document.addEventListener('focusin', scheduleViewportHeightUpdate, true);
     document.addEventListener('focusout', scheduleViewportHeightUpdate, true);
 
     return () => {
-      viewport?.removeEventListener('resize', updateViewportHeight);
-      viewport?.removeEventListener('scroll', updateViewportHeight);
-      window.removeEventListener('resize', updateViewportHeight);
-      window.removeEventListener('orientationchange', updateViewportHeight);
+      disposed = true;
+      cancelScheduledViewportHeightUpdate();
+      viewport?.removeEventListener('resize', scheduleViewportHeightUpdate);
+      viewport?.removeEventListener('scroll', scheduleViewportHeightUpdate);
+      window.removeEventListener('resize', scheduleViewportHeightUpdate);
+      window.removeEventListener('orientationchange', scheduleViewportHeightUpdate);
       document.removeEventListener('focusin', scheduleViewportHeightUpdate, true);
       document.removeEventListener('focusout', scheduleViewportHeightUpdate, true);
-        root.style.removeProperty('--app-layout-viewport-height');
-        root.style.removeProperty('--app-active-viewport-height');
-        root.style.removeProperty('--app-viewport-height');
-        root.style.removeProperty('--app-visible-viewport-height');
-        root.style.removeProperty('--app-keyboard-inset');
+      root.style.removeProperty('--app-layout-viewport-height');
+      root.style.removeProperty('--app-active-viewport-height');
+      root.style.removeProperty('--app-viewport-height');
+      root.style.removeProperty('--app-visible-viewport-height');
+      root.style.removeProperty('--app-keyboard-inset');
       root.removeAttribute('data-android');
       root.removeAttribute('data-keyboard-open');
       root.removeAttribute('data-standalone');

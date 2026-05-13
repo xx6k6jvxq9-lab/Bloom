@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppData, Character } from '../../types';
+import { isCharacterChatPreviewPatch } from '../persistence/characterChatPreview';
 import { saveCharacters } from '../persistence/charactersStore';
 import { patchCharacterById, updateCharacterById, upsertCharacter } from './characterMutations';
 
@@ -14,9 +15,12 @@ export function useCharacterStateActions(
   setAppData: Dispatch<SetStateAction<AppData>>,
 ): UseCharacterStateActionsResult {
   const handlePatchCharacterById = useCallback((characterId: string, patch: Partial<Character>) => {
+    const shouldPersistCharacters = !isCharacterChatPreviewPatch(patch);
     setAppData((prev) => {
       const nextCharacters = patchCharacterById(prev.characters, characterId, patch);
-      void saveCharacters(nextCharacters);
+      if (shouldPersistCharacters) {
+        void saveCharacters(nextCharacters);
+      }
       return {
         ...prev,
         characters: nextCharacters,

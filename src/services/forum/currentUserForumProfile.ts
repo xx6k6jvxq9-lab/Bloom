@@ -1,4 +1,5 @@
 import type { ForumRuntimeAuthorProfile, UserProfileExtended } from '../../types';
+import { resolveStableNumericId } from '../social-id/stableNumericId';
 
 type ResolveCurrentUserForumProfileInput = {
   currentUser: UserProfileExtended;
@@ -23,6 +24,7 @@ export function resolveCurrentUserForumProfile(
 
   return {
     id: currentUser.id,
+    numericId: resolveStableNumericId(currentUser.id, runtimeProfile?.numericId),
     name: runtimeProfile?.name?.trim() || currentUser.name,
     handle: runtimeProfile?.handle?.replace(/^@/, '').trim() || currentUser.id.replace(/^@/, '').trim(),
     avatar: runtimeProfile?.avatar?.trim() || currentUser.avatar,

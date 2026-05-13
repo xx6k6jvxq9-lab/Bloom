@@ -2,6 +2,7 @@ import { dreamTagGroups } from '../../components/dream/dreamContent';
 import type { DreamTagCategory } from '../../components/dream/types';
 import type { WorldBookEntry } from '../../types';
 import { buildWorldBookChunkCache } from '../world-book/worldBookBudget';
+import { applyDerivedWorldBookMetadata } from '../world-book/worldBookDerived';
 import type { DreamCustomTag } from './dreamRuntimeTypes';
 
 type DreamWorldBookProtectedGroup = {
@@ -141,14 +142,17 @@ function rebuildWorldBookEntry(entry: WorldBookEntry, content: string): WorldBoo
     return entry;
   }
 
-  return {
+  return applyDerivedWorldBookMetadata({
     ...entry,
     content: nextContent,
     chunkCache: buildWorldBookChunkCache({
       id: entry.id,
+      title: entry.title,
       content: nextContent,
+      category: entry.category,
+      keywords: entry.keywords,
     }),
-  };
+  });
 }
 
 export function resolveDreamWorldBookConflicts(input: {

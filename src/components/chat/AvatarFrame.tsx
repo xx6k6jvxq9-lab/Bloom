@@ -1,10 +1,10 @@
-import type React from 'react';
+import React, { memo } from 'react';
 
 function joinClassNames(...values: Array<string | undefined | null | false>): string {
   return values.filter(Boolean).join(' ');
 }
 
-export function AvatarFrame({
+export const AvatarFrame = memo(function AvatarFrame({
   src,
   alt,
   size,
@@ -16,6 +16,7 @@ export function AvatarFrame({
   scopeClassName,
   className,
   onClick,
+  variant = 'full',
 }: {
   src?: string | null;
   alt?: string;
@@ -28,7 +29,9 @@ export function AvatarFrame({
   scopeClassName?: string;
   className?: string;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
+  variant?: 'full' | 'lite';
 }) {
+  const isLite = variant === 'lite';
   const wrapperStyle = {
     width: size,
     height: size,
@@ -76,22 +79,28 @@ export function AvatarFrame({
         <span aria-hidden="true" className="avatar-frame-badge pointer-events-none">
           <span aria-hidden="true" className="avatar-frame-badge-core pointer-events-none absolute" />
         </span>
-        <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-top-left pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-top-right pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-bottom-right pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-left pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-right pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-heart pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-charm pointer-events-none">
-          <span aria-hidden="true" className="avatar-frame-charm-string pointer-events-none" />
-          <span aria-hidden="true" className="avatar-frame-charm-body pointer-events-none">
-            <span aria-hidden="true" className="avatar-frame-charm-core pointer-events-none absolute" />
-          </span>
-        </span>
-        <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-a pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-b pointer-events-none" />
-        <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-c pointer-events-none" />
+        {!isLite && (
+          <>
+            <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-top-left pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-top-right pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-clover avatar-frame-clover-bottom-right pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-left pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-spark avatar-frame-spark-right pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-heart pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-charm pointer-events-none">
+              <span aria-hidden="true" className="avatar-frame-charm-string pointer-events-none" />
+              <span aria-hidden="true" className="avatar-frame-charm-body pointer-events-none">
+                <span aria-hidden="true" className="avatar-frame-charm-core pointer-events-none absolute" />
+              </span>
+            </span>
+            <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-a pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-b pointer-events-none" />
+            <span aria-hidden="true" className="avatar-frame-dot avatar-frame-dot-c pointer-events-none" />
+          </>
+        )}
       </div>
     </div>
   );
-}
+});
+
+AvatarFrame.displayName = 'AvatarFrame';

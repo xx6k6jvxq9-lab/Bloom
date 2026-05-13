@@ -3,7 +3,7 @@ import { dreamTagGroups } from '../../components/dream/dreamContent';
 import type { DreamTagCategory } from '../../components/dream/types';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
-import { sortWorldBooksByPriority } from '../world-book/worldBookMeta';
+import { selectActiveCharacterWorldBooks } from '../world-book/worldBookAccess';
 import type { GenerateDreamScenarioOptions } from './dreamRuntimeTypes';
 import { buildDreamPersonaFloor } from './dreamPersonaFloor';
 import { resolveDreamWorldBookConflicts } from './dreamWorldBookConflict';
@@ -11,16 +11,6 @@ import { resolveDreamSelection } from './resolveDreamSelection';
 
 function resolveActiveMask(characterId: string, masks: Mask[]) {
   return masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(characterId)) ?? null;
-}
-
-function resolveActiveWorldBooks(characterId: string, worldBooks: WorldBookEntry[], activeIds?: string[]) {
-  return sortWorldBooksByPriority(
-    worldBooks.filter(
-      (entry) =>
-        (entry.isActive && (entry.isGlobal || entry.characterIds?.includes(characterId))) ||
-        activeIds?.includes(entry.id),
-    ),
-  );
 }
 
 function buildDomainRule(domainId: GenerateDreamScenarioOptions['selection']['domainId']) {
@@ -292,7 +282,7 @@ export function buildDreamPromptInput(options: GenerateDreamScenarioOptions) {
     options.selection,
     `${options.character.id}-${options.selection.domainId}-${options.selection.depth}-${options.selection.entryMode}`,
   );
-  const activeWorldBooks = resolveActiveWorldBooks(options.character.id, options.worldBooks, options.character.activeWorldBookIds);
+  const activeWorldBooks = selectActiveCharacterWorldBooks(options.character, options.worldBooks);
   const resolvedWorldBookConflicts = resolveDreamWorldBookConflicts({
     worldBooks: activeWorldBooks,
     selectedTags: resolvedSelection.selectedTags,
