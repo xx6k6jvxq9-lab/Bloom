@@ -10,11 +10,110 @@ import type {
 
 const JSON_CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)```/i;
 const JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
+const JSON_STRING_LITERAL_REGEX = /^"(?:\\.|[^"\\])*"$/;
 const WRAPPING_QUOTES_REGEX = /^["'`“”‘’]+|["'`“”‘’]+$/g;
 type LightInteractionGenerationInput = DirectLightInteractionGenerationInput | GroupLightInteractionGenerationInput;
 
 function stripWrappingQuotes(value: string) {
   return value.replace(WRAPPING_QUOTES_REGEX, '').trim();
+}
+
+function stripTrailingJsonComma(value: string) {
+  return value.replace(/,\s*$/, '').trim();
+}
+
+function decodeJsonStringLiteral(value: string) {
+  const trimmed = stripTrailingJsonComma(value.trim());
+  if (!JSON_STRING_LITERAL_REGEX.test(trimmed)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return typeof parsed === 'string' ? parsed.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeJsonLikeString(value: string) {
+  const decoded = decodeJsonStringLiteral(value);
+  if (decoded !== null) {
+    return decoded;
+  }
+
+  return stripWrappingQuotes(stripTrailingJsonComma(value));
+}
+
+function stripLooseCodeFenceMarkers(rawText: string) {
+  return rawText
+    .replace(/^\s*```(?:json)?\s*$/gim, '')
+    .replace(/^\s*```\s*$/gim, '')
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+function extractNamedFieldValue(line: string, fieldNames: string[]) {
+  const matched = line.match(new RegExp(`^\\s*"?(?:${fieldNames.join('|')})"?\\s*:\\s*(.+)$`, 'i'));
+  return matched?.[1]?.trim() || null;
+}
+
+function extractJsonLikeStringArray(rawValue: string): string[] | null {
+  const trimmed = stripTrailingJsonComma(rawValue.trim());
+  if (!(trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    return null;
+  }
+
+  const matches = trimmed.match(/"(?:\\.|[^"\\])*"/g);
+  if (!matches) {
+    return [];
+  }
+
+  return matches
+    .map((item) => normalizeJsonLikeString(item))
+    .filter(Boolean);
+}
+
+function isJsonScaffoldLine(line: string) {
+  const trimmed = stripTrailingJsonComma(line.trim());
+  if (!trimmed) {
+    return true;
+  }
+
+  if (/^```(?:json)?$/i.test(trimmed) || trimmed.toLowerCase() === 'json') {
+    return true;
+  }
+
+  if (/^[\[\]{}]+$/.test(trimmed)) {
+    return true;
+  }
+
+  return /^"?(?:systemLine|assistantBubbles?|counterAction|nextActions|interactionState|spectatorReply|recentDescriptors|bubbles|speakerLabel|type|mood|streak)"?\s*:/i.test(trimmed);
+}
+
+function tryParseJsonPayload(jsonPayload: string) {
+  const candidates = [
+    jsonPayload.trim(),
+    jsonPayload.trim().replace(/,\s*([}\]])/g, '$1'),
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Try the next relaxed candidate.
+    }
+  }
+
+  return null;
 }
 
 function buildDefaultSystemLine(input: LightInteractionGenerationInput) {
@@ -32,7 +131,7 @@ function extractJsonPayload(rawText: string) {
     return fencedMatch[1].trim();
   }
 
-  const objectMatch = rawText.match(JSON_OBJECT_REGEX);
+  const objectMatch = stripLooseCodeFenceMarkers(rawText).match(JSON_OBJECT_REGEX);
   return objectMatch?.[0]?.trim() || '';
 }
 
@@ -45,8 +144,10 @@ function normalizeSystemLine(
     return fallback;
   }
 
-  const normalized = stripWrappingQuotes(rawValue)
-    .replace(/^\s*(?:systemline|system|系统条|系统提示)\s*[:：-]\s*/i, '')
+  const normalized = normalizeJsonLikeString(
+    normalizeJsonLikeString(rawValue)
+      .replace(/^\s*(?:systemline|system|系统条|系统提示)\s*[:：-]\s*/i, ''),
+  )
     .replace(/\s+/g, ' ')
     .replace(/[。！？!?]+$/u, '')
     .trim();
@@ -89,6 +190,11 @@ function normalizeRawBubbleEntries(rawValue: unknown): string[] {
   }
 
   if (typeof rawValue === 'string') {
+    const inlineJsonArray = extractJsonLikeStringArray(rawValue);
+    if (inlineJsonArray) {
+      return inlineJsonArray;
+    }
+
     return rawValue
       .split(/\|\|\||\r?\n+/)
       .map((part) => part.trim())
@@ -99,8 +205,10 @@ function normalizeRawBubbleEntries(rawValue: unknown): string[] {
 }
 
 function sanitizeBubbleText(rawValue: string, aliases: string[]) {
-  const normalized = stripWrappingQuotes(rawValue)
-    .replace(/^\s*(?:assistantbubbles?|bubble|reply|replies|气泡|回复)\s*[:：-]\s*/i, '')
+  const normalized = normalizeJsonLikeString(
+    normalizeJsonLikeString(rawValue)
+      .replace(/^\s*(?:assistantbubbles?|bubble|reply|replies|气泡|回复)\s*[:：-]\s*/i, ''),
+  )
     .trim();
 
   if (!normalized) {
@@ -261,14 +369,36 @@ function buildFallbackResult(
   input: LightInteractionGenerationInput,
 ): LightInteractionResult {
   const fallbackSystemLine = buildDefaultSystemLine(input);
-  const rawLines = rawText
-    .replace(/```[\s\S]*?```/g, ' ')
+  const rawLines = stripLooseCodeFenceMarkers(rawText)
     .split(/\r?\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const systemCandidate = rawLines.find((line) => line.includes('拍') && line.includes(input.target.label));
+  const systemSourceLine = rawLines.find((line) => {
+    const candidate = extractNamedFieldValue(line, ['systemLine']) ?? line;
+    return candidate.includes('拍') && candidate.includes(input.target.label);
+  });
+  const systemCandidate = systemSourceLine
+    ? (extractNamedFieldValue(systemSourceLine, ['systemLine']) ?? systemSourceLine)
+    : '';
+  const assistantSources = rawLines
+    .filter((line) => line !== systemSourceLine)
+    .flatMap((line) => {
+      const inlineAssistantValue = extractNamedFieldValue(line, ['assistantBubbles', 'assistantBubble', 'bubbles']);
+      if (inlineAssistantValue) {
+        if (isJsonScaffoldLine(inlineAssistantValue)) {
+          return [];
+        }
+        return [inlineAssistantValue];
+      }
+
+      if (isJsonScaffoldLine(line)) {
+        return [];
+      }
+
+      return [line];
+    });
   const assistantBubbles = normalizeAssistantBubbles(
-    rawLines.filter((line) => line !== systemCandidate),
+    assistantSources,
     input,
   );
 
@@ -301,8 +431,12 @@ function parseLightInteractionResult(
     return buildFallbackResult(rawText, input);
   }
 
+  const parsed = tryParseJsonPayload(jsonPayload);
+  if (!parsed) {
+    return buildFallbackResult(rawText, input);
+  }
+
   try {
-    const parsed = JSON.parse(jsonPayload) as Record<string, unknown>;
     const assistantBubbles = normalizeAssistantBubbles(parsed.assistantBubbles, input);
     const normalizedSystemLine = normalizeSystemLine(parsed.systemLine, input, fallbackSystemLine);
     const spectatorReply = normalizeSpectatorReply(parsed.spectatorReply, input);
@@ -343,6 +477,8 @@ function parseLightInteractionResult(
     return buildFallbackResult(rawText, input);
   }
 }
+
+export { parseLightInteractionResult };
 
 function buildGenerationUserInstruction(input: LightInteractionGenerationInput) {
   if (input.scene === 'group') {
