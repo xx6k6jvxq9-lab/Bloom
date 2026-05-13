@@ -38,9 +38,10 @@ import {
 import { extractImageUrls, getMessageMainText, getSummaryHistoryWindow, showInAppConfirm } from '../../utils';
 import { showInAppAlert } from '../../utils';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
-import { getDisplayableAssetValue } from '../../features/persistence/persistentAssetRef';
+import { getDisplayableAssetValue, parseUploadedAssetRef } from '../../features/persistence/persistentAssetRef';
 import { loadMemoryRecordData } from '../../features/persistence/memoryRecordStore';
 import { saveUploadedDataUrl } from '../../features/persistence/persistentAssetService';
+import { primeObjectUrl } from '../../features/persistence/objectUrlRegistry';
 import {
   cleanupUnusedRemoteCachedAssets,
   inspectRemoteCacheUsage,
@@ -58,6 +59,10 @@ import {
   getLatestCharacterRequest,
   getPendingCharacterRequest,
 } from '../../features/contacts/contactRelationship';
+import {
+  DIRECT_CHAT_BACKGROUND_DISABLED,
+  resolveDirectChatBackground,
+} from '../../features/chat-session/directChatBackground';
 import {
   getFriendRequestRelationshipRoundNo,
   getLatestUnreadRelationshipEventForCharacter,
@@ -747,8 +752,15 @@ export function ChatSettingsPanel({
     replyFrequency: character.voiceProfile?.replyFrequency || 'medium',
   } as NonNullable<Character['voiceProfile']>;
   const { resolvedUrl: resolvedCharacterAvatarUrl } = useResolvedPersistentValue(character.avatar);
+  const { resolvedUrl: resolvedGlobalChatBackgroundUrl } = useResolvedPersistentValue(visualSettings?.chat?.background);
   const { resolvedUrl: resolvedCharacterBackgroundUrl } = useResolvedPersistentValue(character.background);
   const { resolvedUrl: resolvedVoiceSampleUrl } = useResolvedPersistentValue(voiceProfile.sampleAssetId);
+  const settingsPanelBackground = resolveDirectChatBackground({
+    characterBackground: character.background,
+    resolvedCharacterBackgroundUrl,
+    globalBackground: visualSettings?.chat?.background,
+    resolvedGlobalBackgroundUrl: resolvedGlobalChatBackgroundUrl,
+  });
 
   const currentGroupLabel = character.groupId || '无分组';
   const remarkName = character.remarkName?.trim() || '';
@@ -2231,8 +2243,8 @@ export function ChatSettingsPanel({
       exit={{ x: '100%' }}
       className="absolute inset-0 flex flex-col z-[70]"
       style={{
-        backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
-        backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
+        backgroundImage: settingsPanelBackground ? `url(${settingsPanelBackground})` : 'none',
+        backgroundColor: settingsPanelBackground ? 'transparent' : '#fafafa',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
@@ -3323,6 +3335,10 @@ export function ChatSettingsPanel({
                           const file = e.target.files?.[0];
                           if (!file) return;
                           const nextValue = await setUploadedFile(file);
+                          const parsedRef = parseUploadedAssetRef(nextValue);
+                          if (parsedRef) {
+                            primeObjectUrl(parsedRef.id, file);
+                          }
                           onUpdate({ ...character, background: nextValue });
                           setShowBgInput(false);
                           setTempBg('');
@@ -3331,7 +3347,7 @@ export function ChatSettingsPanel({
                       />
                     </label>
                     <div className="flex items-center text-[11px] text-zinc-400">
-                      这里只修改当前单聊背景，不会改动自定义功能里的全局聊天背景。
+                      这里只修改当前单聊背景，不会改动自定义功能里的全局聊天背景；清除后当前聊天将不再回退全局背景。
                     </div>
                   </div>
                   <input 
@@ -3355,12 +3371,12 @@ export function ChatSettingsPanel({
                     </button>
                     <button 
                       onClick={() => {
-                        onUpdate({ ...character, background: '' });
+                        onUpdate({ ...character, background: DIRECT_CHAT_BACKGROUND_DISABLED });
                         setShowBgInput(false);
                       }}
                       className="flex-1 bg-red-50/80 text-red-500 text-[12px] py-2 rounded-lg font-medium"
                     >
-                      清除背景
+                      清除单聊背景
                     </button>
                   </div>
                 </div>
@@ -3830,8 +3846,8 @@ export function ChatSettingsPanel({
             exit={{ x: '100%' }}
             className="absolute inset-0 flex flex-col z-[80]"
             style={{
-              backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
-              backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
+              backgroundImage: settingsPanelBackground ? `url(${settingsPanelBackground})` : 'none',
+              backgroundColor: settingsPanelBackground ? 'transparent' : '#fafafa',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
@@ -3973,8 +3989,8 @@ export function ChatSettingsPanel({
             exit={{ x: '100%' }}
             className="absolute inset-0 flex flex-col z-[80]"
             style={{
-              backgroundImage: resolvedCharacterBackgroundUrl ? `url(${resolvedCharacterBackgroundUrl})` : 'none',
-              backgroundColor: resolvedCharacterBackgroundUrl ? 'transparent' : '#fafafa',
+              backgroundImage: settingsPanelBackground ? `url(${settingsPanelBackground})` : 'none',
+              backgroundColor: settingsPanelBackground ? 'transparent' : '#fafafa',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}

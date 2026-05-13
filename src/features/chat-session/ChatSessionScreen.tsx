@@ -33,6 +33,7 @@ import { useResolvedPersistentValue } from '../persistence/useResolvedPersistent
 import { resolveValueToDisplayUrl } from '../persistence/persistentAssetService';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAssetService';
+import { resolveDirectChatBackground } from './directChatBackground';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { hasOpenedCoupleSpaceForCharacter } from '../chat-runtime/coupleSpaceInviteGuard';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
@@ -1741,10 +1742,12 @@ export function ChatSessionScreen({
       friendRequests={friendRequests}
     />
   );
-  const activeBackground =
-    getDisplayableAssetValue(character.background, resolvedCharacterBackgroundUrl)
-    || resolvedChatBackgroundUrl
-    || '';
+  const activeBackground = resolveDirectChatBackground({
+    characterBackground: character.background,
+    resolvedCharacterBackgroundUrl,
+    globalBackground: visualSettings?.chat?.background,
+    resolvedGlobalBackgroundUrl: resolvedChatBackgroundUrl,
+  });
   const directResolvedTextBubbleStylesByRole = useMemo<Record<'model' | 'user', DirectResolvedTextBubbleStyles>>(() => ({
     model: {
       bubbleStyle: getDirectTextBubbleStyle({
@@ -1966,9 +1969,9 @@ export function ChatSessionScreen({
   const chatHeaderTitleTop = 'calc(env(safe-area-inset-top, 0px) + 8px)';
   let footerClassName = directFooterClassName;
   let footerControlTone = {
-    iconButton: character.background ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
-    inputShell: character.background ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100',
-    voiceButton: character.background ? 'bg-white/50 text-zinc-800 border border-white/30 active:bg-white/70' : 'bg-zinc-50 text-zinc-800 border border-zinc-100 active:bg-zinc-100',
+    iconButton: activeBackground ? 'bg-white/50 text-zinc-600 hover:bg-white/80' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100',
+    inputShell: activeBackground ? 'bg-white/50 border-white/30' : 'bg-zinc-50 border-zinc-100',
+    voiceButton: activeBackground ? 'bg-white/50 text-zinc-800 border border-white/30 active:bg-white/70' : 'bg-zinc-50 text-zinc-800 border border-zinc-100 active:bg-zinc-100',
   };
   
   if (headerStyleType === 'default') {

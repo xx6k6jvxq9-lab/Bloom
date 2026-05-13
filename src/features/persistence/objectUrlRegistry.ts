@@ -9,6 +9,17 @@ export function peek(id: string): string | null {
   return registry.get(id)?.url || null;
 }
 
+export function primeObjectUrl(id: string, blob: Blob): string {
+  const existing = registry.get(id);
+  if (existing) {
+    return existing.url;
+  }
+
+  const url = URL.createObjectURL(blob);
+  registry.set(id, { url, refCount: 0 });
+  return url;
+}
+
 export function getOrCreate(id: string, blob: Blob): string {
   const existing = registry.get(id);
   if (existing) {
