@@ -42,7 +42,7 @@ import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../ser
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
 import { buildResolvedOpenLoopRegistry } from '../../services/memory/buildResolvedOpenLoopRegistry';
-import { appendWorkingMemorySnapshots } from '../../services/memory/memoryRecordSnapshots';
+import { appendSceneSettlementMemory } from '../../services/memory/memoryRecordSnapshots';
 import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistentAssetService';
 
 type UseGroupChatRuntimeArgs = {
@@ -1154,11 +1154,13 @@ export function useGroupChatRuntime({
       openLoopRegistry: settlement.openLoopRegistry,
       ...(sharedState ? { sharedState } : {}),
     });
-    void appendWorkingMemorySnapshots({
+    void appendSceneSettlementMemory({
       characterId: speaker.id,
       sourceScene: 'group_chat',
-      shortTermSummary: settlement.shortTermSummary,
-      sharedState,
+      settlement: {
+        ...settlement,
+        sharedState,
+      },
       timestamp: latestTimestamp,
     }).catch((error) => {
       console.error('[group-chat] Failed to persist settlement memory snapshots', error);
@@ -1457,6 +1459,36 @@ export function useGroupChatRuntime({
       timestamp: pendingTimestamp,
       text: '',
     });
+    let lastPreviewUpdateAt = 0;
+    let lastPreviewText = '';
+    const updatePendingPreview = (rawText: string) => {
+      const normalizedPreview = normalizeGeneratedReply(rawText, params.speaker).trim();
+      if (!normalizedPreview || normalizedPreview === lastPreviewText) {
+        return;
+      }
+
+      const now = Date.now();
+      const shouldFlush =
+        lastPreviewUpdateAt === 0
+        || now - lastPreviewUpdateAt >= 80
+        || normalizedPreview.length - lastPreviewText.length >= 24;
+      if (!shouldFlush) {
+        return;
+      }
+
+      lastPreviewUpdateAt = now;
+      lastPreviewText = normalizedPreview;
+      setPendingMessage((previous) => (
+        previous
+        && previous.speakerId === params.speaker.id
+        && previous.timestamp === pendingTimestamp
+          ? {
+              ...previous,
+              text: normalizedPreview,
+            }
+          : previous
+      ));
+    };
 
     const runtimeMessages = buildRuntimeMessages({
       systemPrompt,
@@ -1480,6 +1512,9 @@ export function useGroupChatRuntime({
           reason: result.reason,
           preview: result.cleanedText.slice(0, 120),
         });
+      },
+      onProgress: (streamingText) => {
+        updatePendingPreview(streamingText);
       },
     });
 
@@ -3061,7 +3096,7 @@ export function useGroupChatRuntime({
               forcedSpeakerIds: followUpParams.forcedSpeakerIds,
             });
           });
-      }, 720 + Math.floor(Math.random() * 260));
+      }, 0);
     };
 
     clearDelayedSpeakerTimer();

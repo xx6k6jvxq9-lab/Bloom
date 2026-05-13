@@ -3,6 +3,8 @@ import { getOrCreate, peek, revoke } from './objectUrlRegistry';
 import { createUploadedAssetRef, isUploadedAssetRef, parseUploadedAssetRef } from './persistentAssetRef';
 
 const remoteAssetInflightRequests = new Map<string, Promise<string>>();
+const modelInputCache = new Map<string, Promise<string | null>>();
+const MODEL_INPUT_CACHE_MAX = 48;
 
 function createAssetId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -130,6 +132,45 @@ function buildRemoteAssetFileName(value: string): string {
 
 function createAssetRefFromRecord(record: StoredAssetRecord): string {
   return createUploadedAssetRef(record.id, record.fileName);
+}
+
+function buildModelInputCacheKey(value: string, assetType: 'image' | 'audio') {
+  return `${assetType}:${value}`;
+}
+
+function getCachedModelInput(
+  key: string,
+  loader: () => Promise<string | null>,
+): Promise<string | null> {
+  const existing = modelInputCache.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const requestPromise = loader().catch((error) => {
+    if (modelInputCache.get(key) === requestPromise) {
+      modelInputCache.delete(key);
+    }
+    throw error;
+  });
+
+  modelInputCache.set(key, requestPromise);
+  if (modelInputCache.size > MODEL_INPUT_CACHE_MAX) {
+    const oldestKey = modelInputCache.keys().next().value;
+    if (typeof oldestKey === 'string' && oldestKey !== key) {
+      modelInputCache.delete(oldestKey);
+    }
+  }
+
+  return requestPromise;
+}
+
+function clearCachedModelInputs(pattern: string) {
+  for (const key of [...modelInputCache.keys()]) {
+    if (key.includes(pattern)) {
+      modelInputCache.delete(key);
+    }
+  }
 }
 
 export async function cacheRemoteAsset(url: string, fileName?: string): Promise<string> {
@@ -357,68 +398,71 @@ export async function resolveValueToModelInput(
   const trimmed = value.trim();
   if (!trimmed) return null;
   const assetType = options?.assetType || 'image';
+  const cacheKey = buildModelInputCacheKey(trimmed, assetType);
 
-  if (isDirectDisplayValue(trimmed)) {
-    if (assetType === 'audio') {
+  return getCachedModelInput(cacheKey, async () => {
+    if (isDirectDisplayValue(trimmed)) {
+      if (assetType === 'audio') {
+        if (/^data:/i.test(trimmed)) {
+          return trimmed;
+        }
+
+        if (isRemoteHttpValue(trimmed)) {
+          const cachedRecord = await findAssetByOriginalUrl(trimmed);
+          if (cachedRecord) {
+            return blobToDataUrl(cachedRecord.blob);
+          }
+        }
+
+        const response = await fetch(trimmed);
+        const blob = await response.blob();
+        return blobToDataUrl(blob);
+      }
+
       if (/^data:/i.test(trimmed)) {
-        return trimmed;
+        return normalizeModelImageDataUrl(trimmed);
       }
 
       if (isRemoteHttpValue(trimmed)) {
         const cachedRecord = await findAssetByOriginalUrl(trimmed);
         if (cachedRecord) {
-          return blobToDataUrl(cachedRecord.blob);
+          if (isGeminiFriendlyImageMimeType(cachedRecord.blob.type)) {
+            return blobToDataUrl(cachedRecord.blob);
+          }
+
+          return convertBlobToPngDataUrl(cachedRecord.blob);
         }
       }
 
       const response = await fetch(trimmed);
       const blob = await response.blob();
-      return blobToDataUrl(blob);
-    }
-
-    if (/^data:/i.test(trimmed)) {
-      return normalizeModelImageDataUrl(trimmed);
-    }
-
-    if (isRemoteHttpValue(trimmed)) {
-      const cachedRecord = await findAssetByOriginalUrl(trimmed);
-      if (cachedRecord) {
-        if (isGeminiFriendlyImageMimeType(cachedRecord.blob.type)) {
-          return blobToDataUrl(cachedRecord.blob);
-        }
-
-        return convertBlobToPngDataUrl(cachedRecord.blob);
+      if (isGeminiFriendlyImageMimeType(blob.type)) {
+        return blobToDataUrl(blob);
       }
+
+      return convertBlobToPngDataUrl(blob);
     }
 
-    const response = await fetch(trimmed);
-    const blob = await response.blob();
-    if (isGeminiFriendlyImageMimeType(blob.type)) {
-      return blobToDataUrl(blob);
+    const parsedRef = parseUploadedAssetRef(trimmed);
+    if (!parsedRef) {
+      return null;
     }
 
-    return convertBlobToPngDataUrl(blob);
-  }
+    const record = await getAsset(parsedRef.id);
+    if (!record) {
+      return null;
+    }
 
-  const parsedRef = parseUploadedAssetRef(trimmed);
-  if (!parsedRef) {
-    return null;
-  }
+    if (assetType === 'audio') {
+      return blobToDataUrl(record.blob);
+    }
 
-  const record = await getAsset(parsedRef.id);
-  if (!record) {
-    return null;
-  }
+    if (isGeminiFriendlyImageMimeType(record.blob.type)) {
+      return blobToDataUrl(record.blob);
+    }
 
-  if (assetType === 'audio') {
-    return blobToDataUrl(record.blob);
-  }
-
-  if (isGeminiFriendlyImageMimeType(record.blob.type)) {
-    return blobToDataUrl(record.blob);
-  }
-
-  return convertBlobToPngDataUrl(record.blob);
+    return convertBlobToPngDataUrl(record.blob);
+  });
 }
 
 export async function removeAssetByRef(ref: string): Promise<void> {
@@ -428,5 +472,7 @@ export async function removeAssetByRef(ref: string): Promise<void> {
   if (!parsedRef) return;
 
   revoke(parsedRef.id);
+  clearCachedModelInputs(parsedRef.id);
+  clearCachedModelInputs(ref);
   await deleteAsset(parsedRef.id);
 }

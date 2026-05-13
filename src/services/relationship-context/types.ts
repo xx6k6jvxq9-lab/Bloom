@@ -1,3 +1,5 @@
+import type { ResolvedMemoryLayerDiagnostics } from '../memory/types';
+
 export type CharacterContext = {
   corePersona?: string;
   expressionStyle?: string;
@@ -11,6 +13,7 @@ export type CharacterContext = {
 export type CharacterScopedMemory = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  diagnostics?: ResolvedMemoryLayerDiagnostics;
 };
 
 export type RelationshipWaveSourceScene =
@@ -116,6 +119,7 @@ export type SceneScopedSignals = {
   sceneResidue?: SceneResidueItem[];
   topicAnchors?: TopicAnchorItem[];
   taskResidue?: TaskResidueItem[];
+  compatibilitySnapshotCount?: number;
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
   publicAcquaintanceSummary?: string;

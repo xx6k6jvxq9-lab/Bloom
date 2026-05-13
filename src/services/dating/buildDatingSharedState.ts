@@ -1,4 +1,5 @@
 import type { CharacterActiveDatingState, DateSession } from '../../types';
+import { buildDatingSceneProgress, buildDatingSceneProgressSummary } from './buildDatingSceneProgress';
 
 function getLatestGeneratedStatus(session: DateSession) {
   return session.generatedContent?.status;
@@ -13,6 +14,8 @@ function getLatestNarrativeSnippet(session: DateSession): string {
 export function buildActiveDatingSharedState(session: DateSession): CharacterActiveDatingState {
   const status = getLatestGeneratedStatus(session);
   const narrativeSnippet = getLatestNarrativeSnippet(session);
+  const sceneProgress = buildDatingSceneProgress(session);
+  const sceneProgressSummary = buildDatingSceneProgressSummary(sceneProgress);
   const location = status?.location?.trim() || session.location || '当前约会场景中';
   const mood = status?.mood?.trim() || session.mood || '有一些约会余温';
 
@@ -25,6 +28,7 @@ export function buildActiveDatingSharedState(session: DateSession): CharacterAct
     relationshipResidue: narrativeSnippet
       ? `这场约会最近留下了一点关系余波：${narrativeSnippet}`
       : '这场约会仍在持续影响角色此刻的关系语气与在线状态。',
+    ...(sceneProgressSummary ? { sceneProgressSummary } : {}),
     boundaryNote: '线下约会仍在进行时，线上聊天不要把约会现场动作直接搬进来续写；只能把它当作共享关系语境。',
   };
 }

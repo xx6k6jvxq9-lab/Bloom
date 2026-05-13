@@ -3,6 +3,11 @@ import { buildTemporalContextPrompt } from '../relationship-time/buildTemporalCo
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
+import {
+  buildDatingSceneProgress,
+  formatDatingSceneProgressForPrompt,
+  type DatingSceneProgress,
+} from '../dating/buildDatingSceneProgress';
 import { compressShortTermSummaryAfterLongTerm } from '../memory/buildShortTermSummary';
 import type {
   Character,
@@ -38,7 +43,7 @@ export type DatingSceneInput = {
   backgroundRule: string;
   pastChatContext: string;
   datingMessages: string;
-  currentGeneratedNarrative: string;
+  sceneProgress: string;
   currentGeneratedStatus: string;
   currentGeneratedPlaylist: string;
   task: string;
@@ -275,6 +280,7 @@ function buildExtraSections(input: {
   relationshipResidue?: Array<{ summary: string }>;
   topicAnchors?: Array<{ summary: string }>;
   taskResidue?: Array<{ summary: string }>;
+  sceneProgress?: string;
   recentCoupleSpaceSummary?: string;
   sharedRecentRelationshipSummary?: string;
 }): string[] {
@@ -347,7 +353,12 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
   const shortTermSummary = characterScopedMemory.longTermMemoryProfile
     ? compressShortTermSummaryAfterLongTerm(characterScopedMemory.shortTermSummary || '')
     : characterScopedMemory.shortTermSummary;
+  const sceneProgress = buildDatingSceneProgress(options.session);
   const worldBookPromptSection = truncateFromStart(characterContext.worldBookPrompt, DATING_PROMPT_BUDGET.maxSectionChars);
+  const sceneProgressPrompt = truncateFromStart(
+    formatDatingSceneProgressForPrompt(sceneProgress),
+    DATING_PROMPT_BUDGET.maxSectionChars,
+  );
   const sections = budgetSections([
     ...buildExtraSections({
       sharedCharacterStatePrompt: truncateFromStart(sharedCharacterState.directPrompt, DATING_PROMPT_BUDGET.maxSectionChars),
@@ -370,6 +381,23 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     worldBookPromptSection ? ['## World Book Context', worldBookPromptSection].join('\n') : '',
   ]);
 
+  console.info('[dating-scene-input] memory diagnostics', {
+    characterId: options.character.id,
+    shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
+    longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
+    shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
+    longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
+    recordCounts: characterScopedMemory.diagnostics?.recordCounts,
+    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
+    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
+    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
+    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
+    currentSceneProgressSignature: sceneProgress.currentSignature,
+    previousSceneProgressSignature: sceneProgress.previousSignature,
+    repeatedSceneProgressSignature: sceneProgress.repeatedSignature,
+    bannedRepeatActionCount: sceneProgress.bannedRepeatActions.length,
+  });
+
   return {
     mode: options.mode,
     characterName: options.character.name,
@@ -388,7 +416,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     backgroundRule: buildBackgroundRule(options.session),
     pastChatContext: formatPastChatContext(options.chatHistory, options.character.name),
     datingMessages: formatDatingMessages(options.session),
-    currentGeneratedNarrative: formatCurrentGeneratedNarrative(options.session),
+    sceneProgress: sceneProgressPrompt,
     currentGeneratedStatus: formatCurrentGeneratedStatus(options.session),
     currentGeneratedPlaylist: formatCurrentGeneratedPlaylist(options.session),
     task: buildTask(options),

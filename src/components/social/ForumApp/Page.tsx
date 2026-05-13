@@ -58,7 +58,7 @@ import { ForumUserProfileView } from './ForumUserProfileView';
 import { ForumOpenSettingsRoute, type ForumOpenDraft } from './ForumOpenSettingsRoute';
 import { ForumAuthorProfileEditor } from './ForumAuthorProfileEditor';
 import { ForumMessageManageSheet } from './ForumMessageManageSheet';
-import { appendWorkingMemorySnapshots } from '../../../services/memory/memoryRecordSnapshots';
+import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
 import { ForumProfilePostCard } from './ForumProfilePostCard';
 import { ForumTrendListView, type ForumTrendListItem } from './ForumTrendListView';
 import { ForumSettingsRoute } from './ForumSettingsRoute';
@@ -127,6 +127,7 @@ import {
   type ForumMessageNotificationItem,
 } from '../../../services/forum/forumMessageCenter';
 import {
+  markForumTempChatTyping,
   processPendingForumTempReply,
   resolveForumTempSession,
 } from '../../../services/forum/forumTempChatRuntime';
@@ -348,32 +349,17 @@ function buildTempChatReplyPolicy(author: ForumAuthor, session: ForumTempChatSes
   const ghostBias = /momo|门口吃瓜|已读乱回/.test(fingerprint);
   const roll = seed % 100;
 
-  if (coldBias && roll < 18) {
+  if ((coldBias && roll < 18) || (ghostBias && roll < 10)) {
     return {
       behavior: 'ghost' as const,
-      readDelayMs: 4000 + (seed % 5000),
-    };
-  }
-
-  if ((coldBias && roll < 58) || (!coldBias && roll < 25)) {
-    return {
-      behavior: 'delayed' as const,
-      readDelayMs: 3000 + (seed % 4000),
-      replyDelayMs: 12000 + (seed % 18000),
-    };
-  }
-
-  if (ghostBias && roll < 10) {
-    return {
-      behavior: 'ghost' as const,
-      readDelayMs: 3000 + (seed % 4000),
+      readDelayMs: 0,
     };
   }
 
   return {
     behavior: 'instant' as const,
-    readDelayMs: 1200 + (seed % 1800),
-    replyDelayMs: 2200 + (seed % 2800),
+    readDelayMs: 0,
+    replyDelayMs: 0,
   };
 }
 
@@ -1087,6 +1073,152 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         },
       }),
     } as AppDataExtended);
+
+    return nextSession;
+  };
+
+  const processQueuedTempReply = (session: ForumTempChatSession) => {
+    const pendingReply = session.pendingReply;
+    if (!forumConfig || !pendingReply) return;
+
+    const { authorId } = session;
+    if (tempReplyProcessingRef.current.has(authorId)) return;
+
+    const author = getAuthor(authorId);
+    if (!author) return;
+
+    let sessionForProcessing = session;
+    if (pendingReply.behavior !== 'ghost' && pendingReply.status !== 'typing') {
+      sessionForProcessing = markForumTempChatTyping(session, Date.now());
+      updateTempChatSession(authorId, () => sessionForProcessing);
+    }
+
+    tempReplyProcessingRef.current.add(authorId);
+    let lastPreviewUpdateAt = 0;
+    let lastPreviewText = '';
+
+    const activePendingReply = sessionForProcessing.pendingReply;
+    const relatedPost = activePendingReply?.relatedPostId
+      ? postsRef.current.find((post) => post.id === activePendingReply.relatedPostId) || null
+      : resolveRecentForumPostForAuthor(authorId);
+
+    processPendingForumTempReply({
+      appData: appDataRef.current,
+      currentUserId: currentUser.id,
+      allowNpcFriendRequest: !!(forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS).social?.allowNpcFriendRequest,
+      activeTempChatUserId,
+      currentView,
+      forumConfig,
+      session: sessionForProcessing,
+      author,
+      relatedPost,
+      resolveRecentForumPostForAuthor,
+      inferForumChannelFromCategory,
+      onProgress: (previewText) => {
+        const normalizedPreview = previewText.trim();
+        if (!normalizedPreview || normalizedPreview === lastPreviewText) {
+          return;
+        }
+
+        const now = Date.now();
+        const shouldFlush =
+          lastPreviewUpdateAt === 0
+          || now - lastPreviewUpdateAt >= 80
+          || normalizedPreview.length - lastPreviewText.length >= 24;
+        if (!shouldFlush) {
+          return;
+        }
+
+        lastPreviewUpdateAt = now;
+        lastPreviewText = normalizedPreview;
+        updateTempChatSession(authorId, (currentSession) => (
+          currentSession.pendingReply
+            ? {
+                ...currentSession,
+                pendingReply: {
+                  ...currentSession.pendingReply,
+                  status: 'typing',
+                  previewText: normalizedPreview,
+                },
+                updatedAt: now,
+              }
+            : currentSession
+        ));
+      },
+    })
+      .then((result) => {
+        if (result.kind === 'idle') return;
+
+        if (result.kind === 'mark-read' || result.kind === 'ghosted' || result.kind === 'typing' || result.kind === 'cleared') {
+          updateTempChatSession(authorId, () => result.nextSession);
+          return;
+        }
+
+        const tempChatsMap = forumDataRef.current.tempChats || {};
+        const nextSettlementEvents: Array<Parameters<typeof applyForumCharacterSettlements>[0][number]> = [];
+        const isKnownCharacter = !!getCharacterById(authorId);
+        const priorRounds = sessionForProcessing.completedExchangeRounds || 0;
+        const nextRounds = result.nextSession.completedExchangeRounds || 0;
+
+        if (isKnownCharacter && priorRounds < 3 && nextRounds >= 3) {
+          const latestNpcMessage = [...result.nextSession.messages]
+            .reverse()
+            .find((message) => message.role === 'npc');
+          if (latestNpcMessage?.text.trim()) {
+            nextSettlementEvents.push({
+              kind: 'temp_chat_familiar',
+              characterId: authorId,
+              actorName: author.name,
+              content: latestNpcMessage.text,
+              timestamp: latestNpcMessage.timestamp,
+              postTitle: relatedPost?.title,
+              userComment: pendingReply.userText,
+            });
+          }
+        }
+
+        if (isKnownCharacter && result.friendRequestNotice) {
+          nextSettlementEvents.push({
+            kind: 'friend_request_sent',
+            characterId: authorId,
+            actorName: author.name,
+            content: result.friendRequestNotice,
+            timestamp: Date.now(),
+            postTitle: relatedPost?.title,
+            userComment: pendingReply.userText,
+          });
+        }
+
+        const nextCharacters = applyForumCharacterSettlements(nextSettlementEvents);
+        onUpdateAppData({
+          ...appDataRef.current,
+          characters: nextCharacters,
+          friendRequests: result.nextFriendRequests,
+          forumData: buildForumDataState({
+            tempChats: {
+              ...tempChatsMap,
+              [authorId]: result.nextSession,
+            },
+            notifications: result.nextNotifications,
+          }),
+        } as AppDataExtended);
+
+        if (result.friendRequestNotice) {
+          showForumNotice(result.friendRequestNotice);
+        }
+      })
+      .catch((error) => {
+        console.error('[forum] temporary chat reply failed', error);
+        showForumNotice('论坛临时单聊回复失败了，这次先没有接上。', 'error');
+        updateTempChatSession(authorId, (currentSession) => ({
+          ...currentSession,
+          pendingReply: undefined,
+          updatedAt: Date.now(),
+        }));
+      })
+      .finally(() => {
+        tempReplyProcessingRef.current.delete(authorId);
+      });
   };
 
   useEffect(() => {
@@ -1106,103 +1238,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         if (!author) return;
         const shouldNeedProcessing = now >= pendingReply.readAt || pendingReply.status === 'typing' || (!!pendingReply.replyAt && now >= pendingReply.replyAt);
         if (!shouldNeedProcessing) return;
-        if (tempReplyProcessingRef.current.has(authorId)) return;
-
-        tempReplyProcessingRef.current.add(authorId);
-
-        const relatedPost = pendingReply.relatedPostId
-          ? postsRef.current.find((post) => post.id === pendingReply.relatedPostId) || null
-          : resolveRecentForumPostForAuthor(authorId);
         const currentSession = resolveForumTempSession(forumDataRef.current.tempChats || {}, authorId);
-
-        processPendingForumTempReply({
-          appData: appDataRef.current,
-          currentUserId: currentUser.id,
-          allowNpcFriendRequest: !!(forumDataRef.current.globalSettings || DEFAULT_FORUM_GLOBAL_SETTINGS).social?.allowNpcFriendRequest,
-          activeTempChatUserId,
-          currentView,
-          forumConfig,
-          session: currentSession,
-          author,
-          relatedPost,
-          resolveRecentForumPostForAuthor,
-          inferForumChannelFromCategory,
-        })
-          .then((result) => {
-            if (result.kind === 'idle') return;
-
-            if (result.kind === 'mark-read' || result.kind === 'ghosted' || result.kind === 'typing' || result.kind === 'cleared') {
-              updateTempChatSession(authorId, () => result.nextSession);
-              return;
-            }
-
-            const tempChatsMap = forumDataRef.current.tempChats || {};
-            const nextSettlementEvents: Array<Parameters<typeof applyForumCharacterSettlements>[0][number]> = [];
-            const isKnownCharacter = !!getCharacterById(authorId);
-            const priorRounds = currentSession.completedExchangeRounds || 0;
-            const nextRounds = result.nextSession.completedExchangeRounds || 0;
-
-            if (isKnownCharacter && priorRounds < 3 && nextRounds >= 3) {
-              const latestNpcMessage = [...result.nextSession.messages]
-                .reverse()
-                .find((message) => message.role === 'npc');
-              if (latestNpcMessage?.text.trim()) {
-                nextSettlementEvents.push({
-                  kind: 'temp_chat_familiar',
-                  characterId: authorId,
-                  actorName: author.name,
-                  content: latestNpcMessage.text,
-                  timestamp: latestNpcMessage.timestamp,
-                  postTitle: relatedPost?.title,
-                  userComment: pendingReply.userText,
-                });
-              }
-            }
-
-            if (isKnownCharacter && result.friendRequestNotice) {
-              nextSettlementEvents.push({
-                kind: 'friend_request_sent',
-                characterId: authorId,
-                actorName: author.name,
-                content: result.friendRequestNotice,
-                timestamp: Date.now(),
-                postTitle: relatedPost?.title,
-                userComment: pendingReply.userText,
-              });
-            }
-
-            const nextCharacters = applyForumCharacterSettlements(nextSettlementEvents);
-            onUpdateAppData({
-              ...appDataRef.current,
-              characters: nextCharacters,
-              friendRequests: result.nextFriendRequests,
-              forumData: buildForumDataState({
-                tempChats: {
-                  ...tempChatsMap,
-                  [authorId]: result.nextSession,
-                },
-                notifications: result.nextNotifications,
-              }),
-            } as AppDataExtended);
-
-            if (result.friendRequestNotice) {
-              showForumNotice(result.friendRequestNotice);
-            }
-          })
-          .catch((error) => {
-            console.error('[forum] temporary chat reply failed', error);
-            showForumNotice('论坛临时单聊回复失败了，这次先没有接上。', 'error');
-            updateTempChatSession(authorId, (currentSession) => ({
-              ...currentSession,
-              pendingReply: undefined,
-              updatedAt: Date.now(),
-            }));
-          })
-          .finally(() => {
-            tempReplyProcessingRef.current.delete(authorId);
-          });
+        processQueuedTempReply(currentSession);
       });
-    }, 1000);
+    }, 250);
 
     return () => {
       window.clearInterval(timer);
@@ -1744,11 +1783,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           userIdentity: event.userIdentity,
           repeatedCount: event.repeatedCount,
         });
-        void appendWorkingMemorySnapshots({
+        void appendSceneSettlementMemory({
           characterId: nextCharacter.id,
           sourceScene: 'forum',
-          shortTermSummary: settlement.shortTermSummary,
-          sharedState: settlement.sharedState,
+          settlement,
           timestamp: event.timestamp,
         }).catch((error) => {
           console.error('[forum] Failed to persist grouped settlement memory snapshots', error);
@@ -2436,11 +2474,10 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         content: existingSession.messages.slice(-1)[0]?.text || '论坛里的关系已经往正式单聊过渡。',
         timestamp: bridgeTimestamp,
       });
-      void appendWorkingMemorySnapshots({
+      void appendSceneSettlementMemory({
         characterId: character.id,
         sourceScene: 'forum',
-        shortTermSummary: settlement.shortTermSummary,
-        sharedState: settlement.sharedState,
+        settlement,
         timestamp: bridgeTimestamp,
       }).catch((error) => {
         console.error('[forum] Failed to persist friend-bridge settlement memory snapshots', error);
@@ -2492,7 +2529,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       ...createEmptyForumTempChatSession(activeTempChatUserId),
     });
 
-    updateTempChatSession(activeTempChatUserId, (currentSession) => {
+    const queuedSession = updateTempChatSession(activeTempChatUserId, (currentSession) => {
       return queueForumTempUserMessage({
         session: currentSession,
         userMessage,
@@ -2503,6 +2540,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         relatedPostId: relatedPost?.id || null,
       });
     });
+
+    processQueuedTempReply(queuedSession);
 
     window.setTimeout(() => {
       setTempChatLoading(false);

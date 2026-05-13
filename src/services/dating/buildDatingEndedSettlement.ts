@@ -1,82 +1,70 @@
 import type { Character, CharacterOpenLoopEntry, DateSession } from '../../types';
 import type {
-  CharacterSharedContextSnapshot,
   RelationshipResidueItem,
+  SceneResidueItem,
   TaskResidueItem,
   TopicAnchorItem,
 } from '../relationship-context/types';
-import { buildSharedStateWritePatch } from '../relationship-context/buildSharedCharacterState';
-import { looksLikeTopicText } from '../chat/topicRecall';
+import {
+  buildSceneSettlementResult,
+  dedupeSettlementItemsBySummary,
+  type SceneSettlementResult,
+} from '../memory/sceneSettlement';
+import {
+  createRelationshipResidueItem,
+  createTaskResidueItemFromText,
+  createTopicAnchorItemFromText,
+  normalizeSettlementText,
+  summarizeSettlementText,
+} from '../memory/sceneSettlementItems';
+import { buildDatingSceneProgress, buildDatingSceneProgressSummary } from './buildDatingSceneProgress';
 
-type DatingEndedSettlementResult = {
-  sharedContextSnapshots: CharacterSharedContextSnapshot[];
-  shortTermSummary?: string;
-  openLoopRegistry?: CharacterOpenLoopEntry[];
-  sharedState?: Character['sharedState'];
-};
+type DatingEndedSettlementResult = SceneSettlementResult;
 
 const TASK_MARKERS = /(答应|约定|确认|回复|处理|完成|安排|计划|改天|下次|补上|兑现|去做|办完)/;
 
-function normalizeText(text: string | null | undefined): string {
-  return (text || '').replace(/\s+/g, ' ').trim();
-}
-
-function dedupeBySummary<T extends { summary: string }>(items: T[]): T[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = item.summary.trim().toLowerCase();
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function mergeSummaryLines(...blocks: Array<string | undefined>): string | undefined {
-  const lines = blocks
-    .flatMap((block) => (block || '').split(/\r?\n+/))
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) {
-    return undefined;
-  }
-
-  return [...new Set(lines)].join('\n');
-}
-
 function getLatestNarrativeSnippet(session: DateSession): string {
   const segments = session.generatedContent?.narrative?.segments || [];
-  const text = segments.map((segment) => segment.text).join(' ');
-  return normalizeText(text).slice(0, 96);
+  return normalizeSettlementText(segments.map((segment) => segment.text).join(' '));
 }
 
 function getRecentSessionTexts(session: DateSession): string[] {
   return (session.messages || [])
     .slice(-10)
-    .map((message) => normalizeText(message.text))
+    .map((message) => normalizeSettlementText(message.text))
     .filter(Boolean);
 }
 
 function buildRelationshipResidue(session: DateSession): RelationshipResidueItem[] {
-  const narrativeSnippet = getLatestNarrativeSnippet(session);
-  const mood = normalizeText(session.generatedContent?.status?.mood || session.mood);
+  const narrativeSnippet = summarizeSettlementText(getLatestNarrativeSnippet(session), 96);
+  const mood = normalizeSettlementText(session.generatedContent?.status?.mood || session.mood);
   const baseSummary = narrativeSnippet
     ? `刚结束的约会留下了一点关系余波：${narrativeSnippet}`
     : mood
       ? `刚结束的约会还带着一点关系余波，整体氛围偏向：${mood}`
       : '';
 
-  if (!baseSummary) {
+  const item = createRelationshipResidueItem({
+    summary: baseSummary,
+    sourceScene: 'dating',
+    timestamp: session.endedAt || Date.now(),
+    decay: 'medium',
+  });
+
+  return item ? [item] : [];
+}
+
+function buildSceneResidue(session: DateSession): SceneResidueItem[] {
+  const sceneProgressSummary = buildDatingSceneProgressSummary(buildDatingSceneProgress(session));
+  if (!sceneProgressSummary) {
     return [];
   }
 
-  const timestamp = session.endedAt || Date.now();
   return [{
-    type: 'relationship_residue',
-    summary: baseSummary,
+    type: 'scene_residue',
+    summary: `这场约会推进到的阶段：${sceneProgressSummary}`,
     sourceScene: 'dating',
-    timestamp,
+    timestamp: session.endedAt || Date.now(),
     decay: 'medium',
     visibility: 'cross_scene_readable',
   }];
@@ -84,93 +72,36 @@ function buildRelationshipResidue(session: DateSession): RelationshipResidueItem
 
 function buildTopicAnchors(session: DateSession): TopicAnchorItem[] {
   const timestamp = session.endedAt || Date.now();
-  return dedupeBySummary(
+  return dedupeSettlementItemsBySummary(
     getRecentSessionTexts(session)
-      .filter((text) => looksLikeTopicText(text))
-      .slice(-2)
-      .map((summary) => ({
-        type: 'topic_anchor' as const,
-        summary: `这场约会里刚碰过的话题或旧梗：${summary}`,
-        sourceScene: 'dating' as const,
+      .map((text) => createTopicAnchorItemFromText({
+        content: text,
+        summaryPrefix: '这场约会里刚碰过的话题或旧梗：',
+        maxChars: 80,
+        sourceScene: 'dating',
         timestamp,
-        decay: 'short' as const,
-        visibility: 'cross_scene_readable' as const,
-      })),
+      }))
+      .filter((item): item is TopicAnchorItem => item !== null)
+      .slice(-2),
   );
 }
 
 function buildTaskResidue(session: DateSession): TaskResidueItem[] {
   const timestamp = session.endedAt || Date.now();
-  return dedupeBySummary(
+  return dedupeSettlementItemsBySummary(
     getRecentSessionTexts(session)
       .filter((text) => TASK_MARKERS.test(text))
-      .slice(-2)
-      .map((summary) => ({
-        type: 'task_residue' as const,
-        summary: `这场约会里还可能算数的约定或待办：${summary}`,
-        sourceScene: 'dating' as const,
+      .map((text) => createTaskResidueItemFromText({
+        content: text,
+        summaryPrefix: '这场约会里还可能算数的约定或待办：',
+        maxChars: 80,
+        sourceScene: 'dating',
         timestamp,
-        decay: 'medium' as const,
-        visibility: 'cross_scene_readable' as const,
-      })),
+        decay: 'medium',
+      }))
+      .filter((item): item is TaskResidueItem => item !== null)
+      .slice(-2),
   );
-}
-
-function appendSnapshot(
-  existing: CharacterSharedContextSnapshot[] | undefined,
-  nextSnapshot: CharacterSharedContextSnapshot | null,
-): CharacterSharedContextSnapshot[] {
-  const snapshots = Array.isArray(existing) ? existing : [];
-  if (!nextSnapshot) {
-    return snapshots;
-  }
-  const nextSnapshots = [nextSnapshot, ...snapshots]
-    .sort((left, right) => right.settledAt - left.settledAt)
-    .slice(0, 8);
-  return nextSnapshots;
-}
-
-function appendOpenLoopEntries(
-  existing: CharacterOpenLoopEntry[] | undefined,
-  taskResidue: TaskResidueItem[],
-  topicAnchors: TopicAnchorItem[],
-  now: number,
-): CharacterOpenLoopEntry[] | undefined {
-  const existingEntries = Array.isArray(existing) ? existing : [];
-  const nextEntries: CharacterOpenLoopEntry[] = [
-    ...taskResidue.map((item, index) => ({
-      id: `dating-task-${now}-${index + 1}`,
-      kind: 'task' as const,
-      status: 'waiting_user' as const,
-      content: item.summary,
-      source: 'manual' as const,
-      createdAt: now,
-      lastTouchedAt: item.timestamp,
-      updatedAt: now,
-      resumeHint: '这是约会结束后仍可能算数的约定或待办，只有当前相关时再恢复。',
-    })),
-    ...topicAnchors.map((item, index) => ({
-      id: `dating-topic-${now}-${index + 1}`,
-      kind: 'topic' as const,
-      status: 'dormant' as const,
-      content: item.summary,
-      source: 'manual' as const,
-      createdAt: now,
-      lastTouchedAt: item.timestamp,
-      updatedAt: now,
-      resumeHint: '这是约会里刚碰过的话题锚点，只有当前真的碰到时再带回。',
-    })),
-    ...existingEntries,
-  ];
-
-  const deduped = nextEntries.filter((entry, index, array) => (
-    array.findIndex((candidate) => (
-      candidate.kind === entry.kind
-      && candidate.content.trim().toLowerCase() === entry.content.trim().toLowerCase()
-    )) === index
-  )).slice(0, 8);
-
-  return deduped.length > 0 ? deduped : undefined;
 }
 
 export function buildDatingEndedSettlement(
@@ -178,45 +109,36 @@ export function buildDatingEndedSettlement(
   session: DateSession,
 ): DatingEndedSettlementResult {
   const now = session.endedAt || Date.now();
-  const relationshipResidue = buildRelationshipResidue(session);
+  const relationshipResidue = dedupeSettlementItemsBySummary(buildRelationshipResidue(session));
+  const sceneResidue = dedupeSettlementItemsBySummary(buildSceneResidue(session));
   const topicAnchors = buildTopicAnchors(session);
   const taskResidue = buildTaskResidue(session);
 
-  const snapshot: CharacterSharedContextSnapshot | null = (
-    relationshipResidue.length > 0
-    || topicAnchors.length > 0
-    || taskResidue.length > 0
-  )
-    ? {
-        sourceScene: 'dating',
-        settledAt: now,
-        ...(relationshipResidue.length > 0 ? { relationshipResidue } : {}),
-        ...(topicAnchors.length > 0 ? { topicAnchors } : {}),
-        ...(taskResidue.length > 0 ? { taskResidue } : {}),
-      }
-    : null;
-
-  const compatibilitySummary = mergeSummaryLines(
-    character.shortTermSummary,
-    relationshipResidue.map((item) => item.summary).join('\n'),
-    topicAnchors.map((item) => item.summary).join('\n'),
-    taskResidue.map((item) => item.summary).join('\n'),
-  );
-
-  return {
-    sharedContextSnapshots: appendSnapshot(character.sharedContextSnapshots, snapshot),
-    shortTermSummary: compatibilitySummary,
-    openLoopRegistry: appendOpenLoopEntries(character.openLoopRegistry, taskResidue, topicAnchors, now),
-    sharedState: buildSharedStateWritePatch({
-      character,
-      sourceScene: 'dating',
-      updatedAt: now,
+  return buildSceneSettlementResult({
+    character,
+    sourceScene: 'dating',
+    timestamp: now,
+    snapshotLimit: 8,
+    items: {
+      relationshipResidue,
+      sceneResidue,
+      topicAnchors,
+      taskResidue,
+    },
+    openLoop: {
+      idPrefix: 'dating',
+      taskResumeHint: '这是约会结束后仍可能算数的约定或待办，只有当前相关时再恢复。',
+      topicResumeHint: '这是约会里刚碰过的话题锚点，只有当前真的碰到时再带回。',
+      limit: 8,
+    },
+    sharedState: {
       publicSummaries: relationshipResidue.map((item) => item.summary),
       privateSummaries: [
         ...relationshipResidue.map((item) => item.summary),
+        ...sceneResidue.map((item) => item.summary),
         ...topicAnchors.map((item) => item.summary),
         ...taskResidue.map((item) => item.summary),
       ],
-    }),
-  };
+    },
+  });
 }

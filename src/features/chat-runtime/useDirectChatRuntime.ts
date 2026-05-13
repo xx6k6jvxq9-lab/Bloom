@@ -22,7 +22,7 @@ import {
   generateQualityCheckedAssistantReply,
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
-import { generateTextFromMessagesWithConfig } from '../../services/ai/runtimeClient';
+import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -316,6 +316,81 @@ function normalizeStructuredBilingualReplyToLegacyFormat(text: string): string {
   const mainText = parsed.segments.map((segment) => segment.text).join('\n');
   const translationText = parsed.segments.map((segment) => segment.translation).join(' ||| ');
   return `${mainText}\n\n---TRANSLATION---\n${translationText}`;
+}
+
+function decodeStructuredBilingualJsonString(value: string): string {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value
+      .replace(/\\n/g, ' ')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+  }
+}
+
+function extractStructuredBilingualPreviewText(text: string): string {
+  const parsed = parseStructuredBilingualReply(text);
+  if (parsed) {
+    return parsed.segments
+      .map((segment) => segment.text)
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  const trimmedText = text.trim();
+  if (!trimmedText.startsWith(STRUCTURED_BILINGUAL_REPLY_TOKEN)) {
+    return '';
+  }
+
+  let protocolBody = trimmedText.replace(STRUCTURED_BILINGUAL_REPLY_TOKEN, '').trim();
+  if (protocolBody.startsWith('```json')) {
+    protocolBody = protocolBody.replace(/^```json\s*/i, '');
+  } else if (protocolBody.startsWith('```')) {
+    protocolBody = protocolBody.replace(/^```\s*/i, '');
+  }
+
+  const segments: string[] = [];
+  const textFieldPattern = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = textFieldPattern.exec(protocolBody)) !== null) {
+    const decodedText = normalizeStructuredBilingualProtocolLine(
+      decodeStructuredBilingualJsonString(match[1] || ''),
+    );
+    if (decodedText) {
+      segments.push(decodedText);
+    }
+  }
+
+  return segments.join('\n').trim();
+}
+
+async function streamStructuredBilingualReply(params: {
+  activeConfig: ApiConfig;
+  messages: RuntimeChatMessage[];
+  onPreview?: (previewText: string) => void;
+}): Promise<string> {
+  let raw = '';
+  let lastPreviewText = '';
+
+  await streamTextWithConfig({
+    activeConfig: params.activeConfig,
+    messages: params.messages,
+    onTextChunk: (chunkText) => {
+      raw += chunkText;
+      const previewText = extractStructuredBilingualPreviewText(raw);
+      if (!previewText || previewText === lastPreviewText) {
+        return;
+      }
+
+      lastPreviewText = previewText;
+      params.onPreview?.(previewText);
+    },
+  });
+
+  return raw.trim();
 }
 
 function shouldRequireGameCardTranslation(text: string): boolean {
@@ -2431,7 +2506,7 @@ export function useDirectChatRuntime({
               ...activeConfig,
               temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
             };
-            const responseText = await generateTextFromMessagesWithConfig({
+            const responseText = await streamStructuredBilingualReply({
               activeConfig: structuredConfig,
               messages: runtimeMessages,
             });
@@ -2932,9 +3007,21 @@ export function useDirectChatRuntime({
           ...activeConfig,
           temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
         };
-        const responseText = await generateTextFromMessagesWithConfig({
+        const responseText = await streamStructuredBilingualReply({
           activeConfig: structuredConfig,
           messages: runtimeMessages,
+          onPreview: (previewText) => {
+            if (activeGenerationIdRef.current !== generationId) {
+              return;
+            }
+
+            const visiblePreview = stripPseudoMomentPrefix(previewText);
+            if (!visiblePreview.trim()) {
+              return;
+            }
+
+            updateAssistantMessage(visiblePreview);
+          },
         });
         const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(responseText);
         qualityResult = evaluateAssistantOutput(normalizedText, {

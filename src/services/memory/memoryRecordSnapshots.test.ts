@@ -8,6 +8,7 @@ import {
 } from '../../features/persistence/testPersistenceHarness';
 import {
   appendLibraryMemoryEntriesAsRecords,
+  appendSceneSettlementMemory,
   appendSnapshotMemoryRecord,
   appendWorkingMemorySnapshots,
   projectMemoryLibraryEntriesFromRecords,
@@ -177,6 +178,75 @@ test('appendWorkingMemorySnapshots stores both short-term and shared-state snaps
   );
   assert.equal(
     records.some((record) => record.kind === 'snapshot' && record.snapshotType === 'shared_state'),
+    true,
+  );
+});
+
+test('appendSceneSettlementMemory persists settlement fields through the shared write path', async () => {
+  await appendSceneSettlementMemory({
+    characterId: 'char-snapshot',
+    sourceScene: 'dating',
+    settlement: {
+      shortTermSummary: '约会后的短期结算摘要',
+      sharedContextSnapshots: [{
+        sourceScene: 'dating',
+        settledAt: 1_700_000_000_444,
+        relationshipResidue: [{
+          type: 'relationship_residue',
+          summary: '刚结束的约会留下了一点关系余波',
+          sourceScene: 'dating',
+          timestamp: 1_700_000_000_444,
+          decay: 'medium',
+          visibility: 'cross_scene_readable',
+        }],
+        sceneResidue: [{
+          type: 'scene_residue',
+          summary: '这场约会推进到的阶段：试探靠近阶段；最近推进：靠近 / 对视',
+          sourceScene: 'dating',
+          timestamp: 1_700_000_000_444,
+          decay: 'medium',
+          visibility: 'cross_scene_readable',
+        }],
+        taskResidue: [{
+          type: 'task_residue',
+          summary: '这场约会里还可能算数的约定：下周一起吃饭',
+          sourceScene: 'dating',
+          timestamp: 1_700_000_000_444,
+          decay: 'medium',
+          visibility: 'cross_scene_readable',
+        }],
+      }],
+      sharedState: {
+        updatedAt: 1_700_000_000_444,
+        sourceScene: 'dating',
+        availability: 'recent',
+        privateCarryover: '这场约会推进到的阶段：试探靠近阶段',
+      },
+    },
+  });
+
+  const records = loadMemoryRecordData({
+    recordsByCharacterId: {},
+  }).recordsByCharacterId['char-snapshot'] || [];
+
+  assert.equal(
+    records.some((record) => record.kind === 'snapshot' && record.snapshotType === 'short_term_summary'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'snapshot' && record.snapshotType === 'shared_state'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'relationship_wave'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'fact' && record.factType === 'plan'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'fact' && record.factType === 'experience'),
     true,
   );
 });

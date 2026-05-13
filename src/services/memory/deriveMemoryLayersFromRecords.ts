@@ -1,16 +1,19 @@
 import type { Character, CharacterOpenLoopEntry } from '../../types';
 import { loadMemoryRecordData } from '../../features/persistence/memoryRecordStore';
-import type { MemoryRecord } from './memoryRecordTypes';
+import type { MemoryRecord, MemorySnapshotType } from './memoryRecordTypes';
 import type { PersistedMemoryRecordData } from './buildMemoryRecordData';
+import type { ResolvedMemoryLayerDiagnostics } from './types';
 
-type DerivedMemoryLayers = {
+export type DerivedMemoryLayers = {
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
   openLoopRegistry?: CharacterOpenLoopEntry[];
+  diagnostics: ResolvedMemoryLayerDiagnostics;
 };
 
 type RelationshipWaveRecord = Extract<MemoryRecord, { kind: 'relationship_wave' }>;
 type FactMemoryRecord = Extract<MemoryRecord, { kind: 'fact' }>;
+type SnapshotRecord = Extract<MemoryRecord, { kind: 'snapshot' }>;
 
 const MAX_SHORT_TERM_RECORDS = 6;
 const MAX_LONG_TERM_LINES = 4;
@@ -176,6 +179,55 @@ function dedupeOpenLoopEntries(entries: CharacterOpenLoopEntry[]): CharacterOpen
   });
 }
 
+function getLatestSnapshotRecord(
+  records: SnapshotRecord[],
+  snapshotType: MemorySnapshotType,
+): SnapshotRecord | undefined {
+  return records.find((record) => record.snapshotType === snapshotType);
+}
+
+function resolveShortTermSnapshotFallback(
+  snapshotRecords: SnapshotRecord[],
+): {
+  text?: string;
+  snapshotTypeUsed?: MemorySnapshotType;
+} {
+  const shortTermSnapshot = getLatestSnapshotRecord(snapshotRecords, 'short_term_summary');
+  if (shortTermSnapshot?.text.trim()) {
+    return {
+      text: normalizeOptionalText(shortTermSnapshot.text),
+      snapshotTypeUsed: 'short_term_summary',
+    };
+  }
+
+  const sharedStateSnapshot = getLatestSnapshotRecord(snapshotRecords, 'shared_state');
+  if (sharedStateSnapshot?.text.trim()) {
+    return {
+      text: normalizeOptionalText(sharedStateSnapshot.text),
+      snapshotTypeUsed: 'shared_state',
+    };
+  }
+
+  return {};
+}
+
+function resolveLongTermSnapshotFallback(
+  snapshotRecords: SnapshotRecord[],
+): {
+  text?: string;
+  snapshotTypeUsed?: MemorySnapshotType;
+} {
+  const longTermSnapshot = getLatestSnapshotRecord(snapshotRecords, 'long_term_profile');
+  if (!longTermSnapshot?.text.trim()) {
+    return {};
+  }
+
+  return {
+    text: normalizeOptionalText(longTermSnapshot.text),
+    snapshotTypeUsed: 'long_term_profile',
+  };
+}
+
 export function buildDerivedMemoryLayersFromRecords(
   input: Pick<Character, 'id'>,
   options: {
@@ -185,8 +237,21 @@ export function buildDerivedMemoryLayersFromRecords(
 ): DerivedMemoryLayers {
   const nowTimestamp = options.nowTimestamp ?? Date.now();
   const records = getCharacterRecords(input.id, options.recordsData);
+  const snapshotRecords = records.filter((record): record is SnapshotRecord => record.kind === 'snapshot');
+  const diagnostics: ResolvedMemoryLayerDiagnostics = {
+    shortTermSummarySource: 'empty',
+    longTermMemoryProfileSource: 'empty',
+    recordCounts: {
+      facts: records.filter((record) => record.kind === 'fact').length,
+      relationshipWaves: records.filter((record) => record.kind === 'relationship_wave').length,
+      snapshots: snapshotRecords.length,
+      notes: records.filter((record) => record.kind === 'note').length,
+    },
+  };
   if (records.length === 0) {
-    return {};
+    return {
+      diagnostics,
+    };
   }
 
   const recentRecords = records
@@ -222,12 +287,15 @@ export function buildDerivedMemoryLayersFromRecords(
     `开放回路（${entry.status}）：${entry.content}`
   ));
 
-  const shortTermSummary = dedupeTextLines([
+  const derivedShortTermSummary = dedupeTextLines([
     ...(currentAtmosphereLine ? [currentAtmosphereLine] : []),
     ...(temporaryConstraintLine ? [temporaryConstraintLine] : []),
     ...residualLines,
     ...openLoopLines,
   ]).join('\n');
+  const shortTermSnapshotFallback = resolveShortTermSnapshotFallback(snapshotRecords);
+  const shortTermSummary = normalizeOptionalText(derivedShortTermSummary)
+    || shortTermSnapshotFallback.text;
 
   const longTermFactLines = records
     .filter((record): record is FactMemoryRecord => record.kind === 'fact')
@@ -250,14 +318,36 @@ export function buildDerivedMemoryLayersFromRecords(
     ))
     .slice(0, 3)
     .map(formatWaveLongTerm);
-  const longTermMemoryProfile = dedupeTextLines([
+  const derivedLongTermMemoryProfile = dedupeTextLines([
     ...longTermFactLines,
     ...longTermWaveLines,
   ]).slice(0, MAX_LONG_TERM_LINES).join('\n');
+  const longTermSnapshotFallback = resolveLongTermSnapshotFallback(snapshotRecords);
+  const longTermMemoryProfile = normalizeOptionalText(derivedLongTermMemoryProfile)
+    || longTermSnapshotFallback.text;
 
   return {
-    ...(normalizeOptionalText(shortTermSummary) ? { shortTermSummary: normalizeOptionalText(shortTermSummary) } : {}),
-    ...(normalizeOptionalText(longTermMemoryProfile) ? { longTermMemoryProfile: normalizeOptionalText(longTermMemoryProfile) } : {}),
+    ...(shortTermSummary ? { shortTermSummary } : {}),
+    ...(longTermMemoryProfile ? { longTermMemoryProfile } : {}),
     ...(openLoopEntries.length > 0 ? { openLoopRegistry: openLoopEntries } : {}),
+    diagnostics: {
+      ...diagnostics,
+      shortTermSummarySource: normalizeOptionalText(derivedShortTermSummary)
+        ? 'derived_records'
+        : shortTermSnapshotFallback.text
+          ? 'snapshot_records'
+          : 'empty',
+      longTermMemoryProfileSource: normalizeOptionalText(derivedLongTermMemoryProfile)
+        ? 'derived_records'
+        : longTermSnapshotFallback.text
+          ? 'snapshot_records'
+          : 'empty',
+      ...(shortTermSnapshotFallback.snapshotTypeUsed
+        ? { shortTermSnapshotTypeUsed: shortTermSnapshotFallback.snapshotTypeUsed }
+        : {}),
+      ...(longTermSnapshotFallback.snapshotTypeUsed
+        ? { longTermSnapshotTypeUsed: longTermSnapshotFallback.snapshotTypeUsed }
+        : {}),
+    },
   };
 }

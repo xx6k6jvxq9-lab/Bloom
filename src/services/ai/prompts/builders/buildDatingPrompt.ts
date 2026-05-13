@@ -56,7 +56,7 @@ function buildDatingStyleOverridePrompt(sceneInput: DatingSceneInput): string {
       default: '默认',
       light: '轻描写、快推进',
       medium: '中等描写、保持均衡',
-      heavy: '重描写、细节更浓',
+      heavy: '重描写、细节更满',
     } as const;
     lines.push(`- 描写浓度：${densityLabelMap[sceneInput.descriptionDensity]}。`);
   }
@@ -92,8 +92,7 @@ export function buildDatingPrompt({ sceneInput }: BuildDatingPromptOptions): str
 ${sceneInput.pastChatContext || '暂无可用聊天记录。'}`,
     `正式约会内的消息流记录：
 ${sceneInput.datingMessages || '暂无约会内消息。'}`,
-    `最近一轮已生成的约会正文：
-${sceneInput.currentGeneratedNarrative}`,
+    sceneInput.sceneProgress,
     sceneInput.currentGeneratedStatus,
     sceneInput.currentGeneratedPlaylist,
     sceneInput.task,

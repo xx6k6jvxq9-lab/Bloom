@@ -594,6 +594,25 @@ export function buildGroupChatSceneInput(
     || retrievedMemory.relationshipWaves.length
     || retrievedMemory.openTasks.length
   ) > 0;
+
+  console.info('[group-chat-scene-input] memory diagnostics', {
+    characterId: options.speaker.id,
+    shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
+    longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
+    shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
+    longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
+    recordCounts: characterScopedMemory.diagnostics?.recordCounts,
+    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
+    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
+    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
+    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
+    retrievedMemoryCounts: {
+      matchedFacts: retrievedMemory.matchedFacts.length,
+      stablePreferences: retrievedMemory.stablePreferences.length,
+      relationshipWaves: retrievedMemory.relationshipWaves.length,
+      openTasks: retrievedMemory.openTasks.length,
+    },
+  });
   const memberRelationshipState = [
     getMemberRelationshipStateLabel(options.group?.memberRelationshipState),
     options.group?.memberRelationshipNote?.trim() || '',
@@ -632,7 +651,12 @@ export function buildGroupChatSceneInput(
       taskResidue: limitResidueItems(sceneScopedSignals.taskResidue, 2),
       longTermMemoryProfile: characterScopedMemory.longTermMemoryProfile,
       temporalContext: formatGroupTemporalStatePrompt(characterTemporalState, options.temporalContext),
-      activeDatingSummary: options.speaker.activeDatingState?.summary,
+      activeDatingSummary: options.speaker.activeDatingState
+        ? [
+            options.speaker.activeDatingState.summary,
+            options.speaker.activeDatingState.sceneProgressSummary || '',
+          ].filter(Boolean).join('\n')
+        : undefined,
       groupSceneHint: characterContext.sceneHints?.groupChat,
       groupShortTermSummary: shouldUseLiveGroupContext
         ? (options.group?.groupShortTermSummary?.trim() || undefined)

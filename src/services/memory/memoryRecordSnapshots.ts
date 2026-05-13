@@ -3,8 +3,10 @@ import type {
   MemoryLibraryEntry,
   MemoryLibraryKind,
 } from '../../types';
+import type { CharacterSharedContextSnapshot } from '../relationship-context/types';
 import { patchMemoryRecordData } from '../../features/persistence/memoryRecordStore';
 import type { PersistedMemoryRecordData } from './buildMemoryRecordData';
+import { dedupeMemoryRecords } from './buildMemoryRecordData';
 import type {
   MemoryRecord,
   MemoryRecordDecayHint,
@@ -19,6 +21,7 @@ import type {
   MemorySnapshotType,
   SnapshotMemoryRecord,
 } from './memoryRecordTypes';
+import { buildStructuredRecordsFromSceneSettlement } from './sceneSettlementRecords';
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
@@ -274,13 +277,91 @@ export async function appendWorkingMemorySnapshots(input: {
   await patchMemoryRecordData((current) => {
     const existingRecords = current.recordsByCharacterId[input.characterId] || [];
     const latestTimestamp = records.reduce((latest, record) => Math.max(latest, record.timestamp), current.updatedAt ?? 0);
+    const mergedRecords = dedupeMemoryRecords([...records, ...existingRecords]);
 
     return {
       ...current,
       updatedAt: latestTimestamp,
       recordsByCharacterId: {
         ...current.recordsByCharacterId,
-        [input.characterId]: [...records, ...existingRecords],
+        [input.characterId]: mergedRecords,
+      },
+    };
+  });
+}
+
+export async function appendSceneSettlementMemory(input: {
+  characterId: string;
+  sourceScene: MemoryRecordSourceScene;
+  settlement: {
+    shortTermSummary?: string;
+    sharedState?: CharacterSharedState;
+    sharedContextSnapshots?: CharacterSharedContextSnapshot[];
+  };
+  sourceSessionType?: MemoryRecordSourceSessionType;
+  sourceSessionId?: string;
+  timestamp?: number;
+}): Promise<void> {
+  const latestSnapshotTimestamp = input.settlement.sharedContextSnapshots?.[0]?.settledAt;
+  const timestamp = input.timestamp ?? latestSnapshotTimestamp;
+  const snapshotRecords: MemoryRecord[] = [];
+  const structuredRecords = buildStructuredRecordsFromSceneSettlement({
+    characterId: input.characterId,
+    sourceScene: input.sourceScene,
+    settlement: input.settlement,
+    sourceSessionType: input.sourceSessionType,
+    sourceSessionId: input.sourceSessionId,
+    timestamp,
+  });
+  const normalizedShortTermSummary = normalizeOptionalText(input.settlement.shortTermSummary);
+  const sharedStateText = buildSharedStateSnapshotText(input.settlement.sharedState);
+
+  if (normalizedShortTermSummary) {
+    const shortTermRecord = createSnapshotMemoryRecord({
+      characterId: input.characterId,
+      snapshotType: 'short_term_summary',
+      text: normalizedShortTermSummary,
+      sourceScene: input.sourceScene,
+      sourceSessionType: input.sourceSessionType,
+      sourceSessionId: input.sourceSessionId,
+      timestamp,
+    });
+    if (shortTermRecord) {
+      snapshotRecords.push(shortTermRecord);
+    }
+  }
+
+  if (sharedStateText.trim()) {
+    const sharedStateRecord = createSnapshotMemoryRecord({
+      characterId: input.characterId,
+      snapshotType: 'shared_state',
+      text: sharedStateText,
+      sourceScene: input.settlement.sharedState?.sourceScene || input.sourceScene,
+      sourceSessionType: input.sourceSessionType,
+      sourceSessionId: input.sourceSessionId,
+      timestamp: timestamp ?? input.settlement.sharedState?.updatedAt,
+    });
+    if (sharedStateRecord) {
+      snapshotRecords.push(sharedStateRecord);
+    }
+  }
+
+  const allRecords = [...snapshotRecords, ...structuredRecords];
+  if (allRecords.length === 0) {
+    return;
+  }
+
+  await patchMemoryRecordData((current) => {
+    const existingRecords = current.recordsByCharacterId[input.characterId] || [];
+    const latestTimestamp = allRecords.reduce((latest, record) => Math.max(latest, record.timestamp), current.updatedAt ?? 0);
+    const mergedRecords = dedupeMemoryRecords([...allRecords, ...existingRecords]);
+
+    return {
+      ...current,
+      updatedAt: latestTimestamp,
+      recordsByCharacterId: {
+        ...current.recordsByCharacterId,
+        [input.characterId]: mergedRecords,
       },
     };
   });

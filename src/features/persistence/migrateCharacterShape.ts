@@ -269,6 +269,9 @@ function normalizeActiveDatingState(value: unknown): CharacterActiveDatingState 
     ...(normalizeOptionalText(record.relationshipResidue)
       ? { relationshipResidue: normalizeOptionalText(record.relationshipResidue) }
       : {}),
+    ...(normalizeOptionalText(record.sceneProgressSummary)
+      ? { sceneProgressSummary: normalizeOptionalText(record.sceneProgressSummary) }
+      : {}),
     ...(normalizeOptionalText(record.boundaryNote)
       ? { boundaryNote: normalizeOptionalText(record.boundaryNote) }
       : {}),

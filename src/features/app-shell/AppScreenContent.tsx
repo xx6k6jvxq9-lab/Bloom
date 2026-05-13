@@ -72,6 +72,7 @@ import {
   appendForumFriendResolutionMessage,
   resolveOutgoingForumFriendRequest,
 } from '../../services/forum/forumOutgoingFriendRequestResolution';
+import { appendSceneSettlementMemory } from '../../services/memory/memoryRecordSnapshots';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -169,6 +170,14 @@ function applyForumFriendAcceptanceSettlement(
       actorName: input.actorName,
       content: input.content,
       timestamp: input.timestamp,
+    });
+    void appendSceneSettlementMemory({
+      characterId: character.id,
+      sourceScene: 'forum',
+      settlement,
+      timestamp: input.timestamp,
+    }).catch((error) => {
+      console.error('[app-screen-content] Failed to persist forum acceptance settlement memory snapshots', error);
     });
 
     return {

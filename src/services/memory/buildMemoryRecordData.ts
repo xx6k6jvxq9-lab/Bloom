@@ -10,11 +10,11 @@ export type PersistedMemoryRecordData = {
   recordsByCharacterId: Record<string, MemoryRecord[]>;
 };
 
-function normalizeSummaryKey(value: string): string {
+export function normalizeSummaryKey(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-function buildMemoryRecordId(parts: Array<string | number | boolean | undefined>): string {
+export function buildMemoryRecordId(parts: Array<string | number | boolean | undefined>): string {
   return parts
     .filter((part): part is string | number | boolean => part !== undefined && part !== null && `${part}`.trim().length > 0)
     .map((part) => String(part).replace(/\s+/g, ' ').trim())
@@ -46,7 +46,7 @@ function buildGroupSourceEventId(sessionId: string, timestamp: number): string {
   return `group:${sessionId}:${timestamp}`;
 }
 
-function dedupeMemoryRecords(records: MemoryRecord[]): MemoryRecord[] {
+export function dedupeMemoryRecords(records: MemoryRecord[]): MemoryRecord[] {
   const seenIds = new Set<string>();
   const seenKeys = new Set<string>();
 
@@ -83,7 +83,7 @@ function pushRecord(
   }
 }
 
-function mapFactTraceToMemoryRecord(params: {
+export function mapFactTraceToMemoryRecord(params: {
   record: FactTraceRecord;
   sourceSessionType: 'direct' | 'group';
   sourceSessionId: string;
@@ -135,7 +135,7 @@ function mapFactTraceToMemoryRecord(params: {
   };
 }
 
-function mapRelationshipWaveToMemoryRecord(params: {
+export function mapRelationshipWaveToMemoryRecord(params: {
   record: RelationshipWaveRecord;
   sourceSessionType: 'direct' | 'group';
   sourceSessionId: string;

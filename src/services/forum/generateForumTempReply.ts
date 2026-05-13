@@ -1,7 +1,7 @@
 import type { ApiConfig, ForumPost, ForumTempChatMessage } from '../../types';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { FORUM_CHANNEL_LABELS } from '../../features/forum-domain/constants';
-import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
+import { streamTextWithConfig } from '../ai/runtimeClient';
 
 type GenerateForumTempReplyInput = {
   activeConfig: ApiConfig;
@@ -11,6 +11,7 @@ type GenerateForumTempReplyInput = {
   recentForumPost?: ForumPost | null;
   history: ForumTempChatMessage[];
   userMessage: string;
+  onProgress?: (text: string) => void;
 };
 
 function buildForumTempReplyPrompt(input: GenerateForumTempReplyInput) {
@@ -42,7 +43,9 @@ function buildForumTempReplyPrompt(input: GenerateForumTempReplyInput) {
 
 export async function generateForumTempReply(input: GenerateForumTempReplyInput): Promise<string> {
   const prompt = buildForumTempReplyPrompt(input);
-  const raw = await generateTextFromMessagesWithConfig({
+  let raw = '';
+
+  await streamTextWithConfig({
     activeConfig: input.activeConfig,
     messages: [
       {
@@ -51,7 +54,11 @@ export async function generateForumTempReply(input: GenerateForumTempReplyInput)
       },
     ],
     temperature: 0.95,
+    onTextChunk: (chunkText) => {
+      raw += chunkText;
+      input.onProgress?.(raw.trimStart());
+    },
   });
 
-  return (raw || '').trim();
+  return raw.trim();
 }

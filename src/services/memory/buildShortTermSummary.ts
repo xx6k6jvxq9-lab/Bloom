@@ -1,5 +1,8 @@
 import type { Character } from '../../types';
-import { buildDerivedMemoryLayersFromRecords } from './deriveMemoryLayersFromRecords';
+import {
+  buildDerivedMemoryLayersFromRecords,
+  type DerivedMemoryLayers,
+} from './deriveMemoryLayersFromRecords';
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
@@ -293,8 +296,13 @@ export function decayShortTermSummaryForContinuity(
     .join('\n');
 }
 
-export function buildShortTermSummary(character: Pick<Character, 'id' | 'shortTermSummary'>): string | undefined {
-  const derived = buildDerivedMemoryLayersFromRecords(character).shortTermSummary;
+export function buildShortTermSummary(
+  character: Pick<Character, 'id' | 'shortTermSummary'>,
+  options: {
+    derivedLayers?: DerivedMemoryLayers;
+  } = {},
+): string | undefined {
+  const derived = (options.derivedLayers ?? buildDerivedMemoryLayersFromRecords(character)).shortTermSummary;
   if (derived) {
     return derived;
   }

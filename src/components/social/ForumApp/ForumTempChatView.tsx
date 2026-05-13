@@ -62,8 +62,22 @@ export function ForumTempChatView({
   const pendingReply = session.pendingReply;
   const inputLocked = !!pendingReply;
   const sortedMessages = [...session.messages].sort((a, b) => a.timestamp - b.timestamp);
-  const latestTempChatMessageKey = sortedMessages.length > 0
-    ? `${sortedMessages[sortedMessages.length - 1].id}:${sortedMessages[sortedMessages.length - 1].timestamp}`
+  const typingPreviewText = pendingReply?.status === 'typing'
+    ? (pendingReply.previewText?.trim() || '')
+    : '';
+  const renderMessages = typingPreviewText
+    ? [
+        ...sortedMessages,
+        {
+          id: `forum-temp-preview-${session.authorId}`,
+          role: 'npc' as const,
+          text: typingPreviewText,
+          timestamp: pendingReply?.replyAt || Date.now(),
+        },
+      ]
+    : sortedMessages;
+  const latestTempChatMessageKey = renderMessages.length > 0
+    ? `${renderMessages[renderMessages.length - 1].id}:${renderMessages[renderMessages.length - 1].timestamp}`
     : '';
   useKeyboardSafeViewport({
     containerRef,
@@ -78,7 +92,7 @@ export function ForumTempChatView({
     }
 
     container.scrollTop = container.scrollHeight;
-  }, [latestTempChatMessageKey, pendingReply?.status]);
+  }, [latestTempChatMessageKey, pendingReply?.status, typingPreviewText]);
 
   return (
     <div ref={containerRef} className="bg-white h-full min-h-0 flex flex-col">
@@ -116,9 +130,9 @@ export function ForumTempChatView({
           transition: 'padding-bottom 180ms ease',
         }}
       >
-        {sortedMessages.map((message, index) => {
+        {renderMessages.map((message, index) => {
           const isUser = message.role === 'user';
-          const previousTimestamp = index > 0 ? sortedMessages[index - 1].timestamp : null;
+          const previousTimestamp = index > 0 ? renderMessages[index - 1].timestamp : null;
           const showDivider = shouldShowTimeDivider(previousTimestamp, message.timestamp);
           const readLabel = isUser && message.readAt ? '已读' : '';
           return (
@@ -152,7 +166,7 @@ export function ForumTempChatView({
             </React.Fragment>
           );
         })}
-        {pendingReply?.status === 'typing' && (
+        {pendingReply?.status === 'typing' && !typingPreviewText && (
           <div className="flex justify-start">
             <ForumResolvedImage value={author.avatar} className="mr-2 h-8 w-8 rounded-full object-cover" />
             <div className="max-w-[78%] rounded-2xl bg-zinc-100 px-4 py-3 text-[13px] text-zinc-500">

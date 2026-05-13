@@ -22,7 +22,7 @@ import {
 } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
-import { appendWorkingMemorySnapshots } from '../../../services/memory/memoryRecordSnapshots';
+import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
@@ -73,6 +73,8 @@ const EMPTY_CONTACTS_FORUM_DATA: ForumData = {
 };
 
 const CONTACT_REMARK_NAME_LIMIT = 32;
+const CONTACTS_HEADER_ICON_BUTTON_CLASS = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-600 transition-colors active:bg-zinc-100 active:text-zinc-800';
+const CONTACTS_HEADER_ACTION_BUTTON_CLASS = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors active:bg-zinc-100 active:text-zinc-700';
 
 function resolveCharacterCardSource(character: Pick<Character, 'openingRemark' | 'signature' | 'corePersona' | 'setting'>): string {
   const characterContext = buildCharacterContext({ character: character as Character });
@@ -146,11 +148,10 @@ function applyForumFriendAcceptanceSettlement(
       content: input.content,
       timestamp: input.timestamp,
     });
-    void appendWorkingMemorySnapshots({
+    void appendSceneSettlementMemory({
       characterId: character.id,
       sourceScene: 'forum',
-      shortTermSummary: settlement.shortTermSummary,
-      sharedState: settlement.sharedState,
+      settlement,
       timestamp: input.timestamp,
     }).catch((error) => {
       console.error('[contacts-shell] Failed to persist forum acceptance settlement memory snapshots', error);
@@ -190,14 +191,14 @@ function CharacterCardPreviewPage({
       className="absolute inset-0 z-[90] flex flex-col bg-white"
     >
       <div
-        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        className="pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50"
         style={{ paddingTop: contactsSheetTopInset }}
       >
-        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+        <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
           <ChevronLeft size={22} />
         </button>
         <h1 className="text-[16px] font-bold text-zinc-900">角色卡预览</h1>
-        <div className="w-8" />
+        <div className="h-11 w-11 shrink-0" />
       </div>
 
       <div className="px-4 pt-4">
@@ -1118,17 +1119,17 @@ export function CharacterProfile({
     >
       {/* Header */}
       <div
-        className="pb-2.5 px-3.5 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        className="pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50"
         style={{ paddingTop: contactsHeaderTopInset }}
       >
-        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+        <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
           <ChevronLeft size={22} />
         </button>
         <h1 className="text-[16px] font-bold text-zinc-900">详细资料</h1>
         <button
           type="button"
           onClick={() => setShowManagementSheet(true)}
-          className="p-1 text-zinc-400 active:text-zinc-700"
+          className={CONTACTS_HEADER_ACTION_BUTTON_CLASS}
         >
           <MoreVertical size={18} />
         </button>
@@ -1630,7 +1631,7 @@ export function CharacterMomentsProfile({
         className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
         style={{ paddingTop: characterMomentsHeaderTopPadding }}
       >
-        <button onClick={onBack} className="p-1 -ml-1 text-zinc-600 active:text-zinc-800">
+        <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
           <ChevronLeft size={24} />
         </button>
         <h1 className="text-[17px] font-bold text-zinc-900 flex-1 text-center mr-8">动态</h1>

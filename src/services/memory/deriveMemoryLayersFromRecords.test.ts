@@ -8,6 +8,7 @@ import {
   installPersistenceTestEnvironment,
 } from '../../features/persistence/testPersistenceHarness';
 import { buildResolvedOpenLoopRegistry } from './buildResolvedOpenLoopRegistry';
+import { buildResolvedMemoryLayers } from './buildResolvedMemoryLayers';
 import { buildLongTermMemoryProfile } from './buildLongTermMemoryProfile';
 import { buildShortTermSummary } from './buildShortTermSummary';
 
@@ -177,4 +178,94 @@ test('buildResolvedOpenLoopRegistry merges derived open loops before legacy entr
 
   assert.match(registry[0]?.content || '', /记得补上那张票/);
   assert.match(registry[1]?.content || '', /旧的关系回路/);
+});
+test('buildShortTermSummary falls back to snapshot records before legacy fields', async () => {
+  const now = Date.now();
+  await saveMemoryRecordData({
+    updatedAt: now,
+    recordsByCharacterId: {
+      'char-memory-derived': [
+        {
+          id: 'snapshot-short-term',
+          kind: 'snapshot',
+          sourceScene: 'forum',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'char-memory-derived',
+          sourceEventIds: [],
+          characterIds: ['char-memory-derived'],
+          visibility: 'private',
+          stability: 'temporary',
+          decayHint: 'short',
+          summary: 'snapshot short term',
+          timestamp: now - 300,
+          snapshotType: 'short_term_summary',
+          text: 'snapshot short term fallback',
+        },
+      ],
+    },
+  });
+
+  const character = createCharacter({
+    id: 'char-memory-derived',
+    shortTermSummary: 'legacy short term summary',
+  });
+  const summary = buildShortTermSummary(character) || '';
+  const layers = buildResolvedMemoryLayers(character);
+
+  assert.match(summary, /snapshot short term fallback/);
+  assert.doesNotMatch(summary, /legacy short term summary/);
+  assert.equal(layers.diagnostics.shortTermSummarySource, 'snapshot_records');
+  assert.equal(layers.diagnostics.shortTermSnapshotTypeUsed, 'short_term_summary');
+});
+
+test('buildLongTermMemoryProfile falls back to snapshot records before legacy fields', async () => {
+  const now = Date.now();
+  await saveMemoryRecordData({
+    updatedAt: now,
+    recordsByCharacterId: {
+      'char-memory-derived': [
+        {
+          id: 'snapshot-long-term',
+          kind: 'snapshot',
+          sourceScene: 'direct_chat',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'char-memory-derived',
+          sourceEventIds: [],
+          characterIds: ['char-memory-derived'],
+          visibility: 'cross_scene_readable',
+          stability: 'stable',
+          decayHint: 'stable',
+          summary: 'snapshot long term',
+          timestamp: now - 300,
+          snapshotType: 'long_term_profile',
+          text: 'snapshot long term fallback',
+        },
+      ],
+    },
+  });
+
+  const character = createCharacter({
+    id: 'char-memory-derived',
+    longTermMemoryProfile: 'legacy long term profile',
+  });
+  const profile = buildLongTermMemoryProfile(character) || '';
+  const layers = buildResolvedMemoryLayers(character);
+
+  assert.match(profile, /snapshot long term fallback/);
+  assert.doesNotMatch(profile, /legacy long term profile/);
+  assert.equal(layers.diagnostics.longTermMemoryProfileSource, 'snapshot_records');
+  assert.equal(layers.diagnostics.longTermSnapshotTypeUsed, 'long_term_profile');
+});
+
+test('buildResolvedMemoryLayers reports legacy fallback when no records are available', () => {
+  const layers = buildResolvedMemoryLayers(createCharacter({
+    id: 'char-memory-derived',
+    shortTermSummary: 'legacy short term only',
+    longTermMemoryProfile: 'legacy long term only',
+  }));
+
+  assert.equal(layers.shortTermSummary, 'legacy short term only');
+  assert.equal(layers.longTermMemoryProfile, 'legacy long term only');
+  assert.equal(layers.diagnostics.shortTermSummarySource, 'legacy_fields');
+  assert.equal(layers.diagnostics.longTermMemoryProfileSource, 'legacy_fields');
 });

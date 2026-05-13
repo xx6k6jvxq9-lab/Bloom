@@ -57,7 +57,7 @@ import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
 import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
-import { appendWorkingMemorySnapshots } from '../../../services/memory/memoryRecordSnapshots';
+import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
 
 const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
 const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
@@ -348,11 +348,10 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
         }
 
         const settlement = buildCoupleSpaceSharedSettlement(item, event);
-        void appendWorkingMemorySnapshots({
+        void appendSceneSettlementMemory({
           characterId: item.id,
           sourceScene: 'couple_space',
-          shortTermSummary: settlement.shortTermSummary,
-          sharedState: settlement.sharedState,
+          settlement,
           timestamp: event.timestamp,
         }).catch((error) => {
           console.error('[couple-space] Failed to persist settlement memory snapshots', error);

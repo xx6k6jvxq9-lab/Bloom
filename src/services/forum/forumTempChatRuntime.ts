@@ -40,6 +40,7 @@ type ProcessPendingForumTempReplyInput = {
   relatedPost: ForumPost | null;
   resolveRecentForumPostForAuthor: (authorId: string) => ForumPost | null;
   inferForumChannelFromCategory: (category: string) => ForumChannel;
+  onProgress?: (text: string) => void;
 };
 
 type ProcessPendingForumTempReplyResult =
@@ -107,37 +108,63 @@ export async function processPendingForumTempReply(
 
   const now = Date.now();
   const shouldMarkRead = now >= pendingReply.readAt;
-  const userMessage = input.session.messages.find((message) => message.id === pendingReply.userMessageId);
+  let workingSession = input.session;
+  const userMessage = workingSession.messages.find((message) => message.id === pendingReply.userMessageId);
 
   if (shouldMarkRead && userMessage && !userMessage.readAt) {
+    workingSession = markForumTempChatMessageRead(workingSession, pendingReply.userMessageId, pendingReply.readAt);
+  }
+
+  const activePendingReply = workingSession.pendingReply;
+  if (!activePendingReply) {
     return {
-      kind: 'mark-read',
-      nextSession: markForumTempChatMessageRead(input.session, pendingReply.userMessageId, pendingReply.readAt),
+      kind: 'cleared',
+      nextSession: clearForumTempChatPendingReply(workingSession, now),
     };
   }
 
-  if (pendingReply.behavior === 'ghost') {
-    if (shouldMarkRead && pendingReply.status !== 'ghosted') {
+  if (activePendingReply.behavior === 'ghost') {
+    if (shouldMarkRead && activePendingReply.status !== 'ghosted') {
       return {
         kind: 'ghosted',
-        nextSession: markForumTempChatGhosted(input.session, now),
+        nextSession: markForumTempChatGhosted(workingSession, now),
       };
     }
+
+    if (workingSession !== input.session) {
+      return {
+        kind: 'mark-read',
+        nextSession: workingSession,
+      };
+    }
+
     return { kind: 'idle' };
   }
 
-  if (!pendingReply.replyAt || now < pendingReply.replyAt) {
+  if (!activePendingReply.replyAt || now < activePendingReply.replyAt) {
+    if (workingSession !== input.session) {
+      return {
+        kind: 'mark-read',
+        nextSession: workingSession,
+      };
+    }
+
     return { kind: 'idle' };
   }
 
-  if (pendingReply.status !== 'typing') {
+  if (activePendingReply.status !== 'typing') {
+    workingSession = markForumTempChatTyping(workingSession, now);
+  }
+
+  const readyPendingReply = workingSession.pendingReply;
+  if (!readyPendingReply) {
     return {
-      kind: 'typing',
-      nextSession: markForumTempChatTyping(input.session, now),
+      kind: 'cleared',
+      nextSession: clearForumTempChatPendingReply(workingSession, now),
     };
   }
 
-  const relatedPost = pendingReply.relatedPostId
+  const relatedPost = readyPendingReply.relatedPostId
     ? input.relatedPost
     : input.resolveRecentForumPostForAuthor(input.author.id);
 
@@ -147,23 +174,24 @@ export async function processPendingForumTempReply(
     authorPersona: input.author.description || input.author.bio || '',
     channel: relatedPost ? input.inferForumChannelFromCategory(relatedPost.category) : undefined,
     recentForumPost: relatedPost,
-    history: input.session.messages,
-    userMessage: pendingReply.userText,
+    history: workingSession.messages,
+    userMessage: readyPendingReply.userText,
+    onProgress: input.onProgress,
   });
 
   const trimmed = replyText.trim();
   if (!trimmed) {
     return {
       kind: 'cleared',
-      nextSession: clearForumTempChatPendingReply(input.session, now),
+      nextSession: clearForumTempChatPendingReply(workingSession, now),
     };
   }
 
   const npcMessage = buildNpcTempMessage(trimmed, now);
-  const nextSession = appendForumTempNpcReply(input.session, npcMessage, {
+  const nextSession = appendForumTempNpcReply(workingSession, npcMessage, {
     viewerLastSeenAt: input.currentView === 'temp-chat' && input.activeTempChatUserId === input.author.id
       ? now
-      : input.session.viewerLastSeenAt,
+      : workingSession.viewerLastSeenAt,
   });
 
   const shouldSendFriendRequest = !!input.allowNpcFriendRequest

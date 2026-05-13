@@ -612,6 +612,7 @@ export type CharacterActiveDatingState = {
   status: 'active';
   summary: string;
   relationshipResidue?: string;
+  sceneProgressSummary?: string;
   boundaryNote?: string;
 };
 
@@ -1121,6 +1122,7 @@ export type ForumTempChatPendingReply = {
   replyAt?: number;
   behavior: 'instant' | 'delayed' | 'ghost';
   status: 'waiting' | 'typing' | 'ghosted';
+  previewText?: string;
   relatedPostId?: string | null;
 };
 

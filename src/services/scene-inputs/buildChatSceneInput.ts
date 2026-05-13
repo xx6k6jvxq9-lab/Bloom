@@ -421,6 +421,7 @@ export function buildChatSceneInput(
             '## 进行中的约会共享语境',
             params.character.activeDatingState.summary,
             params.character.activeDatingState.relationshipResidue || '',
+            params.character.activeDatingState.sceneProgressSummary || '',
             params.character.activeDatingState.boundaryNote || '',
           ].filter(Boolean).join('\n')
         : '',
@@ -459,6 +460,26 @@ export function buildChatSceneInput(
         retrievedMemory,
       }
     : budgetedContext.recentContext;
+
+  console.info('[chat-scene-input] memory diagnostics', {
+    characterId: params.character.id,
+    shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
+    longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
+    shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
+    longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
+    recordCounts: characterScopedMemory.diagnostics?.recordCounts,
+    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
+    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
+    sceneResidueCount: sceneScopedSignals.sceneResidue?.length || 0,
+    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
+    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
+    retrievedMemoryCounts: {
+      matchedFacts: retrievedMemory.matchedFacts.length,
+      stablePreferences: retrievedMemory.stablePreferences.length,
+      relationshipWaves: retrievedMemory.relationshipWaves.length,
+      openTasks: retrievedMemory.openTasks.length,
+    },
+  });
 
   return {
     mode: params.mode,

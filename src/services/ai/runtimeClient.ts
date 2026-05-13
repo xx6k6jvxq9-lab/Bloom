@@ -10,6 +10,8 @@ export type RuntimeChatMessage = {
   audioMimeType?: string;
 };
 
+const geminiClientCache = new Map<string, GoogleGenAI>();
+
 function parseDataUrl(value: string): { mimeType: string; data: string } | null {
   const match = value.match(/^data:([^;,]+)(?:;[^,]+)?,(.+)$/i);
   if (!match?.[1] || !match?.[2]) {
@@ -29,6 +31,17 @@ function inferMimeTypeFromImageUrl(value: string): string {
   if (lowerValue.includes('.gif')) return 'image/gif';
   if (lowerValue.includes('.jpg') || lowerValue.includes('.jpeg')) return 'image/jpeg';
   return 'image/png';
+}
+
+function getGeminiClient(apiKey: string) {
+  const cached = geminiClientCache.get(apiKey);
+  if (cached) {
+    return cached;
+  }
+
+  const client = new GoogleGenAI({ apiKey });
+  geminiClientCache.set(apiKey, client);
+  return client;
 }
 
 async function resolveRuntimeMessagesForModel(messages: RuntimeChatMessage[]): Promise<RuntimeChatMessage[]> {
@@ -244,6 +257,66 @@ async function runWithTimeout<T>(
       clearTimeout(timer);
     }
   }
+}
+
+function getRuntimeNow() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function roundRuntimeDuration(duration: number) {
+  return Math.max(0, Math.round(duration));
+}
+
+function summarizeRuntimeMessages(messages: RuntimeChatMessage[]) {
+  return messages.reduce((summary, message) => ({
+    messageCount: summary.messageCount + 1,
+    textChars: summary.textChars + (message.content?.length || 0),
+    imageCount: summary.imageCount + (message.imageUrl ? 1 : 0),
+    audioCount: summary.audioCount + (message.audioUrl ? 1 : 0),
+  }), {
+    messageCount: 0,
+    textChars: 0,
+    imageCount: 0,
+    audioCount: 0,
+  });
+}
+
+function createRuntimeRequestTrace(options: {
+  activeConfig: ApiConfig;
+  model: string;
+  mode: 'prompt' | 'messages' | 'stream';
+  promptLength?: number;
+  messages?: RuntimeChatMessage[];
+}) {
+  return {
+    requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    startedAt: getRuntimeNow(),
+    provider: isGeminiConfig(options.activeConfig)
+      ? 'Google Gemini'
+      : (options.activeConfig.provider?.trim() || 'Custom'),
+    model: options.model,
+    mode: options.mode,
+    promptLength: options.promptLength,
+    messageSummary: options.messages ? summarizeRuntimeMessages(options.messages) : undefined,
+  };
+}
+
+function logRuntimeTrace(
+  trace: ReturnType<typeof createRuntimeRequestTrace>,
+  event: string,
+  extra: Record<string, unknown> = {},
+) {
+  console.info(`[runtimeClient] ${event}`, {
+    requestId: trace.requestId,
+    provider: trace.provider,
+    model: trace.model,
+    mode: trace.mode,
+    ...(typeof trace.promptLength === 'number' ? { promptLength: trace.promptLength } : {}),
+    ...(trace.messageSummary || {}),
+    ...extra,
+  });
 }
 
 function extractTextFromContentValue(value: unknown): string {
@@ -604,45 +677,80 @@ export async function generateTextWithConfig(options: {
 }) {
   const { activeConfig, prompt, temperature, maxOutputTokens, timeoutMs } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
+  const trace = createRuntimeRequestTrace({
+    activeConfig,
+    model,
+    mode: 'prompt',
+    promptLength: prompt.length,
+  });
 
-  if (isGeminiConfig(activeConfig)) {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await runWithTimeout(() => ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        temperature: activeConfig.temperature ?? temperature ?? 1.0,
-        maxOutputTokens,
-      },
-    }), timeoutMs);
-
-    return sanitizeModelOutput(response.text || '');
-  }
-
-  return runWithTimeout(async (signal) => {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+  try {
+    if (isGeminiConfig(activeConfig)) {
+      const ai = getGeminiClient(apiKey);
+      const requestStartedAt = getRuntimeNow();
+      const response = await runWithTimeout(() => ai.models.generateContent({
         model,
-        messages: [{ role: 'system', content: prompt }],
-        temperature: activeConfig.temperature ?? temperature ?? 0.7,
-        max_tokens: maxOutputTokens,
-        stream: false,
-      }),
-      signal,
-    });
+        contents: prompt,
+        config: {
+          temperature: activeConfig.temperature ?? temperature ?? 1.0,
+          maxOutputTokens,
+        },
+      }), timeoutMs);
+      const text = sanitizeModelOutput(response.text || '');
+      const finishedAt = getRuntimeNow();
 
-    if (!res.ok) {
-      await throwApiErrorResponse(res);
+      logRuntimeTrace(trace, 'request completed', {
+        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+        outputChars: text.length,
+      });
+
+      return text;
     }
 
-    const rawResponse = await res.text();
-    return parseTextResponse(rawResponse);
-  }, timeoutMs);
+    return await runWithTimeout(async (signal) => {
+      const requestStartedAt = getRuntimeNow();
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'system', content: prompt }],
+          temperature: activeConfig.temperature ?? temperature ?? 0.7,
+          max_tokens: maxOutputTokens,
+          stream: false,
+        }),
+        signal,
+      });
+      const headersReceivedAt = getRuntimeNow();
+
+      if (!res.ok) {
+        await throwApiErrorResponse(res);
+      }
+
+      const rawResponse = await res.text();
+      const text = parseTextResponse(rawResponse);
+      const finishedAt = getRuntimeNow();
+
+      logRuntimeTrace(trace, 'request completed', {
+        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+        headerMs: roundRuntimeDuration(headersReceivedAt - requestStartedAt),
+        outputChars: text.length,
+      });
+
+      return text;
+    }, timeoutMs);
+  } catch (error) {
+    logRuntimeTrace(trace, 'request failed', {
+      totalMs: roundRuntimeDuration(getRuntimeNow() - trace.startedAt),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 export async function generateTextFromMessagesWithConfig(options: {
@@ -654,52 +762,94 @@ export async function generateTextFromMessagesWithConfig(options: {
 }) {
   const { activeConfig, messages, temperature, maxOutputTokens, timeoutMs } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
-  const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
+  const trace = createRuntimeRequestTrace({
+    activeConfig,
+    model,
+    mode: 'messages',
+    messages,
+  });
+  const resolveStartedAt = getRuntimeNow();
+  let resolveMs = 0;
 
-  if (isGeminiConfig(activeConfig)) {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await runWithTimeout(() => ai.models.generateContent({
-      model,
-      contents: resolvedMessages.map((message) => ({
-        role: message.role === 'assistant' ? 'model' : message.role,
-        parts: buildGeminiMessageParts(message),
-      })),
-      config: {
-        temperature: activeConfig.temperature ?? temperature ?? 1.0,
-        maxOutputTokens,
-      },
-    }), timeoutMs);
+  try {
+    const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
+    resolveMs = roundRuntimeDuration(getRuntimeNow() - resolveStartedAt);
 
-    return sanitizeModelOutput(response.text || '');
-  }
-
-  return runWithTimeout(async (signal) => {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    if (isGeminiConfig(activeConfig)) {
+      const ai = getGeminiClient(apiKey);
+      const requestStartedAt = getRuntimeNow();
+      const response = await runWithTimeout(() => ai.models.generateContent({
         model,
-        messages: resolvedMessages.map((message) => ({
-          role: message.role === 'model' ? 'assistant' : message.role,
-          content: buildOpenAiCompatibleMessageContent(message),
+        contents: resolvedMessages.map((message) => ({
+          role: message.role === 'assistant' ? 'model' : message.role,
+          parts: buildGeminiMessageParts(message),
         })),
-        temperature: activeConfig.temperature ?? temperature ?? 0.7,
-        max_tokens: maxOutputTokens,
-        stream: false,
-      }),
-      signal,
-    });
+        config: {
+          temperature: activeConfig.temperature ?? temperature ?? 1.0,
+          maxOutputTokens,
+        },
+      }), timeoutMs);
+      const text = sanitizeModelOutput(response.text || '');
+      const finishedAt = getRuntimeNow();
 
-    if (!res.ok) {
-      await throwApiErrorResponse(res);
+      logRuntimeTrace(trace, 'request completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+        outputChars: text.length,
+      });
+
+      return text;
     }
 
-    const rawResponse = await res.text();
-    return parseTextResponse(rawResponse);
-  }, timeoutMs);
+    return await runWithTimeout(async (signal) => {
+      const requestStartedAt = getRuntimeNow();
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: resolvedMessages.map((message) => ({
+            role: message.role === 'model' ? 'assistant' : message.role,
+            content: buildOpenAiCompatibleMessageContent(message),
+          })),
+          temperature: activeConfig.temperature ?? temperature ?? 0.7,
+          max_tokens: maxOutputTokens,
+          stream: false,
+        }),
+        signal,
+      });
+      const headersReceivedAt = getRuntimeNow();
+
+      if (!res.ok) {
+        await throwApiErrorResponse(res);
+      }
+
+      const rawResponse = await res.text();
+      const text = parseTextResponse(rawResponse);
+      const finishedAt = getRuntimeNow();
+
+      logRuntimeTrace(trace, 'request completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+        headerMs: roundRuntimeDuration(headersReceivedAt - requestStartedAt),
+        outputChars: text.length,
+      });
+
+      return text;
+    }, timeoutMs);
+  } catch (error) {
+    logRuntimeTrace(trace, 'request failed', {
+      resolveMs,
+      totalMs: roundRuntimeDuration(getRuntimeNow() - trace.startedAt),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 export async function streamTextWithConfig(options: {
@@ -710,126 +860,176 @@ export async function streamTextWithConfig(options: {
 }) {
   const { activeConfig, messages, temperature, onTextChunk } = options;
   const { apiKey, model, baseUrl } = ensureValidConfig(activeConfig);
-  const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
+  const trace = createRuntimeRequestTrace({
+    activeConfig,
+    model,
+    mode: 'stream',
+    messages,
+  });
+  const resolveStartedAt = getRuntimeNow();
+  let resolveMs = 0;
+  let firstChunkMs: number | null = null;
+  let chunkCount = 0;
+  let outputChars = 0;
+  const forwardChunk = (chunkText: string) => {
+    if (!chunkText) {
+      return;
+    }
 
-  if (isGeminiConfig(activeConfig)) {
-    const ai = new GoogleGenAI({ apiKey });
-    const contents = resolvedMessages.map(message => ({
-      role: message.role === 'assistant' ? 'model' : message.role,
-      parts: buildGeminiMessageParts(message),
-    }));
+    if (firstChunkMs === null) {
+      firstChunkMs = roundRuntimeDuration(getRuntimeNow() - trace.startedAt);
+    }
+    chunkCount += 1;
+    outputChars += chunkText.length;
+    onTextChunk(chunkText);
+  };
 
-    const stream = await ai.models.generateContentStream({
-      model,
-      contents,
-      config: {
-        temperature: activeConfig.temperature ?? temperature ?? 1.0,
+  try {
+    const resolvedMessages = await resolveRuntimeMessagesForModel(messages);
+    resolveMs = roundRuntimeDuration(getRuntimeNow() - resolveStartedAt);
+
+    if (isGeminiConfig(activeConfig)) {
+      const ai = getGeminiClient(apiKey);
+      const contents = resolvedMessages.map(message => ({
+        role: message.role === 'assistant' ? 'model' : message.role,
+        parts: buildGeminiMessageParts(message),
+      }));
+      const requestStartedAt = getRuntimeNow();
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: {
+          temperature: activeConfig.temperature ?? temperature ?? 1.0,
+        },
+      });
+
+      for await (const chunk of stream) {
+        forwardChunk(chunk.text || '');
+      }
+
+      const finishedAt = getRuntimeNow();
+      logRuntimeTrace(trace, 'stream completed', {
+        resolveMs,
+        totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+        requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+        firstChunkMs,
+        chunkCount,
+        outputChars,
+      });
+      return;
+    }
+
+    const requestStartedAt = getRuntimeNow();
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
+      body: JSON.stringify({
+        model,
+        messages: resolvedMessages.map(message => ({
+          role: message.role === 'model' ? 'assistant' : message.role,
+          content: buildOpenAiCompatibleMessageContent(message),
+        })),
+        temperature: activeConfig.temperature ?? temperature ?? 0.7,
+        stream: true,
+      }),
     });
+    const headersReceivedAt = getRuntimeNow();
 
-    for await (const chunk of stream) {
-      const chunkText = chunk.text;
-      if (chunkText) {
-        onTextChunk(chunkText);
+    if (!res.ok) {
+      await throwApiErrorResponse(res);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('Unable to read streaming response.');
+    }
+
+    const decoder = new TextDecoder();
+    let pendingChunk = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        pendingChunk += decoder.decode();
+      } else {
+        pendingChunk += decoder.decode(value, { stream: true });
+      }
+
+      const events = pendingChunk.split(/\r?\n\r?\n/);
+      pendingChunk = events.pop() || '';
+
+      for (const eventBlock of events) {
+        const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
+        const dataLines = lines
+          .filter(line => /^data:\s*/i.test(line))
+          .map(line => line.replace(/^data:\s*/i, ''));
+
+        if (dataLines.length === 0) continue;
+
+        const dataStr = dataLines.join('\n');
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          const content = extractTextFromPayload(data);
+          if (content) {
+            forwardChunk(content);
+          }
+        } catch (error) {
+          console.error('Error parsing SSE chunk', error);
+        }
+      }
+
+      if (done) {
+        break;
       }
     }
 
-    return;
-  }
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: resolvedMessages.map(message => ({
-        role: message.role === 'model' ? 'assistant' : message.role,
-        content: buildOpenAiCompatibleMessageContent(message),
-      })),
-      temperature: activeConfig.temperature ?? temperature ?? 0.7,
-      stream: true,
-    }),
-  });
-
-  if (!res.ok) {
-    await throwApiErrorResponse(res);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error('Unable to read streaming response.');
-  }
-
-  const decoder = new TextDecoder();
-  let pendingChunk = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      pendingChunk += decoder.decode();
-    } else {
-      pendingChunk += decoder.decode(value, { stream: true });
-    }
-
-    const events = pendingChunk.split(/\r?\n\r?\n/);
-    pendingChunk = events.pop() || '';
-
-    for (const eventBlock of events) {
-      const lines = eventBlock.split(/\r?\n/).filter(line => line.trim() !== '');
-      const dataLines = lines
+    const finalData = pendingChunk.trim();
+    if (finalData) {
+      const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
+      const finalDataLines = finalLines
         .filter(line => /^data:\s*/i.test(line))
         .map(line => line.replace(/^data:\s*/i, ''));
 
-      if (dataLines.length === 0) continue;
-
-      const dataStr = dataLines.join('\n');
-      if (dataStr === '[DONE]') continue;
-
-      try {
-        const data = JSON.parse(dataStr);
-        const content = extractTextFromPayload(data);
-        if (content) {
-          onTextChunk(content);
+      if (finalDataLines.length > 0) {
+        const finalDataStr = finalDataLines.join('\n');
+        if (finalDataStr !== '[DONE]') {
+          try {
+            const data = JSON.parse(finalDataStr);
+            const content = extractTextFromPayload(data);
+            if (content) {
+              forwardChunk(content);
+            }
+          } catch (error) {
+            console.error('Error parsing final SSE chunk', error);
+          }
         }
-      } catch (error) {
-        console.error('Error parsing SSE chunk', error);
       }
     }
 
-    if (done) {
-      break;
-    }
-  }
-
-  const finalData = pendingChunk.trim();
-  if (!finalData) {
-    return;
-  }
-
-  const finalLines = finalData.split(/\r?\n/).filter(line => line.trim() !== '');
-  const finalDataLines = finalLines
-    .filter(line => /^data:\s*/i.test(line))
-    .map(line => line.replace(/^data:\s*/i, ''));
-
-  if (finalDataLines.length === 0) {
-    return;
-  }
-
-  const finalDataStr = finalDataLines.join('\n');
-  if (finalDataStr === '[DONE]') {
-    return;
-  }
-
-  try {
-    const data = JSON.parse(finalDataStr);
-    const content = extractTextFromPayload(data);
-    if (content) {
-      onTextChunk(content);
-    }
+    const finishedAt = getRuntimeNow();
+    logRuntimeTrace(trace, 'stream completed', {
+      resolveMs,
+      totalMs: roundRuntimeDuration(finishedAt - trace.startedAt),
+      requestMs: roundRuntimeDuration(finishedAt - requestStartedAt),
+      headerMs: roundRuntimeDuration(headersReceivedAt - requestStartedAt),
+      firstChunkMs,
+      chunkCount,
+      outputChars,
+    });
   } catch (error) {
-    console.error('Error parsing final SSE chunk', error);
+    logRuntimeTrace(trace, 'stream failed', {
+      resolveMs,
+      totalMs: roundRuntimeDuration(getRuntimeNow() - trace.startedAt),
+      firstChunkMs,
+      chunkCount,
+      outputChars,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 }

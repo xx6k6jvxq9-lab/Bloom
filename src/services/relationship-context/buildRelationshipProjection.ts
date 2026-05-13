@@ -241,6 +241,14 @@ export function buildRelationshipProjection(
     relationshipWaves: input.groupRelationshipWaves,
     factTraces: input.factTraces,
   };
+  const derivedRelationshipResidue = buildRelationshipResidueItems(typedProjectionInput);
+  const compatibilityRelationshipResidue = latestSharedSnapshots.map((snapshot) => snapshot.relationshipResidue);
+  const derivedSceneResidue = buildSceneResidueItems(typedProjectionInput);
+  const compatibilitySceneResidue = latestSharedSnapshots.map((snapshot) => snapshot.sceneResidue);
+  const derivedTopicAnchors = buildTopicAnchorItems(typedProjectionInput);
+  const compatibilityTopicAnchors = latestSharedSnapshots.map((snapshot) => snapshot.topicAnchors);
+  const derivedTaskResidue = buildTaskResidueItems(typedProjectionInput);
+  const compatibilityTaskResidue = latestSharedSnapshots.map((snapshot) => snapshot.taskResidue);
   const recentCoupleSpaceSummary = shouldUseCoupleSpaceForCharacter(input.character, input.coupleSpace)
     ? buildRecentCoupleSpaceSummary({
         coupleSpace: input.coupleSpace!,
@@ -273,24 +281,26 @@ export function buildRelationshipProjection(
     characterScopedMemory: {
       shortTermSummary: memoryLayers.shortTermSummary,
       longTermMemoryProfile: memoryLayers.longTermMemoryProfile,
+      diagnostics: memoryLayers.diagnostics,
     },
     sceneScopedSignals: {
       relationshipResidue: mergeTypedItems(
-        buildRelationshipResidueItems(typedProjectionInput),
-        ...latestSharedSnapshots.map((snapshot) => snapshot.relationshipResidue),
+        derivedRelationshipResidue,
+        ...compatibilityRelationshipResidue,
       ),
       sceneResidue: mergeTypedItems(
-        buildSceneResidueItems(typedProjectionInput),
-        ...latestSharedSnapshots.map((snapshot) => snapshot.sceneResidue),
+        derivedSceneResidue,
+        ...compatibilitySceneResidue,
       ),
       topicAnchors: mergeTypedItems(
-        buildTopicAnchorItems(typedProjectionInput),
-        ...latestSharedSnapshots.map((snapshot) => snapshot.topicAnchors),
+        derivedTopicAnchors,
+        ...compatibilityTopicAnchors,
       ),
       taskResidue: mergeTypedItems(
-        buildTaskResidueItems(typedProjectionInput),
-        ...latestSharedSnapshots.map((snapshot) => snapshot.taskResidue),
+        derivedTaskResidue,
+        ...compatibilityTaskResidue,
       ),
+      compatibilitySnapshotCount: latestSharedSnapshots.length,
       recentCoupleSpaceSummary,
       sharedRecentRelationshipSummary: mergeSummaryText(
         sharedRecentRelationshipSummary,
