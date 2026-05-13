@@ -36,3 +36,14 @@ test('text-only blueprint constraints can override image-heavy requests', () => 
     true,
   );
 });
+
+test('blocked shapes keep blueprint away from cooled-down long forms', () => {
+  const blueprint = buildMomentPostBlueprint({
+    character: createCharacter(),
+    requestText: '想写一条夜里记录，分段长文也可以。',
+    mode: 'self_life',
+    blockedShapes: ['multi_paragraph', 'journal_note'],
+  });
+
+  assert.equal(['multi_paragraph', 'journal_note'].includes(blueprint.shape), false);
+});

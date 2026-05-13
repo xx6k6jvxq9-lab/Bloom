@@ -8,6 +8,7 @@ export type OutputQualityReason =
   | 'repetition_noise'
   | 'analysis_leak'
   | 'system_leak'
+  | 'generic_assistant_tone'
   | 'too_short_after_cleaning';
 
 export type OutputQualityResult = {
@@ -19,6 +20,7 @@ export type OutputQualityResult = {
 export type AssistantOutputQualityOptions = {
   allowBracketActions?: boolean;
   allowStructuredProtocols?: boolean;
+  toneGuardMode?: 'off' | 'character_chat';
 };
 
 export type GenerateQualityCheckedAssistantReplyParams = {
@@ -26,6 +28,7 @@ export type GenerateQualityCheckedAssistantReplyParams = {
   messages: RuntimeChatMessage[];
   allowBracketActions?: boolean;
   allowStructuredProtocols?: boolean;
+  toneGuardMode?: 'off' | 'character_chat';
   temperature?: number;
   retryTemperature?: number;
   onInvalid?: (result: OutputQualityResult) => void;
@@ -44,6 +47,22 @@ const EFFECTIVE_CHAR_REGEX = /[\p{L}\p{N}]/gu;
 const CJK_REGEX = /[\u4e00-\u9fff]/u;
 const REPEATED_CHAR_RUN_REGEX = /(.)\1{7,}/u;
 const REPEATED_PUNCTUATION_CLUSTER_REGEX = /([,，.。!！?？、;；~…])\1{3,}/u;
+
+const GENERIC_ASSISTANT_HIGH_CONFIDENCE_PATTERNS = [
+  /如果你愿意(?:的话)?[^。！？\n]{0,16}(?:可以|也可以|都可以|随时)[^。！？\n]{0,18}(?:和我说|告诉我|慢慢说)/u,
+  /有什么(?:想说的|想聊的|事|心事|情绪)[^。！？\n]{0,18}(?:都)?可以[^。！？\n]{0,18}(?:和我说|告诉我)/u,
+  /我会(?:一直|都)?在这里(?:陪(?:着)?你|支持你|听你说)/u,
+  /你不需要一个人(?:扛|撑|面对|消化)/u,
+  /当你(?:准备好|想说)的时候[^。！？\n]{0,10}(?:再)?和我说/u,
+];
+const GENERIC_ASSISTANT_MEDIUM_CONFIDENCE_PATTERNS = [
+  /先(?:深呼吸|休息一下|缓一缓)/u,
+  /慢慢来/u,
+  /别给自己太大压力/u,
+  /照顾好自己/u,
+  /听起来你/u,
+  /我(?:能)?理解你/u,
+];
 
 function countMatches(text: string, pattern: RegExp): number {
   return text.match(pattern)?.length ?? 0;
@@ -72,10 +91,34 @@ function hasStructuredProtocolPayload(text: string): boolean {
     || trimmed.includes('---TRANSLATION---')
     || trimmed.startsWith('[COUPLE_SPACE_INVITE_ACCEPTED]')
     || trimmed.startsWith('[COUPLE_SPACE_INVITE]')
+    || trimmed.startsWith('[LIGHT_INTERACTION]')
     || trimmed.startsWith('[transfer]')
     || /^\[转账\s*[\d.]+\]/.test(trimmed)
     || /^TRANSFER\|[\d.]+\|/i.test(trimmed)
   );
+}
+
+function countPatternHits(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function hasGenericAssistantTone(
+  text: string,
+  mode: AssistantOutputQualityOptions['toneGuardMode'],
+): boolean {
+  if (mode !== 'character_chat') {
+    return false;
+  }
+
+  const normalized = text.trim();
+  if (!normalized || hasStructuredProtocolPayload(normalized)) {
+    return false;
+  }
+
+  const highHits = countPatternHits(normalized, GENERIC_ASSISTANT_HIGH_CONFIDENCE_PATTERNS);
+  const mediumHits = countPatternHits(normalized, GENERIC_ASSISTANT_MEDIUM_CONFIDENCE_PATTERNS);
+
+  return highHits >= 2 || (highHits >= 1 && mediumHits >= 1);
 }
 
 function hasObviousRepetitionNoise(text: string): boolean {
@@ -163,11 +206,16 @@ function stripLeakedAnalysisLines(text: string): string {
 }
 
 function buildInvalidOutputRetryInstruction(reason?: OutputQualityReason): string {
+  const genericToneLine = reason === 'generic_assistant_tone'
+    ? '\u4E0D\u8981\u7528\u201C\u5982\u679C\u4F60\u613F\u610F\u53EF\u4EE5\u548C\u6211\u8BF4\u201D\u3001\u201C\u6211\u4F1A\u4E00\u76F4\u5728\u8FD9\u91CC\u966A\u4F60\u201D\u8FD9\u7C7B\u901A\u7528\u966A\u804A\u6A21\u677F\u3002\u8BF7\u76F4\u63A5\u7528\u5F53\u524D\u89D2\u8272\u672C\u4EBA\u7684\u8BED\u6C14\u3001\u8FB9\u754C\u548C\u8BF4\u8BDD\u624B\u611F\u91CD\u7B54\u3002'
+    : '';
+
   return [
     '\u521A\u624D\u7684\u8F93\u51FA\u65E0\u6CD5\u4F5C\u4E3A\u804A\u5929\u6D88\u606F\u4F7F\u7528\u3002',
     reason ? `\u65E0\u6548\u539F\u56E0\uFF1A${reason}\u3002` : '',
     '\u8BF7\u53EA\u8F93\u51FA\u5F53\u524D\u89D2\u8272\u4F1A\u53D1\u51FA\u7684\u4E00\u53E5\u81EA\u7136\u804A\u5929\u5185\u5BB9\u3002',
     '\u4E0D\u8981\u5199\u6807\u9898\u3001\u89E3\u91CA\u3001\u7CFB\u7EDF\u89C4\u5219\u3001\u601D\u8003\u8FC7\u7A0B\u3001\u82F1\u6587\u5206\u6790\u6216\u7EAF\u6807\u70B9\u3002',
+    genericToneLine,
     '\u5982\u679C\u7528\u6237\u6B63\u5728\u4F7F\u7528\u4E2D\u6587\uFF0C\u5C31\u7528\u81EA\u7136\u4E2D\u6587\uFF1B\u5982\u679C\u7528\u6237\u660E\u786E\u4F7F\u7528\u5176\u4ED6\u8BED\u8A00\u6216\u8981\u6C42\u7FFB\u8BD1\uFF0C\u624D\u8DDF\u968F\u5BF9\u5E94\u8BED\u8A00\u3002',
   ].filter(Boolean).join('\n');
 }
@@ -254,6 +302,10 @@ export function evaluateAssistantOutput(
     return { ok: false, cleanedText, reason: 'repetition_noise' };
   }
 
+  if (hasGenericAssistantTone(cleanedText, options.toneGuardMode)) {
+    return { ok: false, cleanedText, reason: 'generic_assistant_tone' };
+  }
+
   return { ok: true, cleanedText };
 }
 
@@ -271,11 +323,40 @@ export async function generateQualityCheckedAssistantReply(
   const firstResult = evaluateAssistantOutput(firstText, {
     allowBracketActions: params.allowBracketActions,
     allowStructuredProtocols: params.allowStructuredProtocols,
+    toneGuardMode: params.toneGuardMode,
   });
   if (firstResult.ok) {
     return firstResult;
   }
 
   params.onInvalid?.(firstResult);
-  return firstResult;
+  if (!Number.isFinite(params.retryTemperature)) {
+    return firstResult;
+  }
+
+  const retryText = await streamRuntimeReplyText({
+    activeConfig: params.activeConfig,
+    messages: [
+      ...params.messages,
+      {
+        role: 'user',
+        content: buildInvalidOutputRetryInstruction(firstResult.reason),
+      },
+    ],
+    temperature: params.retryTemperature,
+    onProgress: (text) => {
+      params.onProgress?.(text, { attempt: 2 });
+    },
+  });
+  const retryResult = evaluateAssistantOutput(retryText, {
+    allowBracketActions: params.allowBracketActions,
+    allowStructuredProtocols: params.allowStructuredProtocols,
+    toneGuardMode: params.toneGuardMode,
+  });
+
+  if (!retryResult.ok) {
+    params.onInvalid?.(retryResult);
+  }
+
+  return retryResult;
 }

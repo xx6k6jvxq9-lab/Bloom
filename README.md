@@ -29,3 +29,4 @@ Bloom is a Vite + React app for an AI phone-style relationship experience.
 - [Full PRD](./docs/full-ai-product-prd.md)
 - [Project Architecture](./docs/project-architecture.md)
 - [Job Product Introduction](./docs/job-product-introduction.md)
+- [Memory System V1 Runtime Status](./docs/memory-system-v1-runtime-status.md)

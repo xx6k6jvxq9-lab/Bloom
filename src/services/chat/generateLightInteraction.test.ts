@@ -109,3 +109,40 @@ test('parseLightInteractionResult drops counterAction when the character initiat
     systemLine: '',
   });
 });
+
+test('parseLightInteractionResult keeps counterAction available when the recent direct vibe is serious', () => {
+  const input = createDirectInput({
+    recentMessages: [
+      {
+        role: 'user',
+        text: '我今天真的很难受。',
+        timestamp: 1,
+      },
+      {
+        role: 'model',
+        text: '先休息。',
+        timestamp: 2,
+      },
+    ],
+    sceneInput: {
+      recentContext: {
+        shortTermSummary: '最近气氛偏低落，正在说身体不舒服。',
+      },
+    } as DirectLightInteractionGenerationInput['sceneInput'],
+  });
+  const rawText = `{
+  "systemLine": "你拍了拍小悟",
+  "assistantBubbles": ["？"],
+  "counterAction": {
+    "type": "poke_back",
+    "systemLine": "小悟拍了拍你"
+  }
+}`;
+
+  const result = parseLightInteractionResult(rawText, input);
+
+  assert.deepEqual(result.counterAction, {
+    type: 'poke_back',
+    systemLine: '小悟拍了拍你',
+  });
+});

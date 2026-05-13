@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildShortTermSummary } from '../../services/memory/buildShortTermSummary';
 
 export type RelationshipRecoveryContextKind = 'reconnect_accepted' | 'unblocked';
 
@@ -49,11 +50,18 @@ export function buildRelationshipRecoveryContext(kind: RelationshipRecoveryConte
 }
 
 export function applyRelationshipRecoveryContext(
-  character: Pick<Character, 'shortTermSummary'>,
+  character: Pick<Character, 'shortTermSummary'> & Partial<Pick<Character, 'id'>>,
   kind: RelationshipRecoveryContextKind,
 ) {
+  const effectiveSummary = character.id
+    ? buildShortTermSummary({
+        id: character.id,
+        shortTermSummary: character.shortTermSummary,
+      }) ?? character.shortTermSummary
+    : character.shortTermSummary;
+
   return mergeSummaryLines(
-    stripPreviousRecoveryContext(character.shortTermSummary),
+    stripPreviousRecoveryContext(effectiveSummary),
     buildRelationshipRecoveryContext(kind),
   );
 }

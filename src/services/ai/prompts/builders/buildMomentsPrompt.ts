@@ -14,6 +14,7 @@ export type BuildMomentsPromptOptions = {
     allowImages?: boolean;
     styleHints?: string[];
     triggerReason?: string;
+    factBoundaryLines?: string[];
   };
   sections?: string[];
 };
@@ -62,6 +63,18 @@ function buildPostContextSection(postContext: BuildMomentsPromptOptions['postCon
   return lines.join('\n');
 }
 
+function buildFactBoundarySection(postContext: BuildMomentsPromptOptions['postContext'] = {}): string {
+  const lines = postContext.factBoundaryLines?.filter(Boolean) || [];
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return [
+    '## 事实边界与受控扩写',
+    ...lines,
+  ].join('\n');
+}
+
 export function buildMomentsPrompt(options: BuildMomentsPromptOptions = {}): string {
   const sections = [
     EXISTENCE_PROMPT,
@@ -69,6 +82,7 @@ export function buildMomentsPrompt(options: BuildMomentsPromptOptions = {}): str
     buildMomentsMemorySection(options.memoryContext ?? {}),
     MOMENTS_SCENARIO_PROMPT,
     buildPostContextSection(options.postContext),
+    buildFactBoundarySection(options.postContext),
     OUTPUT_RULES_PROMPT,
     ...(options.sections ?? []),
   ].filter(Boolean);

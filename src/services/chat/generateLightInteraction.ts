@@ -2,6 +2,7 @@ import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildLightInteractionPrompt } from '../ai/prompts/builders/buildLightInteractionPrompt';
 import { normalizeChatPunctuationNoise } from './messageHygiene';
 import { splitDirectAssistantReplyText, stripAssistantSpeakerPrefix } from './assistantText';
+import { buildDirectPokeBehaviorGuide } from './directLightInteractionGuide';
 import type {
   DirectLightInteractionGenerationInput,
   GroupLightInteractionGenerationInput,
@@ -125,9 +126,26 @@ function buildDefaultCounterSystemLine(input: LightInteractionGenerationInput) {
   return `${input.target.label}拍了拍${counterTarget}`;
 }
 
+function buildDirectBehaviorGuide(input: LightInteractionGenerationInput) {
+  if (input.scene !== 'direct') {
+    return null;
+  }
+
+  return buildDirectPokeBehaviorGuide({
+    responderCharacter: input.responderCharacter,
+    actorRole: input.actor.role,
+    recentMessages: input.recentMessages,
+    recentContext: input.sceneInput.recentContext,
+    longTermMemoryProfile: input.sceneInput.memoryContext?.longTermMemoryProfile,
+    latestCounterActionType: input.latestCounterActionType,
+    upcomingStreak: input.upcomingStreak,
+  });
+}
+
 function buildDefaultAssistantBubbles(input: LightInteractionGenerationInput) {
-  if (input.scene === 'direct' && input.actor.role === 'character') {
-    return ['拍你一下。'];
+  const directBehaviorGuide = buildDirectBehaviorGuide(input);
+  if (directBehaviorGuide) {
+    return directBehaviorGuide.defaultAssistantBubbles;
   }
 
   return ['……你拍我干嘛。'];

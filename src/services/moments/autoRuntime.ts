@@ -6,10 +6,11 @@ import type {
   MomentImageCard,
   MomentItem,
 } from '../../types';
+import { rebuildSharedStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import {
-  buildSharedStateWritePatch,
-  rebuildSharedStateFromCharacter,
-} from '../relationship-context/buildSharedCharacterState';
+  buildSceneSettlementCharacterPatch,
+  persistSceneSettlement,
+} from '../memory/sceneSettlement';
 import { runMomentPublishCommentSequence } from './commentOrchestrator';
 import {
   type AutoMomentPlanEntry,
@@ -22,6 +23,12 @@ import {
   filterAutoMomentSceneUnlockedCharacters,
   getCharacterAutoMomentSceneGate,
 } from './autoSceneGate';
+import {
+  analyzeRecentMomentVariety,
+  buildRecentMomentShapeHints,
+  buildRecentMomentVarietyPromptLines,
+} from './momentRecentVariety';
+import { buildMomentPublishedSettlement } from './buildMomentPublishedSettlement';
 import { generateMomentPostContent } from './generators';
 
 export type AutoMomentRuntimeSnapshot = Pick<
@@ -66,6 +73,14 @@ const SCENE_CARRYOVER_ONLY_SHAPES: NonNullable<AutoMomentPlanEntry['generationHi
   'abstract_fragment',
   'soft_claim',
 ];
+const GENERAL_MANUAL_REFRESH_SHAPES: NonNullable<AutoMomentPlanEntry['generationHints']>['allowedShapes'] = [
+  'short_status',
+  'cheerful_share',
+  'tiny_complaint',
+  'abstract_fragment',
+  'soft_claim',
+  'photo_dump',
+];
 
 function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentItem[] = []) {
   return moments
@@ -76,13 +91,16 @@ function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentIt
 function buildManualRefreshPlanEntry(options: {
   character: Character;
   sceneGate: ReturnType<typeof getCharacterAutoMomentSceneGate>;
+  recentMoments?: MomentItem[];
 }): AutoMomentPlanEntry {
-  const { character, sceneGate } = options;
+  const { character, sceneGate, recentMoments = [] } = options;
   const sharedState = rebuildSharedStateFromCharacter({
     character,
   });
   const presenceState = character.presenceState;
   const activeDatingSummary = character.activeDatingState?.summary?.trim();
+  const recentVariety = analyzeRecentMomentVariety(recentMoments);
+  const varietySections = buildRecentMomentVarietyPromptLines(recentVariety);
 
   if (sceneGate.restriction === 'scene_carryover_only') {
     return {
@@ -93,6 +111,7 @@ function buildManualRefreshPlanEntry(options: {
         presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
         sharedState?.publicCarryover?.trim() ? `公开余波：${sharedState.publicCarryover.trim()}` : '',
         activeDatingSummary ? `当前进行中的互动：${activeDatingSummary}` : '',
+        ...varietySections,
         '这是用户手动点击刷新后的强制刷新，但角色还在强互动中，或者刚从强互动场景里出来不久。',
         '只能发和当前场景兼容的公开余波：嘴硬、回温、小吃醋、小吐槽、短短一句、轻微站位、抽象情绪都可以。',
         '必须是纯文字动态，不要配图、不要截图感、不要九宫格、不要伪图片说明。',
@@ -100,10 +119,11 @@ function buildManualRefreshPlanEntry(options: {
         '不要泄露私聊细节，只保留公开可见的情绪后劲和状态感。',
         '不要返回空白，不要解释说明，不要重复上一条动态。',
       ].filter(Boolean),
-      generationHints: {
-        forceTextOnly: true,
-        allowedShapes: SCENE_CARRYOVER_ONLY_SHAPES,
-      },
+      generationHints: buildRecentMomentShapeHints({
+        baseAllowedShapes: SCENE_CARRYOVER_ONLY_SHAPES,
+        recentVariety,
+        preferTextOnly: true,
+      }),
     };
   }
 
@@ -114,11 +134,16 @@ function buildManualRefreshPlanEntry(options: {
       sharedState?.currentActivity?.trim() ? `当前生活状态：${sharedState.currentActivity.trim()}` : '',
       presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
       sharedState?.publicCarryover?.trim() ? `公开余波：${sharedState.publicCarryover.trim()}` : '',
+      ...varietySections,
       '这是用户手动点击刷新后的强制刷新，必须产出一条新的动态。',
       '优先写低风险、看得见的锚点：手机、桌面、镜子、窗外天气、衣服、耳机、饮料、房间角落、灯光、路灯、街景、身体状态。',
       '没有在当前状态或设定里出现的事实，不要临时补室友、同事、老板、家人、宠物或固定工作地点。',
       '不要返回空白，不要解释说明，不要重复上一条动态。',
     ].filter(Boolean),
+    generationHints: buildRecentMomentShapeHints({
+      baseAllowedShapes: GENERAL_MANUAL_REFRESH_SHAPES,
+      recentVariety,
+    }),
   };
 }
 
@@ -168,6 +193,10 @@ function buildForcedManualRefreshEntry(
   return buildManualRefreshPlanEntry({
     character: picked.character,
     sceneGate: picked.sceneGate,
+    recentMoments: (snapshot.moments || [])
+      .filter((moment) => moment.authorId === picked.character.id)
+      .sort((left, right) => right.timestamp - left.timestamp)
+      .slice(0, 3),
   });
 }
 
@@ -275,6 +304,14 @@ export async function publishGeneratedCharacterMomentToFeed(
     likes: 0,
     comments: [],
   };
+  const settlement = buildMomentPublishedSettlement({
+    character: author,
+    moment: {
+      content: payload.content,
+      timestamp: newMoment.timestamp,
+    },
+  });
+  const settlementPatch = buildSceneSettlementCharacterPatch(settlement);
 
   setAppData((prev) => ({
     ...prev,
@@ -283,15 +320,27 @@ export async function publishGeneratedCharacterMomentToFeed(
         ? character
         : {
             ...character,
-            sharedState: buildSharedStateWritePatch({
-              character,
-              sourceScene: 'moments',
-              publicSummaries: [`刚刚发了一条动态：${payload.content.replace(/\s+/g, ' ').slice(0, 72)}`],
-            }),
+            sharedContextSnapshots: settlementPatch.sharedContextSnapshots,
+            shortTermSummary: settlementPatch.shortTermSummary ?? character.shortTermSummary,
+            openLoopRegistry: settlementPatch.openLoopRegistry ?? character.openLoopRegistry,
+            sharedState: settlementPatch.sharedState ?? character.sharedState,
           }
     )),
     moments: [newMoment, ...(prev.moments || [])],
   }));
+
+  try {
+    await persistSceneSettlement({
+      characterId: payload.authorId,
+      sourceScene: 'moments',
+      settlement,
+      sourceSessionType: 'direct',
+      sourceSessionId: payload.authorId,
+      timestamp: newMoment.timestamp,
+    });
+  } catch (error) {
+    console.error('[moments] Failed to persist published moment settlement', error);
+  }
 
   onMomentPublished?.({
     authorId: payload.authorId,

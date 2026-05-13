@@ -20,6 +20,7 @@ import { buildCharacterTemporalState } from '../relationship-time/buildCharacter
 import { buildTemporalSnapshotPrompt } from '../relationship-time/buildTemporalSnapshotPrompt';
 import { buildPresenceSnapshotPrompt } from '../relationship-time/buildPresenceSnapshotPrompt';
 import { filterTopicAnchorsForPrompt, suppressTopicResidualsForPrompt } from '../chat/topicRecall';
+import { buildDirectInitiativeGuide } from '../chat/buildDirectInitiativeGuide';
 import { buildDirectSceneProgress, formatDirectSceneProgressForPrompt } from '../chat/buildDirectSceneProgress';
 import { decayShortTermSummaryForContinuity } from '../memory/buildShortTermSummary';
 import { buildResolvedOpenLoopRegistry } from '../memory/buildResolvedOpenLoopRegistry';
@@ -138,6 +139,7 @@ function buildExtraSections(input: {
   temporalStatePrompt?: string;
   continuityPrompt?: string;
   sceneProgressPrompt?: string;
+  initiativePrompt?: string;
   activeDatingPrompt?: string;
   expressionStyle?: string;
   boundaryPack?: string;
@@ -149,6 +151,7 @@ function buildExtraSections(input: {
     input.temporalStatePrompt || '',
     input.continuityPrompt || '',
     input.sceneProgressPrompt || '',
+    input.initiativePrompt || '',
     input.activeDatingPrompt || '',
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
@@ -449,6 +452,11 @@ export function buildChatSceneInput(
         buildContinuityResumePrompt(characterTemporalState),
       ].filter(Boolean).join('\n\n'),
       sceneProgressPrompt: directSceneProgressPrompt,
+      initiativePrompt: buildDirectInitiativeGuide({
+        temporalState: characterTemporalState,
+        recentContext,
+        openLoopRegistry: resolvedOpenLoopRegistry,
+      }),
       activeDatingPrompt: params.character.activeDatingState
         ? [
             '## 进行中的约会共享语境',

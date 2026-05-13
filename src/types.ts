@@ -705,16 +705,25 @@ export type Character = {
   summaryInterval?: number;
   autoLongTermMinShortTermEntries?: number;
   autoLongTermMinDaySpan?: number;
-  // Deprecated compatibility field. Prefer longTermMemoryProfile on active runtime paths.
+  // Deprecated compatibility field. Keep only for migration / fallback compatibility.
   memorySummary?: string;
+  // Compatibility field. The records-first runtime may still mirror into this field,
+  // but new logic should prefer memoryRecords-derived short-term state.
   shortTermSummary?: string;
+  // Compatibility field. The records-first runtime may still mirror into this field,
+  // but new logic should prefer memoryRecords-derived long-term state.
   longTermMemoryProfile?: string;
   // Deprecated compatibility field. New memory flows should persist into memoryRecords.
   memoryLibraryEntries?: MemoryLibraryEntry[];
+  // Compatibility field. Primary open-loop reconstruction should come from memoryRecords.
   openLoopRegistry?: CharacterOpenLoopEntry[];
   presenceState?: CharacterPresenceState;
+  // Compatibility field. New shared-state reads should treat this as a cached projection,
+  // not the first-choice source when records can rebuild a fresher state.
   sharedState?: CharacterSharedState;
   activeDatingState?: CharacterActiveDatingState;
+  // Compatibility field. Keep as a snapshot bridge / fallback layer while runtime reads
+  // continue moving toward records-first scene signals.
   sharedContextSnapshots?: CharacterSharedContextSnapshot[];
   avatarLibrary?: CharacterAvatarLibrary;
   stickers?: string[];

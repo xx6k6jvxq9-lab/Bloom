@@ -12,6 +12,8 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
 export function buildResolvedMemoryLayers(
   character: Pick<Character, 'id' | 'shortTermSummary' | 'longTermMemoryProfile'>,
 ): ResolvedMemoryLayers {
+  // Runtime resolution order is records-first:
+  // derived records -> snapshot records -> legacy character fields.
   const derivedLayers = buildDerivedMemoryLayersFromRecords(character);
   const shortTermSummary = buildShortTermSummary(character, {
     derivedLayers,

@@ -5,6 +5,7 @@ import type {
   DirectLightInteractionGenerationInput,
   GroupLightInteractionGenerationInput,
 } from '../../../chat/lightInteractionTypes';
+import { buildDirectPokeBehaviorGuide } from '../../../chat/directLightInteractionGuide';
 
 const MAX_CONTEXT_TEXT_LENGTH = 420;
 const MAX_HISTORY_LINES = 6;
@@ -103,7 +104,7 @@ function buildSystemLineInstruction(input: LightInteractionPromptInput) {
     return `systemLine 必须像“${input.actor.label}拍了拍正在假装镇定的${input.target.label}”这种聊天软件提示，保留 ${input.target.label}，但不要复读最近已用过的措辞。`;
   }
 
-  return `systemLine 必须像“${input.actor.label}拍了拍${input.target.label}”这种聊天软件提示，保留双方称呼，不要写成长句。`;
+  return `systemLine 必须像“${input.actor.label}拍了拍正在走神的${input.target.label}”或“${input.actor.label}拍了拍${input.target.label}”这种聊天软件提示，保留双方称呼，也允许给 ${input.target.label} 补一个很短的当下状态描述。`;
 }
 
 function buildDirectAssistantBubbleInstruction(input: DirectLightInteractionGenerationInput) {
@@ -122,25 +123,52 @@ function buildDirectSecondaryBehaviorInstruction(input: DirectLightInteractionGe
   return '可以嘴硬、停顿、反问、装没事、试探、轻微回拍，但必须符合这个角色本人。';
 }
 
-function buildDirectCounterActionInstruction(input: DirectLightInteractionGenerationInput) {
+function buildDirectCounterActionInstruction(
+  input: DirectLightInteractionGenerationInput,
+  tone: 'light' | 'warm' | 'guarded' | 'serious',
+) {
   if (input.actor.role === 'character') {
     return '这次是角色主动发起，所以 `counterAction.type` 固定为 `"none"`，`counterAction.systemLine` 固定为空字符串；不要让用户自动回拍。';
   }
 
-  return '';
-}
-
-function buildDirectAssistantBubbleExample(input: DirectLightInteractionGenerationInput) {
-  if (input.actor.role === 'character') {
-    return ['拍你一下。', '别装没看见。'];
+  if (tone === 'serious') {
+    return '如果这轮要回拍，也要顺着当前情绪来，不要硬把严肃场景改写成嬉闹。';
   }
 
-  return ['……你拍我干嘛。', '有话就说。'];
+  if (tone === 'guarded') {
+    return '如果这轮要回拍，也要克制一点，不要突然装熟。';
+  }
+
+  return '如果这轮要回拍，也要像顺手一碰，不要把回拍当固定动作。';
 }
 
-function buildDirectNextActionsExample(input: DirectLightInteractionGenerationInput) {
+function buildDirectAssistantBubbleExample(
+  input: DirectLightInteractionGenerationInput,
+  defaultAssistantBubbles: string[],
+) {
+  if (defaultAssistantBubbles.length > 0) {
+    return defaultAssistantBubbles.slice(0, input.actor.role === 'character' ? 2 : 3);
+  }
+
+  return input.actor.role === 'character'
+    ? ['拍你一下。', '别装没看见。']
+    : ['……你拍我干嘛。', '有话就说。'];
+}
+
+function buildDirectNextActionsExample(
+  input: DirectLightInteractionGenerationInput,
+  tone: 'light' | 'warm' | 'guarded' | 'serious',
+) {
   if (input.actor.role === 'character') {
     return ['回一句', '拍回去', '继续装没事'];
+  }
+
+  if (tone === 'serious') {
+    return ['继续说', '解释一下', '算了'];
+  }
+
+  if (tone === 'guarded') {
+    return ['继续说', '装没事', '换个话题'];
   }
 
   return ['再拍一下', '逗一句', '装没事'];
@@ -152,6 +180,15 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
   const characterCore = sceneInput.characterCore;
   const memoryContext = sceneInput.memoryContext;
   const relevantSceneSections = selectRelevantSceneSections(sceneInput.sections);
+  const behaviorGuide = buildDirectPokeBehaviorGuide({
+    responderCharacter: input.responderCharacter,
+    actorRole: input.actor.role,
+    recentMessages: input.recentMessages,
+    recentContext,
+    longTermMemoryProfile: memoryContext?.longTermMemoryProfile,
+    latestCounterActionType: input.latestCounterActionType,
+    upcomingStreak: input.upcomingStreak,
+  });
   const recentHistoryTranscript = buildRecentHistoryTranscript(
     input.recentMessages,
     '你',
@@ -191,7 +228,8 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     input.latestNextActions && input.latestNextActions.length > 0
       ? `上一轮常见可续接方向：${input.latestNextActions.slice(0, 3).join('、')}`
       : '',
-    buildDirectCounterActionInstruction(input),
+    behaviorGuide.summaryLine,
+    buildDirectCounterActionInstruction(input, behaviorGuide.tone),
     '',
     '## 角色核心与关系底色',
     characterCore?.characterSetting ? `核心人设：${trimContextBlock(characterCore.characterSetting, 560)}` : '',
@@ -205,6 +243,9 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     memoryContext?.longTermMemoryProfile ? `长期关系底色：${trimContextBlock(memoryContext.longTermMemoryProfile, 320)}` : '',
     relevantSceneSections.length > 0
       ? ['## 当前状态与表达边界', ...relevantSceneSections].join('\n\n')
+      : '',
+    behaviorGuide.promptLines.length > 0
+      ? ['## 本轮手感建议', ...behaviorGuide.promptLines].join('\n')
       : '',
     recentHistoryTranscript
       ? ['## 最近几条聊天', recentHistoryTranscript].join('\n')
@@ -221,13 +262,13 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     '## JSON 输出协议',
     '只输出 JSON 对象，不要 markdown，不要解释，不要在 JSON 外补充任何文字。',
     `{
-  "systemLine": "${input.actor.label}拍了拍${input.target.label}",
-  "assistantBubbles": ${JSON.stringify(buildDirectAssistantBubbleExample(input), null, 2)},
+  "systemLine": "${input.actor.role === 'character' ? `${input.actor.label}拍了拍还没回神的${input.target.label}` : `${input.actor.label}拍了拍${input.target.label}`}",
+  "assistantBubbles": ${JSON.stringify(buildDirectAssistantBubbleExample(input, behaviorGuide.defaultAssistantBubbles), null, 2)},
   "counterAction": {
     "type": "none",
     "systemLine": ""
   },
-  "nextActions": ${JSON.stringify(buildDirectNextActionsExample(input), null, 2)},
+  "nextActions": ${JSON.stringify(buildDirectNextActionsExample(input, behaviorGuide.tone), null, 2)},
   "interactionState": {
     "mood": "teasing",
     "streak": ${Math.max(1, input.upcomingStreak ?? 1)},

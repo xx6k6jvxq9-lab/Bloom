@@ -22,7 +22,7 @@ function createCharacter(overrides: Partial<Character> = {}): Character {
   } as Character;
 }
 
-function createMoment(authorId: string, timestamp: number): MomentItem {
+function createMoment(authorId: string, timestamp: number, overrides: Partial<MomentItem> = {}): MomentItem {
   return {
     id: `${authorId}-${timestamp}`,
     authorId,
@@ -30,8 +30,15 @@ function createMoment(authorId: string, timestamp: number): MomentItem {
     timestamp,
     likes: 0,
     comments: [],
+    ...overrides,
   };
 }
+
+const LONG_MOMENT_TEXT = [
+  '今天这一整天都像被拆成很多小段，走到现在才慢慢收回来一点。',
+  '有些念头刚冒出来的时候还很吵，过一会儿又只剩一点余温留在身上。',
+  '先记在这里，免得明天醒来又忘了自己今天到底是怎么过来的。',
+].join('\n');
 
 test.beforeEach(async () => {
   installPersistenceTestEnvironment();
@@ -195,5 +202,90 @@ test('auto moment planning prefers record-derived public carryover over stale sh
   assert.equal(
     plan[0]?.extraPromptSections.some((section) => section.includes('stale public carryover')),
     false,
+  );
+});
+
+test('recent long streak cools the next auto moment down to short text shapes', () => {
+  const now = Date.parse('2026-05-11T22:30:00+08:00');
+  const character = createCharacter({
+    id: 'cooldown-char',
+    postFrequency: 'high',
+    sharedState: {
+      updatedAt: now - 5 * 60 * 1000,
+      sourceScene: 'forum',
+      availability: 'recent',
+      currentActivity: '今晚风有点大。',
+    },
+  });
+  const moments = [
+    createMoment(character.id, now - 2 * 60 * 60 * 1000, {
+      content: LONG_MOMENT_TEXT,
+    }),
+    createMoment(character.id, now - 5 * 60 * 60 * 1000, {
+      content: LONG_MOMENT_TEXT,
+    }),
+  ];
+
+  const plan = buildAutoMomentPlan({
+    characters: [character],
+    moments,
+    now,
+    lastCheckedAt: now - 60 * 60 * 1000,
+    trigger: 'manual_refresh',
+  });
+
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0]?.generationHints?.forceTextOnly, true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('short_status'), true);
+  assert.equal(plan[0]?.generationHints?.blockedShapes?.includes('multi_paragraph'), true);
+  assert.equal(
+    plan[0]?.extraPromptSections.some((section) => section.includes('最近连续两条都偏长')),
+    true,
+  );
+});
+
+test('recent visual streak pushes the next auto moment away from photo-first shapes', () => {
+  const now = Date.parse('2026-05-11T22:30:00+08:00');
+  const character = createCharacter({
+    id: 'visual-char',
+    postFrequency: 'high',
+    sharedState: {
+      updatedAt: now - 5 * 60 * 1000,
+      sourceScene: 'forum',
+      availability: 'recent',
+      currentActivity: '刚把灯关小一点。',
+    },
+  });
+  const imageCard = {
+    title: 'preview',
+    description: 'preview',
+    theme: 'film' as const,
+  };
+  const moments = [
+    createMoment(character.id, now - 2 * 60 * 60 * 1000, {
+      content: '灯光有一点软。今天先放这几张。',
+      imageCard,
+    }),
+    createMoment(character.id, now - 5 * 60 * 60 * 1000, {
+      content: '又补几张普通碎片，字就不多写了。',
+      imageCard,
+    }),
+  ];
+
+  const plan = buildAutoMomentPlan({
+    characters: [character],
+    moments,
+    now,
+    lastCheckedAt: now - 60 * 60 * 1000,
+    trigger: 'manual_refresh',
+  });
+
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0]?.generationHints?.forceTextOnly, true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('photo_dump'), false);
+  assert.equal(plan[0]?.generationHints?.blockedShapes?.includes('photo_dump'), true);
+  assert.equal(
+    plan[0]?.extraPromptSections.some((section) => section.includes('最近连续两条都偏图文/相册感')),
+    true,
   );
 });

@@ -18,6 +18,13 @@ import {
   resolveMomentLanguagePlan,
   splitMomentTranslationParts,
 } from './momentLanguage';
+import {
+  buildMomentFactBoundary,
+  buildMomentFactBoundarySafeFallback,
+  buildMomentFactBoundarySection,
+  softlyCorrectMomentFactBoundaryDelta,
+  validateMomentFactBoundaryDelta,
+} from './momentFactBoundary';
 import { buildMomentReadableMemoryView } from './momentMemoryVisibility';
 import {
   classifyMomentCommentType,
@@ -297,6 +304,8 @@ function buildBalancedMomentPostPrompt(options: {
   character: Character;
   masks: Mask[];
   worldBook: WorldBookEntry[];
+  memoryContext: ReturnType<typeof buildMomentMemoryContext>;
+  factBoundaryLines?: string[];
   triggerHint?: string;
   extraStyleHints?: string[];
   mode?: 'self_life' | 'relationship_carryover' | 'public_daily';
@@ -308,6 +317,8 @@ function buildBalancedMomentPostPrompt(options: {
     character,
     masks,
     worldBook,
+    memoryContext,
+    factBoundaryLines = [],
     triggerHint,
     extraStyleHints = [],
     mode = 'public_daily',
@@ -349,16 +360,14 @@ function buildBalancedMomentPostPrompt(options: {
 
   return buildMomentsPrompt({
     characterCore: buildMomentCharacterCore({ character, masks, worldBook }),
-    memoryContext: buildMomentMemoryContext(character, {
-      privateCarryoverLevel: resolvedPrivateCarryoverLevel,
-      allowPrivateMomentCarryover,
-    }),
+    memoryContext,
     postContext: {
       signature: character.signature,
       relationship,
       maxLength: blueprint?.maxChars ?? 50,
       allowImages: blueprint?.allowImages ?? false,
       triggerReason: triggerHint || '当前是在生成一条已经准备公开发出的动态正文。这不是私聊回复。',
+      factBoundaryLines,
       styleHints: [
         ...styleHints,
         ...privacyStyleHints,
@@ -1041,6 +1050,10 @@ export async function generateMomentPostContent(options: {
   const momentMode = inferMomentPostMode(requestText);
   const languagePlan = resolveMomentLanguagePlan(character);
   const translationInstructions = buildMomentTranslationInstruction(languagePlan);
+  const memoryContext = buildMomentMemoryContext(character, {
+    privateCarryoverLevel,
+    allowPrivateMomentCarryover,
+  });
   const combinedRequestText = [
     ...extraPromptSections.filter((section) => section.trim()),
     requestText,
@@ -1051,13 +1064,22 @@ export async function generateMomentPostContent(options: {
     mode: momentMode,
     forceTextOnly: generationHints?.forceTextOnly,
     allowedShapes: generationHints?.allowedShapes,
+    blockedShapes: generationHints?.blockedShapes,
   });
-  const fallback = getCleanMomentFallback(blueprint.shape);
+  const factBoundary = buildMomentFactBoundary({
+    character,
+    memoryContext,
+    mode: momentMode,
+  });
+  const fallback = getCleanMomentFallback(blueprint.shape)
+    || buildMomentFactBoundarySafeFallback(factBoundary);
 
   const firstPrompt = buildBalancedMomentPostPrompt({
     character,
     masks,
     worldBook,
+    memoryContext,
+    factBoundaryLines: buildMomentFactBoundarySection(factBoundary),
     triggerHint: 'Generate a publishable public post body. This is not a chat reply.',
     mode: momentMode,
     blueprint,
@@ -1075,15 +1097,30 @@ export async function generateMomentPostContent(options: {
   const firstParts = splitMomentTranslationParts(firstRaw);
   const firstPass = normalizeGeneratedMomentContent(firstParts.mainText, blueprint.maxChars, blueprint.shape);
   const firstTranslation = normalizeMomentTranslationText(firstParts.translation);
+  const firstBoundaryViolation = validateMomentFactBoundaryDelta({
+    content: firstPass,
+    boundary: factBoundary,
+  });
+  const firstSoftCorrection = softlyCorrectMomentFactBoundaryDelta({
+    content: firstPass,
+    boundary: factBoundary,
+    violation: firstBoundaryViolation,
+  });
+  const firstCandidateContent = firstSoftCorrection.content || firstPass;
+  const firstTranslationReady = !languagePlan.needsTranslation || !!firstTranslation || firstSoftCorrection.changed;
 
-  if (!isContaminatedMomentContent(firstPass, momentMode) && (!languagePlan.needsTranslation || !!firstTranslation)) {
+  if (
+    !isContaminatedMomentContent(firstCandidateContent, momentMode)
+    && !firstSoftCorrection.remainingViolation
+    && firstTranslationReady
+  ) {
     return {
-      content: firstPass,
-      ...(firstTranslation ? { translation: firstTranslation } : {}),
+      content: firstCandidateContent,
+      ...(!firstSoftCorrection.changed && firstTranslation ? { translation: firstTranslation } : {}),
       imageCard: await generateMomentImageCard({
         activeConfig,
         character,
-        momentContent: firstPass,
+        momentContent: firstCandidateContent,
         blueprint,
       }),
     };
@@ -1093,12 +1130,15 @@ export async function generateMomentPostContent(options: {
     character,
     masks,
     worldBook,
+    memoryContext,
+    factBoundaryLines: buildMomentFactBoundarySection(factBoundary),
     triggerHint: 'Regenerate a clean public post body. Remove task narration and direct-chat residue.',
     mode: momentMode,
     blueprint,
     privateCarryoverLevel,
     allowPrivateMomentCarryover,
     extraStyleHints: [
+      ...(firstSoftCorrection.remainingViolation?.rewriteHints || []),
       'Do not write the post as direct speech to the user.',
       'Do not make the whole post orbit around the user.',
       'Prefer the character’s own life fragments, interests, observations, and state.',
@@ -1118,15 +1158,30 @@ export async function generateMomentPostContent(options: {
   const secondParts = splitMomentTranslationParts(secondRaw);
   const secondPass = normalizeGeneratedMomentContent(secondParts.mainText, blueprint.maxChars, blueprint.shape);
   const secondTranslation = normalizeMomentTranslationText(secondParts.translation);
+  const secondBoundaryViolation = validateMomentFactBoundaryDelta({
+    content: secondPass,
+    boundary: factBoundary,
+  });
+  const secondSoftCorrection = softlyCorrectMomentFactBoundaryDelta({
+    content: secondPass,
+    boundary: factBoundary,
+    violation: secondBoundaryViolation,
+  });
+  const secondCandidateContent = secondSoftCorrection.content || secondPass;
+  const secondTranslationReady = !languagePlan.needsTranslation || !!secondTranslation || secondSoftCorrection.changed;
 
-  if (!isContaminatedMomentContent(secondPass, momentMode) && (!languagePlan.needsTranslation || !!secondTranslation)) {
+  if (
+    !isContaminatedMomentContent(secondCandidateContent, momentMode)
+    && !secondSoftCorrection.remainingViolation
+    && secondTranslationReady
+  ) {
     return {
-      content: secondPass,
-      ...(secondTranslation ? { translation: secondTranslation } : {}),
+      content: secondCandidateContent,
+      ...(!secondSoftCorrection.changed && secondTranslation ? { translation: secondTranslation } : {}),
       imageCard: await generateMomentImageCard({
         activeConfig,
         character,
-        momentContent: secondPass,
+        momentContent: secondCandidateContent,
         blueprint,
       }),
     };
@@ -1134,12 +1189,6 @@ export async function generateMomentPostContent(options: {
 
   return {
     content: fallback,
-    imageCard: await generateMomentImageCard({
-      activeConfig,
-      character,
-      momentContent: fallback,
-      blueprint,
-    }),
   };
 }
 

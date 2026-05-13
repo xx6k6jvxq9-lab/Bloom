@@ -1,6 +1,13 @@
 import type { Character, MomentItem } from '../../types';
 import { rebuildSharedStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 import type { MomentPostShape } from './postBlueprints';
+import {
+  analyzeRecentMomentVariety,
+  buildRecentMomentShapeHints,
+  buildRecentMomentVarietyPromptLines,
+  type RecentMomentVarietyProfile,
+  type RecentMomentVibe,
+} from './momentRecentVariety';
 
 export type AutoMomentSchedulerTrigger = 'moments_open' | 'manual_refresh' | 'app_foreground';
 
@@ -11,6 +18,7 @@ export type AutoMomentPlanEntry = {
   generationHints?: {
     forceTextOnly?: boolean;
     allowedShapes?: MomentPostShape[];
+    blockedShapes?: MomentPostShape[];
   };
 };
 
@@ -61,6 +69,45 @@ type PlannerIntent =
   | 'soft_afterglow'
   | 'public_claim';
 
+const PLANNER_INTENTS: PlannerIntent[] = [
+  'micro_status',
+  'life_album',
+  'object_caption',
+  'tiny_complaint',
+  'night_journal',
+  'positive_share',
+  'abstract_fragment',
+  'music_diary',
+  'soft_afterglow',
+  'public_claim',
+];
+
+const BASE_INTENT_SCORES: Record<PlannerIntent, number> = {
+  micro_status: 0.55,
+  life_album: 0.48,
+  object_caption: 0.44,
+  tiny_complaint: 0.33,
+  night_journal: 0.18,
+  positive_share: 0.28,
+  abstract_fragment: 0.24,
+  music_diary: 0.14,
+  soft_afterglow: 0.3,
+  public_claim: 0.18,
+};
+
+const INTENT_ALLOWED_SHAPES: Record<PlannerIntent, MomentPostShape[]> = {
+  micro_status: ['short_status'],
+  life_album: ['photo_dump', 'short_status', 'cheerful_share', 'multi_paragraph'],
+  object_caption: ['short_status', 'cheerful_share', 'tiny_complaint'],
+  tiny_complaint: ['tiny_complaint', 'short_status'],
+  night_journal: ['journal_note', 'multi_paragraph', 'short_status'],
+  positive_share: ['cheerful_share', 'short_status', 'photo_dump'],
+  abstract_fragment: ['abstract_fragment', 'short_status'],
+  music_diary: ['music_diary', 'short_status', 'photo_dump'],
+  soft_afterglow: ['soft_claim', 'short_status', 'abstract_fragment'],
+  public_claim: ['soft_claim', 'short_status'],
+};
+
 function hashString(input: string) {
   let value = 0;
   for (let index = 0; index < input.length; index += 1) {
@@ -109,64 +156,168 @@ function getCharacterStateText(character: Character) {
     .toLowerCase();
 }
 
-function pickPlannerIntent(character: Character, trigger: AutoMomentSchedulerTrigger, seed: string): PlannerIntent {
+function adjustIntentScores(scores: Record<PlannerIntent, number>, intents: PlannerIntent[], delta: number) {
+  for (const intent of intents) {
+    scores[intent] += delta;
+  }
+}
+
+function applyRepeatedVibePenalty(
+  scores: Record<PlannerIntent, number>,
+  vibe: RecentMomentVibe,
+) {
+  switch (vibe) {
+    case 'carryover':
+      adjustIntentScores(scores, ['soft_afterglow'], -0.9);
+      adjustIntentScores(scores, ['public_claim'], -0.78);
+      adjustIntentScores(scores, ['life_album', 'object_caption', 'micro_status'], 0.22);
+      break;
+    case 'complaint':
+      adjustIntentScores(scores, ['tiny_complaint'], -0.92);
+      adjustIntentScores(scores, ['positive_share', 'object_caption'], 0.24);
+      adjustIntentScores(scores, ['micro_status'], 0.16);
+      break;
+    case 'abstract':
+      adjustIntentScores(scores, ['abstract_fragment'], -0.9);
+      adjustIntentScores(scores, ['positive_share', 'object_caption'], 0.2);
+      adjustIntentScores(scores, ['life_album'], 0.12);
+      break;
+    case 'cheerful':
+      adjustIntentScores(scores, ['positive_share'], -0.86);
+      adjustIntentScores(scores, ['tiny_complaint'], 0.16);
+      adjustIntentScores(scores, ['micro_status', 'object_caption'], 0.18);
+      break;
+    case 'music':
+      adjustIntentScores(scores, ['music_diary'], -1.02);
+      adjustIntentScores(scores, ['micro_status', 'object_caption', 'life_album'], 0.18);
+      break;
+    case 'diary':
+      adjustIntentScores(scores, ['night_journal'], -1.02);
+      adjustIntentScores(scores, ['life_album'], -0.34);
+      adjustIntentScores(scores, ['micro_status', 'object_caption'], 0.32);
+      break;
+    case 'life_fragment':
+    default:
+      adjustIntentScores(scores, ['life_album'], -0.46);
+      adjustIntentScores(scores, ['micro_status', 'tiny_complaint', 'positive_share'], 0.12);
+      break;
+  }
+}
+
+function pickPlannerIntent(
+  character: Character,
+  trigger: AutoMomentSchedulerTrigger,
+  seed: string,
+  recentVariety: RecentMomentVarietyProfile,
+): PlannerIntent {
   const stateText = getCharacterStateText(character);
   const effectiveSharedState = getEffectiveSharedState(character);
+  const scores = { ...BASE_INTENT_SCORES };
 
   if (effectiveSharedState.publicCarryover?.trim()) {
     if (/护短|占有|吃醋|张扬|强势|嘴硬|别扭/.test(stateText)) {
-      return 'public_claim';
+      adjustIntentScores(scores, ['public_claim'], 1.1);
+      adjustIntentScores(scores, ['soft_afterglow'], 0.48);
+    } else {
+      adjustIntentScores(scores, ['soft_afterglow'], 1.15);
     }
-    return 'soft_afterglow';
   }
 
   if (/bgm|音乐|耳机|歌|歌单/.test(stateText)) {
-    return 'music_diary';
+    adjustIntentScores(scores, ['music_diary'], 0.95);
+    adjustIntentScores(scores, ['object_caption'], 0.22);
   }
   if (/加班|工位|开会|上班|收工|报表|消息|电量/.test(stateText)) {
-    return 'tiny_complaint';
+    adjustIntentScores(scores, ['tiny_complaint'], 0.88);
+    adjustIntentScores(scores, ['micro_status'], 0.12);
   }
   if (/开心|顺利|轻松|满足|庆祝|治愈|好耶/.test(stateText)) {
-    return 'positive_share';
+    adjustIntentScores(scores, ['positive_share'], 0.8);
+    adjustIntentScores(scores, ['life_album'], 0.18);
   }
   if (/夜|晚|回家|路上|散步|失眠|风|街灯|路灯/.test(stateText)) {
-    return pickByHash(['micro_status', 'life_album', 'night_journal'], seed);
+    adjustIntentScores(scores, ['night_journal'], 0.56);
+    adjustIntentScores(scores, ['micro_status'], 0.42);
+    adjustIntentScores(scores, ['life_album'], 0.3);
   }
   if (/抽象|发疯|恍惚|怪|空空|漂浮/.test(stateText)) {
-    return 'abstract_fragment';
+    adjustIntentScores(scores, ['abstract_fragment'], 0.95);
   }
   if (/安静|慢热|记录|想很多|写字|小作文|文艺/.test(stateText)) {
-    return pickByHash(['micro_status', 'night_journal', 'abstract_fragment'], seed);
+    adjustIntentScores(scores, ['night_journal'], 0.36);
+    adjustIntentScores(scores, ['abstract_fragment'], 0.28);
+    adjustIntentScores(scores, ['micro_status'], 0.14);
   }
 
-  const defaultIntents: PlannerIntent[] = trigger === 'manual_refresh'
-    ? ['micro_status', 'life_album', 'positive_share', 'object_caption', 'tiny_complaint']
-    : ['micro_status', 'life_album', 'object_caption', 'tiny_complaint', 'positive_share'];
-
-  return pickByHash(defaultIntents, seed);
-}
-
-function buildRecentMomentVarietySections(recentMoments: MomentItem[] = []) {
-  const recent = recentMoments
-    .slice(0, 3)
-    .map((moment) => moment.content.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  if (recent.length === 0) {
-    return [];
+  if (trigger === 'manual_refresh') {
+    adjustIntentScores(scores, ['micro_status', 'object_caption'], 0.12);
+    adjustIntentScores(scores, ['positive_share'], 0.08);
+  } else if (trigger === 'app_foreground') {
+    adjustIntentScores(scores, ['micro_status'], 0.08);
+    adjustIntentScores(scores, ['life_album'], 0.04);
   }
 
-  const latestWasLong = recent[0].length >= 120;
+  if (recentVariety.longStreak >= 1) {
+    adjustIntentScores(scores, ['micro_status'], 0.56);
+    adjustIntentScores(scores, ['object_caption'], 0.34);
+    adjustIntentScores(scores, ['tiny_complaint'], 0.24);
+    adjustIntentScores(scores, ['soft_afterglow', 'public_claim'], 0.16);
+    adjustIntentScores(scores, ['night_journal'], -0.7);
+    adjustIntentScores(scores, ['life_album'], -0.3);
+    adjustIntentScores(scores, ['music_diary'], -0.48);
+  }
 
-  return [
-    `最近动态预览：${recent.map((item) => `「${item.slice(0, 48)}」`).join('；')}`,
-    '本次不要重复最近动态的开头、长度、段落结构或同一类生活事件。',
-    latestWasLong ? '上一条已经偏长，这次优先短一点、轻一点，除非当前状态强烈要求长文。' : '',
-  ].filter(Boolean);
+  if (recentVariety.longStreak >= 2) {
+    adjustIntentScores(scores, ['micro_status', 'object_caption'], 0.26);
+    adjustIntentScores(scores, ['night_journal'], -1.05);
+    adjustIntentScores(scores, ['life_album'], -0.44);
+    adjustIntentScores(scores, ['positive_share'], -0.18);
+  }
+
+  if (recentVariety.visualStreak >= 2) {
+    adjustIntentScores(scores, ['micro_status', 'tiny_complaint', 'soft_afterglow'], 0.2);
+    adjustIntentScores(scores, ['music_diary'], -0.9);
+    adjustIntentScores(scores, ['life_album'], -0.58);
+    adjustIntentScores(scores, ['positive_share'], -0.28);
+  }
+
+  if (recentVariety.latest && recentVariety.latestVibeStreak >= 2) {
+    applyRepeatedVibePenalty(scores, recentVariety.latest.vibe);
+  }
+
+  if (recentVariety.latestOpeningRepeatCount >= 2) {
+    adjustIntentScores(scores, ['micro_status', 'object_caption', 'tiny_complaint'], 0.12);
+    adjustIntentScores(scores, ['life_album', 'night_journal'], -0.12);
+  }
+
+  return PLANNER_INTENTS
+    .map((intent) => ({
+      intent,
+      score: scores[intent],
+      tiebreaker: hashString(`${seed}:${intent}`),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return right.tiebreaker - left.tiebreaker;
+    })[0]?.intent || 'micro_status';
 }
 
 function hasWorkCue(character: Character) {
   return /实习|工作|上班|下班|加班|工位|公司|办公室|开会|报表|同事|老板|客户/.test(getCharacterStateText(character));
+}
+
+function buildIntentGenerationHints(
+  intent: PlannerIntent,
+  recentVariety: RecentMomentVarietyProfile,
+  options: { preferTextOnly?: boolean } = {},
+) {
+  return buildRecentMomentShapeHints({
+    baseAllowedShapes: INTENT_ALLOWED_SHAPES[intent],
+    recentVariety,
+    preferTextOnly: options.preferTextOnly,
+  });
 }
 
 function buildIntentPlan(
@@ -177,11 +328,15 @@ function buildIntentPlan(
   const sharedState = getEffectiveSharedState(character);
   const presenceState = character.presenceState;
   const workCue = hasWorkCue(character);
+  const recentVariety = analyzeRecentMomentVariety(options.recentMoments || []);
+  const generationHints = buildIntentGenerationHints(intent, recentVariety);
+  const preferShortText = recentVariety.longStreak >= 1;
+  const preferTextOnly = generationHints.forceTextOnly === true;
   const baseSections = [
     sharedState?.currentActivity?.trim() ? `当前生活状态：${sharedState.currentActivity.trim()}` : '',
     presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
     sharedState?.publicCarryover?.trim() ? `公开可见余波：${sharedState.publicCarryover.trim()}` : '',
-    ...buildRecentMomentVarietySections(options.recentMoments),
+    ...buildRecentMomentVarietyPromptLines(recentVariety),
     '写得像真实朋友圈，不要过度工整，不要写成统一模板。',
     '允许长短不一、允许分段、允许碎碎念，也允许只写一两句。',
     '没有在角色设定、当前生活状态或公开余波里明确出现的事实，不要临时新造室友、同事、老板、同学、家人、宿舍、固定工作地点或宠物。',
@@ -194,12 +349,16 @@ function buildIntentPlan(
         characterId: character.id,
         requestText: '自主发动态：日常补算；意图=一句轻状态；形态=短状态/一到三句；主题=此刻一个具体物件、天气、身体状态或刚冒出来的小念头。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'object_caption':
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=生活物件配文；形态=图文短配文或两三句；主题=手边看得见的一个东西、光线、屏幕、饮料、衣服、桌面或镜子。',
+        requestText: preferTextOnly
+          ? '自主发动态：日常补算；意图=生活物件配文；形态=纯文字短配文或两三句；主题=手边看得见的一个东西、光线、屏幕、饮料、衣服、桌面或镜子。'
+          : '自主发动态：日常补算；意图=生活物件配文；形态=图文短配文或两三句；主题=手边看得见的一个东西、光线、屏幕、饮料、衣服、桌面或镜子。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'tiny_complaint':
       return {
@@ -208,49 +367,69 @@ function buildIntentPlan(
           ? '自主发动态：日常补算；意图=生活里的小吐槽；形态=短碎碎念或两三句；主题=今天的消耗、工作/实习里的小卡顿、收住之后的回落。'
           : '自主发动态：日常补算；意图=生活里的小吐槽；形态=短碎碎念或两三句；主题=今天的消耗、消息太多、电量太低、路上小麻烦、手边东西不顺。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'night_journal':
       return {
         characterId: character.id,
         requestText: '自主发动态：日常补算；意图=短夜记；形态=短状态或两小段以内；主题=夜里的一个具体画面、路灯、窗外、手机屏幕、风或突然安静下来的状态。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'positive_share':
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=积极分享；形态=图文配文或分段短文；主题=今天几件小开心、小顺利、小满足。',
+        requestText: preferTextOnly || preferShortText
+          ? '自主发动态：日常补算；意图=积极分享；形态=短状态或两小段；主题=今天几件小开心、小顺利、小满足。'
+          : '自主发动态：日常补算；意图=积极分享；形态=图文配文或分段短文；主题=今天几件小开心、小顺利、小满足。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'abstract_fragment':
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=抽象片段；形态=分段短文或怪一点的碎片记录；主题=今天奇怪的念头、恍惚、空掉、又慢慢回来的感觉。',
+        requestText: preferShortText
+          ? '自主发动态：日常补算；意图=抽象片段；形态=短状态或两小段的怪一点记录；主题=今天奇怪的念头、恍惚、空掉、又慢慢回来的感觉。'
+          : '自主发动态：日常补算；意图=抽象片段；形态=分段短文或怪一点的碎片记录；主题=今天奇怪的念头、恍惚、空掉、又慢慢回来的感觉。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'music_diary':
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=配乐日记；形态=相册/BGM 配文；主题=耳机里那首歌、路上、照片和今天的小片段。',
+        requestText: preferTextOnly
+          ? '自主发动态：日常补算；意图=配乐碎记；形态=纯文字短状态或两小段；主题=耳机里那首歌、路上和今天的小片段。'
+          : '自主发动态：日常补算；意图=配乐日记；形态=相册/BGM 配文；主题=耳机里那首歌、路上、照片和今天的小片段。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'soft_afterglow':
       return {
         characterId: character.id,
         requestText: '自主发动态：日常补算；意图=关系余波；形态=公开动态里带一点让人自己对号入座的关系余味；主题=回温、被记住、被安抚、心情松下来一点。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'public_claim':
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=公开偏爱/轻微站位；形态=分段短文或图文配文；主题=护短、偏心、立场明显，但仍然像公开动态而不是私聊宣言。',
+        requestText: preferTextOnly || preferShortText
+          ? '自主发动态：日常补算；意图=公开偏爱/轻微站位；形态=短状态或两小段；主题=护短、偏心、立场明显，但仍然像公开动态而不是私聊宣言。'
+          : '自主发动态：日常补算；意图=公开偏爱/轻微站位；形态=分段短文或图文配文；主题=护短、偏心、立场明显，但仍然像公开动态而不是私聊宣言。',
         extraPromptSections: baseSections,
+        generationHints,
       };
     case 'life_album':
     default:
       return {
         characterId: character.id,
-        requestText: '自主发动态：日常补算；意图=生活碎片；形态=图集配文、短状态或分段记录；主题=今天普通但值得记住的小事。',
+        requestText: preferTextOnly
+          ? '自主发动态：日常补算；意图=生活碎片；形态=纯文字短状态或两小段记录；主题=今天普通但值得记住的小事。'
+          : preferShortText
+            ? '自主发动态：日常补算；意图=生活碎片；形态=短状态或分段短记录；主题=今天普通但值得记住的小事。'
+            : '自主发动态：日常补算；意图=生活碎片；形态=图集配文、短状态或分段记录；主题=今天普通但值得记住的小事。',
         extraPromptSections: baseSections,
+        generationHints,
       };
   }
 }
@@ -361,11 +540,13 @@ export function buildAutoMomentPlan(options: {
 
   return selectedCandidates.map(({ character, latestMomentAt }) => {
     const recentMoments = getRecentMomentsByAuthor(character.id, moments);
+    const recentVariety = analyzeRecentMomentVariety(recentMoments);
     const effectiveSharedState = getEffectiveSharedState(character);
     const intent = pickPlannerIntent(
       character,
       trigger,
       `${character.id}:${effectiveSharedState.currentActivity || ''}:${effectiveSharedState.publicCarryover || ''}:${character.presenceState?.recentLifeBeat || ''}:${latestMomentAt}:${recentMoments.length}`,
+      recentVariety,
     );
     return buildIntentPlan(character, intent, { recentMoments });
   });

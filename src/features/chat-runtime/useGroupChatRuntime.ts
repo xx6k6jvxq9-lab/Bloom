@@ -1502,6 +1502,8 @@ export function useGroupChatRuntime({
       messages: runtimeMessages,
       temperature: 0.7,
       allowBracketActions: shouldAllowBracketActions(params.speaker),
+      toneGuardMode: 'character_chat',
+      retryTemperature: 0.82,
       onInvalid: (result) => {
         console.warn('[group-chat] invalid generated reply rejected', {
           mode: params.mode,

@@ -114,6 +114,9 @@ function buildPlannedSettlementRecordCounts(input: PersistSceneSettlementInput &
 export async function persistSceneSettlement(
   input: PersistSceneSettlementInput,
 ): Promise<PersistSceneSettlementResult> {
+  // This is the primary structured memory write entry for runtime scene settlement.
+  // Business code should prefer this shared path over ad-hoc writes so that
+  // snapshot mirroring, structured records, and diagnostics stay in sync.
   const timestamp = input.timestamp
     ?? input.settlement.sharedContextSnapshots[0]?.settledAt
     ?? Date.now();

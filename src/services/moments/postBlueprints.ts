@@ -31,6 +31,7 @@ type BuildMomentPostBlueprintOptions = {
   mode: MomentPostMode;
   forceTextOnly?: boolean;
   allowedShapes?: MomentPostShape[];
+  blockedShapes?: MomentPostShape[];
 };
 
 type ShapeDefinition = Omit<MomentPostBlueprint, 'shape'>;
@@ -254,6 +255,11 @@ function resolveShapeCandidates(options: BuildMomentPostBlueprintOptions): Momen
 
   if (options.forceTextOnly) {
     candidates = candidates.filter((shape) => shape !== 'photo_dump' && shape !== 'music_diary');
+  }
+
+  if (options.blockedShapes?.length) {
+    const blockedShapeSet = new Set(options.blockedShapes);
+    candidates = candidates.filter((shape) => !blockedShapeSet.has(shape));
   }
 
   if (options.allowedShapes?.length) {

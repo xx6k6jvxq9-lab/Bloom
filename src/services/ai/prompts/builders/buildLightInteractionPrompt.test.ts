@@ -53,3 +53,56 @@ test('buildLightInteractionPrompt keeps direct character-initiated poke bubbles 
   assert.match(prompt, /你：你在干嘛/);
   assert.match(prompt, /小悟：刚忙完/);
 });
+
+test('buildLightInteractionPrompt keeps serious direct poke scenes expressive without forbidding counterAction', () => {
+  const responderCharacter = {
+    id: 'char-1',
+    name: '小悟',
+    maxReplies: 3,
+    signature: '慢热，边界感强。',
+  } as DirectLightInteractionGenerationInput['responderCharacter'];
+  const prompt = buildLightInteractionPrompt({
+    activeConfig: { provider: 'gemini', model: 'test-model' } as DirectLightInteractionGenerationInput['activeConfig'],
+    type: 'poke',
+    scene: 'direct',
+    actor: {
+      role: 'user',
+      label: '你',
+    },
+    responderCharacter,
+    target: {
+      label: '小悟',
+      character: responderCharacter,
+    },
+    sceneInput: {
+      sections: [],
+      recentContext: {
+        shortTermSummary: '最近气氛偏低落，正在说身体不舒服。',
+      },
+    } as DirectLightInteractionGenerationInput['sceneInput'],
+    recentMessages: [
+      {
+        role: 'user',
+        text: '我今天真的很难受。',
+        timestamp: 1,
+      },
+      {
+        role: 'model',
+        text: '先休息。',
+        timestamp: 2,
+      },
+    ],
+  });
+
+  assert.match(prompt, /本轮建议手感：偏严肃/);
+  assert.match(prompt, /如果这轮要回拍，也要顺着当前情绪来/);
+  assert.match(prompt, /counterAction\.type` 只能是 `"none"` 或 `"poke_back"`/);
+});
+
+test('buildLightInteractionPrompt allows richer direct character-initiated system lines toward the user', () => {
+  const prompt = buildLightInteractionPrompt(createCharacterInitiatedDirectInput());
+
+  assert.match(prompt, /拍了拍正在走神的你/);
+  assert.match(prompt, /也允许给 你 补一个很短的当下状态描述/);
+  assert.match(prompt, /小悟拍了拍还没回神的你/);
+});

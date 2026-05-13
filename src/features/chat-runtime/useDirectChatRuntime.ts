@@ -69,7 +69,11 @@ import {
   type AssistantStickerContext,
 } from '../../services/chat/assistantStickerPicker';
 import { getStickerMetadata } from '../../services/chat/stickerMetadata';
-import { generateLightInteraction } from '../../services/chat/generateLightInteraction';
+import {
+  generateLightInteraction,
+  parseLightInteractionResult,
+} from '../../services/chat/generateLightInteraction';
+import type { LightInteractionResult } from '../../services/chat/lightInteractionTypes';
 import {
   extractTransferAmountText as extractTransferAmount,
   formatTransferMessageForContext,
@@ -102,6 +106,11 @@ import { getLegacyTranslationParts, normalizeBracketActionTextForPrompt, sanitiz
 import { isUsableChatText, normalizeChatPunctuationNoise } from '../../services/chat/messageHygiene';
 import { decideTransferOutcome, generateTransferEventReaction } from '../../services/chat/decideTransferOutcome';
 import { collectRecentDirectPokeState } from '../../services/chat/lightInteractionHistory';
+import {
+  buildDirectProactivePokeProtocolPrompt,
+  evaluateDirectProactivePokeGate,
+  extractDirectProactiveLightInteractionPayload,
+} from '../../services/chat/directProactiveLightInteraction';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
@@ -1762,7 +1771,6 @@ type UseDirectChatRuntimeResult = BaseSessionRuntimeState & {
   handleSend: (overrideText?: string | any, locationData?: { name: string; address?: string; isVirtual?: boolean }) => Promise<void>;
   handleSendRef: React.MutableRefObject<(overrideText?: string | any, locationData?: any) => Promise<void>>;
   sendPokeInteraction: () => Promise<void>;
-  sendCharacterPokeInteraction: () => Promise<void>;
   requestManualReply: () => void;
   handleVoiceCallAIResponse: (userText: string) => Promise<{
     text: string;
@@ -1834,6 +1842,7 @@ const DIRECT_PROACTIVE_SPEAKING_PROMPT = [
   '## 本轮任务：单聊主动开口',
   '这次不是回复用户刚刚的问题，而是你作为这个角色在单聊里主动给用户发一条自然消息。',
   '可以基于你的当前生活状态、时间、地点、天气、最近聊天余波、关系记忆、世界书、面具和角色边界来开口。',
+  '如果系统给了“角色主动带线参考”，把它当作可选方向，不是硬任务；挑一条最像你本人此刻会顺手提起的线就够了。',
   '时间认知必须以当前语境里的时间来源为准：如果当前时间来源是感知时间/虚拟时间，就按感知时间推进角色状态；如果没有开启感知时间，才按现实时间推进。',
   '如果距离上一条可见消息已经过了一段时间，你必须把这次开口当作时间真实流逝后的重新出现，不要表现得像上一句话刚刚发生。',
   '优先像微信联系人一样发来一两句生活感强的消息：此刻在做什么、刚看到什么、突然想到用户、接上次没聊完的话题、轻轻关心一下，或分享一点自己的状态。',
@@ -2316,6 +2325,94 @@ export function useDirectChatRuntime({
     })();
   }, [attachAudioToModelMessageTimestamp, character, getLatestModelReplySegment]);
 
+  function commitDirectPokeInteraction(params: {
+    baseHistory: ChatMessage[];
+    actorRole: 'user' | 'character';
+    actorLabel: string;
+    targetLabel: string;
+    interactionResult: LightInteractionResult;
+    upcomingStreak: number;
+    continuityMode: 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
+    shortTermSummary?: string;
+  }) {
+    const characterDisplayLabel = character.remarkName?.trim() || character.name;
+    const baseTimestamp = Date.now();
+    const interactionId = `poke:${character.id}:${baseTimestamp}`;
+    const interactionMeta = {
+      type: 'poke' as const,
+      scene: 'direct' as const,
+      interactionId,
+      actorRole: params.actorRole,
+      actorLabel: params.actorLabel,
+      targetLabel: params.targetLabel,
+      mood: params.interactionResult.interactionState?.mood,
+      streak: params.interactionResult.interactionState?.streak ?? params.upcomingStreak,
+      descriptors: params.interactionResult.interactionState?.recentDescriptors,
+      nextActions: params.interactionResult.nextActions,
+      counterActionType: params.actorRole === 'user'
+        ? params.interactionResult.counterAction?.type ?? 'none'
+        : 'none',
+    };
+    const normalizedCounterSystemLine = params.actorRole === 'user' && params.interactionResult.counterAction?.type === 'poke_back'
+      ? (
+          params.interactionResult.counterAction.systemLine?.trim().includes('拍')
+            ? params.interactionResult.counterAction.systemLine.trim()
+            : `${characterDisplayLabel}拍了拍你`
+        )
+      : '';
+    const nextMessages: ChatMessage[] = [
+      {
+        role: 'model',
+        text: params.interactionResult.systemLine,
+        timestamp: baseTimestamp,
+        isSystem: true,
+        lightInteractionMeta: {
+          ...interactionMeta,
+          step: 'system',
+        },
+      },
+      ...params.interactionResult.assistantBubbles.map((bubble, index) => ({
+        role: 'model' as const,
+        text: bubble,
+        timestamp: baseTimestamp + index + 1,
+        lightInteractionMeta: {
+          ...interactionMeta,
+          step: 'assistant' as const,
+        },
+      })),
+      ...(normalizedCounterSystemLine
+        ? [{
+            role: 'model' as const,
+            text: normalizedCounterSystemLine,
+            timestamp: baseTimestamp + params.interactionResult.assistantBubbles.length + 1,
+            isSystem: true,
+            lightInteractionMeta: {
+              ...interactionMeta,
+              step: 'counter' as const,
+            },
+          }]
+        : []),
+    ];
+    const finalHistory = [...params.baseHistory, ...nextMessages];
+    commitHistory(finalHistory);
+
+    if (params.interactionResult.assistantBubbles.length > 0) {
+      queueAutoAudioForLatestModelReply(
+        finalHistory,
+        params.actorRole === 'character' ? '主动拍一拍' : '拍一拍',
+      );
+    }
+
+    syncCharacterRuntimeState({
+      history: finalHistory,
+      continuityMode: params.continuityMode,
+      shortTermSummary: params.shortTermSummary,
+      latestAssistantText: params.interactionResult.assistantBubbles[params.interactionResult.assistantBubbles.length - 1],
+    });
+
+    return finalHistory;
+  }
+
   const applyAvatarAction = useCallback((
     action: ParsedAvatarAction | null,
     sourceHistory: ChatMessage[],
@@ -2398,6 +2495,9 @@ export function useDirectChatRuntime({
         const latestPendingUserMessage = latestPendingUserBlock
           ? historySnapshot[latestPendingUserBlock.end]
           : null;
+        const proactiveReferenceText = mode === 'proactive'
+          ? getLatestVisibleDirectUserText(historySnapshot)
+          : (latestPendingUserMessage?.text || '');
         const isInnerVoiceRequest = !!latestPendingUserMessage?.isInnerVoice;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
           const displayText = parseAvatarActionBlock(text).displayText;
@@ -2507,8 +2607,8 @@ export function useDirectChatRuntime({
             perceptionPrompt,
             directChatHistory,
             chatGroups,
-            worldBookQuery: latestPendingUserMessage?.text,
-            latestUserText: latestPendingUserMessage?.text,
+            worldBookQuery: proactiveReferenceText,
+            latestUserText: proactiveReferenceText,
           });
           const directSharedState = chatSceneInput.recentContext
             ? buildPersistedSharedCharacterState({
@@ -2540,6 +2640,15 @@ export function useDirectChatRuntime({
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
+          const recentPokeState = collectRecentDirectPokeState(historySnapshot);
+          const proactivePokeGate = mode === 'proactive'
+            ? evaluateDirectProactivePokeGate({
+              character,
+              messages: historySnapshot,
+              recentContext: chatSceneInput.recentContext,
+              recentPokeState,
+            })
+            : null;
           const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
           const directStickerContext = {
             ...buildDirectStickerUsageContext(historySnapshot),
@@ -2548,7 +2657,7 @@ export function useDirectChatRuntime({
           runtimeStickerPool = resolveAssistantStickerCandidates(availableStickers, {
             character,
             scene: 'direct',
-            latestUserText: latestPendingUserMessage?.text,
+            latestUserText: proactiveReferenceText,
             recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
             sceneHints: chatSceneInput.sections || [],
             ...directStickerContext,
@@ -2562,6 +2671,12 @@ export function useDirectChatRuntime({
               buildDirectCharacterDecisionPromptSection(directCharacterDecision),
               directSpecialReplyPrompt,
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
+              mode === 'proactive' && proactivePokeGate?.shouldOffer
+                ? buildDirectProactivePokeProtocolPrompt({
+                  characterLabel: character.remarkName?.trim() || character.name,
+                  gate: proactivePokeGate,
+                })
+                : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
               'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. Use it sparingly and only when it helps the chat feel more alive.',
               buildOpenLoopRegistryPrompt({
@@ -2576,14 +2691,14 @@ export function useDirectChatRuntime({
               shouldInjectAutonomousAvatarPrompt({
                 character,
                 messages: historySnapshot,
-                latestUserText: latestPendingUserMessage?.text,
+                latestUserText: proactiveReferenceText,
               })
                 ? buildAutonomousAvatarLibraryPromptSection(character)
                 : '',
               buildAssistantStickerPromptSection(runtimeStickerPool, {
                 character,
                 scene: 'direct',
-                latestUserText: latestPendingUserMessage?.text,
+                latestUserText: proactiveReferenceText,
                 recentTexts: buildStickerRecentTexts(contextLayers.liveMessages),
                 sceneHints: chatSceneInput.sections || [],
                 ...directStickerContext,
@@ -2637,6 +2752,8 @@ export function useDirectChatRuntime({
               messages: runtimeMessages,
               allowBracketActions: shouldAllowBracketActions(character),
               allowStructuredProtocols: true,
+              toneGuardMode: 'character_chat',
+              retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
               onInvalid: (result) => {
                 console.warn('[direct-chat] invalid generated reply rejected', {
                   reason: result.reason,
@@ -2650,8 +2767,59 @@ export function useDirectChatRuntime({
             throw new Error(`模型返回无效内容：${finalQualityResult.reason || 'unknown'}`);
           }
 
-          if (structuredBilingualReplyEnabled && !hasRequiredDirectReplyTranslation(finalQualityResult.cleanedText)) {
+          const proactiveLightInteractionPayload = mode === 'proactive'
+            ? extractDirectProactiveLightInteractionPayload(finalQualityResult.cleanedText)
+            : null;
+
+          if (
+            structuredBilingualReplyEnabled
+            && !proactiveLightInteractionPayload
+            && !hasRequiredDirectReplyTranslation(finalQualityResult.cleanedText)
+          ) {
             throw new Error('模型未按双语协议返回可显示的中文翻译。');
+          }
+
+          if (mode === 'proactive') {
+            if (proactiveLightInteractionPayload) {
+              const characterDisplayLabel = character.remarkName?.trim() || character.name;
+              const interactionResult = parseLightInteractionResult(proactiveLightInteractionPayload, {
+                activeConfig,
+                type: 'poke',
+                scene: 'direct',
+                actor: {
+                  role: 'character',
+                  label: characterDisplayLabel,
+                  characterId: character.id,
+                },
+                responderCharacter: character,
+                target: {
+                  character,
+                  label: '你',
+                },
+                sceneInput: chatSceneInput,
+                recentMessages: contextLayers.liveMessages,
+                recentSystemLines: recentPokeState.recentSystemLines,
+                recentDescriptors: recentPokeState.recentDescriptors,
+                latestMood: recentPokeState.latestMood,
+                latestNextActions: recentPokeState.latestNextActions,
+                latestCounterActionType: recentPokeState.latestCounterActionType,
+                upcomingStreak: recentPokeState.upcomingStreak,
+              });
+
+              commitDirectPokeInteraction({
+                baseHistory: historySnapshot,
+                actorRole: 'character',
+                actorLabel: characterDisplayLabel,
+                targetLabel: '你',
+                interactionResult,
+                upcomingStreak: recentPokeState.upcomingStreak,
+                continuityMode: characterTemporalState.continuityMode,
+                shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+              });
+              activeAssistantMessageIdRef.current = null;
+              activeAssistantRenderCountRef.current = 0;
+              return;
+            }
           }
 
           currentResponseText = applyDirectGameCardBridge({
@@ -3151,6 +3319,8 @@ export function useDirectChatRuntime({
           messages: runtimeMessages,
           allowBracketActions: shouldAllowBracketActions(character),
           allowStructuredProtocols: true,
+          toneGuardMode: 'character_chat',
+          retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
           onProgress: (streamingText) => {
             if (activeGenerationIdRef.current !== generationId) {
               return;
@@ -3551,78 +3721,15 @@ export function useDirectChatRuntime({
           return;
         }
 
-        const baseTimestamp = Date.now();
-        const interactionId = `poke:${character.id}:${baseTimestamp}`;
-        const interactionMeta = {
-          type: 'poke' as const,
-          scene: 'direct' as const,
-          interactionId,
+        commitDirectPokeInteraction({
+          baseHistory,
           actorRole,
           actorLabel,
           targetLabel,
-          mood: interactionResult.interactionState?.mood,
-          streak: interactionResult.interactionState?.streak ?? recentPokeState.upcomingStreak,
-          descriptors: interactionResult.interactionState?.recentDescriptors,
-          nextActions: interactionResult.nextActions,
-          counterActionType: actorRole === 'user'
-            ? interactionResult.counterAction?.type ?? 'none'
-            : 'none',
-        };
-        const normalizedCounterSystemLine = actorRole === 'user' && interactionResult.counterAction?.type === 'poke_back'
-          ? (
-              interactionResult.counterAction.systemLine?.trim().includes('拍')
-                ? interactionResult.counterAction.systemLine.trim()
-                : `${characterDisplayLabel}拍了拍你`
-            )
-          : '';
-        const nextMessages: ChatMessage[] = [
-          {
-            role: 'model',
-            text: interactionResult.systemLine,
-            timestamp: baseTimestamp,
-            isSystem: true,
-            lightInteractionMeta: {
-              ...interactionMeta,
-              step: 'system',
-            },
-          },
-          ...interactionResult.assistantBubbles.map((bubble, index) => ({
-            role: 'model' as const,
-            text: bubble,
-            timestamp: baseTimestamp + index + 1,
-            lightInteractionMeta: {
-              ...interactionMeta,
-              step: 'assistant' as const,
-            },
-          })),
-          ...(normalizedCounterSystemLine
-            ? [{
-                role: 'model' as const,
-                text: normalizedCounterSystemLine,
-                timestamp: baseTimestamp + interactionResult.assistantBubbles.length + 1,
-                isSystem: true,
-                lightInteractionMeta: {
-                  ...interactionMeta,
-                  step: 'counter' as const,
-                },
-              }]
-            : []),
-        ];
-        const finalHistory = [...baseHistory, ...nextMessages];
-        commitHistory(finalHistory);
-
-        if (interactionResult.assistantBubbles.length > 0) {
-          queueAutoAudioForLatestModelReply(
-            finalHistory,
-            actorRole === 'character' ? 'TA拍你' : '拍一拍',
-          );
-        }
-
-        syncCharacterRuntimeState({
-          history: finalHistory,
+          interactionResult,
+          upcomingStreak: recentPokeState.upcomingStreak,
           continuityMode: characterTemporalState.continuityMode,
           shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
-          latestAssistantText: interactionResult.assistantBubbles[interactionResult.assistantBubbles.length - 1],
         });
       } catch (interactionError) {
         if (activeGenerationIdRef.current !== generationId || !isCurrent()) {
@@ -3640,7 +3747,6 @@ export function useDirectChatRuntime({
     character,
     characters,
     chatGroups,
-    commitHistory,
     coupleSpace,
     directChatHistory,
     isLoading,
@@ -3656,10 +3762,6 @@ export function useDirectChatRuntime({
 
   const sendPokeInteraction = useCallback(async () => {
     await runDirectPokeInteraction('user');
-  }, [runDirectPokeInteraction]);
-
-  const sendCharacterPokeInteraction = useCallback(async () => {
-    await runDirectPokeInteraction('character');
   }, [runDirectPokeInteraction]);
 
   const sendCoupleSpaceInvitation = useCallback(() => {
@@ -4264,7 +4366,6 @@ export function useDirectChatRuntime({
     handleSend,
     handleSendRef,
     sendPokeInteraction,
-    sendCharacterPokeInteraction,
     requestManualReply,
     handleVoiceCallAIResponse,
     sendImageMessage,

@@ -16,13 +16,13 @@ function createCharacter(overrides: Partial<Character> = {}): Character {
     gender: overrides.gender ?? 'other',
     avatar: overrides.avatar ?? '',
     setting: overrides.setting ?? [
-      '浠栨槸鍢寸‖鍙堥粡浜虹殑骞翠笂锛屽钩鏃惰璇濈煭锛屼笉鐖辫В閲娿€?',
-      '琚喎钀戒細绔嬪埢鐑﹁簛锛屽父璇粹€滆繃鏉モ€濃€滃埆瑁呮病鐪嬭鎴戔€濄€?',
+      '他是嘴硬又黏人的年上，平时说话短，不爱解释。',
+      '被冷落会立刻烦躁，常说“过来”“别装没看见我”。',
     ].join('\n'),
-    openingRemark: overrides.openingRemark ?? '鎬庝箞鐜板湪鎵嶆潵銆?',
-    signature: overrides.signature ?? '鎳掑緱鍝勪汉锛屼絾浼氱瓑浣犮€?',
-    boundaryPack: overrides.boundaryPack ?? '鍏崇郴娌″埌鏃朵笉瑕佺獊鐒惰杩囩伀鐨勮瘽銆?',
-    expressionStyle: overrides.expressionStyle ?? '璇磋瘽鍋忕煭鍙ワ紝鎯呯华涓婃潵浼氳繛鍙戜袱涓夋潯銆?',
+    openingRemark: overrides.openingRemark ?? '怎么现在才来？',
+    signature: overrides.signature ?? '懒得哄人，但会等你。',
+    boundaryPack: overrides.boundaryPack ?? '关系没到时不要突然说过火的话。',
+    expressionStyle: overrides.expressionStyle ?? '说话偏短句，情绪上来会连发两三条。',
     ...overrides,
   } as Character;
 }
@@ -40,14 +40,14 @@ test('buildChatSceneInput injects direct persona guide and opening anchors into 
     directChatHistory: {
       alpha: [],
     },
-    latestUserText: '浣犲湪骞插槢',
+    latestUserText: '你在干嘛',
   });
 
-  assert.equal(sceneInput.characterCore?.openingRemark, '鎬庝箞鐜板湪鎵嶆潵銆?');
-  assert.equal(sceneInput.characterCore?.signature, '鎳掑緱鍝勪汉锛屼絾浼氱瓑浣犮€?');
+  assert.equal(sceneInput.characterCore?.openingRemark, '怎么现在才来？');
+  assert.equal(sceneInput.characterCore?.signature, '懒得哄人，但会等你。');
   assert.match(sceneInput.characterCore?.personaGuidePrompt || '', /## 原文防漏锚点/);
   assert.match(sceneInput.characterCore?.personaGuidePrompt || '', /\[开口语感锚点\]/);
-  assert.match(sceneInput.characterCore?.personaGuidePrompt || '', /\[原文里的高优先级片段\]/);
+  assert.match(sceneInput.characterCore?.personaGuidePrompt || '', /\[说话与反应锚点\]/);
 });
 
 test('buildChatSceneInput can recall memory from recent transcript even when latest user text is vague', async () => {
@@ -141,4 +141,32 @@ test('buildChatSceneInput includes direct scene progress when recent replies are
   assert.match(joinedSections, /## 单聊推进状态/);
   assert.match(joinedSections, /本轮重复提醒/);
   assert.match(joinedSections, /允许的人设复读/);
+});
+
+test('buildChatSceneInput includes initiative guidance for proactive life-line carryover', () => {
+  const sceneInput = buildChatSceneInput({
+    character: createCharacter(),
+    userName: 'User',
+    directChatHistory: {
+      alpha: [
+        {
+          role: 'user',
+          text: '你刚刚不是还在忙吗',
+          timestamp: Date.now() - 3600_000,
+        },
+        {
+          role: 'model',
+          text: '嗯，刚忙完。',
+          timestamp: Date.now() - 3500_000,
+        },
+      ],
+    },
+    latestUserText: '你刚在干嘛',
+  });
+
+  const joinedSections = (sceneInput.sections || []).join('\n\n');
+
+  assert.match(joinedSections, /## 角色主动带线参考/);
+  assert.match(joinedSections, /可以主动带出的方向/);
+  assert.match(joinedSections, /主动不等于必须热情/);
 });
