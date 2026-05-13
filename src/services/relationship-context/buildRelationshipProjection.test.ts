@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Character } from '../../types';
+import { resetMemoryRecordData, saveMemoryRecordData } from '../../features/persistence/memoryRecordStore';
+import { STORAGE_KEYS } from '../../features/persistence/storageKeys';
+import {
+  clearPersistenceKeys,
+  installPersistenceTestEnvironment,
+} from '../../features/persistence/testPersistenceHarness';
 import { buildRelationshipProjection } from './buildRelationshipProjection';
 
 function createCharacter(overrides: Partial<Character>): Character {
@@ -85,4 +91,72 @@ test('buildRelationshipProjection also reads reverse-side manual public-thread h
   assert.match(summary, /style warm/);
   assert.match(summary, /intimate no/);
   assert.match(summary, /ownership no/);
+});
+
+test('buildRelationshipProjection can read scene signals from structured settlement records', async () => {
+  installPersistenceTestEnvironment();
+  resetMemoryRecordData();
+  await clearPersistenceKeys([STORAGE_KEYS.memoryRecords]);
+  const now = Date.now();
+
+  await saveMemoryRecordData({
+    updatedAt: now,
+    recordsByCharacterId: {
+      alpha: [
+        {
+          id: 'wave-1',
+          kind: 'relationship_wave',
+          sourceScene: 'dating',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'alpha',
+          sourceEventIds: [],
+          characterIds: ['alpha'],
+          visibility: 'cross_scene_readable',
+          stability: 'situational',
+          decayHint: 'medium',
+          summary: '刚结束的约会留下了一点关系余波',
+          timestamp: now - 1_000,
+          relationType: 'character_user',
+          eventKind: 'bonding',
+          valence: 'positive',
+          intensity: 'medium',
+          sourceCharacterId: 'alpha',
+          targetUser: true,
+        },
+        {
+          id: 'fact-plan-1',
+          kind: 'fact',
+          sourceScene: 'dating',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'alpha',
+          sourceEventIds: [],
+          characterIds: ['alpha'],
+          visibility: 'cross_scene_readable',
+          stability: 'temporary',
+          decayHint: 'medium',
+          summary: '这场约会里还可能算数的约定：下周一起吃饭',
+          timestamp: now - 800,
+          factType: 'plan',
+          subjectType: 'character',
+          subjectId: 'alpha',
+          confidence: 'explicit',
+          relatedCharacterIds: ['alpha'],
+        },
+      ],
+    },
+  });
+
+  const alpha = createCharacter({
+    id: 'alpha',
+    name: 'Alpha',
+  });
+
+  const projection = buildRelationshipProjection({
+    character: alpha,
+    userName: 'User',
+  });
+
+  assert.equal((projection.sceneScopedSignals.relationshipResidue || []).length > 0, true);
+  assert.equal((projection.sceneScopedSignals.taskResidue || []).length > 0, true);
+  assert.match(projection.sceneScopedSignals.sharedRecentRelationshipSummary || '', /下周一起吃饭|关系余波/);
 });

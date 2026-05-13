@@ -11,6 +11,7 @@ import type {
   WorldBookEntry,
 } from '../../types';
 import type { BuildChatPromptOptions } from '../ai/prompts/builders/buildChatPrompt';
+import { buildDirectPersonaGuide } from '../ai/prompts/character/buildDirectPersonaGuide';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildRelationshipProjection } from '../relationship-context/buildRelationshipProjection';
 import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
@@ -19,9 +20,11 @@ import { buildCharacterTemporalState } from '../relationship-time/buildCharacter
 import { buildTemporalSnapshotPrompt } from '../relationship-time/buildTemporalSnapshotPrompt';
 import { buildPresenceSnapshotPrompt } from '../relationship-time/buildPresenceSnapshotPrompt';
 import { filterTopicAnchorsForPrompt, suppressTopicResidualsForPrompt } from '../chat/topicRecall';
+import { buildDirectSceneProgress, formatDirectSceneProgressForPrompt } from '../chat/buildDirectSceneProgress';
 import { decayShortTermSummaryForContinuity } from '../memory/buildShortTermSummary';
 import { buildResolvedOpenLoopRegistry } from '../memory/buildResolvedOpenLoopRegistry';
-import { buildMemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
+import { buildMemoryPromptView, type MemoryPromptQueryText } from '../memory/buildMemoryRetrievalPrompt';
+import { recordMemoryReadDiagnostic } from '../memory/memoryDiagnostics';
 import { applyChatPromptBudget } from './buildChatPromptBudget';
 
 type BuildChatSceneInputParams = {
@@ -134,6 +137,7 @@ function buildExtraSections(input: {
   sharedCharacterStatePrompt?: string;
   temporalStatePrompt?: string;
   continuityPrompt?: string;
+  sceneProgressPrompt?: string;
   activeDatingPrompt?: string;
   expressionStyle?: string;
   boundaryPack?: string;
@@ -144,6 +148,7 @@ function buildExtraSections(input: {
     input.sharedCharacterStatePrompt || '',
     input.temporalStatePrompt || '',
     input.continuityPrompt || '',
+    input.sceneProgressPrompt || '',
     input.activeDatingPrompt || '',
     input.expressionStyle
       ? ['## 表达风格与互动手感', input.expressionStyle].join('\n')
@@ -158,6 +163,19 @@ function buildExtraSections(input: {
       ? ['## 当前聊天场景补充', input.chatSceneHint].join('\n')
       : '',
   ].filter(Boolean);
+}
+
+function buildRecentTranscriptQueryText(
+  messages: Array<{ text?: string }>,
+  limit: number,
+): string | undefined {
+  const transcript = messages
+    .slice(-limit)
+    .map((message) => message.text?.trim() || '')
+    .filter(Boolean)
+    .join(' ');
+
+  return transcript.trim() || undefined;
 }
 
 function buildContinuityResumePrompt(state: ReturnType<typeof buildCharacterTemporalState>): string {
@@ -323,6 +341,20 @@ export function buildChatSceneInput(
       .map((message) => message.text?.trim() || '')
       .filter(Boolean),
   });
+  const directPersonaGuide = buildDirectPersonaGuide({
+    corePersona: characterContext.corePersona,
+    expressionStyle: characterContext.expressionStyle,
+    boundaryPack: characterContext.boundaryPack,
+    extendedLore: characterContext.extendedLore,
+    signature: params.character.signature,
+    openingRemark: params.character.openingRemark,
+  });
+  const directSceneProgressPrompt = formatDirectSceneProgressForPrompt(
+    buildDirectSceneProgress(
+      params.directChatHistory?.[params.character.id] || [],
+      params.latestUserText,
+    ),
+  );
   const relationshipProjection = buildRelationshipProjection({
     character: params.character,
     characters: params.allCharacters,
@@ -416,6 +448,7 @@ export function buildChatSceneInput(
         buildTemporalSnapshotPrompt({ state: characterTemporalState }),
         buildContinuityResumePrompt(characterTemporalState),
       ].filter(Boolean).join('\n\n'),
+      sceneProgressPrompt: directSceneProgressPrompt,
       activeDatingPrompt: params.character.activeDatingState
         ? [
             '## 进行中的约会共享语境',
@@ -445,14 +478,57 @@ export function buildChatSceneInput(
         : '',
     ),
   });
+  const retrievalQueries: MemoryPromptQueryText[] = [
+    ...(buildRecentTranscriptQueryText(params.directChatHistory?.[params.character.id] || [], 4)
+      ? [{
+          text: buildRecentTranscriptQueryText(params.directChatHistory?.[params.character.id] || [], 4)!,
+          weight: 0.85,
+        }]
+      : []),
+    ...(sceneScopedSignals.topicAnchors || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 0.95,
+    })),
+    ...(sceneScopedSignals.taskResidue || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 1.05,
+    })),
+    ...(sceneScopedSignals.relationshipResidue || []).slice(0, 1).map((item) => ({
+      text: item.summary,
+      weight: 0.75,
+    })),
+    ...(sceneScopedSignals.sharedRecentRelationshipSummary
+      ? [{
+          text: sceneScopedSignals.sharedRecentRelationshipSummary,
+          weight: 0.65,
+        }]
+      : []),
+    ...(sceneScopedSignals.recentCoupleSpaceSummary
+      ? [{
+          text: sceneScopedSignals.recentCoupleSpaceSummary,
+          weight: 0.55,
+        }]
+      : []),
+    ...(params.character.activeDatingState?.sceneProgressSummary
+      ? [{
+          text: params.character.activeDatingState.sceneProgressSummary,
+          weight: 0.9,
+        }]
+      : []),
+  ];
   const retrievedMemory = buildMemoryPromptView({
     characterId: params.character.id,
     latestUserText: params.latestUserText,
+    retrievalQueries,
+    preferredSourceScenes: ['direct_chat', 'couple_space', 'dating', 'forum', 'group_chat'],
+    forceLatestRelationshipWaves: true,
+    forceLatestOpenTasks: true,
   });
   const resolvedRecentContext = (
     retrievedMemory.matchedFacts.length
     || retrievedMemory.stablePreferences.length
     || retrievedMemory.relationshipWaves.length
+    || retrievedMemory.sceneProgress.length
     || retrievedMemory.openTasks.length
   ) > 0
     ? {
@@ -461,24 +537,29 @@ export function buildChatSceneInput(
       }
     : budgetedContext.recentContext;
 
-  console.info('[chat-scene-input] memory diagnostics', {
+  recordMemoryReadDiagnostic({
+    sourceScene: 'direct_chat',
     characterId: params.character.id,
     shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
     longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
     shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
     longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
     recordCounts: characterScopedMemory.diagnostics?.recordCounts,
-    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
-    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
-    sceneResidueCount: sceneScopedSignals.sceneResidue?.length || 0,
-    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
-    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
+    sceneSignalCounts: {
+      compatibilitySnapshots: sceneScopedSignals.compatibilitySnapshotCount || 0,
+      relationshipResidue: sceneScopedSignals.relationshipResidue?.length || 0,
+      sceneResidue: sceneScopedSignals.sceneResidue?.length || 0,
+      topicAnchors: sceneScopedSignals.topicAnchors?.length || 0,
+      taskResidue: sceneScopedSignals.taskResidue?.length || 0,
+    },
     retrievedMemoryCounts: {
       matchedFacts: retrievedMemory.matchedFacts.length,
       stablePreferences: retrievedMemory.stablePreferences.length,
       relationshipWaves: retrievedMemory.relationshipWaves.length,
+      sceneProgress: retrievedMemory.sceneProgress.length,
       openTasks: retrievedMemory.openTasks.length,
     },
+    promptSectionCount: budgetedContext.sections.length,
   });
 
   return {
@@ -493,6 +574,9 @@ export function buildChatSceneInput(
     includeProtocolRules: params.includeProtocolRules,
     characterCore: {
       characterSetting: characterContext.corePersona ?? '',
+      signature: params.character.signature?.trim() || undefined,
+      openingRemark: params.character.openingRemark?.trim() || undefined,
+      personaGuidePrompt: directPersonaGuide || undefined,
       maskPrompt: characterContext.maskPrompt,
       worldBookPrompt: characterContext.worldBookPrompt,
     },

@@ -102,6 +102,7 @@ export async function generateCharacterForumReply(input: GenerateCharacterForumR
     userReplyTargetContent ? `用户接的那层内容：${userReplyTargetContent}` : '',
     generationContext.worldBookPromptBlock,
     generationContext.maskPromptBlock,
+    forumContext.publicPersonaGuide ? forumContext.publicPersonaGuide : '',
     '要求：',
     '1. 写成角色本人会顺手接的一句或两句，不要像系统说明，也不要像论坛路人模板话术。',
     '2. 优先直接接住用户刚刚那句，不要回到主楼重新概括。',

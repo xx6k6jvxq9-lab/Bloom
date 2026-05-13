@@ -258,29 +258,29 @@ function inferSuggestedApproach(params: {
     if (transferDisposition === 'lean_grant') {
       return actionStyle === 'tsundere'
         ? '可以先嘴硬、先吐槽，但最后要明确给，并把动作真正落地。'
-        : '先接住用户情绪，再明确答应或顺着往下给，不要只停在调侃。';
+        : '先按你自己的关系方式回应，再明确答应或顺着往下给，不要只停在调侃。';
     }
     if (transferDisposition === 'consider') {
       return actionStyle === 'guarded'
         ? '先稳住边界再表态，可以不立刻答应，但别装作没看见金额请求。'
-        : '可以先接情绪、先逗两句、先试探，但最后必须给出给还是不给的态度。';
+        : '可以先用你本人的语气逗、试探或绕一下，但最后必须给出给还是不给的态度。';
     }
     return transferReadiness < 30
-      ? '更像要谨慎拒绝，但也要先回应用户真正想要的关注，别只拿金额开玩笑。'
+      ? '更像要谨慎拒绝，但也要按你自己的方式回应用户要关注的动作，别只拿金额开玩笑。'
       : '这轮更适合先压住动作请求，再角色化地解释或拒绝。';
   }
 
   if (analysis.primaryIntent === 'confession' || analysis.primaryIntent === 'flirtation_probe') {
     return actionStyle === 'guarded'
       ? '先回应示好，再稳住边界，不要冷得像系统消息。'
-      : '先接住示好或试探，再按角色个性决定是温柔接、嘴硬回，还是顺势逗回去。';
+      : '先让你对示好或试探产生反应，再按你的个性决定是靠近、嘴硬、逗回、压住还是躲开。';
   }
 
   if (analysis.primaryIntent === 'emotional_support') {
-    return '这一轮优先接情绪和安抚，不要急着跳梗。';
+    return '这一轮优先由你本人处理这份情绪；温柔、嘴笨、冷硬、别扭、强势或安抚都必须按人设来，不要默认心理咨询式安慰。';
   }
 
-  return '先接住用户真正想要的反应，再决定要不要加轻调侃。';
+  return '先判断你会被哪一点触发，再决定是接住、顶回去、轻调侃、转开还是留白。';
 }
 
 export function analyzeDirectCharacterDecision(params: {
@@ -368,15 +368,16 @@ export function buildDirectCharacterDecisionPromptSection(decision: DirectCharac
   }
 
   return [
-    '## 当前角色决策参考',
+    '## 当前你的反应参考',
+    '说明: 这里只是本轮行动与关系判断的辅助层，不得覆盖你的核心人设、说话手感和当前状态。',
     `关系熟悉度: ${formatClosenessLabel(decision.relationshipCloseness)}（${decision.closenessScore}/100）`,
-    `角色行动风格: ${formatActionStyleLabel(decision.actionStyle)}（偏置 ${decision.actionBiasScore >= 0 ? '+' : ''}${decision.actionBiasScore}）`,
+    `你的行动风格: ${formatActionStyleLabel(decision.actionStyle)}（偏置 ${decision.actionBiasScore >= 0 ? '+' : ''}${decision.actionBiasScore}）`,
     `动作请求倾向: ${formatTransferDispositionLabel(decision.transferDisposition)}（${decision.transferReadiness}/100）`,
     decision.requestedAmount != null ? `用户提到的金额: ${decision.requestedAmount.toFixed(2)}` : '',
     '决策线索:',
     ...decision.cues.map((cue, index) => `${index + 1}. ${cue}`),
     `回复策略: ${decision.suggestedApproach}`,
-    '要求: 不要只抓表面笑点；如果你这轮已经决定给，就把动作真的落地，不要只口头答应。',
+    '要求: 不要只抓表面笑点；如果你这轮已经决定给，就把动作真的落地，不要只口头答应；如果你的人设不适合温柔安抚，就不要硬软化。',
   ]
     .filter(Boolean)
     .join('\n');

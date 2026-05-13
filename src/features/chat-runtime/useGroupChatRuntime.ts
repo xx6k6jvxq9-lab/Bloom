@@ -42,7 +42,7 @@ import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../ser
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { buildGroupChatSharedSettlement } from '../../services/group-chat/buildGroupChatSharedSettlement';
 import { buildResolvedOpenLoopRegistry } from '../../services/memory/buildResolvedOpenLoopRegistry';
-import { appendSceneSettlementMemory } from '../../services/memory/memoryRecordSnapshots';
+import { persistSceneSettlement } from '../../services/memory/sceneSettlement';
 import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistentAssetService';
 
 type UseGroupChatRuntimeArgs = {
@@ -1127,7 +1127,7 @@ export function useGroupChatRuntime({
     ...(speaker.stickerMetadata || {}),
   });
 
-  const recordGroupSpeakerSettlement = useCallback((
+  const recordGroupSpeakerSettlement = useCallback(async (
     speaker: Character,
     messages: ChatMessage[],
     sharedState?: Character['sharedState'],
@@ -1148,24 +1148,22 @@ export function useGroupChatRuntime({
       content: mainText,
       timestamp: latestTimestamp,
     });
-    patchCharacter(speaker.id, {
-      sharedContextSnapshots: settlement.sharedContextSnapshots,
-      shortTermSummary: settlement.shortTermSummary,
-      openLoopRegistry: settlement.openLoopRegistry,
-      ...(sharedState ? { sharedState } : {}),
-    });
-    void appendSceneSettlementMemory({
-      characterId: speaker.id,
-      sourceScene: 'group_chat',
-      settlement: {
-        ...settlement,
-        sharedState,
-      },
-      timestamp: latestTimestamp,
-    }).catch((error) => {
+    try {
+      const result = await persistSceneSettlement({
+        characterId: speaker.id,
+        sourceScene: 'group_chat',
+        settlement: {
+          ...settlement,
+          sharedState,
+        },
+        timestamp: latestTimestamp,
+      });
+      patchCharacter(speaker.id, result.characterPatch);
+    } catch (error) {
       console.error('[group-chat] Failed to persist settlement memory snapshots', error);
-    });
-  }, [patchCharacter]);
+      setError(error instanceof Error ? error.message : '群聊记忆结算失败，请稍后重试。');
+    }
+  }, [patchCharacter, setError]);
 
   const clearDelayedSpeakerTimer = useCallback(() => {
     if (delayedSpeakerTimerRef.current) {
@@ -1736,7 +1734,7 @@ export function useGroupChatRuntime({
     }));
   }, [setHistory, synthesizeSpeakerReplyAudio]);
 
-  const appendSpeakerMessage = useCallback((
+  const appendSpeakerMessage = useCallback(async (
     speaker: Character,
     text: string,
     timestamp = Date.now(),
@@ -1746,7 +1744,7 @@ export function useGroupChatRuntime({
     sharedState?: Character['sharedState'],
     resolvedStickerPool?: string[],
     lightInteractionMeta?: ChatMessage['lightInteractionMeta'],
-  ): ChatMessage[] => {
+  ): Promise<ChatMessage[]> => {
     const messages = splitGroupReplyIntoMessages(text, speaker, timestamp);
     if (messages.length === 0) {
       return [];
@@ -1863,7 +1861,7 @@ export function useGroupChatRuntime({
     });
     setHistory(() => [...historyAfterRecall, ...structuredMessages]);
     if (structuredMessages.length > 0) {
-      recordGroupSpeakerSettlement(speaker, structuredMessages, sharedState);
+      await recordGroupSpeakerSettlement(speaker, structuredMessages, sharedState);
     }
     void attachAudioToSpeakerMessages(speaker, structuredMessages);
     return structuredMessages;
@@ -1901,7 +1899,7 @@ export function useGroupChatRuntime({
         && isMountedRef.current
         && activeInteractionIdRef.current === interactionId
       ) {
-        const appendedMessages = appendSpeakerMessage(
+        const appendedMessages = await appendSpeakerMessage(
           speaker,
           response.text,
           response.timestamp,
@@ -1989,7 +1987,7 @@ export function useGroupChatRuntime({
           speakerName: opener.name,
           requestId,
         });
-        appendSpeakerMessage(opener, response.text, response.timestamp, historyRef.current, null, false, response.sharedState, response.stickerPool);
+        await appendSpeakerMessage(opener, response.text, response.timestamp, historyRef.current, null, false, response.sharedState, response.stickerPool);
         setPendingMessage(null);
       }
     } catch (runtimeError) {
@@ -2081,7 +2079,7 @@ export function useGroupChatRuntime({
           && isMountedRef.current
           && activeInteractionIdRef.current === interactionId
         ) {
-          const appendedMessages = appendSpeakerMessage(
+          const appendedMessages = await appendSpeakerMessage(
             speaker,
             response.text,
             response.timestamp,
@@ -2214,7 +2212,7 @@ export function useGroupChatRuntime({
         historyRef.current = workingHistory;
         setHistory(workingHistory);
 
-        const targetAppendedMessages = appendSpeakerMessage(
+        const targetAppendedMessages = await appendSpeakerMessage(
           targetMember,
           interactionResult.assistantBubbles.join('\n'),
           baseTimestamp + 1,
@@ -2242,7 +2240,7 @@ export function useGroupChatRuntime({
               mode: 'reply',
               requestTimestamp: baseTimestamp + 2,
             });
-            const spectatorAppendedMessages = appendSpeakerMessage(
+            const spectatorAppendedMessages = await appendSpeakerMessage(
               spectator,
               interactionResult.spectatorReply.bubbles.join('\n'),
               baseTimestamp + 1 + targetAppendedMessages.length,
@@ -3182,7 +3180,7 @@ export function useGroupChatRuntime({
             return;
           }
 
-          const resolvedMessages = appendSpeakerMessage(
+          const resolvedMessages = await appendSpeakerMessage(
             responder,
             response.text,
             response.timestamp,
@@ -3349,7 +3347,7 @@ export function useGroupChatRuntime({
             return;
           }
 
-          const appendedMessages = appendSpeakerMessage(
+          const appendedMessages = await appendSpeakerMessage(
             responder,
             response.text,
             response.timestamp,
@@ -3467,7 +3465,7 @@ export function useGroupChatRuntime({
           return;
         }
 
-        appendSpeakerMessage(
+        await appendSpeakerMessage(
           speaker,
           response.text,
           response.timestamp,

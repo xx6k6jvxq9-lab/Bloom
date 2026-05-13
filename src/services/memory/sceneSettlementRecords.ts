@@ -11,9 +11,21 @@ import type {
   TaskResidueItem,
   TopicAnchorItem,
 } from '../relationship-context/types';
-import type { MemoryRecord, MemoryRecordSourceSessionType } from './memoryRecordTypes';
-import type { MemoryRecordSourceScene } from './memoryRecordTypes';
-import { mapFactTraceToMemoryRecord, mapRelationshipWaveToMemoryRecord } from './buildMemoryRecordData';
+import type {
+  MemoryRecord,
+  MemoryRecordSourceSessionType,
+  MemoryRecordSourceScene,
+  SceneProgressMemoryRecord,
+  SceneProgressMemoryRecordDraft,
+} from './memoryRecordTypes';
+import {
+  buildSourceSceneTags,
+  buildMemoryRecordId,
+  dedupeHintTexts,
+  mapFactTraceToMemoryRecord,
+  mapRelationshipWaveToMemoryRecord,
+  normalizeSummaryKey,
+} from './buildMemoryRecordData';
 
 type SettlementScene = CharacterSharedContextSnapshot['sourceScene'];
 
@@ -170,12 +182,117 @@ function getLatestSettlementSnapshot(
   return snapshots[0];
 }
 
+function createSceneProgressMemoryRecord(input: {
+  characterId: string;
+  sourceScene: MemoryRecordSourceScene;
+  sourceSessionType: MemoryRecordSourceSessionType;
+  sourceSessionId: string;
+  timestamp: number;
+  draft: SceneProgressMemoryRecordDraft;
+}): SceneProgressMemoryRecord | null {
+  const summary = input.draft.summary.trim();
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    id: buildMemoryRecordId([
+      'scene_progress',
+      input.sourceScene,
+      input.sourceSessionType,
+      input.sourceSessionId,
+      input.timestamp,
+      normalizeSummaryKey(summary),
+    ]),
+    kind: 'scene_progress',
+    sourceScene: input.sourceScene,
+    sourceSessionType: input.sourceSessionType,
+    sourceSessionId: input.sourceSessionId,
+    sourceEventIds: [],
+    characterIds: [input.characterId],
+    visibility: input.draft.visibility ?? 'cross_scene_readable',
+    stability: input.draft.stability ?? 'situational',
+    decayHint: input.draft.decayHint ?? 'medium',
+    summary,
+    timestamp: input.timestamp,
+    ...(dedupeHintTexts([
+      summary,
+      input.draft.stageLabel,
+      input.draft.currentBeat,
+      input.draft.currentSignature,
+      input.draft.previousSignature,
+      ...(input.draft.completedActions || []),
+      ...(input.draft.bannedRepeatActions || []),
+      input.draft.unresolvedTension,
+      ...(input.draft.nextStepOptions || []),
+      '场景推进',
+      '下一步',
+      '别重复',
+      ...buildSourceSceneTags(input.sourceScene),
+    ])
+      ? {
+          retrievalHints: dedupeHintTexts([
+            summary,
+            input.draft.stageLabel,
+            input.draft.currentBeat,
+            input.draft.currentSignature,
+            input.draft.previousSignature,
+            ...(input.draft.completedActions || []),
+            ...(input.draft.bannedRepeatActions || []),
+            input.draft.unresolvedTension,
+            ...(input.draft.nextStepOptions || []),
+            '场景推进',
+            '下一步',
+            '别重复',
+            ...buildSourceSceneTags(input.sourceScene),
+          ]),
+        }
+      : {}),
+    sceneTags: buildSourceSceneTags(input.sourceScene),
+    stageLabel: input.draft.stageLabel.trim(),
+    ...(input.draft.currentBeat?.trim()
+      ? {
+          currentBeat: input.draft.currentBeat.trim(),
+        }
+      : {}),
+    ...(input.draft.currentSignature?.trim()
+      ? {
+          currentSignature: input.draft.currentSignature.trim(),
+        }
+      : {}),
+    ...(input.draft.previousSignature?.trim()
+      ? {
+          previousSignature: input.draft.previousSignature.trim(),
+        }
+      : {}),
+    repeatedSignature: Boolean(input.draft.repeatedSignature),
+    completedActions: (input.draft.completedActions || [])
+      .map((action) => action.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+    bannedRepeatActions: (input.draft.bannedRepeatActions || [])
+      .map((action) => action.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+    ...(input.draft.unresolvedTension?.trim()
+      ? {
+          unresolvedTension: input.draft.unresolvedTension.trim(),
+        }
+      : {}),
+    nextStepOptions: (input.draft.nextStepOptions || [])
+      .map((option) => option.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+  };
+}
+
 export function buildStructuredRecordsFromSceneSettlement(input: {
   characterId: string;
   sourceScene: MemoryRecordSourceScene;
   settlement: {
     sharedContextSnapshots?: CharacterSharedContextSnapshot[];
     sharedState?: CharacterSharedState;
+    sceneProgressRecords?: SceneProgressMemoryRecordDraft[];
   };
   sourceSessionType?: MemoryRecordSourceSessionType;
   sourceSessionId?: string;
@@ -185,14 +302,10 @@ export function buildStructuredRecordsFromSceneSettlement(input: {
     return [];
   }
 
-  const snapshot = getLatestSettlementSnapshot(input.settlement.sharedContextSnapshots, input.timestamp);
-  if (!snapshot) {
-    return [];
-  }
-
   const sourceSessionType = inferSourceSessionType(input.sourceScene, input.sourceSessionType);
   const sourceSessionId = input.sourceSessionId ?? input.characterId;
-  const relationshipRecords = (snapshot.relationshipResidue || [])
+  const snapshot = getLatestSettlementSnapshot(input.settlement.sharedContextSnapshots, input.timestamp);
+  const relationshipRecords = (snapshot?.relationshipResidue || [])
     .map((item) => relationshipResidueToWaveRecord({
       item,
       characterId: input.characterId,
@@ -207,15 +320,15 @@ export function buildStructuredRecordsFromSceneSettlement(input: {
     .filter((record): record is MemoryRecord => record !== null);
 
   const factSourceItems = [
-    ...(snapshot.sceneResidue || []).map((item) => sceneResidueToFactRecord({
+    ...(snapshot?.sceneResidue || []).map((item) => sceneResidueToFactRecord({
       item,
       characterId: input.characterId,
     })),
-    ...(snapshot.topicAnchors || []).map((item) => topicAnchorToFactRecord({
+    ...(snapshot?.topicAnchors || []).map((item) => topicAnchorToFactRecord({
       item,
       characterId: input.characterId,
     })),
-    ...(snapshot.taskResidue || []).map((item) => taskResidueToFactRecord({
+    ...(snapshot?.taskResidue || []).map((item) => taskResidueToFactRecord({
       item,
       characterId: input.characterId,
     })),
@@ -230,8 +343,20 @@ export function buildStructuredRecordsFromSceneSettlement(input: {
     }))
     .filter((record): record is MemoryRecord => record !== null);
 
+  const sceneProgressRecords = (input.settlement.sceneProgressRecords || [])
+    .map((draft) => createSceneProgressMemoryRecord({
+      characterId: input.characterId,
+      sourceScene: input.sourceScene,
+      sourceSessionType,
+      sourceSessionId,
+      timestamp: input.timestamp ?? snapshot?.settledAt ?? Date.now(),
+      draft,
+    }))
+    .filter((record): record is SceneProgressMemoryRecord => record !== null);
+
   return [
     ...relationshipRecords,
     ...factRecords,
+    ...sceneProgressRecords,
   ];
 }

@@ -72,7 +72,11 @@ import {
   appendForumFriendResolutionMessage,
   resolveOutgoingForumFriendRequest,
 } from '../../services/forum/forumOutgoingFriendRequestResolution';
-import { appendSceneSettlementMemory } from '../../services/memory/memoryRecordSnapshots';
+import {
+  buildSceneSettlementCharacterPatch,
+  persistSceneSettlementBatch,
+  type PersistSceneSettlementInput,
+} from '../../services/memory/sceneSettlement';
 
 type CharacterMomentsBackApp = 'chat' | 'chat-session' | 'character-profile';
 
@@ -160,7 +164,9 @@ function applyForumFriendAcceptanceSettlement(
     timestamp: number;
   },
 ) {
-  return characters.map((character) => {
+  const settlementInputs: PersistSceneSettlementInput[] = [];
+
+  const nextCharacters = characters.map((character) => {
     if (!character || character.id !== input.characterId) {
       return character;
     }
@@ -171,23 +177,23 @@ function applyForumFriendAcceptanceSettlement(
       content: input.content,
       timestamp: input.timestamp,
     });
-    void appendSceneSettlementMemory({
+    settlementInputs.push({
       characterId: character.id,
       sourceScene: 'forum',
       settlement,
       timestamp: input.timestamp,
-    }).catch((error) => {
-      console.error('[app-screen-content] Failed to persist forum acceptance settlement memory snapshots', error);
     });
 
     return {
       ...character,
-      sharedContextSnapshots: settlement.sharedContextSnapshots,
-      shortTermSummary: settlement.shortTermSummary,
-      openLoopRegistry: settlement.openLoopRegistry,
-      sharedState: settlement.sharedState,
+      ...buildSceneSettlementCharacterPatch(settlement),
     };
   });
+
+  return {
+    nextCharacters,
+    settlementInputs,
+  };
 }
 
 function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now()) {
@@ -217,6 +223,7 @@ function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now(
   let nextChatHistory = appData.chatHistory;
   let nextTempChats = { ...forumData.tempChats };
   const resolvedRequestIds = new Set<string>();
+  const settlementInputs: PersistSceneSettlementInput[] = [];
 
   dueRequests.forEach((request) => {
     const authorId = request.fromUserId;
@@ -270,12 +277,14 @@ function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now(
         now,
       });
 
-      nextCharacters = applyForumFriendAcceptanceSettlement(bridged.nextCharacters, {
+      const acceptanceResult = applyForumFriendAcceptanceSettlement(bridged.nextCharacters, {
         characterId: authorId,
         actorName: request.fromUserName,
         content: resolution.responseText,
         timestamp: now,
       });
+      nextCharacters = acceptanceResult.nextCharacters;
+      settlementInputs.push(...acceptanceResult.settlementInputs);
       nextChatHistory = bridged.nextChatHistory as ChatHistory;
       nextTempChats[authorId] = bridged.nextTempSession;
     }
@@ -312,6 +321,7 @@ function resolveDueOutgoingForumFriendRequests(appData: AppData, now = Date.now(
       },
     },
     nextCharacters,
+    settlementInputs,
   };
 }
 
@@ -711,36 +721,47 @@ export function AppScreenContent({
   }, [appData.friendRequests, setPersistedFriendRequests]);
 
   useEffect(() => {
-    const resolution = resolveDueOutgoingForumFriendRequests(appData, Date.now());
-    if (resolution.changed && resolution.nextAppData) {
-      if (resolution.nextCharacters && resolution.nextCharacters !== appData.characters) {
-        void saveCharacters(resolution.nextCharacters);
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const commitDueOutgoingForumFriendRequests = async (currentAppData: AppData) => {
+      const resolution = resolveDueOutgoingForumFriendRequests(currentAppData, Date.now());
+      if (!resolution.changed || !resolution.nextAppData) {
+        return resolution;
       }
-      setAppData(resolution.nextAppData);
-      return;
-    }
 
-    if (!resolution.nextDueAt || typeof window === 'undefined') {
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      let resolvedCharacters: Character[] | null = null;
-      setAppData((prev) => {
-        const nextResolution = resolveDueOutgoingForumFriendRequests(prev, Date.now());
-        if (!nextResolution.changed || !nextResolution.nextAppData) {
-          return prev;
+      try {
+        if (resolution.settlementInputs?.length) {
+          await persistSceneSettlementBatch(resolution.settlementInputs);
         }
-        resolvedCharacters = nextResolution.nextCharacters || null;
-        return nextResolution.nextAppData;
-      });
-      if (resolvedCharacters) {
-        void saveCharacters(resolvedCharacters);
+        if (!cancelled && resolution.nextCharacters && resolution.nextCharacters !== currentAppData.characters) {
+          await saveCharacters(resolution.nextCharacters);
+        }
+        if (!cancelled) {
+          setAppData(resolution.nextAppData);
+        }
+      } catch (error) {
+        console.error('[app-screen-content] Failed to persist due forum acceptance settlements', error);
       }
-    }, Math.max(0, resolution.nextDueAt - Date.now()));
+
+      return resolution;
+    };
+
+    void commitDueOutgoingForumFriendRequests(appData).then((resolution) => {
+      if (!resolution?.nextDueAt || typeof window === 'undefined' || cancelled) {
+        return;
+      }
+
+      timerId = window.setTimeout(() => {
+        void commitDueOutgoingForumFriendRequests(appData);
+      }, Math.max(0, resolution.nextDueAt - Date.now()));
+    });
 
     return () => {
-      window.clearTimeout(timerId);
+      cancelled = true;
+      if (timerId !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timerId);
+      }
     };
   }, [appData, setAppData]);
 

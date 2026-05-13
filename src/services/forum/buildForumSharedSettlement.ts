@@ -10,6 +10,7 @@ import {
   dedupeSettlementItemsBySummary,
   type SceneSettlementResult,
 } from '../memory/sceneSettlement';
+import type { SceneProgressMemoryRecordDraft } from '../memory/memoryRecordTypes';
 import {
   createRelationshipResidueItem,
   createTaskResidueItemFromText,
@@ -128,6 +129,80 @@ function buildTaskResidue(event: ForumSharedSettlementEvent): TaskResidueItem[] 
   return item ? [item] : [];
 }
 
+function buildSceneProgressRecords(event: ForumSharedSettlementEvent): SceneProgressMemoryRecordDraft[] {
+  const content = normalizeSettlementText(event.content);
+  const kind = event.kind || 'public_reply';
+  const repeatedPublicLoop = kind === 'public_loop' && (event.repeatedCount || 0) >= 2;
+  const topicSeed = normalizeSettlementText(event.postTitle) || normalizeSettlementText(event.userComment) || content;
+
+  let stageLabel = '公开接话阶段';
+  let currentSignature = '公开接话';
+  let completedActions = ['公开接话'];
+  let bannedRepeatActions: string[] = [];
+  let unresolvedTension = '论坛里的互动已经接上了，但还没有自然转到新的推进层。';
+  let nextStepOptions = [
+    '让公开接话继续推进到新的态度变化',
+    '把当前互动转成更明确的后续回应',
+  ];
+
+  if (repeatedPublicLoop) {
+    stageLabel = '公开连续互动阶段';
+    currentSignature = '公开连续接话';
+    completedActions = ['公开接话', '连续回钩'];
+    bannedRepeatActions = ['重复停在同一种公开接话'];
+    unresolvedTension = '公开互动已经形成连续性，但还没有切到新的推进方向。';
+    nextStepOptions = [
+      '把连续公开接话推进成新的关系判断',
+      '转到不同于上一轮的后续回应方式',
+    ];
+  } else if (kind === 'temp_chat_familiar') {
+    stageLabel = '临时私聊熟络阶段';
+    currentSignature = '临时私聊 / 熟络';
+    completedActions = ['临时私聊接上', '关系变熟'];
+    unresolvedTension = '已经脱离纯路人互动，但还没有正式落到更稳定的联系。';
+    nextStepOptions = [
+      '让熟络感继续推进成新的联系节点',
+      '把当前轻熟状态落成更明确的后续动作',
+    ];
+  } else if (kind === 'friend_request_sent') {
+    stageLabel = '关系转场阶段';
+    currentSignature = '好友申请 / 关系前推';
+    completedActions = ['明确发出好友申请', '关系前推一步'];
+    bannedRepeatActions = ['重复停留在只发出好友申请'];
+    unresolvedTension = '关系已经往正式联系方向推了一步，还在等你接住。';
+    nextStepOptions = [
+      '把关系转场推进到正式联系',
+      '给这条互动一个不同于上一轮的新接点',
+    ];
+  } else if (kind === 'friend_request_accepted' || kind === 'friend_bridge') {
+    stageLabel = '正式联系建立阶段';
+    currentSignature = '转正式联系 / 关系落地';
+    completedActions = ['从论坛转到正式联系'];
+    unresolvedTension = '已经建立正式联系，但后续还需要在新场景里继续推进。';
+    nextStepOptions = [
+      '把论坛互动自然转进正式单聊',
+      '不要继续停留在“刚建立联系”这一步',
+    ];
+  }
+
+  const summarySeed = content || topicSeed || `${event.actorName}在论坛里又接住了这条互动。`;
+  return [{
+    summary: `论坛互动推进到${stageLabel}：${summarizeSettlementText(summarySeed, 88)}`,
+    stageLabel,
+    currentBeat: `${event.actorName}在论坛里把这条互动又往前接了一步。`,
+    currentSignature,
+    ...(repeatedPublicLoop ? { previousSignature: '公开接话' } : {}),
+    repeatedSignature: repeatedPublicLoop,
+    completedActions,
+    bannedRepeatActions,
+    unresolvedTension,
+    nextStepOptions,
+    visibility: 'cross_scene_readable',
+    stability: kind === 'friend_request_accepted' || kind === 'friend_bridge' ? 'stable' : 'situational',
+    decayHint: kind === 'friend_request_accepted' || kind === 'friend_bridge' ? 'stable' : 'medium',
+  }];
+}
+
 export function buildForumSharedSettlement(
   character: Pick<Character, 'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry' | 'presenceState' | 'sharedState'>,
   event: ForumSharedSettlementEvent,
@@ -163,5 +238,6 @@ export function buildForumSharedSettlement(
         ...taskResidue.map((item) => item.summary),
       ],
     },
+    sceneProgressRecords: buildSceneProgressRecords(event),
   });
 }

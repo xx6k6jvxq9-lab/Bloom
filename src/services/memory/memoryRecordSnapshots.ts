@@ -19,6 +19,7 @@ import type {
   NoteMemoryRecord,
   MemoryRecordLibraryKind,
   MemorySnapshotType,
+  SceneProgressMemoryRecordDraft,
   SnapshotMemoryRecord,
 } from './memoryRecordTypes';
 import { buildStructuredRecordsFromSceneSettlement } from './sceneSettlementRecords';
@@ -26,6 +27,26 @@ import { buildStructuredRecordsFromSceneSettlement } from './sceneSettlementReco
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
+}
+
+let queuedMemoryRecordWrite: Promise<unknown> = Promise.resolve();
+
+function patchMemoryRecordDataQueued(
+  updater: (current: PersistedMemoryRecordData) => PersistedMemoryRecordData,
+  fallback: PersistedMemoryRecordData = {
+    recordsByCharacterId: {},
+  },
+): Promise<PersistedMemoryRecordData> {
+  const nextWrite = queuedMemoryRecordWrite
+    .catch(() => undefined)
+    .then(() => patchMemoryRecordData(updater, fallback));
+
+  queuedMemoryRecordWrite = nextWrite.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return nextWrite;
 }
 
 function buildSnapshotSummary(text: string): string {
@@ -224,7 +245,7 @@ export async function appendSnapshotMemoryRecord(input: {
     return;
   }
 
-  await patchMemoryRecordData((current) => mergeCharacterRecords(current, input.characterId, record));
+  await patchMemoryRecordDataQueued((current) => mergeCharacterRecords(current, input.characterId, record));
 }
 
 export async function appendWorkingMemorySnapshots(input: {
@@ -274,7 +295,7 @@ export async function appendWorkingMemorySnapshots(input: {
     return;
   }
 
-  await patchMemoryRecordData((current) => {
+  await patchMemoryRecordDataQueued((current) => {
     const existingRecords = current.recordsByCharacterId[input.characterId] || [];
     const latestTimestamp = records.reduce((latest, record) => Math.max(latest, record.timestamp), current.updatedAt ?? 0);
     const mergedRecords = dedupeMemoryRecords([...records, ...existingRecords]);
@@ -297,6 +318,7 @@ export async function appendSceneSettlementMemory(input: {
     shortTermSummary?: string;
     sharedState?: CharacterSharedState;
     sharedContextSnapshots?: CharacterSharedContextSnapshot[];
+    sceneProgressRecords?: SceneProgressMemoryRecordDraft[];
   };
   sourceSessionType?: MemoryRecordSourceSessionType;
   sourceSessionId?: string;
@@ -351,7 +373,7 @@ export async function appendSceneSettlementMemory(input: {
     return;
   }
 
-  await patchMemoryRecordData((current) => {
+  await patchMemoryRecordDataQueued((current) => {
     const existingRecords = current.recordsByCharacterId[input.characterId] || [];
     const latestTimestamp = allRecords.reduce((latest, record) => Math.max(latest, record.timestamp), current.updatedAt ?? 0);
     const mergedRecords = dedupeMemoryRecords([...allRecords, ...existingRecords]);
@@ -393,7 +415,7 @@ export async function appendLibraryMemoryEntriesAsRecords(input: {
     return;
   }
 
-  await patchMemoryRecordData((current) => {
+  await patchMemoryRecordDataQueued((current) => {
     const existingRecords = current.recordsByCharacterId[input.characterId] || [];
     const latestTimestamp = records.reduce((latest, record) => Math.max(latest, record.timestamp), current.updatedAt ?? 0);
 
@@ -412,7 +434,7 @@ export async function removeMemoryRecordById(input: {
   characterId: string;
   recordId: string;
 }): Promise<void> {
-  await patchMemoryRecordData((current) => ({
+  await patchMemoryRecordDataQueued((current) => ({
     ...current,
     recordsByCharacterId: {
       ...current.recordsByCharacterId,
@@ -476,7 +498,7 @@ export function mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(
 export async function appendLegacyCharacterMemoryRecordAsNotes(
   record: Record<string, MemoryLibraryEntry[]>,
 ): Promise<void> {
-  await patchMemoryRecordData((current) => (
+  await patchMemoryRecordDataQueued((current) => (
     mergeLegacyCharacterMemoryRecordIntoMemoryRecordData(current, record)
   ));
 }

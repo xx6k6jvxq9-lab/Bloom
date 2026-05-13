@@ -243,7 +243,9 @@ function buildStructuredBilingualReplyPrompt(character: Character): string {
     `text 必须是角色真正会发出的 ${targetLanguage} 正文；translation 必须是与该条正文严格对应的简体中文翻译。`,
     'segments 的顺序就是最终聊天气泡顺序；如果本轮只需要一个气泡，就只输出一个 segment。',
     '每个 segment 的 text 和 translation 都必须是单行字符串，不要在字段里换行，不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
-    '如果需要 [reply: ...]、[recall]、[sticker] 这类轻量 cue，把 cue 直接写进 text 字段里；translation 仍然必须填写对应中文。',
+    '如果需要 [reply: ...] 或 [recall] 这类轻量 cue，把 cue 写在对应 segment 的 text 开头；translation 仍然必须填写对应中文。',
+    '如果需要发表情包，必须单独占用一个 segment，并让该 segment 的 text 以 `[sticker]` 开头，例如 `[sticker] 困困`。不要把 `[sticker]` 追加在普通台词后面，也不要在一个 segment 里同时写正文和 sticker cue。',
+    '表情包只能从当前会话里已经导入、当前可用的表情包池中选择；只写情绪或语义提示，不要发明新的表情包名、文件名或占位文本。',
     '如果本轮是纯协议型消息（例如 [COUPLE_SPACE_INVITE_ACCEPTED]、转账协议）且没有普通正文，可以继续沿用原协议。',
     '如果本轮输出的是 GAME_CARD，并且卡片里的 question/content 不是中文，那么仍然必须在协议正文后追加 `---TRANSLATION---`，给出对应的简体中文翻译。',
     '如果你不确定该分成几个 segment，请优先只输出一个 segment，把正文和翻译都写完整；不要出现多个 text，但 translation 数量或内容对不齐的情况。',
@@ -740,6 +742,98 @@ function parseDirectActionCue(segment: string): {
     kind: 'normal',
     content: trimmed,
   };
+}
+
+function extractTrailingStickerCue(text: string): {
+  mainText: string;
+  stickerCue: string;
+} | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const match = normalized.match(/^(.*?)(?:\s+|\n+)\[(?:sticker|image|表情包|图片)\]\s*(.*)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const mainText = match[1]?.trim() || '';
+  if (!mainText) {
+    return null;
+  }
+
+  return {
+    mainText,
+    stickerCue: match[2]?.trim() || '',
+  };
+}
+
+function stripTrailingStickerCueFromTranslation(text: string | undefined): string {
+  const normalized = sanitizePipeMarkers(text || '', '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const extracted = extractTrailingStickerCue(normalized);
+  if (extracted) {
+    return extracted.mainText;
+  }
+
+  return normalized
+    .replace(/\s*\[(?:sticker|image|表情包|图片|贴纸)\]\s*(?:sticker|image|表情包|图片|贴纸)?\s*$/i, '')
+    .trim();
+}
+
+function expandDirectActionCues(
+  segment: string,
+  translationText?: string,
+): Array<{
+  kind: 'normal' | 'sticker' | 'reply' | 'recall';
+  content: string;
+  replyTargetName?: string;
+  translation?: string;
+}> {
+  const cue = parseDirectActionCue(segment);
+  const normalizedTranslation = translationText?.trim() || '';
+
+  if (cue.kind === 'sticker' || cue.kind === 'recall') {
+    return [{
+      ...cue,
+      ...(normalizedTranslation ? { translation: normalizedTranslation } : {}),
+    }];
+  }
+
+  const trailingSticker = extractTrailingStickerCue(cue.content);
+  if (!trailingSticker) {
+    return [{
+      ...cue,
+      ...(normalizedTranslation ? { translation: normalizedTranslation } : {}),
+    }];
+  }
+
+  const entries: Array<{
+    kind: 'normal' | 'sticker' | 'reply' | 'recall';
+    content: string;
+    replyTargetName?: string;
+    translation?: string;
+  }> = [];
+  const cleanedTranslation = stripTrailingStickerCueFromTranslation(normalizedTranslation);
+
+  if (trailingSticker.mainText) {
+    entries.push({
+      ...cue,
+      content: trailingSticker.mainText,
+      ...(cleanedTranslation ? { translation: cleanedTranslation } : {}),
+    });
+  }
+
+  entries.push({
+    kind: 'sticker',
+    content: trailingSticker.stickerCue,
+  });
+
+  return entries;
 }
 
 function resolveDirectReplyTarget(
@@ -1244,47 +1338,52 @@ export function splitStreamingModelResponseIntoMessages(
     : [];
   const stagedStickerRefs: string[] = [];
   const stagedStickerLabels: string[] = [];
-  const mappedMessages = parts.map((part, index) => {
-    const cue = parseDirectActionCue(part);
-    const stickerContext = {
-      ...(options.stickerContext || {}),
-      recentStickerRefs: [...stagedStickerRefs].reverse().concat(options.stickerContext?.recentStickerRefs || []),
-      recentStickerLabels: [...stagedStickerLabels].reverse().concat(options.stickerContext?.recentStickerLabels || []),
-      lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!options.stickerContext?.lastOwnMessageWasSticker,
-    };
-    const pickedSticker = cue.kind === 'sticker'
-      ? pickAssistantSticker(cue.content, options.availableStickers || [], stickerContext)
-      : null;
-    const replyTo = cue.kind === 'reply'
-      ? resolveDirectReplyTarget(
-          cue.replyTargetName,
-          options.currentHistory || [],
-          options.userLabel || '你',
-          options.modelLabel || '对方',
-        )
-      : undefined;
-    const bodyText = cue.kind === 'sticker'
-      ? cue.content.trim()
-      : cue.kind === 'recall'
-        ? cue.content
-        : cue.kind === 'reply'
-          ? cue.content || part
-          : cue.content || part;
+  const mappedMessages: ChatMessage[] = [];
 
-    if (pickedSticker) {
-      stagedStickerRefs.push(pickedSticker.sticker);
-      stagedStickerLabels.push(pickedSticker.label);
-    }
+  parts.forEach((part, index) => {
+    const expandedCues = expandDirectActionCues(part, translationParts[index]);
 
-    return {
-      role: 'model' as const,
-      text: cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : bodyText) : bodyText,
-      contentType: 'text' as const,
-      ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
-      ...(replyTo ? { replyTo } : {}),
-      ...(translationParts[index] ? { translation: translationParts[index] } : {}),
-      timestamp: baseTimestamp + index,
-    };
+    expandedCues.forEach((cue) => {
+      const stickerContext = {
+        ...(options.stickerContext || {}),
+        recentStickerRefs: [...stagedStickerRefs].reverse().concat(options.stickerContext?.recentStickerRefs || []),
+        recentStickerLabels: [...stagedStickerLabels].reverse().concat(options.stickerContext?.recentStickerLabels || []),
+        lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!options.stickerContext?.lastOwnMessageWasSticker,
+      };
+      const pickedSticker = cue.kind === 'sticker'
+        ? pickAssistantSticker(cue.content, options.availableStickers || [], stickerContext)
+        : null;
+      const replyTo = cue.kind === 'reply'
+        ? resolveDirectReplyTarget(
+            cue.replyTargetName,
+            options.currentHistory || [],
+            options.userLabel || '你',
+            options.modelLabel || '对方',
+          )
+        : undefined;
+      const bodyText = cue.kind === 'sticker'
+        ? cue.content.trim()
+        : cue.kind === 'recall'
+          ? cue.content
+          : cue.kind === 'reply'
+            ? cue.content || part
+            : cue.content || part;
+
+      if (pickedSticker) {
+        stagedStickerRefs.push(pickedSticker.sticker);
+        stagedStickerLabels.push(pickedSticker.label);
+      }
+
+      mappedMessages.push({
+        role: 'model' as const,
+        text: cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : bodyText) : bodyText,
+        contentType: 'text' as const,
+        ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
+        ...(replyTo ? { replyTo } : {}),
+        ...(cue.translation ? { translation: cue.translation } : {}),
+        timestamp: baseTimestamp + mappedMessages.length,
+      });
+    });
   });
 
   const visibleMessages: ChatMessage[] = mappedMessages.filter((message) => (
@@ -1748,6 +1847,15 @@ const DIRECT_PROACTIVE_TRIGGER_MESSAGE = [
   '不要重复、改写或延长你上一条已经发出的内容。',
   '如果时间已经流逝，请像重新拿起手机一样开口，并按当前语境里的时间来源理解现在。',
 ].join('\n');
+
+function buildDirectFinalCharacterGuardPrompt(): string {
+  return [
+    '## 本轮角色锁定',
+    '你最终只以你本人说话，不要像 AI 助手、客服、心理咨询师或设定解说。',
+    '你的人设、说话手感、关系动态、当前状态和记忆优先；意图分析、通用聊天规则、功能提示只做辅助，不能把你改成温柔陪聊模板。',
+    '保持活人感：你可以停顿、留白、反问、嘴硬、靠近、拒绝或转开，但不要机械复读人设，也不要丢掉自己的生活状态。',
+  ].join('\n');
+}
 
 function buildDirectActionDescriptionPrompt(inputEnabled?: boolean, characterEnabled?: boolean): string {
   if (inputEnabled && characterEnabled) {
@@ -2454,7 +2562,7 @@ export function useDirectChatRuntime({
               directSpecialReplyPrompt,
               mode === 'proactive' ? DIRECT_PROACTIVE_SPEAKING_PROMPT : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. Use it sparingly and only when it helps the chat feel more alive.',
               buildOpenLoopRegistryPrompt({
                 existingEntries: buildResolvedOpenLoopRegistry(character),
                 shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
@@ -2479,6 +2587,7 @@ export function useDirectChatRuntime({
                 sceneHints: chatSceneInput.sections || [],
                 ...directStickerContext,
               }),
+              buildDirectFinalCharacterGuardPrompt(),
               structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
             ].filter(Boolean),
           });
@@ -2958,7 +3067,7 @@ export function useDirectChatRuntime({
           buildDirectCharacterDecisionPromptSection(directCharacterDecision),
           directSpecialReplyPrompt,
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Sticker cues can be a standalone reaction or follow a text line. Use them sparingly and only when they help the chat feel more alive.',
+          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. Use it sparingly and only when it helps the chat feel more alive.',
           buildOpenLoopRegistryPrompt({
             existingEntries: buildResolvedOpenLoopRegistry(character),
             shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
@@ -2983,6 +3092,7 @@ export function useDirectChatRuntime({
             sceneHints: chatSceneInput.sections || [],
             ...directStickerContext,
           }),
+          buildDirectFinalCharacterGuardPrompt(),
           structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
         ].filter(Boolean),
       });

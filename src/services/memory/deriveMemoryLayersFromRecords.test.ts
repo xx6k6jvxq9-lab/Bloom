@@ -179,6 +179,51 @@ test('buildResolvedOpenLoopRegistry merges derived open loops before legacy entr
   assert.match(registry[0]?.content || '', /记得补上那张票/);
   assert.match(registry[1]?.content || '', /旧的关系回路/);
 });
+test('scene_progress records contribute to short-term summary and derived open loops', async () => {
+  const now = Date.now();
+  await saveMemoryRecordData({
+    updatedAt: now,
+    recordsByCharacterId: {
+      'char-memory-derived': [
+        {
+          id: 'scene-progress-1',
+          kind: 'scene_progress',
+          sourceScene: 'dating',
+          sourceSessionType: 'direct',
+          sourceSessionId: 'char-memory-derived',
+          sourceEventIds: [],
+          characterIds: ['char-memory-derived'],
+          visibility: 'cross_scene_readable',
+          stability: 'situational',
+          decayHint: 'medium',
+          summary: '约会推进到试探靠近阶段；最近推进：靠近 / 对视',
+          timestamp: now - 300,
+          stageLabel: '试探靠近阶段',
+          currentBeat: '她没有躲开视线',
+          currentSignature: '靠近 / 对视',
+          previousSignature: '靠近',
+          repeatedSignature: false,
+          completedActions: ['靠近', '对视'],
+          bannedRepeatActions: ['靠近'],
+          unresolvedTension: '还有一句话没有说出口。',
+          nextStepOptions: ['把停顿推进成新的对话'],
+        },
+      ],
+    },
+  });
+
+  const summary = buildShortTermSummary(createCharacter({
+    id: 'char-memory-derived',
+  })) || '';
+  const registry = buildResolvedOpenLoopRegistry(createCharacter({
+    id: 'char-memory-derived',
+  }));
+
+  assert.match(summary, /试探靠近阶段/);
+  assert.match(registry[0]?.content || '', /约会推进到试探靠近阶段/);
+  assert.equal(registry[0]?.kind, 'scene');
+});
+
 test('buildShortTermSummary falls back to snapshot records before legacy fields', async () => {
   const now = Date.now();
   await saveMemoryRecordData({

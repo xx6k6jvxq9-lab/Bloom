@@ -1,9 +1,14 @@
 import type { PersistedChatHistoryData, PersistedGroupSession } from '../../features/persistence/chatHistoryStore';
 import type { ChatMessage } from '../../types';
 import type { FactTraceRecord } from '../relationship-context/factTypes';
-import type { RelationshipWaveRecord } from '../relationship-context/types';
+import type { RelationshipWaveEventKind, RelationshipWaveRecord } from '../relationship-context/types';
 import { formatTransferMessageForContext, resolveTransferContextMessage } from '../chat/transferContextText';
-import type { MemoryRecord, MemoryRecordDecayHint, MemoryRecordStability } from './memoryRecordTypes';
+import type {
+  MemoryRecord,
+  MemoryRecordDecayHint,
+  MemoryRecordSourceScene,
+  MemoryRecordStability,
+} from './memoryRecordTypes';
 
 export type PersistedMemoryRecordData = {
   updatedAt?: number;
@@ -19,6 +24,84 @@ export function buildMemoryRecordId(parts: Array<string | number | boolean | und
     .filter((part): part is string | number | boolean => part !== undefined && part !== null && `${part}`.trim().length > 0)
     .map((part) => String(part).replace(/\s+/g, ' ').trim())
     .join('|');
+}
+
+function normalizeHintText(value: string | undefined | null): string | undefined {
+  const normalized = value?.replace(/\s+/g, ' ').trim();
+  return normalized ? normalized : undefined;
+}
+
+export function dedupeHintTexts(values: Array<string | undefined | null>): string[] | undefined {
+  const seen = new Set<string>();
+  const deduped = values
+    .map((value) => normalizeHintText(value))
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+  return deduped.length > 0 ? deduped : undefined;
+}
+
+const SOURCE_SCENE_HINTS: Record<MemoryRecordSourceScene, string[]> = {
+  direct_chat: ['direct_chat', 'direct chat', '单聊', '私聊'],
+  group_chat: ['group_chat', 'group chat', '群聊', '公开互动'],
+  dating: ['dating', 'date', '约会', '暧昧推进'],
+  music_together: ['music_together', 'music together', '一起听歌', '音乐互动'],
+  couple_space: ['couple_space', 'couple space', '情侣空间', '共同生活'],
+  forum: ['forum', '论坛', '公开场景'],
+  moments: ['moments', '动态', '公开动态'],
+  manual: ['manual', '手动'],
+};
+
+const FACT_TYPE_HINTS: Record<FactTraceRecord['factType'], string[]> = {
+  preference: ['偏好', '喜欢', '习惯'],
+  plan: ['计划', '约定', '待办', '下次'],
+  status: ['状态', '近况', '当前情况'],
+  experience: ['经历', '回忆', '一起发生'],
+  background: ['背景', '设定', '长期信息'],
+};
+
+const RELATIONSHIP_EVENT_HINTS: Record<RelationshipWaveEventKind, string[]> = {
+  support: ['支持', '接住情绪', '站你这边'],
+  tease: ['打趣', '逗你', '嘴硬'],
+  conflict: ['别扭', '争执', '冲突'],
+  reconcile: ['和好', '缓和', '重新接上'],
+  protect: ['护着', '照顾', '替你挡一下'],
+  jealousy: ['吃醋', '在意', '占有欲'],
+  bonding: ['靠近', '升温', '暧昧推进'],
+  public_stance: ['公开态度', '公开站位', '公开互动'],
+  shared_experience: ['共同经历', '一起发生', '同一段经历'],
+};
+
+export function buildSourceSceneTags(sourceScene: MemoryRecordSourceScene): string[] {
+  return SOURCE_SCENE_HINTS[sourceScene] || [sourceScene];
+}
+
+export function buildFactRecordHints(record: FactTraceRecord): string[] | undefined {
+  return dedupeHintTexts([
+    record.summary,
+    record.factType,
+    record.subjectType,
+    ...FACT_TYPE_HINTS[record.factType],
+    ...buildSourceSceneTags(record.sourceScene),
+  ]);
+}
+
+export function buildRelationshipWaveHints(record: RelationshipWaveRecord): string[] | undefined {
+  return dedupeHintTexts([
+    record.summary,
+    record.eventKind,
+    record.relationType,
+    record.valence,
+    ...RELATIONSHIP_EVENT_HINTS[record.eventKind],
+    ...buildSourceSceneTags(record.sourceScene),
+  ]);
 }
 
 function normalizeCharacterIds(characterIds: string[]): string[] {
@@ -127,6 +210,12 @@ export function mapFactTraceToMemoryRecord(params: {
     decayHint: params.record.decayHint,
     summary: params.record.summary,
     timestamp: params.record.timestamp,
+    ...(buildFactRecordHints(params.record)
+      ? { retrievalHints: buildFactRecordHints(params.record) }
+      : {}),
+    ...(buildSourceSceneTags(params.record.sourceScene).length > 0
+      ? { sceneTags: buildSourceSceneTags(params.record.sourceScene) }
+      : {}),
     factType: params.record.factType,
     subjectType: params.record.subjectType,
     subjectId: params.record.subjectId,
@@ -181,6 +270,12 @@ export function mapRelationshipWaveToMemoryRecord(params: {
     decayHint: params.record.decayHint,
     summary: params.record.summary,
     timestamp: params.record.timestamp,
+    ...(buildRelationshipWaveHints(params.record)
+      ? { retrievalHints: buildRelationshipWaveHints(params.record) }
+      : {}),
+    ...(buildSourceSceneTags(params.record.sourceScene).length > 0
+      ? { sceneTags: buildSourceSceneTags(params.record.sourceScene) }
+      : {}),
     relationType: params.record.relationType,
     eventKind: params.record.eventKind,
     valence: params.record.valence,
@@ -235,6 +330,14 @@ function mapTransferSettlementToMemoryRecord(params: {
     decayHint: 'medium',
     summary,
     timestamp,
+    retrievalHints: dedupeHintTexts([
+      summary,
+      '转账',
+      '收款',
+      ...FACT_TYPE_HINTS.experience,
+      ...buildSourceSceneTags('direct_chat'),
+    ]),
+    sceneTags: buildSourceSceneTags('direct_chat'),
     factType: 'experience',
     subjectType: transferContext.direction === 'user_to_character' ? 'character' : 'user',
     subjectId: transferContext.direction === 'user_to_character' ? params.fallbackCharacterId : 'user',

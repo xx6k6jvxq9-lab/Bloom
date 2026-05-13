@@ -80,9 +80,12 @@ test('buildDatingEndedSettlement carries scene progress into summary, snapshot a
   const settlement = buildDatingEndedSettlement(character, session);
   const latestSnapshot = settlement.sharedContextSnapshots[0];
   const sceneResidueSummary = latestSnapshot?.sceneResidue?.[0]?.summary || '';
+  const sceneProgressRecord = settlement.sceneProgressRecords?.[0];
 
   assert.match(settlement.shortTermSummary || '', /这场约会推进到的阶段/);
   assert.match(sceneResidueSummary, /这场约会推进到的阶段/);
   assert.match(sceneResidueSummary, /最近推进/);
   assert.match(settlement.sharedState?.privateCarryover || '', /这场约会推进到的阶段/);
+  assert.equal(Boolean(sceneProgressRecord?.summary), true);
+  assert.equal(Boolean(sceneProgressRecord?.currentSignature), true);
 });

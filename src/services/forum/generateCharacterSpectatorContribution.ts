@@ -119,6 +119,8 @@ export async function generateCharacterSpectatorPost(input: GenerateCharacterSpe
     `讨论对象：${targetSummary}`,
     `当前镜间线索：${settingsSummary || '最近总有人拿这条关系线开楼。'}`,
     ...extraContextSections.filter(Boolean),
+    forumContext.publicPersonaGuide ? forumContext.publicPersonaGuide : '',
+    forumContext.publicPersonaGuide ? forumContext.publicPersonaGuide : '',
     '要求：',
     '1. 写成论坛帖子，不要写成动态文案。',
     '2. 角色可以嘴硬、冷淡、顺手补刀、半承认，但必须像角色本人，不要 OOC。',
@@ -185,6 +187,7 @@ export async function generateCharacterSpectatorReply(input: GenerateCharacterSp
     settingsSummary,
     extraContextSections = [],
   } = input;
+  const forumContext = buildForumCharacterContext(character);
   const forumHabit = buildCharacterForumHabit(character, 'junction');
   const sharedCharacterState = buildSharedCharacterStateFromCharacter({
     character,

@@ -57,7 +57,7 @@ import { CoupleSpaceCalendarView } from '../calendar/CoupleSpaceCalendarView';
 import { CoupleSpaceInteractionCenter } from '../interaction/CoupleSpaceInteractionCenter';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCoupleSpaceSharedSettlement } from '../../../services/couple-space/buildCoupleSpaceSharedSettlement';
-import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
+import { persistSceneSettlement } from '../../../services/memory/sceneSettlement';
 
 const CHAT_RUNTIME_BUSY_COUNT_KEY = '__bloomChatRuntimeBusyCount';
 const CHAT_RUNTIME_LAST_ACTIVE_AT_KEY = '__bloomChatRuntimeLastActiveAt';
@@ -332,7 +332,7 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
     });
   };
 
-  const handleRecordPartnerSettlement = (
+  const handleRecordPartnerSettlement = async (
     partnerId: string,
     event: {
       type: 'post' | 'message_board' | 'love_letter' | 'co_note' | 'ledger' | 'comment_reply';
@@ -341,35 +341,35 @@ export function CoupleSpaceApp({ appData, setAppData, onBack, settings }: Props)
       authorRole: 'user' | 'partner';
     },
   ) => {
-    setAppData((prev: any) => {
-      const nextCharacters = (prev.characters || []).map((item: any) => {
-        if (!item || item.id !== partnerId) {
-          return item;
-        }
+    const targetCharacter = (appData.characters || []).find((item: any) => item && item.id === partnerId);
+    if (!targetCharacter) {
+      return;
+    }
 
-        const settlement = buildCoupleSpaceSharedSettlement(item, event);
-        void appendSceneSettlementMemory({
-          characterId: item.id,
-          sourceScene: 'couple_space',
-          settlement,
-          timestamp: event.timestamp,
-        }).catch((error) => {
-          console.error('[couple-space] Failed to persist settlement memory snapshots', error);
-        });
-        return {
-          ...item,
-          sharedContextSnapshots: settlement.sharedContextSnapshots,
-          shortTermSummary: settlement.shortTermSummary,
-          openLoopRegistry: settlement.openLoopRegistry,
-          sharedState: settlement.sharedState,
-        };
+    const settlement = buildCoupleSpaceSharedSettlement(targetCharacter, event);
+
+    try {
+      const result = await persistSceneSettlement({
+        characterId: targetCharacter.id,
+        sourceScene: 'couple_space',
+        settlement,
+        timestamp: event.timestamp,
       });
-
-      return {
+      setAppData((prev: any) => ({
         ...prev,
-        characters: nextCharacters,
-      };
-    });
+        characters: (prev.characters || []).map((item: any) => (
+          !item || item.id !== partnerId
+            ? item
+            : {
+                ...item,
+                ...result.characterPatch,
+              }
+        )),
+      }));
+    } catch (error) {
+      console.error('[couple-space] Failed to persist settlement memory snapshots', error);
+      alert('情侣空间记忆写入失败了，请稍后再试。');
+    }
   };
 
   const handleUpdateInitiativeSettings = (next: typeof initiativeSettings) => {
@@ -1866,7 +1866,7 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, rec
         p.id === post.id ? { ...p, comments: [...(p.comments || []), newComment] } : p
       )
     }));
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'comment_reply',
       content: newComment.content,
       timestamp: operationNow,
@@ -1927,7 +1927,7 @@ function PostCard({ post, user, partner, updateSpace, updateSpaceForPartner, rec
                 p.id === post.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
             }));
-            recordSettlement(scopedPartnerId, {
+            void recordSettlement(scopedPartnerId, {
               type: 'comment_reply',
               content: aiComment.content,
               timestamp: aiComment.timestamp,
@@ -2168,7 +2168,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSe
       isCompleted: false,
     };
     updateSpace({ coNotes: [newNote, ...allNotes] });
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'co_note',
       content: newNote.content,
       timestamp: operationNow,
@@ -2223,7 +2223,7 @@ function CoNotesView({ coupleSpace, updateSpace, updateSpaceForPartner, recordSe
             updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               coNotes: [...(prev.coNotes || []), aiReply],
             }));
-            recordSettlement(scopedPartnerId, {
+            void recordSettlement(scopedPartnerId, {
               type: 'co_note',
               content: aiReply.content,
               timestamp: aiReply.timestamp,
@@ -2391,7 +2391,7 @@ function LedgerView({ coupleSpace, updateSpace, recordSettlement, user, partner 
   const [desc, setDesc] = useState('');
   const [payer, setPayer] = useState<'user' | 'partner'>('user');
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!amount || isNaN(Number(amount)) || !desc.trim()) return;
     const newEntry: LedgerEntry = {
       id: Date.now().toString(),
@@ -2401,7 +2401,7 @@ function LedgerView({ coupleSpace, updateSpace, recordSettlement, user, partner 
       timestamp: Date.now()
     };
     updateSpace({ ledger: [newEntry, ...(coupleSpace.ledger || [])] });
-    recordSettlement(coupleSpace.partnerId || partner.id, {
+    await recordSettlement(coupleSpace.partnerId || partner.id, {
       type: 'ledger',
       content: `${payer === 'user' ? user.name : partner.name} 记了一笔：${newEntry.description} ${newEntry.amount}`,
       timestamp: newEntry.timestamp,
@@ -2532,7 +2532,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
     };
     const updatedLetters = [newLetter, ...(coupleSpace.loveLetters || [])];
     updateSpace({ loveLetters: updatedLetters });
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'love_letter',
       content: newLetter.content,
       timestamp: operationNow,
@@ -2587,7 +2587,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
               l.id === newLetter.id ? { ...l, comments: [...(l.comments || []), aiComment] } : l
             )
           }));
-          recordSettlement(scopedPartnerId, {
+          void recordSettlement(scopedPartnerId, {
             type: 'comment_reply',
             content: aiComment.content,
             timestamp: aiComment.timestamp,
@@ -2600,7 +2600,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
     }
   };
 
-  const handleComment = (letterId: string) => {
+  const handleComment = async (letterId: string) => {
     if (!commentText.trim()) return;
     const now = Date.now();
     const newComment = {
@@ -2614,7 +2614,7 @@ function LoveLettersView({ coupleSpace, updateSpace, updateSpaceForPartner, reco
         l.id === letterId ? { ...l, comments: [...(l.comments || []), newComment] } : l
       ) 
     }));
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'comment_reply',
       content: newComment.content,
       timestamp: newComment.timestamp,
@@ -2912,7 +2912,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, recordS
     updateSpace((prev: any) => ({
       posts: [newPost, ...(prev.posts || [])]
     }));
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'post',
       content: newPost.content || (newPost.images?.length ? '发了一条带图片的情侣动态' : ''),
       timestamp: operationNow,
@@ -2973,7 +2973,7 @@ function PostFeedView({ coupleSpace, updateSpace, updateSpaceForPartner, recordS
                 p.id === newPost.id ? { ...p, comments: [...(p.comments || []), aiComment] } : p
               )
             }));
-            recordSettlement(scopedPartnerId, {
+            void recordSettlement(scopedPartnerId, {
               type: 'comment_reply',
               content: aiComment.content,
               timestamp: aiComment.timestamp,
@@ -3161,7 +3161,7 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, rec
     updateSpace((prev: any) => ({
       messageBoard: [newMsg, ...(prev.messageBoard || [])]
     }));
-    recordSettlement(scopedPartnerId, {
+    await recordSettlement(scopedPartnerId, {
       type: 'message_board',
       content: newMsg.content,
       timestamp: operationNow,
@@ -3212,7 +3212,7 @@ function MessageBoardView({ coupleSpace, updateSpace, updateSpaceForPartner, rec
             updateSpaceForPartner(scopedPartnerId, (prev: any) => ({
               messageBoard: [aiMsg, ...(prev.messageBoard || [])]
             }));
-            recordSettlement(scopedPartnerId, {
+            void recordSettlement(scopedPartnerId, {
               type: 'message_board',
               content: aiMsg.content,
               timestamp: aiMsg.timestamp,

@@ -1,9 +1,15 @@
 import { loadMemoryRecordData } from '../../features/persistence/memoryRecordStore';
 import type { MemoryRecord, MemoryRecordKind, MemoryRecordSourceScene, MemoryRecordStability, MemoryRecordVisibility } from './memoryRecordTypes';
 
+export type MemoryTextQuery = string | {
+  text: string;
+  weight?: number;
+};
+
 export type MemoryQuery = {
   characterId: string;
   sourceScenes?: MemoryRecordSourceScene[];
+  preferredSourceScenes?: MemoryRecordSourceScene[];
   kinds?: MemoryRecordKind[];
   visibilities?: MemoryRecordVisibility[];
   stabilities?: MemoryRecordStability[];
@@ -12,6 +18,7 @@ export type MemoryQuery = {
     to?: number;
   };
   textQuery?: string;
+  textQueries?: MemoryTextQuery[];
   limit?: number;
 };
 
@@ -23,6 +30,21 @@ export type MemoryQueryResult = {
 
 const TOKEN_REGEX = /[\p{L}\p{N}]{2,}/gu;
 const CJK_BLOCK_REGEX = /[\u4e00-\u9fff]{2,}/gu;
+const SOURCE_SCENE_BOOSTS = {
+  direct_chat: 2.6,
+  dating: 2.35,
+  couple_space: 2.1,
+  group_chat: 1.95,
+  forum: 1.75,
+  moments: 1.4,
+  music_together: 1.25,
+  manual: 1.1,
+} satisfies Record<MemoryRecordSourceScene, number>;
+
+type WeightedQueryTerm = {
+  term: string;
+  weight: number;
+};
 
 function normalizeText(value: string | undefined | null): string {
   return (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -59,6 +81,104 @@ function buildQueryTerms(query: string): string[] {
   return [normalized];
 }
 
+function normalizeTextQuery(input: MemoryTextQuery): {
+  text: string;
+  weight: number;
+} | null {
+  if (typeof input === 'string') {
+    const text = normalizeText(input);
+    return text
+      ? {
+          text,
+          weight: 1,
+        }
+      : null;
+  }
+
+  const text = normalizeText(input.text);
+  if (!text) {
+    return null;
+  }
+
+  const weight = typeof input.weight === 'number' && Number.isFinite(input.weight)
+    ? Math.max(0.1, input.weight)
+    : 1;
+
+  return {
+    text,
+    weight,
+  };
+}
+
+function buildWeightedQueryTerms(query: MemoryQuery): WeightedQueryTerm[] {
+  const weightedTerms = new Map<string, number>();
+  const textQueries: MemoryTextQuery[] = [
+    ...(query.textQuery?.trim() ? [query.textQuery] : []),
+    ...(query.textQueries || []),
+  ];
+
+  for (const textQuery of textQueries) {
+    const normalizedQuery = normalizeTextQuery(textQuery);
+    if (!normalizedQuery) {
+      continue;
+    }
+
+    for (const term of buildQueryTerms(normalizedQuery.text)) {
+      const previousWeight = weightedTerms.get(term) || 0;
+      weightedTerms.set(term, Math.max(previousWeight, normalizedQuery.weight));
+    }
+  }
+
+  return [...weightedTerms.entries()]
+    .map(([term, weight]) => ({ term, weight }))
+    .sort((left, right) => right.weight - left.weight || right.term.length - left.term.length);
+}
+
+function buildSearchableText(record: MemoryRecord): string {
+  if (record.kind === 'snapshot' || record.kind === 'note') {
+    return normalizeText([
+      record.summary,
+      record.text,
+      ...(record.retrievalHints || []),
+      ...(record.sceneTags || []),
+    ].join('\n'));
+  }
+
+  if (record.kind === 'scene_progress') {
+    return normalizeText([
+      record.summary,
+      record.stageLabel,
+      record.currentBeat,
+      record.currentSignature,
+      record.previousSignature,
+      ...(record.completedActions || []),
+      ...(record.bannedRepeatActions || []),
+      record.unresolvedTension,
+      ...(record.nextStepOptions || []),
+      ...(record.retrievalHints || []),
+      ...(record.sceneTags || []),
+    ].filter(Boolean).join('\n'));
+  }
+
+  if (record.kind === 'relationship_wave') {
+    return normalizeText([
+      record.summary,
+      record.eventKind,
+      record.valence,
+      record.intensity,
+      ...(record.retrievalHints || []),
+      ...(record.sceneTags || []),
+    ].join('\n'));
+  }
+
+  return normalizeText([
+    record.summary,
+    record.kind === 'fact' ? record.factType : '',
+    ...(record.retrievalHints || []),
+    ...(record.sceneTags || []),
+  ].join('\n'));
+}
+
 function matchesMetadata(record: MemoryRecord, query: MemoryQuery): boolean {
   if (record.characterIds.includes(query.characterId) === false) {
     return false;
@@ -92,23 +212,26 @@ function matchesMetadata(record: MemoryRecord, query: MemoryQuery): boolean {
   return true;
 }
 
-function scoreRecord(record: MemoryRecord, queryTerms: string[], nowTimestamp: number): MemoryQueryResult | null {
-  const summary = normalizeText(
-    record.kind === 'snapshot' || record.kind === 'note'
-      ? record.text
-      : record.summary,
-  );
+function scoreRecord(
+  record: MemoryRecord,
+  queryTerms: WeightedQueryTerm[],
+  nowTimestamp: number,
+  preferredSourceScenes: MemoryRecordSourceScene[] | undefined,
+): MemoryQueryResult | null {
+  const searchableText = buildSearchableText(record);
   const matchedTerms: string[] = [];
   let score = 0;
 
-  for (const term of queryTerms) {
+  for (const queryTerm of queryTerms) {
+    const term = queryTerm.term;
     if (!term) {
       continue;
     }
 
-    if (summary.includes(term)) {
+    if (searchableText.includes(term)) {
       matchedTerms.push(term);
-      score += summary === term ? 10 : summary.startsWith(term) ? 7 : 5;
+      const baseScore = searchableText === term ? 10 : searchableText.startsWith(term) ? 7 : 5;
+      score += baseScore * queryTerm.weight;
     }
   }
 
@@ -132,6 +255,18 @@ function scoreRecord(record: MemoryRecord, queryTerms: string[], nowTimestamp: n
     score += 0.4;
   }
 
+  if (record.kind === 'scene_progress') {
+    score += 0.8;
+  }
+
+  if (preferredSourceScenes?.length) {
+    const preferredIndex = preferredSourceScenes.indexOf(record.sourceScene);
+    if (preferredIndex >= 0) {
+      const preferredBoost = SOURCE_SCENE_BOOSTS[record.sourceScene] - (preferredIndex * 0.15);
+      score += Math.max(0.35, preferredBoost);
+    }
+  }
+
   return {
     record,
     score,
@@ -150,12 +285,12 @@ export function queryMemoryRecords(
     ?? (loadMemoryRecordData({
       recordsByCharacterId: {},
     }).recordsByCharacterId[query.characterId] || []);
-  const queryTerms = buildQueryTerms(query.textQuery || '');
+  const queryTerms = buildWeightedQueryTerms(query);
   const nowTimestamp = options.nowTimestamp ?? Date.now();
 
   const results = allRecords
     .filter((record) => matchesMetadata(record, query))
-    .map((record) => scoreRecord(record, queryTerms, nowTimestamp))
+    .map((record) => scoreRecord(record, queryTerms, nowTimestamp, query.preferredSourceScenes))
     .filter((result): result is MemoryQueryResult => result !== null)
     .sort((left, right) => (
       right.score - left.score

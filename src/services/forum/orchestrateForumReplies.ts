@@ -40,7 +40,7 @@ type OrchestrateForumRepliesInput = {
     content: string;
     replyToId?: string;
     rootCommentId?: string;
-  }>) => void;
+  }>) => Promise<void> | void;
   allowCharacterReply?: boolean;
   resolveCharacterReply?: (context: {
     post: ForumPost;
@@ -140,7 +140,7 @@ export async function orchestrateForumReplies(input: OrchestrateForumRepliesInpu
       continue;
     }
 
-    appendReplies(generatedReplies);
+    await appendReplies(generatedReplies);
     totalAddedCount += generatedReplies.length;
 
     workingPost = {
@@ -178,7 +178,7 @@ export async function orchestrateForumReplies(input: OrchestrateForumRepliesInpu
     });
 
     if (characterReply) {
-      appendReplies([{
+      await appendReplies([{
         authorId: characterReply.authorId,
         content: characterReply.content,
         replyToId: characterTriggerComment.id,

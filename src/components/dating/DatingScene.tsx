@@ -41,7 +41,7 @@ type DatingSceneProps = {
   onClose: () => void;
   onSaveDate: (session: DateSession) => void;
   onCollectDate: (session: DateSession) => void;
-  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => void;
+  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => Promise<void> | void;
   autoSaveEnabled?: boolean;
 };
 
@@ -690,9 +690,11 @@ export function DatingScene({
     clearEndingVisualTimers();
     endingCompleteTimeoutRef.current = window.setTimeout(() => {
       endingFlowActiveRef.current = false;
-      onEndDateComplete({
+      void Promise.resolve(onEndDateComplete({
         archivedSession,
         returnChatText: endingReturnText.trim(),
+      })).catch((error) => {
+        console.error('[dating-scene] Failed to complete ending return', error);
       });
     }, 2800);
   };

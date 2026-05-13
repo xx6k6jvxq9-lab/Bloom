@@ -5,9 +5,15 @@ import { buildSharedCharacterState } from '../relationship-context/buildSharedCh
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import {
   buildDatingSceneProgress,
+  buildDatingSceneProgressSummary,
   formatDatingSceneProgressForPrompt,
-  type DatingSceneProgress,
 } from '../dating/buildDatingSceneProgress';
+import {
+  buildMemoryPromptView,
+  buildMemoryRetrievalPromptFromView,
+  type MemoryPromptQueryText,
+} from '../memory/buildMemoryRetrievalPrompt';
+import { recordMemoryReadDiagnostic } from '../memory/memoryDiagnostics';
 import { compressShortTermSummaryAfterLongTerm } from '../memory/buildShortTermSummary';
 import type {
   Character,
@@ -248,6 +254,38 @@ function buildTask(options: BuildDatingSceneInputOptions): string {
   return '请基于当前保留的约会上下文继续生成后续内容。';
 }
 
+function getLatestDatingMemoryQueryText(options: BuildDatingSceneInputOptions): string | undefined {
+  const normalizedLatestUserInput = normalizeInlineText(options.latestUserInput);
+  if (normalizedLatestUserInput) {
+    return normalizedLatestUserInput;
+  }
+
+  const latestDatingUserText = [...options.session.messages]
+    .reverse()
+    .find((message) => message.role === 'user' && normalizeInlineText(message.text))
+    ?.text;
+  const normalizedDatingUserText = normalizeInlineText(latestDatingUserText);
+  if (normalizedDatingUserText) {
+    return normalizedDatingUserText;
+  }
+
+  const latestDirectUserText = [...options.chatHistory]
+    .reverse()
+    .find((message) => message.role === 'user' && normalizeInlineText(message.text))
+    ?.text;
+  return normalizeInlineText(latestDirectUserText) || undefined;
+}
+
+function buildRecentDatingTranscriptQueryText(session: DateSession): string | undefined {
+  const transcript = (session.messages || [])
+    .slice(-6)
+    .map((message) => normalizeInlineText(message.text))
+    .filter(Boolean)
+    .join(' ');
+
+  return transcript.trim() || undefined;
+}
+
 function formatTypedResidueLines<T extends { summary: string }>(
   title: string,
   items: T[] | undefined,
@@ -277,6 +315,7 @@ function buildExtraSections(input: {
   datingSceneHint?: string;
   shortTermSummary?: string;
   longTermMemoryProfile?: string;
+  retrievedMemoryPrompt?: string;
   relationshipResidue?: Array<{ summary: string }>;
   topicAnchors?: Array<{ summary: string }>;
   taskResidue?: Array<{ summary: string }>;
@@ -293,6 +332,7 @@ function buildExtraSections(input: {
     input.datingSceneHint ? ['## 当前约会场景补充', input.datingSceneHint].join('\n') : '',
     input.shortTermSummary ? ['## 近期关系余波', input.shortTermSummary].join('\n') : '',
     input.longTermMemoryProfile ? ['## 长期关系印象', input.longTermMemoryProfile].join('\n') : '',
+    input.retrievedMemoryPrompt || '',
     formatTypedResidueLines(
       '## Typed Relationship Residue',
       input.relationshipResidue,
@@ -354,11 +394,84 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     ? compressShortTermSummaryAfterLongTerm(characterScopedMemory.shortTermSummary || '')
     : characterScopedMemory.shortTermSummary;
   const sceneProgress = buildDatingSceneProgress(options.session);
+  const sceneProgressSummary = buildDatingSceneProgressSummary(sceneProgress);
+  const retrievalQueries: MemoryPromptQueryText[] = [
+    ...(buildRecentDatingTranscriptQueryText(options.session)
+      ? [{
+          text: buildRecentDatingTranscriptQueryText(options.session)!,
+          weight: 0.9,
+        }]
+      : []),
+    ...(sceneProgressSummary
+      ? [{
+          text: sceneProgressSummary,
+          weight: 1.05,
+        }]
+      : []),
+    ...(sceneProgress.currentBeat?.trim()
+      ? [{
+          text: sceneProgress.currentBeat.trim(),
+          weight: 0.95,
+        }]
+      : []),
+    ...(sceneProgress.currentSignature?.trim()
+      ? [{
+          text: sceneProgress.currentSignature.trim(),
+          weight: 1,
+        }]
+      : []),
+    ...(sceneScopedSignals.topicAnchors || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 0.95,
+    })),
+    ...(sceneScopedSignals.taskResidue || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 1.05,
+    })),
+    ...(sceneScopedSignals.relationshipResidue || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 0.75,
+    })),
+    ...(sceneScopedSignals.sharedRecentRelationshipSummary
+      ? [{
+          text: sceneScopedSignals.sharedRecentRelationshipSummary,
+          weight: 0.65,
+        }]
+      : []),
+    ...(sceneScopedSignals.recentCoupleSpaceSummary
+      ? [{
+          text: sceneScopedSignals.recentCoupleSpaceSummary,
+          weight: 0.55,
+        }]
+      : []),
+  ];
+  const retrievedMemory = buildMemoryPromptView({
+    characterId: options.character.id,
+    latestUserText: getLatestDatingMemoryQueryText(options),
+    retrievalQueries,
+    preferredSourceScenes: ['dating', 'couple_space', 'direct_chat', 'forum', 'group_chat'],
+    forceLatestRelationshipWaves: true,
+    forceLatestSceneProgress: true,
+    forceLatestOpenTasks: true,
+  });
+  const hasRetrievedMemory = (
+    retrievedMemory.matchedFacts.length
+    || retrievedMemory.stablePreferences.length
+    || retrievedMemory.relationshipWaves.length
+    || retrievedMemory.sceneProgress.length
+    || retrievedMemory.openTasks.length
+  ) > 0;
   const worldBookPromptSection = truncateFromStart(characterContext.worldBookPrompt, DATING_PROMPT_BUDGET.maxSectionChars);
   const sceneProgressPrompt = truncateFromStart(
     formatDatingSceneProgressForPrompt(sceneProgress),
     DATING_PROMPT_BUDGET.maxSectionChars,
   );
+  const retrievedMemoryPrompt = hasRetrievedMemory
+    ? truncateFromStart(
+        buildMemoryRetrievalPromptFromView(retrievedMemory),
+        DATING_PROMPT_BUDGET.maxSectionChars,
+      )
+    : '';
   const sections = budgetSections([
     ...buildExtraSections({
       sharedCharacterStatePrompt: truncateFromStart(sharedCharacterState.directPrompt, DATING_PROMPT_BUDGET.maxSectionChars),
@@ -372,6 +485,7 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
       datingSceneHint: truncateFromStart(characterContext.sceneHints?.dating, DATING_PROMPT_BUDGET.maxSectionChars),
       shortTermSummary: truncateFromStart(shortTermSummary, DATING_PROMPT_BUDGET.maxSectionChars),
       longTermMemoryProfile: truncateFromStart(characterScopedMemory.longTermMemoryProfile, DATING_PROMPT_BUDGET.maxSectionChars),
+      retrievedMemoryPrompt,
       relationshipResidue: sceneScopedSignals.relationshipResidue?.slice(0, 3),
       topicAnchors: sceneScopedSignals.topicAnchors?.slice(0, 2),
       taskResidue: sceneScopedSignals.taskResidue?.slice(0, 2),
@@ -381,21 +495,35 @@ export function buildDatingSceneInput(options: BuildDatingSceneInputOptions): Da
     worldBookPromptSection ? ['## World Book Context', worldBookPromptSection].join('\n') : '',
   ]);
 
-  console.info('[dating-scene-input] memory diagnostics', {
+  recordMemoryReadDiagnostic({
+    sourceScene: 'dating',
     characterId: options.character.id,
     shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
     longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
     shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
     longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
     recordCounts: characterScopedMemory.diagnostics?.recordCounts,
-    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
-    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
-    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
-    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
-    currentSceneProgressSignature: sceneProgress.currentSignature,
-    previousSceneProgressSignature: sceneProgress.previousSignature,
-    repeatedSceneProgressSignature: sceneProgress.repeatedSignature,
-    bannedRepeatActionCount: sceneProgress.bannedRepeatActions.length,
+    sceneSignalCounts: {
+      compatibilitySnapshots: sceneScopedSignals.compatibilitySnapshotCount || 0,
+      relationshipResidue: sceneScopedSignals.relationshipResidue?.length || 0,
+      sceneResidue: sceneScopedSignals.sceneResidue?.length || 0,
+      topicAnchors: sceneScopedSignals.topicAnchors?.length || 0,
+      taskResidue: sceneScopedSignals.taskResidue?.length || 0,
+    },
+    retrievedMemoryCounts: {
+      matchedFacts: retrievedMemory.matchedFacts.length,
+      stablePreferences: retrievedMemory.stablePreferences.length,
+      relationshipWaves: retrievedMemory.relationshipWaves.length,
+      sceneProgress: retrievedMemory.sceneProgress.length,
+      openTasks: retrievedMemory.openTasks.length,
+    },
+    sceneProgress: {
+      currentSignature: sceneProgress.currentSignature,
+      previousSignature: sceneProgress.previousSignature,
+      repeatedSignature: sceneProgress.repeatedSignature,
+      bannedRepeatActionCount: sceneProgress.bannedRepeatActions.length,
+    },
+    promptSectionCount: sections.length,
   });
 
   return {

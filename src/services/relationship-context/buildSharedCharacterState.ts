@@ -1,4 +1,5 @@
 import type { Character, CharacterPresenceState } from '../../types';
+import { buildSceneSignalsFromRecords } from '../memory/sceneSignalRecords';
 import type { CharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import type {
   RelationshipResidueItem,
@@ -76,6 +77,18 @@ function collectVisibleSummaries(
   }
 
   return summaries;
+}
+
+function resolveVisibleSummaries(
+  primaryItems: TypedStateItem[] | undefined,
+  fallbackItems: TypedStateItem[] | undefined,
+  visibilities: TypedContextVisibility[],
+  maxItems: number,
+): string[] {
+  const primarySummaries = collectVisibleSummaries(primaryItems, visibilities, maxItems);
+  return primarySummaries.length > 0
+    ? primarySummaries
+    : collectVisibleSummaries(fallbackItems, visibilities, maxItems);
 }
 
 function mergeSummaryParts(parts: Array<string | undefined>, maxItems: number): string {
@@ -246,6 +259,9 @@ export function buildSharedStateWritePatch(input: {
   updatedAt?: number;
   publicSummaries?: string[];
   privateSummaries?: string[];
+  shortTermSummaryOverride?: string;
+  replacePublicCarryover?: boolean;
+  replacePrivateCarryover?: boolean;
   currentActivity?: string;
   attentionNote?: string;
   availability?: NonNullable<Character['sharedState']>['availability'];
@@ -259,12 +275,15 @@ export function buildSharedStateWritePatch(input: {
     || existing?.attentionNote
     || getPresenceResumeTone(input.character.presenceState);
   const publicCarryover = mergeSummaryParts([
-    ...(existing?.publicCarryover ? [existing.publicCarryover] : []),
+    ...(!input.replacePublicCarryover && existing?.publicCarryover ? [existing.publicCarryover] : []),
     ...((input.publicSummaries || []).map((summary) => compactLine(summary, 96)).filter(Boolean)),
   ], 3);
+  const shortTermSummarySeed = input.shortTermSummaryOverride !== undefined
+    ? input.shortTermSummaryOverride
+    : input.character.shortTermSummary;
   const privateCarryover = mergeSummaryParts([
-    ...(existing?.privateCarryover ? [existing.privateCarryover] : []),
-    ...(input.character.shortTermSummary ? [input.character.shortTermSummary] : []),
+    ...(!input.replacePrivateCarryover && existing?.privateCarryover ? [existing.privateCarryover] : []),
+    ...(shortTermSummarySeed ? [shortTermSummarySeed] : []),
     ...((input.privateSummaries || []).map((summary) => compactLine(summary, 96)).filter(Boolean)),
   ], 3);
 
@@ -281,98 +300,135 @@ export function buildSharedStateWritePatch(input: {
 }
 
 export function rebuildSharedStateFromCharacter(input: {
-  character: Pick<Character, 'sharedState' | 'presenceState' | 'shortTermSummary' | 'sharedContextSnapshots'>;
+  character: Pick<Character, 'id' | 'sharedState' | 'presenceState' | 'shortTermSummary' | 'sharedContextSnapshots'>;
   updatedAt?: number;
   sourceScene?: NonNullable<Character['sharedState']>['sourceScene'];
 }) {
   const snapshots = input.character.sharedContextSnapshots || [];
-  const publicResidue = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.relationshipResidue || []),
+  const recordSignals = buildSceneSignalsFromRecords({
+    characterId: input.character.id,
+  });
+  const snapshotRelationshipResidue = snapshots.flatMap((snapshot) => snapshot.relationshipResidue || []);
+  const snapshotTaskResidue = snapshots.flatMap((snapshot) => snapshot.taskResidue || []);
+  const snapshotTopicAnchors = snapshots.flatMap((snapshot) => snapshot.topicAnchors || []);
+  const publicResidue = resolveVisibleSummaries(
+    recordSignals.relationshipResidue,
+    snapshotRelationshipResidue,
     PUBLIC_VISIBILITY,
     2,
   );
-  const publicTasks = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.taskResidue || []),
+  const publicTasks = resolveVisibleSummaries(
+    recordSignals.taskResidue,
+    snapshotTaskResidue,
     PUBLIC_VISIBILITY,
     1,
   );
-  const publicTopics = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.topicAnchors || []),
+  const publicTopics = resolveVisibleSummaries(
+    recordSignals.topicAnchors,
+    snapshotTopicAnchors,
     PUBLIC_VISIBILITY,
     1,
   );
-  const privateResidue = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.relationshipResidue || []),
+  const privateResidue = resolveVisibleSummaries(
+    recordSignals.relationshipResidue,
+    snapshotRelationshipResidue,
     PRIVATE_VISIBILITY,
     2,
   );
-  const privateTasks = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.taskResidue || []),
+  const privateTasks = resolveVisibleSummaries(
+    recordSignals.taskResidue,
+    snapshotTaskResidue,
     PRIVATE_VISIBILITY,
     1,
   );
-  const privateTopics = collectVisibleSummaries(
-    snapshots.flatMap((snapshot) => snapshot.topicAnchors || []),
+  const privateTopics = resolveVisibleSummaries(
+    recordSignals.topicAnchors,
+    snapshotTopicAnchors,
     PRIVATE_VISIBILITY,
     1,
   );
+  const publicSummaries = [...publicResidue, ...publicTasks, ...publicTopics];
+  const privateSummaries = [...privateResidue, ...privateTasks, ...privateTopics];
+  const hasRecordDerivedCarryover = recordSignals.summaryLines.length > 0;
 
   return buildSharedStateWritePatch({
     character: input.character,
     sourceScene: input.sourceScene || input.character.sharedState?.sourceScene || 'direct_chat',
     updatedAt: input.updatedAt,
-    publicSummaries: [...publicResidue, ...publicTasks, ...publicTopics],
-    privateSummaries: [...privateResidue, ...privateTasks, ...privateTopics],
+    publicSummaries,
+    privateSummaries,
+    shortTermSummaryOverride: hasRecordDerivedCarryover ? '' : input.character.shortTermSummary,
+    replacePublicCarryover: publicSummaries.length > 0,
+    replacePrivateCarryover: privateSummaries.length > 0 || hasRecordDerivedCarryover,
   });
 }
 
 export function buildSharedCharacterStateFromCharacter(input: {
-  character: Pick<Character, 'name' | 'presenceState' | 'sharedState' | 'shortTermSummary' | 'sharedContextSnapshots'>;
+  character: Pick<Character, 'id' | 'name' | 'presenceState' | 'sharedState' | 'shortTermSummary' | 'sharedContextSnapshots'>;
 }): SharedCharacterStatePrompt {
+  const resolvedSharedState = input.character.sharedState
+    ? rebuildSharedStateFromCharacter({
+        character: input.character,
+        sourceScene: input.character.sharedState.sourceScene,
+      })
+    : undefined;
+
   if (input.character.sharedState) {
     return {
       directPrompt: [
-        '[缁熶竴瑙掕壊鐘舵€乚 杩欐槸鍚屼竴涓鑹插湪涓嶅悓鍦烘櫙閲岀殑鍏变韩鐘舵€侊紝涓嶈鎶婂埆鐨勫満鏅師璇濈収鎼繘鏉ャ€?',
-        input.character.sharedState.currentActivity ? `[褰撳墠鐢熸椿搴曡壊] ${input.character.sharedState.currentActivity}` : '',
-        input.character.sharedState.attentionNote ? `[寮€鍙ｆ柟寮廬 ${input.character.sharedState.attentionNote}` : '',
-        input.character.sharedState.privateCarryover ? `[绉佷笅浣欐尝] ${input.character.sharedState.privateCarryover}` : '',
+        '[统一角色状态] 这是同一个角色在不同场景里的共享状态，不要把别的场景原话照搬进来。',
+        resolvedSharedState?.currentActivity ? `[当前生活底色] ${resolvedSharedState.currentActivity}` : '',
+        resolvedSharedState?.attentionNote ? `[开口方式] ${resolvedSharedState.attentionNote}` : '',
+        resolvedSharedState?.privateCarryover ? `[私下余波] ${resolvedSharedState.privateCarryover}` : '',
       ].filter(Boolean).join('\n'),
       groupPrompt: [
-        '[缁熶竴瑙掕壊鐘舵€乚 缇よ亰銆佸姩鎬併€佽鍧涢兘鍙簲璇ヨ鍒板叕寮€鍙鐨勯偅閮ㄥ垎瑙掕壊鐘舵€併€?',
-        input.character.sharedState.currentActivity ? `[褰撳墠鐢熸椿搴曡壊] ${input.character.sharedState.currentActivity}` : '',
-        input.character.sharedState.attentionNote ? `[鍏紑鍑哄満鏂瑰紡] ${input.character.sharedState.attentionNote}` : '',
-        input.character.sharedState.publicCarryover ? `[鍏紑鍙浣欐尝] ${input.character.sharedState.publicCarryover}` : '',
+        '[统一角色状态] 群聊、动态、论坛都只应读到公开可见的那部分角色状态。',
+        resolvedSharedState?.currentActivity ? `[当前生活底色] ${resolvedSharedState.currentActivity}` : '',
+        resolvedSharedState?.attentionNote ? `[公开出场方式] ${resolvedSharedState.attentionNote}` : '',
+        resolvedSharedState?.publicCarryover ? `[公开可见余波] ${resolvedSharedState.publicCarryover}` : '',
       ].filter(Boolean).join('\n'),
     };
   }
 
-  const publicResidue = collectVisibleSummaries(
-    input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.relationshipResidue || []),
+  const recordSignals = buildSceneSignalsFromRecords({
+    characterId: input.character.id,
+  });
+  const snapshotRelationshipResidue = input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.relationshipResidue || []) || [];
+  const snapshotTaskResidue = input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.taskResidue || []) || [];
+  const publicResidue = resolveVisibleSummaries(
+    recordSignals.relationshipResidue,
+    snapshotRelationshipResidue,
     PUBLIC_VISIBILITY,
     2,
   );
-  const publicTasks = collectVisibleSummaries(
-    input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.taskResidue || []),
+  const publicTasks = resolveVisibleSummaries(
+    recordSignals.taskResidue,
+    snapshotTaskResidue,
     PUBLIC_VISIBILITY,
     1,
   );
-  const privateResidue = collectVisibleSummaries(
-    input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.relationshipResidue || []),
+  const privateResidue = resolveVisibleSummaries(
+    recordSignals.relationshipResidue,
+    snapshotRelationshipResidue,
     PRIVATE_VISIBILITY,
     2,
   );
-  const privateTasks = collectVisibleSummaries(
-    input.character.sharedContextSnapshots?.flatMap((snapshot) => snapshot.taskResidue || []),
+  const privateTasks = resolveVisibleSummaries(
+    recordSignals.taskResidue,
+    snapshotTaskResidue,
     PRIVATE_VISIBILITY,
     1,
   );
+  const shortTermFallbackLines = recordSignals.summaryLines.length > 0
+    ? recordSignals.summaryLines
+    : (input.character.shortTermSummary ? [input.character.shortTermSummary] : []);
 
   const publicCarryover = mergeSummaryParts([
     ...publicResidue,
     ...publicTasks,
   ], 3);
   const privateCarryover = mergeSummaryParts([
-    input.character.shortTermSummary,
+    ...shortTermFallbackLines,
     ...privateResidue,
     ...privateTasks,
   ], 3);

@@ -38,7 +38,7 @@ import { resolveDateBackgroundInput } from './sessionUtils';
 interface DatingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => void;
+  onEndDateComplete: (payload: { archivedSession: DateSession; returnChatText: string }) => Promise<void> | void;
   character: Character;
   userProfile: UserProfileExtended;
   activeConfig: ApiConfig;

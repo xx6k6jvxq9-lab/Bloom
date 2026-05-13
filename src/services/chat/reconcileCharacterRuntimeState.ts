@@ -7,6 +7,7 @@ import type {
 } from '../../types';
 import { getMessageMainText } from '../../utils';
 import { buildRuntimeOpenLoopRegistry } from './buildOpenLoopRegistry';
+import { buildShortTermSummary } from '../memory/buildShortTermSummary';
 import { buildResolvedOpenLoopRegistry } from '../memory/buildResolvedOpenLoopRegistry';
 
 type ContinuityMode = 'continuous_scene' | 'same_day_resume' | 'resume_after_gap';
@@ -203,7 +204,7 @@ function shouldResolveEntry(entry: CharacterOpenLoopEntry, latestAssistantText: 
 export function reconcileCharacterRuntimeState(
   input: ReconcileCharacterRuntimeStateInput,
 ): Pick<Character, 'openLoopRegistry' | 'presenceState'> {
-  const baseSummary = input.shortTermSummary ?? input.character.shortTermSummary;
+  const baseSummary = input.shortTermSummary ?? buildShortTermSummary(input.character);
   const runtimeRegistry = buildRuntimeOpenLoopRegistry({
     shortTermSummary: baseSummary,
     recentMessages: input.history,

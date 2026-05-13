@@ -22,7 +22,11 @@ import {
 } from '../../../services/forum/forumTempChatState';
 import { bridgeForumFriendToFormalChat } from '../../../services/forum/forumFriendBridge';
 import { buildForumSharedSettlement } from '../../../services/forum/buildForumSharedSettlement';
-import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
+import {
+  buildSceneSettlementCharacterPatch,
+  persistSceneSettlementBatch,
+  type PersistSceneSettlementInput,
+} from '../../../services/memory/sceneSettlement';
 import { DEFAULT_FORUM_GLOBAL_SETTINGS } from '../../../services/forum/forumGlobalSettings';
 import { hydrateForumData } from '../../../features/persistence/forumDataStore';
 import {
@@ -137,7 +141,9 @@ function applyForumFriendAcceptanceSettlement(
     timestamp: number;
   },
 ) {
-  return characters.map((character) => {
+  const settlementInputs: PersistSceneSettlementInput[] = [];
+
+  const nextCharacters = characters.map((character) => {
     if (!character || character.id !== input.characterId) {
       return character;
     }
@@ -148,23 +154,23 @@ function applyForumFriendAcceptanceSettlement(
       content: input.content,
       timestamp: input.timestamp,
     });
-    void appendSceneSettlementMemory({
+    settlementInputs.push({
       characterId: character.id,
       sourceScene: 'forum',
       settlement,
       timestamp: input.timestamp,
-    }).catch((error) => {
-      console.error('[contacts-shell] Failed to persist forum acceptance settlement memory snapshots', error);
     });
 
     return {
       ...character,
-      sharedContextSnapshots: settlement.sharedContextSnapshots,
-      shortTermSummary: settlement.shortTermSummary,
-      openLoopRegistry: settlement.openLoopRegistry,
-      sharedState: settlement.sharedState,
+      ...buildSceneSettlementCharacterPatch(settlement),
     };
   });
+
+  return {
+    nextCharacters,
+    settlementInputs,
+  };
 }
 
 function CharacterCardPreviewPage({
@@ -307,88 +313,100 @@ export function ContactsApp({
     persistCharacters: saveCharacters,
   };
 
-  const handleAcceptFriendRequest = (id: string) => {
+  const handleAcceptFriendRequest = async (id: string) => {
     const initialRequest = friendRequests.find((request) => request.id === id);
-    setAppData(prev => {
-      const req = prev.friendRequests?.find(r => r.id === id);
-      if (!req) return prev;
+    if (initialRequest?.sourceScene === 'forum') {
+      const req = appData.friendRequests?.find((request) => request.id === id);
+      if (!req) {
+        return;
+      }
 
-      if (req.sourceScene === 'forum') {
-        const currentForumData = hydrateForumData(prev.forumData, EMPTY_CONTACTS_FORUM_DATA);
-        const currentTempChats = currentForumData.tempChats || {};
-        const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
-        const bridged = bridgeForumFriendToFormalChat({
-          appData: prev as any,
-          author: {
-            id: req.fromUserId,
-            name: req.fromUserName,
-            avatar: req.fromUserAvatar,
-            handle: req.forumHandle,
-            bio: req.forumBio,
-            persona: req.forumPersona,
-          },
-          session: currentTempChats[requestAuthorId],
-        });
-
-        const newChar: Character = {
+      const currentForumData = hydrateForumData(appData.forumData, EMPTY_CONTACTS_FORUM_DATA);
+      const currentTempChats = currentForumData.tempChats || {};
+      const requestAuthorId = req.sourceTempChatAuthorId || req.fromUserId;
+      const bridged = bridgeForumFriendToFormalChat({
+        appData: appData as any,
+        author: {
           id: req.fromUserId,
-          numericId: resolveStableNumericId(req.fromUserId),
           name: req.fromUserName,
           avatar: req.fromUserAvatar,
-          gender: 'other',
-          setting: '你的新朋友',
-          corePersona: '你的新朋友',
-          openingRemark: '你好！很高兴认识你。',
-          lastTime: Date.now(),
-          groupId: '朋友',
-          friendshipStatus: 'friends' as const,
-          blockedByUser: false,
-          blockedByCharacter: false,
-          relationshipStatusUpdatedAt: Date.now(),
-        };
-
-        const acceptedCharacters = bridged?.nextCharacters || [...prev.characters, newChar];
-        const nextCharacters = applyForumFriendAcceptanceSettlement(acceptedCharacters, {
-          characterId: req.fromUserId,
-          actorName: req.fromUserName,
-          content: req.message || '论坛里的来往正式往前走了一步。',
-          timestamp: Date.now(),
-        });
-        void saveCharacters(nextCharacters);
-        const nextTempChats = {
-          ...currentTempChats,
-          [requestAuthorId]: bridged?.nextTempSession || markForumFriendRequestResolved(
-            currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
-            'accepted',
-          ),
-        };
-
-        return {
-          ...prev,
-          characters: nextCharacters,
-          chatHistory: bridged?.nextChatHistory || prev.chatHistory,
-          friendRequests: prev.friendRequests?.map(r => r.id === id ? {
-            ...r,
-            status: 'accepted',
-            resolutionMessage: '你已通过这条好友申请',
-            lastUpdatedAt: Date.now(),
-          } : r),
-          forumData: {
-            ...currentForumData,
-            tempChats: nextTempChats,
-          },
-        };
-      }
-
-      const resolution = applyNonForumFriendRequestResolution(prev, {
-        requestId: id,
-        accepted: true,
+          handle: req.forumHandle,
+          bio: req.forumBio,
+          persona: req.forumPersona,
+        },
+        session: currentTempChats[requestAuthorId],
       });
-      if (resolution.nextCharacters) {
-        void saveCharacters(resolution.nextCharacters);
+
+      const operationNow = Date.now();
+      const newChar: Character = {
+        id: req.fromUserId,
+        numericId: resolveStableNumericId(req.fromUserId),
+        name: req.fromUserName,
+        avatar: req.fromUserAvatar,
+        gender: 'other',
+        setting: '你的新朋友',
+        corePersona: '你的新朋友',
+        openingRemark: '你好！很高兴认识你。',
+        lastTime: operationNow,
+        groupId: '朋友',
+        friendshipStatus: 'friends' as const,
+        blockedByUser: false,
+        blockedByCharacter: false,
+        relationshipStatusUpdatedAt: operationNow,
+      };
+
+      const acceptedCharacters = bridged?.nextCharacters || [...appData.characters, newChar];
+      const acceptanceResult = applyForumFriendAcceptanceSettlement(acceptedCharacters, {
+        characterId: req.fromUserId,
+        actorName: req.fromUserName,
+        content: req.message || '论坛里的来往正式往前走了一步。',
+        timestamp: operationNow,
+      });
+      const nextTempChats = {
+        ...currentTempChats,
+        [requestAuthorId]: bridged?.nextTempSession || markForumFriendRequestResolved(
+          currentTempChats[requestAuthorId] || createEmptyForumTempChatSession(requestAuthorId),
+          'accepted',
+        ),
+      };
+      const nextAppData = {
+        ...appData,
+        characters: acceptanceResult.nextCharacters,
+        chatHistory: bridged?.nextChatHistory || appData.chatHistory,
+        friendRequests: appData.friendRequests?.map((request) => request.id === id ? {
+          ...request,
+          status: 'accepted' as const,
+          resolutionMessage: '你已通过这条好友申请',
+          lastUpdatedAt: operationNow,
+        } : request),
+        forumData: {
+          ...currentForumData,
+          tempChats: nextTempChats,
+        },
+      };
+
+      try {
+        if (acceptanceResult.settlementInputs.length > 0) {
+          await persistSceneSettlementBatch(acceptanceResult.settlementInputs);
+        }
+        await saveCharacters(acceptanceResult.nextCharacters);
+        setAppData(nextAppData);
+      } catch (error) {
+        console.error('[contacts-shell] Failed to persist forum acceptance settlement memory snapshots', error);
+        alert('论坛好友通过后的记忆写入失败了，请稍后再试。');
       }
-      return resolution.nextAppData;
-    });
+    } else {
+      setAppData(prev => {
+        const resolution = applyNonForumFriendRequestResolution(prev, {
+          requestId: id,
+          accepted: true,
+        });
+        if (resolution.nextCharacters) {
+          void saveCharacters(resolution.nextCharacters);
+        }
+        return resolution.nextAppData;
+      });
+    }
 
     if (initialRequest?.sourceScene !== 'forum') {
       const characterId = getFriendRequestCharacterId(initialRequest);

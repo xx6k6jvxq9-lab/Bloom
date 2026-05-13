@@ -6,7 +6,16 @@ import type {
   TaskResidueItem,
   TopicAnchorItem,
 } from '../relationship-context/types';
+import type {
+  MemoryRecordKind,
+  MemoryRecordSourceScene,
+  MemoryRecordSourceSessionType,
+  SceneProgressMemoryRecordDraft,
+} from './memoryRecordTypes';
 import { buildSharedStateWritePatch } from '../relationship-context/buildSharedCharacterState';
+import { appendSceneSettlementMemory } from './memoryRecordSnapshots';
+import { recordMemoryWriteDiagnostic } from './memoryDiagnostics';
+import { buildStructuredRecordsFromSceneSettlement } from './sceneSettlementRecords';
 
 type SettlementSummaryItem = { summary: string };
 type SettlementTimedSummaryItem = SettlementSummaryItem & { timestamp: number };
@@ -40,7 +49,131 @@ export type SceneSettlementResult = {
   shortTermSummary?: string;
   openLoopRegistry?: CharacterOpenLoopEntry[];
   sharedState?: Character['sharedState'];
+  sceneProgressRecords?: SceneProgressMemoryRecordDraft[];
 };
+
+export type SceneSettlementCharacterPatch = Pick<
+  Character,
+  'sharedContextSnapshots' | 'shortTermSummary' | 'openLoopRegistry' | 'sharedState'
+>;
+
+export function buildSceneSettlementCharacterPatch(
+  settlement: SceneSettlementResult,
+): SceneSettlementCharacterPatch {
+  return {
+    sharedContextSnapshots: settlement.sharedContextSnapshots,
+    shortTermSummary: settlement.shortTermSummary,
+    openLoopRegistry: settlement.openLoopRegistry,
+    sharedState: settlement.sharedState,
+  };
+}
+
+export type PersistSceneSettlementInput = {
+  characterId: string;
+  sourceScene: MemoryRecordSourceScene;
+  settlement: SceneSettlementResult;
+  sourceSessionType?: MemoryRecordSourceSessionType;
+  sourceSessionId?: string;
+  timestamp?: number;
+};
+
+export type PersistSceneSettlementResult = {
+  characterPatch: SceneSettlementCharacterPatch;
+  timestamp: number;
+};
+
+function incrementRecordCount(
+  counts: Partial<Record<MemoryRecordKind | 'snapshot_short_term_summary' | 'snapshot_shared_state', number>>,
+  key: MemoryRecordKind | 'snapshot_short_term_summary' | 'snapshot_shared_state',
+): void {
+  counts[key] = (counts[key] || 0) + 1;
+}
+
+function buildPlannedSettlementRecordCounts(input: PersistSceneSettlementInput & { timestamp: number }) {
+  const counts: Partial<Record<MemoryRecordKind | 'snapshot_short_term_summary' | 'snapshot_shared_state', number>> = {};
+
+  if (input.settlement.shortTermSummary?.trim()) {
+    incrementRecordCount(counts, 'snapshot_short_term_summary');
+  }
+  if (input.settlement.sharedState) {
+    incrementRecordCount(counts, 'snapshot_shared_state');
+  }
+
+  buildStructuredRecordsFromSceneSettlement({
+    characterId: input.characterId,
+    sourceScene: input.sourceScene,
+    settlement: input.settlement,
+    sourceSessionType: input.sourceSessionType,
+    sourceSessionId: input.sourceSessionId,
+    timestamp: input.timestamp,
+  }).forEach((record) => incrementRecordCount(counts, record.kind));
+
+  return counts;
+}
+
+export async function persistSceneSettlement(
+  input: PersistSceneSettlementInput,
+): Promise<PersistSceneSettlementResult> {
+  const timestamp = input.timestamp
+    ?? input.settlement.sharedContextSnapshots[0]?.settledAt
+    ?? Date.now();
+  const characterPatch = buildSceneSettlementCharacterPatch(input.settlement);
+  const plannedRecordCounts = buildPlannedSettlementRecordCounts({
+    ...input,
+    timestamp,
+  });
+
+  try {
+    await appendSceneSettlementMemory({
+      characterId: input.characterId,
+      sourceScene: input.sourceScene,
+      settlement: input.settlement,
+      sourceSessionType: input.sourceSessionType,
+      sourceSessionId: input.sourceSessionId,
+      timestamp,
+    });
+    recordMemoryWriteDiagnostic({
+      characterId: input.characterId,
+      sourceScene: input.sourceScene,
+      timestamp,
+      status: 'success',
+      plannedRecordCounts,
+      snapshotCount: input.settlement.sharedContextSnapshots.length,
+      sharedStateIncluded: Boolean(input.settlement.sharedState),
+      sceneProgressRecordCount: input.settlement.sceneProgressRecords?.length || 0,
+    });
+
+    return {
+      characterPatch,
+      timestamp,
+    };
+  } catch (error) {
+    recordMemoryWriteDiagnostic({
+      characterId: input.characterId,
+      sourceScene: input.sourceScene,
+      timestamp,
+      status: 'failed',
+      plannedRecordCounts,
+      snapshotCount: input.settlement.sharedContextSnapshots.length,
+      sharedStateIncluded: Boolean(input.settlement.sharedState),
+      sceneProgressRecordCount: input.settlement.sceneProgressRecords?.length || 0,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+export async function persistSceneSettlementBatch(
+  inputs: PersistSceneSettlementInput[],
+): Promise<PersistSceneSettlementResult[]> {
+  const results: PersistSceneSettlementResult[] = [];
+
+  for (const input of inputs) {
+    results.push(await persistSceneSettlement(input));
+  }
+
+  return results;
+}
 
 export function mergeSettlementSummaryLines(...blocks: Array<string | undefined>): string | undefined {
   const lines = blocks
@@ -168,6 +301,7 @@ export function buildSceneSettlementResult(input: {
   snapshotLimit?: number;
   openLoop: SceneSettlementOpenLoopConfig;
   sharedState?: SceneSettlementSharedStateConfig;
+  sceneProgressRecords?: SceneProgressMemoryRecordDraft[];
 }): SceneSettlementResult {
   const snapshot = buildSettlementSnapshot({
     sourceScene: input.sourceScene,
@@ -204,6 +338,11 @@ export function buildSceneSettlementResult(input: {
             publicSummaries: input.sharedState.publicSummaries,
             privateSummaries: input.sharedState.privateSummaries,
           }),
+        }
+      : {}),
+    ...(input.sceneProgressRecords?.length
+      ? {
+          sceneProgressRecords: input.sceneProgressRecords,
         }
       : {}),
   };

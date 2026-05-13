@@ -127,7 +127,7 @@ export function analyzeDirectUserIntent(text: string): DirectUserIntentAnalysis 
   if (flags.hasConfession) cues.push('用户话里带了明显示好/表白信号。');
   if (flags.hasPlayful) cues.push('用户说法里有明显的玩梗、反差或故意逗人的结构。');
   if (flags.hasFlirtation) cues.push('用户在试探关系、偏心或暧昧回应。');
-  if (flags.hasSupport) cues.push('用户带有求安慰、求接住情绪的需求。');
+  if (flags.hasSupport) cues.push('用户带有求安慰、求回应情绪的需求。');
   if (flags.hasPracticalHelp) cues.push('用户也在索要一个实际帮助或建议。');
   if (flags.hasTransfer) cues.push('用户话里带了明确的金钱/请客/转账请求。');
   if (cues.length === 0) cues.push('这句更像普通聊天，不要过度解读。');
@@ -198,7 +198,7 @@ function formatEmotionToneLabel(tone: UserEmotionTone) {
     case 'mixed':
       return '认真和玩梗混在一起';
     case 'vulnerable':
-      return '偏脆弱、偏需要接住';
+      return '偏脆弱、在试探这个角色会怎么回应';
     case 'testing':
       return '偏试探、偏看你会不会接';
     case 'neutral':
@@ -213,7 +213,8 @@ export function buildDirectIntentPromptSection(analysis: DirectUserIntentAnalysi
   }
 
   return [
-    '## 用户真实意图识别',
+    '## 用户输入触发点 / 角色内反应参考',
+    '说明: 这些判断只帮助你理解本轮输入可能触发了什么，不是要求你变温柔、变理性或变成安抚型助手；最终反应必须服从你的人设与当前状态。',
     `主意图: ${formatIntentLabel(analysis.primaryIntent)}`,
     `副意图: ${formatIntentLabel(analysis.secondaryIntent)}`,
     `动作意图: ${formatActionIntentLabel(analysis.actionIntent)}`,
@@ -221,6 +222,6 @@ export function buildDirectIntentPromptSection(analysis: DirectUserIntentAnalysi
     `判断置信度: ${analysis.confidence}`,
     '识别线索:',
     ...analysis.cues.map((cue, index) => `${index + 1}. ${cue}`),
-    '回复要求: 先接住用户真正想要的反应，再决定要不要顺手接梗，不要只抓最表面的笑点。',
+    '回复要求: 先判断你会被怎样触发，再用你自己的方式回应；可以靠近、躲开、嘴硬、压迫、撒娇、逗回、沉默或安抚，但不要只抓最表面的笑点，也不要默认走温柔陪聊模板。',
   ].join('\n');
 }

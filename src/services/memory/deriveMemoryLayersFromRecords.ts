@@ -13,6 +13,7 @@ export type DerivedMemoryLayers = {
 
 type RelationshipWaveRecord = Extract<MemoryRecord, { kind: 'relationship_wave' }>;
 type FactMemoryRecord = Extract<MemoryRecord, { kind: 'fact' }>;
+type SceneProgressMemoryRecord = Extract<MemoryRecord, { kind: 'scene_progress' }>;
 type SnapshotRecord = Extract<MemoryRecord, { kind: 'snapshot' }>;
 
 const MAX_SHORT_TERM_RECORDS = 6;
@@ -94,6 +95,10 @@ function formatFactLongTerm(record: FactMemoryRecord): string {
   return record.summary;
 }
 
+function formatSceneProgressResidual(record: SceneProgressMemoryRecord): string {
+  return `场景推进：${record.summary}`;
+}
+
 function formatWaveLongTerm(record: RelationshipWaveRecord): string {
   if (record.eventKind === 'bonding' || record.eventKind === 'shared_experience') {
     return `关系底色：${record.summary}`;
@@ -110,6 +115,25 @@ function formatWaveLongTerm(record: RelationshipWaveRecord): string {
 function buildDerivedOpenLoopEntry(
   record: MemoryRecord,
 ): CharacterOpenLoopEntry | null {
+  if (record.kind === 'scene_progress') {
+    const status = record.repeatedSignature || record.unresolvedTension
+      ? 'waiting_user'
+      : 'dormant';
+    return {
+      id: `memory-open-loop-${record.id}`,
+      kind: 'scene',
+      status,
+      content: `当前场景推进停在：${record.summary}`,
+      source: 'recent_history',
+      createdAt: record.timestamp,
+      lastTouchedAt: record.timestamp,
+      updatedAt: record.timestamp,
+      resumeHint: record.repeatedSignature
+        ? '当前场景最近已经出现重复推进，只有用户重新触发或明确换方向时才恢复，不要自动沿用旧动作。'
+        : '把这条推进当成场景停留点，只有当前语境重新触发时才恢复，不要直接续写旧动作。',
+    };
+  }
+
   if (record.kind === 'fact') {
     if (record.factType !== 'plan') {
       return null;
@@ -244,6 +268,7 @@ export function buildDerivedMemoryLayersFromRecords(
     recordCounts: {
       facts: records.filter((record) => record.kind === 'fact').length,
       relationshipWaves: records.filter((record) => record.kind === 'relationship_wave').length,
+      sceneProgress: records.filter((record) => record.kind === 'scene_progress').length,
       snapshots: snapshotRecords.length,
       notes: records.filter((record) => record.kind === 'note').length,
     },
@@ -260,6 +285,7 @@ export function buildDerivedMemoryLayersFromRecords(
   const shortTermRecords = recentRecords.filter((record) => record.decayHint !== 'stable' || record.stability !== 'stable');
   const relationshipRecords = shortTermRecords.filter((record): record is RelationshipWaveRecord => record.kind === 'relationship_wave');
   const factRecords = shortTermRecords.filter((record): record is FactMemoryRecord => record.kind === 'fact');
+  const sceneProgressRecords = shortTermRecords.filter((record): record is SceneProgressMemoryRecord => record.kind === 'scene_progress');
 
   const currentAtmosphereLine = relationshipRecords[0]
     ? `当前氛围：${formatRelationshipAtmosphere(relationshipRecords[0])}`
@@ -272,6 +298,7 @@ export function buildDerivedMemoryLayersFromRecords(
     )}`
     : undefined;
   const residualLines = dedupeTextLines([
+    ...sceneProgressRecords.slice(0, 2).map((record) => `短期余波：${formatSceneProgressResidual(record)}`),
     ...relationshipRecords.slice(0, 2).map((record) => `短期余波：${record.summary}`),
     ...factRecords
       .filter((record) => record.factType === 'experience' || record.factType === 'status')

@@ -1,4 +1,5 @@
 import type { Character } from '../../types';
+import { buildPublicPersonaGuide } from '../../services/ai/prompts/character/buildPublicPersonaGuide';
 import { buildResolvedMemoryLayers } from '../../services/memory/buildResolvedMemoryLayers';
 import { buildCharacterContext } from '../../services/relationship-context/buildCharacterContext';
 
@@ -8,6 +9,7 @@ export type ForumCharacterContext = {
   forumSceneHint: string;
   signature: string;
   openingRemark: string;
+  publicPersonaGuide: string;
   longTermMemoryProfile: string;
   globalMemory: string;
   fingerprint: string;
@@ -26,6 +28,14 @@ export function buildForumCharacterContext(character: Character): ForumCharacter
   const forumSceneHint = normalizeOptionalText(character.sceneHints?.forum);
   const signature = normalizeOptionalText(character.signature);
   const openingRemark = normalizeOptionalText(character.openingRemark);
+  const publicPersonaGuide = buildPublicPersonaGuide({
+    corePersona,
+    expressionStyle,
+    boundaryPack: characterContext.boundaryPack,
+    extendedLore: characterContext.extendedLore,
+    signature,
+    openingRemark,
+  });
   const longTermMemoryProfile = normalizeOptionalText(memoryLayers.longTermMemoryProfile);
   const globalMemory = normalizeOptionalText(character.globalMemory);
 
@@ -35,6 +45,7 @@ export function buildForumCharacterContext(character: Character): ForumCharacter
     forumSceneHint,
     signature,
     openingRemark,
+    publicPersonaGuide,
     longTermMemoryProfile,
     globalMemory,
     fingerprint: [

@@ -4,10 +4,15 @@ import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomen
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
+import { buildPublicPersonaGuide } from '../ai/prompts/character/buildPublicPersonaGuide';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
-import { buildSharedCharacterStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
+import {
+  buildSharedCharacterStateFromCharacter,
+  rebuildSharedStateFromCharacter,
+} from '../relationship-context/buildSharedCharacterState';
 import { selectActiveCharacterWorldBooks } from '../world-book/worldBookAccess';
 import { buildMomentPostBlueprint, type MomentPostBlueprint } from './postBlueprints';
+import type { AutoMomentPlanEntry } from './autoScheduler';
 import {
   buildMomentTranslationInstruction,
   resolveMomentLanguagePlan,
@@ -108,6 +113,14 @@ function buildMomentCharacterCore(options: {
     activeMask: masks.find((mask) => mask.isActive && mask.linkedCharacters.includes(character.id)) ?? null,
     activeWorldBooks,
   });
+  const publicPersonaGuide = buildPublicPersonaGuide({
+    corePersona: characterContext.corePersona,
+    expressionStyle: characterContext.expressionStyle,
+    boundaryPack: characterContext.boundaryPack,
+    extendedLore: characterContext.extendedLore,
+    signature: character.signature,
+    openingRemark: character.openingRemark,
+  });
 
   return {
     characterSetting: [
@@ -118,8 +131,28 @@ function buildMomentCharacterCore(options: {
     ]
       .filter(Boolean)
       .join('\n\n'),
+    signature: character.signature?.trim() || undefined,
+    personaGuidePrompt: publicPersonaGuide || undefined,
     maskPrompt: characterContext.maskPrompt || buildMaskPrompt(character.id, masks),
     worldBookPrompt: characterContext.worldBookPrompt,
+  };
+}
+
+function buildMomentPublicReplyCharacterCore(character: Character) {
+  const characterContext = buildCharacterContext({ character });
+  const publicPersonaGuide = buildPublicPersonaGuide({
+    corePersona: characterContext.corePersona,
+    expressionStyle: characterContext.expressionStyle,
+    boundaryPack: characterContext.boundaryPack,
+    extendedLore: characterContext.extendedLore,
+    signature: character.signature,
+    openingRemark: character.openingRemark,
+  });
+
+  return {
+    characterSetting: characterContext.corePersona ?? '',
+    signature: character.signature?.trim() || undefined,
+    personaGuidePrompt: publicPersonaGuide || undefined,
   };
 }
 
@@ -214,7 +247,11 @@ function buildMomentMemoryContext(
     character,
   });
   const readableMemoryView = buildMomentReadableMemoryView({
-    character,
+    character: {
+      sharedState: rebuildSharedStateFromCharacter({
+        character,
+      }),
+    },
     shortTermSummary: layers.shortTermSummary?.trim(),
     longTermMemoryProfile: layers.longTermMemoryProfile?.trim(),
   });
@@ -329,7 +366,9 @@ function buildBalancedMomentPostPrompt(options: {
         'Prefer posts with a visible real-world anchor: a room, desk, mirror, food, clothing, weather, train, store, gym, street, pet, or work scene.',
         'Allow life-sharing, complaint, flirting, jealousy, public preference, work snippets, jokes, hot takes, and abstract fragments. Do not collapse everything into introspection.',
         'If the user is involved, keep it public-facing: a hint, tease, stance, petty line, flirt, or a post clearly meant for them to see, not a direct chat bubble.',
-        'If the post smells like a real photo, imagine a real subject in frame instead of a metaphor card: selfie, outfit, abs, maid outfit, cat ears, pet, hot dog, milk tea, gym mirror, bedroom corner, convenience store light, desk, screenshot.',
+        ...(blueprint?.allowImages
+          ? ['If the post smells like a real photo, imagine a real subject in frame instead of a metaphor card: selfie, outfit, abs, maid outfit, cat ears, pet, hot dog, milk tea, gym mirror, bedroom corner, convenience store light, desk, screenshot.']
+          : ['This post is text-only. Do not invent photos, screenshots, gallery captions, or image-description scaffolding.']),
         'Long posts must break into natural paragraphs. Short posts can be blunt, casual, messy, or playful.',
         '不要写成任务说明。',
         '不要出现“你让我发”“那我发一条”这类过渡句。',
@@ -929,6 +968,7 @@ async function generateMomentImageCard(options: {
   const { activeConfig, character, momentContent, blueprint } = options;
   const normalized = momentContent.trim();
   if (!normalized) return undefined;
+  if (blueprint && !blueprint.allowImages) return undefined;
 
   const themePool: MomentImageCard['theme'][] = ['polaroid', 'film', 'note', 'poster'];
   const theme = blueprint?.preferredTheme || themePool[hashString(`${character.id}:${normalized}`) % themePool.length];
@@ -983,6 +1023,7 @@ export async function generateMomentPostContent(options: {
   worldBook: WorldBookEntry[];
   requestText: string;
   extraPromptSections?: string[];
+  generationHints?: AutoMomentPlanEntry['generationHints'];
   privateCarryoverLevel?: MomentPrivateCarryoverLevel;
   allowPrivateMomentCarryover?: boolean;
 }): Promise<GeneratedMomentPost> {
@@ -993,6 +1034,7 @@ export async function generateMomentPostContent(options: {
     worldBook,
     requestText,
     extraPromptSections = [],
+    generationHints,
     privateCarryoverLevel,
     allowPrivateMomentCarryover = false,
   } = options;
@@ -1007,6 +1049,8 @@ export async function generateMomentPostContent(options: {
     character,
     requestText: combinedRequestText,
     mode: momentMode,
+    forceTextOnly: generationHints?.forceTextOnly,
+    allowedShapes: generationHints?.allowedShapes,
   });
   const fallback = getCleanMomentFallback(blueprint.shape);
 
@@ -1184,9 +1228,7 @@ export async function generateMomentCommentReply(options: {
   const fallback = buildFallbackMomentCommentReply(replyCharacter, moment, userComment, recentCommentReplies);
 
   const prompt = buildMomentCommentReplyPrompt({
-    characterCore: {
-      characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
-    },
+    characterCore: buildMomentPublicReplyCharacterCore(replyCharacter),
     memoryContext: buildMomentMemoryContext(replyCharacter),
     momentContext: {
       momentContent: moment.content,
@@ -1259,9 +1301,7 @@ export async function generateMomentAutoComment(options: {
     : '';
 
   const prompt = buildMomentCommentReplyPrompt({
-    characterCore: {
-      characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
-    },
+    characterCore: buildMomentPublicReplyCharacterCore(replyCharacter),
     memoryContext: buildMomentMemoryContext(replyCharacter),
     momentContext: {
       momentContent: moment.content,

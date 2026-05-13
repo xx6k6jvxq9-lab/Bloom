@@ -177,7 +177,10 @@ export function buildChatPrompt(options: BuildChatPromptOptions = {}): string {
 
   const sections = [
     EXISTENCE_PROMPT,
-    buildCharacterCoreSection(options.characterCore ?? {}),
+    buildCharacterCoreSection({
+      ...(options.characterCore ?? {}),
+      mode: options.characterCore?.mode ?? 'character_speaking',
+    }),
     buildUserContextSection(options.userContext),
     buildRecentContextSection(options.recentContext),
     buildLongTermMemoryContextSection(options.memoryContext ?? {}),

@@ -37,7 +37,9 @@ import { resolveDirectChatBackground } from './directChatBackground';
 import { useDirectChatRuntime } from '../chat-runtime/useDirectChatRuntime';
 import { hasOpenedCoupleSpaceForCharacter } from '../chat-runtime/coupleSpaceInviteGuard';
 import { getDirectMemoryMessageLimit } from '../../services/memory/memoryWindowLimits';
-import { appendSceneSettlementMemory } from '../../services/memory/memoryRecordSnapshots';
+import {
+  persistSceneSettlement,
+} from '../../services/memory/sceneSettlement';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { AudioMessageCard } from './AudioMessageCard';
@@ -3699,36 +3701,34 @@ export function ChatSessionScreen({
             resetDatingScenePresentation();
             setShowDatingModal(false);
           }}
-          onEndDateComplete={({ archivedSession, returnChatText }) => {
-            resetDatingScenePresentation();
-            setShowDatingModal(false);
+          onEndDateComplete={async ({ archivedSession, returnChatText }) => {
             const settlement = buildDatingEndedSettlement(character, archivedSession);
-            if (onPatchCharacter) {
-              onPatchCharacter({
-                activeDatingState: undefined,
-                sharedContextSnapshots: settlement.sharedContextSnapshots,
-                shortTermSummary: settlement.shortTermSummary,
-                openLoopRegistry: settlement.openLoopRegistry,
-                sharedState: settlement.sharedState,
+            try {
+              const result = await persistSceneSettlement({
+                characterId: character.id,
+                sourceScene: 'dating',
+                settlement,
+                timestamp: archivedSession.endedAt || Date.now(),
               });
-            } else {
-              onUpdateCharacter({
-                ...character,
-                activeDatingState: undefined,
-                sharedContextSnapshots: settlement.sharedContextSnapshots,
-                shortTermSummary: settlement.shortTermSummary,
-                openLoopRegistry: settlement.openLoopRegistry,
-                sharedState: settlement.sharedState,
-              });
-            }
-            void appendSceneSettlementMemory({
-              characterId: character.id,
-              sourceScene: 'dating',
-              settlement,
-              timestamp: archivedSession.endedAt || Date.now(),
-            }).catch((error) => {
+              resetDatingScenePresentation();
+              setShowDatingModal(false);
+              if (onPatchCharacter) {
+                onPatchCharacter({
+                  activeDatingState: undefined,
+                  ...result.characterPatch,
+                });
+              } else {
+                onUpdateCharacter({
+                  ...character,
+                  activeDatingState: undefined,
+                  ...result.characterPatch,
+                });
+              }
+            } catch (error) {
               console.error('[chat-session] Failed to persist dating settlement memory snapshots', error);
-            });
+              setError(error instanceof Error ? error.message : '约会记忆结算失败，请稍后重试。');
+              return;
+            }
             if (!returnChatText.trim()) {
               return;
             }

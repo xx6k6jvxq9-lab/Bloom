@@ -26,7 +26,7 @@ export type ChatPromptBudgetPolicy = {
 
 export const DEFAULT_CHAT_PROMPT_BUDGET_POLICY: ChatPromptBudgetPolicy = {
   maxRecentContextItems: 3,
-  maxExtraSections: 6,
+  maxExtraSections: 8,
 };
 
 export function applyChatPromptBudget(

@@ -41,6 +41,7 @@ export type DirectLightInteractionGenerationInput = {
   type: 'poke';
   scene: 'direct';
   actor: LightInteractionActor;
+  responderCharacter: Character;
   target: {
     character: Character;
     label: string;

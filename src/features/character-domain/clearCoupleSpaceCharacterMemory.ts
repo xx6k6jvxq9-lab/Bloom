@@ -9,6 +9,7 @@ export function clearCoupleSpaceCharacterMemory(character: Character): Character
   const rebuiltSharedState = remainingSharedContextSnapshots.length > 0
     ? rebuildSharedStateFromCharacter({
         character: {
+          id: character.id,
           sharedState: undefined,
           presenceState: character.presenceState,
           shortTermSummary: undefined,

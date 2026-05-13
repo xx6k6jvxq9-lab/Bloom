@@ -9,16 +9,30 @@ export function buildResolvedOpenLoopRegistry(
   character: Pick<Character, 'id' | 'openLoopRegistry'>,
 ): CharacterOpenLoopEntry[] {
   const derivedEntries = buildDerivedMemoryLayersFromRecords(character).openLoopRegistry || [];
-  const existingEntries = (character.openLoopRegistry || []).filter((entry) => entry.status !== 'resolved');
-  const merged = [...derivedEntries, ...existingEntries];
   const seen = new Set<string>();
-
-  return merged.filter((entry) => {
+  const resolvedFromRecords = derivedEntries.filter((entry) => {
     const key = normalizeEntryKey(entry);
     if (!entry.content.trim() || seen.has(key)) {
       return false;
     }
     seen.add(key);
     return true;
-  }).slice(0, 8);
+  });
+
+  if (resolvedFromRecords.length >= 8) {
+    return resolvedFromRecords.slice(0, 8);
+  }
+
+  const fallbackLegacyEntries = (character.openLoopRegistry || [])
+    .filter((entry) => entry.status !== 'resolved')
+    .filter((entry) => {
+      const key = normalizeEntryKey(entry);
+      if (!entry.content.trim() || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+  return [...resolvedFromRecords, ...fallbackLegacyEntries].slice(0, 8);
 }

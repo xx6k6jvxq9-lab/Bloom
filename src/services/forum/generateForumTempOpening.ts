@@ -1,6 +1,7 @@
 import type { ApiConfig, ForumComment, ForumPost } from '../../types';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { FORUM_CHANNEL_LABELS } from '../../features/forum-domain/constants';
+import { buildDirectPersonaGuide } from '../ai/prompts/character/buildDirectPersonaGuide';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 
 type GenerateForumTempOpeningInput = {
@@ -34,8 +35,13 @@ function buildReasonLine(reason: GenerateForumTempOpeningInput['reason']) {
   }
 }
 
-function buildForumTempOpeningPrompt(input: GenerateForumTempOpeningInput) {
+export function buildForumTempOpeningPrompt(input: GenerateForumTempOpeningInput) {
   const relatedTitle = input.recentForumPost?.title || input.recentForumPost?.content.slice(0, 32) || '刚刚那条楼';
+  const personaGuide = input.authorPersona?.trim()
+    ? buildDirectPersonaGuide({
+        corePersona: input.authorPersona,
+      })
+    : '';
 
   return [
     '你现在不是在公共评论区，而是在界隙论坛里的陌生人临时私聊里。',
@@ -49,6 +55,7 @@ function buildForumTempOpeningPrompt(input: GenerateForumTempOpeningInput) {
     '5. 这不是正式好友私聊，也不是已经很熟的关系，不能一下子过熟。',
     `当前论坛网友：${input.authorName}`,
     input.authorPersona?.trim() ? `公开人设：${input.authorPersona.trim()}` : '',
+    personaGuide,
     input.channel ? `常驻频道：${FORUM_CHANNEL_LABELS[input.channel]}` : '',
     `最近相关帖子：${relatedTitle}`,
     input.userComment?.content ? `用户刚刚在楼里说的话：${input.userComment.content}` : '',
@@ -67,4 +74,3 @@ export async function generateForumTempOpening(input: GenerateForumTempOpeningIn
 
   return (raw || '').trim();
 }
-

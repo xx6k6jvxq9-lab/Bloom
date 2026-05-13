@@ -1,6 +1,7 @@
 import type { ApiConfig, ForumPost, ForumTempChatMessage } from '../../types';
 import type { ForumChannel } from '../../features/forum-domain/types';
 import { FORUM_CHANNEL_LABELS } from '../../features/forum-domain/constants';
+import { buildDirectPersonaGuide } from '../ai/prompts/character/buildDirectPersonaGuide';
 import { streamTextWithConfig } from '../ai/runtimeClient';
 
 type GenerateForumTempReplyInput = {
@@ -14,8 +15,13 @@ type GenerateForumTempReplyInput = {
   onProgress?: (text: string) => void;
 };
 
-function buildForumTempReplyPrompt(input: GenerateForumTempReplyInput) {
+export function buildForumTempReplyPrompt(input: GenerateForumTempReplyInput) {
   const { authorName, authorPersona, channel, recentForumPost, history, userMessage } = input;
+  const personaGuide = authorPersona?.trim()
+    ? buildDirectPersonaGuide({
+        corePersona: authorPersona,
+      })
+    : '';
   const recentHistory = history
     .slice(-6)
     .map((message) => `${message.role === 'user' ? '用户' : authorName}：${message.text}`)
@@ -33,6 +39,7 @@ function buildForumTempReplyPrompt(input: GenerateForumTempReplyInput) {
     '6. 不要自称 AI，不要写旁白，不要写动作描写，不要加名字前缀。',
     `当前论坛网友：${authorName}`,
     authorPersona?.trim() ? `公开人设：${authorPersona.trim()}` : '',
+    personaGuide,
     channel ? `常驻频道：${FORUM_CHANNEL_LABELS[channel]}` : '',
     recentForumPost ? `最近相关帖子：${recentForumPost.title || recentForumPost.content.slice(0, 40)}` : '',
     recentHistory ? `最近临时单聊记录：\n${recentHistory}` : '',

@@ -1,18 +1,27 @@
 import type {
   ApiConfig,
   AppData,
+  Character,
   MomentComment,
   MomentImageCard,
   MomentItem,
 } from '../../types';
-import { buildSharedStateWritePatch } from '../relationship-context/buildSharedCharacterState';
+import {
+  buildSharedStateWritePatch,
+  rebuildSharedStateFromCharacter,
+} from '../relationship-context/buildSharedCharacterState';
 import { runMomentPublishCommentSequence } from './commentOrchestrator';
 import {
+  type AutoMomentPlanEntry,
   buildAutoMomentPlan,
   loadLastAutoMomentCheckAt,
   saveLastAutoMomentCheckAt,
   type AutoMomentSchedulerTrigger,
 } from './autoScheduler';
+import {
+  filterAutoMomentSceneUnlockedCharacters,
+  getCharacterAutoMomentSceneGate,
+} from './autoSceneGate';
 import { generateMomentPostContent } from './generators';
 
 export type AutoMomentRuntimeSnapshot = Pick<
@@ -51,6 +60,12 @@ type RunAutoMomentSchedulerPassOptions = {
 };
 
 let autoMomentSchedulerRunning = false;
+const SCENE_CARRYOVER_ONLY_SHAPES: NonNullable<AutoMomentPlanEntry['generationHints']>['allowedShapes'] = [
+  'short_status',
+  'tiny_complaint',
+  'abstract_fragment',
+  'soft_claim',
+];
 
 function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentItem[] = []) {
   return moments
@@ -58,16 +73,84 @@ function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentIt
     .reduce((latest, moment) => Math.max(latest, moment.timestamp), 0);
 }
 
-function buildForcedManualRefreshEntry(snapshot: AutoMomentRuntimeSnapshot) {
+function buildManualRefreshPlanEntry(options: {
+  character: Character;
+  sceneGate: ReturnType<typeof getCharacterAutoMomentSceneGate>;
+}): AutoMomentPlanEntry {
+  const { character, sceneGate } = options;
+  const sharedState = rebuildSharedStateFromCharacter({
+    character,
+  });
+  const presenceState = character.presenceState;
+  const activeDatingSummary = character.activeDatingState?.summary?.trim();
+
+  if (sceneGate.restriction === 'scene_carryover_only') {
+    return {
+      characterId: character.id,
+      requestText: '自主发动态：手动刷新；意图=当前互动的公开余波；形态=纯文字短状态/短吐槽/抽象片段/轻微站位；主题=把此刻互动留下的后劲翻成一条公开可见、时间线一致的动态。',
+      extraPromptSections: [
+        sharedState?.currentActivity?.trim() ? `当前生活状态：${sharedState.currentActivity.trim()}` : '',
+        presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
+        sharedState?.publicCarryover?.trim() ? `公开余波：${sharedState.publicCarryover.trim()}` : '',
+        activeDatingSummary ? `当前进行中的互动：${activeDatingSummary}` : '',
+        '这是用户手动点击刷新后的强制刷新，但角色还在强互动中，或者刚从强互动场景里出来不久。',
+        '只能发和当前场景兼容的公开余波：嘴硬、回温、小吃醋、小吐槽、短短一句、轻微站位、抽象情绪都可以。',
+        '必须是纯文字动态，不要配图、不要截图感、不要九宫格、不要伪图片说明。',
+        '不要突然切去上班、下班、公司、室友、宿舍、便利店、街拍或另一条新生活线，除非这些事实已经明确出现在当前状态里。',
+        '不要泄露私聊细节，只保留公开可见的情绪后劲和状态感。',
+        '不要返回空白，不要解释说明，不要重复上一条动态。',
+      ].filter(Boolean),
+      generationHints: {
+        forceTextOnly: true,
+        allowedShapes: SCENE_CARRYOVER_ONLY_SHAPES,
+      },
+    };
+  }
+
+  return {
+    characterId: character.id,
+    requestText: '自主发动态：手动刷新；请立即生成一条新的公开动态。',
+    extraPromptSections: [
+      sharedState?.currentActivity?.trim() ? `当前生活状态：${sharedState.currentActivity.trim()}` : '',
+      presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
+      sharedState?.publicCarryover?.trim() ? `公开余波：${sharedState.publicCarryover.trim()}` : '',
+      '这是用户手动点击刷新后的强制刷新，必须产出一条新的动态。',
+      '优先写低风险、看得见的锚点：手机、桌面、镜子、窗外天气、衣服、耳机、饮料、房间角落、灯光、路灯、街景、身体状态。',
+      '没有在当前状态或设定里出现的事实，不要临时补室友、同事、老板、家人、宠物或固定工作地点。',
+      '不要返回空白，不要解释说明，不要重复上一条动态。',
+    ].filter(Boolean),
+  };
+}
+
+function buildForcedManualRefreshEntry(
+  snapshot: AutoMomentRuntimeSnapshot,
+  options: {
+    trigger: AutoMomentSchedulerTrigger;
+    now: number;
+  },
+) {
   const rankedCharacters = [...(snapshot.characters || [])]
     .map((character) => ({
       character,
-      frequencyDisabled: (character.postFrequency || 'medium') === 'none',
-      latestMomentAt: getLatestMomentTimestampByAuthor(character.id, snapshot.moments || []),
+      sceneGate: getCharacterAutoMomentSceneGate({
+        character,
+        trigger: options.trigger,
+        now: options.now,
+      }),
+    }))
+    .filter(({ sceneGate }) => sceneGate.allowed)
+    .map((character) => ({
+      ...character,
+      frequencyDisabled: (character.character.postFrequency || 'medium') === 'none',
+      latestMomentAt: getLatestMomentTimestampByAuthor(character.character.id, snapshot.moments || []),
     }))
     .sort((left, right) => {
       if (left.frequencyDisabled !== right.frequencyDisabled) {
         return left.frequencyDisabled ? 1 : -1;
+      }
+
+      if ((left.sceneGate.restriction === 'scene_carryover_only') !== (right.sceneGate.restriction === 'scene_carryover_only')) {
+        return left.sceneGate.restriction === 'scene_carryover_only' ? 1 : -1;
       }
 
       if (left.latestMomentAt !== right.latestMomentAt) {
@@ -77,39 +160,35 @@ function buildForcedManualRefreshEntry(snapshot: AutoMomentRuntimeSnapshot) {
       return left.character.id.localeCompare(right.character.id);
     });
 
-  const picked = rankedCharacters[0]?.character || null;
+  const picked = rankedCharacters[0] || null;
   if (!picked) {
     return null;
   }
 
-  return {
-    characterId: picked.id,
-    requestText: '自主发动态：手动刷新；请立即生成一条新的公开动态。',
-    extraPromptSections: [
-      picked.sharedState?.currentActivity?.trim() ? `当前生活状态：${picked.sharedState.currentActivity.trim()}` : '',
-      picked.presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${picked.presenceState.recentLifeBeat.trim()}` : '',
-      picked.sharedState?.publicCarryover?.trim() ? `公开余波：${picked.sharedState.publicCarryover.trim()}` : '',
-      '这是用户手动点击刷新后的强制刷新，必须产出一条新的动态。',
-      '优先写具体可见内容：物品、地点、自拍、穿搭、食物、桌面、镜子、街景、房间、天气、路上、宠物。',
-      '不要返回空白，不要解释说明，不要重复上一条动态。',
-    ].filter(Boolean),
-  };
+  return buildManualRefreshPlanEntry({
+    character: picked.character,
+    sceneGate: picked.sceneGate,
+  });
 }
 
 async function executeMomentPlanEntry(options: {
-  entry: {
-    characterId: string;
-    requestText: string;
-    extraPromptSections: string[];
-  };
+  entry: AutoMomentPlanEntry;
+  trigger: AutoMomentSchedulerTrigger;
   forumConfig: ApiConfig;
   getSnapshot: () => AutoMomentRuntimeSnapshot;
   publishGeneratedCharacterMoment: (payload: GeneratedCharacterMomentPayload) => Promise<void>;
 }) {
-  const { entry, forumConfig, getSnapshot, publishGeneratedCharacterMoment } = options;
+  const { entry, trigger, forumConfig, getSnapshot, publishGeneratedCharacterMoment } = options;
   const latestData = getSnapshot();
   const liveCharacter = latestData.characters.find((character) => character.id === entry.characterId) || null;
   if (!liveCharacter) {
+    return false;
+  }
+  const sceneGate = getCharacterAutoMomentSceneGate({
+    character: liveCharacter,
+    trigger,
+  });
+  if (!sceneGate.allowed) {
     return false;
   }
 
@@ -120,6 +199,7 @@ async function executeMomentPlanEntry(options: {
     worldBook: latestData.worldBooks || [],
     requestText: entry.requestText,
     extraPromptSections: entry.extraPromptSections,
+    generationHints: entry.generationHints,
     privateCarryoverLevel: liveCharacter.momentPrivateCarryoverLevel,
     allowPrivateMomentCarryover: liveCharacter.allowPrivateMomentCarryover ?? false,
   });
@@ -264,7 +344,10 @@ export async function runAutoMomentSchedulerPass(
       return 0;
     }
 
-    const forcedEntry = buildForcedManualRefreshEntry(getSnapshot());
+    const forcedEntry = buildForcedManualRefreshEntry(getSnapshot(), {
+      trigger,
+      now: Date.now(),
+    });
     if (!forcedEntry) {
       return 0;
     }
@@ -273,6 +356,7 @@ export async function runAutoMomentSchedulerPass(
     await executeTask(async () => {
       published = await executeMomentPlanEntry({
         entry: forcedEntry,
+        trigger,
         forumConfig,
         getSnapshot,
         publishGeneratedCharacterMoment,
@@ -287,8 +371,13 @@ export async function runAutoMomentSchedulerPass(
 
   try {
     const currentData = getSnapshot();
-    const plan = buildAutoMomentPlan({
+    const unlockedCharacters = filterAutoMomentSceneUnlockedCharacters({
       characters: currentData.characters,
+      trigger,
+      now: startedAt,
+    });
+    const plan = buildAutoMomentPlan({
+      characters: unlockedCharacters,
       moments: currentData.moments || [],
       now: startedAt,
       lastCheckedAt: loadLastAutoMomentCheckAt(),
@@ -298,7 +387,7 @@ export async function runAutoMomentSchedulerPass(
     const effectivePlan = plan.length > 0
       ? plan
       : trigger === 'manual_refresh'
-        ? [buildForcedManualRefreshEntry(currentData)].filter((entry): entry is NonNullable<ReturnType<typeof buildForcedManualRefreshEntry>> => Boolean(entry))
+        ? [buildForcedManualRefreshEntry(currentData, { trigger, now: startedAt })].filter((entry): entry is NonNullable<ReturnType<typeof buildForcedManualRefreshEntry>> => Boolean(entry))
         : [];
 
     if (effectivePlan.length === 0) {
@@ -310,6 +399,7 @@ export async function runAutoMomentSchedulerPass(
       await executeTask(async () => {
         const published = await executeMomentPlanEntry({
           entry,
+          trigger,
           forumConfig,
           getSnapshot,
           publishGeneratedCharacterMoment,

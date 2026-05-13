@@ -106,6 +106,46 @@ function buildSystemLineInstruction(input: LightInteractionPromptInput) {
   return `systemLine 必须像“${input.actor.label}拍了拍${input.target.label}”这种聊天软件提示，保留双方称呼，不要写成长句。`;
 }
 
+function buildDirectAssistantBubbleInstruction(input: DirectLightInteractionGenerationInput) {
+  if (input.actor.role === 'character') {
+    return '`assistantBubbles` 必须是当前角色本人在主动拍完之后顺手发出来的 1 到 3 条短气泡。不要代写用户气泡，也不要让用户自动回应。';
+  }
+
+  return '`assistantBubbles` 必须是当前角色本人真的会发出来的 1 到 3 条短气泡，宁可短，也不要解释。';
+}
+
+function buildDirectSecondaryBehaviorInstruction(input: DirectLightInteractionGenerationInput) {
+  if (input.actor.role === 'character') {
+    return '可以嘴硬、停顿、反问、装没事、试探或若无其事地补一句，但必须符合这个角色本人。';
+  }
+
+  return '可以嘴硬、停顿、反问、装没事、试探、轻微回拍，但必须符合这个角色本人。';
+}
+
+function buildDirectCounterActionInstruction(input: DirectLightInteractionGenerationInput) {
+  if (input.actor.role === 'character') {
+    return '这次是角色主动发起，所以 `counterAction.type` 固定为 `"none"`，`counterAction.systemLine` 固定为空字符串；不要让用户自动回拍。';
+  }
+
+  return '';
+}
+
+function buildDirectAssistantBubbleExample(input: DirectLightInteractionGenerationInput) {
+  if (input.actor.role === 'character') {
+    return ['拍你一下。', '别装没看见。'];
+  }
+
+  return ['……你拍我干嘛。', '有话就说。'];
+}
+
+function buildDirectNextActionsExample(input: DirectLightInteractionGenerationInput) {
+  if (input.actor.role === 'character') {
+    return ['回一句', '拍回去', '继续装没事'];
+  }
+
+  return ['再拍一下', '逗一句', '装没事'];
+}
+
 function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerationInput) {
   const { sceneInput } = input;
   const recentContext = sceneInput.recentContext;
@@ -114,8 +154,10 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
   const relevantSceneSections = selectRelevantSceneSections(sceneInput.sections);
   const recentHistoryTranscript = buildRecentHistoryTranscript(
     input.recentMessages,
-    input.actor.role === 'user' ? '你' : input.actor.label,
-    input.target.label,
+    '你',
+    input.actor.role === 'character'
+      ? input.actor.label
+      : input.target.label,
   );
 
   return [
@@ -149,6 +191,7 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     input.latestNextActions && input.latestNextActions.length > 0
       ? `上一轮常见可续接方向：${input.latestNextActions.slice(0, 3).join('、')}`
       : '',
+    buildDirectCounterActionInstruction(input),
     '',
     '## 角色核心与关系底色',
     characterCore?.characterSetting ? `核心人设：${trimContextBlock(characterCore.characterSetting, 560)}` : '',
@@ -169,8 +212,8 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     '',
     '## 输出目标',
     '1. `systemLine` 负责表现“这次拍到了一个什么状态的 Ta”，要有当下感，不要总是套固定形容词。',
-    '2. `assistantBubbles` 必须是目标角色本人真的会发出来的 1 到 3 条短气泡，宁可短，也不要解释。',
-    '3. 可以嘴硬、停顿、反问、装没事、试探、轻微回拍，但必须符合这个角色本人。',
+    `2. ${buildDirectAssistantBubbleInstruction(input)}`,
+    `3. ${buildDirectSecondaryBehaviorInstruction(input)}`,
     '4. 不要输出名字前缀，不要写旁白，不要替用户说话，不要把互动写成线下现场。',
     '5. 如果这次更适合冷一点、收一点、只回一个短反应，也可以，但仍然要像活人。',
     '6. 如果上一轮已经出现了某个描述词、某种回拍方式或同一类句式，这一轮优先换一种更贴近“当下状态”的表达。',
@@ -178,13 +221,13 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     '## JSON 输出协议',
     '只输出 JSON 对象，不要 markdown，不要解释，不要在 JSON 外补充任何文字。',
     `{
-  "systemLine": "你拍了拍正在假装镇定的${input.target.label}",
-  "assistantBubbles": ["……你拍我干嘛。", "有话就说。"],
+  "systemLine": "${input.actor.label}拍了拍${input.target.label}",
+  "assistantBubbles": ${JSON.stringify(buildDirectAssistantBubbleExample(input), null, 2)},
   "counterAction": {
     "type": "none",
     "systemLine": ""
   },
-  "nextActions": ["再拍一下", "逗一句", "装没事"],
+  "nextActions": ${JSON.stringify(buildDirectNextActionsExample(input), null, 2)},
   "interactionState": {
     "mood": "teasing",
     "streak": ${Math.max(1, input.upcomingStreak ?? 1)},
@@ -194,8 +237,12 @@ function buildDirectLightInteractionPrompt(input: DirectLightInteractionGenerati
     '额外限制：',
     '- `systemLine` 用简体中文，长度尽量控制在 8 到 24 个字，像聊天软件里的系统提示。',
     '- `assistantBubbles` 必须是字符串数组，数量 1 到 3。',
-    '- `counterAction.type` 只能是 `"none"` 或 `"poke_back"`。',
-    '- 如果 `counterAction.type` 是 `"poke_back"`，`counterAction.systemLine` 再写一条适合显示在系统条里的文案；否则填空字符串。',
+    input.actor.role === 'character'
+      ? '- `counterAction.type` 必须固定为 `"none"`。'
+      : '- `counterAction.type` 只能是 `"none"` 或 `"poke_back"`。',
+    input.actor.role === 'character'
+      ? '- `counterAction.systemLine` 必须固定为空字符串，不要给用户自动补一条系统互动。'
+      : '- 如果 `counterAction.type` 是 `"poke_back"`，`counterAction.systemLine` 再写一条适合显示在系统条里的文案；否则填空字符串。',
     '- `nextActions` 最多 3 项，给出用户此刻还能继续点的短标签。',
     '- `interactionState.mood` 只写一个很短的氛围词，例如 playful / teasing / warm / awkward / sulky / guarded。',
     '- 不要输出任何 JSON 以外的内容。',

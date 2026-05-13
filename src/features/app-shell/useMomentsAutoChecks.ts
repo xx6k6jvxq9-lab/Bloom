@@ -7,6 +7,7 @@ import {
   publishGeneratedCharacterMomentToFeed,
   runAutoMomentSchedulerPass,
 } from '../../services/moments/autoRuntime';
+import { isStrongAutoMomentInteractionSurface } from '../../services/moments/autoSceneGate';
 
 type UseMomentsAutoChecksParams = {
   activeApp: string;
@@ -44,6 +45,7 @@ export function useMomentsAutoChecks({
     if (
       !hasHydratedStorage
       || activeApp === 'moments'
+      || isStrongAutoMomentInteractionSurface(activeApp)
     ) {
       return;
     }

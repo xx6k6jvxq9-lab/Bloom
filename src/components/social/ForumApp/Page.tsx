@@ -58,7 +58,11 @@ import { ForumUserProfileView } from './ForumUserProfileView';
 import { ForumOpenSettingsRoute, type ForumOpenDraft } from './ForumOpenSettingsRoute';
 import { ForumAuthorProfileEditor } from './ForumAuthorProfileEditor';
 import { ForumMessageManageSheet } from './ForumMessageManageSheet';
-import { appendSceneSettlementMemory } from '../../../services/memory/memoryRecordSnapshots';
+import {
+  buildSceneSettlementCharacterPatch,
+  persistSceneSettlementBatch,
+  type PersistSceneSettlementInput,
+} from '../../../services/memory/sceneSettlement';
 import { ForumProfilePostCard } from './ForumProfilePostCard';
 import { ForumTrendListView, type ForumTrendListItem } from './ForumTrendListView';
 import { ForumSettingsRoute } from './ForumSettingsRoute';
@@ -1146,7 +1150,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         ));
       },
     })
-      .then((result) => {
+      .then(async (result) => {
         if (result.kind === 'idle') return;
 
         if (result.kind === 'mark-read' || result.kind === 'ghosted' || result.kind === 'typing' || result.kind === 'cleared') {
@@ -1155,7 +1159,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
         }
 
         const tempChatsMap = forumDataRef.current.tempChats || {};
-        const nextSettlementEvents: Array<Parameters<typeof applyForumCharacterSettlements>[0][number]> = [];
+        const nextSettlementEvents: ForumCharacterSettlementEvent[] = [];
         const isKnownCharacter = !!getCharacterById(authorId);
         const priorRounds = sessionForProcessing.completedExchangeRounds || 0;
         const nextRounds = result.nextSession.completedExchangeRounds || 0;
@@ -1189,10 +1193,22 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           });
         }
 
-        const nextCharacters = applyForumCharacterSettlements(nextSettlementEvents);
+        const settlementResult = applyForumCharacterSettlements(nextSettlementEvents);
+        let committedCharacters = appDataRef.current.characters;
+        if (settlementResult.settlementInputs.length > 0) {
+          try {
+            await persistSceneSettlementBatch(settlementResult.settlementInputs);
+            committedCharacters = settlementResult.nextCharacters;
+          } catch (error) {
+            console.error('[forum] Failed to persist temp chat settlement memory snapshots', error);
+            showForumNotice('论坛临时单聊已经接上，但记忆结算写入失败了。', 'error');
+          }
+        } else {
+          committedCharacters = settlementResult.nextCharacters;
+        }
         onUpdateAppData({
           ...appDataRef.current,
-          characters: nextCharacters,
+          characters: committedCharacters,
           friendRequests: result.nextFriendRequests,
           forumData: buildForumDataState({
             tempChats: {
@@ -1743,7 +1759,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     updatePosts(nextPosts);
   };
 
-  const applyForumCharacterSettlements = (events: Array<{
+  type ForumCharacterSettlementEvent = {
     kind?: 'public_reply' | 'public_loop' | 'temp_chat_familiar' | 'friend_request_sent' | 'friend_request_accepted' | 'friend_bridge';
     characterId: string;
     actorName: string;
@@ -1753,8 +1769,18 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     userComment?: string;
     userIdentity?: 'self' | 'anonymous';
     repeatedCount?: number;
-  }>) => {
-    if (!events.length) return appDataRef.current.characters;
+  };
+
+  const applyForumCharacterSettlements = (
+    events: ForumCharacterSettlementEvent[],
+    characters = appDataRef.current.characters,
+  ) => {
+    if (!events.length) {
+      return {
+        nextCharacters: characters,
+        settlementInputs: [] as PersistSceneSettlementInput[],
+      };
+    }
 
     const groupedEvents = new Map<string, typeof events>();
     events.forEach((event) => {
@@ -1764,7 +1790,8 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     });
 
     let didChange = false;
-    const nextCharacters = appDataRef.current.characters.map((character) => {
+    const settlementInputs: PersistSceneSettlementInput[] = [];
+    const nextCharacters = characters.map((character) => {
       if (!character) return character;
       const characterEvents = groupedEvents.get(character.id);
       if (!characterEvents?.length) {
@@ -1783,20 +1810,15 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
           userIdentity: event.userIdentity,
           repeatedCount: event.repeatedCount,
         });
-        void appendSceneSettlementMemory({
+        settlementInputs.push({
           characterId: nextCharacter.id,
           sourceScene: 'forum',
           settlement,
           timestamp: event.timestamp,
-        }).catch((error) => {
-          console.error('[forum] Failed to persist grouped settlement memory snapshots', error);
         });
         nextCharacter = {
           ...nextCharacter,
-          sharedContextSnapshots: settlement.sharedContextSnapshots,
-          shortTermSummary: settlement.shortTermSummary,
-          openLoopRegistry: settlement.openLoopRegistry,
-          sharedState: settlement.sharedState,
+          ...buildSceneSettlementCharacterPatch(settlement),
         };
       });
 
@@ -1806,10 +1828,13 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       return nextCharacter;
     });
 
-    return didChange ? nextCharacters : appDataRef.current.characters;
+    return {
+      nextCharacters: didChange ? nextCharacters : characters,
+      settlementInputs,
+    };
   };
 
-  const appendGeneratedReplies = (postId: string, replies: Array<{
+  const appendGeneratedReplies = async (postId: string, replies: Array<{
     authorId: string;
     content: string;
     replyToId?: string;
@@ -1949,8 +1974,20 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       };
     });
 
-    const nextCharacters = applyForumCharacterSettlements(nextCharacterSettlementEvents);
-    updatePosts(nextPosts, forumDataRef.current.runtimeAuthorProfiles || {}, nextCharacters);
+    const settlementResult = applyForumCharacterSettlements(nextCharacterSettlementEvents);
+    let committedCharacters = appDataRef.current.characters;
+    if (settlementResult.settlementInputs.length > 0) {
+      try {
+        await persistSceneSettlementBatch(settlementResult.settlementInputs);
+        committedCharacters = settlementResult.nextCharacters;
+      } catch (error) {
+        console.error('[forum] Failed to persist generated reply settlements', error);
+        showForumNotice('论坛回复已经生成，但记忆结算写入失败了。', 'error');
+      }
+    } else {
+      committedCharacters = settlementResult.nextCharacters;
+    }
+    updatePosts(nextPosts, forumDataRef.current.runtimeAuthorProfiles || {}, committedCharacters);
   };
 
   const pickForumCharacterAuthor = (channel: ForumChannel) => {
@@ -2445,7 +2482,7 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
     }
   };
 
-  const handleUpgradeForumFriend = (authorId: string) => {
+  const handleUpgradeForumFriend = async (authorId: string) => {
     const author = getAuthor(authorId);
     if (getCharacterById(authorId)) {
       if (onOpenChat) onOpenChat(authorId);
@@ -2463,38 +2500,27 @@ export default function ForumApp({ appData, onUpdateAppData, onClose, settings, 
       session: existingSession,
     });
     const bridgeTimestamp = Date.now();
-    const nextCharacters = bridged.nextCharacters.map((character) => {
-      if (!character || character.id !== authorId) {
-        return character;
-      }
-
-      const settlement = buildForumSharedSettlement(character, {
-        kind: 'friend_bridge',
-        actorName: author.name,
-        content: existingSession.messages.slice(-1)[0]?.text || '论坛里的关系已经往正式单聊过渡。',
-        timestamp: bridgeTimestamp,
-      });
-      void appendSceneSettlementMemory({
-        characterId: character.id,
-        sourceScene: 'forum',
-        settlement,
-        timestamp: bridgeTimestamp,
-      }).catch((error) => {
+    const settlementResult = applyForumCharacterSettlements([{
+      kind: 'friend_bridge',
+      characterId: authorId,
+      actorName: author.name,
+      content: existingSession.messages.slice(-1)[0]?.text || '论坛里的关系已经往正式单聊过渡。',
+      timestamp: bridgeTimestamp,
+    }], bridged.nextCharacters);
+    let committedCharacters = bridged.nextCharacters;
+    if (settlementResult.settlementInputs.length > 0) {
+      try {
+        await persistSceneSettlementBatch(settlementResult.settlementInputs);
+        committedCharacters = settlementResult.nextCharacters;
+      } catch (error) {
         console.error('[forum] Failed to persist friend-bridge settlement memory snapshots', error);
-      });
-
-      return {
-        ...character,
-        sharedContextSnapshots: settlement.sharedContextSnapshots,
-        shortTermSummary: settlement.shortTermSummary,
-        openLoopRegistry: settlement.openLoopRegistry,
-        sharedState: settlement.sharedState,
-      };
-    });
+        showForumNotice('论坛好友关系已经转到正式单聊，但记忆结算写入失败了。', 'error');
+      }
+    }
 
     onUpdateAppData({
       ...appDataRef.current,
-      characters: nextCharacters,
+      characters: committedCharacters,
       chatHistory: bridged.nextChatHistory,
       forumData: buildForumDataState({
         tempChats: {

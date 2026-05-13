@@ -7,6 +7,7 @@ import type {
 } from '../../types';
 import { buildRecentCoupleSpaceSummary } from '../ai/couple-space/context/buildRecentCoupleSpaceSummary';
 import { buildResolvedMemoryLayers } from '../memory/buildResolvedMemoryLayers';
+import { buildSceneSignalsFromRecords } from '../memory/sceneSignalRecords';
 import {
   buildPublicAcquaintanceSummary,
   buildRelationshipResidueItems,
@@ -44,6 +45,20 @@ function mergeSummaryText(...values: Array<string | undefined>): string | undefi
   }
 
   return [...new Set(lines)].join('\n');
+}
+
+function resolvePrimaryTypedItems<T extends { summary: string; timestamp: number }>(
+  primaryGroups: Array<T[] | undefined>,
+  fallbackGroups: Array<T[] | undefined>,
+): T[] | undefined {
+  return mergeTypedItems(...primaryGroups) || mergeTypedItems(...fallbackGroups);
+}
+
+function resolvePrimarySummaryText(
+  primaryValues: Array<string | undefined>,
+  fallbackValues: Array<string | undefined>,
+): string | undefined {
+  return mergeSummaryText(...primaryValues) || mergeSummaryText(...fallbackValues);
 }
 
 type BuildRelationshipProjectionInput = {
@@ -233,6 +248,9 @@ export function buildRelationshipProjection(
 ): RelationshipProjection {
   const memoryLayers = buildResolvedMemoryLayers(input.character);
   const latestSharedSnapshots = (input.character.sharedContextSnapshots || []).slice(0, 4);
+  const recordSignals = buildSceneSignalsFromRecords({
+    characterId: input.character.id,
+  });
   const typedProjectionInput = {
     characterId: input.character.id,
     characterName: input.character.name,
@@ -284,35 +302,37 @@ export function buildRelationshipProjection(
       diagnostics: memoryLayers.diagnostics,
     },
     sceneScopedSignals: {
-      relationshipResidue: mergeTypedItems(
-        derivedRelationshipResidue,
-        ...compatibilityRelationshipResidue,
+      relationshipResidue: resolvePrimaryTypedItems(
+        [derivedRelationshipResidue, recordSignals.relationshipResidue],
+        compatibilityRelationshipResidue,
       ),
-      sceneResidue: mergeTypedItems(
-        derivedSceneResidue,
-        ...compatibilitySceneResidue,
+      sceneResidue: resolvePrimaryTypedItems(
+        [derivedSceneResidue, recordSignals.sceneResidue],
+        compatibilitySceneResidue,
       ),
-      topicAnchors: mergeTypedItems(
-        derivedTopicAnchors,
-        ...compatibilityTopicAnchors,
+      topicAnchors: resolvePrimaryTypedItems(
+        [derivedTopicAnchors, recordSignals.topicAnchors],
+        compatibilityTopicAnchors,
       ),
-      taskResidue: mergeTypedItems(
-        derivedTaskResidue,
-        ...compatibilityTaskResidue,
+      taskResidue: resolvePrimaryTypedItems(
+        [derivedTaskResidue, recordSignals.taskResidue],
+        compatibilityTaskResidue,
       ),
       compatibilitySnapshotCount: latestSharedSnapshots.length,
       recentCoupleSpaceSummary,
-      sharedRecentRelationshipSummary: mergeSummaryText(
-        sharedRecentRelationshipSummary,
-        ...latestSharedSnapshots.map((snapshot) => (
-          snapshot.relationshipResidue?.map((item) => item.summary).join('\n')
-        )),
-        ...latestSharedSnapshots.map((snapshot) => (
-          snapshot.taskResidue?.map((item) => item.summary).join('\n')
-        )),
-        ...latestSharedSnapshots.map((snapshot) => (
-          snapshot.topicAnchors?.map((item) => item.summary).join('\n')
-        )),
+      sharedRecentRelationshipSummary: resolvePrimarySummaryText(
+        [sharedRecentRelationshipSummary, ...recordSignals.summaryLines],
+        [
+          ...latestSharedSnapshots.map((snapshot) => (
+            snapshot.relationshipResidue?.map((item) => item.summary).join('\n')
+          )),
+          ...latestSharedSnapshots.map((snapshot) => (
+            snapshot.taskResidue?.map((item) => item.summary).join('\n')
+          )),
+          ...latestSharedSnapshots.map((snapshot) => (
+            snapshot.topicAnchors?.map((item) => item.summary).join('\n')
+          )),
+        ],
       ),
       publicAcquaintanceSummary,
     },

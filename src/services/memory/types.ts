@@ -14,6 +14,7 @@ export type ResolvedMemoryLayerDiagnostics = {
   recordCounts: {
     facts: number;
     relationshipWaves: number;
+    sceneProgress: number;
     snapshots: number;
     notes: number;
   };

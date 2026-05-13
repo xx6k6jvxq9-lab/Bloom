@@ -30,6 +30,10 @@ function buildPersonaGuardBlock(sceneInput: GroupChatSceneInput): string {
   return lines.length > 0 ? ['人设守则：', ...lines].join('\n') : '';
 }
 
+function buildPublicPersonaGuideBlock(sceneInput: GroupChatSceneInput): string {
+  return sceneInput.speakerPublicPersonaGuide?.trim() || '';
+}
+
 function formatTypedResidueLines<T extends { summary: string }>(
   title: string,
   items: T[] | undefined,
@@ -187,6 +191,7 @@ export function buildGroupChatPrompt({ sceneInput }: BuildGroupChatPromptOptions
     `核心人设：${sceneInput.speakerCorePersona || '未提供'}`,
     sceneInput.speakerSignature ? `个性签名：${sceneInput.speakerSignature}` : '',
     buildPersonaGuardBlock(sceneInput),
+    buildPublicPersonaGuideBlock(sceneInput),
     buildRecentContextBlock(sceneInput),
     '',
     '群聊资料：',

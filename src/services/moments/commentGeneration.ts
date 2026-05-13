@@ -1,5 +1,6 @@
 import type { ApiConfig, Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
+import { buildPublicPersonaGuide } from '../ai/prompts/character/buildPublicPersonaGuide';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildThreadReplyGuidance } from './commentRules';
@@ -60,10 +61,21 @@ export async function generateMomentThreadReply(options: BaseCommentGenerationOp
     targetComment.content,
     recentCommentReplies,
   ).trim();
+  const replyCharacterContext = buildCharacterContext({ character: replyCharacter });
+  const publicPersonaGuide = buildPublicPersonaGuide({
+    corePersona: replyCharacterContext.corePersona,
+    expressionStyle: replyCharacterContext.expressionStyle,
+    boundaryPack: replyCharacterContext.boundaryPack,
+    extendedLore: replyCharacterContext.extendedLore,
+    signature: replyCharacter.signature,
+    openingRemark: replyCharacter.openingRemark,
+  });
 
   const prompt = buildMomentCommentReplyPrompt({
     characterCore: {
-      characterSetting: buildCharacterContext({ character: replyCharacter }).corePersona ?? '',
+      characterSetting: replyCharacterContext.corePersona ?? '',
+      signature: replyCharacter.signature?.trim() || undefined,
+      personaGuidePrompt: publicPersonaGuide || undefined,
     },
     momentContext: {
       momentContent: moment.content,

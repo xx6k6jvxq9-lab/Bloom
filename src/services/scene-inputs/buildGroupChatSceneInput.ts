@@ -1,5 +1,6 @@
 import type { Character, ChatGroup, ChatHistory, ChatMessage, PerceptionSettings, WorldBookEntry } from '../../types';
 import { buildGroupWorldBookPrompt } from '../../features/group-world-book/buildGroupWorldBookPrompt';
+import { buildPublicPersonaGuide } from '../ai/prompts/character/buildPublicPersonaGuide';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import { buildSharedCharacterState } from '../relationship-context/buildSharedCharacterState';
 import { buildDirectFactTraceRecords } from '../relationship-context/buildDirectFactTraceRecords';
@@ -12,13 +13,15 @@ import type {
 import { buildCharacterTemporalState } from '../relationship-time/buildCharacterTemporalState';
 import { formatGroupTopicStateForPrompt } from '../group-chat/topicState';
 import { filterTopicAnchorsForPrompt } from '../chat/topicRecall';
-import type { MemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
+import type { MemoryPromptQueryText, MemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
 import { buildMemoryPromptView } from '../memory/buildMemoryRetrievalPrompt';
+import { recordMemoryReadDiagnostic } from '../memory/memoryDiagnostics';
 
 export type GroupChatSceneInput = {
   speakerName: string;
   speakerCorePersona: string;
   speakerSignature?: string;
+  speakerPublicPersonaGuide?: string;
   languagePolicy?: Pick<Character, 'replyLanguageMode' | 'nativeLanguage' | 'fixedReplyLanguage'>;
   userName: string;
   memberNames: string[];
@@ -454,6 +457,16 @@ function buildGroupWorldBookRetrievalOptions(history: ChatMessage[]) {
   };
 }
 
+function buildRecentGroupTranscriptQueryText(history: ChatMessage[], limit = 6): string | undefined {
+  const transcript = history
+    .slice(-limit)
+    .map((message) => extractGroupRecallText(message))
+    .filter(Boolean)
+    .join(' ');
+
+  return transcript.trim() || undefined;
+}
+
 function formatGroupTemporalStatePrompt(
   state: ReturnType<typeof buildCharacterTemporalState>,
   baseTemporalContext?: string,
@@ -571,6 +584,14 @@ export function buildGroupChatSceneInput(
     ],
   });
   const { characterScopedMemory, sceneScopedSignals } = relationshipProjection;
+  const publicPersonaGuide = buildPublicPersonaGuide({
+    corePersona: characterContext.corePersona,
+    expressionStyle: characterContext.expressionStyle,
+    boundaryPack: characterContext.boundaryPack,
+    extendedLore: characterContext.extendedLore,
+    signature: options.speaker.signature,
+    openingRemark: options.speaker.openingRemark,
+  });
   const characterTemporalState = buildCharacterTemporalState({
     characterId: options.speaker.id,
     perception: options.perception,
@@ -584,32 +605,80 @@ export function buildGroupChatSceneInput(
     temporalState: characterTemporalState,
     sceneScopedSignals: relationshipProjection.sceneScopedSignals,
   });
+  const retrievalQueries: MemoryPromptQueryText[] = [
+    ...(buildRecentGroupTranscriptQueryText(options.history)
+      ? [{
+          text: buildRecentGroupTranscriptQueryText(options.history)!,
+          weight: 0.85,
+        }]
+      : []),
+    ...(sceneScopedSignals.topicAnchors || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 0.95,
+    })),
+    ...(sceneScopedSignals.taskResidue || []).slice(0, 2).map((item) => ({
+      text: item.summary,
+      weight: 1.05,
+    })),
+    ...(sceneScopedSignals.relationshipResidue || []).slice(0, 1).map((item) => ({
+      text: item.summary,
+      weight: 0.7,
+    })),
+    ...(options.group?.currentScene?.trim()
+      ? [{
+          text: options.group.currentScene.trim(),
+          weight: 0.7,
+        }]
+      : []),
+    ...(options.group?.memberRelationshipNote?.trim()
+      ? [{
+          text: options.group.memberRelationshipNote.trim(),
+          weight: 0.65,
+        }]
+      : []),
+    ...(options.group?.publicFacts?.trim()
+      ? [{
+          text: options.group.publicFacts.trim(),
+          weight: 0.6,
+        }]
+      : []),
+  ];
   const retrievedMemory = buildMemoryPromptView({
     characterId: options.speaker.id,
     latestUserText: latestGroupUserText,
+    retrievalQueries,
+    preferredSourceScenes: ['group_chat', 'forum', 'direct_chat', 'couple_space', 'dating'],
+    forceLatestRelationshipWaves: true,
+    forceLatestOpenTasks: true,
   });
   const hasRetrievedMemory = (
     retrievedMemory.matchedFacts.length
     || retrievedMemory.stablePreferences.length
     || retrievedMemory.relationshipWaves.length
+    || retrievedMemory.sceneProgress.length
     || retrievedMemory.openTasks.length
   ) > 0;
 
-  console.info('[group-chat-scene-input] memory diagnostics', {
+  recordMemoryReadDiagnostic({
+    sourceScene: 'group_chat',
     characterId: options.speaker.id,
     shortTermSummarySource: characterScopedMemory.diagnostics?.shortTermSummarySource || 'empty',
     longTermMemoryProfileSource: characterScopedMemory.diagnostics?.longTermMemoryProfileSource || 'empty',
     shortTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.shortTermSnapshotTypeUsed,
     longTermSnapshotTypeUsed: characterScopedMemory.diagnostics?.longTermSnapshotTypeUsed,
     recordCounts: characterScopedMemory.diagnostics?.recordCounts,
-    compatibilitySnapshotCount: sceneScopedSignals.compatibilitySnapshotCount || 0,
-    relationshipResidueCount: sceneScopedSignals.relationshipResidue?.length || 0,
-    topicAnchorCount: sceneScopedSignals.topicAnchors?.length || 0,
-    taskResidueCount: sceneScopedSignals.taskResidue?.length || 0,
+    sceneSignalCounts: {
+      compatibilitySnapshots: sceneScopedSignals.compatibilitySnapshotCount || 0,
+      relationshipResidue: sceneScopedSignals.relationshipResidue?.length || 0,
+      sceneResidue: sceneScopedSignals.sceneResidue?.length || 0,
+      topicAnchors: sceneScopedSignals.topicAnchors?.length || 0,
+      taskResidue: sceneScopedSignals.taskResidue?.length || 0,
+    },
     retrievedMemoryCounts: {
       matchedFacts: retrievedMemory.matchedFacts.length,
       stablePreferences: retrievedMemory.stablePreferences.length,
       relationshipWaves: retrievedMemory.relationshipWaves.length,
+      sceneProgress: retrievedMemory.sceneProgress.length,
       openTasks: retrievedMemory.openTasks.length,
     },
   });
@@ -622,6 +691,7 @@ export function buildGroupChatSceneInput(
     speakerName: options.speaker.name,
     speakerCorePersona: characterContext.corePersona ?? '',
     speakerSignature: options.speaker.signature?.trim() || undefined,
+    speakerPublicPersonaGuide: publicPersonaGuide || undefined,
     languagePolicy: options.speaker,
     userName: options.userName,
     memberNames: options.members.map((member) => member.name),

@@ -3,6 +3,7 @@ import type {
   MemoryRecord,
   NoteMemoryRecord,
   RelationshipWaveMemoryRecord,
+  SceneProgressMemoryRecord,
   SnapshotMemoryRecord,
 } from '../../services/memory/memoryRecordTypes';
 import type { PersistedMemoryRecordData } from '../../services/memory/buildMemoryRecordData';
@@ -56,6 +57,18 @@ function sanitizeCharacterIds(value: unknown): string[] {
   )].sort();
 }
 
+function sanitizeOptionalStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(
+    value
+      .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+      .map((candidate) => candidate.replace(/\s+/g, ' ').trim()),
+  )];
+}
+
 function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -64,6 +77,7 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
   const candidate = value as Record<string, unknown>;
   const kind = candidate.kind === 'fact'
     || candidate.kind === 'relationship_wave'
+    || candidate.kind === 'scene_progress'
     || candidate.kind === 'snapshot'
     || candidate.kind === 'note'
     ? candidate.kind
@@ -78,6 +92,8 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
     ? candidate.sourceEventIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
   const characterIds = normalizeCharacterIdList(candidate.characterIds);
+  const retrievalHints = sanitizeOptionalStringList(candidate.retrievalHints);
+  const sceneTags = sanitizeOptionalStringList(candidate.sceneTags);
   const visibility = candidate.visibility === 'private'
     || candidate.visibility === 'group_public'
     || candidate.visibility === 'cross_scene_readable'
@@ -127,6 +143,8 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
       decayHint,
       summary,
       timestamp,
+      ...(retrievalHints.length > 0 ? { retrievalHints } : {}),
+      ...(sceneTags.length > 0 ? { sceneTags } : {}),
       factType: candidate.factType as FactMemoryRecord['factType'],
       subjectType: candidate.subjectType as FactMemoryRecord['subjectType'],
       subjectId: candidate.subjectId.trim(),
@@ -161,6 +179,8 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
       decayHint,
       summary,
       timestamp,
+      ...(retrievalHints.length > 0 ? { retrievalHints } : {}),
+      ...(sceneTags.length > 0 ? { sceneTags } : {}),
       snapshotType: candidate.snapshotType as SnapshotMemoryRecord['snapshotType'],
       text,
     };
@@ -194,11 +214,64 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
       decayHint,
       summary,
       timestamp,
+      ...(retrievalHints.length > 0 ? { retrievalHints } : {}),
+      ...(sceneTags.length > 0 ? { sceneTags } : {}),
       noteType: candidate.noteType as NoteMemoryRecord['noteType'],
       libraryKind: candidate.libraryKind as NoteMemoryRecord['libraryKind'],
       librarySource: candidate.librarySource as NoteMemoryRecord['librarySource'],
       text,
     };
+  }
+
+  if (kind === 'scene_progress') {
+    if (typeof candidate.stageLabel !== 'string') {
+      return null;
+    }
+
+    const completedActions = Array.isArray(candidate.completedActions)
+      ? candidate.completedActions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+      : [];
+    const bannedRepeatActions = Array.isArray(candidate.bannedRepeatActions)
+      ? candidate.bannedRepeatActions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+      : [];
+    const nextStepOptions = Array.isArray(candidate.nextStepOptions)
+      ? candidate.nextStepOptions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+      : [];
+
+    return {
+      id,
+      kind,
+      sourceScene: sourceScene as MemoryRecord['sourceScene'],
+      sourceSessionType,
+      sourceSessionId,
+      sourceEventIds,
+      characterIds,
+      ...(typeof candidate.groupId === 'string' && candidate.groupId.trim() ? { groupId: candidate.groupId.trim() } : {}),
+      visibility,
+      stability,
+      decayHint,
+      summary,
+      timestamp,
+      ...(retrievalHints.length > 0 ? { retrievalHints } : {}),
+      ...(sceneTags.length > 0 ? { sceneTags } : {}),
+      stageLabel: candidate.stageLabel.trim(),
+      ...(typeof candidate.currentBeat === 'string' && candidate.currentBeat.trim()
+        ? { currentBeat: candidate.currentBeat.trim() }
+        : {}),
+      ...(typeof candidate.currentSignature === 'string' && candidate.currentSignature.trim()
+        ? { currentSignature: candidate.currentSignature.trim() }
+        : {}),
+      ...(typeof candidate.previousSignature === 'string' && candidate.previousSignature.trim()
+        ? { previousSignature: candidate.previousSignature.trim() }
+        : {}),
+      repeatedSignature: Boolean(candidate.repeatedSignature),
+      completedActions,
+      bannedRepeatActions,
+      ...(typeof candidate.unresolvedTension === 'string' && candidate.unresolvedTension.trim()
+        ? { unresolvedTension: candidate.unresolvedTension.trim() }
+        : {}),
+      nextStepOptions,
+    } satisfies SceneProgressMemoryRecord;
   }
 
   if (
@@ -226,6 +299,8 @@ function normalizeMemoryRecord(value: unknown): MemoryRecord | null {
     decayHint,
     summary,
     timestamp,
+    ...(retrievalHints.length > 0 ? { retrievalHints } : {}),
+    ...(sceneTags.length > 0 ? { sceneTags } : {}),
     relationType: candidate.relationType as RelationshipWaveMemoryRecord['relationType'],
     eventKind: candidate.eventKind as RelationshipWaveMemoryRecord['eventKind'],
     valence: candidate.valence as RelationshipWaveMemoryRecord['valence'],

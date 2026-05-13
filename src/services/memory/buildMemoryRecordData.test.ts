@@ -69,3 +69,47 @@ test('buildMemoryRecordDataFromChatHistory records settled transfer events into 
     ],
   );
 });
+
+test('buildMemoryRecordDataFromChatHistory attaches retrieval hints and scene tags to derived records', () => {
+  const persistedChatHistory = createPersistedChatHistoryData();
+  persistedChatHistory.directFactTraces['char-hints'] = [
+    {
+      sourceScene: 'direct_chat',
+      factType: 'plan',
+      subjectType: 'character',
+      subjectId: 'char-hints',
+      relatedCharacterIds: ['char-hints'],
+      visibility: 'cross_scene_readable',
+      stability: 'temporary',
+      confidence: 'explicit',
+      summary: 'next time, grab cocoa on the rooftop together',
+      timestamp: 100,
+      decayHint: 'medium',
+    },
+  ];
+  persistedChatHistory.directRelationshipWaves['char-hints'] = [
+    {
+      sourceScene: 'dating',
+      relationType: 'character_user',
+      sourceCharacterId: 'char-hints',
+      targetUser: true,
+      eventKind: 'bonding',
+      valence: 'positive',
+      intensity: 'medium',
+      scope: 'cross_scene_readable',
+      summary: 'the date atmosphere moved into a warmer beat',
+      timestamp: 120,
+      decayHint: 'medium',
+    },
+  ];
+
+  const memoryRecordData = buildMemoryRecordDataFromChatHistory(persistedChatHistory);
+  const records = memoryRecordData.recordsByCharacterId['char-hints'] || [];
+  const planRecord = records.find((record) => record.kind === 'fact' && record.factType === 'plan');
+  const waveRecord = records.find((record) => record.kind === 'relationship_wave');
+
+  assert.equal(planRecord?.sceneTags?.includes('direct chat'), true);
+  assert.equal(planRecord?.retrievalHints?.includes('plan'), true);
+  assert.equal(waveRecord?.sceneTags?.includes('dating'), true);
+  assert.equal(waveRecord?.retrievalHints?.includes('bonding'), true);
+});

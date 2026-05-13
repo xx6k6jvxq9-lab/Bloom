@@ -72,6 +72,39 @@ test('appendSnapshotMemoryRecord dedupes identical snapshots for the same charac
   assert.equal(records[0]?.kind, 'snapshot');
 });
 
+test('concurrent memory record writes are serialized instead of overwriting each other', async () => {
+  await Promise.all([
+    appendSnapshotMemoryRecord({
+      characterId: 'char-snapshot',
+      snapshotType: 'short_term_summary',
+      text: 'first concurrent snapshot',
+      sourceScene: 'direct_chat',
+      timestamp: 404,
+    }),
+    appendSnapshotMemoryRecord({
+      characterId: 'char-snapshot',
+      snapshotType: 'long_term_profile',
+      text: 'second concurrent snapshot',
+      sourceScene: 'direct_chat',
+      timestamp: 405,
+    }),
+  ]);
+
+  const records = loadMemoryRecordData({
+    recordsByCharacterId: {},
+  }).recordsByCharacterId['char-snapshot'] || [];
+
+  assert.equal(records.length, 2);
+  assert.equal(
+    records.some((record) => record.kind === 'snapshot' && record.snapshotType === 'short_term_summary'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'snapshot' && record.snapshotType === 'long_term_profile'),
+    true,
+  );
+});
+
 test('removeMemoryRecordById deletes projected snapshot entries', async () => {
   await appendSnapshotMemoryRecord({
     characterId: 'char-snapshot',
@@ -222,6 +255,18 @@ test('appendSceneSettlementMemory persists settlement fields through the shared 
         availability: 'recent',
         privateCarryover: '这场约会推进到的阶段：试探靠近阶段',
       },
+      sceneProgressRecords: [{
+        summary: 'this date progressed to: close distance / eye contact',
+        stageLabel: '试探靠近阶段',
+        currentBeat: '她又往你这边靠近了半步',
+        currentSignature: '靠近 / 对视',
+        previousSignature: '靠近',
+        repeatedSignature: false,
+        completedActions: ['靠近', '对视'],
+        bannedRepeatActions: ['靠近'],
+        unresolvedTension: '还有一句话没有真正说出口。',
+        nextStepOptions: ['把靠近后的反应落到新的对话上'],
+      }],
     },
   });
 
@@ -247,6 +292,10 @@ test('appendSceneSettlementMemory persists settlement fields through the shared 
   );
   assert.equal(
     records.some((record) => record.kind === 'fact' && record.factType === 'experience'),
+    true,
+  );
+  assert.equal(
+    records.some((record) => record.kind === 'scene_progress'),
     true,
   );
 });

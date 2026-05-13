@@ -1,5 +1,6 @@
 import type { Character, MomentImageCard } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { rebuildSharedStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
 
 export type MomentPostMode = 'self_life' | 'relationship_carryover' | 'public_daily';
 export type MomentPostShape =
@@ -28,6 +29,8 @@ type BuildMomentPostBlueprintOptions = {
   character: Character;
   requestText: string;
   mode: MomentPostMode;
+  forceTextOnly?: boolean;
+  allowedShapes?: MomentPostShape[];
 };
 
 type ShapeDefinition = Omit<MomentPostBlueprint, 'shape'>;
@@ -198,13 +201,16 @@ function pickByHash<T>(items: T[], seed: string): T {
 
 function getPersonaText(character: Character) {
   const context = buildCharacterContext({ character });
+  const sharedState = rebuildSharedStateFromCharacter({
+    character,
+  });
   return [
     context.corePersona,
     character.expressionStyle,
     character.signature,
     character.openingRemark,
-    character.sharedState?.currentActivity,
-    character.sharedState?.publicCarryover,
+    sharedState.currentActivity,
+    sharedState.publicCarryover,
     character.presenceState?.recentLifeBeat,
   ]
     .filter(Boolean)
@@ -214,48 +220,49 @@ function getPersonaText(character: Character) {
 
 function resolveShapeCandidates(options: BuildMomentPostBlueprintOptions): MomentPostShape[] {
   const sourceText = `${options.requestText}\n${getPersonaText(options.character)}`.toLowerCase();
+  let candidates: MomentPostShape[];
 
-  if (/九宫格|图集|配图|照片|相册|截图|拼贴/.test(sourceText)) {
-    return ['photo_dump', 'music_diary', 'short_status'];
-  }
-  if (/bgm|音乐|耳机|歌单|歌/.test(sourceText)) {
-    return ['music_diary', 'photo_dump', 'short_status'];
-  }
-  if (/长文|分段|日记|记录|想法|感悟|夜里|备忘录|整理/.test(sourceText)) {
-    return ['multi_paragraph', 'journal_note', 'abstract_fragment'];
-  }
-  if (/开心|顺利|高兴|好耶|庆祝|满足|治愈|轻松/.test(sourceText)) {
-    return ['cheerful_share', 'photo_dump', 'short_status'];
-  }
-  if (/抽象|发疯|恍惚|失眠|夜风|空空|怪|漂浮|回音/.test(sourceText)) {
-    return ['abstract_fragment', 'journal_note', 'multi_paragraph'];
-  }
-  if (/吐槽|上班|加班|工位|会议|无语|烦|火大|收工/.test(sourceText)) {
-    return ['tiny_complaint', 'photo_dump', 'multi_paragraph'];
-  }
-  if (/偏爱|护短|吃醋|主权|某个人|余波|别碰|站位|宣誓/.test(sourceText)) {
-    return ['soft_claim', 'multi_paragraph', 'short_status'];
-  }
-
-  if (options.mode === 'relationship_carryover') {
-    return ['soft_claim', 'multi_paragraph', 'short_status'];
-  }
-
-  if (/爱写|记录|慢热|文艺|安静|克制/.test(sourceText)) {
-    return ['journal_note', 'multi_paragraph', 'short_status'];
-  }
-  if (/活泼|外向|碎碎念|张扬|爱分享/.test(sourceText)) {
-    return ['photo_dump', 'cheerful_share', 'short_status'];
-  }
-  if (/毒舌|吐槽|嘴硬|阴阳/.test(sourceText)) {
-    return ['tiny_complaint', 'short_status', 'photo_dump'];
+  if (/短状态|一到三句|一两句|一句|短句|短配文|短夜记|轻状态|随手/.test(sourceText)) {
+    candidates = ['short_status', 'tiny_complaint', 'cheerful_share', 'photo_dump'];
+  } else if (/九宫格|图集|配图|照片|相册|截图|拼贴/.test(sourceText)) {
+    candidates = ['photo_dump', 'music_diary', 'short_status'];
+  } else if (/bgm|音乐|耳机|歌单|歌/.test(sourceText)) {
+    candidates = ['music_diary', 'photo_dump', 'short_status'];
+  } else if (/长文|分段|日记|记录|想法|感悟|夜里|备忘录|整理/.test(sourceText)) {
+    candidates = ['multi_paragraph', 'journal_note', 'abstract_fragment'];
+  } else if (/开心|顺利|高兴|好耶|庆祝|满足|治愈|轻松/.test(sourceText)) {
+    candidates = ['cheerful_share', 'photo_dump', 'short_status'];
+  } else if (/抽象|发疯|恍惚|失眠|夜风|空空|怪|漂浮|回音/.test(sourceText)) {
+    candidates = ['abstract_fragment', 'journal_note', 'multi_paragraph'];
+  } else if (/吐槽|上班|加班|工位|会议|无语|烦|火大|收工/.test(sourceText)) {
+    candidates = ['tiny_complaint', 'photo_dump', 'multi_paragraph'];
+  } else if (/偏爱|护短|吃醋|主权|某个人|余波|别碰|站位|宣誓/.test(sourceText)) {
+    candidates = ['soft_claim', 'multi_paragraph', 'short_status'];
+  } else if (options.mode === 'relationship_carryover') {
+    candidates = ['soft_claim', 'multi_paragraph', 'short_status'];
+  } else if (/爱写|记录|慢热|文艺|安静|克制/.test(sourceText)) {
+    candidates = ['journal_note', 'multi_paragraph', 'short_status'];
+  } else if (/活泼|外向|碎碎念|张扬|爱分享/.test(sourceText)) {
+    candidates = ['photo_dump', 'cheerful_share', 'short_status'];
+  } else if (/毒舌|吐槽|嘴硬|阴阳/.test(sourceText)) {
+    candidates = ['tiny_complaint', 'short_status', 'photo_dump'];
+  } else if (options.mode === 'self_life') {
+    candidates = ['photo_dump', 'multi_paragraph', 'short_status'];
+  } else {
+    candidates = ['short_status', 'multi_paragraph', 'photo_dump'];
   }
 
-  if (options.mode === 'self_life') {
-    return ['photo_dump', 'multi_paragraph', 'short_status'];
+  if (options.forceTextOnly) {
+    candidates = candidates.filter((shape) => shape !== 'photo_dump' && shape !== 'music_diary');
   }
 
-  return ['short_status', 'multi_paragraph', 'photo_dump'];
+  if (options.allowedShapes?.length) {
+    const allowedShapeSet = new Set(options.allowedShapes);
+    const constrained = candidates.filter((shape) => allowedShapeSet.has(shape));
+    candidates = constrained.length > 0 ? constrained : [...allowedShapeSet];
+  }
+
+  return candidates.length > 0 ? candidates : ['short_status'];
 }
 
 export function buildMomentPostBlueprint(options: BuildMomentPostBlueprintOptions): MomentPostBlueprint {
@@ -269,5 +276,13 @@ export function buildMomentPostBlueprint(options: BuildMomentPostBlueprintOption
   return {
     shape,
     ...definition,
+    allowImages: options.forceTextOnly ? false : definition.allowImages,
+    styleHints: options.forceTextOnly
+      ? [...definition.styleHints, '这次必须是纯文字动态，不要假装带图、截图、九宫格或伪图片说明。']
+      : definition.styleHints,
+    promptSections: options.forceTextOnly
+      ? [...definition.promptSections, '这次是纯文字公开动态，不要写配图说明，也不要像在逐张解释图片。']
+      : definition.promptSections,
+    preferredLayout: options.forceTextOnly ? 'card' : definition.preferredLayout,
   };
 }

@@ -17,7 +17,12 @@ import {
   normalizeSettlementText,
   summarizeSettlementText,
 } from '../memory/sceneSettlementItems';
-import { buildDatingSceneProgress, buildDatingSceneProgressSummary } from './buildDatingSceneProgress';
+import type { SceneProgressMemoryRecordDraft } from '../memory/memoryRecordTypes';
+import {
+  buildDatingSceneProgress,
+  buildDatingSceneProgressSummary,
+  type DatingSceneProgress,
+} from './buildDatingSceneProgress';
 
 type DatingEndedSettlementResult = SceneSettlementResult;
 
@@ -54,8 +59,10 @@ function buildRelationshipResidue(session: DateSession): RelationshipResidueItem
   return item ? [item] : [];
 }
 
-function buildSceneResidue(session: DateSession): SceneResidueItem[] {
-  const sceneProgressSummary = buildDatingSceneProgressSummary(buildDatingSceneProgress(session));
+function buildSceneResidue(
+  session: DateSession,
+  sceneProgressSummary: string,
+): SceneResidueItem[] {
   if (!sceneProgressSummary) {
     return [];
   }
@@ -67,6 +74,31 @@ function buildSceneResidue(session: DateSession): SceneResidueItem[] {
     timestamp: session.endedAt || Date.now(),
     decay: 'medium',
     visibility: 'cross_scene_readable',
+  }];
+}
+
+function buildSceneProgressRecords(
+  progress: DatingSceneProgress,
+  summary: string,
+): SceneProgressMemoryRecordDraft[] {
+  if (!summary) {
+    return [];
+  }
+
+  return [{
+    summary: `这场约会推进到的阶段：${summary}`,
+    stageLabel: progress.stageLabel,
+    ...(progress.currentBeat ? { currentBeat: progress.currentBeat } : {}),
+    ...(progress.currentSignature ? { currentSignature: progress.currentSignature } : {}),
+    ...(progress.previousSignature ? { previousSignature: progress.previousSignature } : {}),
+    repeatedSignature: progress.repeatedSignature,
+    completedActions: progress.completedActions,
+    bannedRepeatActions: progress.bannedRepeatActions,
+    ...(progress.unresolvedTension ? { unresolvedTension: progress.unresolvedTension } : {}),
+    nextStepOptions: progress.nextStepOptions,
+    visibility: 'cross_scene_readable',
+    stability: 'situational',
+    decayHint: 'medium',
   }];
 }
 
@@ -109,10 +141,13 @@ export function buildDatingEndedSettlement(
   session: DateSession,
 ): DatingEndedSettlementResult {
   const now = session.endedAt || Date.now();
+  const sceneProgress = buildDatingSceneProgress(session);
+  const sceneProgressSummary = buildDatingSceneProgressSummary(sceneProgress);
   const relationshipResidue = dedupeSettlementItemsBySummary(buildRelationshipResidue(session));
-  const sceneResidue = dedupeSettlementItemsBySummary(buildSceneResidue(session));
+  const sceneResidue = dedupeSettlementItemsBySummary(buildSceneResidue(session, sceneProgressSummary));
   const topicAnchors = buildTopicAnchors(session);
   const taskResidue = buildTaskResidue(session);
+  const sceneProgressRecords = buildSceneProgressRecords(sceneProgress, sceneProgressSummary);
 
   return buildSceneSettlementResult({
     character,
@@ -140,5 +175,6 @@ export function buildDatingEndedSettlement(
         ...taskResidue.map((item) => item.summary),
       ],
     },
+    sceneProgressRecords,
   });
 }
