@@ -124,3 +124,76 @@ test('publishGeneratedCharacterMomentToFeed writes moment continuity into runtim
     assert.equal(diagnostic.sourceScene, 'moments');
   }
 });
+
+test('publishGeneratedCharacterMomentToFeed preserves attached images on generated moments', async () => {
+  const character = createCharacter({ id: 'moment-char-with-image' });
+  let appData: AppData = {
+    characters: [character],
+    moments: [],
+    masks: [],
+    worldBooks: [],
+    chatGroups: [],
+    chatHistory: {},
+    favorites: [],
+    groups: [],
+    visualSettings: {
+      globalBackground: '',
+      chatOpacity: 1,
+      desktopIcons: [],
+      widgets: [],
+      navBar: {
+        show: true,
+        style: 'default',
+        shape: 'pill',
+        showMultipleAvatars: false,
+        statusBarPlacement: 'top',
+      },
+      desktop: {
+        iconSize: 64,
+        iconBorderRadius: 16,
+        gridColumns: 4,
+        gridGap: 12,
+      },
+      chat: {
+        avatarSize: 40,
+        avatarBorderRadius: 20,
+        avatarBorderColor: '',
+        avatarBorderWidth: 0,
+        messageBorderRadius: 18,
+        messageBackgroundColorUser: '',
+        messageBackgroundColorModel: '',
+        messageSpacing: 10,
+      },
+      dynamics: {
+        background: '',
+        cardStyle: 'flat',
+        cardBorderRadius: 16,
+        cardOpacity: 1,
+      },
+      globalCss: '',
+    },
+    userProfile: {
+      name: 'User',
+      avatar: '',
+      bio: '',
+      mood: '',
+      id: 'user',
+    },
+  };
+
+  await publishGeneratedCharacterMomentToFeed({
+    payload: {
+      authorId: character.id,
+      content: '这张就留在这里。',
+      images: ['asset://chat-image-1'],
+    },
+    snapshot: appData,
+    setAppData: (updater) => {
+      appData = typeof updater === 'function'
+        ? updater(appData)
+        : updater;
+    },
+  });
+
+  assert.deepEqual(appData.moments[0]?.images, ['asset://chat-image-1']);
+});

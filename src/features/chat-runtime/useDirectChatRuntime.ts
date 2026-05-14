@@ -13,6 +13,7 @@ import type {
   FriendRequest,
   Mask,
   MomentImageCard,
+  MomentSourceImageRef,
   PerceptionSettings,
   WalletData,
   WorldBookEntry,
@@ -112,6 +113,7 @@ import {
   extractDirectProactiveLightInteractionPayload,
 } from '../../services/chat/directProactiveLightInteraction';
 import { handleCommandTriggeredMomentPublish, maybeAutoPublishMoment } from '../../services/moments/orchestrator';
+import { extractRecentMomentImageReferences } from '../../services/moments/momentRecentImageReferences';
 import { resolveSceneTextApiConfig, resolveSceneVoiceApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { synthesizeTtsAudio } from '../../services/ai/apiCenter/synthesizeTtsAudio';
 import { getMessageMainText } from '../../utils';
@@ -1760,7 +1762,7 @@ type UseDirectChatRuntimeArgs = {
   onPatchCharacter?: (patch: Partial<Character>) => void;
   friendRequests?: FriendRequest[];
   setFriendRequests?: (friendRequests: FriendRequest[] | ((prev: FriendRequest[]) => FriendRequest[])) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: MomentImageCard }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: MomentSourceImageRef; imageCard?: MomentImageCard }) => void;
   onAddCallRecord?: (record: CallRecord) => void;
   onAcceptCoupleSpaceInvite?: (characterId: string) => void;
 };
@@ -3091,6 +3093,7 @@ export function useDirectChatRuntime({
           text: message.text,
           timestamp: message.timestamp,
         })),
+        recentImageReferences: extractRecentMomentImageReferences(baseHistory, 2),
         recentMomentPublishedAt: lastMomentPublishAtRef.current,
         now: Date.now(),
       };
@@ -3117,6 +3120,8 @@ export function useDirectChatRuntime({
           authorId: character.id,
           content: commandMomentResult.momentContent,
           translation: commandMomentResult.momentTranslation,
+          images: commandMomentResult.momentImages,
+          sourceImage: commandMomentResult.momentSourceImage,
           imageCard: commandMomentResult.momentImageCard,
         });
         lastMomentPublishAtRef.current = Date.now();
@@ -3453,6 +3458,7 @@ export function useDirectChatRuntime({
                 text: message.text,
                 timestamp: message.timestamp,
               })),
+            recentImageReferences: extractRecentMomentImageReferences(finalHistory, 2),
             recentMomentPublishedAt: lastMomentPublishAtRef.current,
             now: Date.now(),
           },
@@ -3472,6 +3478,8 @@ export function useDirectChatRuntime({
             authorId: character.id,
             content: autoMomentResult.momentContent,
             translation: autoMomentResult.momentTranslation,
+            images: autoMomentResult.momentImages,
+            sourceImage: autoMomentResult.momentSourceImage,
             imageCard: autoMomentResult.momentImageCard,
           });
           lastMomentPublishAtRef.current = noticeTimestamp;

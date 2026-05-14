@@ -56,6 +56,15 @@ function normalizePublicThreadPeerHints(value: unknown): CharacterPublicThreadPe
         || record.interactionStyle === 'warm'
         ? record.interactionStyle
         : undefined;
+      const momentInteractionPolicy = record.momentInteractionPolicy === 'observe_only'
+        || record.momentInteractionPolicy === 'allow_interaction'
+        || record.momentInteractionPolicy === 'block'
+        ? record.momentInteractionPolicy
+        : undefined;
+      const source = record.source === 'manual'
+        || record.source === 'moment_growth'
+        ? record.source
+        : undefined;
       const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : undefined;
 
       return {
@@ -65,6 +74,8 @@ function normalizePublicThreadPeerHints(value: unknown): CharacterPublicThreadPe
         ...(typeof record.allowBanter === 'boolean' ? { allowBanter: record.allowBanter } : {}),
         ...(typeof record.allowIntimateTone === 'boolean' ? { allowIntimateTone: record.allowIntimateTone } : {}),
         ...(typeof record.allowOwnershipTone === 'boolean' ? { allowOwnershipTone: record.allowOwnershipTone } : {}),
+        ...(momentInteractionPolicy ? { momentInteractionPolicy } : {}),
+        ...(source ? { source } : {}),
         ...(normalizeOptionalText(record.note) ? { note: normalizeOptionalText(record.note) } : {}),
         ...(typeof updatedAt === 'number' ? { updatedAt } : {}),
       };

@@ -15,6 +15,7 @@ type MomentLike = {
 
 export type RecentMomentContext = {
   recentMessages?: Array<{ role: 'user' | 'model'; text: string; timestamp?: number }>;
+  recentImageReferences?: Array<{ imageUrl: string; relatedText?: string; timestamp?: number }>;
   recentMomentPublishedAt?: number | null;
   now?: number;
 };

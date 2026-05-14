@@ -1,4 +1,4 @@
-import { deleteAsset, findAssetByOriginalUrl, getAsset, putAsset, type StoredAssetRecord } from './browserDb';
+import { deleteAsset, findAssetByContentKey, findAssetByOriginalUrl, getAsset, putAsset, type StoredAssetRecord } from './browserDb';
 import { getOrCreate, peek, revoke } from './objectUrlRegistry';
 import { createUploadedAssetRef, isUploadedAssetRef, parseUploadedAssetRef } from './persistentAssetRef';
 
@@ -11,6 +11,28 @@ function createAssetId(): string {
     return `ua_${crypto.randomUUID()}`;
   }
   return `ua_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function buildInlineImageContentKey(dataUrl: string): string | null {
+  const match = dataUrl.match(/^data:([^;,]+)(?:;[^,]+)?,(.+)$/i);
+  if (!match?.[1] || !match?.[2]) {
+    return null;
+  }
+
+  const mimeType = match[1].trim().toLowerCase();
+  const data = match[2].trim();
+  if (!data) {
+    return null;
+  }
+
+  // A lightweight deterministic key is enough here. We only need duplicate
+  // suppression within the local persistence layer, not cryptographic proof.
+  let hash = 0;
+  const sample = data.length > 4096 ? `${data.slice(0, 2048)}:${data.length}:${data.slice(-2048)}` : data;
+  for (let index = 0; index < sample.length; index += 1) {
+    hash = ((hash << 5) - hash + sample.charCodeAt(index)) | 0;
+  }
+  return `inline-image:${mimeType}:${data.length}:${Math.abs(hash)}`;
 }
 
 function isDirectDisplayValue(value: string): boolean {
@@ -56,6 +78,7 @@ export async function saveUploadedBlob(
     mimeType?: string;
     source?: StoredAssetRecord['source'];
     originalUrl?: string;
+    contentKey?: string;
   },
 ): Promise<string> {
   const id = createAssetId();
@@ -71,6 +94,7 @@ export async function saveUploadedBlob(
     updatedAt: now,
     source: options?.source || 'upload',
     ...(options?.originalUrl ? { originalUrl: options.originalUrl.trim() } : {}),
+    ...(options?.contentKey ? { contentKey: options.contentKey.trim() } : {}),
   };
 
   await putAsset(record);
@@ -85,11 +109,20 @@ export async function saveUploadedFile(file: File): Promise<string> {
 }
 
 export async function saveUploadedDataUrl(dataUrl: string, fileName = 'uploaded-image.png'): Promise<string> {
+  const contentKey = buildInlineImageContentKey(dataUrl);
+  if (contentKey) {
+    const existingRecord = await findAssetByContentKey(contentKey);
+    if (existingRecord) {
+      return createUploadedAssetRef(existingRecord.id, existingRecord.fileName);
+    }
+  }
+
   const response = await fetch(dataUrl);
   const blob = await response.blob();
   return saveUploadedBlob(blob, {
     fileName,
     mimeType: blob.type || 'image/png',
+    ...(contentKey ? { contentKey } : {}),
   });
 }
 

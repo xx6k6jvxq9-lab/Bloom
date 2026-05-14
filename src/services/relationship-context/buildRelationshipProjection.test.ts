@@ -30,6 +30,7 @@ test('buildRelationshipProjection surfaces manual public-thread hints in public 
       familiarity: 'aware',
       interactionStyle: 'guarded',
       allowBanter: false,
+      momentInteractionPolicy: 'observe_only',
       note: 'keep it brief in public',
       updatedAt: 20,
     }],
@@ -42,6 +43,7 @@ test('buildRelationshipProjection surfaces manual public-thread hints in public 
       familiarity: 'aware',
       interactionStyle: 'guarded',
       allowBanter: false,
+      momentInteractionPolicy: 'observe_only',
       note: 'keep it brief in public',
       updatedAt: 21,
     }],
@@ -58,6 +60,7 @@ test('buildRelationshipProjection surfaces manual public-thread hints in public 
   assert.match(summary, /aware of each other in public/);
   assert.match(summary, /style guarded/);
   assert.match(summary, /banter no/);
+  assert.match(summary, /moment observe only/);
   assert.match(summary, /note keep it brief in public/);
 });
 

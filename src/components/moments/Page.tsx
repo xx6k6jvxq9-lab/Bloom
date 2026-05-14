@@ -19,6 +19,12 @@ import {
   publishGeneratedCharacterMomentToFeed,
   runAutoMomentSchedulerPass,
 } from '../../services/moments/autoRuntime';
+import {
+  canCharacterAutoCommentOnMoment,
+  canCharacterAutoLikeMoment,
+} from '../../services/moments/publicThreadPolicy';
+import { applyMomentInteractionGrowth } from '../../services/moments/momentInteractionGrowth';
+import { getDefaultMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
 import { extractImageUrls, showInAppConfirm } from '../../utils';
 import { AppData, AppSettings, Character, FavoriteMessage, MomentComment, MomentItem, UserProfileExtended } from '../../types';
 
@@ -538,9 +544,24 @@ export function MomentsApp({
   const appendCommentToMoment = (momentId: string, comment: Comment) => {
     setAppData((prev) => ({
       ...prev,
-      moments: prev.moments.map((m) =>
-        m.id === momentId ? { ...m, comments: [...m.comments, comment] } : m,
-      ),
+      characters: (() => {
+        const targetMoment = prev.moments.find((moment) => moment.id === momentId);
+        if (!targetMoment) {
+          return prev.characters;
+        }
+        return applyMomentInteractionGrowth({
+          characters: prev.characters,
+          moment: {
+            ...targetMoment,
+            comments: [...targetMoment.comments, comment],
+          },
+          newComment: comment,
+          chatGroups: prev.chatGroups || [],
+        });
+      })(),
+      moments: prev.moments.map((m) => (
+        m.id === momentId ? { ...m, comments: [...m.comments, comment] } : m
+      )),
     }));
   };
 
@@ -615,6 +636,8 @@ export function MomentsApp({
   const publishGeneratedCharacterMoment = useCallback(async (payload: {
     authorId: string;
     content: string;
+    translation?: string;
+    images?: string[];
     imageCard?: import('../../types').MomentImageCard;
   }) => {
     await publishGeneratedCharacterMomentToFeed({
@@ -677,6 +700,7 @@ export function MomentsApp({
     const newMoment: Moment = {
       id: Date.now().toString(),
       authorId: 'user',
+      visibilityScope: getDefaultMomentVisibilityScope('user'),
       content: publishContent,
       images: publishImages,
       timestamp: Date.now(),
@@ -689,16 +713,30 @@ export function MomentsApp({
     setPublishImages([]);
 
     const activeConfig = forumConfig;
+    const chatGroups = appData.chatGroups || [];
     const shuffledCharacters = [...characters].sort(() => Math.random() - 0.5);
-    const replyCount = Math.min(
-      shuffledCharacters.length,
-      shuffledCharacters.length <= 2 ? shuffledCharacters.length : (Math.random() < 0.5 ? 2 : 3),
+    const commentEligibleIds = new Set(
+      shuffledCharacters
+        .filter((character) => canCharacterAutoCommentOnMoment({
+          actor: character,
+          moment: newMoment,
+          characters,
+          chatGroups,
+        }))
+        .map((character) => character.id),
     );
-    const replyCharacters = shuffledCharacters.slice(0, replyCount);
     const autoLikerIds = shuffledCharacters
       .filter((character) => {
-        const isCommenter = replyCharacters.some((replyCharacter) => replyCharacter.id === character.id);
-        const likeChance = isCommenter ? 0.75 : 0.4;
+        if (!canCharacterAutoLikeMoment({
+          actor: character,
+          moment: newMoment,
+          characters,
+          chatGroups,
+        })) {
+          return false;
+        }
+
+        const likeChance = commentEligibleIds.has(character.id) ? 0.75 : 0.4;
         return Math.random() < likeChance;
       })
       .map((character) => character.id)
@@ -713,19 +751,19 @@ export function MomentsApp({
       })();
     }
 
-    if (activeConfig && replyCharacters.length > 0) {
+    if (activeConfig && commentEligibleIds.size > 0) {
       enqueueMomentAiTask(async () => {
         await runMomentPublishCommentSequence({
           activeConfig,
           moment: newMoment,
           characters,
-          chatGroups: appData.chatGroups || [],
+          chatGroups,
           userName: userProfile.name,
           appendComment: (comment) => appendCommentToMoment(newMoment.id, comment),
         });
       });
     }
-  }, [appendCommentToMoment, characters, enqueueMomentAiTask, forumConfig, publishContent, publishImages, setAppData, userProfile.name]);
+  }, [appData.chatGroups, appendCommentToMoment, characters, enqueueMomentAiTask, forumConfig, publishContent, publishImages, setAppData, userProfile.name]);
 
   const handleLike = (momentId: string) => {
     setAppData((prev) => ({

@@ -1,6 +1,6 @@
 import { ChevronLeft, RotateCcw, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { Character, ChatGroup } from '../../types';
+import type { Character, CharacterPublicThreadPeerHint, ChatGroup } from '../../types';
 import { useResolvedPersistentValue } from '../../features/persistence/useResolvedPersistentValue';
 import {
   getCharacterPublicThreadProfile,
@@ -21,6 +21,7 @@ type RelationshipGraphPageProps = {
 
 type RelationEditorValue = {
   note?: string;
+  momentInteractionPolicy?: CharacterPublicThreadPeerHint['momentInteractionPolicy'];
 };
 
 type PeerItem = {
@@ -31,6 +32,25 @@ type PeerItem = {
 };
 
 type RelationshipPageMode = 'guide' | 'all';
+
+type MomentInteractionPolicy = NonNullable<CharacterPublicThreadPeerHint['momentInteractionPolicy']>;
+
+const MOMENT_INTERACTION_POLICY_OPTIONS: Array<{
+  value: MomentInteractionPolicy | 'auto';
+  label: string;
+  description: string;
+}> = [
+  { value: 'auto', label: '自动', description: '按熟悉度和群聊历史自动判断' },
+  { value: 'observe_only', label: '仅围观', description: '保留公开存在感，但不自动赞评' },
+  { value: 'allow_interaction', label: '允许互动', description: '允许这对角色在动态里公开接话' },
+  { value: 'block', label: '禁止互动', description: '动态评论区里不让这对角色自动接触' },
+];
+
+const MOMENT_INTERACTION_POLICY_LABELS: Record<MomentInteractionPolicy, string> = {
+  observe_only: '仅围观',
+  allow_interaction: '允许互动',
+  block: '禁止互动',
+};
 
 function ResolvedCharacterAvatar({
   value,
@@ -120,6 +140,7 @@ function derivePublicThreadPeerHintPatchFromNote(note: string): PublicThreadPeer
 function buildEmptyEditorValue(): RelationEditorValue {
   return {
     note: '',
+    momentInteractionPolicy: undefined,
   };
 }
 
@@ -179,6 +200,34 @@ function RelationshipEditorSheet({
         <div className="mt-4">
           <div className="text-[12px] font-medium text-zinc-700">关系说明</div>
           <div className="mt-1 text-[11px] text-zinc-500">留空时会恢复默认自动推动，需要时再手动调整。</div>
+          <div className="mt-3 rounded-[22px] border border-zinc-200 bg-zinc-50/70 p-3">
+            <div className="text-[12px] font-medium text-zinc-700">动态公开互动</div>
+            <div className="mt-1 text-[11px] text-zinc-500">
+              单独控制这两个角色在动态评论区里要不要自动互动，不影响私聊和群聊本身。
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {MOMENT_INTERACTION_POLICY_OPTIONS.map((option) => {
+                const isActive = (editingValue.momentInteractionPolicy || 'auto') === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onUpdate({
+                      momentInteractionPolicy: option.value === 'auto' ? undefined : option.value,
+                    })}
+                    className={`rounded-[18px] border px-3 py-2 text-left transition-all ${
+                      isActive
+                        ? 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm'
+                        : 'border-zinc-200 bg-white text-zinc-600'
+                    }`}
+                  >
+                    <div className="text-[12px] font-medium">{option.label}</div>
+                    <div className="mt-1 text-[10px] leading-4 text-zinc-400">{option.description}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <textarea
             value={editingValue.note || ''}
             onChange={(event) => onUpdate(derivePublicThreadPeerHintPatchFromNote(event.target.value.slice(0, 240)))}
@@ -240,6 +289,7 @@ export function RelationshipGraphPage({
   const editingValue: RelationEditorValue = editingHint
     ? {
         note: editingHint.note || '',
+        momentInteractionPolicy: editingHint.momentInteractionPolicy,
       }
     : buildEmptyEditorValue();
 
@@ -265,6 +315,7 @@ export function RelationshipGraphPage({
         allowBanter: undefined,
         allowIntimateTone: undefined,
         allowOwnershipTone: undefined,
+        momentInteractionPolicy: undefined,
         note: '',
       },
     ));
@@ -377,7 +428,14 @@ export function RelationshipGraphPage({
                     <div className="flex min-w-0 items-center gap-3">
                       <ResolvedCharacterAvatar value={item.peer.avatar} alt={item.peer.name} className="h-11 w-11 rounded-full object-cover" />
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-zinc-900">{item.peer.name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-[13px] font-medium text-zinc-900">{item.peer.name}</div>
+                          {item.profile.momentInteractionPolicy !== 'auto' ? (
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
+                              {MOMENT_INTERACTION_POLICY_LABELS[item.profile.momentInteractionPolicy]}
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="mt-1 text-[11px] text-zinc-500">
                           {item.profile.note?.trim() || '点开写一句'}
                         </div>

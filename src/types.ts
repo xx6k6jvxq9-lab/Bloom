@@ -671,6 +671,8 @@ export type CharacterPublicThreadPeerHint = {
   allowBanter?: boolean;
   allowIntimateTone?: boolean;
   allowOwnershipTone?: boolean;
+  momentInteractionPolicy?: 'observe_only' | 'allow_interaction' | 'block';
+  source?: 'manual' | 'moment_growth';
   note?: string;
   updatedAt?: number;
 };
@@ -955,14 +957,25 @@ export type MomentSourceChatMessageRef = {
   timestamp: number;
 };
 
+export type MomentSourceImageRef = {
+  source: 'recent_chat_image';
+  characterId: string;
+  messageTimestamp?: number;
+  imageUrl?: string;
+};
+
+export type MomentVisibilityScope = 'contacts' | 'known_network' | 'forum_mirror';
+
 export type MomentItem = {
   id: string;
   authorId: string;
+  visibilityScope?: MomentVisibilityScope;
   content: string;
   translation?: string;
   images?: string[];
   imageCard?: MomentImageCard;
   sourceChatMessage?: MomentSourceChatMessageRef;
+  sourceImage?: MomentSourceImageRef;
   timestamp: number;
   likes: number;
   likedBy?: string[];

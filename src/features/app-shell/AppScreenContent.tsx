@@ -69,6 +69,12 @@ import { buildForumSharedSettlement } from '../../services/forum/buildForumShare
 import { bridgeForumFriendToFormalChat } from '../../services/forum/forumFriendBridge';
 import { createEmptyForumTempChatSession, markForumFriendRequestResolved } from '../../services/forum/forumTempChatState';
 import {
+  canCharacterAutoCommentOnMoment,
+  canCharacterAutoLikeMoment,
+} from '../../services/moments/publicThreadPolicy';
+import { applyMomentInteractionGrowth } from '../../services/moments/momentInteractionGrowth';
+import { getDefaultMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
+import {
   appendForumFriendResolutionMessage,
   resolveOutgoingForumFriendRequest,
 } from '../../services/forum/forumOutgoingFriendRequestResolution';
@@ -874,6 +880,21 @@ export function AppScreenContent({
   const appendCommentToMoment = (momentId: string, comment: import('../../types').MomentComment) => {
     setAppData((prev) => ({
       ...prev,
+      characters: (() => {
+        const targetMoment = (prev.moments || []).find((moment) => moment.id === momentId);
+        if (!targetMoment) {
+          return prev.characters;
+        }
+        return applyMomentInteractionGrowth({
+          characters: prev.characters,
+          moment: {
+            ...targetMoment,
+            comments: [...targetMoment.comments, comment],
+          },
+          newComment: comment,
+          chatGroups: prev.chatGroups || [],
+        });
+      })(),
       moments: (prev.moments || []).map((moment) => (
         moment.id === momentId
           ? { ...moment, comments: [...moment.comments, comment] }
@@ -1340,6 +1361,7 @@ export function AppScreenContent({
               const newMoment = {
                 id: newMomentId,
                 authorId,
+                visibilityScope: getDefaultMomentVisibilityScope(authorId),
                 content,
                 ...(translation ? { translation } : {}),
                 images,
@@ -1378,14 +1400,32 @@ export function AppScreenContent({
                 moments: [newMoment, ...(prev.moments || [])],
               }));
 
-              const shuffledCharacters = [...appData.characters].sort(() => Math.random() - 0.5);
-              const replyCount = Math.min(
-                shuffledCharacters.length,
-                shuffledCharacters.length <= 2 ? shuffledCharacters.length : (Math.random() < 0.5 ? 2 : 3),
+              const chatGroups = appData.chatGroups || [];
+              const shuffledCharacters = [...appData.characters]
+                .filter((character) => character.id !== authorId)
+                .sort(() => Math.random() - 0.5);
+              const commentEligibleIds = new Set(
+                shuffledCharacters
+                  .filter((character) => canCharacterAutoCommentOnMoment({
+                    actor: character,
+                    moment: newMoment,
+                    characters: appData.characters,
+                    chatGroups,
+                  }))
+                  .map((character) => character.id),
               );
               const autoLikerIds = shuffledCharacters
                 .filter((character) => {
-                  const likeChance = Math.random() < 0.5 ? 0.75 : 0.4;
+                  if (!canCharacterAutoLikeMoment({
+                    actor: character,
+                    moment: newMoment,
+                    characters: appData.characters,
+                    chatGroups,
+                  })) {
+                    return false;
+                  }
+
+                  const likeChance = commentEligibleIds.has(character.id) ? 0.75 : 0.4;
                   return Math.random() < likeChance;
                 })
                 .map((character) => character.id)
@@ -1400,12 +1440,12 @@ export function AppScreenContent({
                 })();
               }
 
-              if (forumConfig && replyCount > 0) {
+              if (forumConfig && commentEligibleIds.size > 0) {
                 void runMomentPublishCommentSequence({
                   activeConfig: forumConfig,
                   moment: newMoment,
                   characters: appData.characters,
-                  chatGroups: appData.chatGroups || [],
+                  chatGroups,
                   userName: appData.userProfile.name,
                   appendComment: (comment) => appendCommentToMoment(newMomentId, comment),
                 });

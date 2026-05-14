@@ -4,6 +4,7 @@ import {
 import { openPersistenceDb } from './persistenceDb';
 
 const ASSET_ORIGINAL_URL_INDEX = 'originalUrl';
+const ASSET_CONTENT_KEY_INDEX = 'contentKey';
 
 export type StoredAssetRecord = {
   id: string;
@@ -15,6 +16,7 @@ export type StoredAssetRecord = {
   updatedAt: number;
   source?: 'upload' | 'remote-cache';
   originalUrl?: string;
+  contentKey?: string;
 };
 
 function runTransaction<T>(
@@ -71,6 +73,32 @@ export function findAssetByOriginalUrl(originalUrl: string): Promise<StoredAsset
         const request = store.index(ASSET_ORIGINAL_URL_INDEX).get(normalizedOriginalUrl);
         request.onsuccess = () => resolve((request.result as StoredAssetRecord | undefined) ?? null);
         request.onerror = () => reject(request.error ?? new Error('Failed to read asset by original URL'));
+      }),
+  );
+}
+
+export function findAssetByContentKey(contentKey: string): Promise<StoredAssetRecord | null> {
+  const normalizedContentKey = contentKey.trim();
+  if (!normalizedContentKey) {
+    return Promise.resolve(null);
+  }
+
+  return openPersistenceDb().then(
+    (db) =>
+      new Promise<StoredAssetRecord | null>((resolve, reject) => {
+        const tx = db.transaction(PERSISTENCE_ASSETS_STORE, 'readonly');
+        const store = tx.objectStore(PERSISTENCE_ASSETS_STORE);
+
+        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
+
+        if (!store.indexNames.contains(ASSET_CONTENT_KEY_INDEX)) {
+          resolve(null);
+          return;
+        }
+
+        const request = store.index(ASSET_CONTENT_KEY_INDEX).get(normalizedContentKey);
+        request.onsuccess = () => resolve((request.result as StoredAssetRecord | undefined) ?? null);
+        request.onerror = () => reject(request.error ?? new Error('Failed to read asset by content key'));
       }),
   );
 }

@@ -86,6 +86,12 @@ const PUBLIC_THREAD_STYLE_LABELS = {
   warm: 'warm',
 } as const;
 
+const PUBLIC_THREAD_MOMENT_POLICY_LABELS = {
+  observe_only: 'moment observe only',
+  allow_interaction: 'moment interaction allowed',
+  block: 'moment interaction blocked',
+} as const;
+
 function compactPromptLine(value: string | undefined, maxLength = 72): string | undefined {
   const normalized = (value || '').replace(/\s+/g, ' ').trim();
   if (!normalized) {
@@ -153,12 +159,33 @@ function mergeExplicitPublicThreadHint(
     return undefined;
   };
 
+  const interactionPolicyOrder: Record<NonNullable<CharacterPublicThreadPeerHint['momentInteractionPolicy']>, number> = {
+    block: 0,
+    observe_only: 1,
+    allow_interaction: 2,
+  };
+  const leftMomentInteractionPolicy = leftHint?.momentInteractionPolicy;
+  const rightMomentInteractionPolicy = rightHint?.momentInteractionPolicy;
+  const momentInteractionPolicy = leftMomentInteractionPolicy && rightMomentInteractionPolicy
+    ? (interactionPolicyOrder[leftMomentInteractionPolicy] <= interactionPolicyOrder[rightMomentInteractionPolicy]
+      ? leftMomentInteractionPolicy
+      : rightMomentInteractionPolicy)
+    : leftMomentInteractionPolicy
+      || rightMomentInteractionPolicy;
+  const source = leftHint?.source === 'manual' || rightHint?.source === 'manual'
+    ? 'manual' as const
+    : leftHint?.source === 'moment_growth' || rightHint?.source === 'moment_growth'
+      ? 'moment_growth' as const
+      : 'manual' as const;
+
   return {
     familiarity,
     interactionStyle,
     allowBanter: mergeBoolean(leftHint?.allowBanter, rightHint?.allowBanter),
     allowIntimateTone: mergeBoolean(leftHint?.allowIntimateTone, rightHint?.allowIntimateTone),
     allowOwnershipTone: mergeBoolean(leftHint?.allowOwnershipTone, rightHint?.allowOwnershipTone),
+    momentInteractionPolicy,
+    source,
     note: Array.from(new Set([
       compactPromptLine(leftHint?.note, 72),
       compactPromptLine(rightHint?.note, 72),
@@ -204,6 +231,9 @@ function buildExplicitPublicAcquaintanceSummary(input: {
         explicitHint.allowBanter === true ? 'banter ok' : explicitHint.allowBanter === false ? 'banter no' : '',
         explicitHint.allowIntimateTone === true ? 'intimate ok' : explicitHint.allowIntimateTone === false ? 'intimate no' : '',
         explicitHint.allowOwnershipTone === true ? 'ownership ok' : explicitHint.allowOwnershipTone === false ? 'ownership no' : '',
+        explicitHint.momentInteractionPolicy
+          ? PUBLIC_THREAD_MOMENT_POLICY_LABELS[explicitHint.momentInteractionPolicy]
+          : '',
       ].filter(Boolean);
       const note = explicitHint.note;
       const specificityScore =
@@ -212,12 +242,17 @@ function buildExplicitPublicAcquaintanceSummary(input: {
         + (explicitHint.allowBanter !== undefined ? 1 : 0)
         + (explicitHint.allowIntimateTone !== undefined ? 1 : 0)
         + (explicitHint.allowOwnershipTone !== undefined ? 1 : 0)
+        + (explicitHint.momentInteractionPolicy ? 1 : 0)
         + (note ? 2 : 0);
 
       return {
         specificityScore,
         updatedAt: getLatestPublicThreadHintUpdateAt(character, peer),
-        line: `Manual public relation override with ${peer.name}: ${parts.join('; ')}${note ? `; note ${note}` : ''}.`,
+        line: `${
+          explicitHint.source === 'moment_growth'
+            ? `Moment-grown public relation with ${peer.name}:`
+            : `Manual public relation override with ${peer.name}:`
+        } ${parts.join('; ')}${note ? `; note ${note}` : ''}.`,
       };
     })
     .filter((item): item is { specificityScore: number; updatedAt: number; line: string } => item !== null)

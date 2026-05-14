@@ -58,7 +58,7 @@ type DirectChatSessionContainerProps = {
   setDatingRecords: (data: DatingRecordsData) => void;
   walletData?: WalletData;
   setWalletData: (data: WalletData) => void;
-  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
+  onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: import('../../types').MomentSourceImageRef; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
   onOpenCharacterMoments?: () => void;
   onOpenCharacterProfile?: (characterId: string) => void;
   onStatusBarVisibilityChange?: (visible: boolean) => void;

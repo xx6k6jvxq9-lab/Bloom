@@ -30,6 +30,9 @@ function ensurePersistenceStores(db: IDBDatabase, upgradeTransaction?: IDBTransa
   if (assetStore && !assetStore.indexNames.contains('originalUrl')) {
     assetStore.createIndex('originalUrl', 'originalUrl', { unique: false });
   }
+  if (assetStore && !assetStore.indexNames.contains('contentKey')) {
+    assetStore.createIndex('contentKey', 'contentKey', { unique: false });
+  }
 
   const jsonStore = db.objectStoreNames.contains(PERSISTENCE_JSON_STORE)
     ? upgradeTransaction?.objectStore(PERSISTENCE_JSON_STORE) ?? null

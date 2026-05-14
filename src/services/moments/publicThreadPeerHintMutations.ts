@@ -34,6 +34,14 @@ export function upsertCharacterPublicThreadPeerHint(
       : existing && 'allowOwnershipTone' in existing
         ? { allowOwnershipTone: existing.allowOwnershipTone }
         : {}),
+    ...(updates.momentInteractionPolicy !== undefined
+      ? { momentInteractionPolicy: updates.momentInteractionPolicy }
+      : existing?.momentInteractionPolicy
+        ? { momentInteractionPolicy: existing.momentInteractionPolicy }
+        : {}),
+    ...(updates.source !== undefined
+      ? { source: updates.source }
+      : { source: 'manual' as const }),
     ...(updates.note !== undefined
       ? (updates.note.trim() ? { note: updates.note.trim() } : {})
       : existing?.note
@@ -48,6 +56,7 @@ export function upsertCharacterPublicThreadPeerHint(
     || typeof nextHint.allowBanter === 'boolean'
     || typeof nextHint.allowIntimateTone === 'boolean'
     || typeof nextHint.allowOwnershipTone === 'boolean'
+    || nextHint.momentInteractionPolicy !== undefined
     || !!nextHint.note
   );
 

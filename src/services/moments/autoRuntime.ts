@@ -4,6 +4,7 @@ import type {
   Character,
   MomentComment,
   MomentImageCard,
+  MomentSourceImageRef,
   MomentItem,
 } from '../../types';
 import { rebuildSharedStateFromCharacter } from '../relationship-context/buildSharedCharacterState';
@@ -30,16 +31,25 @@ import {
 } from './momentRecentVariety';
 import { buildMomentPublishedSettlement } from './buildMomentPublishedSettlement';
 import { generateMomentPostContent } from './generators';
+import {
+  canCharacterAutoCommentOnMoment,
+  canCharacterAutoLikeMoment,
+} from './publicThreadPolicy';
+import { applyMomentInteractionGrowth } from './momentInteractionGrowth';
+import { getDefaultMomentVisibilityScope } from './momentVisibilityScope';
+import { extractRecentMomentImageReferences } from './momentRecentImageReferences';
 
 export type AutoMomentRuntimeSnapshot = Pick<
   AppData,
-  'characters' | 'moments' | 'masks' | 'worldBooks' | 'chatGroups' | 'userProfile'
+  'characters' | 'moments' | 'masks' | 'worldBooks' | 'chatGroups' | 'userProfile' | 'chatHistory'
 >;
 
 export type GeneratedCharacterMomentPayload = {
   authorId: string;
   content: string;
   translation?: string;
+  images?: string[];
+  sourceImage?: MomentSourceImageRef;
   imageCard?: MomentImageCard;
 };
 
@@ -231,6 +241,7 @@ async function executeMomentPlanEntry(options: {
     generationHints: entry.generationHints,
     privateCarryoverLevel: liveCharacter.momentPrivateCarryoverLevel,
     allowPrivateMomentCarryover: liveCharacter.allowPrivateMomentCarryover ?? false,
+    recentImageReferences: extractRecentMomentImageReferences(latestData.chatHistory?.[entry.characterId] || [], 2),
   });
 
   const content = generated.content.trim();
@@ -242,6 +253,7 @@ async function executeMomentPlanEntry(options: {
     authorId: liveCharacter.id,
     content,
     translation: generated.translation,
+    images: generated.images,
     imageCard: generated.imageCard,
   });
 
@@ -276,6 +288,21 @@ function appendCommentToMoment(
 ) {
   setAppData((prev) => ({
     ...prev,
+    characters: (() => {
+      const targetMoment = (prev.moments || []).find((moment) => moment.id === momentId);
+      if (!targetMoment) {
+        return prev.characters;
+      }
+      return applyMomentInteractionGrowth({
+        characters: prev.characters,
+        moment: {
+          ...targetMoment,
+          comments: [...targetMoment.comments, comment],
+        },
+        newComment: comment,
+        chatGroups: prev.chatGroups || [],
+      });
+    })(),
     moments: (prev.moments || []).map((moment) => (
       moment.id === momentId
         ? { ...moment, comments: [...moment.comments, comment] }
@@ -297,8 +324,11 @@ export async function publishGeneratedCharacterMomentToFeed(
   const newMoment: MomentItem = {
     id: newMomentId,
     authorId: payload.authorId,
+    visibilityScope: getDefaultMomentVisibilityScope(payload.authorId),
     content: payload.content,
     translation: payload.translation,
+    images: payload.images,
+    sourceImage: payload.sourceImage,
     imageCard: payload.imageCard,
     timestamp: Date.now(),
     likes: 0,
@@ -352,8 +382,31 @@ export async function publishGeneratedCharacterMomentToFeed(
   const shuffledCharacters = [...snapshot.characters]
     .filter((character) => character.id !== payload.authorId)
     .sort(() => Math.random() - 0.5);
+  const chatGroups = snapshot.chatGroups || [];
+  const commentEligibleIds = new Set(
+    shuffledCharacters
+      .filter((character) => canCharacterAutoCommentOnMoment({
+        actor: character,
+        moment: newMoment,
+        characters: snapshot.characters,
+        chatGroups,
+      }))
+      .map((character) => character.id),
+  );
   const autoLikerIds = shuffledCharacters
-    .filter((character) => Math.random() < 0.42)
+    .filter((character) => {
+      if (!canCharacterAutoLikeMoment({
+        actor: character,
+        moment: newMoment,
+        characters: snapshot.characters,
+        chatGroups,
+      })) {
+        return false;
+      }
+
+      const likeChance = commentEligibleIds.has(character.id) ? 0.62 : 0.42;
+      return Math.random() < likeChance;
+    })
     .map((character) => character.id)
     .slice(0, Math.min(shuffledCharacters.length, 3));
 
@@ -366,12 +419,12 @@ export async function publishGeneratedCharacterMomentToFeed(
     })();
   }
 
-  if (forumConfig) {
+  if (forumConfig && commentEligibleIds.size > 0) {
     void runMomentPublishCommentSequence({
       activeConfig: forumConfig,
       moment: newMoment,
       characters: snapshot.characters,
-      chatGroups: snapshot.chatGroups || [],
+      chatGroups,
       userName: snapshot.userProfile.name,
       appendComment: (comment) => appendCommentToMoment(setAppData, newMomentId, comment),
     });

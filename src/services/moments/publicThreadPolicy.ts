@@ -3,9 +3,13 @@ import type {
   CharacterPublicThreadPeerHint,
   ChatGroup,
   ChatMessage,
+  MomentVisibilityScope,
+  MomentComment,
   MomentItem,
 } from '../../types';
+import { canChatWithCharacter } from '../../features/contacts/contactRelationship';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
+import { resolveMomentVisibilityScope } from './momentVisibilityScope';
 
 export type PublicThreadRelationLevel = 'stranger' | 'aware' | 'familiar' | 'sensitive';
 export type PublicThreadFamiliarity = 'stranger' | 'aware' | 'familiar';
@@ -21,8 +25,29 @@ export type PublicThreadRelationProfile = {
   allowBanter: boolean;
   allowIntimateTone: boolean;
   allowOwnershipTone: boolean;
+  momentInteractionPolicy: 'auto' | 'observe_only' | 'allow_interaction' | 'block';
   note?: string;
   source: 'explicit' | 'inferred';
+};
+
+export type CharacterMomentEngagementAccess = {
+  visibilityScope: MomentVisibilityScope;
+  familiarity: PublicThreadFamiliarity | 'user_friend' | 'self' | 'none';
+  canView: boolean;
+  canLike: boolean;
+  canTopLevelComment: boolean;
+  interactionPolicy: PublicThreadRelationProfile['momentInteractionPolicy'];
+};
+
+type ResolveCharacterMomentEngagementOptions = {
+  actor: Character;
+  moment: MomentItem;
+  characters: Character[];
+  chatGroups?: ChatGroup[];
+};
+
+type ResolveCharacterMomentThreadAccessOptions = ResolveCharacterMomentEngagementOptions & {
+  triggerComment?: MomentComment;
 };
 
 const USER_DIRECTED_MOMENT_REGEX = /你|你别|你又|给你|回来|回家|睡觉|顶嘴|记得|别到时候|别熬|听见没|少吃|多喝|先去|别闹|喊我|陪我|某人|下课|不想分开|带走|领走|拐走|变小|揣进怀里/i;
@@ -116,12 +141,33 @@ function mergeExplicitPeerHints(
     return undefined;
   };
 
+  const interactionPolicyOrder: Record<NonNullable<CharacterPublicThreadPeerHint['momentInteractionPolicy']>, number> = {
+    block: 0,
+    observe_only: 1,
+    allow_interaction: 2,
+  };
+  const leftMomentInteractionPolicy = leftHint?.momentInteractionPolicy;
+  const rightMomentInteractionPolicy = rightHint?.momentInteractionPolicy;
+  const momentInteractionPolicy = leftMomentInteractionPolicy && rightMomentInteractionPolicy
+    ? (interactionPolicyOrder[leftMomentInteractionPolicy] <= interactionPolicyOrder[rightMomentInteractionPolicy]
+      ? leftMomentInteractionPolicy
+      : rightMomentInteractionPolicy)
+    : leftMomentInteractionPolicy
+      || rightMomentInteractionPolicy;
+  const source = leftHint?.source === 'manual' || rightHint?.source === 'manual'
+    ? 'manual' as const
+    : leftHint?.source === 'moment_growth' || rightHint?.source === 'moment_growth'
+      ? 'moment_growth' as const
+      : undefined;
+
   return {
     familiarity,
     interactionStyle,
     allowBanter: mergeBoolean(leftHint?.allowBanter, rightHint?.allowBanter),
     allowIntimateTone: mergeBoolean(leftHint?.allowIntimateTone, rightHint?.allowIntimateTone),
     allowOwnershipTone: mergeBoolean(leftHint?.allowOwnershipTone, rightHint?.allowOwnershipTone),
+    momentInteractionPolicy,
+    source,
     note: [leftHint?.note, rightHint?.note].filter(Boolean).join('；') || undefined,
   };
 }
@@ -299,6 +345,14 @@ function deriveUserOverlap(left: Character, right: Character): PublicThreadUserO
   return 'none';
 }
 
+function getMomentAuthorCharacter(moment: MomentItem, characters: Character[]) {
+  if (moment.authorId === 'user') {
+    return null;
+  }
+
+  return characters.find((character) => character.id === moment.authorId) || null;
+}
+
 export function getCharacterPublicThreadProfile(
   left: Character,
   right: Character,
@@ -314,6 +368,7 @@ export function getCharacterPublicThreadProfile(
       allowBanter: true,
       allowIntimateTone: true,
       allowOwnershipTone: true,
+      momentInteractionPolicy: 'auto',
       note: undefined,
       source: 'inferred',
     };
@@ -381,9 +436,179 @@ export function getCharacterPublicThreadProfile(
     allowBanter: explicitPairHint?.allowBanter ?? (familiarity === 'familiar' && hasDirectReplyHistory),
     allowIntimateTone: explicitPairHint?.allowIntimateTone ?? false,
     allowOwnershipTone: explicitPairHint?.allowOwnershipTone ?? false,
+    momentInteractionPolicy: explicitPairHint?.momentInteractionPolicy || 'auto',
     note: explicitPairHint?.note,
-    source: explicitPairHint ? 'explicit' : 'inferred',
+    source: explicitPairHint?.source === 'moment_growth' ? 'inferred' : explicitPairHint ? 'explicit' : 'inferred',
   };
+}
+
+export function getCharacterMomentEngagementAccess(
+  options: ResolveCharacterMomentEngagementOptions,
+): CharacterMomentEngagementAccess {
+  const { actor, moment, characters, chatGroups = [] } = options;
+  const visibilityScope = resolveMomentVisibilityScope(moment);
+
+  if (visibilityScope === 'forum_mirror') {
+    return {
+      visibilityScope,
+      familiarity: 'none',
+      canView: false,
+      canLike: false,
+      canTopLevelComment: false,
+      interactionPolicy: 'block',
+    };
+  }
+
+  if (moment.authorId === 'user') {
+    const isUserFriend = canChatWithCharacter(actor);
+    return {
+      visibilityScope,
+      familiarity: isUserFriend ? 'user_friend' : 'none',
+      canView: isUserFriend,
+      canLike: isUserFriend,
+      canTopLevelComment: isUserFriend,
+      interactionPolicy: 'auto',
+    };
+  }
+
+  if (actor.id === moment.authorId) {
+    return {
+      visibilityScope,
+      familiarity: 'self',
+      canView: true,
+      canLike: false,
+      canTopLevelComment: false,
+      interactionPolicy: 'auto',
+    };
+  }
+
+  const author = getMomentAuthorCharacter(moment, characters);
+  if (!author) {
+    return {
+      visibilityScope,
+      familiarity: 'none',
+      canView: false,
+      canLike: false,
+      canTopLevelComment: false,
+      interactionPolicy: 'block',
+    };
+  }
+
+  const relationProfile = getCharacterPublicThreadProfile(actor, author, chatGroups);
+  if (relationProfile.momentInteractionPolicy === 'block') {
+    return {
+      visibilityScope,
+      familiarity: relationProfile.familiarity,
+      canView: false,
+      canLike: false,
+      canTopLevelComment: false,
+      interactionPolicy: relationProfile.momentInteractionPolicy,
+    };
+  }
+  if (relationProfile.momentInteractionPolicy === 'observe_only') {
+    return {
+      visibilityScope,
+      familiarity: relationProfile.familiarity,
+      canView: true,
+      canLike: false,
+      canTopLevelComment: false,
+      interactionPolicy: relationProfile.momentInteractionPolicy,
+    };
+  }
+  if (relationProfile.momentInteractionPolicy === 'allow_interaction') {
+    return {
+      visibilityScope,
+      familiarity: relationProfile.familiarity,
+      canView: true,
+      canLike: true,
+      canTopLevelComment: true,
+      interactionPolicy: relationProfile.momentInteractionPolicy,
+    };
+  }
+
+  const isAware = relationProfile.familiarity === 'aware' || relationProfile.familiarity === 'familiar';
+  const isFamiliar = relationProfile.familiarity === 'familiar';
+  const canLike = visibilityScope === 'contacts'
+    ? isFamiliar
+    : isAware;
+  const canTopLevelComment = visibilityScope === 'contacts'
+    ? isFamiliar
+    : isFamiliar;
+
+  return {
+    visibilityScope,
+    familiarity: relationProfile.familiarity,
+    canView: isAware || isFamiliar,
+    canLike,
+    canTopLevelComment,
+    interactionPolicy: relationProfile.momentInteractionPolicy,
+  };
+}
+
+export function canCharacterAutoLikeMoment(
+  options: ResolveCharacterMomentEngagementOptions,
+) {
+  return getCharacterMomentEngagementAccess(options).canLike;
+}
+
+export function canCharacterAutoCommentOnMoment(
+  options: ResolveCharacterMomentEngagementOptions,
+) {
+  return getCharacterMomentEngagementAccess(options).canTopLevelComment;
+}
+
+export function canCharacterJoinMomentThread(
+  options: ResolveCharacterMomentThreadAccessOptions,
+) {
+  const { actor, moment, characters, chatGroups = [], triggerComment } = options;
+  const visibilityScope = resolveMomentVisibilityScope(moment);
+
+  if (visibilityScope === 'forum_mirror') {
+    return false;
+  }
+
+  if (moment.authorId !== 'user' && actor.id === moment.authorId) {
+    return true;
+  }
+
+  const engagementAccess = getCharacterMomentEngagementAccess({
+    actor,
+    moment,
+    characters,
+    chatGroups,
+  });
+
+  if (!triggerComment) {
+    return engagementAccess.canTopLevelComment;
+  }
+
+  // If the current floor replied to this actor directly, allow at least an aware
+  // relationship to answer back once instead of keeping the thread one-sided.
+  if (triggerComment.replyToAuthorId === actor.id) {
+    return engagementAccess.canLike;
+  }
+
+  if (!engagementAccess.canTopLevelComment) {
+    return false;
+  }
+
+  if (triggerComment.authorId === 'user' || triggerComment.replyToAuthorId === 'user') {
+    return true;
+  }
+
+  const triggerAuthor = characters.find((character) => character.id === triggerComment.authorId) || null;
+  const replyTarget = triggerComment.replyToAuthorId
+    ? characters.find((character) => character.id === triggerComment.replyToAuthorId) || null
+    : null;
+
+  const isFamiliarWithTriggerAuthor = triggerAuthor
+    ? getCharacterPublicThreadProfile(actor, triggerAuthor, chatGroups).familiarity === 'familiar'
+    : false;
+  const isFamiliarWithReplyTarget = replyTarget
+    ? getCharacterPublicThreadProfile(actor, replyTarget, chatGroups).familiarity === 'familiar'
+    : false;
+
+  return isFamiliarWithTriggerAuthor || isFamiliarWithReplyTarget;
 }
 
 export function inferCharacterPublicThreadRelation(

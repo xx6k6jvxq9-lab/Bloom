@@ -7,6 +7,7 @@ import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
 import { normalizeContactGroupName } from './contactGroupNames';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
+import { resolveMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
 
 const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
 const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
@@ -203,5 +204,23 @@ export function sanitizePersistedMoments(moments: MomentItem[] | null | undefine
     return [];
   }
 
-  return moments.filter((moment) => !REMOVED_DEFAULT_MOMENT_IDS.has(moment.id));
+  return moments
+    .filter((moment) => !REMOVED_DEFAULT_MOMENT_IDS.has(moment.id))
+    .map((moment) => ({
+      ...moment,
+      visibilityScope: resolveMomentVisibilityScope(moment),
+      sourceImage:
+        moment.sourceImage
+        && moment.sourceImage.source === 'recent_chat_image'
+        && typeof moment.sourceImage.characterId === 'string'
+          ? {
+              source: 'recent_chat_image' as const,
+              characterId: moment.sourceImage.characterId,
+              ...(typeof moment.sourceImage.messageTimestamp === 'number'
+                ? { messageTimestamp: moment.sourceImage.messageTimestamp }
+                : {}),
+              ...(typeof moment.sourceImage.imageUrl === 'string' ? { imageUrl: moment.sourceImage.imageUrl } : {}),
+            }
+          : undefined,
+    }));
 }

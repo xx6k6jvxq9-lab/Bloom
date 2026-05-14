@@ -1,6 +1,7 @@
 import { loadJsonRecord, removeJsonRecord, saveJsonRecord } from './browserJsonStore';
 import { loadJson, remove as removeStoredJson, saveJson } from './localConfigStore';
 import { STORAGE_KEYS } from './storageKeys';
+import { resolveMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
 
 export type PersistedMomentComment = {
   id: string;
@@ -15,6 +16,7 @@ export type PersistedMomentComment = {
 export type PersistedMoment = {
   id: string;
   authorId: string;
+  visibilityScope?: 'contacts' | 'known_network' | 'forum_mirror';
   content: string;
   translation?: string;
   images?: string[];
@@ -31,6 +33,12 @@ export type PersistedMoment = {
   sourceChatMessage?: {
     characterId: string;
     timestamp: number;
+  };
+  sourceImage?: {
+    source: 'recent_chat_image';
+    characterId: string;
+    messageTimestamp?: number;
+    imageUrl?: string;
   };
   timestamp: number;
   likes: number;
@@ -64,6 +72,10 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
   return source.map((moment) => ({
     id: moment.id,
     authorId: normalizeLegacyActorId(moment.authorId) || moment.authorId,
+    visibilityScope: resolveMomentVisibilityScope({
+      authorId: normalizeLegacyActorId(moment.authorId) || moment.authorId,
+      visibilityScope: moment.visibilityScope,
+    }),
     content: moment.content,
     translation: typeof moment.translation === 'string' ? moment.translation : undefined,
     images: Array.isArray(moment.images) ? moment.images : undefined,
@@ -104,6 +116,20 @@ export function hydrateMoments(source: PersistedMoment[] | null | undefined, fal
         ? {
             characterId: moment.sourceChatMessage.characterId,
             timestamp: moment.sourceChatMessage.timestamp,
+          }
+        : undefined,
+    sourceImage:
+      moment.sourceImage
+      && typeof moment.sourceImage === 'object'
+      && moment.sourceImage.source === 'recent_chat_image'
+      && typeof moment.sourceImage.characterId === 'string'
+        ? {
+            source: 'recent_chat_image' as const,
+            characterId: moment.sourceImage.characterId,
+            ...(typeof moment.sourceImage.messageTimestamp === 'number'
+              ? { messageTimestamp: moment.sourceImage.messageTimestamp }
+              : {}),
+            ...(typeof moment.sourceImage.imageUrl === 'string' ? { imageUrl: moment.sourceImage.imageUrl } : {}),
           }
         : undefined,
     timestamp: moment.timestamp,

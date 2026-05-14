@@ -1,4 +1,4 @@
-import type { ApiConfig, Character, ChatMessage, Mask, MomentImageCard, WorldBookEntry } from '../../types';
+import type { ApiConfig, Character, ChatMessage, Mask, MomentImageCard, MomentSourceImageRef, WorldBookEntry } from '../../types';
 import { generateMomentPostContent } from './generators';
 import type { RecentMomentContext } from './triggers';
 import { shouldAutoPublishMomentFromChat, shouldTriggerMomentPublishFromChat } from './triggers';
@@ -8,6 +8,8 @@ export type MomentPublishOrchestratorResult = {
   chatReaction?: string;
   momentContent?: string;
   momentTranslation?: string;
+  momentImages?: string[];
+  momentSourceImage?: MomentSourceImageRef;
   momentImageCard?: MomentImageCard;
   triggerType?: 'command' | 'auto';
   reason?: string;
@@ -48,6 +50,7 @@ export async function handleCommandTriggeredMomentPublish(
     worldBook,
     privateCarryoverLevel: character.momentPrivateCarryoverLevel,
     requestText: text,
+    recentImageReferences: recentContext?.recentImageReferences,
     allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
   });
 
@@ -55,6 +58,8 @@ export async function handleCommandTriggeredMomentPublish(
     shouldPublish: true,
     momentContent: momentPost.content,
     momentTranslation: momentPost.translation,
+    momentImages: momentPost.images,
+    momentSourceImage: momentPost.sourceImage,
     momentImageCard: momentPost.imageCard,
     triggerType: 'command',
     reason: 'command-triggered',
@@ -88,12 +93,15 @@ export async function maybeAutoPublishMoment(
     privateCarryoverLevel: character.momentPrivateCarryoverLevel,
     allowPrivateMomentCarryover: character.allowPrivateMomentCarryover ?? false,
     requestText: `自主发动态：${trigger.reason || 'auto'}`,
+    recentImageReferences: recentContext?.recentImageReferences,
   });
 
   return {
     shouldPublish: true,
     momentContent: momentPost.content,
     momentTranslation: momentPost.translation,
+    momentImages: momentPost.images,
+    momentSourceImage: momentPost.sourceImage,
     momentImageCard: momentPost.imageCard,
     triggerType: 'auto',
     reason: trigger.reason,

@@ -1,6 +1,8 @@
 import type { Character, ChatGroup, MomentComment, MomentItem } from '../../types';
 import { buildCharacterContext } from '../relationship-context/buildCharacterContext';
 import {
+  canCharacterAutoCommentOnMoment,
+  canCharacterJoinMomentThread,
   getCharacterPublicThreadProfile,
   inferCharacterPublicThreadRelation,
   isLikelyUserDirectedMoment,
@@ -568,7 +570,15 @@ export function pickInitialCommenters(options: PickInitialCommentersOptions) {
     return [];
   }
 
-  const eligibleCharacters = characters.filter((character) => character.id !== moment.authorId);
+  const eligibleCharacters = characters.filter((character) => (
+    character.id !== moment.authorId
+    && canCharacterAutoCommentOnMoment({
+      actor: character,
+      moment,
+      characters,
+      chatGroups,
+    })
+  ));
   const targetCount = getMomentAutoCommentTargetCount(moment, characters, chatGroups);
   if (targetCount <= 0) return [];
   const momentAuthor = moment.authorId === 'user'
@@ -656,10 +666,26 @@ export function pickNextResponder(options: PickNextResponderOptions) {
 
   const weightedCandidates = candidates
     .map((character) => {
+      if (!canCharacterJoinMomentThread({
+        actor: character,
+        moment,
+        characters,
+        chatGroups,
+        triggerComment,
+      })) {
+        return null;
+      }
+
       let weight = getParticipationWeight(character, moment);
       const hooked = hasDirectHookForCharacter(triggerComment, character);
 
       if (character.id === moment.authorId) weight += 0.45;
+      if (triggerComment.authorId === 'user' && character.id === moment.authorId) {
+        weight += 1.1;
+      }
+      if (triggerComment.authorId === 'user' && character.id !== moment.authorId) {
+        weight -= 0.2;
+      }
       if (targetAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, targetAuthor, chatGroups));
       if (triggerAuthor) weight += getRelationWeight(getCharacterRelationLevel(character, triggerAuthor, chatGroups)) * 0.65;
       if (hooked) weight += 0.95;
@@ -705,7 +731,7 @@ export function pickNextResponder(options: PickNextResponderOptions) {
 
       return { character, weight: Math.max(weight, 0.01) };
     })
-    .filter((item) => item.weight > 0.02);
+    .filter((item): item is { character: Character; weight: number } => Boolean(item && item.weight > 0.02));
 
   return pickWeightedCharacter(weightedCandidates);
 }

@@ -165,7 +165,7 @@ export function analyzeRecentMomentVariety(recentMoments: MomentItem[] = []): Re
         openingKey: buildOpeningKey(normalized),
         lengthBand: classifyLengthBand(normalized, paragraphCount),
         vibe: classifyVibe(normalized, paragraphCount),
-        imageLike: Boolean(moment.imageCard),
+        imageLike: Boolean(moment.imageCard || (moment.images && moment.images.length > 0)),
         paragraphCount,
       } satisfies RecentMomentSnapshot;
     })

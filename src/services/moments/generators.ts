@@ -1,4 +1,4 @@
-import { Character, Mask, ApiConfig, MomentImageCard, WorldBookEntry } from '../../types';
+import { Character, Mask, ApiConfig, MomentImageCard, MomentSourceImageRef, WorldBookEntry } from '../../types';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { buildMomentCommentReplyPrompt } from '../ai/prompts/builders/buildMomentCommentReplyPrompt';
 import { buildMomentsPrompt } from '../ai/prompts/builders/buildMomentsPrompt';
@@ -34,6 +34,11 @@ import {
 } from './triggers';
 import { hasOwnershipClaimRisk } from './publicThreadPolicy';
 import { getCharacterPublicThreadProfile } from './publicThreadPolicy';
+import {
+  buildRecentMomentImageReferenceMessages,
+  extractSelectedRecentMomentImages,
+} from './momentImagePromptSupport';
+import type { MomentRecentImageReference } from './momentRecentImageReferences';
 
 type MomentCommentLike = {
   authorId: string;
@@ -52,6 +57,8 @@ type MomentLike = {
 type GeneratedMomentPost = {
   content: string;
   translation?: string;
+  images?: string[];
+  sourceImage?: MomentSourceImageRef;
   imageCard?: MomentImageCard;
 };
 
@@ -637,12 +644,14 @@ async function generateSingleText(options: {
   prompt: string;
   requestText: string;
   fallback: string;
+  recentImageReferences?: MomentRecentImageReference[];
 }) {
-  const { activeConfig, prompt, requestText, fallback } = options;
+  const { activeConfig, prompt, requestText, fallback, recentImageReferences } = options;
   try {
     const text = await generateTextFromMessagesWithConfig({
       activeConfig,
       messages: [
+        ...buildRecentMomentImageReferenceMessages(activeConfig, recentImageReferences),
         {
           role: 'user',
           content: `${prompt}\n\n${requestText}`,
@@ -1035,6 +1044,7 @@ export async function generateMomentPostContent(options: {
   generationHints?: AutoMomentPlanEntry['generationHints'];
   privateCarryoverLevel?: MomentPrivateCarryoverLevel;
   allowPrivateMomentCarryover?: boolean;
+  recentImageReferences?: MomentRecentImageReference[];
 }): Promise<GeneratedMomentPost> {
   const {
     activeConfig,
@@ -1046,6 +1056,7 @@ export async function generateMomentPostContent(options: {
     generationHints,
     privateCarryoverLevel,
     allowPrivateMomentCarryover = false,
+    recentImageReferences = [],
   } = options;
   const momentMode = inferMomentPostMode(requestText);
   const languagePlan = resolveMomentLanguagePlan(character);
@@ -1071,6 +1082,16 @@ export async function generateMomentPostContent(options: {
     memoryContext,
     mode: momentMode,
   });
+  const recentImageAttachmentHints = recentImageReferences.length > 0
+    ? (blueprint.allowImages
+      ? [
+          'If one of the attached recent user-shared images truly fits this post, you may prepend exactly one marker line: [attach_recent_image:1] or [attach_recent_image:2].',
+          'Use that marker only when this post should actually carry the image as a real attachment. If the post works better as text-only, do not output any marker.',
+        ]
+      : [
+          'Recent user-shared images are available only as optional context. This post itself should stay text-only, so do not output any attachment marker.',
+        ])
+    : [];
   const fallback = getCleanMomentFallback(blueprint.shape)
     || buildMomentFactBoundarySafeFallback(factBoundary);
 
@@ -1085,7 +1106,10 @@ export async function generateMomentPostContent(options: {
     blueprint,
     privateCarryoverLevel,
     allowPrivateMomentCarryover,
-    extraStyleHints: translationInstructions,
+    extraStyleHints: [
+      ...recentImageAttachmentHints,
+      ...translationInstructions,
+    ],
   });
 
   const firstRaw = await generateSingleText({
@@ -1093,9 +1117,14 @@ export async function generateMomentPostContent(options: {
     prompt: firstPrompt,
     requestText: `Generate one publishable public post body. Trigger: ${combinedRequestText}`,
     fallback,
+    recentImageReferences,
   });
   const firstParts = splitMomentTranslationParts(firstRaw);
-  const firstPass = normalizeGeneratedMomentContent(firstParts.mainText, blueprint.maxChars, blueprint.shape);
+  const firstAttachment = extractSelectedRecentMomentImages({
+    text: firstParts.mainText,
+    references: recentImageReferences,
+  });
+  const firstPass = normalizeGeneratedMomentContent(firstAttachment.text, blueprint.maxChars, blueprint.shape);
   const firstTranslation = normalizeMomentTranslationText(firstParts.translation);
   const firstBoundaryViolation = validateMomentFactBoundaryDelta({
     content: firstPass,
@@ -1117,12 +1146,25 @@ export async function generateMomentPostContent(options: {
     return {
       content: firstCandidateContent,
       ...(!firstSoftCorrection.changed && firstTranslation ? { translation: firstTranslation } : {}),
-      imageCard: await generateMomentImageCard({
-        activeConfig,
-        character,
-        momentContent: firstCandidateContent,
-        blueprint,
-      }),
+      ...(firstAttachment.images ? { images: firstAttachment.images } : {}),
+      ...(firstAttachment.selectedReference?.imageUrl ? {
+        sourceImage: {
+          source: 'recent_chat_image' as const,
+          characterId: firstAttachment.selectedReference.characterId || character.id,
+          ...(typeof firstAttachment.selectedReference.timestamp === 'number'
+            ? { messageTimestamp: firstAttachment.selectedReference.timestamp }
+            : {}),
+          imageUrl: firstAttachment.selectedReference.imageUrl,
+        },
+      } : {}),
+      ...(!firstAttachment.images ? {
+        imageCard: await generateMomentImageCard({
+          activeConfig,
+          character,
+          momentContent: firstCandidateContent,
+          blueprint,
+        }),
+      } : {}),
     };
   }
 
@@ -1145,6 +1187,7 @@ export async function generateMomentPostContent(options: {
       'Write it as a post that has already been published.',
       'Allow real paragraph breaks when the shape fits; do not flatten everything into one sentence.',
       'Keep a human social-feed feeling: not too tidy, not too official, not too AI-polished.',
+      ...recentImageAttachmentHints,
       ...translationInstructions,
     ],
   });
@@ -1154,9 +1197,14 @@ export async function generateMomentPostContent(options: {
     prompt: retryPrompt,
     requestText: `Regenerate one publishable public post body. Trigger: ${combinedRequestText}`,
     fallback,
+    recentImageReferences,
   });
   const secondParts = splitMomentTranslationParts(secondRaw);
-  const secondPass = normalizeGeneratedMomentContent(secondParts.mainText, blueprint.maxChars, blueprint.shape);
+  const secondAttachment = extractSelectedRecentMomentImages({
+    text: secondParts.mainText,
+    references: recentImageReferences,
+  });
+  const secondPass = normalizeGeneratedMomentContent(secondAttachment.text, blueprint.maxChars, blueprint.shape);
   const secondTranslation = normalizeMomentTranslationText(secondParts.translation);
   const secondBoundaryViolation = validateMomentFactBoundaryDelta({
     content: secondPass,
@@ -1178,12 +1226,25 @@ export async function generateMomentPostContent(options: {
     return {
       content: secondCandidateContent,
       ...(!secondSoftCorrection.changed && secondTranslation ? { translation: secondTranslation } : {}),
-      imageCard: await generateMomentImageCard({
-        activeConfig,
-        character,
-        momentContent: secondCandidateContent,
-        blueprint,
-      }),
+      ...(secondAttachment.images ? { images: secondAttachment.images } : {}),
+      ...(secondAttachment.selectedReference?.imageUrl ? {
+        sourceImage: {
+          source: 'recent_chat_image' as const,
+          characterId: secondAttachment.selectedReference.characterId || character.id,
+          ...(typeof secondAttachment.selectedReference.timestamp === 'number'
+            ? { messageTimestamp: secondAttachment.selectedReference.timestamp }
+            : {}),
+          imageUrl: secondAttachment.selectedReference.imageUrl,
+        },
+      } : {}),
+      ...(!secondAttachment.images ? {
+        imageCard: await generateMomentImageCard({
+          activeConfig,
+          character,
+          momentContent: secondCandidateContent,
+          blueprint,
+        }),
+      } : {}),
     };
   }
 

@@ -13,6 +13,7 @@ import { saveCharacters } from '../../../features/persistence/charactersStore';
 import { useResolvedPersistentValue } from '../../../features/persistence/useResolvedPersistentValue';
 import { createCharacterDirectory } from '../../../features/character-domain/useCharacterDirectory';
 import { runMomentCommentReplySequence } from '../../../services/moments/commentOrchestrator';
+import { applyMomentInteractionGrowth } from '../../../services/moments/momentInteractionGrowth';
 import { resolveSceneTextApiConfig } from '../../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildCharacterContext } from '../../../services/relationship-context/buildCharacterContext';
 import {
@@ -1582,6 +1583,21 @@ export function CharacterMomentsProfile({
   const appendCommentToMoment = (momentId: string, comment: MomentComment) => {
     setAppData((prev) => ({
       ...prev,
+      characters: (() => {
+        const targetMoment = (prev.moments || []).find((moment: MomentItem) => moment.id === momentId);
+        if (!targetMoment) {
+          return prev.characters;
+        }
+        return applyMomentInteractionGrowth({
+          characters: prev.characters,
+          moment: {
+            ...targetMoment,
+            comments: [...targetMoment.comments, comment],
+          },
+          newComment: comment,
+          chatGroups: prev.chatGroups || [],
+        });
+      })(),
       moments: (prev.moments || []).map((moment: MomentItem) =>
         moment.id === momentId ? { ...moment, comments: [...moment.comments, comment] } : moment,
       ),
