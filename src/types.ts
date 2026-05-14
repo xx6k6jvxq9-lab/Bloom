@@ -1588,6 +1588,9 @@ export type StickerMetadata = {
   label?: string;
   aliases?: string[];
   traits?: string[];
+  category?: string;
+  caption?: string;
+  ocrText?: string;
 };
 
 export type ApiCenterConfig = {

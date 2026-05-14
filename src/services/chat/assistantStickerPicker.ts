@@ -2,6 +2,7 @@ import type { Character, StickerMetadata } from '../../types';
 import { inferStickerSemanticLabel } from './stickerSemantics';
 import {
   buildStickerMetadataSemanticText,
+  getStickerMetadata,
   resolveStickerMetadataLabel,
 } from './stickerMetadata';
 
@@ -42,6 +43,11 @@ type StickerCandidate = PickedSticker & {
   score: number;
   blocked: boolean;
   index: number;
+};
+
+type RankedStickerCandidate = PickedSticker & {
+  semanticText: string;
+  score: number;
 };
 
 function hashCueText(text: string): number {
@@ -260,6 +266,16 @@ function shouldTreatAsHardMismatch(
   personaTraits: Record<PersonaTrait, number>,
   sceneSignals: ReturnType<typeof inferSceneSignals>,
 ): boolean {
+  void label;
+  void stickerTraits;
+  void personaTraits;
+  void sceneSignals;
+  // Do not hard-block sticker types based on persona or scene stereotypes.
+  // The model should be free to decide the beat; the system only helps map
+  // that beat onto a real sticker and avoid low-signal repetition.
+  return false;
+
+  /*
   const normalizedLabel = label.trim().toLowerCase();
   const feelsTooMean = normalizedLabel.includes('阴阳怪气')
     || normalizedLabel.includes('冷漠')
@@ -283,6 +299,7 @@ function shouldTreatAsHardMismatch(
   }
 
   return false;
+  */
 }
 
 function scoreStickerForContext(
@@ -295,6 +312,8 @@ function scoreStickerForContext(
   const personaTraits = inferPersonaTraits(context);
   const sceneSignals = inferSceneSignals(context);
   const stickerTraits = inferStickerTraits(semanticText);
+  const metadata = getStickerMetadata(context?.stickerMetadataMap, stickerRef);
+  const category = metadata?.category?.trim().toLowerCase() || '';
   const normalizedStickerRef = normalizeStickerUsageValue(stickerRef);
   const normalizedStickerLabel = normalizeStickerUsageValue(label);
   const recentStickerRefs = (context?.recentStickerRefs || [])
@@ -303,11 +322,19 @@ function scoreStickerForContext(
   const recentStickerLabels = (context?.recentStickerLabels || [])
     .map((value) => normalizeStickerUsageValue(value))
     .filter(Boolean);
+  const recentStickerCategories = (context?.recentStickerRefs || [])
+    .slice(0, 4)
+    .map((value) => getStickerMetadata(context?.stickerMetadataMap, value)?.category?.trim().toLowerCase() || '')
+    .filter(Boolean);
   let score = 12 - (index * 0.02);
 
   if (label) {
     score += 2;
   }
+
+  if (metadata?.label?.trim()) score += 1.2;
+  if ((metadata?.aliases || []).length > 0) score += 0.9;
+  if ((metadata?.traits || []).length > 0) score += 0.9;
 
   const recentRefIndex = normalizedStickerRef
     ? recentStickerRefs.indexOf(normalizedStickerRef)
@@ -325,6 +352,15 @@ function scoreStickerForContext(
     score -= 8;
   } else if (recentLabelIndex > 0 && recentLabelIndex < 3) {
     score -= 5 - recentLabelIndex;
+  }
+
+  if (category) {
+    const recentCategoryIndex = recentStickerCategories.indexOf(category);
+    if (recentCategoryIndex === 0) {
+      score -= 4.5;
+    } else if (recentCategoryIndex > 0 && recentCategoryIndex < 3) {
+      score -= 2.5 - (recentCategoryIndex * 0.5);
+    }
   }
 
   if (context?.lastOwnMessageWasSticker) {
@@ -348,18 +384,9 @@ function scoreStickerForContext(
     ) {
       score += 4;
     }
-    if (stickerTraits.has('sarcastic')) {
-      score -= 7;
-    }
-    if (stickerTraits.has('angry')) {
-      score -= 2;
-    }
   }
 
   if (personaTraits.reserved >= 2) {
-    if (stickerTraits.has('affection') || stickerTraits.has('playful') || stickerTraits.has('cheerful')) {
-      score -= 2.5;
-    }
     if (stickerTraits.has('cool') || stickerTraits.has('sleepy') || stickerTraits.has('surprised')) {
       score += 1.5;
     }
@@ -387,9 +414,6 @@ function scoreStickerForContext(
     if (stickerTraits.has('comfort') || stickerTraits.has('apology') || stickerTraits.has('cheerful')) {
       score += 2;
     }
-    if (stickerTraits.has('playful') || stickerTraits.has('angry')) {
-      score -= 1;
-    }
   }
 
   if (sceneSignals.comfortNeeded) {
@@ -399,12 +423,6 @@ function scoreStickerForContext(
     if (stickerTraits.has('affection')) {
       score += 2;
     }
-    if (stickerTraits.has('sarcastic')) {
-      score -= 8;
-    }
-    if (stickerTraits.has('playful')) {
-      score -= 2;
-    }
   }
 
   if (sceneSignals.conflict) {
@@ -413,9 +431,6 @@ function scoreStickerForContext(
     }
     if (stickerTraits.has('angry')) {
       score += personaTraits.sharp >= 2 ? 2 : 0.5;
-    }
-    if (stickerTraits.has('sarcastic') && personaTraits.gentle >= 3) {
-      score -= 3;
     }
   }
 
@@ -429,21 +444,12 @@ function scoreStickerForContext(
   }
 
   if (sceneSignals.serious) {
-    if (stickerTraits.has('playful') || stickerTraits.has('affection') || stickerTraits.has('cheerful')) {
-      score -= 3;
-    }
     if (stickerTraits.has('comfort') || stickerTraits.has('apology')) {
       score += 1;
     }
   }
 
   if (sceneSignals.publicScene) {
-    if (stickerTraits.has('affection')) {
-      score -= 2.5;
-    }
-    if (stickerTraits.has('sarcastic')) {
-      score -= 2;
-    }
     if (stickerTraits.has('comfort') || stickerTraits.has('cheerful')) {
       score += 1;
     }
@@ -452,9 +458,6 @@ function scoreStickerForContext(
   if (sceneSignals.lowEnergy) {
     if (stickerTraits.has('sleepy')) {
       score += 4;
-    }
-    if (stickerTraits.has('playful') || stickerTraits.has('cheerful')) {
-      score -= 2;
     }
   }
 
@@ -484,10 +487,24 @@ function fallbackLabel(
     || 'sticker';
 }
 
+function formatStickerPromptDescriptor(candidate: RankedStickerCandidate): string {
+  const semanticParts = candidate.semanticText
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const extras = semanticParts
+    .filter((item) => item !== candidate.label)
+    .slice(0, 4);
+
+  return extras.length > 0
+    ? `${candidate.label} (${extras.join(' / ')})`
+    : candidate.label;
+}
+
 export function resolveAssistantStickerCandidates(
   availableStickers: string[],
   context?: AssistantStickerContext,
-): Array<PickedSticker & { score: number }> {
+): RankedStickerCandidate[] {
   const stickerCandidates = normalizeStickerPool(availableStickers);
   if (stickerCandidates.length === 0) {
     return [];
@@ -522,11 +539,43 @@ export function resolveAssistantStickerCandidates(
       return left.index - right.index;
     })
     .slice(0, Math.min(8, effectiveCandidates.length))
-    .map(({ sticker, label, score }) => ({
+    .map(({ sticker, label, semanticText, score }) => ({
       sticker,
       label,
+      semanticText,
       score,
     }));
+}
+
+function maybeRotateWithinSameLabelCluster(
+  rankedMatches: Array<{
+    candidate: RankedStickerCandidate;
+    index: number;
+    label: string;
+    totalScore: number;
+  }>,
+  chosen: {
+    candidate: RankedStickerCandidate;
+    index: number;
+    label: string;
+    totalScore: number;
+  } | undefined,
+  recentStickerCooldownRefs: Set<string>,
+) {
+  if (!chosen) {
+    return chosen;
+  }
+
+  const normalizedChosenLabel = normalizeStickerUsageValue(chosen.label);
+  const normalizedChosenRef = normalizeStickerUsageValue(chosen.candidate.sticker);
+  const sibling = rankedMatches.find((entry) => (
+    entry !== chosen
+    && normalizeStickerUsageValue(entry.label) === normalizedChosenLabel
+    && normalizeStickerUsageValue(entry.candidate.sticker) !== normalizedChosenRef
+    && !recentStickerCooldownRefs.has(normalizeStickerUsageValue(entry.candidate.sticker))
+  ));
+
+  return sibling || chosen;
 }
 
 export function pickAssistantSticker(
@@ -609,6 +658,8 @@ export function pickAssistantSticker(
     }
   }
 
+  chosen = maybeRotateWithinSameLabelCluster(rankedMatches, chosen, recentStickerCooldownRefs);
+
   if (
     chosen
     && !recentStickerCooldownRefs.has(normalizeStickerUsageValue(chosen.candidate.sticker))
@@ -672,13 +723,13 @@ export function buildAssistantStickerPromptSection(
   context?: AssistantStickerContext,
 ): string {
   const candidates = resolveAssistantStickerCandidates(availableStickers, context);
-  const labels = Array.from(new Set(
+  const descriptors = Array.from(new Set(
     candidates
-      .map((candidate) => candidate.label?.trim())
-      .filter((label): label is string => !!label),
+      .map((candidate) => formatStickerPromptDescriptor(candidate))
+      .filter(Boolean),
   ));
 
-  if (labels.length === 0) {
+  if (descriptors.length === 0) {
     return '';
   }
 
@@ -692,7 +743,7 @@ export function buildAssistantStickerPromptSection(
 
   return [
     '## Available stickers',
-    'Only use a sticker if it still feels like this character and fits the current moment.',
+    'Use a sticker when it helps the character express the current beat more naturally.',
     characterVibe ? `Character sticker vibe: ${characterVibe}` : '',
     sceneTilt ? `Scene tilt right now: ${sceneTilt}` : '',
     context?.lastOwnMessageWasSticker
@@ -701,10 +752,14 @@ export function buildAssistantStickerPromptSection(
     recentStickerLabels.length > 0
       ? `Recently used sticker moods: ${recentStickerLabels.join(' / ')}. Avoid repeating the same sticker mood back-to-back unless the moment truly calls for it.`
       : '',
-    `Available sticker meanings for this turn: ${labels.join(' / ')}`,
+    `Available sticker meanings for this turn: ${descriptors.join(' / ')}`,
+    candidates[0]?.score >= 18
+      ? 'At least one sticker mood matches this turn very well. For a short emotional beat, using exactly one fitting sticker is a good option.'
+      : '',
+    'Do not self-censor based on a rigid persona rule. If a sticker genuinely matches the beat, you may use it.',
     'To send a sticker, output a separate line exactly like: [sticker] meaning',
     'You may send only a sticker for a tiny emotional reaction, or send text first and then a sticker on the next line.',
-    'Use stickers naturally. Skip the sticker if the moment needs clarity or none of the available stickers fit.',
+    'Use stickers naturally. Do not force them every turn, but do not be overly shy about using one when it clearly fits better than extra words.',
   ]
     .filter(Boolean)
     .join('\n');

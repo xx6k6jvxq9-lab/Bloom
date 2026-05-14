@@ -75,8 +75,16 @@ import { inferStickerSemanticLabel } from '../../services/chat/stickerSemantics'
 import {
   applyAutoStickerMetadata,
   normalizeStickerMetadata,
+  resolveStickerMetadataLabel,
+  STICKER_CATEGORY_OPTIONS,
   withoutStickerMetadataKeys,
 } from '../../services/chat/stickerMetadata';
+import {
+  extractStickerImportEntriesFromText,
+  importStickerFiles,
+  mergeStickerImportEntries,
+  type StickerImportEntry,
+} from '../../services/chat/stickerImport';
 import {
   getVoiceSampleValidationMessage,
   isLikelyVoiceSampleFile,
@@ -146,6 +154,54 @@ function ResolvedSettingsImage({
   const src = getDisplayableAssetValue(value, resolvedUrl);
   if (!src) return null;
   return <img src={src} alt={alt} className={className} />;
+}
+
+function ManagedStickerImage({
+  value,
+  alt,
+  className,
+  onValidityChange,
+}: {
+  value?: string | null;
+  alt?: string;
+  className: string;
+  onValidityChange?: (isValid: boolean) => void;
+}) {
+  const { resolvedUrl, loading, error } = useResolvedPersistentValue(value);
+  const src = getDisplayableAssetValue(value, resolvedUrl);
+  const [hasLoadError, setHasLoadError] = useState(false);
+
+  useEffect(() => {
+    setHasLoadError(false);
+  }, [src, value]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const isValid = Boolean(src) && !error && !hasLoadError;
+    onValidityChange?.(isValid);
+  }, [loading, src, error, hasLoadError, onValidityChange]);
+
+  if (!src || error || hasLoadError) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-zinc-100/90`}>
+        <div className="px-3 text-center text-[11px] font-medium text-zinc-400">
+          链接失效
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setHasLoadError(true)}
+    />
+  );
 }
 
 type PublicThreadPeerHint = NonNullable<Character['publicThreadPeerHints']>[number];
@@ -257,11 +313,13 @@ function StickerPreviewModal({
   const [labelDraft, setLabelDraft] = React.useState(metadata?.label || '');
   const [aliasesDraft, setAliasesDraft] = React.useState(formatStickerMetadataDraftList(metadata?.aliases));
   const [traitsDraft, setTraitsDraft] = React.useState(formatStickerMetadataDraftList(metadata?.traits));
+  const [categoryDraft, setCategoryDraft] = React.useState(metadata?.category || '');
 
   useEffect(() => {
     setLabelDraft(metadata?.label || '');
     setAliasesDraft(formatStickerMetadataDraftList(metadata?.aliases));
     setTraitsDraft(formatStickerMetadataDraftList(metadata?.traits));
+    setCategoryDraft(metadata?.category || '');
   }, [metadata]);
 
   const suggestedLabel = inferStickerSemanticLabel(sticker, undefined, metadata);
@@ -272,10 +330,10 @@ function StickerPreviewModal({
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
-        className="w-full max-w-[360px] overflow-hidden rounded-[28px] border border-white/60 bg-white/95 shadow-[0_18px_60px_rgba(15,23,42,0.18)]"
+        className="w-full max-w-[284px] overflow-hidden rounded-[20px] border border-white/60 bg-white/95 shadow-[0_18px_60px_rgba(15,23,42,0.18)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3.5">
           <div>
             <div className="text-[16px] font-semibold text-zinc-900">表情包预览</div>
             <div className="mt-1 text-[12px] text-zinc-500">{scopeLabel}</div>
@@ -290,18 +348,14 @@ function StickerPreviewModal({
           </button>
         </div>
 
-        <div className="p-5">
-          <div className="overflow-hidden rounded-[24px] bg-zinc-100/80 shadow-inner">
+        <div className="p-4">
+          <div className="mx-auto max-w-[172px] overflow-hidden rounded-[16px] bg-zinc-100/80 shadow-inner">
             <div className="aspect-square">
-              <ResolvedSettingsImage value={sticker} alt={`${scopeLabel}预览`} className="h-full w-full object-contain" />
+              <ManagedStickerImage value={sticker} alt={`${scopeLabel}预览`} className="h-full w-full object-contain" />
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl bg-zinc-50 px-4 py-3 text-[12px] leading-5 text-zinc-500">
-            平时点击表情包会先进入预览，这里可以更安静地查看，也可以顺手补一条轻量语义标签。
-          </div>
-
-          <div className="mt-4 space-y-3 rounded-[22px] border border-zinc-100 bg-white/80 p-4">
+          <div className="mt-3 space-y-2 rounded-[18px] border border-zinc-100 bg-white/80 p-3">
             <label className="block">
               <div className="text-[12px] font-medium text-zinc-700">主标签</div>
               <input
@@ -309,8 +363,22 @@ function StickerPreviewModal({
                 value={labelDraft}
                 onChange={(event) => setLabelDraft(event.target.value)}
                 placeholder={suggestedLabel || '比如：委屈 / 贴贴 / 无语'}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[13px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                className="mt-1.5 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
               />
+            </label>
+
+            <label className="block">
+              <div className="text-[12px] font-medium text-zinc-700">分类</div>
+              <select
+                value={categoryDraft}
+                onChange={(event) => setCategoryDraft(event.target.value)}
+                className="mt-1.5 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+              >
+                <option value="">未分类</option>
+                {STICKER_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </label>
 
             <label className="block">
@@ -320,7 +388,7 @@ function StickerPreviewModal({
                 value={aliasesDraft}
                 onChange={(event) => setAliasesDraft(event.target.value)}
                 placeholder="比如：抱抱 / 安慰 / 哄哄"
-                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[13px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                className="mt-1.5 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
               />
             </label>
 
@@ -331,35 +399,50 @@ function StickerPreviewModal({
                 value={traitsDraft}
                 onChange={(event) => setTraitsDraft(event.target.value)}
                 placeholder="比如：comfort / gentle / playful"
-                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[13px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                className="mt-1.5 w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
               />
             </label>
+
+            {metadata?.caption?.trim() && (
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-500">
+                <div className="font-medium text-zinc-700">图片概述</div>
+                <div className="mt-1">{metadata.caption.trim()}</div>
+              </div>
+            )}
+
+            {metadata?.ocrText?.trim() && (
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-500">
+                <div className="font-medium text-zinc-700">图中文字</div>
+                <div className="mt-1">{metadata.ocrText.trim()}</div>
+              </div>
+            )}
 
             <button
               type="button"
               onClick={() => void onSaveMetadata(normalizeStickerMetadata({
                 label: labelDraft,
+                category: categoryDraft,
                 aliases: parseStickerMetadataDraftList(aliasesDraft),
                 traits: parseStickerMetadataDraftList(traitsDraft),
               }))}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-900 px-4 py-3 text-[14px] font-medium text-white transition hover:bg-zinc-800 active:bg-zinc-800"
-            >
+              className="w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-2.5 text-[13px] font-semibold text-zinc-800 transition hover:bg-zinc-200 active:bg-zinc-200"
+              >
               保存标签
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[14px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
+              className="rounded-2xl border border-zinc-200 bg-white px-4 py-2.5 text-[14px] font-medium text-zinc-700 transition hover:bg-zinc-50 active:bg-zinc-50"
             >
               关闭
             </button>
             <button
               type="button"
               onClick={() => void onDelete()}
-              className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-[14px] font-medium text-red-500 transition hover:bg-red-100 active:bg-red-100"
+              className="rounded-2xl border border-red-100 bg-red-50 px-4 py-2.5 text-[14px] font-medium text-red-500 transition hover:bg-red-100 active:bg-red-100"
             >
               删除这个表情包
             </button>
@@ -389,71 +472,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeStickerEntries(values: string[]) {
-  const seen = new Set<string>();
-  const nextValues: string[] = [];
-
-  for (const value of values) {
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    nextValues.push(normalized);
-  }
-
-  return nextValues;
-}
-
-function extractStickerEntriesFromText(raw: string): string[] {
-  const normalized = raw.replace(/\r/g, '\n');
-  const lines = normalized
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const urlRegex = /https?:\/\/[^\s,)\]"'<>]+/gi;
-  const entries: string[] = [];
-
-  for (const line of lines) {
-    const urlMatches = line.match(urlRegex);
-    if (urlMatches && urlMatches.length > 0) {
-      entries.push(...urlMatches);
-      continue;
-    }
-
-    const csvParts = line
-      .split(/[,\t|]/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-    if (csvParts.length > 0) {
-      entries.push(...csvParts.flatMap((part) => part.match(urlRegex) || []));
-    }
-  }
-
-  return normalizeStickerEntries(entries);
-}
-
-function extractStickerEntriesFromJson(data: unknown): string[] {
-  if (Array.isArray(data)) {
-    return normalizeStickerEntries(data.filter((item): item is string => typeof item === 'string'));
-  }
-
-  if (isRecord(data)) {
-    if (Array.isArray(data.stickers)) {
-      return normalizeStickerEntries(data.stickers.filter((item): item is string => typeof item === 'string'));
-    }
-
-    const stringValues = Object.values(data).filter((item): item is string => typeof item === 'string');
-    const arrayValues = Object.values(data)
-      .filter(Array.isArray)
-      .flatMap((item) => item.filter((entry): entry is string => typeof entry === 'string'));
-
-    return normalizeStickerEntries([
-      ...stringValues.filter((item) => /^https?:\/\//i.test(item)),
-      ...arrayValues,
-    ]);
-  }
-
-  return [];
+  return Array.from(new Set(
+    values
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ));
 }
 
 function formatMemoryStatDate(timestamp: number | null): string {
@@ -497,15 +520,6 @@ function getWorldBookDiscardReasonLabel(reason?: WorldBookSelectionDiagnostic['d
   }
 }
 
-function readFileAsText(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
-    reader.readAsText(file);
-  });
-}
-
 function isInlineDataImage(value: string) {
   return /^data:image\/[a-zA-Z0-9.+-]+(?:;[^,]+)?,/i.test(value.trim());
 }
@@ -533,35 +547,6 @@ async function migrateLegacyStickerEntries(
     changed,
     values: normalizeStickerEntries(nextValues),
   };
-}
-
-async function importStickerFiles(
-  files: File[],
-  persistUploadedFile: (file: File) => Promise<string>,
-) {
-  if (files.length === 0) return [];
-
-  const stickerGroups = await Promise.all(files.map(async (file) => {
-    if (file.type === 'application/json' || file.name.endsWith('.json')) {
-      const raw = await readFileAsText(file);
-      return extractStickerEntriesFromJson(parseJsonFileContent(raw));
-    }
-
-    if (
-      file.type === 'text/plain'
-      || file.type === 'text/csv'
-      || file.name.endsWith('.txt')
-      || file.name.endsWith('.csv')
-    ) {
-      const raw = await readFileAsText(file);
-      return extractStickerEntriesFromText(raw);
-    }
-
-    const assetRef = await persistUploadedFile(file);
-    return [assetRef];
-  }));
-
-  return normalizeStickerEntries(stickerGroups.flat());
 }
 
 export function ChatSettingsPanel({ 
@@ -689,8 +674,18 @@ export function ChatSettingsPanel({
   const [stickerManagementMode, setStickerManagementMode] = useState(false);
   const [selectedSharedStickers, setSelectedSharedStickers] = useState<Set<string>>(() => new Set());
   const [selectedCharacterStickers, setSelectedCharacterStickers] = useState<Set<string>>(() => new Set());
+  const [failedSharedStickers, setFailedSharedStickers] = useState<Set<string>>(() => new Set());
+  const [failedCharacterStickers, setFailedCharacterStickers] = useState<Set<string>>(() => new Set());
   const [batchStickerLabelDraft, setBatchStickerLabelDraft] = useState('');
+  const [batchStickerCategoryDraft, setBatchStickerCategoryDraft] = useState('');
   const [batchStickerTraitsDraft, setBatchStickerTraitsDraft] = useState('');
+  const [singleStickerLabelDraft, setSingleStickerLabelDraft] = useState('');
+  const [singleStickerAliasesDraft, setSingleStickerAliasesDraft] = useState('');
+  const [singleStickerTraitsDraft, setSingleStickerTraitsDraft] = useState('');
+  const [singleStickerCategoryDraft, setSingleStickerCategoryDraft] = useState('');
+  const [activeStickerLabelFilter, setActiveStickerLabelFilter] = useState<string>('all');
+  const [activeStickerCategoryFilter, setActiveStickerCategoryFilter] = useState<string>('all');
+  const [labelRenameDraft, setLabelRenameDraft] = useState('');
   const [activeStickerPreview, setActiveStickerPreview] = useState<StickerPreviewState | null>(null);
   const [activeStickerCategory, setActiveStickerCategory] = useState<'all' | 'shared' | 'character'>('all');
   const [sharedStickerExpanded, setSharedStickerExpanded] = useState(false);
@@ -735,6 +730,14 @@ export function ChatSettingsPanel({
   const characterStickerMetadata = character.stickerMetadata || {};
   const hasManagedStickers = sharedStickers.length + characterStickers.length > 0;
   const selectedStickerCount = selectedSharedStickers.size + selectedCharacterStickers.size;
+  const failedStickerCount = failedSharedStickers.size + failedCharacterStickers.size;
+  const singleSelectedSticker = selectedStickerCount === 1
+    ? selectedSharedStickers.size === 1
+      ? { scope: 'shared' as const, sticker: Array.from(selectedSharedStickers)[0] }
+      : selectedCharacterStickers.size === 1
+        ? { scope: 'character' as const, sticker: Array.from(selectedCharacterStickers)[0] }
+        : null
+    : null;
   const normalizedReplyMode = character.voiceProfile?.replyMode === 'text'
     ? 'mixed'
     : (character.voiceProfile?.replyMode || 'voice');
@@ -1130,28 +1133,22 @@ export function ChatSettingsPanel({
     });
   }, [activeMemoryDetail, activeMemoryEntries, activeMemoryYearGroups]);
 
-  const appendSharedStickers = (stickers: string[]) => {
-    const nextStickers = normalizeStickerEntries([
-      ...sharedStickers,
-      ...stickers,
-    ]);
-    const autoFilledMetadata = applyAutoStickerMetadata(nextStickers, sharedStickerMetadata);
+  const appendSharedStickers = (entries: StickerImportEntry[]) => {
+    const mergedImport = mergeStickerImportEntries(sharedStickers, sharedStickerMetadata, entries);
+    const autoFilledMetadata = applyAutoStickerMetadata(mergedImport.stickers, mergedImport.metadataMap);
     onUpdateSettings({
       ...settings,
-      sharedStickers: nextStickers,
+      sharedStickers: mergedImport.stickers,
       sharedStickerMetadata: autoFilledMetadata.metadataMap,
     });
   };
 
-  const appendCharacterStickers = (stickers: string[]) => {
-    const nextStickers = normalizeStickerEntries([
-      ...characterStickers,
-      ...stickers,
-    ]);
-    const autoFilledMetadata = applyAutoStickerMetadata(nextStickers, characterStickerMetadata);
+  const appendCharacterStickers = (entries: StickerImportEntry[]) => {
+    const mergedImport = mergeStickerImportEntries(characterStickers, characterStickerMetadata, entries);
+    const autoFilledMetadata = applyAutoStickerMetadata(mergedImport.stickers, mergedImport.metadataMap);
     onUpdate({
       ...character,
-      stickers: nextStickers,
+      stickers: mergedImport.stickers,
       stickerMetadata: autoFilledMetadata.metadataMap,
     });
   };
@@ -1161,6 +1158,72 @@ export function ChatSettingsPanel({
       ? sharedStickerMetadata[sticker]
       : characterStickerMetadata[sticker]
   );
+  const getStickerDisplayLabelByScope = (scope: StickerScope, sticker: string) => (
+    resolveStickerMetadataLabel(
+      scope === 'shared' ? sharedStickerMetadata : characterStickerMetadata,
+      sticker,
+    ) || ''
+  );
+  const getStickerCategoryByScope = (scope: StickerScope, sticker: string) => (
+    getStickerMetadataByScope(scope, sticker)?.category?.trim() || ''
+  );
+  const isStickerFailedByScope = (scope: StickerScope, sticker: string) => (
+    scope === 'shared'
+      ? failedSharedStickers.has(sticker)
+      : failedCharacterStickers.has(sticker)
+  );
+  const stickerCategoryOptions = Array.from(new Set([
+    ...((activeStickerCategory !== 'character' ? sharedStickers : []).map((sticker) => getStickerCategoryByScope('shared', sticker))),
+    ...((activeStickerCategory !== 'shared' ? characterStickers : []).map((sticker) => getStickerCategoryByScope('character', sticker))),
+  ].filter(Boolean)));
+  const stickerLabelOptions = Array.from(new Set([
+    ...((activeStickerCategory !== 'character' ? sharedStickers : []).map((sticker) => getStickerDisplayLabelByScope('shared', sticker))),
+    ...((activeStickerCategory !== 'shared' ? characterStickers : []).map((sticker) => getStickerDisplayLabelByScope('character', sticker))),
+  ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'));
+  const filterStickerListByMetaCategory = (scope: StickerScope, stickers: string[]) => (
+    activeStickerCategoryFilter === 'all'
+      ? stickers
+      : activeStickerCategoryFilter === '__uncategorized__'
+        ? stickers.filter((sticker) => !getStickerCategoryByScope(scope, sticker))
+        : stickers.filter((sticker) => getStickerCategoryByScope(scope, sticker) === activeStickerCategoryFilter)
+  );
+  const filterStickerListByLabel = (scope: StickerScope, stickers: string[]) => (
+    activeStickerLabelFilter === 'all'
+      ? stickers
+      : activeStickerLabelFilter === '__untagged__'
+        ? stickers.filter((sticker) => !getStickerDisplayLabelByScope(scope, sticker))
+        : activeStickerLabelFilter === '__failed__'
+          ? stickers.filter((sticker) => isStickerFailedByScope(scope, sticker))
+        : stickers.filter((sticker) => getStickerDisplayLabelByScope(scope, sticker) === activeStickerLabelFilter)
+  );
+  const visibleSharedStickers = filterStickerListByLabel('shared', filterStickerListByMetaCategory('shared', sharedStickers));
+  const visibleCharacterStickers = filterStickerListByLabel('character', filterStickerListByMetaCategory('character', characterStickers));
+  const visibleUntaggedSharedStickers = visibleSharedStickers.filter((sticker) => !getStickerDisplayLabelByScope('shared', sticker) && !isStickerFailedByScope('shared', sticker));
+  const visibleUntaggedCharacterStickers = visibleCharacterStickers.filter((sticker) => !getStickerDisplayLabelByScope('character', sticker) && !isStickerFailedByScope('character', sticker));
+  const visibleUntaggedStickerCount = visibleUntaggedSharedStickers.length + visibleUntaggedCharacterStickers.length;
+  const singleSelectedStickerMetadata = singleSelectedSticker
+    ? getStickerMetadataByScope(singleSelectedSticker.scope, singleSelectedSticker.sticker)
+    : undefined;
+
+  useEffect(() => {
+    setSingleStickerLabelDraft(singleSelectedStickerMetadata?.label || '');
+    setSingleStickerCategoryDraft(singleSelectedStickerMetadata?.category || '');
+    setSingleStickerAliasesDraft(formatStickerMetadataDraftList(singleSelectedStickerMetadata?.aliases));
+    setSingleStickerTraitsDraft(formatStickerMetadataDraftList(singleSelectedStickerMetadata?.traits));
+  }, [
+    singleSelectedSticker?.scope,
+    singleSelectedSticker?.sticker,
+    singleSelectedStickerMetadata?.label,
+    singleSelectedStickerMetadata?.category,
+    JSON.stringify(singleSelectedStickerMetadata?.aliases || []),
+    JSON.stringify(singleSelectedStickerMetadata?.traits || []),
+  ]);
+
+  useEffect(() => {
+    setLabelRenameDraft(activeStickerLabelFilter !== 'all' && activeStickerLabelFilter !== '__untagged__'
+      ? activeStickerLabelFilter
+      : '');
+  }, [activeStickerLabelFilter]);
 
   const updateStickerMetadata = (scope: StickerScope, sticker: string, metadata: StickerMetadata | undefined) => {
     if (scope === 'shared') {
@@ -1211,8 +1274,9 @@ export function ChatSettingsPanel({
 
   const handleBatchSaveStickerMetadata = () => {
     const label = batchStickerLabelDraft.trim() || undefined;
+    const category = batchStickerCategoryDraft.trim() || undefined;
     const traitsToAdd = parseStickerMetadataDraftList(batchStickerTraitsDraft);
-    if (!label && !traitsToAdd) {
+    if (!label && !category && !traitsToAdd) {
       return;
     }
 
@@ -1230,6 +1294,7 @@ export function ChatSettingsPanel({
         const current = nextMap[sticker];
         const next = normalizeStickerMetadata({
           label: label || current?.label,
+          category: category || current?.category,
           aliases: current?.aliases,
           traits: Array.from(new Set([
             ...(current?.traits || []),
@@ -1262,7 +1327,162 @@ export function ChatSettingsPanel({
     }
 
     setBatchStickerLabelDraft('');
+    setBatchStickerCategoryDraft('');
     setBatchStickerTraitsDraft('');
+  };
+
+  const handleSaveSingleSelectedStickerMetadata = () => {
+    if (!singleSelectedSticker) {
+      return;
+    }
+
+    updateStickerMetadata(singleSelectedSticker.scope, singleSelectedSticker.sticker, normalizeStickerMetadata({
+      label: singleStickerLabelDraft,
+      category: singleStickerCategoryDraft,
+      aliases: parseStickerMetadataDraftList(singleStickerAliasesDraft),
+      traits: parseStickerMetadataDraftList(singleStickerTraitsDraft),
+    }));
+  };
+
+  const handleManageStickerLabel = (mode: 'rename' | 'clear') => {
+    if (activeStickerLabelFilter === 'all' || activeStickerLabelFilter === '__untagged__') {
+      return;
+    }
+
+    const targetLabel = activeStickerLabelFilter;
+    const nextLabel = mode === 'rename' ? labelRenameDraft.trim() : '';
+
+    const updateLabelMap = (
+      scope: StickerScope,
+      stickers: string[],
+      currentMap: Record<string, StickerMetadata> | undefined,
+    ): Record<string, StickerMetadata> | undefined => {
+      const nextMap: Record<string, StickerMetadata> = { ...(currentMap || {}) };
+
+      stickers.forEach((sticker) => {
+        if (getStickerDisplayLabelByScope(scope, sticker) !== targetLabel) {
+          return;
+        }
+
+        const current = nextMap[sticker];
+        const next = normalizeStickerMetadata({
+          label: nextLabel || undefined,
+          category: current?.category,
+          aliases: current?.aliases,
+          traits: current?.traits,
+        });
+
+        if (next) {
+          nextMap[sticker] = next;
+        } else {
+          delete nextMap[sticker];
+        }
+      });
+
+      return Object.keys(nextMap).length > 0 ? nextMap : undefined;
+    };
+
+    if (activeStickerCategory !== 'character') {
+      onUpdateSettings({
+        ...settings,
+        sharedStickerMetadata: updateLabelMap('shared', sharedStickers, sharedStickerMetadata),
+      });
+    }
+
+    if (activeStickerCategory !== 'shared') {
+      onUpdate({
+        ...character,
+        stickerMetadata: updateLabelMap('character', characterStickers, characterStickerMetadata),
+      });
+    }
+
+    setActiveStickerLabelFilter(mode === 'rename' && nextLabel ? nextLabel : 'all');
+  };
+
+  const updateStickerFailureState = (scope: StickerScope, sticker: string, isValid: boolean) => {
+    const setter = scope === 'shared' ? setFailedSharedStickers : setFailedCharacterStickers;
+    setter((current) => {
+      const hasFailed = current.has(sticker);
+      if (isValid && !hasFailed) {
+        return current;
+      }
+      if (!isValid && hasFailed) {
+        return current;
+      }
+
+      const next = new Set(current);
+      if (isValid) {
+        next.delete(sticker);
+      } else {
+        next.add(sticker);
+      }
+      return next;
+    });
+  };
+
+  const handleCleanupFailedStickers = async () => {
+    const targetSharedStickers = activeStickerCategory !== 'character'
+      ? sharedStickers.filter((sticker) => failedSharedStickers.has(sticker))
+      : [];
+    const targetCharacterStickers = activeStickerCategory !== 'shared'
+      ? characterStickers.filter((sticker) => failedCharacterStickers.has(sticker))
+      : [];
+    const totalFailed = targetSharedStickers.length + targetCharacterStickers.length;
+
+    if (totalFailed <= 0) {
+      return;
+    }
+
+    if (!(await showInAppConfirm(`确定要清理 ${totalFailed} 个失效表情包吗？这会一起移除对应标签。`))) {
+      return;
+    }
+
+    if (targetSharedStickers.length > 0) {
+      onUpdateSettings({
+        ...settings,
+        sharedStickers: sharedStickers.filter((item) => !failedSharedStickers.has(item)),
+        sharedStickerMetadata: withoutStickerMetadataKeys(sharedStickerMetadata, targetSharedStickers),
+      });
+      setSelectedSharedStickers((current) => {
+        const next = new Set(current);
+        targetSharedStickers.forEach((sticker) => next.delete(sticker));
+        return next;
+      });
+      setFailedSharedStickers((current) => {
+        const next = new Set(current);
+        targetSharedStickers.forEach((sticker) => next.delete(sticker));
+        return next;
+      });
+    }
+
+    if (targetCharacterStickers.length > 0) {
+      onUpdate({
+        ...character,
+        stickers: characterStickers.filter((item) => !failedCharacterStickers.has(item)),
+        stickerMetadata: withoutStickerMetadataKeys(characterStickerMetadata, targetCharacterStickers),
+      });
+      setSelectedCharacterStickers((current) => {
+        const next = new Set(current);
+        targetCharacterStickers.forEach((sticker) => next.delete(sticker));
+        return next;
+      });
+      setFailedCharacterStickers((current) => {
+        const next = new Set(current);
+        targetCharacterStickers.forEach((sticker) => next.delete(sticker));
+        return next;
+      });
+    }
+
+    if (activeStickerPreview && (
+      targetSharedStickers.includes(activeStickerPreview.sticker)
+      || targetCharacterStickers.includes(activeStickerPreview.sticker)
+    )) {
+      closeStickerPreview();
+    }
+
+    if (activeStickerLabelFilter === '__failed__') {
+      setActiveStickerLabelFilter('all');
+    }
   };
 
   const resetStickerManagementState = () => {
@@ -1270,6 +1490,7 @@ export function ChatSettingsPanel({
     setSelectedSharedStickers(new Set());
     setSelectedCharacterStickers(new Set());
     setBatchStickerLabelDraft('');
+    setBatchStickerCategoryDraft('');
     setBatchStickerTraitsDraft('');
   };
 
@@ -1297,12 +1518,16 @@ export function ChatSettingsPanel({
 
   const resetStickerCategoryState = () => {
     setActiveStickerCategory('all');
+    setActiveStickerCategoryFilter('all');
+    setActiveStickerLabelFilter('all');
     setSharedStickerExpanded(false);
     setCharacterStickerExpanded(false);
   };
 
   const setStickerCategory = (category: 'all' | 'shared' | 'character') => {
     setActiveStickerCategory(category);
+    setActiveStickerCategoryFilter('all');
+    setActiveStickerLabelFilter('all');
   };
 
   const toggleStickerSelection = (scope: StickerScope, sticker: string) => {
@@ -1364,7 +1589,7 @@ export function ChatSettingsPanel({
   };
 
   const toggleSelectAllStickers = (scope: StickerScope) => {
-    const stickerList = scope === 'shared' ? sharedStickers : characterStickers;
+    const stickerList = scope === 'shared' ? visibleSharedStickers : visibleCharacterStickers;
     const setSelection = scope === 'shared' ? setSelectedSharedStickers : setSelectedCharacterStickers;
     setSelection((current) => (
       current.size === stickerList.length ? new Set() : new Set(stickerList)
@@ -1598,7 +1823,7 @@ export function ChatSettingsPanel({
   };
 
   const handleImportStickerLinks = () => {
-    const entries = extractStickerEntriesFromText(stickerLinkImportDraft);
+    const entries = extractStickerImportEntriesFromText(stickerLinkImportDraft);
     if (entries.length === 0) return;
     if (stickerLinkImportTarget === 'shared') {
       appendSharedStickers(entries);
@@ -1610,6 +1835,27 @@ export function ChatSettingsPanel({
       setCharacterStickerExpanded(true);
     }
     setStickerLinkImportDraft('');
+  };
+
+  const handleImportStickerFilesForTarget = async (
+    target: StickerScope,
+    files: File[],
+  ) => {
+    const importedEntries = await importStickerFiles(files, setUploadedFile);
+    if (importedEntries.length === 0) {
+      return;
+    }
+
+    if (target === 'shared') {
+      appendSharedStickers(importedEntries);
+      setActiveStickerCategory('shared');
+      setSharedStickerExpanded(true);
+      return;
+    }
+
+    appendCharacterStickers(importedEntries);
+    setActiveStickerCategory('character');
+    setCharacterStickerExpanded(true);
   };
 
   const refreshRemoteCacheUsage = async (currentHistoryOverride?: ChatMessage[]) => {
@@ -4047,6 +4293,124 @@ export function ChatSettingsPanel({
                   );
                 })}
               </div>
+              <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveStickerCategoryFilter('all')}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeStickerCategoryFilter === 'all' ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                >
+                  全部分类
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveStickerCategoryFilter('__uncategorized__')}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeStickerCategoryFilter === '__uncategorized__' ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                >
+                  未分类
+                </button>
+                {stickerCategoryOptions.map((categoryValue) => {
+                  const active = activeStickerCategoryFilter === categoryValue;
+                  const option = STICKER_CATEGORY_OPTIONS.find((item) => item.value === categoryValue);
+                  return (
+                    <button
+                      key={categoryValue}
+                      type="button"
+                      onClick={() => setActiveStickerCategoryFilter(categoryValue)}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${active ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                    >
+                      {option?.label || categoryValue}
+                    </button>
+                  );
+                })}
+              </div>
+              {(stickerLabelOptions.length > 0 || (activeStickerCategory !== 'character' ? sharedStickers.length > 0 : false) || (activeStickerCategory !== 'shared' ? characterStickers.length > 0 : false)) && (
+                <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveStickerLabelFilter('all')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeStickerLabelFilter === 'all' ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                  >
+                    全部标签
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStickerLabelFilter('__untagged__')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeStickerLabelFilter === '__untagged__' ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                  >
+                    未标记
+                  </button>
+                  {failedStickerCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveStickerLabelFilter('__failed__')}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeStickerLabelFilter === '__failed__' ? 'border-red-100 bg-red-50 text-red-500 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                    >
+                      失效
+                    </button>
+                  )}
+                  {stickerLabelOptions.map((label) => {
+                    const active = activeStickerLabelFilter === label;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setActiveStickerLabelFilter(label)}
+                        className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${active ? 'border-zinc-200 bg-zinc-100 text-zinc-900 shadow-sm' : 'border-white/60 bg-white/75 text-zinc-600 active:bg-white'}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {failedStickerCount > 0 && (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50/80 px-3 py-2.5">
+                  <div className="text-[11px] text-red-500">
+                    当前检测到 {failedStickerCount} 个失效表情包链接。
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCleanupFailedStickers()}
+                    className="shrink-0 rounded-full border border-red-100 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-500 transition active:bg-red-100"
+                  >
+                    一键清理失效
+                  </button>
+                </div>
+              )}
+              {activeStickerLabelFilter !== 'all' && activeStickerLabelFilter !== '__untagged__' && activeStickerLabelFilter !== '__failed__' && (
+                <div className="mt-2 rounded-2xl border border-white/40 bg-white/55 px-3 py-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[12px] font-medium text-zinc-800">标签管理</div>
+                      <div className="mt-1 text-[11px] text-zinc-500">你正在查看“{activeStickerLabelFilter}”这一类表情包。</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={labelRenameDraft}
+                      onChange={(event) => setLabelRenameDraft(event.target.value)}
+                      placeholder="重命名这个标签"
+                      className="min-w-0 flex-1 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleManageStickerLabel('rename')}
+                      disabled={!labelRenameDraft.trim() || labelRenameDraft.trim() === activeStickerLabelFilter}
+                      className="shrink-0 rounded-2xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-[12px] font-semibold text-zinc-800 transition active:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      重命名
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleManageStickerLabel('clear')}
+                      className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-500 transition active:bg-red-100"
+                    >
+                      清空标签
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div
@@ -4062,8 +4426,8 @@ export function ChatSettingsPanel({
                 <div className="mb-5 rounded-2xl border border-white/40 bg-white/55 p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-[14px] font-medium text-zinc-800">多链接导入</div>
-                      <p className="mt-1 text-[11px] text-zinc-500">先选导入目标，再一次性粘贴多行链接。这样不用先展开具体分组。</p>
+                      <div className="text-[14px] font-medium text-zinc-800">批量导入</div>
+                      <p className="mt-1 text-[11px] text-zinc-500">先选导入目标。可以直接粘贴链接/格式化文本，也可以选择 txt、csv、json、md、docx 或图片文件。</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/70 p-1">
                       {[
@@ -4087,17 +4451,41 @@ export function ChatSettingsPanel({
                   <textarea
                     value={stickerLinkImportDraft}
                     onChange={(e) => setStickerLinkImportDraft(e.target.value)}
-                    placeholder={'每行一个链接，或直接粘贴多行链接\nhttps://example.com/a.gif\nhttps://example.com/b.png'}
+                    placeholder={'支持纯链接，也支持带标签导入\nhttps://example.com/a.gif | 委屈 | 可怜,来哄我 | sad,comfort\nhttps://example.com/b.png | 贴贴 | 抱抱,蹭蹭 | affection,comfort'}
                     className="mt-3 w-full min-h-[110px] resize-none rounded-xl border border-white/40 bg-white/75 px-3 py-3 text-[13px] outline-none focus:border-zinc-900"
                   />
-                  <button
-                    type="button"
-                    onClick={handleImportStickerLinks}
-                    disabled={!stickerLinkImportDraft.trim()}
-                    className="mt-3 w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
-                  >
-                    {stickerLinkImportTarget === 'shared' ? '导入到共享表情包' : '导入到当前角色表情包'}
-                  </button>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleImportStickerLinks}
+                      disabled={!stickerLinkImportDraft.trim()}
+                      className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                    >
+                      {stickerLinkImportTarget === 'shared' ? '粘贴导入到共享' : '粘贴导入到角色'}
+                    </button>
+                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-zinc-200 bg-white/80 px-3 py-3 text-[14px] font-medium text-zinc-900 transition hover:bg-zinc-50">
+                      {stickerLinkImportTarget === 'shared' ? '选择文件导入共享' : '选择文件导入角色'}
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv,text/markdown,.md,.tsv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const input = e.currentTarget;
+                          const files = Array.from(input.files || []);
+
+                          try {
+                            await handleImportStickerFilesForTarget(stickerLinkImportTarget, files);
+                          } catch (error) {
+                            console.error('[chat-settings] Failed to import sticker files from quick import card.', error);
+                            await showInAppAlert(stickerLinkImportTarget === 'shared' ? '导入共享表情包失败，请重试。' : '导入角色表情包失败，请重试。');
+                          } finally {
+                            input.value = '';
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -4135,17 +4523,14 @@ export function ChatSettingsPanel({
                       <input
                         type="file"
                         multiple
-                        accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv"
+                        accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv,text/markdown,.md,.tsv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         className="hidden"
                         onChange={async e => {
                           const input = e.currentTarget;
                           const files = Array.from(input.files || []);
 
                           try {
-                            const newStickers = await importStickerFiles(files, setUploadedFile);
-                            if (newStickers.length > 0) {
-                              appendSharedStickers(newStickers);
-                            }
+                            await handleImportStickerFilesForTarget('shared', files);
                           } catch (error) {
                             console.error('[chat-settings] Failed to import shared stickers.', error);
                             await showInAppAlert('导入共享表情包失败，请重试。');
@@ -4156,20 +4541,37 @@ export function ChatSettingsPanel({
                       />
                     </label>
                   )}
-                  {sharedStickers.map((sticker) => {
+                  {visibleSharedStickers.map((sticker) => {
                     const isSelected = selectedSharedStickers.has(sticker);
+                    const stickerLabel = getStickerDisplayLabelByScope('shared', sticker);
                     return (
                       <div
                         key={`shared-${sticker}`}
                         onClick={() => handleStickerTilePress('shared', sticker)}
                         className={`relative aspect-square overflow-hidden rounded-2xl border border-white/30 bg-white/40 shadow-sm transition ${stickerManagementMode ? 'cursor-pointer active:scale-[0.98]' : 'cursor-zoom-in active:scale-[0.98]'} ${isSelected ? 'border-zinc-900 bg-white/70 ring-2 ring-zinc-900' : ''}`}
                       >
-                        <ResolvedSettingsImage value={sticker} className="h-full w-full object-cover" />
+                        <ManagedStickerImage
+                          value={sticker}
+                          className="h-full w-full object-cover"
+                          onValidityChange={(isValid) => updateStickerFailureState('shared', sticker, isValid)}
+                        />
                         {stickerManagementMode && (
                           <div
                             className={`absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-sm ${isSelected ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-white/90 bg-white/80 text-zinc-400'}`}
                           >
                             {isSelected ? <Check size={16} /> : <div className="h-3.5 w-3.5 rounded-full border border-current" />}
+                          </div>
+                        )}
+                        {isStickerFailedByScope('shared', sticker) && (
+                          <div className="absolute left-2 top-2 z-10 rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-500">
+                            失效
+                          </div>
+                        )}
+                        {stickerLabel && (
+                          <div className="absolute inset-x-2 bottom-2 z-10">
+                            <div className="truncate rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                              {stickerLabel}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -4229,17 +4631,14 @@ export function ChatSettingsPanel({
                     <input 
                       type="file" 
                       multiple 
-                      accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv" 
+                      accept="image/*,application/json,.json,text/plain,.txt,text/csv,.csv,text/markdown,.md,.tsv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       className="hidden" 
                       onChange={async e => {
                         const input = e.currentTarget;
                         const files = Array.from(input.files || []);
 
                         try {
-                          const newStickers = await importStickerFiles(files, setUploadedFile);
-                          if (newStickers.length > 0) {
-                            appendCharacterStickers(newStickers);
-                          }
+                          await handleImportStickerFilesForTarget('character', files);
                         } catch (error) {
                           console.error('[chat-settings] Failed to import character stickers.', error);
                           await showInAppAlert('导入角色表情包失败，请重试。');
@@ -4250,20 +4649,37 @@ export function ChatSettingsPanel({
                     />
                   </label>
                 )}
-                {characterStickers.map((sticker) => {
+                {visibleCharacterStickers.map((sticker) => {
                   const isSelected = selectedCharacterStickers.has(sticker);
+                  const stickerLabel = getStickerDisplayLabelByScope('character', sticker);
                   return (
                     <div
                       key={`character-${sticker}`}
                       onClick={() => handleStickerTilePress('character', sticker)}
                       className={`relative aspect-square overflow-hidden rounded-2xl border border-white/30 bg-white/40 shadow-sm transition ${stickerManagementMode ? 'cursor-pointer active:scale-[0.98]' : 'cursor-zoom-in active:scale-[0.98]'} ${isSelected ? 'border-zinc-900 bg-white/70 ring-2 ring-zinc-900' : ''}`}
                     >
-                      <ResolvedSettingsImage value={sticker} className="h-full w-full object-cover" />
+                      <ManagedStickerImage
+                        value={sticker}
+                        className="h-full w-full object-cover"
+                        onValidityChange={(isValid) => updateStickerFailureState('character', sticker, isValid)}
+                      />
                       {stickerManagementMode && (
                         <div
                           className={`absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-sm ${isSelected ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-white/90 bg-white/80 text-zinc-400'}`}
                         >
                           {isSelected ? <Check size={16} /> : <div className="h-3.5 w-3.5 rounded-full border border-current" />}
+                        </div>
+                      )}
+                      {isStickerFailedByScope('character', sticker) && (
+                        <div className="absolute left-2 top-2 z-10 rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-500">
+                          失效
+                        </div>
+                      )}
+                      {stickerLabel && (
+                        <div className="absolute inset-x-2 bottom-2 z-10">
+                          <div className="truncate rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                            {stickerLabel}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -4299,43 +4715,126 @@ export function ChatSettingsPanel({
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <span className="text-[13px] text-zinc-500">已选 {selectedStickerCount} 个</span>
                   <span className="text-[12px] text-zinc-400">
-                    {selectedStickerCount > 0 ? '可跨分组批量改标签' : '未选中时可对全部自动补标签'}
+                    {singleSelectedSticker ? '单选时可直接快速编辑' : selectedStickerCount > 0 ? '多选时可跨分组批量改标签' : '未选中时可按名称补标签'}
                   </span>
                 </div>
-                <div className="mb-3 grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    value={batchStickerLabelDraft}
-                    onChange={(event) => setBatchStickerLabelDraft(event.target.value)}
-                    placeholder="批量设主标签"
-                    className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
-                  />
-                  <input
-                    type="text"
-                    value={batchStickerTraitsDraft}
-                    onChange={(event) => setBatchStickerTraitsDraft(event.target.value)}
-                    placeholder="批量追加气质词"
-                    className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleAutoFillStickerMetadata(selectedStickerCount > 0 ? 'selected' : 'all')}
-                    disabled={sharedStickers.length + characterStickers.length === 0}
-                    className="rounded-2xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[12px] font-medium text-zinc-700 transition active:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {selectedStickerCount > 0 ? '所选自动补标签' : '全库自动补标签'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleBatchSaveStickerMetadata()}
-                    disabled={selectedStickerCount === 0 || (!batchStickerLabelDraft.trim() && !batchStickerTraitsDraft.trim())}
-                    className="rounded-2xl border border-zinc-900 bg-zinc-900 px-3 py-3 text-[12px] font-semibold text-white transition active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    批量保存
-                  </button>
-                </div>
+                {singleSelectedSticker ? (
+                  <div className="mb-3 rounded-[22px] border border-zinc-100 bg-white/80 p-3">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="h-14 w-14 overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
+                        <ManagedStickerImage
+                          value={singleSelectedSticker.sticker}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-zinc-800">快速编辑</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          {singleSelectedSticker.scope === 'shared' ? '共享表情包' : '当前角色表情包'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <input
+                        type="text"
+                        value={singleStickerLabelDraft}
+                        onChange={(event) => setSingleStickerLabelDraft(event.target.value)}
+                        placeholder="主标签"
+                        className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      />
+                      <select
+                        value={singleStickerCategoryDraft}
+                        onChange={(event) => setSingleStickerCategoryDraft(event.target.value)}
+                        className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      >
+                        <option value="">未分类</option>
+                        {STICKER_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={singleStickerAliasesDraft}
+                        onChange={(event) => setSingleStickerAliasesDraft(event.target.value)}
+                        placeholder="别名，如：抱抱 / 安慰 / 哄哄"
+                        className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      />
+                      <input
+                        type="text"
+                        value={singleStickerTraitsDraft}
+                        onChange={(event) => setSingleStickerTraitsDraft(event.target.value)}
+                        placeholder="气质词，如：comfort / playful"
+                        className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      />
+                      {singleSelectedStickerMetadata?.caption?.trim() && (
+                        <div className="rounded-2xl bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-500">
+                          <div className="font-medium text-zinc-700">图片概述</div>
+                          <div className="mt-1">{singleSelectedStickerMetadata.caption.trim()}</div>
+                        </div>
+                      )}
+                      {singleSelectedStickerMetadata?.ocrText?.trim() && (
+                        <div className="rounded-2xl bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-500">
+                          <div className="font-medium text-zinc-700">图中文字</div>
+                          <div className="mt-1">{singleSelectedStickerMetadata.ocrText.trim()}</div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSaveSingleSelectedStickerMetadata}
+                        className="w-full rounded-2xl border border-zinc-200 bg-zinc-100 px-3 py-2.5 text-[12px] font-semibold text-zinc-800 transition active:bg-zinc-200"
+                      >
+                        保存这张的标签
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-3 grid grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={batchStickerLabelDraft}
+                        onChange={(event) => setBatchStickerLabelDraft(event.target.value)}
+                        placeholder="批量设主标签"
+                        className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      />
+                      <select
+                        value={batchStickerCategoryDraft}
+                        onChange={(event) => setBatchStickerCategoryDraft(event.target.value)}
+                        className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      >
+                        <option value="">批量设分类</option>
+                        {STICKER_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={batchStickerTraitsDraft}
+                        onChange={(event) => setBatchStickerTraitsDraft(event.target.value)}
+                        placeholder="批量追加气质词"
+                        className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-[12px] text-zinc-700 outline-none transition focus:border-zinc-300"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleAutoFillStickerMetadata(selectedStickerCount > 0 ? 'selected' : 'all')}
+                        disabled={sharedStickers.length + characterStickers.length === 0}
+                        className="rounded-2xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[12px] font-medium text-zinc-700 transition active:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {selectedStickerCount > 0 ? '所选按名称补标签' : '全库按名称补标签'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBatchSaveStickerMetadata()}
+                        disabled={selectedStickerCount === 0 || (!batchStickerLabelDraft.trim() && !batchStickerCategoryDraft.trim() && !batchStickerTraitsDraft.trim())}
+                        className="rounded-2xl border border-zinc-200 bg-zinc-100 px-3 py-3 text-[12px] font-semibold text-zinc-800 transition active:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        批量保存
+                      </button>
+                    </div>
+                  </>
+                )}
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <button
                     type="button"

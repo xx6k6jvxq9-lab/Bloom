@@ -2680,7 +2680,7 @@ export function useDirectChatRuntime({
                 })
                 : '',
               buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. Use it sparingly and only when it helps the chat feel more alive.',
+              'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. If one of the available stickers clearly fits a short emotional beat, using exactly one sticker is encouraged; just do not force a sticker every turn.',
               buildOpenLoopRegistryPrompt({
                 existingEntries: buildResolvedOpenLoopRegistry(character),
                 shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
@@ -3241,7 +3241,7 @@ export function useDirectChatRuntime({
           buildDirectCharacterDecisionPromptSection(directCharacterDecision),
           directSpecialReplyPrompt,
           buildDirectActionDescriptionPrompt(character.actionDescriptionEnabled, character.characterActionDescriptionEnabled),
-          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. Use it sparingly and only when it helps the chat feel more alive.',
+          'Optional lightweight action cues are allowed when useful: "[reply: 你] text", "[reply: 刚才那句] text", "[recall] text", or a separate line "[sticker] caption". Only use [sticker] when this turn has available imported stickers, and keep the sticker cue on its own line instead of appending it after normal dialogue. If one of the available stickers clearly fits a short emotional beat, using exactly one sticker is encouraged; just do not force a sticker every turn.',
           buildOpenLoopRegistryPrompt({
             existingEntries: buildResolvedOpenLoopRegistry(character),
             shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
