@@ -785,7 +785,7 @@ export function HomeWidgetEditorSheet({
                 ) : null}
 
                 {widget.type !== 'profile-card' ? (
-                  <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+                  <div className={`grid gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3 ${styleOptions.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-zinc-500">组件类型</label>
                       <select
@@ -805,20 +805,22 @@ export function HomeWidgetEditorSheet({
                       </select>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-zinc-500">组件样式</label>
-                      <select
-                        value={widget.style || 'default'}
-                        onChange={event => onChange({ style: event.target.value })}
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
-                      >
-                        {styleOptions.map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {styleOptions.length > 1 ? (
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500">组件样式</label>
+                        <select
+                          value={widget.style || styleOptions[0]?.value || 'default'}
+                          onChange={event => onChange({ style: event.target.value })}
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
+                        >
+                          {styleOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

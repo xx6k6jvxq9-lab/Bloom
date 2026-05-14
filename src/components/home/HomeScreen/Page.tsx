@@ -417,6 +417,13 @@ export function HomeScreen({
       : sizeTier === 'regular'
         ? iconSize - 1
         : iconSize - 2;
+  const iconVerticalOffset = isTabletLayout
+    ? 14
+    : sizeTier === 'large'
+      ? (isTallPhone ? 12 : 11)
+      : sizeTier === 'regular'
+        ? (isTallPhone ? 10 : 9)
+        : 6;
   const gap = layoutMetrics.gridGap;
   const slots = useMemo(
     () => buildDesktopSlots({ cols, rows: DESKTOP_ROWS, metrics: layoutMetrics }),
@@ -1912,11 +1919,12 @@ export function HomeScreen({
                 placement={placement}
                 committedPlacement={committedPlacement}
                 gridStyle={getExplicitGridStyle(placement.slotId, 1, 1)}
-                visualSettings={visualSettings}
-                iconSize={iconSize + iconSizeBoost}
-                isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
-                isDragging={draggingIconId === app.id}
-                hideWhileDragging={draggingIconId === app.id}
+              visualSettings={visualSettings}
+              iconSize={iconSize + iconSizeBoost}
+              verticalOffset={iconVerticalOffset}
+              isPreviewing={draggingIconId !== null && (draggingIconPage ?? currentPage) === page}
+              isDragging={draggingIconId === app.id}
+              hideWhileDragging={draggingIconId === app.id}
                 isArrangeMode={isArrangeMode}
                 onEnterArrangeMode={() => {
                   resetSwipeInteraction();
@@ -2441,6 +2449,7 @@ export function HomeScreen({
               gridStyle={getExplicitGridStyle(placement.slotId, 1, 1)}
               visualSettings={visualSettings}
               iconSize={iconSize + iconSizeBoost}
+              verticalOffset={iconVerticalOffset}
               isPreviewing={draggingIconId !== null && draggingIconId !== app.id}
               isDragging={draggingIconId === app.id}
               hideWhileDragging={draggingIconId === app.id}
@@ -2699,6 +2708,7 @@ function DraggableAppIcon({
   gridStyle,
   visualSettings,
   iconSize,
+  verticalOffset,
   isPreviewing,
   isDragging,
   hideWhileDragging,
@@ -2712,6 +2722,7 @@ function DraggableAppIcon({
   gridStyle?: React.CSSProperties;
   visualSettings: VisualSettings;
   iconSize: number;
+  verticalOffset: number;
   isPreviewing: boolean;
   isDragging: boolean;
   hideWhileDragging: boolean;
@@ -2786,6 +2797,13 @@ function DraggableAppIcon({
       <div
         className={isArrangeMode ? 'homeDesktop__itemBody homeDesktop__itemBody--arranging' : 'homeDesktop__itemBody'}
         onDragStart={event => event.preventDefault()}
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          boxSizing: 'border-box',
+          paddingTop: `${verticalOffset}px`,
+        }}
         onClick={event => {
           if (dragLock.current) {
             event.stopPropagation();

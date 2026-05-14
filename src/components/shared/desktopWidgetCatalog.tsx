@@ -198,7 +198,7 @@ export const SUPPORTED_DESKTOP_WIDGET_TEMPLATES: DesktopWidgetTemplate[] = [
       w: 4,
       h: 2,
       background: '',
-      style: 'poster',
+      style: 'default',
       showDate: true,
       showLunar: true,
       showOutline: true,
@@ -305,10 +305,7 @@ export function getDesktopWidgetStyleOptions(type: WidgetConfig['type']) {
         { value: 'minimal', label: '极简数字' },
       ];
     case 'floating-time':
-      return [
-        { value: 'poster', label: 'iOS 海报' },
-        { value: 'clean', label: '纯文字' },
-      ];
+      return [{ value: 'default', label: '透明文字' }];
     case 'calendar':
       return [
         { value: 'default', label: '默认样式' },

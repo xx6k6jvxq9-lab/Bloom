@@ -324,7 +324,7 @@ export function DesktopWidget({
       case 'floating-time': {
         const showDate = widget.showDate !== false;
         const showLunar = widget.showLunar !== false;
-        const showOutline = widget.style !== 'clean' && widget.showOutline !== false;
+        const showOutline = widget.showOutline !== false;
         const datePosition = widget.datePosition === 'bottom' ? 'bottom' : 'top';
         const textAlign = widget.textAlign === 'left' || widget.textAlign === 'right' ? widget.textAlign : 'center';
         const justifyContent = textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
@@ -333,10 +333,12 @@ export function DesktopWidget({
           : textAlign === 'right'
             ? 'items-end text-right'
             : 'items-center text-center';
-        const wideBoost = (widget.w || 2) >= 4 ? 1.08 : 1;
-        const heroScale = Math.max(0.78, Math.min(1.34, scale * wideBoost));
-        const timeFontSize = Math.max(54, Math.round(94 * heroScale));
-        const dateFontSize = Math.max(12, Math.round(14 * heroScale));
+        const compactRow = (widget.h || 2) <= 1;
+        const wideRow = (widget.w || 2) >= 4;
+        const heroScaleBase = compactRow ? scale * 0.88 : scale * 0.98;
+        const heroScale = Math.max(0.62, Math.min(1.18, heroScaleBase * (wideRow ? 0.92 : 1)));
+        const timeFontSize = Math.max(compactRow ? 48 : 54, Math.round((compactRow ? 88 : 96) * heroScale));
+        const dateFontSize = Math.max(compactRow ? 10 : 12, Math.round((compactRow ? 12.5 : 14.5) * heroScale));
         const timeWeight = clampFloatingTimeWeight(widget.timeWeight);
         const timeColor = widget.timeColor?.trim() || '#6f7892';
         const dateColor = widget.dateColor?.trim() || '#7c8499';
@@ -346,8 +348,8 @@ export function DesktopWidget({
           minute: '2-digit',
           hour12: false,
         });
-        const outlinePaddingY = Math.max(10, Math.round(13 * heroScale));
-        const outlinePaddingX = Math.max(14, Math.round(18 * heroScale));
+        const outlinePaddingY = Math.max(compactRow ? 8 : 10, Math.round((compactRow ? 10 : 13) * heroScale));
+        const outlinePaddingX = Math.max(compactRow ? 10 : 14, Math.round((compactRow ? 14 : 18) * heroScale));
 
         return (
           <div
@@ -385,7 +387,7 @@ export function DesktopWidget({
                     fontSize: `${timeFontSize}px`,
                     fontWeight: timeWeight,
                     lineHeight: 0.86,
-                    letterSpacing: `${Math.min(-2, -0.055 * timeFontSize)}px`,
+                    letterSpacing: `${Math.min(-1.5, -0.045 * timeFontSize)}px`,
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >

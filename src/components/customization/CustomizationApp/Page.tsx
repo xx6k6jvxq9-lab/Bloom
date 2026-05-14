@@ -1518,7 +1518,7 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className={`grid gap-3 ${getDesktopWidgetStyleOptions(widget.type).length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                         {widget.type !== 'profile-card' && (
                           <>
                             <div className="space-y-2">
@@ -1542,20 +1542,22 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                               </select>
                             </div>
 
-                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-zinc-500">组件样式</label>
-                              <select 
-                                value={widget.style || 'default'}
-                                onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
-                                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
-                              >
-                                {getDesktopWidgetStyleOptions(widget.type).map(option => (
-                                  <option key={option.value} value={option.value}>
+                            {getDesktopWidgetStyleOptions(widget.type).length > 1 && (
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-zinc-500">组件样式</label>
+                                <select 
+                                  value={widget.style || getDesktopWidgetStyleOptions(widget.type)[0]?.value || 'default'}
+                                  onChange={(e) => handleWidgetUpdate(widget.id, { style: e.target.value })}
+                                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
+                                >
+                                  {getDesktopWidgetStyleOptions(widget.type).map(option => (
+                                    <option key={option.value} value={option.value}>
                                     {option.label}
                                   </option>
                                 ))}
                               </select>
                             </div>
+                            )}
                           </>
                         )}
                       </div>
