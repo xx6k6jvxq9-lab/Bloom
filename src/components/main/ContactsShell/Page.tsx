@@ -194,10 +194,10 @@ function CharacterCardPreviewPage({
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
-      className="absolute inset-0 z-[90] flex flex-col bg-white"
+      className="absolute inset-0 z-[90] flex flex-col overflow-hidden bg-white"
     >
       <div
-        className="pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        className="relative z-10 pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50 bg-white"
         style={{ paddingTop: contactsSheetTopInset }}
       >
         <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
@@ -236,7 +236,7 @@ function CharacterCardPreviewPage({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {mode === 'preview' ? (
           <div className="whitespace-pre-wrap break-words rounded-2xl bg-zinc-50 p-4 text-[13px] leading-6 text-zinc-700">
             {previewContent || '暂无可显示的角色卡预览。'}
@@ -1133,11 +1133,11 @@ export function CharacterProfile({
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
-      className="absolute inset-0 bg-white flex flex-col z-[80]"
+      className="absolute inset-0 z-[80] flex flex-col overflow-hidden bg-white"
     >
       {/* Header */}
       <div
-        className="pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50"
+        className="relative z-10 pb-2.5 px-4 flex items-center justify-between shrink-0 border-b border-zinc-50 bg-white"
         style={{ paddingTop: contactsHeaderTopInset }}
       >
         <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
@@ -1153,7 +1153,7 @@ export function CharacterProfile({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-zinc-50/50">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50/50">
         {/* Profile Info Card */}
         <div className="bg-white px-4 py-4 flex items-center gap-3 mb-2.5">
           <ResolvedContactsAvatar value={character.avatar} alt={displayName} className="w-14 h-14 rounded-xl object-cover shadow-sm" />
@@ -1643,10 +1643,10 @@ export function CharacterMomentsProfile({
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
-      className="absolute inset-0 bg-zinc-50 flex flex-col z-[80]"
+      className="absolute inset-0 z-[80] flex flex-col overflow-hidden bg-zinc-50"
     >
       <div
-        className="min-h-[64px] pb-3 px-4 bg-white/30 backdrop-blur-md border-b border-white/20 flex items-center gap-3 shrink-0"
+        className="relative z-10 flex min-h-[64px] items-center gap-3 shrink-0 border-b border-white/20 bg-white/30 px-4 pb-3 backdrop-blur-md"
         style={{ paddingTop: characterMomentsHeaderTopPadding }}
       >
         <button type="button" onClick={onBack} className={CONTACTS_HEADER_ICON_BUTTON_CLASS}>
@@ -1656,7 +1656,7 @@ export function CharacterMomentsProfile({
       </div>
 
       <div
-        className="relative flex-1 overflow-y-auto bg-zinc-50"
+        className="relative min-h-0 flex-1 overflow-y-auto bg-zinc-50"
         style={{ paddingBottom: 'calc(var(--app-safe-area-bottom-tab, 0px) + 2.75rem)' }}
       >
         <div className="relative pb-4">
