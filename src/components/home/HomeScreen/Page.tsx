@@ -345,10 +345,12 @@ export function HomeScreen({
     const widgetPages = (visualSettings.widgets || [])
       .filter(widget => !isLegacyMusicWidget(widget))
       .map(widget => (typeof widget.page === 'number' ? widget.page : 0));
-    const navBarPages = [typeof visualSettings.navBar?.page === 'number' ? visualSettings.navBar.page : 0];
+    const navBarPages = visualSettings.navBar?.show === false
+      ? []
+      : [typeof visualSettings.navBar?.page === 'number' ? visualSettings.navBar.page : 0];
     const maxPage = Math.max(0, ...iconPages, ...widgetPages, ...navBarPages);
     return Math.max(MIN_DESKTOP_PAGE_COUNT, maxPage + 1);
-  }, [currentIcons, visualSettings.navBar?.page, visualSettings.widgets]);
+  }, [currentIcons, visualSettings.navBar?.page, visualSettings.navBar?.show, visualSettings.widgets]);
   const normalizeDesktopPage = (page?: number) => {
     const resolved = typeof page === 'number' ? page : 0;
     return Math.min(Math.max(resolved, 0), pageCount - 1);
@@ -438,7 +440,11 @@ export function HomeScreen({
     () => (widgetPreviewConfigs || normalizedWidgets).map(widget => ({ ...widget, page: normalizeDesktopPage(widget.page) })),
     [widgetPreviewConfigs, normalizedWidgets],
   );
+  const isNavBarVisible = visualSettings.navBar?.show !== false;
   const navBarPage = normalizeDesktopPage(visualSettings.navBar?.page);
+  const getNavOccupiedSlotIdsForPage = (page: number) => (
+    isNavBarVisible && navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>()
+  );
 
   useLayoutEffect(() => {
     const node = desktopRootRef.current;
@@ -555,6 +561,10 @@ export function HomeScreen({
   }, []);
 
   useEffect(() => {
+    setCurrentPage(current => Math.min(current, pageCount - 1));
+  }, [pageCount]);
+
+  useEffect(() => {
     setCurrentPage(prev => Math.min(prev, pageCount - 1));
   }, [pageCount]);
 
@@ -579,6 +589,8 @@ export function HomeScreen({
       setEditingWidgetId(null);
       setWidgetDeleteTargetId(null);
       setShowWidgetPicker(false);
+      setShowAvatarMenu(false);
+      setShowMoodMenu(false);
     }
   }, [isArrangeMode]);
 
@@ -605,8 +617,8 @@ export function HomeScreen({
     [currentPage, workingWidgetConfigs],
   );
   const navOccupiedSlotIds = useMemo(
-    () => (navBarPage === currentPage ? new Set(navBarPlacement.slotIds) : new Set<string>()),
-    [currentPage, navBarPage, navBarPlacement.slotIds],
+    () => getNavOccupiedSlotIdsForPage(currentPage),
+    [currentPage, isNavBarVisible, navBarPage, navBarPlacement.slotIds],
   );
   const widgetLayout = useMemo(
     () => buildDesktopWidgetPlacements(currentPageWidgets, slots, cols, navOccupiedSlotIds),
@@ -616,7 +628,7 @@ export function HomeScreen({
     if (!draggingWidgetId) return [];
     const targetPage = draggingWidgetPageRef.current ?? draggingWidgetPage ?? currentPage;
     const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
-    const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const targetPageNavOccupiedSlotIds = getNavOccupiedSlotIdsForPage(targetPage);
     const targetPreviewLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
     return targetPreviewLayout.placements[draggingWidgetId]?.slotIds || [];
   }, [cols, currentPage, draggingWidgetId, draggingWidgetPage, navBarPage, navBarPlacement.slotIds, slots, workingWidgetConfigs]);
@@ -785,6 +797,35 @@ export function HomeScreen({
     });
   };
 
+  const closeNavBarMenus = () => {
+    setShowAvatarMenu(false);
+    setShowMoodMenu(false);
+  };
+
+  const enterNavBarArrangeMode = () => {
+    closeNavBarMenus();
+    setEditingWidgetId(null);
+    setWidgetDeleteTargetId(null);
+    resetSwipeInteraction();
+    ignoreSwipeUntilRef.current = Date.now() + 260;
+    setIsArrangeMode(true);
+  };
+
+  const hideNavBar = () => {
+    closeNavBarMenus();
+    setVisualSettings({
+      ...visualSettings,
+      navBar: {
+        ...visualSettings.navBar,
+        show: false,
+      },
+    });
+    setDraggingNavBar(false);
+    setDraggingNavBarPage(null);
+    setNavBarPreviewSlotId(null);
+    ignoreSwipeUntilRef.current = Date.now() + 260;
+  };
+
   const navBarShapeClass =
     visualSettings?.navBar?.shape === 'rectangle'
       ? 'rounded-2xl'
@@ -945,7 +986,7 @@ export function HomeScreen({
       icon.id === appId ? { ...icon, page: targetPage } : { ...icon, page: normalizeDesktopPage(icon.page) }
     );
     const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
-    const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const targetPageNavOccupiedSlotIds = getNavOccupiedSlotIdsForPage(targetPage);
     const targetPageWidgetLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
     const targetPageOccupiedSlotIds = new Set(targetPageWidgetLayout.occupiedSlotIds);
     dockPlacement.slotIds.forEach(slotId => targetPageOccupiedSlotIds.add(slotId));
@@ -1000,7 +1041,7 @@ export function HomeScreen({
       icon.id === appId ? { ...icon, page: targetPage } : { ...icon, page: normalizeDesktopPage(icon.page) }
     );
     const targetPageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
-    const targetPageNavOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const targetPageNavOccupiedSlotIds = getNavOccupiedSlotIdsForPage(targetPage);
     const targetPageWidgetLayout = buildDesktopWidgetPlacements(targetPageWidgets, slots, cols, targetPageNavOccupiedSlotIds);
     const targetPageOccupiedSlotIds = new Set(targetPageWidgetLayout.occupiedSlotIds);
     dockPlacement.slotIds.forEach(slotId => targetPageOccupiedSlotIds.add(slotId));
@@ -1157,7 +1198,7 @@ export function HomeScreen({
         y: undefined,
       };
       const pageWidgets = normalizedWidgets.filter(existing => existing.page === page);
-      const baseOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
+      const baseOccupiedSlotIds = getNavOccupiedSlotIdsForPage(page);
       const placement = buildDesktopWidgetPlacements(
         [...pageWidgets, candidateWidget],
         slots,
@@ -1242,11 +1283,11 @@ export function HomeScreen({
         baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage),
         slots,
         cols,
-        navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+        getNavOccupiedSlotIdsForPage(targetPage),
       ).placements[widgetId] || null;
     const centeredRawX = rawX + ((placement?.width ?? 0) / 2);
     const centeredRawY = rawY + ((placement?.height ?? 0) / 2);
-    const baseOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const baseOccupiedSlotIds = getNavOccupiedSlotIdsForPage(targetPage);
     const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const nextPageConfigs = resolveWidgetDrop({
       widgets: pageWidgets,
@@ -1271,11 +1312,11 @@ export function HomeScreen({
         baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage),
         slots,
         cols,
-        navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>(),
+        getNavOccupiedSlotIdsForPage(targetPage),
       ).placements[widgetId] || null;
     const centeredRawX = rawX + ((placement?.width ?? 0) / 2);
     const centeredRawY = rawY + ((placement?.height ?? 0) / 2);
-    const baseOccupiedSlotIds = navBarPage === targetPage ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const baseOccupiedSlotIds = getNavOccupiedSlotIdsForPage(targetPage);
     const pageWidgets = baseConfigs.filter(widget => normalizeDesktopPage(widget.page) === targetPage);
     const nextPageConfigs = resolveWidgetDrop({
       widgets: pageWidgets,
@@ -1509,7 +1550,7 @@ export function HomeScreen({
 
   const renderDesktopPage = (page: number) => {
     const pageWidgets = workingWidgetConfigs.filter(widget => normalizeDesktopPage(widget.page) === page);
-    const pageNavOccupiedSlotIds = navBarPage === page ? new Set(navBarPlacement.slotIds) : new Set<string>();
+    const pageNavOccupiedSlotIds = getNavOccupiedSlotIdsForPage(page);
     const pageWidgetLayout = buildDesktopWidgetPlacements(pageWidgets, slots, cols, pageNavOccupiedSlotIds);
     const pageOccupiedSlotIds = new Set(pageWidgetLayout.occupiedSlotIds);
     dockPlacement.slotIds.forEach(slotId => pageOccupiedSlotIds.add(slotId));
@@ -1555,11 +1596,16 @@ export function HomeScreen({
         style={{ width: desktopViewport.width, minWidth: desktopViewport.width }}
       >
         {desktopFontFaceCss ? <style>{desktopFontFaceCss}</style> : null}
-        {visualSettings?.navBar?.show && navBarPage === page && (
+        {isNavBarVisible && navBarPage === page && (
           <DraggableTopBar
             placement={navBarPlacement}
             dragging={draggingNavBar}
+            isArrangeMode={isArrangeMode}
+            showDeleteAction={isArrangeMode}
+            onShowDeleteAction={enterNavBarArrangeMode}
+            onDeleteAction={hideNavBar}
             onDragStart={() => {
+              closeNavBarMenus();
               setDraggingNavBar(true);
               setDraggingNavBarPage(navBarPage);
               setNavBarPreviewSlotId(visualSettings.navBar?.slotId || navBarPlacement.anchorSlotId);
@@ -2931,6 +2977,10 @@ function ResilientWallpaperImage({
 function DraggableTopBar({
   placement,
   dragging,
+  isArrangeMode = false,
+  showDeleteAction = false,
+  onShowDeleteAction,
+  onDeleteAction,
   onDragStart,
   onDrag,
   onDragEnd,
@@ -2938,6 +2988,10 @@ function DraggableTopBar({
 }: {
   placement: { x: number; y: number; width: number; height: number };
   dragging: boolean;
+  isArrangeMode?: boolean;
+  showDeleteAction?: boolean;
+  onShowDeleteAction?: () => void;
+  onDeleteAction?: () => void;
   onDragStart: () => void;
   onDrag: (info: PanInfo) => void;
   onDragEnd: (info: PanInfo) => void;
@@ -2946,7 +3000,6 @@ function DraggableTopBar({
   const dragControls = useDragControls();
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
-  const pendingNativeEventRef = useRef<PointerEvent | null>(null);
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -2957,7 +3010,6 @@ function DraggableTopBar({
 
   const resetPendingDrag = useCallback(() => {
     pointerStartRef.current = null;
-    pendingNativeEventRef.current = null;
     clearLongPressTimer();
   }, [clearLongPressTimer]);
 
@@ -2976,21 +3028,27 @@ function DraggableTopBar({
       onPointerDown={event => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         const target = event.target instanceof HTMLElement ? event.target : null;
+        if (isArrangeMode) {
+          if (target?.closest('.homeDesktop__widgetDeleteAction')) {
+            resetPendingDrag();
+            return;
+          }
+          resetPendingDrag();
+          event.preventDefault();
+          onDragStart();
+          dragControls.start(event.nativeEvent, { snapToCursor: false });
+          return;
+        }
         if (target?.closest('button, input, textarea, select, a, [data-no-nav-drag="true"]')) {
           resetPendingDrag();
           return;
         }
 
         pointerStartRef.current = { x: event.clientX, y: event.clientY };
-        pendingNativeEventRef.current = event.nativeEvent;
         clearLongPressTimer();
         longPressTimerRef.current = setTimeout(() => {
-          const nativeEvent = pendingNativeEventRef.current;
-          if (!nativeEvent) {
-            return;
-          }
-          onDragStart();
-          dragControls.start(nativeEvent, { snapToCursor: false });
+          onShowDeleteAction?.();
+          pointerStartRef.current = null;
           longPressTimerRef.current = null;
         }, 280);
       }}
@@ -3009,9 +3067,26 @@ function DraggableTopBar({
       }}
       style={{ width: placement.width, minHeight: placement.height }}
       whileDrag={{ scale: 1.01, zIndex: 165 }}
+      whileTap={isArrangeMode ? { scale: 0.99 } : undefined}
       transition={{ type: 'spring', stiffness: 380, damping: 30 }}
     >
-      {children}
+      {showDeleteAction ? (
+        <button
+          type="button"
+          className="homeDesktop__widgetDeleteAction"
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDeleteAction?.();
+          }}
+          aria-label="删除导航栏"
+        >
+          −
+        </button>
+      ) : null}
+      <div className={isArrangeMode ? 'pointer-events-none' : undefined}>
+        {children}
+      </div>
     </motion.div>
   );
 }

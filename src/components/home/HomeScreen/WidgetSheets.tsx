@@ -31,6 +31,10 @@ function getPickerPreviewSize(widget: WidgetConfig) {
     return 136;
   }
 
+  if (widget.type === 'floating-time') {
+    return 144;
+  }
+
   if (widget.type === 'calendar' || widget.type === 'time' || widget.type === 'anniversary' || widget.type === 'weather') {
     return 104;
   }
@@ -287,6 +291,28 @@ function WidgetColorField({
   );
 }
 
+function WidgetToggleField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-[18px] border border-zinc-200 bg-white px-3 py-2.5">
+      <span className="text-xs font-bold text-zinc-500">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={event => onChange(event.target.checked)}
+        className="h-4 w-4 accent-zinc-900"
+      />
+    </label>
+  );
+}
+
 function KawaiiWidgetEditorFields({
   widget,
   onChange,
@@ -474,6 +500,86 @@ function KawaiiWidgetEditorFields({
                 }}
               />
             ))}
+          </div>
+        </>
+      );
+    case 'floating-time':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+            <WidgetColorField
+              label="时间颜色"
+              value={widget.timeColor || '#6f7892'}
+              onChange={value => onChange({ timeColor: value })}
+            />
+            <WidgetColorField
+              label="日期颜色"
+              value={widget.dateColor || '#7c8499'}
+              onChange={value => onChange({ dateColor: value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+            <div className="space-y-2">
+              <label className="flex justify-between text-xs font-bold text-zinc-500">
+                <span>时间粗细</span>
+                <span>{widget.timeWeight ?? 700}</span>
+              </label>
+              <input
+                type="range"
+                min="200"
+                max="900"
+                step="100"
+                value={widget.timeWeight ?? 700}
+                onChange={event => onChange({ timeWeight: Number(event.target.value) })}
+                className="w-full accent-zinc-900"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500">摆放位置</label>
+              <select
+                value={widget.textAlign || 'center'}
+                onChange={event => onChange({ textAlign: event.target.value as WidgetConfig['textAlign'] })}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
+              >
+                <option value="left">居左</option>
+                <option value="center">居中</option>
+                <option value="right">居右</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500">日期位置</label>
+              <select
+                value={widget.datePosition || 'top'}
+                onChange={event => onChange({ datePosition: event.target.value as WidgetConfig['datePosition'] })}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
+              >
+                  <option value="top">上方</option>
+                  <option value="bottom">下方</option>
+                </select>
+              </div>
+            <WidgetToggleField
+              label="显示描边框"
+              checked={widget.showOutline !== false}
+              onChange={checked => onChange({ showOutline: checked })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+            <WidgetToggleField
+              label="显示日期"
+              checked={widget.showDate !== false}
+              onChange={checked => onChange({ showDate: checked })}
+            />
+            <WidgetToggleField
+              label="显示农历"
+              checked={widget.showLunar !== false}
+              onChange={checked => onChange({ showLunar: checked })}
+            />
           </div>
         </>
       );
@@ -687,7 +793,7 @@ export function HomeWidgetEditorSheet({
                         onChange={event => {
                           const nextType = event.target.value as SupportedDesktopWidgetType;
                           if (!isSupportedDesktopWidgetType(nextType)) return;
-                          onChange({ type: nextType, style: 'default' });
+                          onChange({ type: nextType, style: getDesktopWidgetStyleOptions(nextType)[0]?.value || 'default' });
                         }}
                         className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs"
                       >
@@ -773,45 +879,49 @@ export function HomeWidgetEditorSheet({
                   </div>
                 </div>
 
-                <div className="rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-                  <PersistentImageField
-                    label="背景图片"
-                    value={widget.background}
-                    onChange={value => onChange({ background: value })}
-                  />
-                </div>
+                {widget.type !== 'floating-time' ? (
+                  <>
+                    <div className="rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+                      <PersistentImageField
+                        label="背景图片"
+                        value={widget.background}
+                        onChange={value => onChange({ background: value })}
+                      />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-bold text-zinc-500">
-                      <span>圆角</span>
-                      <span>{widget.borderRadius ?? 24}px</span>
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="40"
-                      value={widget.borderRadius ?? 24}
-                      onChange={event => onChange({ borderRadius: Number(event.target.value) })}
-                      className="w-full accent-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-bold text-zinc-500">
-                      <span>不透明度</span>
-                      <span>{Math.round((widget.opacity ?? 1) * 100)}%</span>
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={widget.opacity ?? 1}
-                      onChange={event => onChange({ opacity: Number(event.target.value) })}
-                      className="w-full accent-zinc-900"
-                    />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-3 rounded-[22px] border border-zinc-200 bg-zinc-50/80 px-3 py-3">
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-bold text-zinc-500">
+                          <span>圆角</span>
+                          <span>{widget.borderRadius ?? 24}px</span>
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="40"
+                          value={widget.borderRadius ?? 24}
+                          onChange={event => onChange({ borderRadius: Number(event.target.value) })}
+                          className="w-full accent-zinc-900"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-bold text-zinc-500">
+                          <span>不透明度</span>
+                          <span>{Math.round((widget.opacity ?? 1) * 100)}%</span>
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={widget.opacity ?? 1}
+                          onChange={event => onChange({ opacity: Number(event.target.value) })}
+                          className="w-full accent-zinc-900"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="sticky bottom-0 flex gap-3 bg-white/88 pt-1 backdrop-blur-xl">
                   <button

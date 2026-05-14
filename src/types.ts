@@ -1,4 +1,4 @@
-﻿
+
 import type { ForumThreadType } from './features/forum-domain/types';
 import type { ForumChannel } from './features/forum-domain/types';
 import type { CharacterSharedContextSnapshot } from './services/relationship-context/types';
@@ -27,6 +27,7 @@ export type WidgetType =
   | 'calendar'
   | 'anniversary'
   | 'time'
+  | 'floating-time'
   | 'music'
   | 'weather'
   | 'blank'
@@ -77,6 +78,14 @@ export type WidgetConfig = {
   item2Color?: string;
   item3Color?: string;
   item4Color?: string;
+  showDate?: boolean;
+  showLunar?: boolean;
+  showOutline?: boolean;
+  textAlign?: 'left' | 'center' | 'right';
+  datePosition?: 'top' | 'bottom';
+  timeWeight?: number;
+  timeColor?: string;
+  dateColor?: string;
 };
 
 export type DesktopIconConfig = {

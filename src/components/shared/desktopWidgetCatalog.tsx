@@ -125,7 +125,7 @@ export const SUPPORTED_DESKTOP_WIDGET_TEMPLATES: DesktopWidgetTemplate[] = [
   },
   {
     type: 'glass-recent-grid',
-    label: '最近发布',
+    label: '最近照片墙',
     size: { w: 4, h: 3 },
     icon: <LayoutGrid size={18} />,
     create: () => ({
@@ -175,7 +175,7 @@ export const SUPPORTED_DESKTOP_WIDGET_TEMPLATES: DesktopWidgetTemplate[] = [
   },
   {
     type: 'time',
-    label: '时间组件',
+    label: '时间卡片',
     size: { w: 2, h: 2 },
     icon: <Monitor size={18} />,
     create: () => ({
@@ -185,6 +185,28 @@ export const SUPPORTED_DESKTOP_WIDGET_TEMPLATES: DesktopWidgetTemplate[] = [
       h: 2,
       background: '#ffffff',
       style: 'default',
+    }),
+  },
+  {
+    type: 'floating-time',
+    label: '透明时间',
+    size: { w: 4, h: 2 },
+    icon: <Monitor size={18} />,
+    create: () => ({
+      id: createWidgetId(),
+      type: 'floating-time',
+      w: 4,
+      h: 2,
+      background: '',
+      style: 'poster',
+      showDate: true,
+      showLunar: true,
+      showOutline: true,
+      textAlign: 'center',
+      datePosition: 'top',
+      timeWeight: 700,
+      timeColor: '#6f7892',
+      dateColor: '#7c8499',
     }),
   },
   {
@@ -255,11 +277,13 @@ export function getDesktopWidgetTypeLabel(type: WidgetConfig['type']) {
     case 'glass-polaroid-strip':
       return '拍立得三连';
     case 'glass-recent-grid':
-      return '最近发布';
+      return '最近照片墙';
     case 'calendar':
       return '日历组件';
     case 'time':
-      return '时间组件';
+      return '时间卡片';
+    case 'floating-time':
+      return '透明时间';
     case 'anniversary':
       return '纪念日组件';
     case 'weather':
@@ -277,8 +301,13 @@ export function getDesktopWidgetStyleOptions(type: WidgetConfig['type']) {
   switch (type) {
     case 'time':
       return [
-        { value: 'default', label: '默认样式' },
+        { value: 'default', label: '默认卡片' },
         { value: 'minimal', label: '极简数字' },
+      ];
+    case 'floating-time':
+      return [
+        { value: 'poster', label: 'iOS 海报' },
+        { value: 'clean', label: '纯文字' },
       ];
     case 'calendar':
       return [

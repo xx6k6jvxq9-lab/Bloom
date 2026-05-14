@@ -15,6 +15,42 @@ import {
   isGlassDesktopWidgetType,
 } from './GlassDesktopWidgets';
 
+const FLOATING_TIME_FONT_FAMILY = '"SF Pro Display", "SF Pro Text", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+function clampFloatingTimeWeight(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 700;
+  }
+
+  return Math.min(900, Math.max(200, Math.round(value / 100) * 100));
+}
+
+function formatFloatingTimeSolarDate(date: Date) {
+  return date
+    .toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
+    .replace('星期', '周')
+    .replace(/\s+/g, '');
+}
+
+function formatFloatingTimeLunarDate(date: Date) {
+  try {
+    const formatted = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
+    return formatted.replace(/^\d+/, '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function buildFloatingTimeDateLine(date: Date, showLunar: boolean) {
+  const solar = formatFloatingTimeSolarDate(date);
+  const lunar = showLunar ? formatFloatingTimeLunarDate(date) : '';
+  return lunar ? `${solar} · ${lunar}` : solar;
+}
+
 export function DesktopWidget({
   widget,
   isPreview = false,
@@ -285,6 +321,95 @@ export function DesktopWidget({
             </div>
           </div>
         );
+      case 'floating-time': {
+        const showDate = widget.showDate !== false;
+        const showLunar = widget.showLunar !== false;
+        const showOutline = widget.style !== 'clean' && widget.showOutline !== false;
+        const datePosition = widget.datePosition === 'bottom' ? 'bottom' : 'top';
+        const textAlign = widget.textAlign === 'left' || widget.textAlign === 'right' ? widget.textAlign : 'center';
+        const justifyContent = textAlign === 'left' ? 'flex-start' : textAlign === 'right' ? 'flex-end' : 'center';
+        const alignClass = textAlign === 'left'
+          ? 'items-start text-left'
+          : textAlign === 'right'
+            ? 'items-end text-right'
+            : 'items-center text-center';
+        const wideBoost = (widget.w || 2) >= 4 ? 1.08 : 1;
+        const heroScale = Math.max(0.78, Math.min(1.34, scale * wideBoost));
+        const timeFontSize = Math.max(54, Math.round(94 * heroScale));
+        const dateFontSize = Math.max(12, Math.round(14 * heroScale));
+        const timeWeight = clampFloatingTimeWeight(widget.timeWeight);
+        const timeColor = widget.timeColor?.trim() || '#6f7892';
+        const dateColor = widget.dateColor?.trim() || '#7c8499';
+        const dateLine = buildFloatingTimeDateLine(time, showLunar);
+        const timeLabel = time.toLocaleTimeString('zh-CN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        const outlinePaddingY = Math.max(10, Math.round(13 * heroScale));
+        const outlinePaddingX = Math.max(14, Math.round(18 * heroScale));
+
+        return (
+          <div
+            className={`flex h-full w-full flex-col justify-center ${alignClass}`}
+            style={{ padding: `${Math.max(6, 10 * heroScale)}px ${Math.max(8, 14 * heroScale)}px` }}
+          >
+            {showDate && datePosition === 'top' ? (
+              <div
+                className="mb-2.5 font-semibold tracking-[0.02em]"
+                style={{
+                  color: dateColor,
+                  fontSize: `${dateFontSize}px`,
+                  lineHeight: 1.2,
+                  fontFamily: FLOATING_TIME_FONT_FAMILY,
+                }}
+              >
+                {dateLine}
+              </div>
+            ) : null}
+
+            <div className="flex w-full" style={{ justifyContent }}>
+              <div
+                className={showOutline ? 'rounded-[28px]' : undefined}
+                style={showOutline ? {
+                  border: `1.5px solid ${dateColor}`,
+                  padding: `${outlinePaddingY}px ${outlinePaddingX}px`,
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                } : undefined}
+              >
+                <span
+                  className="block tabular-nums"
+                  style={{
+                    color: timeColor,
+                    fontFamily: FLOATING_TIME_FONT_FAMILY,
+                    fontSize: `${timeFontSize}px`,
+                    fontWeight: timeWeight,
+                    lineHeight: 0.86,
+                    letterSpacing: `${Math.min(-2, -0.055 * timeFontSize)}px`,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {timeLabel}
+                </span>
+              </div>
+            </div>
+
+            {showDate && datePosition === 'bottom' ? (
+              <div
+                className="mt-2.5 font-semibold tracking-[0.02em]"
+                style={{
+                  color: dateColor,
+                  fontSize: `${dateFontSize}px`,
+                  lineHeight: 1.2,
+                  fontFamily: FLOATING_TIME_FONT_FAMILY,
+                }}
+              >
+                {dateLine}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
       case 'calendar':
         if (widget.style === 'list') {
           return (
@@ -649,7 +774,9 @@ export function DesktopWidget({
     backgroundValue && !backgroundValue.includes('://') && !backgroundValue.startsWith('data:')
       ? backgroundValue
       : '#ffffff';
-  const shouldApplyImageOverlay = widget.type !== 'blank' && !isKawaiiDesktopWidgetType(widget.type);
+  const isFloatingTimeWidget = widget.type === 'floating-time';
+  const isFloatingWidget = isFloatingKawaiiWidget || isFloatingTimeWidget;
+  const shouldApplyImageOverlay = widget.type !== 'blank' && !isKawaiiDesktopWidgetType(widget.type) && !isFloatingTimeWidget;
   const canRequestEdit = Boolean(onRequestEdit && !isPreview && widget.type !== 'profile-card');
   const launcherOwnsOpacity = widget.type === 'kawaii-launcher';
   const launcherOwnsBackground = widget.type === 'kawaii-launcher';
@@ -661,19 +788,19 @@ export function DesktopWidget({
   const hideKawaiiChrome = hideLauncherChrome || hideScrapbookChrome || glassOwnsChrome;
   const kawaiiOwnsOpacity = launcherOwnsOpacity || scrapbookOwnsOpacity;
   const kawaiiOwnsBackground = launcherOwnsBackground || scrapbookOwnsBackground;
-  const widgetOwnsOpacity = kawaiiOwnsOpacity || glassOwnsChrome;
-  const widgetOwnsBackground = kawaiiOwnsBackground || glassOwnsChrome;
+  const widgetOwnsOpacity = kawaiiOwnsOpacity || glassOwnsChrome || isFloatingTimeWidget;
+  const widgetOwnsBackground = kawaiiOwnsBackground || glassOwnsChrome || isFloatingTimeWidget;
 
   return (
     <div 
-      className={`relative w-full h-full transition-all ${isFloatingKawaiiWidget || hideKawaiiChrome ? 'overflow-visible border-transparent shadow-none' : 'overflow-hidden shadow-sm border border-black/5'} ${!isPreview && !isFloatingKawaiiWidget && !hideKawaiiChrome ? 'hover:shadow-md' : ''} ${canRequestEdit ? 'cursor-pointer active:scale-[0.99]' : ''}`}
+      className={`relative w-full h-full transition-all ${isFloatingWidget || hideKawaiiChrome ? 'overflow-visible border-transparent shadow-none' : 'overflow-hidden shadow-sm border border-black/5'} ${!isPreview && !isFloatingWidget && !hideKawaiiChrome ? 'hover:shadow-md' : ''} ${canRequestEdit ? 'cursor-pointer active:scale-[0.99]' : ''}`}
       onClick={() => {
         if (canRequestEdit) {
           onRequestEdit?.();
         }
       }}
       style={{
-        borderRadius: isFloatingKawaiiWidget ? 0 : widget.borderRadius !== undefined ? widget.borderRadius : 24,
+        borderRadius: isFloatingWidget ? 0 : widget.borderRadius !== undefined ? widget.borderRadius : 24,
         opacity: widgetOwnsOpacity ? 1 : widget.opacity !== undefined ? widget.opacity : 1,
         aspectRatio: isPreview ? `${widget.w}/${widget.h}` : undefined,
         backgroundColor: widgetOwnsBackground || hideKawaiiChrome ? 'transparent' : isImageBackground ? undefined : fallbackBackgroundColor,

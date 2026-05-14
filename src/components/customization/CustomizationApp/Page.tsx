@@ -475,6 +475,7 @@ function WidgetListThumbnail({ widget }: { widget: WidgetConfig }) {
           {widget.type === 'glass-recent-grid' && <Layout size={20} />}
           {widget.type === 'calendar' && <Layout size={20} />}
           {widget.type === 'time' && <Monitor size={20} />}
+          {widget.type === 'floating-time' && <Monitor size={20} />}
           {widget.type === 'anniversary' && <Palette size={20} />}
           {widget.type === 'weather' && <Cloud size={20} />}
           {widget.type === 'profile-card' && <User size={20} />}
@@ -639,6 +640,28 @@ function WidgetColorInput({
         />
       </div>
     </div>
+  );
+}
+
+function WidgetToggleInput({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3">
+      <span className="text-xs font-bold text-zinc-500">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={event => onChange(event.target.checked)}
+        className="h-4 w-4 accent-zinc-900"
+      />
+    </label>
   );
 }
 
@@ -956,6 +979,87 @@ function KawaiiWidgetCustomizationFields({
                 />
               );
             })}
+          </div>
+        </>
+      );
+    case 'floating-time':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetColorInput
+              label="时间颜色"
+              value={widget.timeColor || '#6f7892'}
+              onChange={value => onUpdate({ timeColor: value })}
+            />
+            <WidgetColorInput
+              label="日期颜色"
+              value={widget.dateColor || '#7c8499'}
+              onChange={value => onUpdate({ dateColor: value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500 flex justify-between">
+                <span>时间粗细</span>
+                <span>{widget.timeWeight ?? 700}</span>
+              </label>
+              <input
+                type="range"
+                min="200"
+                max="900"
+                step="100"
+                value={widget.timeWeight ?? 700}
+                onChange={event => onUpdate({ timeWeight: Number(event.target.value) })}
+                className="w-full accent-zinc-900"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500">摆放位置</label>
+              <select
+                value={widget.textAlign || 'center'}
+                onChange={event => onUpdate({ textAlign: event.target.value as WidgetConfig['textAlign'] })}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
+              >
+                <option value="left">居左</option>
+                <option value="center">居中</option>
+                <option value="right">居右</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500">日期位置</label>
+              <select
+                value={widget.datePosition || 'top'}
+                onChange={event => onUpdate({ datePosition: event.target.value as WidgetConfig['datePosition'] })}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
+              >
+                <option value="top">上方</option>
+                <option value="bottom">下方</option>
+              </select>
+            </div>
+
+            <WidgetToggleInput
+              label="显示描边框"
+              checked={widget.showOutline !== false}
+              onChange={checked => onUpdate({ showOutline: checked })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <WidgetToggleInput
+              label="显示日期"
+              checked={widget.showDate !== false}
+              onChange={checked => onUpdate({ showDate: checked })}
+            />
+            <WidgetToggleInput
+              label="显示农历"
+              checked={widget.showLunar !== false}
+              onChange={checked => onUpdate({ showLunar: checked })}
+            />
           </div>
         </>
       );
@@ -1421,7 +1525,13 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                               <label className="text-xs font-bold text-zinc-500">组件类型</label>
                               <select 
                                 value={widget.type}
-                                onChange={(e) => handleWidgetUpdate(widget.id, { type: e.target.value as any })}
+                                onChange={(e) => {
+                                  const nextType = e.target.value as SupportedDesktopWidgetType;
+                                  handleWidgetUpdate(widget.id, {
+                                    type: nextType,
+                                    style: getDesktopWidgetStyleOptions(nextType)[0]?.value || 'default',
+                                  });
+                                }}
                                 className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs"
                               >
                                 {widgetTemplates.map(item => (
@@ -1519,44 +1629,48 @@ function DesktopSettings({ settings, setSettings, subTab, setSubTab }: any) {
                         </div>
                       </div>
 
-                      <PersistentImageUploadControl
-                        label="背景图片 (URL或上传)"
-                        value={widget.background}
-                        onChange={(val) => handleWidgetUpdate(widget.id, { background: val })}
-                      />
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 flex justify-between">
-                            <span>圆角</span>
-                            <span>{widget.borderRadius !== undefined ? widget.borderRadius : 24}px</span>
-                          </label>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="40" 
-                            value={widget.borderRadius !== undefined ? widget.borderRadius : 24} 
-                            onChange={e => handleWidgetUpdate(widget.id, { borderRadius: Number(e.target.value) })} 
-                            className="w-full accent-zinc-900" 
+                      {widget.type !== 'floating-time' && (
+                        <>
+                          <PersistentImageUploadControl
+                            label="背景图片 (URL或上传)"
+                            value={widget.background}
+                            onChange={(val) => handleWidgetUpdate(widget.id, { background: val })}
                           />
-                        </div>
 
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-zinc-500 flex justify-between">
-                            <span>不透明度</span>
-                            <span>{widget.opacity !== undefined ? Math.round(widget.opacity * 100) : 100}%</span>
-                          </label>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="1" 
-                            step="0.05"
-                            value={widget.opacity !== undefined ? widget.opacity : 1} 
-                            onChange={e => handleWidgetUpdate(widget.id, { opacity: Number(e.target.value) })} 
-                            className="w-full accent-zinc-900" 
-                          />
-                        </div>
-                      </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-zinc-500 flex justify-between">
+                                <span>圆角</span>
+                                <span>{widget.borderRadius !== undefined ? widget.borderRadius : 24}px</span>
+                              </label>
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max="40" 
+                                value={widget.borderRadius !== undefined ? widget.borderRadius : 24} 
+                                onChange={e => handleWidgetUpdate(widget.id, { borderRadius: Number(e.target.value) })} 
+                                className="w-full accent-zinc-900" 
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-zinc-500 flex justify-between">
+                                <span>不透明度</span>
+                                <span>{widget.opacity !== undefined ? Math.round(widget.opacity * 100) : 100}%</span>
+                              </label>
+                              <input 
+                                type="range" 
+                                min="0" 
+                                max="1" 
+                                step="0.05"
+                                value={widget.opacity !== undefined ? widget.opacity : 1} 
+                                onChange={e => handleWidgetUpdate(widget.id, { opacity: Number(e.target.value) })} 
+                                className="w-full accent-zinc-900" 
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       <button
                         onClick={() => setEditingWidgetId(null)}
