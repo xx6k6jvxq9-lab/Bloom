@@ -1653,6 +1653,21 @@ export type ChatGroup = {
   allowDirectMemoryInterop?: boolean;
   allowDirectMemoryInteropConfigured?: boolean;
   adminIds?: string[];
+  dutyAdminAssignment?: {
+    memberId: string;
+    grantedById: string;
+    grantedAt: number;
+    expiresAt: number;
+  };
+  temporaryPermissionGrants?: Array<{
+    id: string;
+    memberId: string;
+    grantedById: string;
+    permission: 'managed_group_feature';
+    grantedAt: number;
+    expiresAt: number;
+    remainingUses: number;
+  }>;
   memberBadges?: Array<{
     memberId: string;
     label: string;
@@ -1700,6 +1715,7 @@ export type CallRecord = {
 export type DatingPageEpisodeType = 'wechat_chat' | 'feed_post' | 'document_page' | 'micro_app' | 'custom_html';
 export type DatingPageEpisodeStatusBarMode = 'auto' | 'hidden' | 'custom';
 export type DatingPageEpisodeCanonMode = 'side_story' | 'mainline';
+export type DatingMemoryWritebackPolicy = 'allow' | 'block';
 export type DatingPageEpisodePlatform =
   | 'wechat'
   | 'moments'
@@ -1797,6 +1813,7 @@ export type DatingPageEpisode = {
 export type DatingGeneratedContent = {
   mode?: 'scene' | 'page_episode';
   appliedDirectorInstruction?: string;
+  memoryWritebackPolicy?: DatingMemoryWritebackPolicy;
   background: {
     source: 'character-avatar' | 'url' | 'local-upload';
     image: string;

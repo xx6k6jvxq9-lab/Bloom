@@ -11,6 +11,7 @@ import { ChatSettingsPanel } from '../../components/chat/ChatSettingsPanel';
 import { DatingModal } from '../../components/dating/DatingModal';
 import { resolveSceneTextApiConfig } from '../../services/ai/apiCenter/resolveSceneApiConfig';
 import { buildDatingEndedSettlement } from '../../services/dating/buildDatingEndedSettlement';
+import { shouldWriteDatingMemoryBackToDirectChat } from '../../services/dating/datingWritebackPolicy';
 import { GameCenter } from '../../components/games/GameCenter';
 import { GameCard } from '../../components/chat/GameCard';
 import { AvatarLibraryPanel } from './AvatarLibraryPanel';
@@ -3702,32 +3703,48 @@ export function ChatSessionScreen({
             setShowDatingModal(false);
           }}
           onEndDateComplete={async ({ archivedSession, returnChatText }) => {
-            const settlement = buildDatingEndedSettlement(character, archivedSession);
-            try {
-              const result = await persistSceneSettlement({
-                characterId: character.id,
-                sourceScene: 'dating',
-                settlement,
-                timestamp: archivedSession.endedAt || Date.now(),
-              });
+            const shouldWriteBack = shouldWriteDatingMemoryBackToDirectChat(archivedSession);
+            if (shouldWriteBack) {
+              const settlement = buildDatingEndedSettlement(character, archivedSession);
+              try {
+                const result = await persistSceneSettlement({
+                  characterId: character.id,
+                  sourceScene: 'dating',
+                  settlement,
+                  timestamp: archivedSession.endedAt || Date.now(),
+                });
+                resetDatingScenePresentation();
+                setShowDatingModal(false);
+                if (onPatchCharacter) {
+                  onPatchCharacter({
+                    activeDatingState: undefined,
+                    ...result.characterPatch,
+                  });
+                } else {
+                  onUpdateCharacter({
+                    ...character,
+                    activeDatingState: undefined,
+                    ...result.characterPatch,
+                  });
+                }
+              } catch (error) {
+                console.error('[chat-session] Failed to persist dating settlement memory snapshots', error);
+                setError(error instanceof Error ? error.message : '约会记忆结算失败，请稍后重试。');
+                return;
+              }
+            } else {
               resetDatingScenePresentation();
               setShowDatingModal(false);
               if (onPatchCharacter) {
                 onPatchCharacter({
                   activeDatingState: undefined,
-                  ...result.characterPatch,
                 });
               } else {
                 onUpdateCharacter({
                   ...character,
                   activeDatingState: undefined,
-                  ...result.characterPatch,
                 });
               }
-            } catch (error) {
-              console.error('[chat-session] Failed to persist dating settlement memory snapshots', error);
-              setError(error instanceof Error ? error.message : '约会记忆结算失败，请稍后重试。');
-              return;
             }
             if (!returnChatText.trim()) {
               return;

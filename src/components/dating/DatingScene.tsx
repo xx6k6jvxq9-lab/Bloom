@@ -49,6 +49,7 @@ import {
   buildCustomPageEpisodeSrcDoc,
   normalizePageEpisodeHtmlDocument,
 } from '../../services/dating/pageEpisodeHtml';
+import { resolveDatingGeneratedMemoryWritebackPolicy } from '../../services/dating/datingWritebackPolicy';
 import type { DatingDirectorSection } from './DatingGooseDirectorOrb';
 import './DatingScene.css';
 
@@ -3020,10 +3021,18 @@ function normalizeGeneratedContent(
           text: pageEpisode.caption,
         }]
       : [];
+  const memoryWritebackPolicy = resolveDatingGeneratedMemoryWritebackPolicy({
+    session,
+    generatedContent: {
+      appliedDirectorInstruction,
+      memoryWritebackPolicy: parsed?.memoryWritebackPolicy,
+    },
+  });
 
   return {
     mode: parsed?.mode === 'page_episode' || pageEpisode ? 'page_episode' : 'scene',
     appliedDirectorInstruction,
+    memoryWritebackPolicy,
     background: {
       source: session.backgroundSource || fallback.background.source,
       image: session.backgroundImage || fallback.background.image,

@@ -1,5 +1,6 @@
 import type { CharacterActiveDatingState, DateSession } from '../../types';
 import { buildDatingSceneProgress, buildDatingSceneProgressSummary } from './buildDatingSceneProgress';
+import { shouldWriteDatingMemoryBackToDirectChat } from './datingWritebackPolicy';
 
 function getLatestGeneratedStatus(session: DateSession) {
   return session.generatedContent?.status;
@@ -11,7 +12,11 @@ function getLatestNarrativeSnippet(session: DateSession): string {
   return text.slice(0, 72);
 }
 
-export function buildActiveDatingSharedState(session: DateSession): CharacterActiveDatingState {
+export function buildActiveDatingSharedState(session: DateSession): CharacterActiveDatingState | undefined {
+  if (!shouldWriteDatingMemoryBackToDirectChat(session)) {
+    return undefined;
+  }
+
   const status = getLatestGeneratedStatus(session);
   const narrativeSnippet = getLatestNarrativeSnippet(session);
   const sceneProgress = buildDatingSceneProgress(session);
