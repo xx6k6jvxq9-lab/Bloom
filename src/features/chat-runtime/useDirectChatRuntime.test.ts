@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { splitStreamingModelResponseIntoMessages } from './useDirectChatRuntime';
+import {
+  splitStreamingModelResponseIntoMessages,
+  splitStructuredAssistantReplyEnvelopeIntoMessages,
+} from './useDirectChatRuntime';
 
 test('splitStreamingModelResponseIntoMessages keeps multi-bubble assistant replies even when translation stays in one block', () => {
   const messages = splitStreamingModelResponseIntoMessages(
@@ -50,4 +53,33 @@ test('splitStreamingModelResponseIntoMessages converts trailing sticker cues int
   assert.equal(messages[2]?.text, '[sticker]');
   assert.equal(messages[2]?.imageUrl, importedSticker);
   assert.ok(messages[2]?.stickerLabel);
+});
+
+test('splitStructuredAssistantReplyEnvelopeIntoMessages maps structured text, transfer, and token items directly', () => {
+  const messages = splitStructuredAssistantReplyEnvelopeIntoMessages(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"text","text":"Come here first.","translation":"先过来。"},{"kind":"transfer","amount":"88.00"},{"kind":"token","name":"COUPLE_SPACE_INVITE_ACCEPTED"}]}',
+    4000,
+    {
+      transferTargetLabel: '你',
+    },
+  );
+
+  assert.equal(messages?.length, 3);
+  assert.equal(messages?.[0]?.text, 'Come here first.');
+  assert.equal(messages?.[0]?.translation, '先过来。');
+  assert.equal(messages?.[1]?.contentType, 'transfer');
+  assert.equal(messages?.[1]?.transferStatus, 'pending');
+  assert.equal(messages?.[2]?.contentType, 'couple-space-invite-accepted');
+});
+
+test('splitStructuredAssistantReplyEnvelopeIntoMessages keeps game card translation off the legacy text body', () => {
+  const messages = splitStructuredAssistantReplyEnvelopeIntoMessages(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"game_card","payload":{"game":"qna","type":"answer","content":"Then listen carefully."},"translation":"那你听好了。"}]}',
+    5000,
+  );
+
+  assert.equal(messages?.length, 1);
+  assert.equal(messages?.[0]?.contentType, 'game-card');
+  assert.equal(messages?.[0]?.text, '[GAME_CARD] {"game":"qna","type":"answer","content":"Then listen carefully."}');
+  assert.equal(messages?.[0]?.translation, '那你听好了。');
 });

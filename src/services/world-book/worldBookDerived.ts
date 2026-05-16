@@ -3,11 +3,37 @@ import { normalizeWorldBookCategory, normalizeWorldBookPriorityLevel } from './w
 
 type WorldBookDerivationSource = Pick<WorldBookEntry, 'title' | 'content' | 'category' | 'priorityLevel'>;
 
+export type WorldBookPromptExposureMode = 'balanced' | 'detail_only';
+export type WorldBookPromptRiskLevel = 'normal' | 'high';
+
+export type WorldBookPromptExposureProfile = {
+  mode: WorldBookPromptExposureMode;
+  riskLevel: WorldBookPromptRiskLevel;
+  safeTitle: string;
+  safeSummary: string;
+  safeMustReadFacts: string[];
+  safeKeywords: string[];
+  note: string;
+  suppressAlwaysOnRawDetails: boolean;
+};
+
 const SUMMARY_MAX_CHARS = 88;
 const FACT_MAX_CHARS = 72;
 const MAX_FACTS = 3;
 const MAX_KEYWORDS = 12;
 const MAX_CHUNK_KEYWORDS = 8;
+const RAW_WORLD_BOOK_EXPLICIT_HINTS = [
+  /(?:nsfw|18\+|adult|explicit)/iu,
+  /(?:成人|露骨|高强度|情欲|性描写|欲望|发情|高潮|插入)/u,
+];
+const RAW_WORLD_BOOK_TRIGGER_HINTS = [
+  /(?:触发词|关键词|命中|破甲|开关|触发后)/u,
+  /(?:when .*?(?:hit|match|trigger)|trigger terms?|keywords?)/iu,
+];
+const RAW_WORLD_BOOK_SAMPLE_HINTS = [
+  /(?:样例|示例|台词|语气|说法|写法|措辞|参考)/u,
+  /(?:samples?|examples?|phrasing|wording|tone)/iu,
+];
 
 const RULE_HINTS = [
   'must',
@@ -47,6 +73,10 @@ function limitText(value: string, maxChars: number): string {
   return normalized.length <= maxChars
     ? normalized
     : `${normalized.slice(0, Math.max(0, maxChars - 1)).trim()}…`;
+}
+
+function countPatternHits(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
 }
 
 function normalizeStructuredLine(value: string): string {
@@ -95,6 +125,23 @@ function uniqueStrings(values: string[]): string[] {
   });
 
   return result;
+}
+
+function buildProtectedWorldBookTitle(source: WorldBookDerivationSource): string {
+  const normalizedTitle = normalizeOptionalText(source.title);
+  const category = normalizeWorldBookCategory(source.category);
+
+  if (/关系/.test(category)) {
+    return normalizedTitle ? `${normalizedTitle}（关系表达参考）` : '关系表达参考';
+  }
+  if (/规则|禁忌/.test(category)) {
+    return normalizedTitle ? `${normalizedTitle}（互动补充规则）` : '互动补充规则';
+  }
+  if (/角色/.test(category)) {
+    return normalizedTitle ? `${normalizedTitle}（表达语气参考）` : '表达语气参考';
+  }
+
+  return normalizedTitle ? `${normalizedTitle}（补充表达参考）` : '补充表达参考';
 }
 
 function selectSummaryFragments(content: string): string[] {
@@ -280,6 +327,63 @@ export function buildWorldBookChunkKeywords(input: {
   ].filter(Boolean).join('\n'), MAX_CHUNK_KEYWORDS);
 }
 
+export function resolveWorldBookPromptExposureProfile(
+  source: WorldBookDerivationSource,
+): WorldBookPromptExposureProfile {
+  const combined = [
+    normalizeOptionalText(source.title),
+    normalizeOptionalText(source.content),
+  ].filter(Boolean).join('\n');
+  const explicitHits = countPatternHits(combined, RAW_WORLD_BOOK_EXPLICIT_HINTS);
+  const triggerHits = countPatternHits(combined, RAW_WORLD_BOOK_TRIGGER_HINTS);
+  const sampleHits = countPatternHits(combined, RAW_WORLD_BOOK_SAMPLE_HINTS);
+  const shouldUseDetailOnly = explicitHits >= 2 || (explicitHits >= 1 && (triggerHits >= 1 || sampleHits >= 1));
+
+  if (!shouldUseDetailOnly) {
+    const summary = buildWorldBookSummary(source);
+    const mustReadFacts = buildWorldBookMustReadFacts(source);
+    const keywords = buildWorldBookKeywords(source);
+
+    return {
+      mode: 'balanced',
+      riskLevel: 'normal',
+      safeTitle: normalizeOptionalText(source.title) || 'Untitled World Book',
+      safeSummary: summary,
+      safeMustReadFacts: mustReadFacts,
+      safeKeywords: keywords,
+      note: '当前按默认世界书策略处理：总览、必读事实和正文细节都会参与提示词注入。',
+      suppressAlwaysOnRawDetails: false,
+    };
+  }
+
+  const safeTitle = buildProtectedWorldBookTitle(source);
+  const category = normalizeWorldBookCategory(source.category);
+  const safeSummary = limitText(
+    /关系/.test(category)
+      ? `${safeTitle}。这是一组与关系推进、表达力度和当前互动气氛相关的补充参考。`
+      : /规则|禁忌/.test(category)
+        ? `${safeTitle}。这是一组与互动边界、表达尺度和当前语境相关的补充规则。`
+        : `${safeTitle}。这是一组需要在当前语境相关时再展开细读的补充表达参考。`,
+    SUMMARY_MAX_CHARS,
+  );
+  const safeKeywords = buildKeywordList([
+    safeTitle,
+    category,
+    safeSummary,
+  ].filter(Boolean).join('\n'), MAX_KEYWORDS);
+
+  return {
+    mode: 'detail_only',
+    riskLevel: 'high',
+    safeTitle,
+    safeSummary,
+    safeMustReadFacts: [],
+    safeKeywords,
+    note: '检测到高风险 raw 语料：常驻层只保留中性概览，raw 正文改为按轮次检索注入，且不再用 always-on 方式钉住 raw 细节。',
+    suppressAlwaysOnRawDetails: true,
+  };
+}
+
 export function applyDerivedWorldBookMetadata(entry: WorldBookEntry): WorldBookEntry {
   const source: WorldBookDerivationSource = {
     title: normalizeOptionalText(entry.title),
@@ -287,17 +391,14 @@ export function applyDerivedWorldBookMetadata(entry: WorldBookEntry): WorldBookE
     category: normalizeWorldBookCategory(entry.category),
     priorityLevel: normalizeWorldBookPriorityLevel(entry.priorityLevel),
   };
-
-  const summary = buildWorldBookSummary(source);
-  const mustReadFacts = buildWorldBookMustReadFacts(source);
-  const keywords = buildWorldBookKeywords(source);
+  const exposureProfile = resolveWorldBookPromptExposureProfile(source);
   const fingerprint = buildWorldBookFingerprint(source);
 
   return {
     ...entry,
-    summary: summary || undefined,
-    mustReadFacts: mustReadFacts.length > 0 ? mustReadFacts : undefined,
-    keywords: keywords.length > 0 ? keywords : undefined,
+    summary: exposureProfile.safeSummary || undefined,
+    mustReadFacts: exposureProfile.safeMustReadFacts.length > 0 ? exposureProfile.safeMustReadFacts : undefined,
+    keywords: exposureProfile.safeKeywords.length > 0 ? exposureProfile.safeKeywords : undefined,
     fingerprint,
   };
 }

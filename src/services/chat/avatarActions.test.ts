@@ -4,6 +4,7 @@ import type { Character, ChatMessage } from '../../types';
 import {
   buildAvatarActionPromptSection,
   latestUserMessageHasAvatarIntent,
+  parseAvatarActionPayload,
   resolveLatestAvatarCandidateForUserTurn,
   shouldOfferAvatarActionForCharacter,
 } from './avatarActions';
@@ -188,4 +189,18 @@ test('last and reverse-order image references can target the newest recent candi
   ];
 
   assert.equal(resolveLatestAvatarCandidateForUserTurn(reverseMessages)?.image, 'asset://avatar-offer-second');
+});
+
+test('parseAvatarActionPayload can strip hidden avatar blocks from structured reply envelopes', () => {
+  const parsed = parseAvatarActionPayload(
+    '[ASSISTANT_REPLY] {"items":[{"kind":"text","text":"Fine. [avatar_action]\\ntype=change\\nsource=avatar_library:entry-1\\nreaction=Fine.\\nreason=Matches the current mood\\n[/avatar_action]","translation":"行吧。"}]}',
+  );
+
+  assert.equal(parsed.action?.type, 'change');
+  assert.equal(parsed.action?.source, 'avatar_library:entry-1');
+  assert.equal(parsed.displayText, 'Fine.\n\n---TRANSLATION---\n行吧。');
+  assert.equal(
+    parsed.structuredDisplayText,
+    '[ASSISTANT_REPLY] {"items":[{"kind":"text","text":"Fine.","translation":"行吧。"}]}',
+  );
 });

@@ -1,4 +1,5 @@
 import type { ApiConfig } from '../../types';
+import { STRUCTURED_ASSISTANT_REPLY_TOKEN } from './assistantReplyEnvelope';
 import { streamTextWithConfig, type RuntimeChatMessage } from './runtimeClient';
 
 export type OutputQualityReason =
@@ -17,6 +18,59 @@ export type OutputQualityResult = {
   reason?: OutputQualityReason;
 };
 
+export function getOutputQualityReasonLabel(reason?: OutputQualityReason): string {
+  switch (reason) {
+    case 'empty':
+      return '清洗后没有留下可显示正文，常见原因是只输出了空白、括号动作或协议壳。';
+    case 'punctuation_only':
+      return '返回内容几乎只有标点或空白，没有可显示正文。';
+    case 'punctuation_heavy':
+      return '返回内容符号太多、正文太少，像半截坏掉的回复。';
+    case 'repetition_noise':
+      return '返回内容里有明显重复字符或重复符号噪音。';
+    case 'analysis_leak':
+      return '回复混入了分析过程或解释腔，不像角色真正会发出去的话。';
+    case 'system_leak':
+      return '回复混入了 system、prompt 或 AI 身份提示，不能直接显示。';
+    case 'generic_assistant_tone':
+      return '回复滑成了通用安抚/陪聊模板，不像当前角色本人。';
+    case 'too_short_after_cleaning':
+      return '清洗后剩下的内容太短，不足以作为一条有效回复。';
+    default:
+      return '模型返回了不可直接显示的内容。';
+  }
+}
+
+export function formatKnownGenerationFailureMessage(message: string): string | null {
+  const normalized = message.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const invalidOutputMatch = normalized.match(/^(?:模型返回无效内容|语音通话模型返回无效内容)[:：](.+)$/);
+  if (invalidOutputMatch?.[1]) {
+    return `回复失败（正文清洗）：${getOutputQualityReasonLabel(invalidOutputMatch[1].trim() as OutputQualityReason)}`;
+  }
+
+  if (normalized === '模型未按双语协议返回可显示的中文翻译。') {
+    return '回复失败（双语协议）：这次双语返回里正文或翻译没有对齐，当前无法安全显示。';
+  }
+
+  if (normalized === '模型返回为空') {
+    return '回复失败（上游空结果）：模型这次没有返回可显示正文。';
+  }
+
+  if (/Model response contained no extractable text/i.test(normalized)) {
+    return '回复失败（上游空结果）：上游接口返回了响应，但里面没有可提取的正文。';
+  }
+
+  if (/Unable to parse model response/i.test(normalized)) {
+    return '回复失败（上游解析异常）：上游接口返回格式异常，当前这轮没法解析成正文。';
+  }
+
+  return null;
+}
+
 export type AssistantOutputQualityOptions = {
   allowBracketActions?: boolean;
   allowStructuredProtocols?: boolean;
@@ -29,10 +83,11 @@ export type GenerateQualityCheckedAssistantReplyParams = {
   allowBracketActions?: boolean;
   allowStructuredProtocols?: boolean;
   toneGuardMode?: 'off' | 'character_chat';
+  softRecoveryMode?: 'off' | 'character_chat';
   temperature?: number;
   retryTemperature?: number;
   onInvalid?: (result: OutputQualityResult) => void;
-  onProgress?: (text: string, meta: { attempt: 1 | 2 }) => void;
+  onProgress?: (text: string, meta: { attempt: 1 | 2 | 3 }) => void;
 };
 
 const ANALYSIS_LEAK_PATTERN =
@@ -49,6 +104,9 @@ const REPEATED_CHAR_RUN_REGEX = /(.)\1{7,}/u;
 const REPEATED_PUNCTUATION_CLUSTER_REGEX = /([,，.。!！?？、;；~…])\1{3,}/u;
 
 const GENERIC_ASSISTANT_HIGH_CONFIDENCE_PATTERNS = [
+  /if you want[^.!?\n]{0,24}(?:you can|feel free to)[^.!?\n]{0,24}(?:talk to me|tell me|share)/i,
+  /i will(?: always| still)? be here (?:with|for) you/i,
+  /you do not have to (?:go through|face) this alone/i,
   /如果你愿意(?:的话)?[^。！？\n]{0,16}(?:可以|也可以|都可以|随时)[^。！？\n]{0,18}(?:和我说|告诉我|慢慢说)/u,
   /有什么(?:想说的|想聊的|事|心事|情绪)[^。！？\n]{0,18}(?:都)?可以[^。！？\n]{0,18}(?:和我说|告诉我)/u,
   /我会(?:一直|都)?在这里(?:陪(?:着)?你|支持你|听你说)/u,
@@ -56,6 +114,9 @@ const GENERIC_ASSISTANT_HIGH_CONFIDENCE_PATTERNS = [
   /当你(?:准备好|想说)的时候[^。！？\n]{0,10}(?:再)?和我说/u,
 ];
 const GENERIC_ASSISTANT_MEDIUM_CONFIDENCE_PATTERNS = [
+  /take a deep breath/i,
+  /take it slow/i,
+  /do not be too hard on yourself/i,
   /先(?:深呼吸|休息一下|缓一缓)/u,
   /慢慢来/u,
   /别给自己太大压力/u,
@@ -67,6 +128,15 @@ const GENERIC_ASSISTANT_MEDIUM_CONFIDENCE_PATTERNS = [
 function countMatches(text: string, pattern: RegExp): number {
   return text.match(pattern)?.length ?? 0;
 }
+
+const RECOVERABLE_META_REPLY_PREFIX_REGEXES = [
+  /^(?:in character|as the character|character reply|final reply|reply|response|message)\s*[:：-]\s*/i,
+  /^(?:角色回复|角色回覆|角色回答|最终回复|回复|回覆|回答|台词|可发送内容|正文)\s*[:：-]\s*/u,
+];
+const RECOVERABLE_META_LEADIN_REGEXES = [
+  /^(?:sure[,，]?\s*)?(?:here(?:'s| is)\s+)?(?:the\s+)?(?:reply|response|message)\s*[:：-]\s*/i,
+  /^(?:作为(?:这个)?角色|按角色口吻|用角色口吻|下面是(?:角色)?回复|以下是(?:角色)?回复)\s*[:：-]?\s*/u,
+];
 
 function normalizeExcessivePunctuation(text: string): string {
   return text
@@ -87,7 +157,8 @@ function hasStructuredProtocolPayload(text: string): boolean {
   }
 
   return (
-    trimmed.startsWith('[GAME_CARD]')
+    trimmed.startsWith(STRUCTURED_ASSISTANT_REPLY_TOKEN)
+    || trimmed.startsWith('[GAME_CARD]')
     || trimmed.includes('---TRANSLATION---')
     || trimmed.startsWith('[COUPLE_SPACE_INVITE_ACCEPTED]')
     || trimmed.startsWith('[COUPLE_SPACE_INVITE]')
@@ -205,18 +276,128 @@ function stripLeakedAnalysisLines(text: string): string {
     .trim();
 }
 
+function stripRecoverableMetaPrefixes(text: string): string {
+  let normalized = text.trim();
+  if (!normalized) {
+    return '';
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of [...RECOVERABLE_META_REPLY_PREFIX_REGEXES, ...RECOVERABLE_META_LEADIN_REGEXES]) {
+      const nextValue = normalized.replace(pattern, '').trim();
+      if (nextValue !== normalized) {
+        normalized = nextValue;
+        changed = true;
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function collectRecoverableReplyCandidates(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const candidates = new Set<string>();
+  const lines = trimmed
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const pushCandidate = (value: string) => {
+    const normalized = stripRecoverableMetaPrefixes(
+      value
+        .replace(/^[-*#]+\s*/, '')
+        .replace(/^["'\u201C\u201D\u2018\u2019]+|["'\u201C\u201D\u2018\u2019]+$/g, '')
+        .trim(),
+    );
+    if (normalized) {
+      candidates.add(normalized);
+    }
+  };
+
+  pushCandidate(trimmed);
+  for (const line of lines) {
+    pushCandidate(line);
+
+    const colonIndex = line.search(/[:：]/);
+    if (colonIndex >= 0 && colonIndex < line.length - 1) {
+      pushCandidate(line.slice(colonIndex + 1));
+    }
+  }
+
+  return [...candidates];
+}
+
+export function recoverInvalidAssistantOutput(
+  text: string,
+  options: AssistantOutputQualityOptions,
+  reason?: OutputQualityReason,
+): string {
+  if (!text.trim() || reason === 'generic_assistant_tone') {
+    return '';
+  }
+
+  const candidates = collectRecoverableReplyCandidates(text);
+  if (candidates.length === 0) {
+    return '';
+  }
+
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index];
+    const result = evaluateAssistantOutput(candidate, {
+      ...options,
+      toneGuardMode: 'off',
+      allowBracketActions: options.allowBracketActions || /^[\(\uFF08][^\(\)\uFF08\uFF09\n]{1,80}[\)\uFF09]$/u.test(candidate),
+    });
+
+    if (result.ok) {
+      return result.cleanedText;
+    }
+  }
+
+  return '';
+}
+
 function buildInvalidOutputRetryInstruction(reason?: OutputQualityReason): string {
   const genericToneLine = reason === 'generic_assistant_tone'
-    ? '\u4E0D\u8981\u7528\u201C\u5982\u679C\u4F60\u613F\u610F\u53EF\u4EE5\u548C\u6211\u8BF4\u201D\u3001\u201C\u6211\u4F1A\u4E00\u76F4\u5728\u8FD9\u91CC\u966A\u4F60\u201D\u8FD9\u7C7B\u901A\u7528\u966A\u804A\u6A21\u677F\u3002\u8BF7\u76F4\u63A5\u7528\u5F53\u524D\u89D2\u8272\u672C\u4EBA\u7684\u8BED\u6C14\u3001\u8FB9\u754C\u548C\u8BF4\u8BDD\u624B\u611F\u91CD\u7B54\u3002'
+    ? '不要用“如果你愿意可以和我说”、“我会一直在这里陪你”这类通用陪聊模板。请直接用当前角色本人的语气、边界和说话手感重答。'
     : '';
 
   return [
-    '\u521A\u624D\u7684\u8F93\u51FA\u65E0\u6CD5\u4F5C\u4E3A\u804A\u5929\u6D88\u606F\u4F7F\u7528\u3002',
-    reason ? `\u65E0\u6548\u539F\u56E0\uFF1A${reason}\u3002` : '',
-    '\u8BF7\u53EA\u8F93\u51FA\u5F53\u524D\u89D2\u8272\u4F1A\u53D1\u51FA\u7684\u4E00\u53E5\u81EA\u7136\u804A\u5929\u5185\u5BB9\u3002',
-    '\u4E0D\u8981\u5199\u6807\u9898\u3001\u89E3\u91CA\u3001\u7CFB\u7EDF\u89C4\u5219\u3001\u601D\u8003\u8FC7\u7A0B\u3001\u82F1\u6587\u5206\u6790\u6216\u7EAF\u6807\u70B9\u3002',
+    '刚才的输出无法作为聊天消息使用。',
+    reason ? `无效原因：${reason}。` : '',
+    '请只输出当前角色会发出的一句自然聊天内容。',
+    '不要写标题、解释、系统规则、思考过程、英文分析或纯标点。',
     genericToneLine,
-    '\u5982\u679C\u7528\u6237\u6B63\u5728\u4F7F\u7528\u4E2D\u6587\uFF0C\u5C31\u7528\u81EA\u7136\u4E2D\u6587\uFF1B\u5982\u679C\u7528\u6237\u660E\u786E\u4F7F\u7528\u5176\u4ED6\u8BED\u8A00\u6216\u8981\u6C42\u7FFB\u8BD1\uFF0C\u624D\u8DDF\u968F\u5BF9\u5E94\u8BED\u8A00\u3002',
+    '如果用户正在使用中文，就用自然中文；如果用户明确使用其他语言或要求翻译，才跟随对应语言。',
+  ].filter(Boolean).join('\n');
+}
+
+function buildSoftRecoveryRetryInstruction(reason?: OutputQualityReason): string {
+  const emptyLine = reason === 'empty'
+    ? '不要只输出括号动作、空白、纯标点或隐藏协议。'
+    : '';
+  const leakLine = reason === 'analysis_leak' || reason === 'system_leak'
+    ? '不要解释规则、不要提 system、prompt、developer message、AI 身份或思考过程。'
+    : '';
+  const genericToneLine = reason === 'generic_assistant_tone'
+    ? '不要说“如果你愿意可以和我说”“我会一直在这里陪你”这类模板安抚。'
+    : '';
+
+  return [
+    '上一条仍然不能直接作为聊天气泡显示。',
+    emptyLine,
+    leakLine,
+    genericToneLine,
+    '现在请只发 1 到 2 句角色本人会直接发出去的短消息。',
+    '不要解释，不要总结，不要分析，不要说规则，不要输出空白。',
+    '如果前文里有会让你想跳出角色的词，也不要复述它们，直接回到角色当下的态度和语气。',
   ].filter(Boolean).join('\n');
 }
 
@@ -358,5 +539,61 @@ export async function generateQualityCheckedAssistantReply(
     params.onInvalid?.(retryResult);
   }
 
-  return retryResult;
+  if (retryResult.ok || params.softRecoveryMode !== 'character_chat') {
+    return retryResult;
+  }
+
+  const recoveryOptions: AssistantOutputQualityOptions = {
+    allowBracketActions: params.allowBracketActions,
+    allowStructuredProtocols: params.allowStructuredProtocols,
+    toneGuardMode: params.toneGuardMode,
+  };
+  const recoveredRetryText = recoverInvalidAssistantOutput(
+    retryText,
+    recoveryOptions,
+    retryResult.reason,
+  );
+  if (recoveredRetryText) {
+    return { ok: true, cleanedText: recoveredRetryText };
+  }
+
+  const recoveredFirstText = recoverInvalidAssistantOutput(
+    firstText,
+    recoveryOptions,
+    firstResult.reason,
+  );
+  if (recoveredFirstText) {
+    return { ok: true, cleanedText: recoveredFirstText };
+  }
+
+  const rescueText = await streamRuntimeReplyText({
+    activeConfig: params.activeConfig,
+    messages: [
+      ...params.messages,
+      {
+        role: 'user',
+        content: buildSoftRecoveryRetryInstruction(retryResult.reason),
+      },
+    ],
+    temperature: Math.min(Math.max(params.retryTemperature ?? params.temperature ?? 0.65, 0.3), 0.45),
+    onProgress: (text) => {
+      params.onProgress?.(text, { attempt: 3 });
+    },
+  });
+  const rescueResult = evaluateAssistantOutput(rescueText, recoveryOptions);
+  if (rescueResult.ok) {
+    return rescueResult;
+  }
+
+  params.onInvalid?.(rescueResult);
+  const recoveredRescueText = recoverInvalidAssistantOutput(
+    rescueText,
+    recoveryOptions,
+    rescueResult.reason,
+  );
+  if (recoveredRescueText) {
+    return { ok: true, cleanedText: recoveredRescueText };
+  }
+
+  return rescueResult;
 }

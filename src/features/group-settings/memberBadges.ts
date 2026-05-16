@@ -24,10 +24,14 @@ function normalizeBadgeColor(color?: string): string {
   return trimmed || DEFAULT_GROUP_BADGE_COLOR;
 }
 
+function getMemberBadges(group: Pick<ChatGroup, 'memberBadges'>): NonNullable<ChatGroup['memberBadges']> {
+  return Array.isArray(group.memberBadges) ? group.memberBadges : [];
+}
+
 export function sanitizeGroupMemberBadges(group: Pick<ChatGroup, 'memberBadges' | 'memberIds' | 'creatorId'>): GroupMemberBadge[] {
   const allowedIds = new Set([group.creatorId, ...(group.memberIds || [])]);
 
-  return (group.memberBadges || [])
+  return getMemberBadges(group)
     .filter((badge): badge is NonNullable<ChatGroup['memberBadges']>[number] => !!badge)
     .map((badge) => ({
       memberId: typeof badge.memberId === 'string' ? badge.memberId : '',
@@ -38,7 +42,7 @@ export function sanitizeGroupMemberBadges(group: Pick<ChatGroup, 'memberBadges' 
 }
 
 export function getGroupMemberBadge(group: Pick<ChatGroup, 'memberBadges'>, memberId: string): GroupMemberBadge | null {
-  const badge = (group.memberBadges || []).find((item) => item.memberId === memberId);
+  const badge = getMemberBadges(group).find((item) => item.memberId === memberId);
   if (!badge || !badge.label?.trim()) {
     return null;
   }

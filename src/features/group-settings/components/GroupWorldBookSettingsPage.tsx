@@ -1,10 +1,12 @@
 import { Check, ChevronLeft } from 'lucide-react';
 import type { WorldBookEntry } from '../../../types';
 import { getWorldBookPriorityLabel, normalizeWorldBookCategory, sortWorldBooksByPriority } from '../../../services/world-book/worldBookMeta';
+import type { WorldBookPromptDiagnostics } from '../../../services/world-book/worldBookBudget';
 
 type GroupWorldBookSettingsPageProps = {
   worldBooks: WorldBookEntry[];
   activeWorldBookIds: string[];
+  diagnostics?: WorldBookPromptDiagnostics | null;
   onBack: () => void;
   onToggleWorldBook: (worldBookId: string) => void;
 };
@@ -18,6 +20,7 @@ const TEXT = {
 export function GroupWorldBookSettingsPage({
   worldBooks = [],
   activeWorldBookIds = [],
+  diagnostics = null,
   onBack,
   onToggleWorldBook,
 }: GroupWorldBookSettingsPageProps) {
@@ -36,6 +39,29 @@ export function GroupWorldBookSettingsPage({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        {diagnostics && (
+          <div className="mb-4 rounded-[28px] border border-zinc-100 bg-white px-4 py-4 shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
+            <div className="text-[14px] font-semibold text-zinc-900">当前群聊世界书读取参考</div>
+            <div className="mt-1 text-[11px] leading-5 text-zinc-500">
+              群聊会先读总览和必读规则，再按这轮聊天内容动态补读相关正文片段。正文细节为 0，不等于没读，只表示这轮暂时不需要额外展开。
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-zinc-600">
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2">已读总览 {diagnostics.overviewCount} 本</div>
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2">必读规则 {diagnostics.mustReadFactCount} 条</div>
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2">正文细节 {diagnostics.detailCount} 条</div>
+              <div className="rounded-2xl bg-zinc-50 px-3 py-2">总字符 {diagnostics.totalChars}</div>
+            </div>
+            {(diagnostics.highRiskCount > 0 || diagnostics.detailOnlyCount > 0 || diagnostics.suppressedPinnedCount > 0) && (
+              <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50/70 px-3 py-3">
+                <div className="text-[11px] font-medium text-amber-800">高风险世界书暴露诊断</div>
+                <div className="mt-1 text-[10px] leading-5 text-amber-700">
+                  当前启用世界书里有 {diagnostics.highRiskCount} 本被判定为高风险 raw 语料，其中 {diagnostics.detailOnlyCount} 本已自动切到 detail-only 常驻策略，{diagnostics.suppressedPinnedCount} 本会关闭 raw 正文的 always-on 钉住。
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {worldBooks.length === 0 ? (
           <div className="rounded-[28px] bg-white px-4 py-10 text-center text-sm text-zinc-400 shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
             {TEXT.empty}

@@ -19,6 +19,7 @@ export type CharacterScopedMemory = {
 export type RelationshipWaveSourceScene =
   | 'direct_chat'
   | 'group_chat'
+  | 'group_offline'
   | 'dating'
   | 'music_together'
   | 'couple_space'

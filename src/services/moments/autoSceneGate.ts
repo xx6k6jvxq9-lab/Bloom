@@ -22,6 +22,7 @@ const STRONG_INTERACTION_SURFACES = new Set([
 const STRONG_CHARACTER_SOURCE_SCENES = new Set<NonNullable<Character['sharedState']>['sourceScene']>([
   'direct_chat',
   'group_chat',
+  'group_offline',
   'dating',
   'music_together',
   'couple_space',

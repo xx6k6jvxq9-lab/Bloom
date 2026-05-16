@@ -1,4 +1,6 @@
 import type {
+  AssistantReplyEnvelope,
+  AssistantReplyEnvelopeItem,
   Character,
   CharacterAvatarLibrary,
   CharacterAvatarLibraryEntry,
@@ -6,6 +8,11 @@ import type {
   CharacterAvatarLibraryEntryStatus,
   ChatMessage,
 } from '../../types';
+import {
+  normalizeStructuredAssistantReplyToLegacyFormat,
+  parseStructuredAssistantReplyEnvelope,
+  serializeStructuredAssistantReplyEnvelope,
+} from '../ai/assistantReplyEnvelope';
 import { extractImageUrls } from '../../utils';
 import { enrichAvatarEntryAfterCharacterAction } from './avatarPreference';
 
@@ -21,6 +28,10 @@ export type ParsedAvatarAction = {
 export type AvatarActionParseResult = {
   action: ParsedAvatarAction | null;
   displayText: string;
+};
+
+export type AvatarActionPayloadParseResult = AvatarActionParseResult & {
+  structuredDisplayText: string | null;
 };
 
 export type AvatarCandidate = {
@@ -61,15 +72,22 @@ function normalizeProtocolValue(value: string | undefined): string {
 
 function parseProtocolFields(body: string): Record<string, string> {
   const fields: Record<string, string> = {};
+  const normalizedBody = body.trim();
+  if (!normalizedBody) {
+    return fields;
+  }
 
-  for (const rawLine of body.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
+  const inlineFieldPattern = /([a-zA-Z_][\w-]*)\s*=\s*([\s\S]*?)(?=\s+[a-zA-Z_][\w-]*\s*=|$)/g;
+  let match: RegExpExecArray | null = null;
 
-    const match = line.match(/^([a-zA-Z_][\w-]*)\s*=\s*([\s\S]*)$/);
-    if (!match) continue;
+  while ((match = inlineFieldPattern.exec(normalizedBody)) !== null) {
+    const key = match[1]?.trim().toLowerCase();
+    const value = normalizeProtocolValue(match[2]);
+    if (!key || !value) {
+      continue;
+    }
 
-    fields[match[1].trim().toLowerCase()] = normalizeProtocolValue(match[2]);
+    fields[key] = value;
   }
 
   return fields;
@@ -114,6 +132,68 @@ export function parseAvatarActionBlock(text: string): AvatarActionParseResult {
       reason: fields.reason,
     },
     displayText,
+  };
+}
+
+function normalizeStructuredAvatarDisplayEnvelope(envelope: AssistantReplyEnvelope): AssistantReplyEnvelope | null {
+  const items: AssistantReplyEnvelopeItem[] = envelope.items.flatMap<AssistantReplyEnvelopeItem>((item) => {
+    if (item.kind !== 'text') {
+      return [item];
+    }
+
+    const nextText = item.text.trim();
+    if (!nextText) {
+      return [];
+    }
+
+    return [{
+      ...item,
+      text: nextText,
+    }];
+  });
+
+  return items.length > 0 ? { items } : null;
+}
+
+export function parseAvatarActionPayload(text: string): AvatarActionPayloadParseResult {
+  const envelope = parseStructuredAssistantReplyEnvelope(text);
+  if (!envelope) {
+    const parsed = parseAvatarActionBlock(text);
+    return {
+      ...parsed,
+      structuredDisplayText: null,
+    };
+  }
+
+  let action: ParsedAvatarAction | null = null;
+  const nextEnvelope = normalizeStructuredAvatarDisplayEnvelope({
+    items: envelope.items.map<AssistantReplyEnvelopeItem>((item) => {
+      if (item.kind !== 'text') {
+        return item;
+      }
+
+      const parsed = parseAvatarActionBlock(item.text);
+      if (!action && parsed.action) {
+        action = parsed.action;
+      }
+
+      return {
+        ...item,
+        text: parsed.displayText,
+      };
+    }),
+  });
+
+  const structuredDisplayText = nextEnvelope
+    ? serializeStructuredAssistantReplyEnvelope(nextEnvelope)
+    : '';
+
+  return {
+    action,
+    displayText: structuredDisplayText
+      ? normalizeStructuredAssistantReplyToLegacyFormat(structuredDisplayText)
+      : '',
+    structuredDisplayText,
   };
 }
 

@@ -37,7 +37,7 @@ function inferSourceSessionType(
     return explicitType;
   }
 
-  return sourceScene === 'group_chat' ? 'group' : 'direct';
+  return sourceScene === 'group_chat' || sourceScene === 'group_offline' ? 'group' : 'direct';
 }
 
 function inferWaveEventKind(summary: string): RelationshipWaveRecord['eventKind'] {
@@ -64,7 +64,7 @@ function inferWaveIntensity(summary: string): RelationshipWaveRecord['intensity'
 }
 
 function inferRelationType(sourceScene: SettlementScene): RelationshipWaveRecord['relationType'] {
-  return sourceScene === 'group_chat' || sourceScene === 'forum'
+  return sourceScene === 'group_chat' || sourceScene === 'group_offline' || sourceScene === 'forum'
     ? 'public_group_event'
     : 'character_user';
 }
@@ -78,7 +78,7 @@ function relationshipResidueToWaveRecord(params: {
     sourceScene: params.item.sourceScene,
     relationType: inferRelationType(params.item.sourceScene),
     sourceCharacterId: params.characterId,
-    ...(params.item.sourceScene === 'group_chat' || params.item.sourceScene === 'forum'
+    ...(params.item.sourceScene === 'group_chat' || params.item.sourceScene === 'group_offline' || params.item.sourceScene === 'forum'
       ? {}
       : { targetUser: true }),
     eventKind,

@@ -51,6 +51,7 @@ export function dedupeHintTexts(values: Array<string | undefined | null>): strin
 const SOURCE_SCENE_HINTS: Record<MemoryRecordSourceScene, string[]> = {
   direct_chat: ['direct_chat', 'direct chat', '单聊', '私聊'],
   group_chat: ['group_chat', 'group chat', '群聊', '公开互动'],
+  group_offline: ['group_offline', 'group offline', '群线下', '线下场景', '线下互动'],
   dating: ['dating', 'date', '约会', '暧昧推进'],
   music_together: ['music_together', 'music together', '一起听歌', '音乐互动'],
   couple_space: ['couple_space', 'couple space', '情侣空间', '共同生活'],

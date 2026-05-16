@@ -35,6 +35,7 @@ const SOURCE_SCENE_BOOSTS = {
   dating: 2.35,
   couple_space: 2.1,
   group_chat: 1.95,
+  group_offline: 2.2,
   forum: 1.75,
   moments: 1.4,
   music_together: 1.25,

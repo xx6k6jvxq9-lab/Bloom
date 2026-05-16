@@ -9,6 +9,10 @@ import type {
   PerceptionSettings,
   WorldBookEntry,
 } from '../../types';
+import {
+  parseStructuredAssistantReplyEnvelope,
+  serializeStructuredAssistantReplyEnvelope,
+} from '../ai/assistantReplyEnvelope';
 import { generateQualityCheckedAssistantReply } from '../ai/outputQuality';
 import { buildChatPrompt } from '../ai/prompts/builders/buildChatPrompt';
 import { generateTextFromMessagesWithConfig } from '../ai/runtimeClient';
@@ -17,7 +21,7 @@ import { buildTemporalContextPrompt } from '../relationship-time/buildTemporalCo
 import { buildChatSceneInput } from '../scene-inputs/buildChatSceneInput';
 import type { DirectCharacterDecision } from './directCharacterDecision';
 import type { DirectUserIntentAnalysis } from './intentAnalysis';
-import { getLegacyTranslationParts } from './messageText';
+import { getLegacyTranslationParts, sanitizePipeMarkers } from './messageText';
 
 const DIRECT_BOUNDARY_PROTOCOL_TOKEN = '[[DIRECT_BOUNDARY]]';
 
@@ -361,8 +365,79 @@ function buildBoundaryTranslationPrompt(character: Character) {
   ].join('\n');
 }
 
-function hasLegacyTranslation(text: string) {
-  return getLegacyTranslationParts(text).translation.trim().length > 0;
+function hasDisplayTranslation(text: string) {
+  const envelope = parseStructuredAssistantReplyEnvelope(text);
+  if (!envelope) {
+    return getLegacyTranslationParts(text).translation.trim().length > 0;
+  }
+
+  const textItems = envelope.items.filter((item): item is Extract<typeof envelope.items[number], { kind: 'text' }> => item.kind === 'text');
+  if (textItems.length > 0) {
+    return textItems.every((item) => !!item.translation?.trim());
+  }
+
+  const gameCardItem = envelope.items.find((item): item is Extract<typeof envelope.items[number], { kind: 'game_card' }> => item.kind === 'game_card');
+  if (gameCardItem) {
+    return !!gameCardItem.translation?.trim();
+  }
+
+  return true;
+}
+
+function splitBoundaryTranslationParts(translationText: string, expectedCount: number): string[] {
+  const normalized = translationText.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  if (expectedCount <= 1) {
+    return [normalized];
+  }
+
+  const explicitParts = normalized
+    .split(/\s*\|\|\|\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (explicitParts.length === expectedCount) {
+    return explicitParts;
+  }
+
+  const newlineParts = sanitizePipeMarkers(normalized, '\n')
+    .split(/\r?\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return newlineParts.length === expectedCount ? newlineParts : [];
+}
+
+async function translateBoundaryReplyText(options: {
+  activeConfig: ApiConfig;
+  mainText: string;
+  segmentCount: number;
+}) {
+  const translated = await generateTextFromMessagesWithConfig({
+    activeConfig: options.activeConfig,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'Translate the following in-character reply into natural Simplified Chinese.',
+          'Return only the translation text itself.',
+          options.segmentCount > 1
+            ? 'If the original contains multiple short messages, keep the same order and separate each translated line with ` ||| `.'
+            : 'Keep the translation aligned with the original reply.',
+          'Do not add notes, labels, or explanations.',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: options.mainText,
+      },
+    ],
+    temperature: 0.2,
+    maxOutputTokens: 180,
+  });
+
+  return translated.trim();
 }
 
 async function backfillBoundaryTranslation(options: {
@@ -370,33 +445,55 @@ async function backfillBoundaryTranslation(options: {
   reactionText: string;
 }) {
   const { activeConfig, reactionText } = options;
+  const envelope = parseStructuredAssistantReplyEnvelope(reactionText);
+  if (envelope) {
+    const textItems = envelope.items.filter((item): item is Extract<typeof envelope.items[number], { kind: 'text' }> => item.kind === 'text');
+    if (textItems.length === 0 || textItems.every((item) => !!item.translation?.trim())) {
+      return reactionText;
+    }
+
+    const mainText = textItems.map((item) => item.text.trim()).filter(Boolean).join('\n').trim();
+    if (!mainText) {
+      return reactionText;
+    }
+
+    const translated = await translateBoundaryReplyText({
+      activeConfig,
+      mainText,
+      segmentCount: textItems.length,
+    });
+    const translationParts = splitBoundaryTranslationParts(translated, textItems.length);
+    if (translationParts.length !== textItems.length) {
+      return reactionText;
+    }
+
+    let textItemIndex = 0;
+    return serializeStructuredAssistantReplyEnvelope({
+      items: envelope.items.map((item) => {
+        if (item.kind !== 'text') {
+          return item;
+        }
+
+        const translation = translationParts[textItemIndex] || '';
+        textItemIndex += 1;
+        return {
+          ...item,
+          ...(translation ? { translation } : {}),
+        };
+      }),
+    });
+  }
+
   const { mainText, translation } = getLegacyTranslationParts(reactionText);
   if (!mainText.trim() || translation.trim()) {
     return reactionText;
   }
 
-  const translated = await generateTextFromMessagesWithConfig({
+  const normalizedTranslation = await translateBoundaryReplyText({
     activeConfig,
-    messages: [
-      {
-        role: 'system',
-        content: [
-          'Translate the following in-character reply into natural Simplified Chinese.',
-          'Return only the translation text itself.',
-          'If the original contains multiple short messages, keep the same order and separate each translated line with ` ||| `.',
-          'Do not add notes, labels, or explanations.',
-        ].join('\n'),
-      },
-      {
-        role: 'user',
-        content: mainText,
-      },
-    ],
-    temperature: 0.2,
-    maxOutputTokens: 180,
+    mainText,
+    segmentCount: mainText.includes('\n') ? Math.max(1, mainText.split(/\r?\n+/).filter(Boolean).length) : 1,
   });
-
-  const normalizedTranslation = translated.trim();
   if (!normalizedTranslation) {
     return reactionText;
   }
@@ -496,6 +593,7 @@ export async function generateDirectRelationshipBoundaryReply(params: {
   latestUserText: string;
   draftReplyText: string;
   boundary: DirectRelationshipBoundaryAnalysis;
+  structuredReplyPrompt?: string;
 }) : Promise<DirectRelationshipBoundaryReplyResult | null> {
   if (params.boundary.allowedDecisions.length <= 1) {
     return null;
@@ -550,6 +648,12 @@ export async function generateDirectRelationshipBoundaryReply(params: {
       '只有当这个角色按自己的人设，真的会在这句之后直接拒收普通消息，decision 才写 block。',
       '同一句话，不同角色的反应可以完全不同。不要机械地按关键词统一处理。',
       `这轮允许的 decision 只有：${params.boundary.allowedDecisions.join(', ')}`,
+      ...(params.structuredReplyPrompt
+        ? [
+            params.structuredReplyPrompt,
+            `If you use the unified reply envelope, finish the envelope first, then output ${DIRECT_BOUNDARY_PROTOCOL_TOKEN} {"decision":"..."} on a final new line.`,
+          ]
+        : []),
       ...(shouldTranslate ? [buildBoundaryTranslationPrompt(params.character)] : []),
       `最后另起一行输出 ${DIRECT_BOUNDARY_PROTOCOL_TOKEN} {"decision":"..."}`,
       '你显示给用户看的正文、翻译和 decision 必须互相一致。',
@@ -578,7 +682,7 @@ export async function generateDirectRelationshipBoundaryReply(params: {
   }
 
   const parsed = parseDirectBoundaryProtocol(qualityResult.cleanedText);
-  const reactionText = shouldTranslate && parsed.reactionText.trim() && !hasLegacyTranslation(parsed.reactionText)
+  const reactionText = shouldTranslate && parsed.reactionText.trim() && !hasDisplayTranslation(parsed.reactionText)
     ? await backfillBoundaryTranslation({
         activeConfig: params.activeConfig,
         reactionText: parsed.reactionText,

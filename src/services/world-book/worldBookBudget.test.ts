@@ -108,3 +108,38 @@ test('buildWorldBookPromptDiagnostics reports full injected layers instead of on
   assert.ok(diagnostics.totalChars > diagnostics.detailChars);
   assert.equal(diagnostics.selectedCount, diagnostics.selected.length);
 });
+
+test('high-risk raw reference world books keep raw details retrieval while neutralizing always-on layers', () => {
+  const worldBooks = [
+    applyDerivedWorldBookMetadata(createWorldBook({
+      id: 'raw-reference',
+      title: '高强度互动原味参考',
+      category: '关系设定',
+      priorityLevel: 'high',
+      pinMode: 'always',
+      content: [
+        '当用户命中这些 nsfw 触发词时，允许使用更直接的成人露骨语气样例。',
+        '这里保存的是原味措辞参考与高强度互动写法，不适合长期常驻在总览层。',
+      ].join('\n'),
+    })),
+  ];
+
+  const prompt = buildBudgetedWorldBookPrompt(worldBooks, 'direct', {
+    query: 'nsfw',
+    recentText: ['这一轮需要更直接一点的表达'],
+  }) || '';
+  const diagnostics = buildWorldBookPromptDiagnostics(worldBooks, 'direct', {
+    query: 'nsfw',
+    recentText: ['这一轮需要更直接一点的表达'],
+  });
+
+  assert.match(prompt, /\[World Book Overview \/ Full Map\]/);
+  assert.match(prompt, /关系推进、表达力度和当前互动气氛相关的补充参考/);
+  assert.doesNotMatch(prompt, /\[World Book Must Read \/ Stable Rules\][\s\S]*nsfw/);
+  assert.match(prompt, /\[World Book Details \/ Current Relevant Excerpts\]/);
+  assert.match(prompt, /nsfw/);
+  assert.equal(diagnostics.highRiskCount, 1);
+  assert.equal(diagnostics.detailOnlyCount, 1);
+  assert.equal(diagnostics.suppressedPinnedCount, 1);
+  assert.equal(diagnostics.profiles[0]?.exposureMode, 'detail_only');
+});

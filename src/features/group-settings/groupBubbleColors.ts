@@ -12,12 +12,18 @@ function normalizeBubbleColor(color?: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(trimmed || '') ? trimmed! : DEFAULT_BUBBLE_COLOR;
 }
 
+function getMemberBubbleColors(
+  group: { memberBubbleColors?: ChatGroup['memberBubbleColors'] },
+): NonNullable<ChatGroup['memberBubbleColors']> {
+  return Array.isArray(group.memberBubbleColors) ? group.memberBubbleColors : [];
+}
+
 export function sanitizeGroupMemberBubbleColors(
   group: Pick<ChatGroup, 'memberIds' | 'creatorId'> & { memberBubbleColors?: ChatGroup['memberBubbleColors'] },
 ): GroupMemberBubbleColor[] {
   const allowedIds = new Set(['user', group.creatorId, ...(group.memberIds || [])]);
 
-  return (group.memberBubbleColors || [])
+  return getMemberBubbleColors(group)
     .filter((item): item is NonNullable<ChatGroup['memberBubbleColors']>[number] => !!item)
     .map((item) => ({
       memberId: typeof item.memberId === 'string' ? item.memberId : '',
@@ -30,7 +36,7 @@ export function getGroupMemberBubbleColor(
   group: { memberBubbleColors?: ChatGroup['memberBubbleColors'] },
   memberId: string,
 ): string | null {
-  const item = (group.memberBubbleColors || []).find((entry) => entry.memberId === memberId);
+  const item = getMemberBubbleColors(group).find((entry) => entry.memberId === memberId);
   if (!item) {
     return null;
   }
