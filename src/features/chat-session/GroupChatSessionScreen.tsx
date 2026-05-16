@@ -54,7 +54,7 @@ import { buildGroupChatSceneInput } from '../../services/scene-inputs/buildGroup
 import { persistSceneSettlementBatch } from '../../services/memory/sceneSettlement';
 import { buildGroupOfflineSharedSettlement } from '../../services/group-offline/buildGroupOfflineSharedSettlement';
 import { createCharacterDirectory } from '../character-domain/useCharacterDirectory';
-import { useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
+import { splitGroupReplyIntoMessages, useGroupChatRuntime } from '../chat-runtime/useGroupChatRuntime';
 import { getDisplayableAssetValue } from '../persistence/persistentAssetRef';
 import { saveUploadedBlob, saveUploadedFile } from '../persistence/persistentAssetService';
 import { useResolvedPersistentValue } from '../persistence/useResolvedPersistentValue';
@@ -64,6 +64,9 @@ import {
   createAssignDutyAdminSystemMessage,
   createApproveAdminNominationSystemMessage,
   createApproveJoinRequestSystemMessage,
+  createActorMuteMemberSystemMessage,
+  createActorRemoveMemberSystemMessage,
+  createActorUnmuteMemberSystemMessage,
   createCancelAdminSystemMessage,
   createClearMemberBadgeSystemMessage,
   createClearDutyAdminSystemMessage,
@@ -71,11 +74,13 @@ import {
   createExpireAdminNominationSystemMessage,
   createExpireDutyAdminSystemMessage,
   createExpireJoinRequestSystemMessage,
+  createExpireMuteMemberSystemMessage,
   createExpireTemporaryPermissionSystemMessage,
   createGrantTemporaryPermissionSystemMessage,
   createInviteMemberSystemMessage,
   createLaunchGroupFeatureSystemMessage,
   createLeaveGroupSystemMessage,
+  createMuteMemberSystemMessage,
   createRemoveMemberSystemMessage,
   createRevealGroupAwarenessSystemMessage,
   createRejectAdminNominationSystemMessage,
@@ -83,6 +88,7 @@ import {
   createRevokeTemporaryPermissionSystemMessage,
   createSetAdminSystemMessage,
   createSetMemberBadgeSystemMessage,
+  createUnmuteMemberSystemMessage,
 } from '../group-settings/groupSystemMessages';
 import {
   canEditGroupNotice,
@@ -115,6 +121,15 @@ import {
   getAdminNominationCooldownEntry,
   getNearestAdminNominationCooldownExpiryAt,
 } from '../group-settings/groupGovernanceState';
+import {
+  cleanupExpiredMutedMemberEntries,
+  getActiveMutedMemberEntries,
+  getMutedMemberEntry,
+  getNearestMutedMemberExpiryAt,
+  isGroupMemberMuted,
+  removeMutedMemberEntry,
+  upsertMutedMemberEntry,
+} from '../group-settings/groupMutedMembers';
 import {
   canManageGroupAdmins,
   canManageGroupMembers,
@@ -149,6 +164,11 @@ import {
   isPendingJoinRequestForMember,
   resolveGroupGovernanceMessage,
 } from './groupGovernanceCards';
+import {
+  parseModerationDurationMs,
+  resolveExplicitModerationCommand,
+  resolveRequestedModerationAction,
+} from './groupModerationCommands';
 import { buildScopedBubbleThemeCss, buildScopedBubbleVariantCss, buildScopedElementThemeCss, extractBubbleTextStyle, hasBubbleThemeCss, parseBubbleStyleCss, sanitizeBubbleSurfaceStyle } from './bubbleStyleCss';
 import { buildScopedAvatarFrameThemeCss } from './avatarFrameStyleCss';
 import { getThemeSelectedFontStack } from '../theme/themeTypography';
@@ -414,6 +434,11 @@ type GroupAdminNominationInitiativePlan =
   | { action: 'none' }
   | { action: 'nominate'; nomineeId: string };
 
+type GroupModerationInitiativePlan =
+  | { action: 'none' }
+  | { action: 'mute'; targetId: string }
+  | { action: 'remove'; targetId: string };
+
 function parseGroupFeatureInitiativePlan(rawText: string): GroupFeatureInitiativePlan {
   const trimmed = rawText.trim();
   const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
@@ -512,6 +537,32 @@ function parseGroupAdminNominationInitiativePlan(
   return { action: 'none' };
 }
 
+function parseGroupModerationInitiativePlan(
+  rawText: string,
+  allowedTargetIds: string[],
+): GroupModerationInitiativePlan {
+  const candidates = extractCandidateJsonObjects(rawText);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { action?: string; targetId?: string };
+      const action = (parsed.action || '').trim().toLowerCase();
+      const targetId = (parsed.targetId || '').trim();
+
+      if ((action === 'mute' || action === 'remove') && targetId && allowedTargetIds.includes(targetId)) {
+        return { action, targetId } as GroupModerationInitiativePlan;
+      }
+      if (action === 'none') {
+        return { action: 'none' };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { action: 'none' };
+}
+
 function pickGovernanceReactionSpeakers(params: {
   members: Character[];
   history: ChatMessage[];
@@ -561,6 +612,22 @@ function pickGovernanceReactionSpeakers(params: {
   });
 
   return selectedMembers;
+}
+
+function resolveMuteDurationDraftMs(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const durationMs = parseModerationDurationMs(trimmed)
+    ?? (/^\d+$/.test(trimmed) ? Number(trimmed) * 60 * 1000 : undefined);
+
+  if (!durationMs || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return null;
+  }
+
+  return durationMs;
 }
 
 function shouldShowChatTimeDivider(
@@ -653,6 +720,19 @@ function normalizeInvitedReply(text: string, speaker: Character): string {
   }
 
   return normalized.replace(/^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/g, '').trim();
+}
+
+function buildGeneratedGroupReplyMessages(params: {
+  speaker: Character;
+  text: string;
+  baseTimestamp: number;
+}): ChatMessage[] {
+  const normalizedReply = normalizeInvitedReply(params.text, params.speaker);
+  if (!normalizedReply) {
+    return [];
+  }
+
+  return splitGroupReplyIntoMessages(normalizedReply, params.speaker, params.baseTimestamp);
 }
 
 const formatMessagePreview = (text: string | undefined): string => {
@@ -943,10 +1023,14 @@ export function GroupChatSessionScreen({
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [muteDurationSheet, setMuteDurationSheet] = useState<{ memberId: string; memberName: string } | null>(null);
+  const [muteDurationMode, setMuteDurationMode] = useState<'timed' | 'manual'>('timed');
+  const [muteDurationDraft, setMuteDurationDraft] = useState('30m');
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isRevealingGroup, setIsRevealingGroup] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false);
+  const [isUpdatingMute, setIsUpdatingMute] = useState(false);
   const [isUpdatingDynamicPermissions, setIsUpdatingDynamicPermissions] = useState(false);
   const [isUpdatingBadge, setIsUpdatingBadge] = useState(false);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
@@ -973,8 +1057,10 @@ export function GroupChatSessionScreen({
   const latestGroupBackgroundRef = useRef(group.groupBackground || '');
   const lastProcessedInitiativeTriggerRef = useRef<number | null>(null);
   const lastProcessedGovernanceTriggerRef = useRef<number | null>(null);
+  const processedModerationCommandMessageKeysRef = useRef<Set<string>>(new Set());
   const lastInitiativeAtRef = useRef(0);
   const lastGovernanceInitiativeAtRef = useRef(0);
+  const lastModerationInitiativeAtRef = useRef(0);
   const longPressTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1033,6 +1119,7 @@ export function GroupChatSessionScreen({
   const currentTemporaryPermissionGrants = Array.isArray(group.temporaryPermissionGrants)
     ? group.temporaryPermissionGrants
     : [];
+  const currentMutedMemberEntries = getActiveMutedMemberEntries(group);
   const currentMemberBadges = Array.isArray(group.memberBadges)
     ? group.memberBadges
     : [];
@@ -1165,7 +1252,10 @@ export function GroupChatSessionScreen({
         hasTemporaryManagedFeatureGrant: !!temporaryGrant,
         temporaryManagedFeatureGrantExpiresAt: temporaryGrant?.expiresAt,
         temporaryManagedFeatureGrantRemainingUses: temporaryGrant?.remainingUses,
-        nominationCooldownUntil: getAdminNominationCooldownEntry(group, member.id)?.cooldownUntil,
+      nominationCooldownUntil: getAdminNominationCooldownEntry(group, member.id)?.cooldownUntil,
+      isMuted: isGroupMemberMuted(group, member.id),
+      mutedAt: getMutedMemberEntry(group, member.id)?.mutedAt,
+      muteExpiresAt: getMutedMemberEntry(group, member.id)?.expiresAt,
       };
     }),
   ];
@@ -1236,6 +1326,49 @@ export function GroupChatSessionScreen({
 
     const timeoutMs = Math.max(250, nextExpiryAt - Date.now() + 250);
     const timer = window.setTimeout(runCleanup, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    group,
+    onUpdateGroup,
+    resolveGroupManagedMemberName,
+    setHistory,
+  ]);
+
+  useEffect(() => {
+    const runMuteCleanup = () => {
+      const cleanup = cleanupExpiredMutedMemberEntries(group);
+      if (!cleanup) {
+        return;
+      }
+
+      const nextMessages: ChatMessage[] = [];
+      let nextTimestamp = Date.now();
+      cleanup.expiredEntries.forEach((entry) => {
+        nextMessages.push(createExpireMuteMemberSystemMessage(
+          resolveGroupManagedMemberName(entry.memberId),
+          nextTimestamp,
+        ));
+        nextTimestamp += 1;
+      });
+
+      onUpdateGroup(cleanup.patch);
+      if (nextMessages.length > 0) {
+        setHistory((prev) => [...prev, ...nextMessages]);
+      }
+    };
+
+    runMuteCleanup();
+
+    const nextExpiryAt = getNearestMutedMemberExpiryAt(group);
+    if (!nextExpiryAt) {
+      return;
+    }
+
+    const timeoutMs = Math.max(250, nextExpiryAt - Date.now() + 250);
+    const timer = window.setTimeout(runMuteCleanup, timeoutMs);
 
     return () => {
       window.clearTimeout(timer);
@@ -1545,6 +1678,7 @@ export function GroupChatSessionScreen({
       manualReplyEnabled: group.manualReplyEnabled,
       voiceRepliesEnabled: group.voiceRepliesEnabled,
       voiceReplyMemberIds: group.voiceReplyMemberIds,
+      mutedMemberIds: currentMutedMemberEntries.map((entry) => entry.memberId),
       topicState: group.topicState,
       groupShortTermSummary: group.groupShortTermSummary,
       groupMemberPerspectiveSummaries: group.groupMemberPerspectiveSummaries,
@@ -2940,14 +3074,29 @@ export function GroupChatSessionScreen({
         return;
       }
 
+      const reactionMessages: ChatMessage[] = [];
+      reactions.forEach((reaction) => {
+        const speaker = participantMembers.find((member) => member.id === reaction.characterId);
+        if (!speaker) {
+          return;
+        }
+
+        reactionMessages.push(
+          ...buildGeneratedGroupReplyMessages({
+            speaker,
+            text: reaction.text,
+            baseTimestamp: Date.now() + reactionMessages.length + 1,
+          }),
+        );
+      });
+
+      if (reactionMessages.length === 0) {
+        return;
+      }
+
       setHistory((prev) => [
         ...prev,
-        ...reactions.map((reaction, index) => ({
-          role: 'model' as const,
-          text: reaction.text,
-          timestamp: Date.now() + index + 1,
-          senderCharacterId: reaction.characterId,
-        })),
+        ...reactionMessages,
       ]);
     } catch (error) {
       console.error('[group-chat] Failed to generate offline return reactions', error);
@@ -3031,7 +3180,10 @@ export function GroupChatSessionScreen({
       return;
     }
 
-    const initiativeCandidates = members.filter((member) => canLaunchManagedGroupFeature(group, member.id));
+    const initiativeCandidates = members.filter((member) => (
+      canLaunchManagedGroupFeature(group, member.id)
+      && !isGroupMemberMuted(group, member.id)
+    ));
     const initiator = initiativeCandidates[Math.floor(Math.random() * initiativeCandidates.length)];
     if (!initiator) {
       return;
@@ -3170,6 +3322,7 @@ export function GroupChatSessionScreen({
     ));
     const eligibleAdminNominees = members.filter((member) => (
       resolveGroupMemberRole(group, member.id) === 'member'
+      && !isGroupMemberMuted(group, member.id)
       && canNominateMember(group, member.id)
       && !history.some((message) => isPendingAdminNominationForMember(message, member.id))
     ));
@@ -3251,7 +3404,10 @@ export function GroupChatSessionScreen({
           return;
         }
 
-        const nominationProposers = members.filter((member) => eligibleAdminNominees.some((nominee) => nominee.id !== member.id));
+        const nominationProposers = members.filter((member) => (
+          !isGroupMemberMuted(group, member.id)
+          && eligibleAdminNominees.some((nominee) => nominee.id !== member.id)
+        ));
         const proposer = nominationProposers[Math.floor(Math.random() * nominationProposers.length)];
         if (!proposer) {
           return;
@@ -3463,19 +3619,18 @@ export function GroupChatSessionScreen({
         temperature: 0.7,
       });
 
-      const normalizedReply = normalizeInvitedReply(responseText, invitedCharacter);
-      if (!normalizedReply) {
+      const generatedMessages = buildGeneratedGroupReplyMessages({
+        speaker: invitedCharacter,
+        text: responseText,
+        baseTimestamp: timestamp + 1,
+      });
+      if (generatedMessages.length === 0) {
         return;
       }
 
       setHistory((prev) => [
         ...prev,
-        {
-          role: 'model',
-          text: `${invitedCharacter.name}: ${normalizedReply}`,
-          timestamp: timestamp + 1,
-          senderCharacterId: invitedCharacter.id,
-        },
+        ...generatedMessages,
       ]);
     } catch (error) {
       console.error('Failed to generate invited member reply:', error);
@@ -3504,9 +3659,8 @@ export function GroupChatSessionScreen({
     }
 
     const contextMembers = params.contextMembers || members;
-    const candidateMembers = params.kind === 'join-request'
-      ? members
-      : contextMembers;
+    const candidateMembers = (params.kind === 'join-request' ? members : contextMembers)
+      .filter((member) => !isGroupMemberMuted(params.groupOverride || group, member.id));
 
     const selectedSpeakers = pickGovernanceReactionSpeakers({
       members: candidateMembers,
@@ -3571,17 +3725,135 @@ export function GroupChatSessionScreen({
           continue;
         }
 
-        const reactionMessage: ChatMessage = {
-          role: 'model',
+        const reactionMessages = buildGeneratedGroupReplyMessages({
+          speaker,
           text: nextText,
-          timestamp: Date.now() + Math.floor(Math.random() * 120) + workingHistory.length,
-          senderCharacterId: speaker.id,
-        };
+          baseTimestamp: Date.now() + Math.floor(Math.random() * 120) + workingHistory.length,
+        });
+        if (reactionMessages.length === 0) {
+          continue;
+        }
 
-        workingHistory = [...workingHistory, reactionMessage];
-        setHistory((prev) => [...prev, reactionMessage]);
+        workingHistory = [...workingHistory, ...reactionMessages];
+        setHistory((prev) => [...prev, ...reactionMessages]);
       } catch (error) {
         console.error('[group-chat] Failed to generate governance follow-up reaction', error);
+        break;
+      }
+    }
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    hasUsableConfig,
+    manualReplyModeEnabled,
+    members,
+    perception,
+  ]);
+
+  const runModerationFollowupReactions = useCallback(async (params: {
+    kind: 'mute' | 'unmute' | 'remove';
+    targetMemberId: string;
+    targetMemberName: string;
+    actorId?: string;
+    actorName?: string;
+    currentHistory: ChatMessage[];
+    contextMembers?: Character[];
+    groupOverride?: ChatGroup;
+  }) => {
+    if (!activeConfig || !hasUsableConfig || manualReplyModeEnabled) {
+      return;
+    }
+
+    const runtimeGroup = params.groupOverride || group;
+    const baseMembers = params.contextMembers || members;
+    const candidateMembers = baseMembers.filter((member) => {
+      if (params.kind === 'unmute' && member.id === params.targetMemberId) {
+        return true;
+      }
+      if (member.id === params.targetMemberId) {
+        return false;
+      }
+      return !isGroupMemberMuted(runtimeGroup, member.id);
+    });
+
+    const selectedSpeakers = pickGovernanceReactionSpeakers({
+      members: candidateMembers,
+      history: params.currentHistory,
+      priorityMemberIds: [
+        params.actorId,
+        params.kind === 'unmute' ? params.targetMemberId : undefined,
+      ].filter((value): value is string => !!value),
+      maxCount: params.kind === 'remove' ? 1 : 2,
+    });
+
+    if (selectedSpeakers.length === 0) {
+      return;
+    }
+
+    let workingHistory = params.currentHistory;
+    for (const speaker of selectedSpeakers) {
+      const systemPrompt = buildGroupChatPrompt({
+        sceneInput: buildGroupChatSceneInput({
+          speaker,
+          members: baseMembers,
+          group: runtimeGroup,
+          history: workingHistory,
+          userName: groupUserDisplayName,
+          directChatHistory,
+          perception,
+        }),
+      });
+
+      const eventLabel = params.kind === 'mute'
+        ? `${params.targetMemberName} 刚刚被禁言了`
+        : params.kind === 'unmute'
+          ? `${params.targetMemberName} 刚刚被解除禁言了`
+          : `${params.targetMemberName} 刚刚被移出群聊了`;
+      const roleContext = [
+        params.actorId && speaker.id === params.actorId ? '刚才这个管理动作是你做的。' : '',
+        params.kind === 'unmute' && speaker.id === params.targetMemberId ? '刚刚被解除禁言的人是你。' : '',
+      ].filter(Boolean).join('\n');
+
+      try {
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                eventLabel,
+                roleContext,
+                '请判断：这个角色现在会不会在群里自然接一句。',
+                '只允许短促、像真群聊里会冒出来的反应，不要总结流程，不要解释规则，不要长篇发言。',
+                '如果这个角色此刻不需要说话，就留空。',
+                '只输出 JSON，不要解释。',
+                '格式：{"message":"要发出的群聊短消息；如果不发就留空"}',
+              ].filter(Boolean).join('\n'),
+            },
+          ],
+        });
+
+        const nextText = normalizeInvitedReply(parseGovernanceReactionMessage(response), speaker);
+        if (!nextText) {
+          continue;
+        }
+
+        const reactionMessages = buildGeneratedGroupReplyMessages({
+          speaker,
+          text: nextText,
+          baseTimestamp: Date.now() + Math.floor(Math.random() * 120) + workingHistory.length,
+        });
+        if (reactionMessages.length === 0) {
+          continue;
+        }
+
+        workingHistory = [...workingHistory, ...reactionMessages];
+        setHistory((prev) => [...prev, ...reactionMessages]);
+      } catch (error) {
+        console.error('[group-chat] Failed to generate moderation follow-up reaction', error);
         break;
       }
     }
@@ -3678,6 +3950,7 @@ export function GroupChatSessionScreen({
     }
 
     setIsRemovingMember(true);
+    lastModerationInitiativeAtRef.current = Date.now();
 
     onUpdateGroup({
       memberIds: group.memberIds.filter((id) => id !== memberId),
@@ -3685,13 +3958,25 @@ export function GroupChatSessionScreen({
       ...buildRevealGroupPatch(group, memberId, 'former_member', Date.now()),
       dutyAdminAssignment: group.dutyAdminAssignment?.memberId === memberId ? undefined : group.dutyAdminAssignment,
       temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== memberId),
+      mutedMemberEntries: currentMutedMemberEntries.filter((entry) => entry.memberId !== memberId),
       voiceReplyMemberIds: (group.voiceReplyMemberIds || []).filter((id) => id !== memberId),
     });
 
-    setHistory((prev) => [
-      ...prev,
-      createRemoveMemberSystemMessage(memberName, Date.now()),
-    ]);
+    const removalMessage = createRemoveMemberSystemMessage(memberName, Date.now());
+    const nextHistory = [...history, removalMessage];
+    setHistory(nextHistory);
+    void runModerationFollowupReactions({
+      kind: 'remove',
+      targetMemberId: memberId,
+      targetMemberName: memberName,
+      currentHistory: nextHistory,
+      contextMembers: members.filter((item) => item.id !== memberId),
+      groupOverride: {
+        ...group,
+        memberIds: group.memberIds.filter((id) => id !== memberId),
+        mutedMemberEntries: currentMutedMemberEntries.filter((entry) => entry.memberId !== memberId),
+      },
+    });
 
     setIsRemovingMember(false);
   };
@@ -3754,6 +4039,449 @@ export function GroupChatSessionScreen({
 
     setIsUpdatingAdmin(false);
   };
+
+  const handleToggleMute = async (memberId: string) => {
+    const member = members.find((item) => item.id === memberId);
+    if (!member || isUpdatingMute || !canManageGroupMembers(group, 'user') || isProtectedGroupMember(group, memberId)) {
+      return;
+    }
+
+    const memberName = member.remarkName?.trim() || member.name;
+    const mutedEntry = getMutedMemberEntry(group, memberId);
+    const timestamp = Date.now();
+    setIsUpdatingMute(true);
+    lastModerationInitiativeAtRef.current = timestamp;
+
+    if (mutedEntry) {
+      const nextPatch = removeMutedMemberEntry(group, memberId);
+      const systemMessage = createUnmuteMemberSystemMessage(memberName, timestamp);
+      const nextHistory = [...history, systemMessage];
+
+      onUpdateGroup(nextPatch);
+      setHistory(nextHistory);
+      void runModerationFollowupReactions({
+        kind: 'unmute',
+        targetMemberId: memberId,
+        targetMemberName: memberName,
+        currentHistory: nextHistory,
+        groupOverride: {
+          ...group,
+          ...nextPatch,
+        },
+      });
+      setIsUpdatingMute(false);
+      return;
+    }
+
+    setIsUpdatingMute(false);
+    setMuteDurationMode('timed');
+    setMuteDurationDraft('30m');
+    setMuteDurationSheet({ memberId, memberName });
+  };
+
+  const handleConfirmMuteDuration = async () => {
+    if (!muteDurationSheet || isUpdatingMute) {
+      return;
+    }
+
+    const member = members.find((item) => item.id === muteDurationSheet.memberId);
+    if (!member || isGroupMemberMuted(group, muteDurationSheet.memberId)) {
+      setMuteDurationSheet(null);
+      return;
+    }
+
+    const durationMs = muteDurationMode === 'manual'
+      ? undefined
+      : resolveMuteDurationDraftMs(muteDurationDraft);
+
+    if (muteDurationMode === 'timed' && !durationMs) {
+      window.alert('禁言时长格式无效，请输入例如 30m、2h、1d。');
+      return;
+    }
+
+    const timestamp = Date.now();
+    setIsUpdatingMute(true);
+    lastModerationInitiativeAtRef.current = timestamp;
+
+    const nextPatch = upsertMutedMemberEntry(group, {
+      memberId: muteDurationSheet.memberId,
+      mutedById: 'user',
+      mutedAt: timestamp,
+      ...(typeof durationMs === 'number' ? { expiresAt: timestamp + durationMs } : {}),
+    });
+    const systemMessage = createMuteMemberSystemMessage(muteDurationSheet.memberName, timestamp);
+    const nextHistory = [...history, systemMessage];
+
+    onUpdateGroup(nextPatch);
+    setHistory(nextHistory);
+    setMuteDurationSheet(null);
+    void runModerationFollowupReactions({
+      kind: 'mute',
+      targetMemberId: muteDurationSheet.memberId,
+      targetMemberName: muteDurationSheet.memberName,
+      currentHistory: nextHistory,
+      groupOverride: {
+        ...group,
+        ...nextPatch,
+      },
+    });
+    setIsUpdatingMute(false);
+  };
+
+  async function applyRoleModerationAction(params: {
+    actor: Character;
+    action: 'mute' | 'unmute' | 'remove';
+    targetMemberId: string;
+    durationMs?: number;
+  }) {
+    const actorName = params.actor.remarkName?.trim() || params.actor.name;
+    if (!canManageGroupMembers(group, params.actor.id)) {
+      return;
+    }
+    const targetMember = members.find((member) => member.id === params.targetMemberId);
+    if (
+      !targetMember
+      || resolveGroupMemberRole(group, params.targetMemberId) !== 'member'
+      || isProtectedGroupMember(group, params.targetMemberId)
+    ) {
+      return;
+    }
+
+    const targetName = targetMember.remarkName?.trim() || targetMember.name;
+    const timestamp = Date.now();
+    lastModerationInitiativeAtRef.current = timestamp;
+
+    if (params.action === 'mute') {
+      if (isGroupMemberMuted(group, params.targetMemberId)) {
+        return;
+      }
+
+      const nextPatch = upsertMutedMemberEntry(group, {
+        memberId: params.targetMemberId,
+        mutedById: params.actor.id,
+        mutedAt: timestamp,
+        ...(typeof params.durationMs === 'number' ? { expiresAt: timestamp + params.durationMs } : {}),
+      });
+      const systemMessage = createActorMuteMemberSystemMessage({
+        actorName,
+        memberName: targetName,
+        timestamp,
+      });
+      const nextHistory = [...history, systemMessage];
+
+      onUpdateGroup(nextPatch);
+      setHistory(nextHistory);
+      void runModerationFollowupReactions({
+        kind: 'mute',
+        targetMemberId: params.targetMemberId,
+        targetMemberName: targetName,
+        actorId: params.actor.id,
+        actorName,
+        currentHistory: nextHistory,
+        groupOverride: {
+          ...group,
+          ...nextPatch,
+        },
+      });
+      return;
+    }
+
+    if (params.action === 'unmute') {
+      const mutedEntry = getMutedMemberEntry(group, params.targetMemberId);
+      if (!mutedEntry) {
+        return;
+      }
+
+      const nextPatch = removeMutedMemberEntry(group, params.targetMemberId);
+      const systemMessage = createActorUnmuteMemberSystemMessage({
+        actorName,
+        memberName: targetName,
+        timestamp,
+      });
+      const nextHistory = [...history, systemMessage];
+
+      onUpdateGroup(nextPatch);
+      setHistory(nextHistory);
+      void runModerationFollowupReactions({
+        kind: 'unmute',
+        targetMemberId: params.targetMemberId,
+        targetMemberName: targetName,
+        actorId: params.actor.id,
+        actorName,
+        currentHistory: nextHistory,
+        groupOverride: {
+          ...group,
+          ...nextPatch,
+        },
+      });
+      return;
+    }
+
+    const nextPatch: Partial<ChatGroup> = {
+      memberIds: group.memberIds.filter((id) => id !== params.targetMemberId),
+      adminIds: (group.adminIds || []).filter((id) => id !== params.targetMemberId),
+      ...buildRevealGroupPatch(group, params.targetMemberId, 'former_member', timestamp),
+      dutyAdminAssignment: group.dutyAdminAssignment?.memberId === params.targetMemberId ? undefined : group.dutyAdminAssignment,
+      temporaryPermissionGrants: currentTemporaryPermissionGrants.filter((grant) => grant.memberId !== params.targetMemberId),
+      mutedMemberEntries: currentMutedMemberEntries.filter((entry) => entry.memberId !== params.targetMemberId),
+      voiceReplyMemberIds: (group.voiceReplyMemberIds || []).filter((id) => id !== params.targetMemberId),
+    };
+    const systemMessage = createActorRemoveMemberSystemMessage({
+      actorName,
+      memberName: targetName,
+      timestamp,
+    });
+    const nextHistory = [...history, systemMessage];
+
+    onUpdateGroup(nextPatch);
+    setHistory(nextHistory);
+    void runModerationFollowupReactions({
+      kind: 'remove',
+      targetMemberId: params.targetMemberId,
+      targetMemberName: targetName,
+      actorId: params.actor.id,
+      actorName,
+      currentHistory: nextHistory,
+      contextMembers: members.filter((member) => member.id !== params.targetMemberId),
+      groupOverride: {
+        ...group,
+        ...nextPatch,
+      },
+    });
+  }
+
+  useEffect(() => {
+    const recentMessages = history.slice(-8);
+
+    recentMessages.forEach((message, index) => {
+      if (
+        message.role !== 'model'
+        || message.isSystem
+        || !message.senderCharacterId
+      ) {
+        return;
+      }
+
+      const actor = members.find((member) => member.id === message.senderCharacterId);
+      if (!actor || !canManageGroupMembers(group, actor.id)) {
+        return;
+      }
+
+      const messageKey = getGroupMessageSelectionKey(message);
+      if (processedModerationCommandMessageKeysRef.current.has(messageKey)) {
+        return;
+      }
+      processedModerationCommandMessageKeysRef.current.add(messageKey);
+
+      const targetMembers = members
+        .filter((member) => member.id !== actor.id && member.id !== group.creatorId)
+        .map((member) => ({
+          id: member.id,
+          name: member.name,
+          remarkName: member.remarkName,
+        }));
+
+      const directCommand = resolveExplicitModerationCommand({
+        message,
+        members: targetMembers,
+      });
+      if (directCommand) {
+        void applyRoleModerationAction({
+          actor,
+          action: directCommand.action,
+          targetMemberId: directCommand.targetMemberId,
+          durationMs: directCommand.durationMs,
+        });
+        return;
+      }
+
+      const requestSource = recentMessages
+        .slice(0, index)
+        .reverse()
+        .find((candidate) => candidate.role === 'user' && !candidate.isSystem);
+      if (!requestSource) {
+        return;
+      }
+
+      const requestedCommand = resolveRequestedModerationAction({
+        userMessage: requestSource,
+        adminReplyText: message.text,
+        members: targetMembers,
+      });
+      if (!requestedCommand) {
+        return;
+      }
+
+      void applyRoleModerationAction({
+        actor,
+        action: requestedCommand.action,
+        targetMemberId: requestedCommand.targetMemberId,
+        durationMs: requestedCommand.durationMs,
+      });
+    });
+  }, [
+    applyRoleModerationAction,
+    group,
+    history,
+    members,
+  ]);
+
+  useEffect(() => {
+    if (!activeConfig || !hasUsableConfig || manualReplyModeEnabled || isLoading || pendingMessage || members.length === 0) {
+      return;
+    }
+
+    const recentNormalMessages = history.filter((message) => (
+      !message.isSystem
+      && !message.groupPollCard
+      && !message.groupRelayCard
+      && !message.groupTaskCard
+      && !message.groupGovernanceCard
+      && !message.groupOfflineCard
+    ));
+    const latestUserMessage = [...recentNormalMessages].reverse().find((message) => message.role === 'user');
+    if (!latestUserMessage) {
+      return;
+    }
+
+    const activeAdminMembers = members.filter((member) => (
+      resolveGroupMemberRole(group, member.id) === 'admin'
+      && !isGroupMemberMuted(group, member.id)
+    ));
+    const moderationTargets = members.filter((member) => (
+      resolveGroupMemberRole(group, member.id) === 'member'
+      && !isGroupMemberMuted(group, member.id)
+    ));
+
+    if (activeAdminMembers.length === 0 || moderationTargets.length === 0) {
+      return;
+    }
+
+    const latestModerationMessage = [...history].reverse().find((message) => (
+      message.isSystem
+      && /\b(?:禁言|移出了群聊|解除.+禁言)\b/.test(message.text)
+    ));
+
+    if (
+      latestModerationMessage
+      && Date.now() - latestModerationMessage.timestamp < 12 * 60 * 1000
+    ) {
+      return;
+    }
+
+    if (Date.now() - lastModerationInitiativeAtRef.current < 12 * 60 * 1000) {
+      return;
+    }
+
+    if (recentNormalMessages.length < 8 || Math.random() > 0.08) {
+      return;
+    }
+
+    const initiator = activeAdminMembers[Math.floor(Math.random() * activeAdminMembers.length)];
+    if (!initiator) {
+      return;
+    }
+
+    const recentSpeakerCounts = new Map<string, number>();
+    recentNormalMessages.slice(-12).forEach((message) => {
+      if (message.senderCharacterId) {
+        recentSpeakerCounts.set(message.senderCharacterId, (recentSpeakerCounts.get(message.senderCharacterId) || 0) + 1);
+      }
+    });
+
+    const candidateTargets = moderationTargets
+      .map((member) => ({
+        member,
+        recentCount: recentSpeakerCounts.get(member.id) || 0,
+      }))
+      .filter((item) => item.recentCount > 0)
+      .sort((left, right) => right.recentCount - left.recentCount)
+      .slice(0, 4);
+
+    if (candidateTargets.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runModerationInitiative = async () => {
+      try {
+        const systemPrompt = buildGroupChatPrompt({
+          sceneInput: buildGroupChatSceneInput({
+            speaker: initiator,
+            members,
+            group,
+            history,
+            userName: groupUserDisplayName,
+            directChatHistory,
+            perception,
+          }),
+        });
+
+        const response = await generateTextFromMessagesWithConfig({
+          activeConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                '你现在是这个群的管理员。',
+                '请判断：当前群聊里有没有必要主动做一次管理动作。',
+                '目标是低频、顺势、像真实群聊里的管理员，不要像机械执法。',
+                '更适合的动作是 mute；remove 只有在真的明显越界或持续闹场时才考虑。',
+                '如果不需要管理，输出 none。',
+                '候选对象：',
+                ...candidateTargets.map((item) => (
+                  `- ${item.member.id} | ${item.member.remarkName?.trim() || item.member.name} | 最近出现 ${item.recentCount} 次`
+                )),
+                '只输出 JSON，不要解释。',
+                '格式：{"action":"none"} 或 {"action":"mute","targetId":"成员id"} 或 {"action":"remove","targetId":"成员id"}',
+              ].join('\n'),
+            },
+          ],
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const plan = parseGroupModerationInitiativePlan(
+          response,
+          candidateTargets.map((item) => item.member.id),
+        );
+
+        if (plan.action === 'none') {
+          return;
+        }
+
+        await applyRoleModerationAction({
+          actor: initiator,
+          action: plan.action,
+          targetMemberId: plan.targetId,
+        });
+      } catch {
+        // Ignore proactive moderation failure and keep the normal group flow running.
+      }
+    };
+
+    void runModerationInitiative();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConfig,
+    directChatHistory,
+    group,
+    groupUserDisplayName,
+    hasUsableConfig,
+    history,
+    isLoading,
+    manualReplyModeEnabled,
+    members,
+    pendingMessage,
+    perception,
+  ]);
 
   const handleResolveJoinRequest = async (messageTimestamp: number, decision: 'approved' | 'rejected') => {
     if (!canCurrentUserApproveGovernance) {
@@ -5417,6 +6145,118 @@ export function GroupChatSessionScreen({
         onSend={sendLocationMessage}
       />
 
+      <AnimatePresence>
+        {muteDurationSheet ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isUpdatingMute) {
+                  setMuteDurationSheet(null);
+                }
+              }}
+              className="absolute inset-0 z-[122] bg-black/28 backdrop-blur-[2px]"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              className="absolute inset-x-0 bottom-0 z-[123] mx-auto w-full max-w-[430px] rounded-t-[32px] border border-zinc-200 bg-white px-5 pb-6 pt-5 shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[18px] font-semibold text-zinc-900">设置禁言时长</div>
+                  <div className="mt-1 text-[13px] leading-5 text-zinc-500">
+                    给 {muteDurationSheet.memberName} 选择一个禁言时长，或者保持到手动解除。
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isUpdatingMute}
+                  onClick={() => setMuteDurationSheet(null)}
+                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 disabled:cursor-not-allowed"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[
+                  { label: '10分钟', value: '10m' },
+                  { label: '30分钟', value: '30m' },
+                  { label: '1小时', value: '1h' },
+                  { label: '1天', value: '1d' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={isUpdatingMute}
+                    onClick={() => {
+                      setMuteDurationMode('timed');
+                      setMuteDurationDraft(option.value);
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+                      muteDurationMode === 'timed' && muteDurationDraft === option.value
+                        ? 'bg-zinc-200 text-zinc-800'
+                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                  <button
+                    type="button"
+                    disabled={isUpdatingMute}
+                    onClick={() => setMuteDurationMode('manual')}
+                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+                      muteDurationMode === 'manual'
+                        ? 'bg-zinc-200 text-zinc-800'
+                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    直到解除
+                </button>
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-2 text-[12px] text-zinc-500">自定义时长</div>
+                <input
+                  value={muteDurationDraft}
+                  disabled={muteDurationMode === 'manual' || isUpdatingMute}
+                  onChange={(event) => {
+                    setMuteDurationMode('timed');
+                    setMuteDurationDraft(event.target.value);
+                  }}
+                  placeholder="例如：45m / 2h / 1d"
+                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-[14px] text-zinc-900 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:text-zinc-400"
+                />
+              </div>
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  disabled={isUpdatingMute}
+                  onClick={() => setMuteDurationSheet(null)}
+                  className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-700 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-400"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdatingMute}
+                  onClick={() => void handleConfirmMuteDuration()}
+                  className="flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-[14px] font-medium text-zinc-800 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-400"
+                >
+                  {isUpdatingMute ? '处理中...' : '确认禁言'}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
+
       <GroupOfflineModal
         isOpen={showOfflineModal}
         group={group}
@@ -5532,6 +6372,7 @@ export function GroupChatSessionScreen({
                 onRevealGroupToMember={handleRevealGroupToMember}
                 onRemoveMember={handleRemoveMember}
                 onToggleAdmin={handleToggleAdmin}
+                onToggleMute={handleToggleMute}
                 onAssignDutyAdmin={handleAssignDutyAdmin}
                 onClearDutyAdmin={handleClearDutyAdmin}
                 onGrantTemporaryPermission={handleGrantTemporaryPermission}
@@ -5546,6 +6387,7 @@ export function GroupChatSessionScreen({
                 isRevealingGroup={isRevealingGroup}
                 isRemovingMember={isRemovingMember}
                 isUpdatingAdmin={isUpdatingAdmin}
+                isUpdatingMute={isUpdatingMute}
                 isUpdatingDynamicPermissions={isUpdatingDynamicPermissions}
                 isUpdatingBadge={isUpdatingBadge}
                 onClearHistory={() => {

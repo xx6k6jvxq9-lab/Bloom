@@ -10,6 +10,10 @@ function createGroupNoticeMessage(text: string, timestamp: number): ChatMessage 
   };
 }
 
+function formatActorLabel(actorName: string | undefined, isSelf: boolean | undefined): string {
+  return isSelf ? '你' : (actorName?.trim() || '管理员');
+}
+
 export function createInviteMemberSystemMessage(invitedName: string, timestamp: number): ChatMessage {
   return createGroupNoticeMessage(`你邀请了 ${invitedName} 进群`, timestamp);
 }
@@ -30,8 +34,56 @@ export function createExpireJoinRequestSystemMessage(memberName: string, timesta
   return createGroupNoticeMessage(`${memberName} 的入群申请已过期`, timestamp);
 }
 
-export function createRemoveMemberSystemMessage(removedName: string, timestamp: number): ChatMessage {
-  return createGroupNoticeMessage(`你将 ${removedName} 移出了群聊`, timestamp);
+export function createRemoveMemberSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你将 ${memberName} 移出了群聊`, timestamp);
+}
+
+export function createActorRemoveMemberSystemMessage(params: {
+  actorName?: string;
+  memberName: string;
+  isSelf?: boolean;
+  timestamp: number;
+}): ChatMessage {
+  return createGroupNoticeMessage(
+    `${formatActorLabel(params.actorName, params.isSelf)}将 ${params.memberName} 移出了群聊`,
+    params.timestamp,
+  );
+}
+
+export function createMuteMemberSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你将 ${memberName} 禁言了`, timestamp);
+}
+
+export function createActorMuteMemberSystemMessage(params: {
+  actorName?: string;
+  memberName: string;
+  isSelf?: boolean;
+  timestamp: number;
+}): ChatMessage {
+  return createGroupNoticeMessage(
+    `${formatActorLabel(params.actorName, params.isSelf)}将 ${params.memberName} 禁言了`,
+    params.timestamp,
+  );
+}
+
+export function createUnmuteMemberSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`你解除了 ${memberName} 的禁言`, timestamp);
+}
+
+export function createExpireMuteMemberSystemMessage(memberName: string, timestamp: number): ChatMessage {
+  return createGroupNoticeMessage(`${memberName} 的禁言已到期`, timestamp);
+}
+
+export function createActorUnmuteMemberSystemMessage(params: {
+  actorName?: string;
+  memberName: string;
+  isSelf?: boolean;
+  timestamp: number;
+}): ChatMessage {
+  return createGroupNoticeMessage(
+    `${formatActorLabel(params.actorName, params.isSelf)}解除了 ${params.memberName} 的禁言`,
+    params.timestamp,
+  );
 }
 
 export function createSetAdminSystemMessage(memberName: string, timestamp: number): ChatMessage {
@@ -101,7 +153,7 @@ export function createLaunchGroupFeatureSystemMessage(params: {
   isSelf: boolean;
   timestamp: number;
 }): ChatMessage {
-  const subject = params.isSelf ? '你' : params.initiatorName;
+  const subject = formatActorLabel(params.initiatorName, params.isSelf);
 
   if (params.kind === 'poll') {
     return createGroupNoticeMessage(`${subject}发起了群投票《${params.title}》`, params.timestamp);

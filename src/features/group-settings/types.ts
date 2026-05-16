@@ -76,4 +76,7 @@ export type GroupSettingsMemberSummary = Pick<Character, 'id' | 'name' | 'remark
     : never;
   joinRequestCooldownUntil?: number;
   nominationCooldownUntil?: number;
+  isMuted?: boolean;
+  mutedAt?: number;
+  muteExpiresAt?: number;
 };

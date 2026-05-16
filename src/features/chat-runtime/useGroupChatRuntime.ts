@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, StickerMetadata, WorldBookEntry } from '../../types';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { ApiConfig, AppSettings, Character, ChatGroup, ChatMessage, PerceptionSettings, StickerMetadata, WorldBookEntry } from '../../types';
 import type { ChatHistory } from '../../types';
 import type { RuntimeChatMessage } from '../../services/ai/runtimeClient';
 import {
+  STRUCTURED_ASSISTANT_REPLY_TOKEN,
+  extractStructuredAssistantReplyPreviewText,
+  normalizeStructuredAssistantReplyToLegacyFormat,
+  parseStructuredAssistantReplyEnvelope,
+  streamStructuredAssistantReply,
+} from '../../services/ai/assistantReplyEnvelope';
+import {
+  evaluateAssistantOutput,
   generateQualityCheckedAssistantReply,
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
@@ -61,6 +69,7 @@ type UseGroupChatRuntimeArgs = {
     manualReplyEnabled?: ChatGroup['manualReplyEnabled'];
     voiceRepliesEnabled?: ChatGroup['voiceRepliesEnabled'];
     voiceReplyMemberIds?: ChatGroup['voiceReplyMemberIds'];
+    mutedMemberIds?: string[];
     topicState?: ChatGroup['topicState'];
     groupShortTermSummary?: ChatGroup['groupShortTermSummary'];
     groupMemberPerspectiveSummaries?: ChatGroup['groupMemberPerspectiveSummaries'];
@@ -107,6 +116,9 @@ type UseGroupChatRuntimeResult = {
     currentHistory: ChatMessage[];
   }) => Promise<void>;
 };
+
+const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
+const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 
 const EXTRA_SPEAKER_KEYWORDS = [
   '\u5176\u4ed6\u4eba',
@@ -415,7 +427,23 @@ function buildRuntimeMessages(params: {
   ];
 }
 
+function buildStructuredGroupAssistantReplyPrompt(): string {
+  return [
+    '## 群聊统一回复协议',
+    `如果本轮有可显示的群聊正文，优先只输出一个可机读协议，格式固定为：${STRUCTURED_ASSISTANT_REPLY_TOKEN} {"items":[{"kind":"text","text":"第一条群聊消息"}]}`,
+    'items 的顺序就是最终群聊气泡顺序；普通群聊主回复只使用 text item，最多 3 个。',
+    '每个 text item 的 text 都必须是一条最终可显示的群聊消息，不要再写说话人前缀，不要写解释、注释、代码块或额外字段。',
+    '如果需要 [reply: Name]、[notice]、[recall] 或 [sticker] 这类轻量 cue，把 cue 直接写进对应 text 字段里。',
+    '除非后续系统另行要求，不要输出 game_card、transfer、token 等其他 item。',
+  ].join('\n');
+}
+
 function normalizeGeneratedReply(text: string, speaker: Character): string {
+  const structuredPreview = extractStructuredAssistantReplyPreviewText(text);
+  if (structuredPreview) {
+    return structuredPreview;
+  }
+
   return stripAssistantSpeakerPrefix(text, [
     speaker.name,
     speaker.remarkName?.trim() || '',
@@ -1013,7 +1041,78 @@ function normalizeConversationalParticleLead(text: string): string[] {
 
 const GROUP_MAX_BUBBLES = 3;
 
-function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimestamp = Date.now()): ChatMessage[] {
+function splitStructuredGroupReplyEnvelopeIntoMessages(
+  text: string,
+  speaker: Character,
+  baseTimestamp = Date.now(),
+): ChatMessage[] | null {
+  const envelope = parseStructuredAssistantReplyEnvelope(text);
+  if (!envelope) {
+    return null;
+  }
+
+  const messages: ChatMessage[] = [];
+  for (const item of envelope.items.slice(0, GROUP_MAX_BUBBLES)) {
+    if (item.kind === 'text') {
+      const normalizedText = item.text.trim();
+      if (!normalizedText) {
+        continue;
+      }
+
+      const cue = parseActionCue(normalizedText);
+      messages.push({
+        role: 'model',
+        text: cue.kind === 'notice' ? `[notice] ${cue.content || normalizedText}` : `${speaker.name}: ${normalizedText}`,
+        timestamp: baseTimestamp + messages.length,
+        senderCharacterId: speaker.id,
+        ...(item.translation?.trim() ? { translation: item.translation.trim() } : {}),
+        isSystem: cue.kind === 'notice' ? true : undefined,
+      });
+      continue;
+    }
+
+    if (item.kind === 'game_card') {
+      messages.push({
+        role: 'model',
+        text: `[GAME_CARD] ${JSON.stringify(item.payload)}`,
+        contentType: 'game-card',
+        senderCharacterId: speaker.id,
+        timestamp: baseTimestamp + messages.length,
+        ...(item.translation?.trim() ? { translation: item.translation.trim() } : {}),
+      });
+      continue;
+    }
+
+    if (item.kind === 'transfer') {
+      messages.push({
+        role: 'model',
+        text: `[转账 ${item.amount}]`,
+        contentType: 'transfer',
+        transferStatus: 'pending',
+        senderCharacterId: speaker.id,
+        timestamp: baseTimestamp + messages.length,
+      });
+      continue;
+    }
+
+    messages.push({
+      role: 'model',
+      text: item.name === 'COUPLE_SPACE_INVITE' ? COUPLE_SPACE_INVITE_TOKEN : COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
+      contentType: item.name === 'COUPLE_SPACE_INVITE' ? 'couple-space-invite' : 'couple-space-invite-accepted',
+      senderCharacterId: speaker.id,
+      timestamp: baseTimestamp + messages.length,
+    });
+  }
+
+  return messages;
+}
+
+export function splitGroupReplyIntoMessages(text: string, speaker: Character, baseTimestamp = Date.now()): ChatMessage[] {
+  const structuredMessages = splitStructuredGroupReplyEnvelopeIntoMessages(text, speaker, baseTimestamp);
+  if (structuredMessages) {
+    return structuredMessages;
+  }
+
   const normalized = text.replace(/\r\n/g, '\n').trim();
   if (!normalized) {
     return [];
@@ -1194,6 +1293,11 @@ export function useGroupChatRuntime({
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
+
+  const activeSpeakerMembers = useMemo(() => {
+    const mutedMemberIds = new Set(groupMeta?.mutedMemberIds || []);
+    return members.filter((member) => !mutedMemberIds.has(member.id));
+  }, [groupMeta?.mutedMemberIds, members]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1438,6 +1542,7 @@ export function useGroupChatRuntime({
         sceneHints: buildGroupStickerSceneHints(sceneInput),
         ...speakerStickerContext,
       }),
+      buildStructuredGroupAssistantReplyPrompt(),
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -1497,32 +1602,91 @@ export function useGroupChatRuntime({
       continuityMode: temporalState.continuityMode,
       nowTimestamp: requestTimestamp,
     });
-    const qualityResult = await generateQualityCheckedAssistantReply({
-      activeConfig,
-      messages: runtimeMessages,
-      temperature: 0.7,
-      allowBracketActions: shouldAllowBracketActions(params.speaker),
-      toneGuardMode: 'character_chat',
-      retryTemperature: 0.82,
-      onInvalid: (result) => {
-        console.warn('[group-chat] invalid generated reply rejected', {
+    const structuredAssistantReplyEnabled = true;
+    let structuredResponseText: string | null = null;
+    let qualityResult;
+    if (structuredAssistantReplyEnabled) {
+      const structuredConfig: ApiConfig = {
+        ...activeConfig,
+        temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
+      };
+      const responseText = await streamStructuredAssistantReply({
+        activeConfig: structuredConfig,
+        messages: runtimeMessages,
+        onPreview: (previewText) => {
+          updatePendingPreview(previewText);
+        },
+      });
+      structuredResponseText = parseStructuredAssistantReplyEnvelope(responseText) ? responseText : null;
+      const normalizedText = normalizeStructuredAssistantReplyToLegacyFormat(responseText);
+      qualityResult = evaluateAssistantOutput(normalizedText, {
+        allowBracketActions: shouldAllowBracketActions(params.speaker),
+        allowStructuredProtocols: true,
+        toneGuardMode: 'character_chat',
+      });
+      if (!qualityResult.ok) {
+        console.warn('[group-chat] invalid structured reply rejected', {
           mode: params.mode,
           speakerId: params.speaker.id,
           speakerName: params.speaker.name,
-          reason: result.reason,
-          preview: result.cleanedText.slice(0, 120),
+          reason: qualityResult.reason,
+          preview: qualityResult.cleanedText.slice(0, 120),
         });
-      },
-      onProgress: (streamingText) => {
-        updatePendingPreview(streamingText);
-      },
-    });
+        structuredResponseText = null;
+        qualityResult = await generateQualityCheckedAssistantReply({
+          activeConfig,
+          messages: runtimeMessages,
+          temperature: 0.7,
+          allowBracketActions: shouldAllowBracketActions(params.speaker),
+          allowStructuredProtocols: true,
+          toneGuardMode: 'character_chat',
+          retryTemperature: 0.82,
+          onInvalid: (result) => {
+            console.warn('[group-chat] invalid structured fallback reply rejected', {
+              mode: params.mode,
+              speakerId: params.speaker.id,
+              speakerName: params.speaker.name,
+              reason: result.reason,
+              preview: result.cleanedText.slice(0, 120),
+            });
+          },
+          onProgress: (streamingText) => {
+            updatePendingPreview(streamingText);
+          },
+        });
+        if (!structuredResponseText && parseStructuredAssistantReplyEnvelope(qualityResult.cleanedText)) {
+          structuredResponseText = qualityResult.cleanedText;
+        }
+      }
+    } else {
+      qualityResult = await generateQualityCheckedAssistantReply({
+        activeConfig,
+        messages: runtimeMessages,
+        temperature: 0.7,
+        allowBracketActions: shouldAllowBracketActions(params.speaker),
+        allowStructuredProtocols: true,
+        toneGuardMode: 'character_chat',
+        retryTemperature: 0.82,
+        onInvalid: (result) => {
+          console.warn('[group-chat] invalid generated reply rejected', {
+            mode: params.mode,
+            speakerId: params.speaker.id,
+            speakerName: params.speaker.name,
+            reason: result.reason,
+            preview: result.cleanedText.slice(0, 120),
+          });
+        },
+        onProgress: (streamingText) => {
+          updatePendingPreview(streamingText);
+        },
+      });
+    }
 
     if (!qualityResult.ok) {
       throw new Error(`\u6a21\u578b\u8fd4\u56de\u65e0\u6548\u5185\u5bb9\uff1a${qualityResult.reason || 'unknown'}`);
     }
 
-    const responseText = qualityResult.cleanedText;
+    const responseText = structuredResponseText || qualityResult.cleanedText;
     const normalizedResponse = normalizeGeneratedReply(responseText, params.speaker);
     if (!normalizedResponse) {
       throw new Error('\u6a21\u578b\u8fd4\u56de\u4e3a\u7a7a');
@@ -1779,6 +1943,18 @@ export function useGroupChatRuntime({
 
     const structuredMessages = messages.map((message, index) => {
       const rawContent = getMessageMainText(message);
+      if (
+        message.contentType === 'game-card'
+        || message.contentType === 'transfer'
+        || message.contentType === 'couple-space-invite'
+        || message.contentType === 'couple-space-invite-accepted'
+      ) {
+        return {
+          ...message,
+          ...(lightInteractionMeta ? { lightInteractionMeta } : {}),
+        };
+      }
+
       const cue = parseActionCue(rawContent);
       const effectiveStickerPool = resolvedStickerPool?.length
         ? resolvedStickerPool
@@ -1843,7 +2019,14 @@ export function useGroupChatRuntime({
         ...(lightInteractionMeta ? { lightInteractionMeta } : {}),
       };
     }).filter((message) => {
-      if (message.isSystem || message.imageUrl) {
+      if (
+        message.isSystem
+        || message.imageUrl
+        || message.contentType === 'game-card'
+        || message.contentType === 'transfer'
+        || message.contentType === 'couple-space-invite'
+        || message.contentType === 'couple-space-invite-accepted'
+      ) {
         return true;
       }
 
@@ -1918,12 +2101,14 @@ export function useGroupChatRuntime({
       console.error('Triggered speaker error:', runtimeError);
       setPendingMessage(null);
       if (isMountedRef.current && activeInteractionIdRef.current === interactionId) {
+        const detail = runtimeError instanceof Error ? runtimeError.message : '\u7fa4\u6210\u5458\u63a5\u8bdd\u5931\u8d25';
         setHistory((prevHistory) => [...prevHistory, {
           role: 'model',
-          text: buildFailureText(runtimeError instanceof Error ? runtimeError.message : '\u7fa4\u6210\u5458\u63a5\u8bdd\u5931\u8d25'),
+          text: buildFailureText(detail),
           timestamp: Date.now(),
           isSystem: true,
         }]);
+        setError(detail);
       }
     }
     return [];
@@ -1937,10 +2122,10 @@ export function useGroupChatRuntime({
       return;
     }
 
-    if (!hasActiveConfig || members.length === 0) {
+    if (!hasActiveConfig || activeSpeakerMembers.length === 0) {
       console.info('[group-chat] skip opening scene', {
         reason: !hasActiveConfig ? 'missing_active_config' : 'missing_members',
-        memberCount: members.length,
+        memberCount: activeSpeakerMembers.length,
       });
       return;
     }
@@ -1956,10 +2141,10 @@ export function useGroupChatRuntime({
       return;
     }
 
-    const openerCandidates = members.filter(
+    const openerCandidates = activeSpeakerMembers.filter(
       (member) => !!member.sceneHints?.groupChat || !!member.corePersona?.trim() || !!member.signature?.trim(),
     );
-    const openerPool = openerCandidates.length > 0 ? openerCandidates : members;
+    const openerPool = openerCandidates.length > 0 ? openerCandidates : activeSpeakerMembers;
     const opener = openerPool[Math.floor(Math.random() * openerPool.length)];
 
     const requestId = openingRequestIdRef.current + 1;
@@ -1999,15 +2184,17 @@ export function useGroupChatRuntime({
         isMountedRef.current
         && activeInteractionIdRef.current === interactionId
       ) {
+        const detail = runtimeError instanceof Error ? runtimeError.message : '\u7fa4\u804a\u5f00\u573a\u5931\u8d25';
         setHistory((prevHistory) => [...prevHistory, {
           role: 'model',
-          text: buildFailureText(runtimeError instanceof Error ? runtimeError.message : '\u7fa4\u804a\u5f00\u573a\u5931\u8d25'),
+          text: buildFailureText(detail),
           timestamp: Date.now(),
           isSystem: true,
         }]);
+        setError(detail);
       }
     }
-  }, [appendSpeakerMessage, generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, manualReplyModeEnabled, members, setHistory]);
+  }, [activeSpeakerMembers, appendSpeakerMessage, generateMessageForSpeaker, groupMeta?.lastMessage, groupMeta?.lastTime, hasActiveConfig, history, manualReplyModeEnabled, setHistory]);
 
   const reactToNoticeUpdate = useCallback(async (params: {
     noticeText: string;
@@ -2018,12 +2205,12 @@ export function useGroupChatRuntime({
     }
 
     const trimmedNotice = params.noticeText.trim();
-    if (!trimmedNotice || !hasActiveConfig || members.length === 0) {
+    if (!trimmedNotice || !hasActiveConfig || activeSpeakerMembers.length === 0) {
       return;
     }
 
     const reactionPrompt = `群公告刚更新为：${trimmedNotice}\n请你像在真实群聊里看到新公告后那样，自然接一句短反应。不要总结，不要长篇解释，不要像客服通知。`;
-    const weightedMembers = members.map((member) => ({
+    const weightedMembers = activeSpeakerMembers.map((member) => ({
       member,
       weight: Math.max(
         0.2,
@@ -2038,14 +2225,14 @@ export function useGroupChatRuntime({
     }
     selectedMembers.push(primarySpeaker);
 
-    if (members.length >= 2) {
+    if (activeSpeakerMembers.length >= 2) {
       const secondaryPool = weightedMembers
         .filter((item) => item.member.id !== primarySpeaker.id)
         .map((item) => ({
           member: item.member,
           weight: Math.max(0.1, item.weight - 0.15),
         }));
-      const secondaryChance = Math.min(0.72, members.length >= 5 ? 0.62 : 0.46);
+      const secondaryChance = Math.min(0.72, activeSpeakerMembers.length >= 5 ? 0.62 : 0.46);
       if (secondaryPool.length > 0 && Math.random() < secondaryChance) {
         const secondarySpeaker = pickWeightedMember(secondaryPool);
         if (secondarySpeaker) {
@@ -2110,7 +2297,7 @@ export function useGroupChatRuntime({
     groupMeta?.groupStage,
     hasActiveConfig,
     manualReplyModeEnabled,
-    members,
+    activeSpeakerMembers,
     pickWeightedMember,
   ]);
 
@@ -2120,7 +2307,7 @@ export function useGroupChatRuntime({
     }
 
     const targetMember = members.find((member) => member.id === memberId);
-    if (!targetMember) {
+    if (!targetMember || !activeSpeakerMembers.some((member) => member.id === memberId)) {
       return;
     }
 
@@ -2400,7 +2587,7 @@ export function useGroupChatRuntime({
         return null;
       }
 
-      return members.find((member) => member.id === latestSpeakerId) || null;
+      return activeSpeakerMembers.find((member) => member.id === latestSpeakerId) || null;
     };
 
     const resolveUserTargetCandidates = (
@@ -2410,7 +2597,7 @@ export function useGroupChatRuntime({
       const targets: Character[] = [];
       const seenIds = new Set(excludedIds);
       const pushTarget = (member: Character | null) => {
-        if (!member || seenIds.has(member.id)) return;
+        if (!member || seenIds.has(member.id) || !activeSpeakerMembers.some((item) => item.id === member.id)) return;
         seenIds.add(member.id);
         targets.push(member);
       };
@@ -2464,7 +2651,7 @@ export function useGroupChatRuntime({
         .find((message) => message.role === 'model')
         ?.senderCharacterId;
 
-      const weightedMembers = members.map((member) => {
+      const weightedMembers = activeSpeakerMembers.map((member) => {
         const baseWeight = inferReadableSpeakerWeight(member, userText) * getGroupStageMultiplier(groupMeta?.groupStage);
         let weight = baseWeight;
         const aliases = getMemberAliases(member);
@@ -2550,7 +2737,7 @@ export function useGroupChatRuntime({
         }
       }
 
-      return weightedMembers[weightedMembers.length - 1]?.member ?? members[0];
+      return weightedMembers[weightedMembers.length - 1]?.member ?? activeSpeakerMembers[0];
     };
 
     const resolveSecondarySpeaker = (userText: string, primarySpeaker: Character, primaryResponse: string) => {
@@ -2564,7 +2751,7 @@ export function useGroupChatRuntime({
         return responseMention;
       }
 
-      const candidateMembers = members.filter((member) => member.id !== primarySpeaker.id);
+      const candidateMembers = activeSpeakerMembers.filter((member) => member.id !== primarySpeaker.id);
       if (candidateMembers.length === 0) {
         return null;
       }
@@ -2770,8 +2957,8 @@ export function useGroupChatRuntime({
         return responseMention;
       }
 
-      const unusedCandidates = members.filter((member) => !followUpParams.usedSpeakerIds.includes(member.id));
-      const candidateMembers = unusedCandidates.length > 0 ? members : members;
+      const unusedCandidates = activeSpeakerMembers.filter((member) => !followUpParams.usedSpeakerIds.includes(member.id));
+      const candidateMembers = unusedCandidates.length > 0 ? activeSpeakerMembers : activeSpeakerMembers;
       if (candidateMembers.length === 0) {
         return null;
       }
@@ -3225,7 +3412,6 @@ export function useGroupChatRuntime({
           }
 
           appendSystemFailure(runtimeError instanceof Error ? runtimeError.message : '\u672a\u77e5\u9519\u8bef');
-          setError(runtimeError instanceof Error ? runtimeError.message : '\u672a\u77e5\u9519\u8bef');
         }
       });
     } catch (runtimeError) {

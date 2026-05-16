@@ -730,6 +730,12 @@ export type CharacterPublicThreadPeerHint = {
 
 export type CharacterMomentPrivateCarryoverLevel = 'none' | 'light' | 'medium' | 'high';
 export type CharacterFriendshipStatus = 'friends' | 'none';
+export type CharacterRelationshipBlockRollbackSnapshot = {
+  friendshipStatus: CharacterFriendshipStatus;
+  blockedByUser: boolean;
+  blockedByCharacter: boolean;
+  capturedAt: number;
+};
 
 export type Character = {
   id: string;
@@ -797,6 +803,7 @@ export type Character = {
   friendshipStatus?: CharacterFriendshipStatus;
   blockedByUser?: boolean;
   blockedByCharacter?: boolean;
+  relationshipBlockRollbackSnapshot?: CharacterRelationshipBlockRollbackSnapshot;
   relationshipStatusUpdatedAt?: number;
   motto?: string;
   bubbleStyleCss?: string;
@@ -1816,6 +1823,12 @@ export type ChatGroup = {
     updatedAt: number;
   }>;
   adminIds?: string[];
+  mutedMemberEntries?: Array<{
+    memberId: string;
+    mutedById: string;
+    mutedAt: number;
+    expiresAt?: number;
+  }>;
   dutyAdminAssignment?: {
     memberId: string;
     grantedById: string;

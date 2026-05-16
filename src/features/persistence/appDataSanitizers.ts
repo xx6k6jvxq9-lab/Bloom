@@ -4,6 +4,7 @@ import { sanitizeGroupMemberBubbleColors } from '../group-settings/groupBubbleCo
 import { getGroupAwarenessMode, sanitizeGroupAwarenessEntries } from '../group-settings/groupAwareness';
 import { sanitizeDutyAdminAssignment, sanitizeTemporaryPermissionGrants } from '../group-settings/groupDynamicPermissions';
 import { sanitizeAdminNominationCooldowns } from '../group-settings/groupGovernanceState';
+import { sanitizeMutedMemberEntries } from '../group-settings/groupMutedMembers';
 import { sanitizeGroupLongTermMemory } from '../../services/group-chat/groupLongTermMemory';
 import { sanitizeGroupMemberPerspectiveSummaries } from '../../services/group-chat/groupShortTermMemory';
 import { buildPersistableCoupleSpacePayload } from './coupleSpaceStore';
@@ -11,6 +12,7 @@ import { normalizeContactGroupName } from './contactGroupNames';
 import { migrateCharacterShapes } from './migrateCharacterShape';
 import { sanitizeTransientAssetValue } from './sanitizeTransientAssetValue';
 import { resolveMomentVisibilityScope } from '../../services/moments/momentVisibilityScope';
+import { hasRemovedGroupOfflineEnsembleContent } from '../group-offline/sessionUtils';
 
 const HIDDEN_CHARACTER_IDS = new Set(['char-2', 'char-zhou-jibai']);
 const HIDDEN_CHARACTER_NAMES = new Set(['林策', '周既白']);
@@ -118,6 +120,9 @@ export function sanitizeChatGroupsWithCharacters(
     memberRelationshipNote: typeof group.memberRelationshipNote === 'string' ? group.memberRelationshipNote.trim() : undefined,
     currentScene: typeof group.currentScene === 'string' ? group.currentScene.trim() : undefined,
     publicFacts: typeof group.publicFacts === 'string' ? group.publicFacts.trim() : undefined,
+    activeOfflineSession: hasRemovedGroupOfflineEnsembleContent(group.activeOfflineSession)
+      ? undefined
+      : group.activeOfflineSession,
     awarenessMode: getGroupAwarenessMode(group),
     groupShortTermSummary: typeof group.groupShortTermSummary === 'string'
       ? group.groupShortTermSummary.trim() || undefined
@@ -160,6 +165,10 @@ export function sanitizeChatGroupsWithCharacters(
     }),
     adminNominationCooldowns: sanitizeAdminNominationCooldowns(group.adminNominationCooldowns, {
       memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+    }),
+    mutedMemberEntries: sanitizeMutedMemberEntries(group.mutedMemberEntries, {
+      memberIds: Array.isArray(group.memberIds) ? group.memberIds : [],
+      creatorId: typeof group.creatorId === 'string' ? group.creatorId : 'user',
     }),
     memberBadges: sanitizeGroupMemberBadges({
       memberBadges: group.memberBadges,

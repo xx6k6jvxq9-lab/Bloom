@@ -42,6 +42,7 @@ type GroupSettingsScreenProps = {
   onRevealGroupToMember: (memberId: string) => Promise<void> | void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
+  onToggleMute: (memberId: string) => Promise<void> | void;
   onAssignDutyAdmin: (memberId: string) => Promise<void> | void;
   onClearDutyAdmin: (memberId: string) => Promise<void> | void;
   onGrantTemporaryPermission: (memberId: string) => Promise<void> | void;
@@ -54,6 +55,7 @@ type GroupSettingsScreenProps = {
   isRevealingGroup?: boolean;
   isRemovingMember?: boolean;
   isUpdatingAdmin?: boolean;
+  isUpdatingMute?: boolean;
   isUpdatingDynamicPermissions?: boolean;
   isUpdatingBadge?: boolean;
   onClearHistory: () => void;
@@ -93,6 +95,7 @@ export function GroupSettingsScreen({
   onRevealGroupToMember,
   onRemoveMember,
   onToggleAdmin,
+  onToggleMute,
   onAssignDutyAdmin,
   onClearDutyAdmin,
   onGrantTemporaryPermission,
@@ -105,6 +108,7 @@ export function GroupSettingsScreen({
   isRevealingGroup = false,
   isRemovingMember = false,
   isUpdatingAdmin = false,
+  isUpdatingMute = false,
   isUpdatingDynamicPermissions = false,
   isUpdatingBadge = false,
   onClearHistory,
@@ -179,10 +183,13 @@ export function GroupSettingsScreen({
           onBack={() => setPage('settings')}
           onRemoveMember={onRemoveMember}
           onToggleAdmin={onToggleAdmin}
+          onToggleMute={onToggleMute}
           canManageAdmins={actingRole === 'owner'}
+          canMuteMembers={actingRole === 'owner' || actingRole === 'admin'}
           canRemoveMembers={actingRole === 'owner' || actingRole === 'admin'}
           isRemovingMember={isRemovingMember}
           isUpdatingAdmin={isUpdatingAdmin}
+          isUpdatingMute={isUpdatingMute}
         />
       ) : null}
 

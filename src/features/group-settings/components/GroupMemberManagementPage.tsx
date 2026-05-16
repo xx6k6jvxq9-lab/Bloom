@@ -10,10 +10,13 @@ type GroupMemberManagementPageProps = {
   onBack: () => void;
   onRemoveMember: (memberId: string) => Promise<void> | void;
   onToggleAdmin: (memberId: string) => Promise<void> | void;
+  onToggleMute: (memberId: string) => Promise<void> | void;
   canManageAdmins: boolean;
   canRemoveMembers: boolean;
+  canMuteMembers: boolean;
   isRemovingMember?: boolean;
   isUpdatingAdmin?: boolean;
+  isUpdatingMute?: boolean;
 };
 
 function getRoleTone(role: GroupMemberRole) {
@@ -93,10 +96,13 @@ export function GroupMemberManagementPage({
   onBack,
   onRemoveMember,
   onToggleAdmin,
+  onToggleMute,
   canManageAdmins,
   canRemoveMembers,
+  canMuteMembers,
   isRemovingMember = false,
   isUpdatingAdmin = false,
+  isUpdatingMute = false,
 }: GroupMemberManagementPageProps) {
   const adminCount = members.filter((member) => member.role === 'admin').length;
 
@@ -153,10 +159,22 @@ export function GroupMemberManagementPage({
                         提名冷却中
                       </span>
                     ) : null}
+                    {member.isMuted ? (
+                      <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700">
+                        禁言中
+                      </span>
+                    ) : null}
                   </div>
                   {member.nominationCooldownUntil ? (
                     <div className="mt-2 text-[11px] text-amber-700">
                       冷却到 {formatCooldownTime(member.nominationCooldownUntil)}
+                    </div>
+                  ) : null}
+                  {member.isMuted ? (
+                    <div className="mt-2 text-[11px] text-rose-700">
+                      {member.muteExpiresAt
+                        ? `禁言到 ${formatCooldownTime(member.muteExpiresAt)}`
+                        : `禁言于 ${formatCooldownTime(member.mutedAt)}`}
                     </div>
                   ) : null}
                 </div>
@@ -175,6 +193,22 @@ export function GroupMemberManagementPage({
                     }`}
                   >
                     {member.role === 'admin' ? '取消管理员' : '设为管理员'}
+                  </button>
+                ) : null}
+                {member.role !== 'owner' ? (
+                  <button
+                    type="button"
+                    disabled={!canMuteMembers || isUpdatingMute}
+                    onClick={() => void onToggleMute(member.id)}
+                    className={`rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+                      canMuteMembers && !isUpdatingMute
+                        ? member.isMuted
+                          ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                          : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                        : 'cursor-not-allowed bg-zinc-100 text-zinc-400'
+                    }`}
+                  >
+                    {member.isMuted ? '解除禁言' : '禁言'}
                   </button>
                 ) : null}
                 <button
