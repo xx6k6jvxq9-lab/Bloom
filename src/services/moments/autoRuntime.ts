@@ -39,6 +39,7 @@ import {
 import { applyMomentInteractionGrowth } from './momentInteractionGrowth';
 import { getDefaultMomentVisibilityScope } from './momentVisibilityScope';
 import { extractRecentMomentImageReferences } from './momentRecentImageReferences';
+import { MOMENT_POST_SHAPES } from './postBlueprints';
 
 export type AutoMomentRuntimeSnapshot = Pick<
   AppData,
@@ -78,20 +79,7 @@ type RunAutoMomentSchedulerPassOptions = {
 };
 
 let autoMomentSchedulerRunning = false;
-const SCENE_CARRYOVER_ONLY_SHAPES: NonNullable<AutoMomentPlanEntry['generationHints']>['allowedShapes'] = [
-  'short_status',
-  'tiny_complaint',
-  'abstract_fragment',
-  'soft_claim',
-];
-const GENERAL_MANUAL_REFRESH_SHAPES: NonNullable<AutoMomentPlanEntry['generationHints']>['allowedShapes'] = [
-  'short_status',
-  'cheerful_share',
-  'tiny_complaint',
-  'abstract_fragment',
-  'soft_claim',
-  'photo_dump',
-];
+const BALANCED_AUTO_MOMENT_SHAPES: NonNullable<AutoMomentPlanEntry['generationHints']>['allowedShapes'] = MOMENT_POST_SHAPES;
 
 function getLatestMomentTimestampByAuthor(characterId: string, moments: MomentItem[] = []) {
   return moments
@@ -116,7 +104,7 @@ function buildManualRefreshPlanEntry(options: {
   if (sceneGate.restriction === 'scene_carryover_only') {
     return {
       characterId: character.id,
-      requestText: '自主发动态：手动刷新；意图=当前互动的公开余波；形态=纯文字短状态/短吐槽/抽象片段/轻微站位；主题=把此刻互动留下的后劲翻成一条公开可见、时间线一致的动态。',
+      requestText: '自主发动态：手动刷新；意图=当前互动的公开余波；形态=由本次均衡形态抽签决定；主题=把此刻互动留下的后劲翻成一条公开可见、时间线一致的动态。',
       extraPromptSections: [
         sharedState?.currentActivity?.trim() ? `当前生活状态：${sharedState.currentActivity.trim()}` : '',
         presenceState?.recentLifeBeat?.trim() ? `最近生活节奏：${presenceState.recentLifeBeat.trim()}` : '',
@@ -124,16 +112,15 @@ function buildManualRefreshPlanEntry(options: {
         activeDatingSummary ? `当前进行中的互动：${activeDatingSummary}` : '',
         ...varietySections,
         '这是用户手动点击刷新后的强制刷新，但角色还在强互动中，或者刚从强互动场景里出来不久。',
-        '只能发和当前场景兼容的公开余波：嘴硬、回温、小吃醋、小吐槽、短短一句、轻微站位、抽象情绪都可以。',
-        '必须是纯文字动态，不要配图、不要截图感、不要九宫格、不要伪图片说明。',
+        '只能发和当前场景兼容的公开余波：嘴硬、回温、小吃醋、小吐槽、轻微站位、抽象情绪或图文氛围都可以。',
+        '不要把形态强制锁成纯文字；短状态、长文、文字图/图文按同一套正常概率抽签。',
         '不要突然切去上班、下班、公司、室友、宿舍、便利店、街拍或另一条新生活线，除非这些事实已经明确出现在当前状态里。',
         '不要泄露私聊细节，只保留公开可见的情绪后劲和状态感。',
         '不要返回空白，不要解释说明，不要重复上一条动态。',
       ].filter(Boolean),
       generationHints: buildRecentMomentShapeHints({
-        baseAllowedShapes: SCENE_CARRYOVER_ONLY_SHAPES,
+        baseAllowedShapes: BALANCED_AUTO_MOMENT_SHAPES,
         recentVariety,
-        preferTextOnly: true,
       }),
     };
   }
@@ -152,7 +139,7 @@ function buildManualRefreshPlanEntry(options: {
       '不要返回空白，不要解释说明，不要重复上一条动态。',
     ].filter(Boolean),
     generationHints: buildRecentMomentShapeHints({
-      baseAllowedShapes: GENERAL_MANUAL_REFRESH_SHAPES,
+      baseAllowedShapes: BALANCED_AUTO_MOMENT_SHAPES,
       recentVariety,
     }),
   };

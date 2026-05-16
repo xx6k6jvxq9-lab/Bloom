@@ -14,6 +14,18 @@ export type MomentPostShape =
   | 'tiny_complaint'
   | 'soft_claim';
 
+export const MOMENT_POST_SHAPES: MomentPostShape[] = [
+  'short_status',
+  'photo_dump',
+  'multi_paragraph',
+  'journal_note',
+  'music_diary',
+  'cheerful_share',
+  'abstract_fragment',
+  'tiny_complaint',
+  'soft_claim',
+];
+
 export type MomentPostBlueprint = {
   shape: MomentPostShape;
   shapeLabel: string;
@@ -200,6 +212,19 @@ function pickByHash<T>(items: T[], seed: string): T {
   return items[hashString(seed) % items.length];
 }
 
+function uniqueShapes(shapes: MomentPostShape[]) {
+  const seen = new Set<MomentPostShape>();
+  const result: MomentPostShape[] = [];
+  for (const shape of shapes) {
+    if (seen.has(shape)) {
+      continue;
+    }
+    seen.add(shape);
+    result.push(shape);
+  }
+  return result;
+}
+
 function getPersonaText(character: Character) {
   const context = buildCharacterContext({ character });
   const sharedState = rebuildSharedStateFromCharacter({
@@ -223,7 +248,9 @@ function resolveShapeCandidates(options: BuildMomentPostBlueprintOptions): Momen
   const sourceText = `${options.requestText}\n${getPersonaText(options.character)}`.toLowerCase();
   let candidates: MomentPostShape[];
 
-  if (/短状态|一到三句|一两句|一句|短句|短配文|短夜记|轻状态|随手/.test(sourceText)) {
+  if (options.allowedShapes?.length) {
+    candidates = uniqueShapes(options.allowedShapes);
+  } else if (/短状态|一到三句|一两句|一句|短句|短配文|短夜记|轻状态|随手/.test(sourceText)) {
     candidates = ['short_status', 'tiny_complaint', 'cheerful_share', 'photo_dump'];
   } else if (/九宫格|图集|配图|照片|相册|截图|拼贴/.test(sourceText)) {
     candidates = ['photo_dump', 'music_diary', 'short_status'];
@@ -260,12 +287,6 @@ function resolveShapeCandidates(options: BuildMomentPostBlueprintOptions): Momen
   if (options.blockedShapes?.length) {
     const blockedShapeSet = new Set(options.blockedShapes);
     candidates = candidates.filter((shape) => !blockedShapeSet.has(shape));
-  }
-
-  if (options.allowedShapes?.length) {
-    const allowedShapeSet = new Set(options.allowedShapes);
-    const constrained = candidates.filter((shape) => allowedShapeSet.has(shape));
-    candidates = constrained.length > 0 ? constrained : [...allowedShapeSet];
   }
 
   return candidates.length > 0 ? candidates : ['short_status'];

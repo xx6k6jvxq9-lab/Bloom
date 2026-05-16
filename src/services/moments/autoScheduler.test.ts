@@ -205,7 +205,7 @@ test('auto moment planning prefers record-derived public carryover over stale sh
   );
 });
 
-test('recent long streak cools the next auto moment down to short text shapes', () => {
+test('recent long streak keeps long and visual shapes available under balanced odds', () => {
   const now = Date.parse('2026-05-11T22:30:00+08:00');
   const character = createCharacter({
     id: 'cooldown-char',
@@ -235,16 +235,19 @@ test('recent long streak cools the next auto moment down to short text shapes', 
   });
 
   assert.equal(plan.length, 1);
-  assert.equal(plan[0]?.generationHints?.forceTextOnly, true);
+  assert.equal(plan[0]?.generationHints?.forceTextOnly, undefined);
   assert.equal(plan[0]?.generationHints?.allowedShapes.includes('short_status'), true);
-  assert.equal(plan[0]?.generationHints?.blockedShapes?.includes('multi_paragraph'), true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('multi_paragraph'), true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('journal_note'), true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('photo_dump'), true);
+  assert.equal(plan[0]?.generationHints?.blockedShapes, undefined);
   assert.equal(
-    plan[0]?.extraPromptSections.some((section) => section.includes('最近连续两条都偏长')),
+    plan[0]?.extraPromptSections.some((section) => section.includes('不要硬禁长文')),
     true,
   );
 });
 
-test('recent visual streak pushes the next auto moment away from photo-first shapes', () => {
+test('recent visual streak keeps photo-first shapes available under balanced odds', () => {
   const now = Date.parse('2026-05-11T22:30:00+08:00');
   const character = createCharacter({
     id: 'visual-char',
@@ -281,11 +284,12 @@ test('recent visual streak pushes the next auto moment away from photo-first sha
   });
 
   assert.equal(plan.length, 1);
-  assert.equal(plan[0]?.generationHints?.forceTextOnly, true);
-  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('photo_dump'), false);
-  assert.equal(plan[0]?.generationHints?.blockedShapes?.includes('photo_dump'), true);
+  assert.equal(plan[0]?.generationHints?.forceTextOnly, undefined);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('photo_dump'), true);
+  assert.equal(plan[0]?.generationHints?.allowedShapes.includes('music_diary'), true);
+  assert.equal(plan[0]?.generationHints?.blockedShapes, undefined);
   assert.equal(
-    plan[0]?.extraPromptSections.some((section) => section.includes('最近连续两条都偏图文/相册感')),
+    plan[0]?.extraPromptSections.some((section) => section.includes('图文和纯文字仍按正常概率选择')),
     true,
   );
 });

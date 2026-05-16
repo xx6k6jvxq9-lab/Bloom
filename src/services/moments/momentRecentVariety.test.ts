@@ -50,7 +50,7 @@ test('recent variety analysis detects long and visual streaks', () => {
   assert.equal(profile.latestOpeningRepeatCount >= 2, true);
 });
 
-test('recent variety shape hints cool down long and visual runs into short text', () => {
+test('recent variety shape hints keep the provided shape pool balanced', () => {
   const profile = analyzeRecentMomentVariety([
     createMoment(3, {
       content: LONG_MOMENT_TEXT,
@@ -75,12 +75,18 @@ test('recent variety shape hints cool down long and visual runs into short text'
     recentVariety: profile,
   });
 
-  assert.equal(hints.forceTextOnly, true);
+  assert.equal(hints.forceTextOnly, undefined);
   assert.equal(hints.allowedShapes.includes('short_status'), true);
-  assert.equal(hints.allowedShapes.includes('photo_dump'), false);
-  assert.equal(hints.blockedShapes?.includes('multi_paragraph'), true);
+  assert.equal(hints.allowedShapes.includes('photo_dump'), true);
+  assert.equal(hints.allowedShapes.includes('multi_paragraph'), true);
+  assert.equal(hints.allowedShapes.includes('journal_note'), true);
+  assert.equal(hints.blockedShapes, undefined);
   assert.equal(
-    buildRecentMomentVarietyPromptLines(profile).some((line) => line.includes('最近连续两条都偏长')),
+    buildRecentMomentVarietyPromptLines(profile).some((line) => line.includes('不要硬禁长文')),
+    true,
+  );
+  assert.equal(
+    buildRecentMomentVarietyPromptLines(profile).some((line) => line.includes('图文和纯文字仍按正常概率选择')),
     true,
   );
 });

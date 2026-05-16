@@ -43,7 +43,6 @@ const CHEERFUL_VIBE_REGEX = /开心|顺利|好耶|满足|庆祝|治愈|不错|�
 const MUSIC_VIBE_REGEX = /bgm|音乐|耳机|歌单|那首歌|歌\b/i;
 const DIARY_VIBE_REGEX = /夜里|记一笔|记录|备忘录|慢慢整理|今天一整天|后来|留给今晚/i;
 
-const LONG_FORM_SHAPES: MomentPostShape[] = ['multi_paragraph', 'journal_note'];
 const VISUAL_FORWARD_SHAPES: MomentPostShape[] = ['photo_dump', 'music_diary'];
 
 function normalizeText(value: string | undefined) {
@@ -213,13 +212,13 @@ export function buildRecentMomentVarietyPromptLines(profile: RecentMomentVariety
   ];
 
   if (profile.longStreak >= 2) {
-    lines.push('最近连续两条都偏长，这次优先短一点、轻一点，不要再写成长分段。');
+    lines.push('最近连续两条都偏长，这次只要换一个段落节奏；形态仍按正常概率选择，不要硬禁长文。');
   } else if (profile.longStreak >= 1) {
-    lines.push('上一条已经偏长，这次优先短一点、轻一点，除非当前状态强烈要求长文。');
+    lines.push('上一条已经偏长，这次注意换切入口；形态仍按正常概率选择。');
   }
 
   if (profile.visualStreak >= 2) {
-    lines.push('最近连续两条都偏图文/相册感，这次优先纯文字，不要再写成图集配文。');
+    lines.push('最近连续两条都偏图文/相册感，这次换一个画面锚点或表达角度；图文和纯文字仍按正常概率选择。');
   }
 
   if (profile.latestOpeningRepeatCount >= 2) {
@@ -238,39 +237,8 @@ export function buildRecentMomentShapeHints(options: {
   recentVariety: RecentMomentVarietyProfile;
   preferTextOnly?: boolean;
 }): RecentMomentShapeHints {
-  const blockedShapes = new Set<MomentPostShape>();
-  let forceTextOnly = Boolean(options.preferTextOnly);
-
-  if (options.recentVariety.longStreak >= 1) {
-    for (const shape of LONG_FORM_SHAPES) {
-      blockedShapes.add(shape);
-    }
-  }
-
-  if (options.recentVariety.longStreak >= 2) {
-    forceTextOnly = true;
-  }
-
-  if (options.recentVariety.visualStreak >= 2) {
-    forceTextOnly = true;
-    for (const shape of VISUAL_FORWARD_SHAPES) {
-      blockedShapes.add(shape);
-    }
-  }
-
-  if (options.recentVariety.latest?.vibe === 'music' && options.recentVariety.latestVibeStreak >= 2) {
-    blockedShapes.add('music_diary');
-  }
-
-  if (options.recentVariety.latest?.vibe === 'diary' && options.recentVariety.latestVibeStreak >= 2) {
-    for (const shape of LONG_FORM_SHAPES) {
-      blockedShapes.add(shape);
-    }
-  }
-
-  let allowedShapes = uniqueInOrder(
-    options.baseAllowedShapes.filter((shape) => !blockedShapes.has(shape)),
-  );
+  const forceTextOnly = Boolean(options.preferTextOnly);
+  let allowedShapes = uniqueInOrder(options.baseAllowedShapes);
 
   if (forceTextOnly) {
     allowedShapes = allowedShapes.filter((shape) => !VISUAL_FORWARD_SHAPES.includes(shape));
@@ -283,6 +251,5 @@ export function buildRecentMomentShapeHints(options: {
   return {
     ...(forceTextOnly ? { forceTextOnly: true } : {}),
     allowedShapes,
-    ...(blockedShapes.size > 0 ? { blockedShapes: [...blockedShapes] } : {}),
   };
 }
