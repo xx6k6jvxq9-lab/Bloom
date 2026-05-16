@@ -427,10 +427,15 @@ export function getCharacterRelationshipStatusText(
   requests: FriendRequest[],
 ) {
   const blockState = getCharacterBlockState(character);
-  const latestRequest = getLatestCharacterRequest(requests, character.id);
+  const pendingIncomingRequest = getPendingCharacterRequest(requests, character.id, 'incoming');
+  const pendingOutgoingRequest = getPendingCharacterRequest(requests, character.id, 'outgoing');
+  const latestRequest = pendingOutgoingRequest;
 
   if (canChatWithCharacter(character)) {
     return '已互相通过';
+  }
+  if (pendingIncomingRequest) {
+    return '对方向你发来申请';
   }
   if (blockState === 'mutual') {
     return '互相拉黑';
@@ -441,7 +446,7 @@ export function getCharacterRelationshipStatusText(
   if (blockState === 'character') {
     return '对方已拉黑你';
   }
-  if (latestRequest?.status === 'pending') {
+  if (pendingOutgoingRequest) {
     return isIncomingFriendRequest(latestRequest) ? '对方正在等你处理' : '等待对方决定';
   }
   return '还不是好友';

@@ -1,8 +1,8 @@
 ﻿import React, { Suspense } from 'react';
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
-import type { AppData, AppSettings, Character, ChatHistory, CoupleSpaceData, CoupleSpaceState } from '../../types';
+import { Heart, Image as ImageIcon, Sparkles, UserPlus } from 'lucide-react';
+import type { AppData, AppSettings, Character, ChatHistory, CoupleSpaceData, CoupleSpaceState, FriendRequest } from '../../types';
 import { HomeScreen } from '../../components/home/HomeScreen/Page';
 import { CharacterMomentsProfile, CharacterProfile } from '../../components/main/ContactsShell/Page';
 import { MainApp } from '../../components/main/MainAppShell/Page';
@@ -39,7 +39,13 @@ import {
 } from './customizationHandlers';
 import { formatMessagePreview } from './formatMessagePreview';
 import { navigateToAppWithTransition, type AppScreen, type AppTab } from './appShellHandlers';
-import type { CoupleSpaceUpdateToast, DatingGenerationToast, DreamGenerationToast, MomentPublishToast } from './appShellTypes';
+import type {
+  CoupleSpaceUpdateToast,
+  DatingGenerationToast,
+  DreamGenerationToast,
+  MomentPublishToast,
+  RelationshipRequestToast,
+} from './appShellTypes';
 import { sanitizeChatGroupsWithCharacters as sanitizeChatGroupsWithCharactersFromStore } from '../persistence/appDataSanitizers';
 import {
   extractDirectFactTraces,
@@ -59,10 +65,12 @@ import { removeCharacterById } from '../character-domain/characterMutations';
 import {
   getNextFriendRequestReleaseAt,
   getLatestCharacterRelationshipPageKey,
+  isFriendRequestReleased,
   releaseDueFriendRequests,
 } from '../contacts/friendRequestThreads';
 import {
   runRelationshipBlockToggleFlow,
+  runRelationshipBlockRepairFlow,
   runRelationshipRequestSubmissionFlow,
 } from '../contacts/relationshipFlow';
 import { buildForumSharedSettlement } from '../../services/forum/buildForumSharedSettlement';
@@ -92,6 +100,66 @@ const LazyDreamAppPage = lazy(loadDreamAppPage);
 const LazyWorldBookManager = lazy(loadWorldBookManager);
 const LazySettingsAppScreen = lazy(loadSettingsAppScreen);
 const CHAT_DOMAIN_PERSIST_DEBOUNCE_MS = 600;
+const RELATIONSHIP_REQUEST_TOAST_SEEN_IDS_KEY = 'relationship_request_toast_seen_ids';
+
+function getHeaderToastTopClass(index: number) {
+  if (index <= 0) {
+    return 'top-4';
+  }
+  if (index === 1) {
+    return 'top-[98px]';
+  }
+  if (index === 2) {
+    return 'top-[192px]';
+  }
+  return 'top-[286px]';
+}
+
+function isCharacterRelationshipIncomingRequest(request: FriendRequest, now = Date.now()) {
+  return request.status === 'pending'
+    && request.initiator === 'character'
+    && request.sourceScene === 'relationship'
+    && request.isUnread === true
+    && !request.isRelationshipEvent
+    && isFriendRequestReleased(request, now);
+}
+
+function readSeenRelationshipRequestToastIds() {
+  if (typeof window === 'undefined') {
+    return new Set<string>();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(RELATIONSHIP_REQUEST_TOAST_SEEN_IDS_KEY);
+    if (!raw) {
+      return new Set<string>();
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeSeenRelationshipRequestToastIds(ids: Set<string>) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const serialized = JSON.stringify(Array.from(ids).slice(-200));
+    window.localStorage.setItem(RELATIONSHIP_REQUEST_TOAST_SEEN_IDS_KEY, serialized);
+  } catch {
+    // ignore storage write failure
+  }
+}
 
 function DeferredMomentsApp({
   appData,
@@ -355,6 +423,7 @@ type AppScreenContentProps = {
   handleUpdateCurrentCoupleSpace: (updates: any) => void;
   handleUpsertCharacter: (character: Character) => void;
   momentPublishToast: MomentPublishToast | null;
+  relationshipRequestToast: RelationshipRequestToast | null;
   selectedCharacter: Character | null;
   selectedCharacterId: string | null;
   selectedForumPostId: string | null;
@@ -366,6 +435,7 @@ type AppScreenContentProps = {
   setCharacterMomentsBackApp: Dispatch<SetStateAction<CharacterMomentsBackApp>>;
   setCoupleSpaceUpdateToast: Dispatch<SetStateAction<CoupleSpaceUpdateToast | null>>;
   setMomentPublishToast: Dispatch<SetStateAction<MomentPublishToast | null>>;
+  setRelationshipRequestToast: Dispatch<SetStateAction<RelationshipRequestToast | null>>;
   setSelectedCharacterId: Dispatch<SetStateAction<string | null>>;
   setSelectedForumPostId: Dispatch<SetStateAction<string | null>>;
   setSelectedGroupId: Dispatch<SetStateAction<string | null>>;
@@ -405,6 +475,7 @@ export function AppScreenContent({
   handleUpdateCurrentCoupleSpace,
   handleUpsertCharacter,
   momentPublishToast,
+  relationshipRequestToast,
   selectedCharacter,
   selectedCharacterId,
   selectedForumPostId,
@@ -416,6 +487,7 @@ export function AppScreenContent({
   setCharacterMomentsBackApp,
   setCoupleSpaceUpdateToast,
   setMomentPublishToast,
+  setRelationshipRequestToast,
   setSelectedCharacterId,
   setSelectedForumPostId,
   setSelectedGroupId,
@@ -442,6 +514,7 @@ export function AppScreenContent({
   const latestChatGroupsRef = useRef(appData.chatGroups || []);
   const latestGroupsRef = useRef(appData.groups);
   const latestFriendRequestsRef = useRef(appData.friendRequests || []);
+  const releasedCharacterRequestToastIdsRef = useRef<Set<string> | null>(null);
   const latestDirectRelationshipWavesRef = useRef(extractDirectRelationshipWaves(appData.chatHistory));
   const latestDirectFactTracesRef = useRef(extractDirectFactTraces(appData.chatHistory));
   const latestGroupSessionsRef = useRef(extractGroupSessions(appData.chatGroups || []));
@@ -631,6 +704,51 @@ export function AppScreenContent({
     latestGroupsRef.current = appData.groups;
     latestFriendRequestsRef.current = appData.friendRequests || [];
   }, [appData.characters, appData.chatGroups, appData.chatHistory, appData.friendRequests, appData.groups]);
+
+  useEffect(() => {
+    if (!isStorageReady) {
+      return;
+    }
+
+    const now = Date.now();
+    const visibleIncomingRequests = (appData.friendRequests || [])
+      .filter((request) => isCharacterRelationshipIncomingRequest(request, now))
+      .sort((left, right) => {
+        const leftUpdatedAt = left.lastUpdatedAt || left.unreadAt || left.timestamp;
+        const rightUpdatedAt = right.lastUpdatedAt || right.unreadAt || right.timestamp;
+        return rightUpdatedAt - leftUpdatedAt;
+      });
+    const visibleRequestIds = new Set(visibleIncomingRequests.map((request) => request.id));
+
+    if (releasedCharacterRequestToastIdsRef.current === null) {
+      const persistedSeenIds = readSeenRelationshipRequestToastIds();
+      const seededSeenIds = new Set<string>([
+        ...persistedSeenIds,
+        ...visibleRequestIds,
+      ]);
+      releasedCharacterRequestToastIdsRef.current = seededSeenIds;
+      writeSeenRelationshipRequestToastIds(seededSeenIds);
+      return;
+    }
+
+    const seenIds = releasedCharacterRequestToastIdsRef.current;
+    const nextToastRequest = visibleIncomingRequests.find((request) => !seenIds?.has(request.id)) || null;
+
+    if (!nextToastRequest) {
+      return;
+    }
+
+    seenIds?.add(nextToastRequest.id);
+    writeSeenRelationshipRequestToastIds(seenIds || new Set<string>());
+
+    setRelationshipRequestToast({
+      id: nextToastRequest.id,
+      characterId: nextToastRequest.characterId || nextToastRequest.fromUserId,
+      characterName: nextToastRequest.fromUserName,
+      characterAvatar: nextToastRequest.fromUserAvatar || undefined,
+      preview: nextToastRequest.message?.trim() || '点开看看这次的新申请',
+    });
+  }, [appData.friendRequests, isStorageReady, setRelationshipRequestToast]);
 
   useEffect(() => {
     if (!isStorageReady) {
@@ -839,6 +957,16 @@ export function AppScreenContent({
       targetCharacter: targetCharacterOverride,
     });
   };
+  const handleRepairCharacterRelationshipState = (
+    characterId: string,
+    targetCharacterOverride?: Character | null,
+  ) => {
+    runRelationshipBlockRepairFlow({
+      runtime: relationshipFlowRuntime,
+      characterId,
+      targetCharacter: targetCharacterOverride,
+    });
+  };
   const handleToggleCharacterBlockFromProfile = () => {
     if (!selectedCharacterId || !selectedCharacter) {
       return;
@@ -1034,6 +1162,10 @@ export function AppScreenContent({
     };
   }, [activeApp]);
 
+  const relationshipRequestToastIndex = Number(!!coupleSpaceUpdateToast);
+  const momentPublishToastIndex = relationshipRequestToastIndex + Number(!!relationshipRequestToast);
+  const secondaryToastIndex = momentPublishToastIndex + Number(!!momentPublishToast);
+
   return (
     <div className={`phone-screen-root flex-1 relative overflow-hidden ${screenRootBackgroundClass}`}>
       {coupleSpaceUpdateToast && (
@@ -1055,7 +1187,7 @@ export function AppScreenContent({
             openCoupleSpaceApp();
             setCoupleSpaceUpdateToast(null);
           }}
-          className="absolute left-4 right-4 top-4 z-[70] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md"
+          className={`absolute left-4 right-4 ${getHeaderToastTopClass(0)} z-[70] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
@@ -1081,6 +1213,45 @@ export function AppScreenContent({
           </div>
         </button>
       )}
+      {relationshipRequestToast && (
+        <button
+          type="button"
+          onClick={() => {
+            setContactsRelationshipThreadKey(
+              getLatestCharacterRelationshipPageKey(appData.friendRequests || [], relationshipRequestToast.characterId),
+            );
+            transitionToApp('chat');
+            setActiveTab('contacts');
+            setRelationshipRequestToast(null);
+          }}
+          className={`absolute left-4 right-4 ${getHeaderToastTopClass(relationshipRequestToastIndex)} z-[69] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
+              {relationshipRequestToast.characterAvatar ? (
+                <ResolvedAssetImagePrimitive
+                  value={relationshipRequestToast.characterAvatar}
+                  alt={relationshipRequestToast.characterName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[#d99ab5]">
+                  <UserPlus size={18} />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-zinc-400">消息提醒</div>
+              <div className="mt-0.5 text-sm font-bold text-zinc-800">
+                {relationshipRequestToast.characterName} 向你发来好友申请
+              </div>
+              <div className="mt-1 truncate text-xs text-zinc-500">
+                {relationshipRequestToast.preview || '点开看看这次的新申请'}
+              </div>
+            </div>
+          </div>
+        </button>
+      )}
       {momentPublishToast && (
         <button
           type="button"
@@ -1089,7 +1260,7 @@ export function AppScreenContent({
             setActiveTab('moments');
             setMomentPublishToast(null);
           }}
-          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? 'top-[98px]' : 'top-4'} z-[69] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+          className={`absolute left-4 right-4 ${getHeaderToastTopClass(momentPublishToastIndex)} z-[68] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
@@ -1119,7 +1290,7 @@ export function AppScreenContent({
       )}
       {datingGenerationToast && (
         <div
-          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+          className={`absolute left-4 right-4 ${getHeaderToastTopClass(secondaryToastIndex)} z-[67] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#fff3f7]">
@@ -1163,7 +1334,7 @@ export function AppScreenContent({
       )}
       {dreamGenerationToast && (
         <div
-          className={`absolute left-4 right-4 ${coupleSpaceUpdateToast ? (momentPublishToast ? 'top-[192px]' : 'top-[98px]') : momentPublishToast ? 'top-[98px]' : 'top-4'} z-[68] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
+          className={`absolute left-4 right-4 ${getHeaderToastTopClass(secondaryToastIndex)} z-[67] rounded-3xl border border-white/70 bg-white/92 p-4 text-left shadow-lg backdrop-blur-md`}
         >
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 overflow-hidden rounded-2xl bg-[#f7f1e4]">
@@ -1347,6 +1518,7 @@ export function AppScreenContent({
             patchCharacter={handlePatchCharacterById}
             setFriendRequests={setPersistedFriendRequests}
             onToggleCharacterBlock={handleToggleCharacterBlock}
+            onRepairRelationshipState={handleRepairCharacterRelationshipState}
             onBackToChat={() => transitionToApp('chat')}
             onOpenCharacterProfile={(characterId) => {
               setSelectedCharacterId(characterId);
@@ -1393,7 +1565,7 @@ export function AppScreenContent({
                     sharedState: buildSharedStateWritePatch({
                       character,
                       sourceScene: 'moments',
-                      publicSummaries: [`鍒氬垰鍙戜簡涓€鏉″叕寮€鍔ㄦ€侊細${content.slice(0, 72)}`],
+                      publicSummaries: [`刚刚发了一条公开动态：${content.slice(0, 72)}`],
                     }),
                   };
                 }),

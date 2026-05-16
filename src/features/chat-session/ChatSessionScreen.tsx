@@ -421,6 +421,7 @@ export function ChatSessionScreen({
   onUpdateCharacter,
   onPatchCharacter,
   onToggleCharacterBlock,
+  onRepairRelationshipState,
   settings, 
   onUpdateSettings,
   onBack,
@@ -466,6 +467,7 @@ export function ChatSessionScreen({
   onUpdateCharacter: (c: Character) => void;
   onPatchCharacter?: (patch: Partial<Character>) => void;
   onToggleCharacterBlock?: () => void;
+  onRepairRelationshipState?: () => void;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -1729,6 +1731,7 @@ export function ChatSessionScreen({
       onUpdate={onUpdateCharacter} 
       onBack={() => setShowSettings(false)} 
       onToggleRelationshipBlock={onToggleCharacterBlock}
+      onRepairRelationshipState={onRepairRelationshipState}
       onOpenRelationshipProfile={onOpenCharacterProfile ? () => {
         setShowSettings(false);
         onOpenCharacterProfile();

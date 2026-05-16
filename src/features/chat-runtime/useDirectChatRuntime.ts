@@ -2,6 +2,8 @@
 import type {
   ApiConfig,
   AppSettings,
+  AssistantReplyEnvelope,
+  AssistantReplyEnvelopeTextItem,
   CallRecord,
   Character,
   ChatGroup,
@@ -25,7 +27,9 @@ import {
 } from '../../services/ai/outputQuality';
 import {
   STRUCTURED_ASSISTANT_REPLY_TOKEN,
+  parseStructuredAssistantReplyEnvelope,
   normalizeStructuredAssistantReplyToLegacyFormat,
+  serializeStructuredAssistantReplyEnvelope,
   streamStructuredAssistantReply,
 } from '../../services/ai/assistantReplyEnvelope';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
@@ -53,11 +57,13 @@ import {
 import {
   analyzeLatestDirectUserIntent,
   buildDirectIntentPromptSection,
+  type DirectUserIntentAnalysis,
 } from '../../services/chat/intentAnalysis';
 import {
   analyzeDirectCharacterDecision,
   applyDirectTransferBridge,
   buildDirectCharacterDecisionPromptSection,
+  type DirectCharacterDecision,
 } from '../../services/chat/directCharacterDecision';
 import { buildDirectContextLayers } from '../../services/chat/buildDirectContextLayers';
 import { buildOpenLoopRegistryPrompt } from '../../services/chat/buildOpenLoopRegistry';
@@ -95,7 +101,7 @@ import {
 } from './directChatDelivery';
 import {
   buildCharacterAvatarPatchFromAction,
-  parseAvatarActionBlock,
+  parseAvatarActionPayload,
   resolveAvatarCandidateFromAction,
   shouldOfferAvatarActionForCharacter,
   type ParsedAvatarAction,
@@ -138,7 +144,10 @@ import { cacheRemoteAsset, saveUploadedDataUrl } from '../persistence/persistent
 import {
   createRelationshipEventThreadEntry,
 } from '../contacts/relationshipFlow';
-import { resolveRelationshipRoundForWrite } from '../contacts/friendRequestThreads';
+import {
+  markRelationshipRoundAbandoned,
+  resolveRelationshipRoundForWrite,
+} from '../contacts/friendRequestThreads';
 import { useSessionRuntimeCore } from './useSessionRuntimeCore';
 import { hasOpenedCoupleSpaceForCharacter } from './coupleSpaceInviteGuard';
 import type { BaseSessionRuntimeState } from './types';
@@ -325,6 +334,204 @@ function hasRequiredDirectReplyTranslation(text: string): boolean {
   }
 
   return translation.trim().length > 0;
+}
+
+function buildStructuredTextReplyPayload(items: AssistantReplyEnvelopeTextItem[]): {
+  mainText: string;
+  translationText: string;
+} {
+  return {
+    mainText: items.map((item) => item.text.trim()).filter(Boolean).join('\n').trim(),
+    translationText: items.map((item) => item.translation?.trim() || '').filter(Boolean).join(' ||| ').trim(),
+  };
+}
+
+function applyStructuredGameCardBridge(params: {
+  envelope: AssistantReplyEnvelope;
+  latestUserMessage: ChatMessage | null | undefined;
+}): AssistantReplyEnvelope {
+  const { envelope, latestUserMessage } = params;
+  if (!latestUserMessage) {
+    return envelope;
+  }
+
+  if (envelope.items.some((item) => item.kind === 'game_card')) {
+    return envelope;
+  }
+
+  const shouldInspectGameCard =
+    latestUserMessage.contentType === 'game-card'
+    || isGameCardText(latestUserMessage.text || '');
+  if (!shouldInspectGameCard) {
+    return envelope;
+  }
+
+  const textItems = envelope.items.filter((item): item is AssistantReplyEnvelopeTextItem => item.kind === 'text');
+  if (textItems.length === 0 || textItems.length !== envelope.items.length) {
+    return envelope;
+  }
+
+  const { mainText, translationText } = buildStructuredTextReplyPayload(textItems);
+  if (!mainText) {
+    return envelope;
+  }
+
+  const gameData = parseGameCardData(latestUserMessage.text || '', { silent: true });
+  const responseType = resolveGameCardReplyType(gameData);
+  if (!gameData || !responseType) {
+    return envelope;
+  }
+
+  const bridgedCard = {
+    game: gameData.game,
+    type: responseType,
+    ...(typeof gameData.question === 'string' && gameData.question.trim()
+      ? { question: gameData.question.trim() }
+      : {}),
+    content: mainText,
+  };
+
+  const latestCardTranslation = (
+    latestUserMessage.translation?.trim()
+    || getLegacyTranslationParts(latestUserMessage.text || '').translation.trim()
+  );
+  const combinedTranslation =
+    responseType === 'answer' && latestCardTranslation && translationText
+      ? `${latestCardTranslation}---${translationText}`
+      : translationText;
+
+  return {
+    items: [{
+      kind: 'game_card',
+      payload: bridgedCard,
+      ...(combinedTranslation ? { translation: combinedTranslation } : {}),
+    }],
+  };
+}
+
+function applyStructuredCoupleSpaceBridge(params: {
+  envelope: AssistantReplyEnvelope;
+  latestUserMessage: ChatMessage | null | undefined;
+}): AssistantReplyEnvelope {
+  const { envelope, latestUserMessage } = params;
+  if ((latestUserMessage?.text || '').trim() !== COUPLE_SPACE_INVITE_TOKEN) {
+    return envelope;
+  }
+
+  if (envelope.items.some((item) => item.kind === 'token' && item.name === 'COUPLE_SPACE_INVITE_ACCEPTED')) {
+    return envelope;
+  }
+
+  return {
+    items: [
+      ...envelope.items,
+      {
+        kind: 'token',
+        name: 'COUPLE_SPACE_INVITE_ACCEPTED',
+      },
+    ],
+  };
+}
+
+function applyStructuredTransferBridge(params: {
+  envelope: AssistantReplyEnvelope;
+  intentAnalysis: DirectUserIntentAnalysis | null;
+  decision: DirectCharacterDecision | null;
+}): AssistantReplyEnvelope {
+  const { envelope, intentAnalysis, decision } = params;
+  if (!intentAnalysis || !decision || decision.requestedAmount == null) {
+    return envelope;
+  }
+
+  if (envelope.items.some((item) => item.kind === 'transfer')) {
+    return envelope;
+  }
+
+  const legacyText = normalizeStructuredAssistantReplyToLegacyFormat(
+    serializeStructuredAssistantReplyEnvelope(envelope),
+  );
+  const bridgedLegacyText = applyDirectTransferBridge({
+    replyText: legacyText,
+    intentAnalysis,
+    decision,
+  });
+
+  if (bridgedLegacyText === legacyText) {
+    return envelope;
+  }
+
+  return {
+    items: [
+      ...envelope.items,
+      {
+        kind: 'transfer',
+        amount: decision.requestedAmount.toFixed(2),
+      },
+    ],
+  };
+}
+
+function applyStructuredDirectReplyBridges(params: {
+  envelope: AssistantReplyEnvelope;
+  latestUserMessage: ChatMessage | null | undefined;
+  intentAnalysis: DirectUserIntentAnalysis | null;
+  decision: DirectCharacterDecision | null;
+}): AssistantReplyEnvelope {
+  const gameCardBridged = applyStructuredGameCardBridge({
+    envelope: params.envelope,
+    latestUserMessage: params.latestUserMessage,
+  });
+  const coupleSpaceBridged = applyStructuredCoupleSpaceBridge({
+    envelope: gameCardBridged,
+    latestUserMessage: params.latestUserMessage,
+  });
+  return applyStructuredTransferBridge({
+    envelope: coupleSpaceBridged,
+    intentAnalysis: params.intentAnalysis,
+    decision: params.decision,
+  });
+}
+
+function resolveDirectReplyDisplayPayload(params: {
+  replyText: string;
+  latestUserMessage: ChatMessage | null | undefined;
+  intentAnalysis: DirectUserIntentAnalysis | null;
+  decision: DirectCharacterDecision | null;
+}): {
+  legacyText: string;
+  structuredRawText: string | null;
+} {
+  const structuredEnvelope = parseStructuredAssistantReplyEnvelope(params.replyText);
+  if (structuredEnvelope) {
+    const bridgedEnvelope = applyStructuredDirectReplyBridges({
+      envelope: structuredEnvelope,
+      latestUserMessage: params.latestUserMessage,
+      intentAnalysis: params.intentAnalysis,
+      decision: params.decision,
+    });
+    const structuredRawText = serializeStructuredAssistantReplyEnvelope(bridgedEnvelope);
+    return {
+      legacyText: normalizeStructuredAssistantReplyToLegacyFormat(structuredRawText),
+      structuredRawText,
+    };
+  }
+
+  const gameCardBridgedText = applyDirectGameCardBridge({
+    replyText: params.replyText,
+    latestUserMessage: params.latestUserMessage,
+  });
+  const coupleSpaceBridgedText = applyDirectCoupleSpaceBridge({
+    replyText: gameCardBridgedText,
+    latestUserMessage: params.latestUserMessage,
+  });
+  return {
+    legacyText: applyDirectTransferBridge({
+      replyText: coupleSpaceBridgedText,
+      intentAnalysis: params.intentAnalysis,
+      decision: params.decision,
+    }),
+    structuredRawText: null,
+  };
 }
 
 function createMomentPublishedSystemMessage(characterName: string, timestamp: number): ChatMessage {
@@ -1128,6 +1335,165 @@ const splitTransferReactionIntoMessages = (text: string, baseTimestamp: number):
   }));
 };
 
+export function splitStructuredAssistantReplyEnvelopeIntoMessages(
+  text: string,
+  baseTimestamp: number,
+  options: {
+    isInnerVoice?: boolean;
+    transferTargetLabel?: string;
+    assistantAliases?: string[];
+    availableStickers?: string[];
+    stickerContext?: Pick<AssistantStickerContext, 'recentStickerRefs' | 'recentStickerLabels' | 'lastOwnMessageWasSticker' | 'stickerMetadataMap'>;
+    currentHistory?: ChatMessage[];
+    userLabel?: string;
+    modelLabel?: string;
+  } = {},
+): ChatMessage[] | null {
+  const envelope = parseStructuredAssistantReplyEnvelope(text);
+  if (!envelope) {
+    return null;
+  }
+
+  if (options.isInnerVoice) {
+    const textItems = envelope.items.filter((item): item is AssistantReplyEnvelopeTextItem => item.kind === 'text');
+    const innerVoiceText = textItems.map((item) => item.text.trim()).filter(Boolean).join('\n').trim();
+    const innerVoiceTranslation = textItems.map((item) => item.translation?.trim() || '').filter(Boolean).join(' ||| ').trim();
+    const messages: ChatMessage[] = [];
+
+    if (innerVoiceText) {
+      messages.push({
+        role: 'model',
+        text: innerVoiceText,
+        timestamp: baseTimestamp,
+        isInnerVoice: true,
+        contentType: 'inner-voice',
+        ...(innerVoiceTranslation ? { translation: innerVoiceTranslation } : {}),
+      });
+    }
+
+    envelope.items
+      .filter((item): item is Extract<AssistantReplyEnvelope['items'][number], { kind: 'transfer' }> => item.kind === 'transfer')
+      .forEach((item) => {
+        messages.push({
+          role: 'model',
+          text: `[转账 ${item.amount}]`,
+          timestamp: baseTimestamp + messages.length,
+          transferStatus: 'pending',
+          transferTargetLabel: options.transferTargetLabel,
+          contentType: 'transfer',
+        });
+      });
+
+    return messages;
+  }
+
+  const stagedStickerRefs: string[] = [];
+  const stagedStickerLabels: string[] = [];
+  const mappedMessages: ChatMessage[] = [];
+
+  envelope.items.forEach((item) => {
+    if (item.kind === 'text') {
+      const normalizedMainText = stripAssistantSpeakerPrefix(
+        sanitizePipeMarkers(item.text, '\n'),
+        options.assistantAliases || [],
+      );
+      const expandedCues = expandDirectActionCues(normalizedMainText, item.translation);
+
+      expandedCues.forEach((cue) => {
+        const stickerContext = {
+          ...(options.stickerContext || {}),
+          recentStickerRefs: [...stagedStickerRefs].reverse().concat(options.stickerContext?.recentStickerRefs || []),
+          recentStickerLabels: [...stagedStickerLabels].reverse().concat(options.stickerContext?.recentStickerLabels || []),
+          lastOwnMessageWasSticker: stagedStickerRefs.length > 0 || !!options.stickerContext?.lastOwnMessageWasSticker,
+        };
+        const pickedSticker = cue.kind === 'sticker'
+          ? pickAssistantSticker(cue.content, options.availableStickers || [], stickerContext)
+          : null;
+        const replyTo = cue.kind === 'reply'
+          ? resolveDirectReplyTarget(
+              cue.replyTargetName,
+              options.currentHistory || [],
+              options.userLabel || '你',
+              options.modelLabel || '对方',
+            )
+          : undefined;
+        const bodyText = cue.kind === 'sticker'
+          ? cue.content.trim()
+          : cue.kind === 'recall'
+            ? cue.content
+            : cue.kind === 'reply'
+              ? cue.content || normalizedMainText
+              : cue.content || normalizedMainText;
+
+        if (pickedSticker) {
+          stagedStickerRefs.push(pickedSticker.sticker);
+          stagedStickerLabels.push(pickedSticker.label);
+        }
+
+        mappedMessages.push({
+          role: 'model',
+          text: cue.kind === 'sticker' ? (pickedSticker ? '[sticker]' : bodyText) : bodyText,
+          contentType: 'text',
+          ...(cue.kind === 'sticker' && pickedSticker ? { imageUrl: pickedSticker.sticker, stickerLabel: pickedSticker.label } : {}),
+          ...(replyTo ? { replyTo } : {}),
+          ...(cue.translation ? { translation: cue.translation } : {}),
+          timestamp: baseTimestamp + mappedMessages.length,
+        });
+      });
+      return;
+    }
+
+    if (item.kind === 'game_card') {
+      mappedMessages.push({
+        role: 'model',
+        text: `[GAME_CARD] ${JSON.stringify(item.payload)}`,
+        contentType: 'game-card',
+        ...(item.translation ? { translation: item.translation } : {}),
+        timestamp: baseTimestamp + mappedMessages.length,
+      });
+      return;
+    }
+
+    if (item.kind === 'transfer') {
+      mappedMessages.push({
+        role: 'model',
+        text: `[转账 ${item.amount}]`,
+        timestamp: baseTimestamp + mappedMessages.length,
+        transferStatus: 'pending',
+        transferTargetLabel: options.transferTargetLabel,
+        contentType: 'transfer',
+      });
+      return;
+    }
+
+    if (item.name === 'COUPLE_SPACE_INVITE') {
+      mappedMessages.push({
+        role: 'model',
+        text: COUPLE_SPACE_INVITE_TOKEN,
+        timestamp: baseTimestamp + mappedMessages.length,
+        contentType: 'couple-space-invite',
+      });
+      return;
+    }
+
+    mappedMessages.push({
+      role: 'model',
+      text: COUPLE_SPACE_INVITE_ACCEPTED_TOKEN,
+      timestamp: baseTimestamp + mappedMessages.length,
+      contentType: 'couple-space-invite-accepted',
+    });
+  });
+
+  return mappedMessages.filter((message) => (
+    !!message.imageUrl
+    || message.contentType === 'game-card'
+    || message.contentType === 'transfer'
+    || message.contentType === 'couple-space-invite'
+    || message.contentType === 'couple-space-invite-accepted'
+    || isDisplayableAssistantBubbleText(message.text || '')
+  ));
+}
+
 export function splitStreamingModelResponseIntoMessages(
   text: string,
   baseTimestamp: number,
@@ -1144,6 +1510,10 @@ export function splitStreamingModelResponseIntoMessages(
   } = {}
 ): ChatMessage[] {
   const trimmedText = text.trim();
+  const structuredMessages = splitStructuredAssistantReplyEnvelopeIntoMessages(text, baseTimestamp, options);
+  if (structuredMessages) {
+    return structuredMessages;
+  }
   const transferProtocol = parseTransferProtocol(trimmedText);
 
   if (options.isInnerVoice) {
@@ -2005,7 +2375,7 @@ export function useDirectChatRuntime({
         : requestList;
       const displayName = character.remarkName?.trim() || character.name;
 
-      return [
+      const nextRoundRequests = [
         createRelationshipEventThreadEntry({
           characterId: character.id,
           characterName: displayName,
@@ -2024,6 +2394,10 @@ export function useDirectChatRuntime({
         }),
         ...nextRequests,
       ];
+
+      return params.decision === 'block'
+        ? markRelationshipRoundAbandoned(nextRoundRequests, relationshipRound.roundId, params.timestamp)
+        : nextRoundRequests;
     });
   }, [character.avatar, character.id, character.name, character.remarkName, patchCurrentCharacter, setFriendRequests]);
 
@@ -2487,11 +2861,15 @@ export function useDirectChatRuntime({
           : (latestPendingUserMessage?.text || '');
         const isInnerVoiceRequest = !!latestPendingUserMessage?.isInnerVoice;
         const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
-          const displayText = parseAvatarActionBlock(text).displayText;
-          const shouldRecallPrevious = hasDirectRecallCue(displayText, {
+          const avatarActionParse = parseAvatarActionPayload(text);
+          const displayText = avatarActionParse.structuredDisplayText || avatarActionParse.displayText;
+          const shouldRecallPrevious = hasDirectRecallCue(
+            normalizeStructuredAssistantReplyToLegacyFormat(displayText),
+            {
             assistantAliases: [character.name, character.remarkName?.trim() || ''],
             maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
-          });
+            },
+          );
           const stickerContext = buildDirectStickerUsageContext(messages, {
             excludeAfterTimestamp: assistantMsgId,
           });
@@ -2643,9 +3021,24 @@ export function useDirectChatRuntime({
               shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
               sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
             });
+          const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
+          const isSpecialProtocolReply = !!latestPendingUserMessage && (
+            latestPendingUserMessage.isInnerVoice
+            || latestPendingUserMessage.contentType === 'game-card'
+            || isGameCardText(latestPendingUserMessage.text || '')
+            || (latestPendingUserMessage.text || '').trim() === COUPLE_SPACE_INVITE_TOKEN
+            || (latestPendingUserMessage.text || '').trim() === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN
+          );
+          const structuredAssistantReplyEnabled =
+            inlineReplyTranslationEnabled
+            || isSpecialProtocolReply
+            || directIntentAnalysis?.actionIntent === 'request_transfer';
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
-            : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
+            : buildDirectSpecialReplyPrompt(latestPendingUserMessage, {
+              structuredReplyEnabled: structuredAssistantReplyEnabled,
+              requireInlineTranslation: inlineReplyTranslationEnabled,
+            });
           const recentPokeState = collectRecentDirectPokeState(historySnapshot);
           const proactivePokeGate = mode === 'proactive'
             ? evaluateDirectProactivePokeGate({
@@ -2655,7 +3048,6 @@ export function useDirectChatRuntime({
               recentPokeState,
             })
             : null;
-          const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
           const directStickerContext = {
             ...buildDirectStickerUsageContext(historySnapshot),
             stickerMetadataMap: availableStickerMetadata,
@@ -2709,7 +3101,7 @@ export function useDirectChatRuntime({
                 ...directStickerContext,
               }),
               buildDirectFinalCharacterGuardPrompt(),
-              structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
+              structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
             ].filter(Boolean),
           });
 
@@ -2730,26 +3122,29 @@ export function useDirectChatRuntime({
               ? [{ role: 'user' as const, content: DIRECT_PROACTIVE_TRIGGER_MESSAGE }]
               : []),
           ];
+          let structuredResponseText: string | null = null;
           let finalQualityResult;
-          if (structuredBilingualReplyEnabled) {
+          if (structuredAssistantReplyEnabled) {
             const structuredConfig: ApiConfig = {
               ...activeConfig,
               temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
             };
-            const responseText = await streamStructuredBilingualReply({
+            const responseText = await streamStructuredAssistantReply({
               activeConfig: structuredConfig,
               messages: runtimeMessages,
             });
-            const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(responseText);
+            structuredResponseText = parseStructuredAssistantReplyEnvelope(responseText) ? responseText : null;
+            const normalizedText = normalizeStructuredAssistantReplyToLegacyFormat(responseText);
             finalQualityResult = evaluateAssistantOutput(normalizedText, {
               allowBracketActions: shouldAllowBracketActions(character),
               allowStructuredProtocols: true,
             });
             if (!finalQualityResult.ok) {
-              console.warn('[direct-chat] invalid structured bilingual reply rejected', {
+              console.warn('[direct-chat] invalid structured reply rejected', {
                 reason: finalQualityResult.reason,
                 preview: finalQualityResult.cleanedText.slice(0, 120),
               });
+              structuredResponseText = null;
               finalQualityResult = await generateQualityCheckedAssistantReply({
                 activeConfig,
                 messages: runtimeMessages,
@@ -2765,6 +3160,9 @@ export function useDirectChatRuntime({
                   });
                 },
               });
+              if (!structuredResponseText && parseStructuredAssistantReplyEnvelope(finalQualityResult.cleanedText)) {
+                structuredResponseText = finalQualityResult.cleanedText;
+              }
             }
           } else {
             finalQualityResult = await generateQualityCheckedAssistantReply({
@@ -2791,14 +3189,6 @@ export function useDirectChatRuntime({
           const proactiveLightInteractionPayload = mode === 'proactive'
             ? extractDirectProactiveLightInteractionPayload(finalQualityResult.cleanedText)
             : null;
-
-          if (
-            structuredBilingualReplyEnabled
-            && !proactiveLightInteractionPayload
-            && !hasRequiredDirectReplyTranslation(finalQualityResult.cleanedText)
-          ) {
-            throw new Error('模型未按双语协议返回可显示的中文翻译。');
-          }
 
           if (mode === 'proactive') {
             if (proactiveLightInteractionPayload) {
@@ -2843,29 +3233,39 @@ export function useDirectChatRuntime({
             }
           }
 
-          currentResponseText = applyDirectGameCardBridge({
-            replyText: finalQualityResult.cleanedText,
+          const resolvedDisplayPayload = resolveDirectReplyDisplayPayload({
+            replyText: structuredResponseText || finalQualityResult.cleanedText,
             latestUserMessage: latestPendingUserMessage,
-          });
-          currentResponseText = applyDirectCoupleSpaceBridge({
-            replyText: currentResponseText,
-            latestUserMessage: latestPendingUserMessage,
-          });
-          currentResponseText = applyDirectTransferBridge({
-            replyText: currentResponseText,
             intentAnalysis: directIntentAnalysis,
             decision: directCharacterDecision,
           });
+          if (
+            inlineReplyTranslationEnabled
+            && !proactiveLightInteractionPayload
+            && !hasRequiredDirectReplyTranslation(resolvedDisplayPayload.structuredRawText || resolvedDisplayPayload.legacyText)
+          ) {
+            throw new Error('模型未按双语协议返回可显示的中文翻译。');
+          }
+          currentResponseText = resolvedDisplayPayload.legacyText;
+          let finalStructuredDisplayText = resolvedDisplayPayload.structuredRawText;
           if (isIncompleteGameCardPayload(currentResponseText)) {
             currentResponseText = GAME_CARD_FAILURE_TOKEN;
+            finalStructuredDisplayText = null;
           }
-          const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+          const avatarActionResult = parseAvatarActionPayload(finalStructuredDisplayText || currentResponseText);
           const resolvedAvatarAction = pendingAvatarConfirmationResolution?.action
             || avatarOfferReview?.action
             || avatarLibraryDecisionReview?.action
             || avatarActionResult.action;
           currentResponseText = avatarActionResult.displayText;
-          latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
+          finalStructuredDisplayText = avatarActionResult.structuredDisplayText || null;
+          if (!finalStructuredDisplayText && currentResponseText.trim() !== resolvedDisplayPayload.legacyText.trim()) {
+            finalStructuredDisplayText = null;
+          }
+          latestHistory = replaceAssistantMessages(
+            latestHistory,
+            finalStructuredDisplayText || currentResponseText,
+          );
           commitHistory(latestHistory);
           queueAutoAudioForLatestModelReply(latestHistory, latestPendingUserMessage?.text || '');
           syncCharacterRuntimeState({
@@ -3063,22 +3463,25 @@ export function useDirectChatRuntime({
     }
 
     const isInnerVoiceRequest = isInnerVoiceOverride;
-    const directSpecialReplyPrompt = buildDirectSpecialReplyPrompt(userMsg);
     const assistantMsgId = Date.now() + 1;
     activeAssistantMessageIdRef.current = assistantMsgId;
-    let currentResponseText = '';
-    let latestHistory = newHistory;
-    let renderedAssistantMessageCount = 0;
-    let runtimeStickerPool = availableStickers;
-    const stripPseudoMomentPrefix = (text: string) =>
-      text.replace(/^\s*(动态|状态|朋友圈说说)[:：]\s*/u, '').trim();
+      let currentResponseText = '';
+      let latestHistory = newHistory;
+      let renderedAssistantMessageCount = 0;
+      let runtimeStickerPool = availableStickers;
+      const stripPseudoMomentPrefix = (text: string) =>
+        text.replace(/^\s*(动态|状态|朋友圈说说)[:：]\s*/u, '').trim();
 
-    const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
-      const displayText = parseAvatarActionBlock(stripPseudoMomentPrefix(text)).displayText;
-      const shouldRecallPrevious = hasDirectRecallCue(displayText, {
-        assistantAliases: [character.name, character.remarkName?.trim() || ''],
-        maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
-      });
+      const replaceAssistantMessages = (messages: ChatMessage[], text: string): ChatMessage[] => {
+      const avatarActionParse = parseAvatarActionPayload(stripPseudoMomentPrefix(text));
+      const displayText = avatarActionParse.structuredDisplayText || avatarActionParse.displayText;
+      const shouldRecallPrevious = hasDirectRecallCue(
+        normalizeStructuredAssistantReplyToLegacyFormat(displayText),
+        {
+          assistantAliases: [character.name, character.remarkName?.trim() || ''],
+          maxDirectReplyBubbles: resolveCharacterReplyBubbleLimit(character),
+        },
+      );
       const stickerContext = buildDirectStickerUsageContext(messages, {
         excludeAfterTimestamp: assistantMsgId,
       });
@@ -3266,7 +3669,21 @@ export function useDirectChatRuntime({
           shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
           sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
         });
-      const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
+      const inlineReplyTranslationEnabled = shouldInlineReplyTranslation(character);
+      const isSpecialProtocolReply =
+        userMsg.isInnerVoice
+        || userMsg.contentType === 'game-card'
+        || isGameCardText(userMsg.text || '')
+        || (userMsg.text || '').trim() === COUPLE_SPACE_INVITE_TOKEN
+        || (userMsg.text || '').trim() === COUPLE_SPACE_INVITE_ACCEPTED_TOKEN;
+      const structuredAssistantReplyEnabled =
+        inlineReplyTranslationEnabled
+        || isSpecialProtocolReply
+        || directIntentAnalysis?.actionIntent === 'request_transfer';
+      const directSpecialReplyPrompt = buildDirectSpecialReplyPrompt(userMsg, {
+        structuredReplyEnabled: structuredAssistantReplyEnabled,
+        requireInlineTranslation: inlineReplyTranslationEnabled,
+      });
       const directStickerContext = {
         ...buildDirectStickerUsageContext(newHistory),
         stickerMetadataMap: availableStickerMetadata,
@@ -3313,7 +3730,7 @@ export function useDirectChatRuntime({
             ...directStickerContext,
           }),
           buildDirectFinalCharacterGuardPrompt(),
-          structuredBilingualReplyEnabled ? buildStructuredBilingualReplyPrompt(character) : '',
+          structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : '',
         ].filter(Boolean),
       });
 
@@ -3331,13 +3748,14 @@ export function useDirectChatRuntime({
           ...(m.audioUrl ? { audioUrl: m.audioUrl, audioMimeType: m.audioMimeType } : {}),
         })).filter((message) => !!message.content.trim() || !!message.imageUrl || !!message.audioUrl),
       ];
+      let structuredResponseText: string | null = null;
       let qualityResult;
-      if (structuredBilingualReplyEnabled) {
+      if (structuredAssistantReplyEnabled) {
         const structuredConfig: ApiConfig = {
           ...activeConfig,
           temperature: Math.min(activeConfig.temperature ?? 0.7, 0.35),
         };
-        const responseText = await streamStructuredBilingualReply({
+        const responseText = await streamStructuredAssistantReply({
           activeConfig: structuredConfig,
           messages: runtimeMessages,
           onPreview: (previewText) => {
@@ -3353,16 +3771,18 @@ export function useDirectChatRuntime({
             updateAssistantMessage(visiblePreview);
           },
         });
-        const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(responseText);
+        structuredResponseText = parseStructuredAssistantReplyEnvelope(responseText) ? responseText : null;
+        const normalizedText = normalizeStructuredAssistantReplyToLegacyFormat(responseText);
         qualityResult = evaluateAssistantOutput(normalizedText, {
           allowBracketActions: shouldAllowBracketActions(character),
           allowStructuredProtocols: true,
         });
         if (!qualityResult.ok) {
-          console.warn('[direct-chat] invalid structured bilingual reply rejected', {
+          console.warn('[direct-chat] invalid structured reply rejected', {
             reason: qualityResult.reason,
             preview: qualityResult.cleanedText.slice(0, 120),
           });
+          structuredResponseText = null;
           qualityResult = await generateQualityCheckedAssistantReply({
             activeConfig,
             messages: runtimeMessages,
@@ -3378,6 +3798,9 @@ export function useDirectChatRuntime({
               });
             },
           });
+          if (!structuredResponseText && parseStructuredAssistantReplyEnvelope(qualityResult.cleanedText)) {
+            structuredResponseText = qualityResult.cleanedText;
+          }
         }
       } else {
         qualityResult = await generateQualityCheckedAssistantReply({
@@ -3419,36 +3842,36 @@ export function useDirectChatRuntime({
       if (!qualityResult.ok) {
         throw new Error(`模型返回无效内容：${qualityResult.reason || 'unknown'}`);
       }
-      if (structuredBilingualReplyEnabled && !hasRequiredDirectReplyTranslation(qualityResult.cleanedText)) {
-        throw new Error('模型未按双语协议返回可显示的中文翻译。');
-      }
       if (activeGenerationIdRef.current !== generationId) {
         return;
       }
 
-      currentResponseText = applyDirectGameCardBridge({
-        replyText: qualityResult.cleanedText,
+      const resolvedDisplayPayload = resolveDirectReplyDisplayPayload({
+        replyText: structuredResponseText || qualityResult.cleanedText,
         latestUserMessage: userMsg,
-      });
-      currentResponseText = applyDirectCoupleSpaceBridge({
-        replyText: currentResponseText,
-        latestUserMessage: userMsg,
-      });
-      currentResponseText = applyDirectTransferBridge({
-        replyText: currentResponseText,
         intentAnalysis: directIntentAnalysis,
         decision: directCharacterDecision,
       });
+      if (inlineReplyTranslationEnabled && !hasRequiredDirectReplyTranslation(resolvedDisplayPayload.structuredRawText || resolvedDisplayPayload.legacyText)) {
+        throw new Error('模型未按双语协议返回可显示的中文翻译。');
+      }
+      currentResponseText = resolvedDisplayPayload.legacyText;
+      let finalStructuredDisplayText = resolvedDisplayPayload.structuredRawText;
       if (isIncompleteGameCardPayload(currentResponseText)) {
         currentResponseText = GAME_CARD_FAILURE_TOKEN;
+        finalStructuredDisplayText = null;
       }
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
-      const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+      const avatarActionResult = parseAvatarActionPayload(finalStructuredDisplayText || currentResponseText);
       const resolvedAvatarAction = pendingAvatarConfirmationResolution?.action
         || avatarOfferReview?.action
         || avatarLibraryDecisionReview?.action
         || avatarActionResult.action;
       currentResponseText = avatarActionResult.displayText;
+      finalStructuredDisplayText = avatarActionResult.structuredDisplayText || null;
+      if (!finalStructuredDisplayText && currentResponseText.trim() !== resolvedDisplayPayload.legacyText.trim()) {
+        finalStructuredDisplayText = null;
+      }
       const boundaryAnalysis = analyzeDirectRelationshipBoundary({
         character,
         messages: newHistory,
@@ -3471,6 +3894,7 @@ export function useDirectChatRuntime({
             latestUserText: userMsg.text,
             draftReplyText: currentResponseText,
             boundary: boundaryAnalysis,
+            structuredReplyPrompt: structuredAssistantReplyEnabled ? buildStructuredAssistantReplyPrompt(character) : undefined,
           })
         : null;
       const appliedBoundaryDecision = boundaryReply?.decision && boundaryAnalysis.allowedDecisions.includes(boundaryReply.decision)
@@ -3479,9 +3903,18 @@ export function useDirectChatRuntime({
           ? boundaryAnalysis.suggestedDecision
           : 'none';
       if (boundaryReply?.reactionText?.trim()) {
-        currentResponseText = boundaryReply.reactionText.trim();
+        const boundaryStructuredText = parseStructuredAssistantReplyEnvelope(boundaryReply.reactionText.trim())
+          ? boundaryReply.reactionText.trim()
+          : null;
+        currentResponseText = boundaryStructuredText
+          ? normalizeStructuredAssistantReplyToLegacyFormat(boundaryStructuredText)
+          : boundaryReply.reactionText.trim();
+        finalStructuredDisplayText = boundaryStructuredText;
       }
-      const baseFinalHistory = replaceAssistantMessages(newHistory, currentResponseText);
+      const baseFinalHistory = replaceAssistantMessages(
+        newHistory,
+        finalStructuredDisplayText || currentResponseText,
+      );
       const boundaryTimestamp = Date.now();
       const finalHistory = appliedBoundaryDecision === 'block'
         ? [

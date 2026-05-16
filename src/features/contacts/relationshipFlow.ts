@@ -14,7 +14,6 @@ import {
   getCharacterBlockState,
   getFriendRequestCharacterId,
   getRelationshipReactionBubbleCap,
-  resolveCharacterBlockedFollowupDelayMs,
   supersedePendingCharacterRequests,
 } from './contactRelationship';
 import { applyRelationshipRecoveryContext } from './relationshipRecoveryContext';
@@ -77,6 +76,17 @@ function createRelationshipFriendRequestNoticeMessage(displayName: string, times
     `${displayName} 想正式加你为好友，已经进“新的朋友”了。`,
     timestamp,
   );
+}
+
+export function resolveBlockedRelationshipFollowupPlan(params: {
+  canCreateRequest: boolean;
+  decision?: string | null;
+}) {
+  const shouldCounterBlock = params.decision === 'counter_block';
+  return {
+    shouldCounterBlock,
+    shouldSendRequest: params.canCreateRequest && params.decision === 'send_request',
+  };
 }
 
 function buildRelationshipReactionMessages(
@@ -288,23 +298,28 @@ export function runHandledRelationshipRequestReactionFlow(params: {
   const historySnapshot = runtime.appData.chatHistory[characterId] || [];
 
   void (async () => {
-    const generated = await generateRelationshipEventReply({
-      settings: runtime.settings,
-      character: targetCharacter,
-      allCharacters: runtime.appData.characters,
-      userName: runtime.appData.userProfile.name,
-      history: historySnapshot,
-      directChatHistory: runtime.appData.chatHistory,
-      chatGroups: runtime.appData.chatGroups || [],
-      masks: runtime.appData.masks,
-      worldBook: runtime.appData.worldBooks || [],
-      perception: runtime.appData.perception,
-      coupleSpace: getRuntimeCoupleSpace(runtime),
-      event: {
-        kind: accepted ? 'user_accepted_character_request' : 'user_rejected_character_request',
-        note: accepted ? undefined : params.note?.trim(),
-      },
-    });
+    let generated = null;
+    try {
+      generated = await generateRelationshipEventReply({
+        settings: runtime.settings,
+        character: targetCharacter,
+        allCharacters: runtime.appData.characters,
+        userName: runtime.appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: runtime.appData.chatHistory,
+        chatGroups: runtime.appData.chatGroups || [],
+        masks: runtime.appData.masks,
+        worldBook: runtime.appData.worldBooks || [],
+        perception: runtime.appData.perception,
+        coupleSpace: getRuntimeCoupleSpace(runtime),
+        event: {
+          kind: accepted ? 'user_accepted_character_request' : 'user_rejected_character_request',
+          note: accepted ? undefined : params.note?.trim(),
+        },
+      });
+    } catch {
+      generated = null;
+    }
 
     runtime.setAppData((prev) => {
       const currentCharacter = prev.characters.find((character) => character.id === characterId);
@@ -513,23 +528,28 @@ export function runRelationshipRequestSubmissionFlow(params: {
   });
 
   void (async () => {
-    const generated = await generateRelationshipEventReply({
-      settings: runtime.settings,
-      character: targetCharacter,
-      allCharacters: runtime.appData.characters,
-      userName: runtime.appData.userProfile.name,
-      history: historySnapshot,
-      directChatHistory: runtime.appData.chatHistory,
-      chatGroups: runtime.appData.chatGroups || [],
-      masks: runtime.appData.masks,
-      worldBook: runtime.appData.worldBooks || [],
-      perception: runtime.appData.perception,
-      coupleSpace: getRuntimeCoupleSpace(runtime),
-      event: {
-        kind: 'user_sent_friend_request',
-        note: trimmedMessage,
-      },
-    });
+    let generated = null;
+    try {
+      generated = await generateRelationshipEventReply({
+        settings: runtime.settings,
+        character: targetCharacter,
+        allCharacters: runtime.appData.characters,
+        userName: runtime.appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: runtime.appData.chatHistory,
+        chatGroups: runtime.appData.chatGroups || [],
+        masks: runtime.appData.masks,
+        worldBook: runtime.appData.worldBooks || [],
+        perception: runtime.appData.perception,
+        coupleSpace: getRuntimeCoupleSpace(runtime),
+        event: {
+          kind: 'user_sent_friend_request',
+          note: trimmedMessage,
+        },
+      });
+    } catch {
+      generated = null;
+    }
 
     runtime.setAppData((prev) => {
       const currentCharacter = prev.characters.find((character) => character.id === characterId);
@@ -702,6 +722,20 @@ export function runRelationshipBlockToggleFlow(params: {
     characterId,
     timestamp,
   );
+  const canCreateBlockedFollowupRequest = !isUnblocking && canCreateCharacterRequestAttempt(
+    runtime.appData.friendRequests || [],
+    characterId,
+    'character',
+    relationshipRound.roundId,
+  );
+  const relationshipBlockRollbackSnapshot = !isUnblocking
+    ? {
+        friendshipStatus: targetCharacter.friendshipStatus === 'none' ? 'none' as const : 'friends' as const,
+        blockedByUser: targetCharacter.blockedByUser === true,
+        blockedByCharacter: targetCharacter.blockedByCharacter === true,
+        capturedAt: timestamp,
+      }
+    : undefined;
 
   runtime.setAppData((prev) => {
     const nextCharacters = prev.characters.map((character) => (
@@ -710,11 +744,18 @@ export function runRelationshipBlockToggleFlow(params: {
             ...character,
             friendshipStatus: isUnblocking ? character.friendshipStatus : 'none' as const,
             blockedByUser: !isUnblocking,
+            ...(isUnblocking
+              ? { relationshipBlockRollbackSnapshot: undefined }
+              : { relationshipBlockRollbackSnapshot }),
             relationshipStatusUpdatedAt: timestamp,
           }
         : character
     ));
-    const nextFriendRequests = supersedePendingCharacterRequests(prev.friendRequests || [], characterId, timestamp);
+    const nextFriendRequests = supersedePendingCharacterRequests(
+      prev.friendRequests || [],
+      characterId,
+      timestamp,
+    );
     const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
       createRelationshipSystemMessage(
         isUnblocking
@@ -734,22 +775,27 @@ export function runRelationshipBlockToggleFlow(params: {
   });
 
   void (async () => {
-    const generated = await generateRelationshipEventReply({
-      settings: runtime.settings,
-      character: targetCharacter,
-      allCharacters: runtime.appData.characters,
-      userName: runtime.appData.userProfile.name,
-      history: historySnapshot,
-      directChatHistory: runtime.appData.chatHistory,
-      chatGroups: runtime.appData.chatGroups || [],
-      masks: runtime.appData.masks,
-      worldBook: runtime.appData.worldBooks || [],
-      perception: runtime.appData.perception,
-      coupleSpace: getRuntimeCoupleSpace(runtime),
-      event: {
-        kind: isUnblocking ? 'user_unblocked_character' : 'user_blocked_character',
-      },
-    });
+    let generated = null;
+    try {
+      generated = await generateRelationshipEventReply({
+        settings: runtime.settings,
+        character: targetCharacter,
+        allCharacters: runtime.appData.characters,
+        userName: runtime.appData.userProfile.name,
+        history: historySnapshot,
+        directChatHistory: runtime.appData.chatHistory,
+        chatGroups: runtime.appData.chatGroups || [],
+        masks: runtime.appData.masks,
+        worldBook: runtime.appData.worldBooks || [],
+        perception: runtime.appData.perception,
+        coupleSpace: getRuntimeCoupleSpace(runtime),
+        event: {
+          kind: isUnblocking ? 'user_unblocked_character' : 'user_blocked_character',
+        },
+      });
+    } catch {
+      generated = null;
+    }
 
     runtime.setAppData((prev) => {
       const currentCharacter = prev.characters.find((character) => character.id === characterId);
@@ -872,31 +918,16 @@ export function runRelationshipBlockToggleFlow(params: {
         };
       }
 
-      const nextAttemptNo = getNextCharacterRequestAttemptNo(
-        prev.friendRequests || [],
-        characterId,
-        'character',
-        relationshipRound.roundId,
-      );
-      const canRetry = canCreateCharacterRequestAttempt(
-        prev.friendRequests || [],
-        characterId,
-        'character',
-        relationshipRound.roundId,
-      );
-      const reactionText = generated?.reactionText?.trim() || '';
-      const followupRequestMessage = generated?.requestMessage?.trim() || undefined;
-      const shouldSendRequest = canRetry && !!followupRequestMessage;
-      const blockedFollowupReleaseAt = shouldSendRequest
-        ? timestamp + resolveCharacterBlockedFollowupDelayMs(currentCharacter, currentHistory, nextAttemptNo)
-        : null;
-      const shouldCounterBlock = shouldSendRequest
-        ? generated?.decision === 'counter_block'
-        : generated?.decision === 'counter_block'
-          ? true
-          : generated?.decision === 'no_counter_block'
-            ? false
-            : false;
+      if (!generated) {
+        return prev;
+      }
+
+      const reactionText = generated.reactionText?.trim() || '';
+      const followupRequestMessage = generated.requestMessage?.trim() || undefined;
+      const { shouldCounterBlock, shouldSendRequest } = resolveBlockedRelationshipFollowupPlan({
+        canCreateRequest: canCreateBlockedFollowupRequest && !!followupRequestMessage,
+        decision: generated.decision,
+      });
       nextCharacters = prev.characters.map((character) => (
         character.id === characterId
           ? {
@@ -904,15 +935,45 @@ export function runRelationshipBlockToggleFlow(params: {
               friendshipStatus: 'none' as const,
               blockedByUser: true,
               blockedByCharacter: shouldCounterBlock,
+              relationshipBlockRollbackSnapshot: undefined,
               relationshipStatusUpdatedAt: timestamp,
             }
           : character
       ));
 
       if (shouldSendRequest) {
-        const requestId = `friend-request-${characterId}-${timestamp}`;
-        const threadId = getCharacterFriendRequestThreadId(characterId);
         const displayName = getRelationshipDisplayName(currentCharacter);
+        const followupRequestId = `friend-request-${characterId}-${timestamp}`;
+        const followupThreadId = getCharacterFriendRequestThreadId(characterId);
+        const followupAttemptNo = getNextCharacterRequestAttemptNo(
+          prev.friendRequests || [],
+          characterId,
+          'character',
+          relationshipRound.roundId,
+        );
+        const followupRequest = {
+          id: followupRequestId,
+          fromUserId: characterId,
+          fromUserName: displayName,
+          fromUserAvatar: currentCharacter.avatar,
+          status: 'pending' as const,
+          timestamp,
+          direction: 'incoming' as const,
+          initiator: 'character' as const,
+          requestKind: 'reconnect' as const,
+          characterId,
+          threadId: followupThreadId,
+          relationshipRoundId: relationshipRound.roundId,
+          relationshipRoundNo: relationshipRound.roundNo,
+          relationshipRoundStatus: 'active' as const,
+          attemptNo: followupAttemptNo,
+          isUnread: true,
+          unreadAt: timestamp,
+          sourceScene: 'relationship' as const,
+          lastUpdatedAt: timestamp,
+          message: followupRequestMessage,
+          ...(reactionText ? { responseText: reactionText } : {}),
+        };
         nextFriendRequests = [
           createRelationshipEventThreadEntry({
             characterId,
@@ -928,30 +989,13 @@ export function runRelationshipBlockToggleFlow(params: {
             eventKind: shouldCounterBlock ? 'character_counter_blocked' : 'user_blocked_character',
             ...(shouldCounterBlock ? { isUnread: true } : {}),
           }),
-          {
-            id: requestId,
-            fromUserId: characterId,
-            fromUserName: displayName,
-            fromUserAvatar: currentCharacter.avatar,
-            status: 'pending' as const,
-            timestamp: blockedFollowupReleaseAt || timestamp,
-            direction: 'incoming' as const,
-            initiator: 'character' as const,
-            requestKind: 'reconnect' as const,
+          followupRequest,
+          ...supersedePendingCharacterRequests(
+            nextFriendRequests,
             characterId,
-            threadId,
-            relationshipRoundId: relationshipRound.roundId,
-            relationshipRoundNo: relationshipRound.roundNo,
-            relationshipRoundStatus: 'active' as const,
-            attemptNo: nextAttemptNo,
-            ...(blockedFollowupReleaseAt ? { releaseAt: blockedFollowupReleaseAt } : {}),
-            isUnread: true,
-            unreadAt: blockedFollowupReleaseAt || timestamp,
-            sourceScene: 'relationship' as const,
-            lastUpdatedAt: blockedFollowupReleaseAt || timestamp,
-            ...(followupRequestMessage ? { message: followupRequestMessage } : {}),
-          },
-          ...supersedePendingCharacterRequests(nextFriendRequests, characterId, timestamp, requestId),
+            timestamp,
+            followupRequestId,
+          ),
         ];
       } else {
         nextFriendRequests = [
@@ -969,7 +1013,11 @@ export function runRelationshipBlockToggleFlow(params: {
             eventKind: shouldCounterBlock ? 'character_counter_blocked' : 'user_blocked_character',
             ...(shouldCounterBlock ? { isUnread: true } : {}),
           }),
-          ...nextFriendRequests,
+          ...supersedePendingCharacterRequests(
+            nextFriendRequests,
+            characterId,
+            timestamp,
+          ),
         ];
         nextFriendRequests = markRelationshipRoundAbandoned(
           nextFriendRequests,
@@ -1015,6 +1063,70 @@ export function runRelationshipBlockToggleFlow(params: {
         };
     });
   })();
+
+  return true;
+}
+
+export function runRelationshipBlockRepairFlow(params: {
+  runtime: RelationshipFlowRuntime;
+  characterId: string;
+  targetCharacter?: Character | null;
+}) {
+  const { runtime, characterId } = params;
+  const targetCharacter = params.targetCharacter || runtime.appData.characters.find((character) => character.id === characterId) || null;
+  const rollbackSnapshot = targetCharacter?.relationshipBlockRollbackSnapshot;
+  if (!targetCharacter || !rollbackSnapshot) {
+    return false;
+  }
+
+  const timestamp = Date.now();
+  const displayName = getRelationshipDisplayName(targetCharacter);
+
+  runtime.setAppData((prev) => {
+    const currentCharacter = prev.characters.find((character) => character.id === characterId);
+    const currentSnapshot = currentCharacter?.relationshipBlockRollbackSnapshot;
+    if (!currentCharacter || !currentSnapshot) {
+      return prev;
+    }
+
+    const nextCharacters = prev.characters.map((character) => (
+      character.id === characterId
+        ? {
+            ...character,
+            friendshipStatus: currentSnapshot.friendshipStatus,
+            blockedByUser: currentSnapshot.blockedByUser,
+            blockedByCharacter: currentSnapshot.blockedByCharacter,
+            relationshipBlockRollbackSnapshot: undefined,
+            relationshipStatusUpdatedAt: timestamp,
+          }
+        : character
+    ));
+    const nextFriendRequests = (prev.friendRequests || []).filter((request) => {
+      if (getFriendRequestCharacterId(request) !== characterId) {
+        return true;
+      }
+
+      const requestUpdatedAt = Math.max(request.lastUpdatedAt || 0, request.timestamp || 0);
+      if (requestUpdatedAt < currentSnapshot.capturedAt) {
+        return true;
+      }
+
+      return request.sourceScene !== 'relationship'
+        && request.requestKind !== 'reconnect'
+        && !request.isRelationshipEvent;
+    });
+    const nextChatHistory = appendRelationshipMessages(prev.chatHistory, characterId, [
+      createRelationshipSystemMessage(`已修复 ${displayName} 的关系状态，并回到拉黑前。`, timestamp),
+    ]);
+
+    persistCharactersIfChanged(prev.characters, nextCharacters, runtime.persistCharacters);
+    return {
+      ...prev,
+      characters: nextCharacters,
+      chatHistory: nextChatHistory,
+      friendRequests: nextFriendRequests,
+    };
+  });
 
   return true;
 }

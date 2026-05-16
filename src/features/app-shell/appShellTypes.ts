@@ -23,6 +23,14 @@ export type MomentPublishToast = {
   preview: string;
 };
 
+export type RelationshipRequestToast = {
+  id: string;
+  characterId: string;
+  characterName: string;
+  characterAvatar?: string;
+  preview: string;
+};
+
 export type DatingGenerationToast = {
   id: string;
   characterId: string;

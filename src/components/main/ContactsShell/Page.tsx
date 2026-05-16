@@ -1039,14 +1039,20 @@ export function CharacterProfile({
 
   const requestButtonLabel = isFriend
     ? '拉黑'
-    : blockState === 'user' || blockState === 'mutual'
+    : pendingIncomingRequest
+      ? '去处理申请'
+      : blockState === 'user' || blockState === 'mutual'
       ? '解除拉黑'
       : pendingOutgoingRequest
         ? '再次申请'
         : '申请添加';
-  const requestButtonIcon = isFriend || blockState === 'user' || blockState === 'mutual'
+  const requestButtonIcon = isFriend
     ? <X size={18} />
-    : <UserPlus size={18} />;
+    : pendingIncomingRequest
+      ? <ChevronRight size={18} />
+      : blockState === 'user' || blockState === 'mutual'
+        ? <X size={18} />
+        : <UserPlus size={18} />;
   const requestSheetPlaceholder = blockState === 'character' || blockState === 'mutual'
     ? '例如：这次我想认真把你加回来，不会再随手把你推开。'
     : '例如：你好，想把你加回来，之后继续好好聊。';
@@ -1095,10 +1101,20 @@ export function CharacterProfile({
   };
 
   const handlePrimaryRelationshipAction = async () => {
-    if (isFriend || blockState === 'user' || blockState === 'mutual') {
+    if (isFriend) {
       if (isFriend && !(await showInAppConfirm(`确定要拉黑“${displayName}”吗？拉黑后需要重新申请才能恢复聊天。`))) {
         return;
       }
+      onToggleBlock?.();
+      return;
+    }
+
+    if (pendingIncomingRequest) {
+      onViewRelationshipThread?.();
+      return;
+    }
+
+    if (blockState === 'user' || blockState === 'mutual') {
       onToggleBlock?.();
       return;
     }

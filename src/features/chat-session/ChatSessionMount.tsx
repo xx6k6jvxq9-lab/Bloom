@@ -59,6 +59,7 @@ type ChatSessionMountProps = {
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   setFriendRequests: Dispatch<SetStateAction<FriendRequest[]>>;
   onToggleCharacterBlock?: (characterId: string) => void;
+  onRepairRelationshipState?: (characterId: string) => void;
   onBackToChat: () => void;
   onViewForumPost?: (postId: string) => void;
   onPublishMoment?: (moment: { authorId: string; content: string; translation?: string; images?: string[]; sourceImage?: import('../../types').MomentSourceImageRef; imageCard?: import('../../types').MomentImageCard; isCollected?: boolean; sourceChatMessage?: { characterId: string; timestamp: number } }) => void;
@@ -155,6 +156,7 @@ export function ChatSessionMount({
   patchCharacter,
   setFriendRequests,
   onToggleCharacterBlock,
+  onRepairRelationshipState,
   onBackToChat,
   onViewForumPost,
   onPublishMoment,
@@ -338,6 +340,7 @@ export function ChatSessionMount({
               updateCharacter={updateCharacter}
               patchCharacter={patchCharacter}
               onToggleCharacterBlock={onToggleCharacterBlock}
+              onRepairRelationshipState={onRepairRelationshipState}
               worldBook={worldBook}
               perception={perception}
               coupleSpace={characterCoupleSpace}

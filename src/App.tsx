@@ -30,6 +30,7 @@ import type {
   DatingGenerationToast,
   DreamGenerationToast,
   MomentPublishToast,
+  RelationshipRequestToast,
 } from './features/app-shell/appShellTypes';
 import { AppScreenContent } from './features/app-shell/AppScreenContent';
 import { createAppShellHandlers, navigateToAppWithTransition, type AppScreen, type AppTab } from './features/app-shell/appShellHandlers';
@@ -122,6 +123,7 @@ export default function App() {
   const [statusBarVisible, setStatusBarVisible] = useState(true);
   const [coupleSpaceUpdateToast, setCoupleSpaceUpdateToast] = useState<CoupleSpaceUpdateToast | null>(null);
   const [momentPublishToast, setMomentPublishToast] = useState<MomentPublishToast | null>(null);
+  const [relationshipRequestToast, setRelationshipRequestToast] = useState<RelationshipRequestToast | null>(null);
   const {
     isStandalone,
     keyboardVisible,
@@ -215,6 +217,7 @@ export default function App() {
 
   useAutoDismissToast(coupleSpaceUpdateToast, setCoupleSpaceUpdateToast, 4500);
   useAutoDismissToast(momentPublishToast, setMomentPublishToast, 4200);
+  useAutoDismissToast(relationshipRequestToast, setRelationshipRequestToast, 4200);
   useAutoDismissToast(datingGenerationToast, setDatingGenerationToast, 5200);
   useAutoDismissToast(dreamGenerationToast, setDreamGenerationToast, 5200);
   useCoupleSpaceAutoChecks({
@@ -677,6 +680,7 @@ export default function App() {
             handleUpdateCurrentCoupleSpace={handleUpdateCurrentCoupleSpace}
             handleUpsertCharacter={handleUpsertCharacter}
             momentPublishToast={momentPublishToast}
+            relationshipRequestToast={relationshipRequestToast}
             selectedCharacter={selectedCharacter}
             selectedCharacterId={selectedCharacterId}
             selectedForumPostId={selectedForumPostId}
@@ -688,6 +692,7 @@ export default function App() {
             setCharacterMomentsBackApp={setCharacterMomentsBackApp}
             setCoupleSpaceUpdateToast={setCoupleSpaceUpdateToast}
             setMomentPublishToast={setMomentPublishToast}
+            setRelationshipRequestToast={setRelationshipRequestToast}
             setSelectedCharacterId={setSelectedCharacterId}
             setSelectedForumPostId={setSelectedForumPostId}
             setSelectedGroupId={setSelectedGroupId}

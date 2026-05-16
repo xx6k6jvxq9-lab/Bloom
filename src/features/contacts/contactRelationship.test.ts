@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Character } from '../../types';
-import { resolveCharacterBlockedFollowupDelayMs } from './contactRelationship';
+import type { Character, FriendRequest } from '../../types';
+import {
+  getCharacterRelationshipStatusText,
+  resolveCharacterBlockedFollowupDelayMs,
+} from './contactRelationship';
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -13,6 +16,23 @@ function createCharacter(overrides: Partial<Character> = {}): Character {
     openingRemark: '',
     ...overrides,
   } as Character;
+}
+
+function createRequest(overrides: Partial<FriendRequest> = {}): FriendRequest {
+  return {
+    id: 'request',
+    fromUserId: 'character',
+    fromUserName: 'Character',
+    fromUserAvatar: '',
+    status: 'pending',
+    timestamp: 1,
+    direction: 'incoming',
+    initiator: 'character',
+    characterId: 'character',
+    threadId: 'relationship-thread:character',
+    sourceScene: 'relationship',
+    ...overrides,
+  };
 }
 
 test('blocked follow-up delays stay within one minute even for high-resistance personas', () => {
@@ -36,4 +56,16 @@ test('blocked follow-up delays stay within one minute even for high-resistance p
     assert.ok(delay > 0);
     assert.ok(delay <= 60_000);
   });
+});
+
+test('getCharacterRelationshipStatusText prioritizes an incoming request over the user-blocked label', () => {
+  const character = createCharacter({
+    friendshipStatus: 'none',
+    blockedByUser: true,
+  });
+  const requests = [
+    createRequest(),
+  ];
+
+  assert.equal(getCharacterRelationshipStatusText(character, requests), '对方向你发来申请');
 });

@@ -34,6 +34,7 @@ type DirectChatSessionContainerProps = {
   updateCharacter: (character: Character) => void;
   patchCharacter: (characterId: string, patch: Partial<Character>) => void;
   onToggleCharacterBlock?: (characterId: string) => void;
+  onRepairRelationshipState?: (characterId: string) => void;
   settings: AppSettings;
   setSettings: (settings: AppSettings) => void;
   onBack: () => void;
@@ -79,6 +80,7 @@ export function DirectChatSessionContainer({
   updateCharacter,
   patchCharacter,
   onToggleCharacterBlock,
+  onRepairRelationshipState,
   settings,
   setSettings,
   onBack,
@@ -260,6 +262,7 @@ export function DirectChatSessionContainer({
       onUpdateCharacter={updateCharacter}
       onPatchCharacter={(patch) => patchCharacter(character.id, patch)}
       onToggleCharacterBlock={() => onToggleCharacterBlock?.(character.id)}
+      onRepairRelationshipState={() => onRepairRelationshipState?.(character.id)}
       worldBook={worldBook}
       perception={perception}
       coupleSpace={coupleSpace}

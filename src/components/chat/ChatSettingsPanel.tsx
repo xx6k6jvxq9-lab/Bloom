@@ -251,6 +251,14 @@ function upsertPublicThreadPeerHint(
       : existing && 'allowOwnershipTone' in existing
         ? { allowOwnershipTone: existing.allowOwnershipTone }
         : {}),
+    ...(updates.momentInteractionPolicy !== undefined
+      ? { momentInteractionPolicy: updates.momentInteractionPolicy }
+      : existing?.momentInteractionPolicy
+        ? { momentInteractionPolicy: existing.momentInteractionPolicy }
+        : {}),
+    ...(updates.source !== undefined
+      ? { source: updates.source }
+      : { source: 'manual' as const }),
     ...(updates.note !== undefined
       ? (updates.note.trim() ? { note: updates.note.trim() } : {})
       : existing?.note
@@ -265,6 +273,7 @@ function upsertPublicThreadPeerHint(
     || typeof nextHint.allowBanter === 'boolean'
     || typeof nextHint.allowIntimateTone === 'boolean'
     || typeof nextHint.allowOwnershipTone === 'boolean'
+    || nextHint.momentInteractionPolicy !== undefined
     || !!nextHint.note
   );
 
@@ -555,6 +564,7 @@ export function ChatSettingsPanel({
   onUpdate, 
   onBack,
   onToggleRelationshipBlock,
+  onRepairRelationshipState,
   onOpenRelationshipProfile,
   history,
   setHistory,
@@ -577,6 +587,7 @@ export function ChatSettingsPanel({
   onUpdate: (c: Character) => void; 
   onBack: () => void;
   onToggleRelationshipBlock?: () => void;
+  onRepairRelationshipState?: () => void;
   onOpenRelationshipProfile?: () => void;
   history: ChatMessage[];
   setHistory: (h: ChatMessage[]) => void;
@@ -634,6 +645,7 @@ export function ChatSettingsPanel({
     mode: 'direct',
     selected: [],
     discarded: [],
+    profiles: [],
     query: undefined,
     totalChars: 0,
     overviewChars: 0,
@@ -649,6 +661,9 @@ export function ChatSettingsPanel({
     maxSelections: 0,
     totalCandidates: 0,
     selectedCount: 0,
+    highRiskCount: 0,
+    detailOnlyCount: 0,
+    suppressedPinnedCount: 0,
   });
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedCallRecords, setSelectedCallRecords] = useState<Set<string>>(new Set());
@@ -801,6 +816,12 @@ export function ChatSettingsPanel({
   const relationshipActionSubLabel = relationshipBlockState === 'user' || relationshipBlockState === 'mutual'
     ? '恢复后仍建议走关系页处理修复'
     : '拉黑后普通聊天会暂停';
+  const showRepairRelationshipStateControl = !!onRepairRelationshipState;
+  const canRepairRelationshipBlockState = relationshipBlockState === 'user'
+    && !pendingIncomingRequest
+    && !latestUnreadRelationshipEvent
+    && !!character.relationshipBlockRollbackSnapshot
+    && !!onRepairRelationshipState;
   const relationshipHint = pendingIncomingRequest
     ? hasUnreadIncomingRequest
       ? `新的朋友里刚到了一条来自 ${character.remarkName?.trim() || character.name} 的${pendingIncomingRoundNo > 1 ? `第 ${pendingIncomingRoundNo} 轮` : ''}申请，等你去处理。`
@@ -837,6 +858,37 @@ export function ChatSettingsPanel({
       <div className="mt-3 text-[12px] leading-5 text-zinc-400">
         {relationshipHint}
       </div>
+      {showRepairRelationshipStateControl && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white/75 px-3.5 py-3">
+          <div className="min-w-0">
+            <div className="text-[12px] font-medium text-zinc-700">异常修复</div>
+            <div className="mt-1 text-[10px] leading-4 text-zinc-400">
+              {canRepairRelationshipBlockState ? '当前可回到拉黑前，适合处理拉黑后卡住无反应。' : '仅在拉黑后卡住、还没等到角色反应时可用。'}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={!canRepairRelationshipBlockState}
+            onClick={async () => {
+              if (!canRepairRelationshipBlockState) {
+                return;
+              }
+              const confirmed = await showInAppConfirm(`要修复“${character.remarkName?.trim() || character.name}”这次卡住的拉黑状态吗？这会回到拉黑前。`);
+              if (!confirmed) {
+                return;
+              }
+              onRepairRelationshipState?.();
+            }}
+            className={`shrink-0 rounded-xl px-3 py-2 text-[12px] font-semibold transition ${
+              canRepairRelationshipBlockState
+                ? 'border border-amber-100 bg-amber-50 text-amber-700 active:bg-amber-100'
+                : 'border border-zinc-100 bg-zinc-50 text-zinc-300'
+            }`}
+          >
+            修复
+          </button>
+        </div>
+      )}
       {onToggleRelationshipBlock && (
         <button
           type="button"
@@ -946,6 +998,7 @@ export function ChatSettingsPanel({
         allowBanter: undefined,
         allowIntimateTone: undefined,
         allowOwnershipTone: undefined,
+        momentInteractionPolicy: undefined,
         note: '',
       }),
     });
@@ -3741,6 +3794,36 @@ export function ChatSettingsPanel({
                   <div className="mt-2 text-[10px] leading-5 text-zinc-400">
                     内部调试：正文细节的动态检索窗口为 {worldBookDebug.usedChars} / {worldBookDebug.hardCharBudget || '-'}，软窗口 {worldBookDebug.softCharBudget || '-'}。这只是本轮细节展开参考，不代表角色只能读这么多世界书。
                   </div>
+                  {(worldBookDebug.highRiskCount > 0 || worldBookDebug.detailOnlyCount > 0 || worldBookDebug.suppressedPinnedCount > 0) && (
+                    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-3">
+                      <div className="text-[11px] font-medium text-amber-800">高风险世界书暴露诊断</div>
+                      <div className="mt-1 text-[10px] leading-5 text-amber-700">
+                        当前启用世界书里有 {worldBookDebug.highRiskCount} 本被判定为高风险 raw 语料，其中 {worldBookDebug.detailOnlyCount} 本已自动切到 detail-only 常驻策略，{worldBookDebug.suppressedPinnedCount} 本会关闭 raw 正文的 always-on 钉住。
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {worldBookDebug.profiles
+                          .filter((profile) => profile.riskLevel === 'high' || profile.pinSuppressed)
+                          .slice(0, 6)
+                          .map((profile) => (
+                            <div key={`profile-${profile.worldBookId}`} className="rounded-lg border border-amber-100 bg-white/80 px-3 py-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-medium text-zinc-700">{profile.title}</span>
+                                <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                                  {profile.exposureMode === 'detail_only' ? 'detail-only 常驻' : '默认常驻'}
+                                </span>
+                                {profile.pinSuppressed && (
+                                  <span className="rounded border border-sky-100 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">关闭 raw 钉住</span>
+                                )}
+                              </div>
+                              {profile.summaryPreview && (
+                                <div className="mt-1 text-[10px] leading-5 text-zinc-500">常驻概览：{profile.summaryPreview}</div>
+                              )}
+                              <div className="mt-1 text-[10px] leading-5 text-zinc-500">{profile.note}</div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-3 space-y-2">
                     {worldBookDebug.overviewCount > 0 && worldBookDebug.detailCount === 0 && (
                       <div className="text-[11px] text-zinc-500">

@@ -6,6 +6,7 @@ import type {
   CharacterOpenLoopEntry,
   CharacterPublicThreadPeerHint,
   CharacterPresenceState,
+  CharacterRelationshipBlockRollbackSnapshot,
   CharacterSharedState,
   MemoryLibraryEntry,
 } from '../../types';
@@ -23,6 +24,29 @@ function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim();
   return normalized ? normalized : undefined;
+}
+
+function normalizeRelationshipBlockRollbackSnapshot(value: unknown): CharacterRelationshipBlockRollbackSnapshot | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const friendshipStatus = record.friendshipStatus === 'none' ? 'none' : 'friends';
+  const capturedAt = Number.isFinite(record.capturedAt)
+    ? Math.max(0, Math.floor(record.capturedAt as number))
+    : 0;
+
+  if (!capturedAt) {
+    return undefined;
+  }
+
+  return {
+    friendshipStatus,
+    blockedByUser: record.blockedByUser === true,
+    blockedByCharacter: record.blockedByCharacter === true,
+    capturedAt,
+  };
 }
 
 function normalizeSceneHints(value: unknown): Record<string, string> | undefined {
@@ -510,6 +534,9 @@ export function migrateCharacterShape(character: Character): Character {
   const friendshipStatus = character.friendshipStatus === 'none' ? 'none' : 'friends';
   const blockedByUser = character.blockedByUser === true;
   const blockedByCharacter = character.blockedByCharacter === true;
+  const relationshipBlockRollbackSnapshot = normalizeRelationshipBlockRollbackSnapshot(
+    character.relationshipBlockRollbackSnapshot,
+  );
   const relationshipStatusUpdatedAt = Number.isFinite(character.relationshipStatusUpdatedAt)
     ? Math.max(0, Math.floor(character.relationshipStatusUpdatedAt as number))
     : undefined;
@@ -553,6 +580,7 @@ export function migrateCharacterShape(character: Character): Character {
     friendshipStatus,
     blockedByUser,
     blockedByCharacter,
+    relationshipBlockRollbackSnapshot,
     relationshipStatusUpdatedAt,
     shortTermSummary,
     longTermMemoryProfile,

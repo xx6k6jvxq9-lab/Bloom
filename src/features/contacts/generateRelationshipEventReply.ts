@@ -71,7 +71,7 @@ function buildRelationshipEventSpec(event: GenerateRelationshipEventReplyParams[
           '【关系事件】用户刚刚把你拉黑了。这不是普通聊天输入，而是刚发生的关系动作。请你只用角色口吻做出当下反应。',
         allowedDecisions: ['counter_block', 'send_request'] as RelationshipEventDecision[],
         instruction:
-          '这个场景里你会继续追发一条好友申请。如果你决定顺手也把对方拉黑，decision 写 counter_block；如果你不反拉黑，只继续追发申请，decision 写 send_request。无论哪种都要填写 requestMessage。reactionText 只负责表现你当下的情绪、嘴硬、委屈、较劲或不甘心，不要停在纯表态上。',
+          '如果你决定顺手也把对方拉黑，decision 写 counter_block，这一轮到此为止，不要再继续发好友申请，也不要填写 requestMessage；如果你不反拉黑，只继续追发申请，decision 写 send_request，并填写 requestMessage。reactionText 只负责表现你当下的情绪、嘴硬、委屈、较劲或不甘心，不要停在纯表态上。',
       };
     case 'user_unblocked_character':
       return {
@@ -302,7 +302,7 @@ function stripRelationshipProtocolText(text: string) {
 }
 
 function decisionRequiresRelationshipRequestMessage(decision: RelationshipEventDecision | null | undefined) {
-  return decision === 'send_request' || decision === 'counter_request' || decision === 'counter_block';
+  return decision === 'send_request' || decision === 'counter_request';
 }
 
 export async function generateRelationshipEventReply(
