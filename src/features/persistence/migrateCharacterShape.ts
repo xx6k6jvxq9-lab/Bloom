@@ -2,6 +2,7 @@ import type {
   CharacterActiveDatingState,
   Character,
   CharacterAvatarLibraryEntry,
+  CharacterAvatarPreferenceProfile,
   CharacterOpenLoopEntry,
   CharacterPublicThreadPeerHint,
   CharacterPresenceState,
@@ -112,6 +113,43 @@ function normalizeAvatarLibraryEntries(value: unknown): CharacterAvatarLibraryEn
         : 'candidate';
       const addedAt = Number.isFinite(record.addedAt) ? Math.max(0, Math.floor(record.addedAt as number)) : Date.now();
       const updatedAt = Number.isFinite(record.updatedAt) ? Math.max(0, Math.floor(record.updatedAt as number)) : addedAt;
+      const preference = record.preference && typeof record.preference === 'object'
+        ? (() => {
+            const preferenceRecord = record.preference as Record<string, unknown>;
+            const moodTags = Array.isArray(preferenceRecord.moodTags)
+              ? preferenceRecord.moodTags.map(normalizeOptionalText).filter((tag): tag is string => Boolean(tag))
+              : [];
+            const sceneTags = Array.isArray(preferenceRecord.sceneTags)
+              ? preferenceRecord.sceneTags.map(normalizeOptionalText).filter((tag): tag is string => Boolean(tag))
+              : [];
+            const normalizedPreference: CharacterAvatarPreferenceProfile = {
+              ...(preferenceRecord.affinity === 'love'
+                || preferenceRecord.affinity === 'like'
+                || preferenceRecord.affinity === 'neutral'
+                || preferenceRecord.affinity === 'avoid'
+                ? { affinity: preferenceRecord.affinity }
+                : {}),
+              ...(preferenceRecord.selfFit === 'high'
+                || preferenceRecord.selfFit === 'medium'
+                || preferenceRecord.selfFit === 'low'
+                ? { selfFit: preferenceRecord.selfFit }
+                : {}),
+              ...(moodTags.length > 0 ? { moodTags } : {}),
+              ...(sceneTags.length > 0 ? { sceneTags } : {}),
+              ...(normalizeOptionalText(preferenceRecord.note) ? { note: normalizeOptionalText(preferenceRecord.note) } : {}),
+              ...(preferenceRecord.learnedFrom === 'character'
+                || preferenceRecord.learnedFrom === 'user'
+                || preferenceRecord.learnedFrom === 'manual'
+                || preferenceRecord.learnedFrom === 'history'
+                ? { learnedFrom: preferenceRecord.learnedFrom }
+                : {}),
+              ...(Number.isFinite(preferenceRecord.updatedAt)
+                ? { updatedAt: Math.max(0, Math.floor(preferenceRecord.updatedAt as number)) }
+                : {}),
+            };
+            return Object.keys(normalizedPreference).length > 0 ? normalizedPreference : undefined;
+          })()
+        : undefined;
 
       return {
         id: normalizeOptionalText(record.id) || `avatar-library-${addedAt}-${Math.random().toString(16).slice(2)}`,
@@ -132,6 +170,13 @@ function normalizeAvatarLibraryEntries(value: unknown): CharacterAvatarLibraryEn
         ...(Array.isArray(record.tags)
           ? { tags: record.tags.map(normalizeOptionalText).filter((tag): tag is string => Boolean(tag)) }
           : {}),
+        ...(preference ? { preference } : {}),
+        ...(Number.isFinite(record.characterChoiceCount)
+          ? { characterChoiceCount: Math.max(0, Math.floor(record.characterChoiceCount as number)) }
+          : {}),
+        ...(Number.isFinite(record.lastCharacterChoiceAt)
+          ? { lastCharacterChoiceAt: Math.max(0, Math.floor(record.lastCharacterChoiceAt as number)) }
+          : {}),
       };
     })
     .filter((entry): entry is CharacterAvatarLibraryEntry => Boolean(entry));
@@ -145,6 +190,50 @@ function normalizeReplyLanguageMode(value: unknown): Character['replyLanguageMod
     || value === 'fixed'
     ? value
     : 'follow-user';
+}
+
+function normalizePendingAvatarConfirmation(value: unknown): Character['pendingAvatarConfirmation'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const createdAt = Number.isFinite(record.createdAt)
+    ? Math.max(0, Math.floor(record.createdAt as number))
+    : 0;
+  if (!createdAt) {
+    return undefined;
+  }
+
+  const kind = record.kind === 'image-offer' || record.kind === 'library-switch'
+    ? record.kind
+    : undefined;
+  const source = normalizeOptionalText(record.source);
+  if (!kind || !source || (!/^avatar_library:/i.test(source) && source !== 'pending_avatar_image')) {
+    return undefined;
+  }
+
+  return {
+    kind,
+    source: source as Character['pendingAvatarConfirmation']['source'],
+    createdAt,
+    ...(Number.isFinite(record.expiresAt)
+      ? { expiresAt: Math.max(createdAt, Math.floor(record.expiresAt as number)) }
+      : {}),
+    ...(normalizeOptionalText(record.candidateImage) ? { candidateImage: normalizeOptionalText(record.candidateImage) } : {}),
+    ...(normalizeOptionalText(record.entryId) ? { entryId: normalizeOptionalText(record.entryId) } : {}),
+    ...(normalizeOptionalText(record.reason) ? { reason: normalizeOptionalText(record.reason) } : {}),
+    ...(normalizeOptionalText(record.replyHint) ? { replyHint: normalizeOptionalText(record.replyHint) } : {}),
+    ...(record.trigger === 'user_request' || record.trigger === 'autonomous'
+      ? { trigger: record.trigger }
+      : {}),
+  };
+}
+
+function normalizeAvatarAutonomyMode(value: unknown): Character['avatarAutonomyMode'] {
+  return value === 'conservative' || value === 'natural' || value === 'frequent'
+    ? value
+    : undefined;
 }
 
 function normalizeOpenLoopRegistry(value: unknown): CharacterOpenLoopEntry[] | undefined {
@@ -425,6 +514,8 @@ export function migrateCharacterShape(character: Character): Character {
     ? Math.max(0, Math.floor(character.relationshipStatusUpdatedAt as number))
     : undefined;
   const avatarLibraryEntries = normalizeAvatarLibraryEntries(character.avatarLibrary?.entries);
+  const pendingAvatarConfirmation = normalizePendingAvatarConfirmation(character.pendingAvatarConfirmation);
+  const avatarAutonomyMode = normalizeAvatarAutonomyMode(character.avatarAutonomyMode);
   const openLoopRegistry = normalizeOpenLoopRegistry(character.openLoopRegistry);
   const presenceState = normalizePresenceState(character.presenceState);
   const sharedState = normalizeSharedState(character.sharedState);
@@ -480,6 +571,8 @@ export function migrateCharacterShape(character: Character): Character {
             : Math.max(...avatarLibraryEntries.map((entry) => entry.updatedAt)),
         }
       : undefined,
+    pendingAvatarConfirmation,
+    avatarAutonomyMode,
   };
 }
 

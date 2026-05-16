@@ -7,6 +7,7 @@ import type {
   ChatMessage,
 } from '../../types';
 import { extractImageUrls } from '../../utils';
+import { enrichAvatarEntryAfterCharacterAction } from './avatarPreference';
 
 export type AvatarActionType = 'change' | 'reject' | 'save_only' | 'ask_confirm';
 
@@ -30,6 +31,29 @@ export type AvatarCandidate = {
 
 const AVATAR_ACTION_BLOCK_REGEX = /\[avatar_action\]([\s\S]*?)\[\/avatar_action\]/i;
 const DANGLING_AVATAR_ACTION_REGEX = /\[avatar_action\][\s\S]*$/i;
+const AVATAR_FOLLOW_UP_SELECTION_PHRASES = new Set([
+  '就这个',
+  '就这张',
+  '就那个',
+  '就那张',
+  '这个',
+  '这张',
+  '那个',
+  '那张',
+  '这个呢',
+  '这张呢',
+  '那个呢',
+  '那张呢',
+  '这个吧',
+  '这张吧',
+  '那个吧',
+  '那张吧',
+]);
+const AVATAR_PREVIOUS_IMAGE_REFERENCE_REGEX = /上一张|前一张|刚才那张|刚刚那张|前面那张|上一条图|前面那条图/u;
+const AVATAR_LAST_IMAGE_REFERENCE_REGEX = /最后一张|最后那张|最后那个|最后一条图/u;
+const AVATAR_REVERSE_IMAGE_REFERENCE_REGEX = /倒数第?\s*([一二两三四五六七八九十\d]+)\s*张/u;
+const AVATAR_ORDINAL_IMAGE_REFERENCE_REGEX = /第\s*([一二两三四五六七八九十\d]+)\s*张/u;
+const AVATAR_APPEARANCE_REFERENCE_REGEX = /像你|像不像|看起来|样子|长相|外形|形象|气质|头像感|适合你/u;
 
 function normalizeProtocolValue(value: string | undefined): string {
   return (value || '').trim().replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, '').trim();
@@ -97,6 +121,112 @@ function isStickerLikeMessage(message: ChatMessage): boolean {
   return !!message.imageUrl && /^\[(?:sticker|表情包)\]/i.test((message.text || '').trim());
 }
 
+export function getLatestVisibleUserMessage(messages: ChatMessage[]): ChatMessage | null {
+  return [...messages]
+    .reverse()
+    .find((message) => message.role === 'user' && !message.isSystem && !message.isRecalled) || null;
+}
+
+function normalizeAvatarIntentText(text: string): string {
+  return text.trim().replace(/[，,。！？!?、~～\s]+$/gu, '');
+}
+
+function parseAvatarReferenceNumber(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d+$/u.test(normalized)) {
+    const parsed = Number.parseInt(normalized, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  if (normalized === '十') {
+    return 10;
+  }
+
+  const numeralMap: Record<string, number> = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  };
+
+  if (normalized.startsWith('十')) {
+    const unit = numeralMap[normalized.slice(1)] || 0;
+    return 10 + unit;
+  }
+
+  if (normalized.endsWith('十')) {
+    const tens = numeralMap[normalized.slice(0, -1)] || 0;
+    return tens > 0 ? tens * 10 : null;
+  }
+
+  const tenIndex = normalized.indexOf('十');
+  if (tenIndex > 0) {
+    const tens = numeralMap[normalized.slice(0, tenIndex)] || 0;
+    const units = numeralMap[normalized.slice(tenIndex + 1)] || 0;
+    return tens > 0 ? tens * 10 + units : null;
+  }
+
+  return numeralMap[normalized] || null;
+}
+
+export function hasAvatarCandidateReferenceIntent(text: string): boolean {
+  const normalized = normalizeAvatarIntentText(text);
+  if (!normalized) return false;
+
+  return AVATAR_PREVIOUS_IMAGE_REFERENCE_REGEX.test(normalized)
+    || AVATAR_LAST_IMAGE_REFERENCE_REGEX.test(normalized)
+    || AVATAR_REVERSE_IMAGE_REFERENCE_REGEX.test(normalized)
+    || AVATAR_ORDINAL_IMAGE_REFERENCE_REGEX.test(normalized);
+}
+
+export function hasAvatarFollowUpIntent(text: string): boolean {
+  const normalized = normalizeAvatarIntentText(text);
+  if (!normalized) return false;
+
+  if (AVATAR_FOLLOW_UP_SELECTION_PHRASES.has(normalized)) {
+    return true;
+  }
+
+  return /^(?:换成|用)(?:这|那)(?:个|张)$/u.test(normalized)
+    || /^(?:这|那)(?:个|张)好像你$/u.test(normalized)
+    || /^(?:像你)(?:这|那)(?:个|张)$/u.test(normalized);
+}
+
+export function hasAvatarAppearanceReference(text: string): boolean {
+  return AVATAR_APPEARANCE_REFERENCE_REGEX.test(normalizeAvatarIntentText(text));
+}
+
+export function findAvatarCandidateInMessage(message: ChatMessage): AvatarCandidate | null {
+  if (message.imageUrl && !isStickerLikeMessage(message)) {
+    return {
+      image: message.imageUrl,
+      source: 'chat-image',
+      messageTimestamp: message.timestamp,
+    };
+  }
+
+  const imageUrl = extractImageUrls(message.text || '')[0];
+  if (imageUrl) {
+    return {
+      image: imageUrl,
+      source: /^data:image\//i.test(imageUrl) ? 'chat-image' : 'url',
+      messageTimestamp: message.timestamp,
+    };
+  }
+
+  return null;
+}
+
 export function hasAvatarChangeIntent(text: string): boolean {
   const normalized = text.trim();
   if (!normalized) return false;
@@ -105,28 +235,95 @@ export function hasAvatarChangeIntent(text: string): boolean {
 }
 
 export function findLatestAvatarCandidate(messages: ChatMessage[], maxLookback = 12): AvatarCandidate | null {
+  return findRecentAvatarCandidates(messages, maxLookback)[0] || null;
+}
+
+export function findRecentAvatarCandidates(messages: ChatMessage[], maxLookback = 12): AvatarCandidate[] {
   const recentMessages = messages.slice(-maxLookback);
+  const candidates: AvatarCandidate[] = [];
 
   for (let index = recentMessages.length - 1; index >= 0; index -= 1) {
     const message = recentMessages[index];
     if (message.role !== 'user' || message.isSystem || message.isRecalled) continue;
 
-    if (message.imageUrl && !isStickerLikeMessage(message)) {
-      return {
-        image: message.imageUrl,
-        source: 'chat-image',
-        messageTimestamp: message.timestamp,
-      };
+    const candidate = findAvatarCandidateInMessage(message);
+    if (candidate) {
+      candidates.push(candidate);
     }
+  }
 
-    const imageUrl = extractImageUrls(message.text || '')[0];
-    if (imageUrl) {
-      return {
-        image: imageUrl,
-        source: /^data:image\//i.test(imageUrl) ? 'chat-image' : 'url',
-        messageTimestamp: message.timestamp,
-      };
+  return candidates;
+}
+
+function resolveAvatarCandidateReferenceIndex(text: string, candidateCount: number): number | null {
+  if (candidateCount <= 0) {
+    return null;
+  }
+
+  const normalized = normalizeAvatarIntentText(text);
+  if (!normalized) {
+    return null;
+  }
+
+  if (AVATAR_PREVIOUS_IMAGE_REFERENCE_REGEX.test(normalized)) {
+    return Math.min(1, candidateCount - 1);
+  }
+
+  if (AVATAR_LAST_IMAGE_REFERENCE_REGEX.test(normalized)) {
+    return 0;
+  }
+
+  const reverseMatch = normalized.match(AVATAR_REVERSE_IMAGE_REFERENCE_REGEX);
+  if (reverseMatch?.[1]) {
+    const reverseOrdinal = parseAvatarReferenceNumber(reverseMatch[1]);
+    if (reverseOrdinal && reverseOrdinal <= candidateCount) {
+      return reverseOrdinal - 1;
     }
+  }
+
+  const ordinalMatch = normalized.match(AVATAR_ORDINAL_IMAGE_REFERENCE_REGEX);
+  if (ordinalMatch?.[1]) {
+    const ordinal = parseAvatarReferenceNumber(ordinalMatch[1]);
+    if (ordinal && ordinal <= candidateCount) {
+      return candidateCount - ordinal;
+    }
+  }
+
+  return null;
+}
+
+export function resolveLatestAvatarCandidateForUserTurn(messages: ChatMessage[], maxLookback = 12): AvatarCandidate | null {
+  const latestVisibleUserMessage = getLatestVisibleUserMessage(messages);
+  if (!latestVisibleUserMessage) {
+    return null;
+  }
+
+  const directCandidate = findAvatarCandidateInMessage(latestVisibleUserMessage);
+  if (directCandidate) {
+    return directCandidate;
+  }
+
+  const recentCandidates = findRecentAvatarCandidates(messages, maxLookback);
+  if (recentCandidates.length === 0) {
+    return null;
+  }
+
+  const normalizedText = normalizeAvatarIntentText(latestVisibleUserMessage.text || '');
+  if (!normalizedText) {
+    return null;
+  }
+
+  const referencedIndex = resolveAvatarCandidateReferenceIndex(normalizedText, recentCandidates.length);
+  if (referencedIndex !== null) {
+    return recentCandidates[referencedIndex] || null;
+  }
+
+  if (
+    hasAvatarChangeIntent(normalizedText)
+    || hasAvatarFollowUpIntent(normalizedText)
+    || hasAvatarAppearanceReference(normalizedText)
+  ) {
+    return recentCandidates[0] || null;
   }
 
   return null;
@@ -137,23 +334,53 @@ export function shouldOfferAvatarAction(messages: ChatMessage[]): boolean {
 }
 
 export function shouldOfferAvatarActionForCharacter(character: Character | undefined, messages: ChatMessage[]): boolean {
-  const latestVisibleUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === 'user' && !message.isSystem && !message.isRecalled);
-
-  if (!latestVisibleUserMessage || !hasAvatarChangeIntent(latestVisibleUserMessage.text || '')) {
+  const latestVisibleUserMessage = getLatestVisibleUserMessage(messages);
+  if (!latestVisibleUserMessage) {
     return false;
   }
 
-  return !!findLatestAvatarCandidate(messages) || Boolean(character?.avatarLibrary?.entries?.length);
+  if (findAvatarCandidateInMessage(latestVisibleUserMessage)) {
+    return true;
+  }
+
+  const latestText = latestVisibleUserMessage.text || '';
+  const hasExplicitIntent = hasAvatarChangeIntent(latestText);
+  const hasFollowUpIntent = hasAvatarFollowUpIntent(latestText);
+  const hasAppearanceReference = hasAvatarAppearanceReference(latestText);
+  const hasCandidateReferenceIntent = hasAvatarCandidateReferenceIntent(latestText);
+  if (!hasExplicitIntent && !hasFollowUpIntent && !hasAppearanceReference && !hasCandidateReferenceIntent) {
+    return false;
+  }
+
+  const hasRecentCandidate = !!resolveLatestAvatarCandidateForUserTurn(messages);
+  if (hasRecentCandidate) {
+    return true;
+  }
+
+  return hasExplicitIntent && Boolean(character?.avatarLibrary?.entries?.length);
 }
 
 export function latestUserMessageHasAvatarIntent(messages: ChatMessage[]): boolean {
-  const latestVisibleUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === 'user' && !message.isSystem && !message.isRecalled);
+  const latestVisibleUserMessage = getLatestVisibleUserMessage(messages);
+  if (!latestVisibleUserMessage) {
+    return false;
+  }
 
-  return Boolean(latestVisibleUserMessage && hasAvatarChangeIntent(latestVisibleUserMessage.text || ''));
+  if (findAvatarCandidateInMessage(latestVisibleUserMessage)) {
+    return true;
+  }
+
+  const latestText = latestVisibleUserMessage.text || '';
+  if (
+    !hasAvatarChangeIntent(latestText)
+    && !hasAvatarFollowUpIntent(latestText)
+    && !hasAvatarAppearanceReference(latestText)
+    && !hasAvatarCandidateReferenceIntent(latestText)
+  ) {
+    return false;
+  }
+
+  return !!resolveLatestAvatarCandidateForUserTurn(messages);
 }
 
 function createAvatarLibraryEntryId(): string {
@@ -202,7 +429,8 @@ export function buildCharacterAvatarPatchFromAction(params: {
   });
 
   if (existingIndex >= 0) {
-    entries[existingIndex] = {
+    entries[existingIndex] = enrichAvatarEntryAfterCharacterAction({
+      entry: {
       ...entries[existingIndex],
       source: candidate.source,
       status: nextStatus,
@@ -211,9 +439,13 @@ export function buildCharacterAvatarPatchFromAction(params: {
       ...(candidate.messageTimestamp ? { firstMessageTimestamp: entries[existingIndex].firstMessageTimestamp ?? candidate.messageTimestamp } : {}),
       ...(action.reaction ? { reaction: action.reaction } : {}),
       ...(action.reason ? { reason: action.reason } : {}),
-    };
+      },
+      action,
+      now,
+    });
   } else {
-    const nextEntry: CharacterAvatarLibraryEntry = {
+    const nextEntry = enrichAvatarEntryAfterCharacterAction({
+      entry: {
       id: createAvatarLibraryEntryId(),
       image: candidate.image,
       source: candidate.source,
@@ -224,7 +456,10 @@ export function buildCharacterAvatarPatchFromAction(params: {
       ...(shouldChangeAvatar ? { lastUsedAt: now } : {}),
       ...(action.reaction ? { reaction: action.reaction } : {}),
       ...(action.reason ? { reason: action.reason } : {}),
-    };
+      },
+      action,
+      now,
+    }) as CharacterAvatarLibraryEntry;
     entries.unshift(nextEntry);
   }
 
@@ -233,6 +468,7 @@ export function buildCharacterAvatarPatchFromAction(params: {
       entries,
       updatedAt: now,
     },
+    pendingAvatarConfirmation: undefined,
   };
 
   if (shouldChangeAvatar) {
@@ -269,7 +505,16 @@ export function resolveAvatarCandidateFromAction(params: {
       : null;
   }
 
-  return findLatestAvatarCandidate(messages);
+  if (action.source === 'pending_avatar_image') {
+    return character.pendingAvatarConfirmation?.candidateImage
+      ? {
+          image: character.pendingAvatarConfirmation.candidateImage,
+          source: 'chat-image',
+        }
+      : null;
+  }
+
+  return resolveLatestAvatarCandidateForUserTurn(messages);
 }
 
 export function buildAddAvatarCandidatePatch(params: {
@@ -335,8 +580,10 @@ export function buildAvatarActionPromptSection(character: Character, messages: C
   return [
     '## Avatar action in this private chat',
     'The user has recently sent an image or image link and is asking or implying that you may use it as your avatar.',
+    'If the user only sent the image itself, or followed up with a very short cue like "就这个", you may still treat that as a possible avatar offer.',
     'This is a chat-scene action, not a settings command. Decide from the full current chat context: your character, relationship, recent messages, current mood, memory, boundaries, the image, and whether accepting this influence feels right.',
     'You may accept, refuse, save it for later, or ask for confirmation. Do not obey mechanically.',
+    'If the image clearly is not about your avatar in this scene, ignore the action block and just reply normally.',
     `Current avatar value exists: ${character.avatar ? 'yes' : 'no'}`,
     candidate
       ? `Latest avatar candidate source: ${candidate.source}`

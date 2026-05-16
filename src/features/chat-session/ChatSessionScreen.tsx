@@ -56,6 +56,7 @@ import { focusTextEntryElement } from '../app-shell/keyboardUtils';
 import { useKeyboardSafeViewport } from '../app-shell/useKeyboardSafeViewport';
 import { getMessageMainText } from '../../utils';
 import { ExpandedInputSheet } from './ExpandedInputSheet';
+import { isPendingAvatarConfirmationExpired } from '../../services/chat/avatarConfirmation';
 import {
   FOOTER_REPLY_PREVIEW_ICON_STYLE,
   MESSAGE_REPLY_PREVIEW_ICON_STYLE,
@@ -577,6 +578,9 @@ export function ChatSessionScreen({
   const chatKeyboardOpen = keyboardVisible && ownsFocusedKeyboard;
   const previousChatKeyboardOpenRef = useRef(false);
   const latestViewReadyRef = useRef(false);
+  const activePendingAvatarConfirmation = !isPendingAvatarConfirmationExpired(character.pendingAvatarConfirmation)
+    ? character.pendingAvatarConfirmation
+    : undefined;
   const previousHistoryAutoscrollStateRef = useRef({
     latestMessageKey: '',
     isLoading: false,
@@ -852,9 +856,10 @@ export function ChatSessionScreen({
 
     return <span className="ml-1">{statusLabel}</span>;
   }, [latestModelReplyTimestamp]);
-  const sendCurrentText = useCallback(async () => {
-    const speechText = input.trim();
+  const sendCurrentText = useCallback(async (overrideText?: string) => {
+    const speechText = typeof overrideText === 'string' ? overrideText.trim() : input.trim();
     const actionText = actionInput.trim();
+    const isQuickSend = typeof overrideText === 'string';
     if (editingMessageIndex !== null) {
       if (!speechText) {
         return;
@@ -870,7 +875,7 @@ export function ChatSessionScreen({
       return;
     }
 
-    const textToSend = actionText ? `（${actionText}）${speechText}` : speechText;
+    const textToSend = !isQuickSend && actionText ? `（${actionText}）${speechText}` : speechText;
     await handleSend(textToSend);
     if (activeConfig) {
       setInput('');
@@ -3203,6 +3208,42 @@ export function ChatSessionScreen({
               className="chat-footer-action-textarea min-h-[22px] max-h-24 w-full resize-none bg-transparent text-[14px] leading-5 text-zinc-800 outline-none placeholder:text-zinc-400"
               rows={1}
             />
+          </div>
+        )}
+        {activePendingAvatarConfirmation && editingMessageIndex === null && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-[12px] text-amber-900 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-medium">
+                  {activePendingAvatarConfirmation.kind === 'image-offer'
+                    ? 'Ta 还在等你确认要不要把刚才那张当头像。'
+                    : 'Ta 还在等你确认要不要从头像库里换那张头像。'}
+                </div>
+                {activePendingAvatarConfirmation.reason && (
+                  <div className="mt-1 text-[11px] leading-5 text-amber-800/90">
+                    {activePendingAvatarConfirmation.reason}
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void sendCurrentText('换吧')}
+                  disabled={shouldPauseDirectChatComposer}
+                  className="rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-amber-900 shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  换吧
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendCurrentText('先别换')}
+                  disabled={shouldPauseDirectChatComposer}
+                  className="rounded-full border border-amber-200 bg-amber-100/70 px-3 py-1.5 text-[11px] font-medium text-amber-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  先别换
+                </button>
+              </div>
+            </div>
           </div>
         )}
         <div className="chat-footer-controls flex items-end gap-1.5">

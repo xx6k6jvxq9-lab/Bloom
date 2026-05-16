@@ -644,6 +644,54 @@ export type CharacterAvatarLibraryEntrySource =
   | 'manual'
   | 'character-choice';
 
+export type CharacterAvatarPreferenceAffinity =
+  | 'love'
+  | 'like'
+  | 'neutral'
+  | 'avoid';
+
+export type CharacterAvatarPreferenceSelfFit =
+  | 'high'
+  | 'medium'
+  | 'low';
+
+export type CharacterAvatarPreferenceLearnedFrom =
+  | 'character'
+  | 'user'
+  | 'manual'
+  | 'history';
+
+export type CharacterAvatarPreferenceProfile = {
+  affinity?: CharacterAvatarPreferenceAffinity;
+  selfFit?: CharacterAvatarPreferenceSelfFit;
+  moodTags?: string[];
+  sceneTags?: string[];
+  note?: string;
+  learnedFrom?: CharacterAvatarPreferenceLearnedFrom;
+  updatedAt?: number;
+};
+
+export type CharacterPendingAvatarConfirmationKind =
+  | 'image-offer'
+  | 'library-switch';
+
+export type CharacterPendingAvatarConfirmation = {
+  kind: CharacterPendingAvatarConfirmationKind;
+  source: 'pending_avatar_image' | `avatar_library:${string}`;
+  createdAt: number;
+  expiresAt?: number;
+  candidateImage?: string;
+  entryId?: string;
+  reason?: string;
+  replyHint?: string;
+  trigger?: 'user_request' | 'autonomous';
+};
+
+export type CharacterAvatarAutonomyMode =
+  | 'conservative'
+  | 'natural'
+  | 'frequent';
+
 export type CharacterAvatarLibraryEntry = {
   id: string;
   image: string;
@@ -657,6 +705,9 @@ export type CharacterAvatarLibraryEntry = {
   reason?: string;
   label?: string;
   tags?: string[];
+  preference?: CharacterAvatarPreferenceProfile;
+  characterChoiceCount?: number;
+  lastCharacterChoiceAt?: number;
 };
 
 export type CharacterAvatarLibrary = {
@@ -737,6 +788,8 @@ export type Character = {
   // continue moving toward records-first scene signals.
   sharedContextSnapshots?: CharacterSharedContextSnapshot[];
   avatarLibrary?: CharacterAvatarLibrary;
+  pendingAvatarConfirmation?: CharacterPendingAvatarConfirmation;
+  avatarAutonomyMode?: CharacterAvatarAutonomyMode;
   stickers?: string[];
   stickerMetadata?: Record<string, StickerMetadata>;
   maskId?: string; // Linked mask ID

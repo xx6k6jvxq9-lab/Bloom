@@ -23,7 +23,11 @@ import {
   generateQualityCheckedAssistantReply,
   shouldAllowBracketActions,
 } from '../../services/ai/outputQuality';
-import { streamTextWithConfig, type RuntimeChatMessage } from '../../services/ai/runtimeClient';
+import {
+  STRUCTURED_ASSISTANT_REPLY_TOKEN,
+  normalizeStructuredAssistantReplyToLegacyFormat,
+  streamStructuredAssistantReply,
+} from '../../services/ai/assistantReplyEnvelope';
 import { buildChatPrompt } from '../../services/ai/prompts/builders/buildChatPrompt';
 import { buildReplyLanguageRules } from '../../services/ai/prompts/base/languageRules';
 import { buildChatSceneInput } from '../../services/scene-inputs/buildChatSceneInput';
@@ -90,14 +94,26 @@ import {
   getDirectChatBlockedManualReplyError,
 } from './directChatDelivery';
 import {
-  buildAutonomousAvatarLibraryPromptSection,
-  buildAvatarActionPromptSection,
   buildCharacterAvatarPatchFromAction,
-  latestUserMessageHasAvatarIntent,
   parseAvatarActionBlock,
   resolveAvatarCandidateFromAction,
+  shouldOfferAvatarActionForCharacter,
   type ParsedAvatarAction,
 } from '../../services/chat/avatarActions';
+import {
+  buildAvatarOfferReplyPromptSection,
+  evaluateDirectAvatarOfferDecision,
+  type AvatarOfferDecisionReview,
+} from '../../services/chat/avatarOfferDecision';
+import {
+  buildAvatarLibraryDecisionReplyPromptSection,
+  evaluateAvatarLibraryDecision,
+  type AvatarLibraryDecisionReview,
+} from '../../services/chat/avatarLibraryDecision';
+import {
+  isPendingAvatarConfirmationExpired,
+  resolveAvatarConfirmationFromMessages,
+} from '../../services/chat/avatarConfirmation';
 import { describeStickerMessageForPrompt, inferStickerSemanticLabel } from '../../services/chat/stickerSemantics';
 import {
   analyzeDirectRelationshipBoundary,
@@ -133,10 +149,8 @@ const TRANSFER_PIPE_REGEX = /^TRANSFER\|([\d.]+)\|([\s\S]*)$/i;
 const COUPLE_SPACE_INVITE_TOKEN = '[COUPLE_SPACE_INVITE]';
 const COUPLE_SPACE_INVITE_ACCEPTED_TOKEN = '[COUPLE_SPACE_INVITE_ACCEPTED]';
 const GAME_CARD_FAILURE_TOKEN = '[GAME_CARD_ERROR]';
-const STRUCTURED_BILINGUAL_REPLY_TOKEN = '[BILINGUAL_REPLY]';
 const CJK_TEXT_REGEX = /[\u4e00-\u9fff]/u;
 const LATIN_TOKEN_REGEX = /[A-Za-z]{2,}/g;
-const AUTONOMOUS_AVATAR_TRIGGER_REGEX = /头像|照片|图片|样子|长相|看起来|外形|形象|自拍|封面|这张|那张|换成|换这张|像你|像不像|气质|profile|avatar|photo|picture|look/i;
 const VOICE_REPLY_INTENT_REGEX = /语音|声音|发语音|听你|听听|说话|语音消息|voice|audio|listen|speak|call/i;
 const EXPRESSIVE_VOICE_REPLY_REGEX = /[!?？！~～…]/;
 const VOICE_COMFORT_REGEX = /抱抱|乖|不哭|别怕|没事|慢慢|陪你|哄你|安慰|亲亲|摸摸|给你听|陪着你/i;
@@ -243,167 +257,24 @@ function buildInlineReplyTranslationPrompt(character: Character): string {
   ].join('\n');
 }
 
-function buildStructuredBilingualReplyPrompt(character: Character): string {
+function buildStructuredAssistantReplyPrompt(character: Character): string {
   const targetLanguage = character.replyLanguageMode === 'fixed'
     ? (character.fixedReplyLanguage?.trim() || character.nativeLanguage?.trim() || '角色设定语言')
     : (character.nativeLanguage?.trim() || '角色母语');
 
   return [
-    '## 双语输出协议',
-    `如果本轮包含普通聊天正文，必须只输出一个可机读协议，格式固定为：${STRUCTURED_BILINGUAL_REPLY_TOKEN} {"segments":[{"text":"外语正文","translation":"对应的简体中文"}]}`,
-    `text 必须是角色真正会发出的 ${targetLanguage} 正文；translation 必须是与该条正文严格对应的简体中文翻译。`,
-    'segments 的顺序就是最终聊天气泡顺序；如果本轮只需要一个气泡，就只输出一个 segment。',
-    '每个 segment 的 text 和 translation 都必须是单行字符串，不要在字段里换行，不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
-    '如果需要 [reply: ...] 或 [recall] 这类轻量 cue，把 cue 写在对应 segment 的 text 开头；translation 仍然必须填写对应中文。',
-    '如果需要发表情包，必须单独占用一个 segment，并让该 segment 的 text 以 `[sticker]` 开头，例如 `[sticker] 困困`。不要把 `[sticker]` 追加在普通台词后面，也不要在一个 segment 里同时写正文和 sticker cue。',
-    '表情包只能从当前会话里已经导入、当前可用的表情包池中选择；只写情绪或语义提示，不要发明新的表情包名、文件名或占位文本。',
-    '如果本轮是纯协议型消息（例如 [COUPLE_SPACE_INVITE_ACCEPTED]、转账协议）且没有普通正文，可以继续沿用原协议。',
-    '如果本轮输出的是 GAME_CARD，并且卡片里的 question/content 不是中文，那么仍然必须在协议正文后追加 `---TRANSLATION---`，给出对应的简体中文翻译。',
-    '如果你不确定该分成几个 segment，请优先只输出一个 segment，把正文和翻译都写完整；不要出现多个 text，但 translation 数量或内容对不齐的情况。',
-    '只要本轮存在普通正文，就绝对不要省略 translation，也不要改回旧的 ---TRANSLATION--- 写法。',
+    '## 统一回复协议',
+    `如果本轮需要输出任何可显示内容，优先只输出一个可机读协议，格式固定为：${STRUCTURED_ASSISTANT_REPLY_TOKEN} {"items":[...]}`,
+    `普通正文 item 的格式固定为：{"kind":"text","text":"${targetLanguage} 正文","translation":"对应的简体中文"}。`,
+    'items 的顺序就是最终显示顺序；如果本轮需要多个聊天气泡，就写多个 text item，不要把多段正文硬塞进一个字段里。',
+    `text 必须是角色真正会发出的 ${targetLanguage} 正文；translation 必须是与该 text 严格对应的简体中文。`,
+    '如果需要 [reply: ...]、[recall] 或 [sticker] 这类轻量 cue，把 cue 写在 text 字段里，不要额外解释。',
+    '如果需要 GAME_CARD，使用：{"kind":"game_card","payload":{...},"translation":"对应简体中文"}。game_card 是整轮唯一主体，不要再混入普通 text、transfer 或额外说明。',
+    '如果需要转账，使用：{"kind":"transfer","amount":"88.00"}。金额只保留数字和小数点，不要再写旧的 TRANSFER|...|... 变体。',
+    '如果需要情侣空间事件 token，使用：{"kind":"token","name":"COUPLE_SPACE_INVITE_ACCEPTED"}。',
+    '不要输出 Markdown 代码块，不要输出解释、注释、语言标签或额外字段。',
+    '只要本轮存在普通正文 text item，就必须给每个 text item 填 translation，不要改回旧的 ---TRANSLATION--- 写法。',
   ].join('\n');
-}
-
-function normalizeStructuredBilingualProtocolLine(value: unknown): string {
-  if (typeof value !== 'string') {
-    return '';
-  }
-
-  return sanitizePipeMarkers(value, ' ')
-    .replace(/\r?\n+/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-
-function parseStructuredBilingualReply(text: string): { segments: Array<{ text: string; translation: string }> } | null {
-  const trimmedText = text.trim();
-  if (!trimmedText.startsWith(STRUCTURED_BILINGUAL_REPLY_TOKEN)) {
-    return null;
-  }
-
-  let jsonString = trimmedText.replace(STRUCTURED_BILINGUAL_REPLY_TOKEN, '').trim();
-
-  if (jsonString.startsWith('```json')) {
-    jsonString = jsonString.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-  } else if (jsonString.startsWith('```')) {
-    jsonString = jsonString.replace(/^```\s*/i, '').replace(/\s*```$/, '');
-  }
-
-  const jsonStart = jsonString.indexOf('{');
-  const jsonEnd = jsonString.lastIndexOf('}');
-  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(jsonString.slice(jsonStart, jsonEnd + 1)) as {
-      segments?: Array<{ text?: unknown; translation?: unknown }>;
-    };
-    if (!parsed || !Array.isArray(parsed.segments)) {
-      return null;
-    }
-
-    const segments = parsed.segments
-      .map((segment) => ({
-        text: normalizeStructuredBilingualProtocolLine(segment?.text),
-        translation: normalizeStructuredBilingualProtocolLine(segment?.translation),
-      }))
-      .filter((segment) => segment.text);
-
-    if (!segments.length || segments.some((segment) => !segment.translation)) {
-      return null;
-    }
-
-    return { segments };
-  } catch {
-    return null;
-  }
-}
-
-function normalizeStructuredBilingualReplyToLegacyFormat(text: string): string {
-  const parsed = parseStructuredBilingualReply(text);
-  if (!parsed) {
-    return text;
-  }
-
-  const mainText = parsed.segments.map((segment) => segment.text).join('\n');
-  const translationText = parsed.segments.map((segment) => segment.translation).join(' ||| ');
-  return `${mainText}\n\n---TRANSLATION---\n${translationText}`;
-}
-
-function decodeStructuredBilingualJsonString(value: string): string {
-  try {
-    return JSON.parse(`"${value}"`) as string;
-  } catch {
-    return value
-      .replace(/\\n/g, ' ')
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, '\\');
-  }
-}
-
-function extractStructuredBilingualPreviewText(text: string): string {
-  const parsed = parseStructuredBilingualReply(text);
-  if (parsed) {
-    return parsed.segments
-      .map((segment) => segment.text)
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-  }
-
-  const trimmedText = text.trim();
-  if (!trimmedText.startsWith(STRUCTURED_BILINGUAL_REPLY_TOKEN)) {
-    return '';
-  }
-
-  let protocolBody = trimmedText.replace(STRUCTURED_BILINGUAL_REPLY_TOKEN, '').trim();
-  if (protocolBody.startsWith('```json')) {
-    protocolBody = protocolBody.replace(/^```json\s*/i, '');
-  } else if (protocolBody.startsWith('```')) {
-    protocolBody = protocolBody.replace(/^```\s*/i, '');
-  }
-
-  const segments: string[] = [];
-  const textFieldPattern = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g;
-  let match: RegExpExecArray | null = null;
-
-  while ((match = textFieldPattern.exec(protocolBody)) !== null) {
-    const decodedText = normalizeStructuredBilingualProtocolLine(
-      decodeStructuredBilingualJsonString(match[1] || ''),
-    );
-    if (decodedText) {
-      segments.push(decodedText);
-    }
-  }
-
-  return segments.join('\n').trim();
-}
-
-async function streamStructuredBilingualReply(params: {
-  activeConfig: ApiConfig;
-  messages: RuntimeChatMessage[];
-  onPreview?: (previewText: string) => void;
-}): Promise<string> {
-  let raw = '';
-  let lastPreviewText = '';
-
-  await streamTextWithConfig({
-    activeConfig: params.activeConfig,
-    messages: params.messages,
-    onTextChunk: (chunkText) => {
-      raw += chunkText;
-      const previewText = extractStructuredBilingualPreviewText(raw);
-      if (!previewText || previewText === lastPreviewText) {
-        return;
-      }
-
-      lastPreviewText = previewText;
-      params.onPreview?.(previewText);
-    },
-  });
-
-  return raw.trim();
 }
 
 function shouldRequireGameCardTranslation(text: string): boolean {
@@ -432,7 +303,7 @@ function shouldRequireGameCardTranslation(text: string): boolean {
 }
 
 function hasRequiredDirectReplyTranslation(text: string): boolean {
-  const normalizedText = normalizeStructuredBilingualReplyToLegacyFormat(text);
+  const normalizedText = normalizeStructuredAssistantReplyToLegacyFormat(text);
   const { mainText, translation } = getLegacyTranslationParts(normalizedText);
   const visibleMainText = stripCoupleSpaceTokens(stripTransferProtocolText(mainText)).trim();
 
@@ -1655,7 +1526,13 @@ function applyDirectCoupleSpaceBridge(params: {
   return `${trimmedReply}\n${COUPLE_SPACE_INVITE_ACCEPTED_TOKEN}`;
 }
 
-function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined): string {
+function buildDirectSpecialReplyPrompt(
+  message: ChatMessage | null | undefined,
+  options: {
+    structuredReplyEnabled?: boolean;
+    requireInlineTranslation?: boolean;
+  } = {},
+): string {
   if (!message || message.role !== 'user' || message.isSystem || message.isRecalled) {
     return '';
   }
@@ -1709,9 +1586,19 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
       '## 本轮特殊回复要求',
       '用户最新消息是一张 GAME_CARD 卡片。',
       cardType.instruction,
-      `建议协议骨架： [GAME_CARD] {"game":"${gameCard.game}","type":"${cardType.responseType}","question":${JSON.stringify(typeof gameCard.question === 'string' ? gameCard.question : '')},"content":"角色真正会说的话"}`,
-      '要求：卡片内容要像这个角色本人说出来的，不要写成系统说明；最终输出优先直接给出可解析的 GAME_CARD，不要先写普通文本再解释。',
-      '如果卡片里的自然语言不是中文，并且当前回复需要双语展示，那么必须在 GAME_CARD 协议正文后追加 `---TRANSLATION---`，写对应的简体中文翻译。',
+      options.structuredReplyEnabled
+        ? `建议统一协议骨架： ${STRUCTURED_ASSISTANT_REPLY_TOKEN} {"items":[{"kind":"game_card","payload":{"game":"${gameCard.game}","type":"${cardType.responseType}","question":${JSON.stringify(typeof gameCard.question === 'string' ? gameCard.question : '')},"content":"角色真正会说的话"}}]}`
+        : `建议协议骨架： [GAME_CARD] {"game":"${gameCard.game}","type":"${cardType.responseType}","question":${JSON.stringify(typeof gameCard.question === 'string' ? gameCard.question : '')},"content":"角色真正会说的话"}`,
+      options.structuredReplyEnabled
+        ? '要求：卡片内容要像这个角色本人说出来的，不要写成系统说明；最终输出优先给统一 reply envelope，不要先写普通文本再解释。'
+        : '要求：卡片内容要像这个角色本人说出来的，不要写成系统说明；最终输出优先直接给出可解析的 GAME_CARD，不要先写普通文本再解释。',
+      options.requireInlineTranslation
+        ? (
+          options.structuredReplyEnabled
+            ? '如果卡片里的自然语言不是中文，并且当前回复需要双语展示，就在 game_card item 上填写 translation 字段，写对应的简体中文。'
+            : '如果卡片里的自然语言不是中文，并且当前回复需要双语展示，那么必须在 GAME_CARD 协议正文后追加 `---TRANSLATION---`，写对应的简体中文翻译。'
+        )
+        : '',
     ].join('\n');
   }
 
@@ -1719,7 +1606,9 @@ function buildDirectSpecialReplyPrompt(message: ChatMessage | null | undefined):
     return [
       '## 本轮特殊回复要求',
       '用户最新消息是情侣空间邀请卡。',
-      `这轮回复如果同意，结尾必须补上 ${COUPLE_SPACE_INVITE_ACCEPTED_TOKEN}，让前端继续显示接受结果卡。`,
+      options.structuredReplyEnabled
+        ? '这轮如果同意，请在统一 reply envelope 里追加 {"kind":"token","name":"COUPLE_SPACE_INVITE_ACCEPTED"}，让前端继续显示接受结果卡。'
+        : `这轮回复如果同意，结尾必须补上 ${COUPLE_SPACE_INVITE_ACCEPTED_TOKEN}，让前端继续显示接受结果卡。`,
       '不要把这轮回复写成普通闲聊；优先按邀请事件来表态。',
     ].join('\n');
   }
@@ -1929,27 +1818,6 @@ function formatChatApiError(error: unknown): string {
   }
 
   return `错误: ${normalized}`;
-}
-
-function shouldInjectAutonomousAvatarPrompt(input: {
-  character: Character;
-  messages: ChatMessage[];
-  latestUserText?: string;
-}): boolean {
-  if ((input.character.avatarLibrary?.entries || []).length === 0) {
-    return false;
-  }
-
-  if (latestUserMessageHasAvatarIntent(input.messages)) {
-    return true;
-  }
-
-  const normalizedText = input.latestUserText?.trim() || '';
-  if (!normalizedText) {
-    return false;
-  }
-
-  return AUTONOMOUS_AVATAR_TRIGGER_REGEX.test(normalizedText);
 }
 
 function extractSpeechTextForAudio(text: string): string {
@@ -2426,7 +2294,7 @@ export function useDirectChatRuntime({
     const isAutonomousLibraryChange =
       action.type === 'change'
       && /^avatar_library:/i.test(action.source)
-      && !latestUserMessageHasAvatarIntent(sourceHistory);
+      && !shouldOfferAvatarActionForCharacter(character, sourceHistory);
     if (isAutonomousLibraryChange) {
       const latestAvatarUseAt = Math.max(
         0,
@@ -2463,6 +2331,123 @@ export function useDirectChatRuntime({
       ...patch,
     });
   }, [character, onPatchCharacter, onUpdateCharacter]);
+
+  const reviewDirectAvatarOffer = useCallback(async (params: {
+    history: ChatMessage[];
+    shortTermSummary?: string;
+    sharedRecentRelationshipSummary?: string;
+  }) => {
+    if (!activeConfig) {
+      return null;
+    }
+
+    return evaluateDirectAvatarOfferDecision({
+      activeConfig,
+      character,
+      messages: params.history,
+      userName,
+      shortTermSummary: params.shortTermSummary,
+      sharedRecentRelationshipSummary: params.sharedRecentRelationshipSummary,
+    });
+  }, [activeConfig, character, userName]);
+
+  const reviewAvatarLibraryDecision = useCallback(async (params: {
+    trigger: 'user_request' | 'autonomous';
+    history: ChatMessage[];
+    latestUserText?: string;
+    shortTermSummary?: string;
+    sharedRecentRelationshipSummary?: string;
+  }) => {
+    if (!activeConfig) {
+      return null;
+    }
+
+    return evaluateAvatarLibraryDecision({
+      activeConfig,
+      character,
+      trigger: params.trigger,
+      latestUserText: params.latestUserText?.trim() || '',
+      userName,
+      messages: params.history,
+      shortTermSummary: params.shortTermSummary,
+      sharedRecentRelationshipSummary: params.sharedRecentRelationshipSummary,
+    });
+  }, [activeConfig, character, userName]);
+
+  const clearPendingAvatarConfirmation = useCallback(() => {
+    patchCurrentCharacter({
+      pendingAvatarConfirmation: undefined,
+    });
+  }, [patchCurrentCharacter]);
+
+  useEffect(() => {
+    const pending = character.pendingAvatarConfirmation;
+    if (!pending) {
+      return;
+    }
+
+    if (isPendingAvatarConfirmationExpired(pending)) {
+      clearPendingAvatarConfirmation();
+      return;
+    }
+
+    if (!pending.expiresAt || typeof window === 'undefined') {
+      return;
+    }
+
+    const remainingMs = pending.expiresAt - Date.now();
+    if (remainingMs <= 0) {
+      clearPendingAvatarConfirmation();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearPendingAvatarConfirmation();
+    }, Math.min(remainingMs, 0x7fffffff));
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    character.pendingAvatarConfirmation?.createdAt,
+    character.pendingAvatarConfirmation?.expiresAt,
+    character.pendingAvatarConfirmation?.source,
+    clearPendingAvatarConfirmation,
+  ]);
+
+  const persistPendingAvatarConfirmation = useCallback((params: {
+    avatarOfferReview?: AvatarOfferDecisionReview | null;
+    avatarLibraryDecisionReview?: AvatarLibraryDecisionReview | null;
+  }) => {
+    if (params.avatarOfferReview?.action?.type === 'ask_confirm') {
+      patchCurrentCharacter({
+        pendingAvatarConfirmation: {
+          kind: 'image-offer',
+          source: 'pending_avatar_image',
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+          candidateImage: params.avatarOfferReview.candidate.image,
+          reason: params.avatarOfferReview.reason,
+          replyHint: params.avatarOfferReview.replyHint,
+          trigger: 'user_request',
+        },
+      });
+      return;
+    }
+
+    if (params.avatarLibraryDecisionReview?.action?.type === 'ask_confirm' && params.avatarLibraryDecisionReview.selectedEntryId) {
+      patchCurrentCharacter({
+        pendingAvatarConfirmation: {
+          kind: 'library-switch',
+          source: `avatar_library:${params.avatarLibraryDecisionReview.selectedEntryId}`,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+          entryId: params.avatarLibraryDecisionReview.selectedEntryId,
+          reason: params.avatarLibraryDecisionReview.reason,
+          replyHint: params.avatarLibraryDecisionReview.replyHint,
+          trigger: params.avatarLibraryDecisionReview.trigger,
+        },
+      });
+    }
+  }, [patchCurrentCharacter]);
 
   const generateDirectAssistantMessage = useCallback(async (
     historySnapshot: ChatMessage[],
@@ -2639,6 +2624,25 @@ export function useDirectChatRuntime({
               messages: historySnapshot,
               intentAnalysis: directIntentAnalysis,
             });
+          const pendingAvatarConfirmationResolution = mode === 'proactive'
+            ? null
+            : resolveAvatarConfirmationFromMessages(character, historySnapshot);
+          const avatarOfferReview = pendingAvatarConfirmationResolution || mode === 'proactive'
+            ? null
+            : await reviewDirectAvatarOffer({
+              history: historySnapshot,
+              shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+              sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
+            });
+          const avatarLibraryDecisionReview = pendingAvatarConfirmationResolution || avatarOfferReview
+            ? null
+            : await reviewAvatarLibraryDecision({
+              trigger: mode === 'proactive' ? 'autonomous' : 'user_request',
+              history: historySnapshot,
+              latestUserText: proactiveReferenceText,
+              shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+              sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
+            });
           const directSpecialReplyPrompt = mode === 'proactive'
             ? ''
             : buildDirectSpecialReplyPrompt(latestPendingUserMessage);
@@ -2689,14 +2693,13 @@ export function useDirectChatRuntime({
                 taskResidue: chatSceneInput.recentContext?.taskResidue,
               }),
               contextLayers.memoryContextPrompt,
-              buildAvatarActionPromptSection(character, historySnapshot),
-              shouldInjectAutonomousAvatarPrompt({
-                character,
-                messages: historySnapshot,
-                latestUserText: proactiveReferenceText,
-              })
-                ? buildAutonomousAvatarLibraryPromptSection(character)
-                : '',
+              pendingAvatarConfirmationResolution
+                ? pendingAvatarConfirmationResolution.promptSection
+                : avatarOfferReview
+                ? buildAvatarOfferReplyPromptSection(avatarOfferReview)
+                : avatarLibraryDecisionReview
+                  ? buildAvatarLibraryDecisionReplyPromptSection(avatarLibraryDecisionReview)
+                  : '',
               buildAssistantStickerPromptSection(runtimeStickerPool, {
                 character,
                 scene: 'direct',
@@ -2747,6 +2750,21 @@ export function useDirectChatRuntime({
                 reason: finalQualityResult.reason,
                 preview: finalQualityResult.cleanedText.slice(0, 120),
               });
+              finalQualityResult = await generateQualityCheckedAssistantReply({
+                activeConfig,
+                messages: runtimeMessages,
+                allowBracketActions: shouldAllowBracketActions(character),
+                allowStructuredProtocols: true,
+                toneGuardMode: 'character_chat',
+                softRecoveryMode: 'character_chat',
+                retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
+                onInvalid: (result) => {
+                  console.warn('[direct-chat] invalid structured fallback reply rejected', {
+                    reason: result.reason,
+                    preview: result.cleanedText.slice(0, 120),
+                  });
+                },
+              });
             }
           } else {
             finalQualityResult = await generateQualityCheckedAssistantReply({
@@ -2755,6 +2773,7 @@ export function useDirectChatRuntime({
               allowBracketActions: shouldAllowBracketActions(character),
               allowStructuredProtocols: true,
               toneGuardMode: 'character_chat',
+              softRecoveryMode: 'character_chat',
               retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
               onInvalid: (result) => {
                 console.warn('[direct-chat] invalid generated reply rejected', {
@@ -2841,6 +2860,10 @@ export function useDirectChatRuntime({
             currentResponseText = GAME_CARD_FAILURE_TOKEN;
           }
           const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+          const resolvedAvatarAction = pendingAvatarConfirmationResolution?.action
+            || avatarOfferReview?.action
+            || avatarLibraryDecisionReview?.action
+            || avatarActionResult.action;
           currentResponseText = avatarActionResult.displayText;
           latestHistory = replaceAssistantMessages(latestHistory, currentResponseText);
           commitHistory(latestHistory);
@@ -2853,7 +2876,14 @@ export function useDirectChatRuntime({
             latestAssistantText: currentResponseText,
             sharedState: directSharedState,
           });
-          applyAvatarAction(avatarActionResult.action, historySnapshot);
+          applyAvatarAction(resolvedAvatarAction, historySnapshot);
+          if (pendingAvatarConfirmationResolution?.clearPending) {
+            clearPendingAvatarConfirmation();
+          }
+          persistPendingAvatarConfirmation({
+            avatarOfferReview,
+            avatarLibraryDecisionReview,
+          });
           activeAssistantMessageIdRef.current = null;
           activeAssistantRenderCountRef.current = 0;
 
@@ -2873,7 +2903,7 @@ export function useDirectChatRuntime({
           activeAssistantRenderCountRef.current = 0;
         }
     });
-  }, [activeConfig, applyAvatarAction, character, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, perception, queueAutoAudioForLatestModelReply, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, perception, persistPendingAvatarConfirmation, queueAutoAudioForLatestModelReply, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, runGeneration, syncCharacterRuntimeState, userName, worldBook]);
 
   const handleVoiceCallAIResponse = useCallback(async (userText: string): Promise<{
     text: string;
@@ -3116,14 +3146,14 @@ export function useDirectChatRuntime({
         activeAssistantMessageIdRef.current = null;
         activeAssistantRenderCountRef.current = 0;
 
-        onPublishMoment?.({
-          authorId: character.id,
-          content: commandMomentResult.momentContent,
-          translation: commandMomentResult.momentTranslation,
-          images: commandMomentResult.momentImages,
-          sourceImage: commandMomentResult.momentSourceImage,
-          imageCard: commandMomentResult.momentImageCard,
-        });
+          onPublishMoment?.({
+            authorId: character.id,
+            content: commandMomentResult.momentContent,
+            translation: commandMomentResult.momentTranslation,
+            images: commandMomentResult.momentImages,
+            sourceImage: commandMomentResult.momentSourceImage,
+            imageCard: commandMomentResult.momentImageCard,
+          });
         lastMomentPublishAtRef.current = Date.now();
         return;
       }
@@ -3219,6 +3249,23 @@ export function useDirectChatRuntime({
         messages: newHistory,
         intentAnalysis: directIntentAnalysis,
       });
+      const pendingAvatarConfirmationResolution = resolveAvatarConfirmationFromMessages(character, newHistory);
+      const avatarOfferReview = pendingAvatarConfirmationResolution
+        ? null
+        : await reviewDirectAvatarOffer({
+        history: newHistory,
+        shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+        sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
+      });
+      const avatarLibraryDecisionReview = pendingAvatarConfirmationResolution || avatarOfferReview
+        ? null
+        : await reviewAvatarLibraryDecision({
+          trigger: 'user_request',
+          history: newHistory,
+          latestUserText: userMsg.text,
+          shortTermSummary: chatSceneInput.recentContext?.shortTermSummary,
+          sharedRecentRelationshipSummary: chatSceneInput.recentContext?.sharedRecentRelationshipSummary,
+        });
       const structuredBilingualReplyEnabled = shouldInlineReplyTranslation(character);
       const directStickerContext = {
         ...buildDirectStickerUsageContext(newHistory),
@@ -3250,14 +3297,13 @@ export function useDirectChatRuntime({
             taskResidue: chatSceneInput.recentContext?.taskResidue,
           }),
           contextLayers.memoryContextPrompt,
-          buildAvatarActionPromptSection(character, newHistory),
-          shouldInjectAutonomousAvatarPrompt({
-            character,
-            messages: newHistory,
-            latestUserText: userMsg.text,
-          })
-            ? buildAutonomousAvatarLibraryPromptSection(character)
-            : '',
+          pendingAvatarConfirmationResolution
+            ? pendingAvatarConfirmationResolution.promptSection
+            : avatarOfferReview
+            ? buildAvatarOfferReplyPromptSection(avatarOfferReview)
+            : avatarLibraryDecisionReview
+              ? buildAvatarLibraryDecisionReplyPromptSection(avatarLibraryDecisionReview)
+              : '',
           buildAssistantStickerPromptSection(runtimeStickerPool, {
             character,
             scene: 'direct',
@@ -3317,6 +3363,21 @@ export function useDirectChatRuntime({
             reason: qualityResult.reason,
             preview: qualityResult.cleanedText.slice(0, 120),
           });
+          qualityResult = await generateQualityCheckedAssistantReply({
+            activeConfig,
+            messages: runtimeMessages,
+            allowBracketActions: shouldAllowBracketActions(character),
+            allowStructuredProtocols: true,
+            toneGuardMode: 'character_chat',
+            softRecoveryMode: 'character_chat',
+            retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
+            onInvalid: (result) => {
+              console.warn('[direct-chat] invalid structured fallback reply rejected', {
+                reason: result.reason,
+                preview: result.cleanedText.slice(0, 120),
+              });
+            },
+          });
         }
       } else {
         qualityResult = await generateQualityCheckedAssistantReply({
@@ -3325,6 +3386,7 @@ export function useDirectChatRuntime({
           allowBracketActions: shouldAllowBracketActions(character),
           allowStructuredProtocols: true,
           toneGuardMode: 'character_chat',
+          softRecoveryMode: 'character_chat',
           retryTemperature: Math.min(Math.max(activeConfig.temperature ?? 0.7, 0.72) + 0.08, 0.95),
           onProgress: (streamingText) => {
             if (activeGenerationIdRef.current !== generationId) {
@@ -3382,6 +3444,10 @@ export function useDirectChatRuntime({
       }
       currentResponseText = stripPseudoMomentPrefix(currentResponseText);
       const avatarActionResult = parseAvatarActionBlock(currentResponseText);
+      const resolvedAvatarAction = pendingAvatarConfirmationResolution?.action
+        || avatarOfferReview?.action
+        || avatarLibraryDecisionReview?.action
+        || avatarActionResult.action;
       currentResponseText = avatarActionResult.displayText;
       const boundaryAnalysis = analyzeDirectRelationshipBoundary({
         character,
@@ -3444,6 +3510,16 @@ export function useDirectChatRuntime({
         latestAssistantText: currentResponseText,
         sharedState: directSharedState,
       });
+      if (appliedBoundaryDecision === 'none') {
+        applyAvatarAction(resolvedAvatarAction, finalHistory);
+      }
+      if (pendingAvatarConfirmationResolution?.clearPending) {
+        clearPendingAvatarConfirmation();
+      }
+      persistPendingAvatarConfirmation({
+        avatarOfferReview,
+        avatarLibraryDecisionReview,
+      });
       if (onPublishMoment && appliedBoundaryDecision === 'none') {
         const autoMomentResult = await maybeAutoPublishMoment({
           userText: userMsg.text,
@@ -3485,9 +3561,6 @@ export function useDirectChatRuntime({
           lastMomentPublishAtRef.current = noticeTimestamp;
         }
       }
-      if (appliedBoundaryDecision === 'none') {
-        applyAvatarAction(avatarActionResult.action, finalHistory);
-      }
       activeAssistantMessageIdRef.current = null;
       activeAssistantRenderCountRef.current = 0;
     } catch (sendError: any) {
@@ -3503,7 +3576,7 @@ export function useDirectChatRuntime({
       }
     }
     });
-  }, [activeConfig, applyAvatarAction, character, characters, chatGroups, commitHistory, coupleSpace, directChatHistory, masks, onPublishMoment, perception, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, recordDirectBoundaryEvent, replyingTo, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
+  }, [activeConfig, applyAvatarAction, character, characters, chatGroups, clearPendingAvatarConfirmation, commitHistory, coupleSpace, directChatHistory, masks, onPublishMoment, perception, persistPendingAvatarConfirmation, prepareBaseHistoryForOutgoingMessage, queueAutoAudioForLatestModelReply, recordDirectBoundaryEvent, replyingTo, reviewAvatarLibraryDecision, reviewDirectAvatarOffer, setInput, setReplyingTo, syncCharacterRuntimeState, userName, worldBook]);
 
   useEffect(() => {
     handleSendRef.current = handleSend;
